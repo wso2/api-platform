@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@platform-api-gateway-api-portal
+@platform-api-gateway-api-portal @APIPORTAL
 Feature: Documents, a landing page and a thumbnail published with an API reach the API Portal
   As an API publisher
   I want the content I select for a publication to be what the API Portal shows
@@ -38,6 +38,7 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     And I generate a unique resource name from "publish-portal" and store it as "portalHandle"
     And I register the API Portal "${CTX:portalHandle}" with the control plane
 
+  @APIP-PUBLISHING-028
   Scenario: Documents, a landing page and a thumbnail are published to the API Portal
     And I generate a unique resource name from "publish-doc" and store it as "docHandle"
     And I create a document "${CTX:docHandle}" of type "HowTo" with content "Step one: call the API." on the "RestApi" "${CTX:apiHandle}" via the control plane
@@ -60,6 +61,7 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     Then the response status code should be 200
     And the response header "Content-Type" should contain "image"
 
+  @APIP-PUBLISHING-029
   @type:negative
   Scenario: Documents that together exceed the content size limit are refused before anything is sent to the API Portal
     And I generate a unique resource name from "publish-doc" and store it as "docHandle"
@@ -100,6 +102,7 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiHandle}/assets?type=IMAGE&fileName=api-icon.png" as "admin"
     Then the response status code should be 404
 
+  @APIP-PUBLISHING-031
   Scenario: Unselecting one of two documents removes only that document from the API Portal
     And I generate a unique resource name from "publish-doc" and store it as "docHandle"
     And I generate a unique resource name from "publish-doc-b" and store it as "docHandleB"

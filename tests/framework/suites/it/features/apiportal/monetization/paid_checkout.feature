@@ -16,11 +16,17 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@api-portal-paid-checkout
+@APIPORTAL @api-portal-paid-checkout
 Feature: Buying a flat rate plan in the API Portal
   As a developer
   I want to pay for a plan through checkout and stop paying when I unsubscribe
   So that I get the plan I paid for, and the portal follows what Stripe says about my payments
+
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-BILLING-007..012 and 016..019, at the
+  # API level. The paid plan is published from the control plane with billing set up in this
+  # runner's own portal; Stripe and Moesif are the testbench services, reset before every scenario.
+  # The api-portal-billing block has no gateway: the gateway's handling of a paid subscription is
+  # covered by management-portal/monetization/paid_subscription_access.feature.
 
   Background:
     Given I send a "POST" request to the "stripe" service at "/test/reset"
@@ -50,6 +56,7 @@ Feature: Buying a flat rate plan in the API Portal
     And the response status code should be 201
     And I register API Portal resource "${CTX:planHandle}" at "/subscription-plans" for cleanup
 
+  @APIP-BILLING-007
   Scenario: A developer pays for a flat rate plan and is subscribed once Stripe confirms the payment
     # Publishing the paid plan created it in Moesif, which created its price in Stripe.
     When I send a "GET" request to the "moesif" service at "/test/state"
@@ -93,6 +100,7 @@ Feature: Buying a flat rate plan in the API Portal
     And the JSON response field "billingStatus" should be "ACTIVE"
     And the JSON response field "byUsage" should be false
     And the JSON response field "endsAt" should be "null"
+    And the JSON response field "currentPeriod.end" should not equal "null"
 
     # One subscription per API: a second checkout is refused.
     When I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
@@ -116,6 +124,7 @@ Feature: Buying a flat rate plan in the API Portal
     Then the response status code should be 409
     And the JSON response field "code" should be "BILLING_SUBSCRIPTIONS_ACTIVE"
 
+  @APIP-BILLING-008
   Scenario: The subscription's billing status follows Stripe as payments fail and are paid
     Given I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
       """
@@ -168,6 +177,7 @@ Feature: Buying a flat rate plan in the API Portal
     And the JSON response field "billingStatus" should be "CANCELLED"
     And the JSON response field "status" should be "PAYMENT_PENDING"
 
+  @APIP-BILLING-009
   Scenario: Unsubscribing from a flat rate plan ends it at the end of the period already paid for
     Given I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
       """
@@ -198,6 +208,7 @@ Feature: Buying a flat rate plan in the API Portal
     When I send an authenticated API Portal "GET" request to "/subscriptions/${CTX:subscriptionId}" as "developer"
     Then the response status code should be 404
 
+  @APIP-BILLING-010
   Scenario: Ending a flat rate subscription now cancels it in Stripe at once, with no refund
     Given I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
       """
@@ -217,6 +228,7 @@ Feature: Buying a flat rate plan in the API Portal
     When I send an authenticated API Portal "DELETE" request to "/billing-configuration" as "admin"
     Then the response status code should be 204
 
+  @APIP-BILLING-011
   Scenario: A checkout the developer leaves unpaid ends without a subscription
     Given I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
       """
@@ -237,7 +249,7 @@ Feature: Buying a flat rate plan in the API Portal
     Then the response status code should be 201
     And the JSON response field "id" should not equal "${CTX:checkoutId}"
 
-  @type:negative
+  @APIP-BILLING-012 @type:negative
   Scenario: Stripe's events are accepted only when they are signed and recent, and repeating one changes nothing
     Given I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
       """
@@ -268,3 +280,156 @@ Feature: Buying a flat rate plan in the API Portal
     # An event for an organization without billing is refused.
     When I send an unauthenticated API Portal "POST" request to "/api-portal/billing/stripe/webhooks/00000000-0000-4000-8000-000000000000"
     Then the response status code should be 404
+
+  @APIP-BILLING-016 @type:negative
+  Scenario Outline: A checkout <problem> is refused, and nothing is started in Stripe
+    When I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON values:
+      | artifactId         | <api>  |
+      | subscriptionPlanId | <plan> |
+    Then the response status code should be <status>
+    And the response body should contain "<message>"
+    When I send a "GET" request to the "stripe" service at "/test/state"
+    Then the JSON response array field "checkoutSessions" should have 0 items
+    # The same API and plan, named as they are, start a checkout.
+    When I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON values:
+      | artifactId         | ${CTX:apiHandle}  |
+      | subscriptionPlanId | ${CTX:planHandle} |
+    Then the response status code should be 201
+    And the JSON response field "status" should be "OPEN"
+
+    Examples:
+      | problem                         | api                             | plan                            | status | message                                   |
+      | that names no plan              | ${CTX:apiHandle}                |                                 | 400    | artifactId and subscriptionPlanId are required |
+      | for a plan the API doesn't offer | ${CTX:apiHandle}                | ${UNIQUE:unoffered-plan}        | 400    | Subscription plan not found for this API |
+      | for an API that doesn't exist   | ${UNIQUE:missing-api}           | ${CTX:planHandle}               | 404    | API not found                             |
+
+  @APIP-BILLING-017 @type:negative
+  Scenario: A free plan is subscribed to directly, not bought through checkout
+    # This block's portal does not create its default plans, and its role mapping is the
+    # product's, so the administrator creates the free plan and the API that offers it.
+    Given I generate a unique resource name from "free-plan" and store it as "freePlanId"
+    And I generate a unique resource name from "free-api" and store it as "freeApiId"
+    And a unique API Portal resource is created at "/subscription-plans" as "admin" with body and stored as "freePlanId":
+      """
+      {"id":"${CTX:freePlanId}","displayName":"${CTX:freePlanId}","limits":[{"limitType":"REQUEST_COUNT","limitCount":100,"timeUnit":"MINUTE"}]}
+      """
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "admin" with values:
+      | id                | ${CTX:freeApiId}               |
+      | name              | Free REST API                  |
+      | subscriptionPlans | [{"id":"${CTX:freePlanId}"}]   |
+    And the response status code should be 201
+    When I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON values:
+      | artifactId         | ${CTX:freeApiId}  |
+      | subscriptionPlanId | ${CTX:freePlanId} |
+    Then the response status code should be 400
+    And the JSON response field "code" should be "FREE_PLAN"
+    And the JSON response field "message" should be "This plan is free: subscribe to it directly."
+    When I send a "GET" request to the "stripe" service at "/test/state"
+    Then the JSON response array field "checkoutSessions" should have 0 items
+    # Subscribing to it directly works.
+    When a developer subscription for API "${CTX:freeApiId}" using plan "${CTX:freePlanId}" is created and stored as "freeSubscriptionId"
+    Then the response status code should be 201
+    And the JSON response field "subscriptionPlanName" should be "${CTX:freePlanId}"
+
+  @APIP-BILLING-018 @type:negative
+  Scenario: A paid subscription's plan can't be changed or suspended here, and its usage is read only for known periods
+    Given I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON values:
+      | artifactId         | ${CTX:apiHandle}  |
+      | subscriptionPlanId | ${CTX:planHandle} |
+    And the response status code should be 201
+    And I store the JSON response field "id" as "checkoutId"
+    And the checkout "${CTX:checkoutId}" is paid in Stripe by "developer" and the subscription is stored as "subscriptionId"
+    # Moving off a paid plan is done by unsubscribing and buying the new plan.
+    When I send an authenticated API Portal "POST" request to "/subscriptions/${CTX:subscriptionId}/change-plan" as "developer" with JSON values:
+      | artifactId | ${CTX:apiHandle}  |
+      | planId     | ${CTX:planHandle} |
+    Then the response status code should be 409
+    And the JSON response field "code" should be "PAID_PLAN_REQUIRES_CHECKOUT"
+    When I send an authenticated API Portal "PUT" request to "/subscriptions/${CTX:subscriptionId}" as "developer" with JSON values:
+      | status | INACTIVE |
+    Then the response status code should be 409
+    And the JSON response field "code" should be "PAID_PLAN_REQUIRES_CHECKOUT"
+    And the JSON response field "message" should be "A paid subscription cannot be suspended. Unsubscribe to stop it."
+    # The subscription is still active on its plan, and Stripe still bills it.
+    When I send an authenticated API Portal "GET" request to "/subscriptions/${CTX:subscriptionId}/billing" as "developer"
+    Then the response status code should be 200
+    And the JSON response field "status" should be "ACTIVE"
+    When I send a "GET" request to the "stripe" service at "/test/state"
+    Then the JSON response array "subscriptions" item with "metadata.wso2_checkout" equal to "${CTX:checkoutId}" should have "status" equal to "active"
+    # Usage is read for the known periods and intervals only.
+    When I send an authenticated API Portal "GET" request to "/usage?period=NEXT_MONTH" as "developer"
+    Then the response status code should be 400
+    And the JSON response field "message" should contain "period must be one of"
+    When I send an authenticated API Portal "GET" request to "/usage?interval=MINUTE" as "developer"
+    Then the response status code should be 400
+    And the JSON response field "message" should contain "interval must be one of"
+    When I send an authenticated API Portal "GET" request to "/usage?period=LAST_7_DAYS&interval=DAY" as "developer"
+    Then the response status code should be 200
+    And the JSON response field "usageAvailable" should be true
+
+  @APIP-BILLING-019
+  Scenario: A subscriber pages through their own invoices and opens their billing page, and only an administrator reads the revenue reports
+    # Nobody has bought a plan yet: there is no billing page to open.
+    When I send an authenticated API Portal "POST" request to "/billing/billing-portal-sessions" as "developer" with JSON body:
+      """
+      {}
+      """
+    Then the response status code should be 409
+    And the JSON response field "message" should be "Billing details are available once you subscribe to a paid plan."
+    Given I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON values:
+      | artifactId         | ${CTX:apiHandle}  |
+      | subscriptionPlanId | ${CTX:planHandle} |
+    And the response status code should be 201
+    And I store the JSON response field "id" as "checkoutId"
+    And the checkout "${CTX:checkoutId}" is paid in Stripe by "developer" and the subscription is stored as "subscriptionId"
+
+    # The subscriber's invoices, a page at a time.
+    When I send an authenticated API Portal "GET" request to "/billing/invoices?period=LAST_3_MONTHS&limit=1" as "developer"
+    Then the response status code should be 200
+    And the JSON response field "period" should be "LAST_3_MONTHS"
+    And the JSON response field "canManageBilling" should be true
+    And the JSON response array field "invoices" should have 1 item
+    And the JSON response field "invoices[0].amount" should be "29.00"
+    And the JSON response field "invoices[0].subscription" should not equal "null"
+    When I send an authenticated API Portal "GET" request to "/billing/invoices?period=LAST_WEEK" as "developer"
+    Then the response status code should be 400
+    And the JSON response field "message" should contain "period must be one of"
+    When I send an authenticated API Portal "GET" request to "/billing/invoices?limit=0" as "developer"
+    Then the response status code should be 400
+    And the JSON response field "message" should contain "limit must be at least 1"
+    When I send an authenticated API Portal "GET" request to "/billing/invoices?limit=1.5" as "developer"
+    Then the response status code should be 400
+    And the JSON response field "message" should contain "limit"
+    When I send an authenticated API Portal "GET" request to "/billing/invoices?after=not-a-cursor" as "developer"
+    Then the response status code should be 400
+    And the JSON response field "message" should be "after is not in the expected format"
+
+    # The subscriber's billing page at Stripe.
+    When I send an authenticated API Portal "POST" request to "/billing/billing-portal-sessions" as "developer" with JSON body:
+      """
+      {}
+      """
+    Then the response status code should be 201
+    And the JSON response field "url" should contain "https://billing.stripe.test/"
+
+    # The administrator's revenue reports.
+    When I send an authenticated API Portal "GET" request to "/billing-reports/revenue" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "configured" should be true
+    And the JSON response field "paidSubscriptions" should be 1
+    And the JSON response field "paidApis" should be 1
+    When I send an authenticated API Portal "GET" request to "/billing-reports/invoices" as "admin"
+    Then the response status code should be 200
+    And the JSON response array "invoices" should contain an item with "total" equal to "29.00"
+    And the JSON response array "invoices" should contain an item with "subscriptionId" equal to "${CTX:subscriptionId}"
+    When I send an authenticated API Portal "GET" request to "/billing-reports/invoices?from=2026-02-01&to=2026-01-01" as "admin"
+    Then the response status code should be 400
+    And the JSON response field "message" should be "from must be before to"
+    When I send an authenticated API Portal "GET" request to "/billing-reports/invoices?from=not-a-date" as "admin"
+    Then the response status code should be 400
+    And the JSON response field "message" should contain "from and to must be dates"
+    # A subscriber can't read them.
+    When I send an authenticated API Portal "GET" request to "/billing-reports/revenue" as "developer"
+    Then the response status code should be 403
+    When I send an authenticated API Portal "GET" request to "/billing-reports/invoices" as "developer"
+    Then the response status code should be 403

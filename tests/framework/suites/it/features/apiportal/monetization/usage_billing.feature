@@ -16,11 +16,15 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@api-portal-usage-billing
+@APIPORTAL @api-portal-usage-billing
 Feature: Billing a plan by usage in the API Portal
   As an API Portal administrator selling a plan charged by usage
   I want the plan's meter and price created in Moesif when the plan goes on sale, and its usage billed
   So that what a developer sees as used is what Stripe charges, and a plan Moesif can't create is never sold
+
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-BILLING-013..014, at the API level.
+  # Moesif's usage is reported through the testbench Moesif service, which bills it to the
+  # testbench Stripe service against the plan's price.
 
   Background:
     Given I send a "POST" request to the "stripe" service at "/test/reset"
@@ -53,6 +57,7 @@ Feature: Billing a plan by usage in the API Portal
       | version             | ${CTX:apiVersion}     |
       | subscriptionPlanIds | ["${CTX:planHandle}"] |
 
+  @APIP-BILLING-013
   Scenario: Usage Moesif counts is shown to the developer and billed by Stripe when they unsubscribe
     When I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
     Then the response status code should be 201
@@ -98,7 +103,7 @@ Feature: Billing a plan by usage in the API Portal
     Then the response status code should be 200
     And the JSON response array "invoices" should contain an item with "total" equal to "5.00"
 
-  @type:negative
+  @APIP-BILLING-014 @type:negative
   Scenario: A plan Moesif can't create is not put on sale, and nothing made for it is left in Moesif
     Given I send a "POST" request to the "moesif" service at "/test/fail" with body:
       """

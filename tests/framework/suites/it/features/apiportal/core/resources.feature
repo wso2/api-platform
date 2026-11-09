@@ -16,237 +16,203 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal resource management
+@APIPORTAL @apiportal-resources
+Feature: Applications, labels, views and key managers are managed through the API Portal REST API
+  As an API Portal administrator or developer
+  I want to manage the organization resources my role owns, and nothing more
+  So that developers can obtain credentials while only administrators shape the portal
 
-  Scenario: A developer creates and retrieves an application
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-024..031, at the API level.
+  # Developers hold read scopes on labels and views and none on key managers, so every write they
+  # attempt there is refused and followed by a read that shows nothing was stored. Key managers
+  # point at the runner's partition of the testbench OAuth2 mock; "test-secret" is that mock's fixed
+  # client secret, never a real credential, and the portal must never echo or store it.
+
+  @APIP-CORE-024
+  Scenario: A developer manages an application from creation to deletion
     Given I generate a unique resource name from "portal-app" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with body and stored as "appId":
-      """
-      {"id": "${CTX:appId}", "displayName": "Test Application", "description": "API Portal integration application"}
-      """
+    And a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
+      | id          | ${CTX:appId}           |
+      | displayName | Orders Application     |
+      | description | Calls the orders APIs  |
     When I send an authenticated API Portal "GET" request to "/applications/${CTX:appId}" as "developer"
     Then the response status code should be 200
-    And the JSON response field "displayName" should be "Test Application"
-
-  Scenario: A developer updates an application
-    Given I generate a unique resource name from "portal-app" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with body and stored as "appId":
-      """
-      {"id": "${CTX:appId}", "displayName": "Original Application", "description": "original"}
-      """
-    When I send an authenticated API Portal "PUT" request to "/applications/${CTX:appId}" as "developer" with JSON body:
-      """
-      {"displayName": "Renamed Application", "description": "updated"}
-      """
+    And the JSON response field "displayName" should be "Orders Application"
+    When I send an authenticated API Portal "GET" request to "/applications" as "developer"
     Then the response status code should be 200
-    And the JSON response field "displayName" should be "Renamed Application"
-
-  Scenario: A developer deletes an application
-    Given I generate a unique resource name from "portal-app" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with body and stored as "appId":
-      """
-      {"id": "${CTX:appId}", "displayName": "To Delete", "description": "temporary"}
-      """
+    And the response body should contain "${CTX:appId}"
+    When I send an authenticated API Portal "PUT" request to "/applications/${CTX:appId}" as "developer" with JSON values:
+      | displayName | Renamed Orders Application |
+      | description | Renamed                    |
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Renamed Orders Application"
     When I send an authenticated API Portal "DELETE" request to "/applications/${CTX:appId}" as "developer"
     Then the response status code should be 200
     When I send an authenticated API Portal "GET" request to "/applications/${CTX:appId}" as "developer"
     Then the response status code should be 404
 
-  Scenario: Application creation rejects missing required fields
-    When I generate a unique resource name from "portal-app" and store it as "appId"
-    And I send an authenticated API Portal "POST" request to "/applications" as "developer" with JSON body:
-      """
-      {"id": "${CTX:appId}"}
-      """
+  @APIP-CORE-025 @type:negative
+  Scenario: An application without its required fields is refused and stores nothing
+    Given I generate a unique resource name from "portal-app-invalid" and store it as "appId"
+    When I send an authenticated API Portal "POST" request to "/applications" as "developer" with JSON values:
+      | id | ${CTX:appId} |
     Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/applications/${CTX:appId}" as "developer"
+    Then the response status code should be 404
+    And a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
+      | id          | ${CTX:appId}          |
+      | displayName | Orders Application    |
+      | description | Calls the orders APIs |
 
-  Scenario: A developer lists applications
-    Given I generate a unique resource name from "portal-listed-app" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with body and stored as "appId":
-      """
-      {"id":"${CTX:appId}","displayName":"Listed Application","description":"listed"}
-      """
-    When I send an authenticated API Portal "GET" request to "/applications" as "developer"
-    Then the response status code should be 200
-    And the response body should contain "${CTX:appId}"
-
-  Scenario: An administrator creates and retrieves a label
+  @APIP-CORE-026
+  Scenario: An administrator manages a label from creation to deletion
     Given I generate a unique resource name from "portal-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id": "${CTX:labelId}", "displayName": "Premium APIs"}
-      """
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Premium APIs   |
     When I send an authenticated API Portal "GET" request to "/labels/${CTX:labelId}" as "admin"
     Then the response status code should be 200
     And the JSON response field "displayName" should be "Premium APIs"
-
-  Scenario: An administrator updates a label
-    Given I generate a unique resource name from "portal-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id": "${CTX:labelId}", "displayName": "Original Label"}
-      """
-    When I send an authenticated API Portal "PUT" request to "/labels/${CTX:labelId}" as "admin" with JSON body:
-      """
-      {"id": "${CTX:labelId}", "displayName": "Renamed Label"}
-      """
+    When I send an authenticated API Portal "GET" request to "/labels" as "admin"
     Then the response status code should be 200
-    And the JSON response field "displayName" should be "Renamed Label"
-
-  Scenario: An administrator deletes a label
-    Given I generate a unique resource name from "portal-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id": "${CTX:labelId}", "displayName": "To Delete"}
-      """
+    And the response body should contain "${CTX:labelId}"
+    When I send an authenticated API Portal "PUT" request to "/labels/${CTX:labelId}" as "admin" with JSON values:
+      | id          | ${CTX:labelId} |
+      | displayName | Partner APIs   |
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Partner APIs"
     When I send an authenticated API Portal "DELETE" request to "/labels/${CTX:labelId}" as "admin"
     Then the response status code should be 204
     When I send an authenticated API Portal "GET" request to "/labels/${CTX:labelId}" as "admin"
     Then the response status code should be 404
 
-  Scenario: An administrator creates a view with a label
-    Given I generate a unique resource name from "portal-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id": "${CTX:labelId}", "displayName": "View Label"}
-      """
-    And I generate a unique resource name from "portal-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id": "${CTX:viewId}", "displayName": "Partner APIs", "labels": ["${CTX:labelId}"]}
-      """
-    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}" as "admin"
+  @APIP-CORE-027
+  Scenario: An administrator creates views with and without labels
+    Given I generate a unique resource name from "portal-view-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-labelled-view" and store it as "labelledViewId"
+    And I generate a unique resource name from "portal-unlabelled-view" and store it as "unlabelledViewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Partner APIs   |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "labelledViewId":
+      | id          | ${CTX:labelledViewId} |
+      | displayName | Partner View          |
+      | labels      | ["${CTX:labelId}"]    |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "unlabelledViewId":
+      | id          | ${CTX:unlabelledViewId} |
+      | displayName | Empty View              |
+    When I send an authenticated API Portal "GET" request to "/views/${CTX:labelledViewId}" as "admin"
     Then the response status code should be 200
-    And the JSON response field "displayName" should be "Partner APIs"
+    And the JSON response field "displayName" should be "Partner View"
     And the JSON response array field "labels" should have 1 item
-
-  Scenario: An administrator creates a view without labels
-    Given I generate a unique resource name from "portal-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id": "${CTX:viewId}", "displayName": "Unlabelled View"}
-      """
-    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}" as "admin"
+    And the JSON response field "labels[0]" should be "${CTX:labelId}"
+    When I send an authenticated API Portal "GET" request to "/views/${CTX:unlabelledViewId}" as "admin"
     Then the response status code should be 200
     And the JSON response array field "labels" should have 0 items
 
-  Scenario: An administrator creates and retrieves a key manager
+  @APIP-CORE-028 @type:security
+  Scenario: A developer can read labels and views but cannot create them
+    Given I generate a unique resource name from "portal-readable-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-readable-view" and store it as "viewId"
+    And I generate a unique resource name from "portal-denied-label" and store it as "deniedLabelId"
+    And I generate a unique resource name from "portal-denied-view" and store it as "deniedViewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Public APIs    |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId} |
+      | displayName | Public View   |
+    When I send an authenticated API Portal "GET" request to "/labels/${CTX:labelId}" as "developer"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}" as "developer"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "POST" request to "/labels" as "developer" with JSON values:
+      | id          | ${CTX:deniedLabelId} |
+      | displayName | Denied Label         |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "POST" request to "/views" as "developer" with JSON values:
+      | id          | ${CTX:deniedViewId} |
+      | displayName | Denied View         |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "GET" request to "/labels/${CTX:deniedLabelId}" as "admin"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/views/${CTX:deniedViewId}" as "admin"
+    Then the response status code should be 404
+
+  @APIP-CORE-029
+  Scenario: An administrator manages a key manager from creation to deletion
     Given I generate a unique resource name from "portal-km" and store it as "kmId"
-    And a unique API Portal resource is created at "/key-managers" as "admin" with body and stored as "kmId":
-      """
-      {"id": "${CTX:kmId}", "displayName": "Test Key Manager", "tokenEndpoint": "https://token.example.invalid/oauth2/token"}
-      """
+    And a unique API Portal resource is created at "/key-managers" as "admin" with values and stored as "kmId":
+      | id            | ${CTX:kmId}                                                          |
+      | displayName   | Orders Key Manager                                                   |
+      | tokenEndpoint | http://testbench:3011/${CTX:apiPortalRunnerPartition}/oauth2/token |
     When I send an authenticated API Portal "GET" request to "/key-managers/${CTX:kmId}" as "admin"
     Then the response status code should be 200
-    And the JSON response field "displayName" should be "Test Key Manager"
-
-  Scenario: An administrator updates a key manager
-    Given I generate a unique resource name from "portal-km" and store it as "kmId"
-    And a unique API Portal resource is created at "/key-managers" as "admin" with body and stored as "kmId":
-      """
-      {"id": "${CTX:kmId}", "displayName": "Original KM", "tokenEndpoint": "https://token.example.invalid/oauth2/token"}
-      """
-    When I send an authenticated API Portal "PUT" request to "/key-managers/${CTX:kmId}" as "admin" with JSON body:
-      """
-      {"displayName": "Renamed KM"}
-      """
+    And the JSON response field "displayName" should be "Orders Key Manager"
+    When I send an authenticated API Portal "GET" request to "/key-managers" as "admin"
     Then the response status code should be 200
-    And the JSON response field "displayName" should be "Renamed KM"
-
-  Scenario: An administrator deletes a key manager
-    Given I generate a unique resource name from "portal-km" and store it as "kmId"
-    And a unique API Portal resource is created at "/key-managers" as "admin" with body and stored as "kmId":
-      """
-      {"id": "${CTX:kmId}", "displayName": "To Delete", "tokenEndpoint": "https://token.example.invalid/oauth2/token"}
-      """
+    And the response body should contain "${CTX:kmId}"
+    When I send an authenticated API Portal "PUT" request to "/key-managers/${CTX:kmId}" as "admin" with JSON values:
+      | displayName | Renamed Key Manager |
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Renamed Key Manager"
     When I send an authenticated API Portal "DELETE" request to "/key-managers/${CTX:kmId}" as "admin"
     Then the response status code should be 204
     When I send an authenticated API Portal "GET" request to "/key-managers/${CTX:kmId}" as "admin"
     Then the response status code should be 404
 
-  Scenario: An administrator lists key managers for the organization
-    Given I generate a unique resource name from "portal-listed-km" and store it as "kmId"
-    And a unique API Portal resource is created at "/key-managers" as "admin" with body and stored as "kmId":
-      """
-      {"id":"${CTX:kmId}","displayName":"Listed Key Manager","tokenEndpoint":"http://testbench:3011/${CTX:apiPortalRunnerPartition}/oauth2/token"}
-      """
-    When I send an authenticated API Portal "GET" request to "/key-managers" as "admin"
-    Then the response status code should be 200
-    And the response body should contain "${CTX:kmId}"
-
-  Scenario: A developer generates a token through an application key-manager mapping
+  @APIP-CORE-030 @type:security
+  Scenario: A developer gets a token through an application's key-manager mapping, and only with the right secret
     Given I generate a unique resource name from "portal-token-km" and store it as "kmId"
-    And a unique API Portal resource is created at "/key-managers" as "admin" with body and stored as "kmId":
-      """
-      {"id":"${CTX:kmId}","displayName":"Mock Token Key Manager","tokenEndpoint":"http://testbench:3011/${CTX:apiPortalRunnerPartition}/oauth2/token"}
-      """
     And I generate a unique resource name from "portal-token-app" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with body and stored as "appId":
-      """
-      {"id":"${CTX:appId}","displayName":"Token Test Application","description":"token generation"}
-      """
-    When I send an authenticated API Portal "POST" request to "/applications/${CTX:appId}/generate-keys" as "developer" with JSON body:
-      """
-      {"keyManager":"${CTX:kmId}","type":"PRODUCTION","consumerKey":"test-client"}
-      """
+    And a unique API Portal resource is created at "/key-managers" as "admin" with values and stored as "kmId":
+      | id            | ${CTX:kmId}                                                                    |
+      | displayName   | Token Key Manager                                                              |
+      | tokenEndpoint | http://testbench:3011/${CTX:apiPortalRunnerPartition}/oauth2/token?ttl=3600 |
+    And a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
+      | id          | ${CTX:appId}           |
+      | displayName | Token Application      |
+      | description | Requests access tokens |
+    When I send an authenticated API Portal "POST" request to "/applications/${CTX:appId}/generate-keys" as "developer" with JSON values:
+      | keyManager  | ${CTX:kmId} |
+      | type        | PRODUCTION  |
+      | consumerKey | test-client |
     Then the response status code should be 200
     And I store the JSON response field "keyMappingId" as "keyMappingId"
     And I register API Portal application key mapping "${CTX:keyMappingId}" for application "${CTX:appId}" for cleanup
-    When I send an authenticated API Portal "POST" request to "/applications/${CTX:appId}/oauth-keys/${CTX:keyMappingId}/generate-token" as "developer" with JSON body:
-      """
-      {"consumerSecret":"test-secret"}
-      """
-    Then the response status code should be 200
-    And the response body should contain "mock-token-1-issued"
 
-  Scenario: Token generation rejects an incorrect consumer secret
-    Given I generate a unique resource name from "portal-invalid-token-km" and store it as "kmId"
-    And a unique API Portal resource is created at "/key-managers" as "admin" with body and stored as "kmId":
-      """
-      {"id":"${CTX:kmId}","displayName":"Invalid Secret Key Manager","tokenEndpoint":"http://testbench:3011/${CTX:apiPortalRunnerPartition}/oauth2/token"}
-      """
-    And I generate a unique resource name from "portal-invalid-token-app" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with body and stored as "appId":
-      """
-      {"id":"${CTX:appId}","displayName":"Invalid Secret Application","description":"token generation"}
-      """
-    When I send an authenticated API Portal "POST" request to "/applications/${CTX:appId}/generate-keys" as "developer" with JSON body:
-      """
-      {"keyManager":"${CTX:kmId}","type":"PRODUCTION","consumerKey":"test-client"}
-      """
-    Then the response status code should be 200
-    And I store the JSON response field "keyMappingId" as "keyMappingId"
-    And I register API Portal application key mapping "${CTX:keyMappingId}" for application "${CTX:appId}" for cleanup
-    When I send an authenticated API Portal "POST" request to "/applications/${CTX:appId}/oauth-keys/${CTX:keyMappingId}/generate-token" as "developer" with JSON body:
-      """
-      {"consumerSecret":"wrong-secret"}
-      """
+    When I send an authenticated API Portal "POST" request to "/applications/${CTX:appId}/oauth-keys/${CTX:keyMappingId}/generate-token" as "developer" with JSON values:
+      | consumerSecret | wrong-secret |
     Then the response should be a client error
+    And the response body should not contain "wrong-secret"
 
-  Scenario: Token generation applies default scope and validity
-    Given I generate a unique resource name from "portal-default-token-km" and store it as "kmId"
-    And a unique API Portal resource is created at "/key-managers" as "admin" with body and stored as "kmId":
-      """
-      {"id":"${CTX:kmId}","displayName":"Default Token Key Manager","tokenEndpoint":"http://testbench:3011/${CTX:apiPortalRunnerPartition}/oauth2/token?ttl=3600"}
-      """
-    And I generate a unique resource name from "portal-default-token-app" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with body and stored as "appId":
-      """
-      {"id":"${CTX:appId}","displayName":"Default Token Application","description":"token generation"}
-      """
-    When I send an authenticated API Portal "POST" request to "/applications/${CTX:appId}/generate-keys" as "developer" with JSON body:
-      """
-      {"keyManager":"${CTX:kmId}","type":"PRODUCTION","consumerKey":"test-client"}
-      """
-    Then the response status code should be 200
-    And I store the JSON response field "keyMappingId" as "keyMappingId"
-    And I register API Portal application key mapping "${CTX:keyMappingId}" for application "${CTX:appId}" for cleanup
-    When I send an authenticated API Portal "POST" request to "/applications/${CTX:appId}/oauth-keys/${CTX:keyMappingId}/generate-token" as "developer" with JSON body:
-      """
-      {"consumerSecret":"test-secret"}
-      """
+    When I send an authenticated API Portal "POST" request to "/applications/${CTX:appId}/oauth-keys/${CTX:keyMappingId}/generate-token" as "developer" with JSON values:
+      | consumerSecret | test-secret |
     Then the response status code should be 200
     And the response body should contain "mock-token"
     And the JSON response field "validityTime" should be 3600
     And the JSON response array field "tokenScopes" should have 1 item
     And the JSON response field "tokenScopes[0]" should be "default"
+    And the response body should not contain "test-secret"
+    When I send an authenticated API Portal "GET" request to "/applications/${CTX:appId}" as "developer"
+    Then the response status code should be 200
+    And the response body should not contain "test-secret"
+
+  @APIP-CORE-031 @type:security
+  Scenario: A developer cannot register a key manager
+    Given I generate a unique resource name from "portal-denied-km" and store it as "deniedKmId"
+    And I generate a unique resource name from "portal-allowed-km" and store it as "kmId"
+    When I send an authenticated API Portal "POST" request to "/key-managers" as "developer" with JSON values:
+      | id            | ${CTX:deniedKmId}                                                    |
+      | displayName   | Denied Key Manager                                                   |
+      | tokenEndpoint | http://testbench:3011/${CTX:apiPortalRunnerPartition}/oauth2/token |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "GET" request to "/key-managers/${CTX:deniedKmId}" as "admin"
+    Then the response status code should be 404
+    And a unique API Portal resource is created at "/key-managers" as "admin" with values and stored as "kmId":
+      | id            | ${CTX:kmId}                                                          |
+      | displayName   | Allowed Key Manager                                                  |
+      | tokenEndpoint | http://testbench:3011/${CTX:apiPortalRunnerPartition}/oauth2/token |
+    When I send an authenticated API Portal "GET" request to "/key-managers/${CTX:kmId}" as "admin"
+    Then the response status code should be 200

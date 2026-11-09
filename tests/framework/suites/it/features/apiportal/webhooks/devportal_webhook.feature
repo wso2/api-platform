@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@devportal-webhook
+@devportal-webhook @APIPORTAL
 Feature: Credentials issued in the API Portal authorize gateway invocation via webhook
   As an API platform operator running the full product suite
   I want an API key and subscription created in the API Portal to reach the gateway
@@ -30,7 +30,7 @@ Feature: Credentials issued in the API Portal authorize gateway invocation via w
     And I generate a unique resource name from "devportal-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
-  @smoke
+  @APIP-DEVPORTAL-WEBHOOK-007 @smoke
   Scenario: A developer-portal API key and subscription propagate to the gateway and authorize a call
     Given I generate a unique resource name from "devportal-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -53,7 +53,7 @@ Feature: Credentials issued in the API Portal authorize gateway invocation via w
     And I send a "GET" request to "${CTX:apiContext}/"
     Then the response status code should be 401
 
-  @lifecycle
+  @APIP-DEVPORTAL-WEBHOOK-008 @lifecycle
   Scenario: Developer-portal credential-lifecycle changes propagate to platform-api and the gateway
     Given I generate a unique resource name from "devportal-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -114,3 +114,146 @@ Feature: Credentials issued in the API Portal authorize gateway invocation via w
 
     When the subscription "${CTX:subscriptionId}" is removed in the API Portal
     Then I send a "GET" request to "${CTX:apiContext}/" until status 403
+
+  # Scenario APIPORTAL (scenarios/APIPORTAL.yaml) APIP-DEVPORTAL-WEBHOOK-001: deprecating an API in the
+  # API Portal changes only how the portal lists it; the credentials already issued keep working at
+  # the gateway. The portal-side listing and badge are covered by APIP-CORE-120.
+  @APIP-DEVPORTAL-WEBHOOK-001
+  Scenario: A deprecated API keeps serving its existing subscription and API key at the gateway
+    Given I generate a unique resource name from "devportal-plan" and store it as "planHandle"
+    And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
+    And I generate a unique resource name from "devportal-api" and store it as "apiHandle"
+    And I generate a unique API context from "/devportal" and store it as "apiContext"
+    When I create a secured REST API "${CTX:apiHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:apiContext}" offering plan "${CTX:planHandle}"
+    And I deploy the "RestApi" "${CTX:apiHandle}" to the gateway via the control plane
+    Then I send a "GET" request to "${CTX:apiContext}/" until status 401
+    When the subscription plan "${CTX:planHandle}" is synced to the API Portal
+    And the "${CTX:apiHandle}" API is published to the API Portal offering plan "${CTX:planHandle}"
+    And an application subscribed to API "${CTX:apiHandle}" plan "${CTX:planHandle}" is created in the API Portal, the token is stored as "subscriptionToken" and the subscription is stored as "subscriptionId"
+    And an API key for API "${CTX:apiHandle}" is generated in the API Portal, the value is stored as "apiKeyValue" and the handle is stored as "apiKeyHandle"
+    When I set header "API-Key" to "${CTX:apiKeyValue}"
+    And I set header "Subscription-Key" to "${CTX:subscriptionToken}"
+    Then I send a "GET" request to "${CTX:apiContext}/" until status 200
+
+    When I send an authenticated API Portal "GET" request to "/apis/dp-${CTX:apiHandle}" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "status" should be "PUBLISHED"
+    And I store the JSON response field "name" as "portalApiName"
+    And I store the JSON response field "version" as "portalApiVersion"
+    When I update the API Portal API "dp-${CTX:apiHandle}" from "resources/templates/api-portal-api.yaml" as "admin" with values:
+      | id      | dp-${CTX:apiHandle}     |
+      | name    | ${CTX:portalApiName}    |
+      | version | ${CTX:portalApiVersion} |
+      | status  | DEPRECATED              |
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/apis/dp-${CTX:apiHandle}" as "admin"
+    Then the JSON response field "status" should be "DEPRECATED"
+    When I send an authenticated API Portal "GET" request to "/subscriptions/${CTX:subscriptionId}" as "admin"
+    Then the JSON response field "status" should be "ACTIVE"
+
+    When I set header "API-Key" to "${CTX:apiKeyValue}"
+    And I set header "Subscription-Key" to "${CTX:subscriptionToken}"
+    And I send a "GET" request to "${CTX:apiContext}/"
+    Then the response status code should be 200
+    When I clear all headers
+    And I send a "GET" request to "${CTX:apiContext}/"
+    Then the response status code should be 401
+
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) APIP-DEVPORTAL-WEBHOOK-010..013: platform-api's receiver
+  # for API Portal events (/api/internal/v0.9/webhook/events). Each refusal is paired with the same
+  # event, correctly signed, being processed, and with a read showing the refused one changed nothing.
+  @APIP-DEVPORTAL-WEBHOOK-010 @type:security
+  Scenario: The control plane processes only API Portal events signed with its secret within the replay window
+    Given I generate a unique resource name from "receiver-signed-meter" and store it as "signedMeter"
+    And I generate a unique resource name from "receiver-unsigned-meter" and store it as "unsignedMeter"
+    And I generate a unique resource name from "receiver-forged-meter" and store it as "forgedMeter"
+    And I generate a unique resource name from "receiver-stale-meter" and store it as "staleMeter"
+    And the control plane meter "${CTX:unsignedMeter}" is registered for cleanup
+    And the control plane meter "${CTX:forgedMeter}" is registered for cleanup
+    And the control plane meter "${CTX:staleMeter}" is registered for cleanup
+    When the API Portal sends the "meter.created" event to the control plane with data:
+      """
+      {"handle":"${CTX:signedMeter}","display_name":"Signed ${CTX:signedMeter}","type":"REQUEST_COUNT","filter_fields":[{"field":"Status","event_key":"response.status"}]}
+      """
+    Then the response status code should be 200
+    And the JSON response field "status" should be "processed"
+    When the API Portal sends the "meter.created" event to the control plane unsigned with data:
+      """
+      {"handle":"${CTX:unsignedMeter}","display_name":"Unsigned ${CTX:unsignedMeter}","type":"REQUEST_COUNT","filter_fields":[{"field":"Status","event_key":"response.status"}]}
+      """
+    Then the response status code should be 401
+    And the JSON response field "code" should be "UNAUTHORIZED"
+    And the response body should not contain "signature"
+    When the API Portal sends the "meter.created" event to the control plane signed with another secret with data:
+      """
+      {"handle":"${CTX:forgedMeter}","display_name":"Forged ${CTX:forgedMeter}","type":"REQUEST_COUNT","filter_fields":[{"field":"Status","event_key":"response.status"}]}
+      """
+    Then the response status code should be 401
+    And the JSON response field "code" should be "UNAUTHORIZED"
+    And the response body should not contain "signature"
+    When the API Portal sends the "meter.created" event to the control plane with a stale signature with data:
+      """
+      {"handle":"${CTX:staleMeter}","display_name":"Stale ${CTX:staleMeter}","type":"REQUEST_COUNT","filter_fields":[{"field":"Status","event_key":"response.status"}]}
+      """
+    Then the response status code should be 401
+    And the JSON response field "code" should be "UNAUTHORIZED"
+    And the response body should not contain "tolerance"
+    When I send a "GET" request to the control plane at "/meters/${CTX:signedMeter}"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Signed ${CTX:signedMeter}"
+    When I send a "GET" request to the control plane at "/meters/${CTX:unsignedMeter}"
+    Then the response status code should be 404
+    When I send a "GET" request to the control plane at "/meters/${CTX:forgedMeter}"
+    Then the response status code should be 404
+    When I send a "GET" request to the control plane at "/meters/${CTX:staleMeter}"
+    Then the response status code should be 404
+
+  @APIP-DEVPORTAL-WEBHOOK-011 @type:negative
+  Scenario: An API Portal event of an unknown type or for an unknown organization is refused and changes nothing
+    # The receiver answers every failed delivery alike; the real reason appears only in its log.
+    Given I generate a unique resource name from "receiver-known-meter" and store it as "knownMeter"
+    And I generate a unique resource name from "receiver-untyped-meter" and store it as "untypedMeter"
+    And I generate a unique resource name from "receiver-foreign-meter" and store it as "foreignMeter"
+    And I generate a unique value from "receiver-missing-org" and store it as "missingOrg"
+    When the API Portal sends the "meter.archived" event to the control plane with data:
+      """
+      {"handle":"${CTX:untypedMeter}","display_name":"Untyped ${CTX:untypedMeter}","type":"REQUEST_COUNT","filter_fields":[{"field":"Status","event_key":"response.status"}]}
+      """
+    Then the response status code should be 401
+    And the JSON response field "code" should be "UNAUTHORIZED"
+    When the API Portal sends the "meter.created" event for organization "${CTX:missingOrg}" to the control plane with data:
+      """
+      {"handle":"${CTX:foreignMeter}","display_name":"Foreign ${CTX:foreignMeter}","type":"REQUEST_COUNT","filter_fields":[{"field":"Status","event_key":"response.status"}]}
+      """
+    Then the response status code should be 401
+    And the JSON response field "code" should be "UNAUTHORIZED"
+    When the API Portal sends the "meter.created" event to the control plane with data:
+      """
+      {"handle":"${CTX:knownMeter}","display_name":"Known ${CTX:knownMeter}","type":"REQUEST_COUNT","filter_fields":[{"field":"Status","event_key":"response.status"}]}
+      """
+    Then the response status code should be 200
+    When I send a "GET" request to the control plane at "/meters/${CTX:knownMeter}"
+    Then the response status code should be 200
+    When I send a "GET" request to the control plane at "/meters/${CTX:untypedMeter}"
+    Then the response status code should be 404
+    When I send a "GET" request to the control plane at "/meters/${CTX:foreignMeter}"
+    Then the response status code should be 404
+
+  @APIP-DEVPORTAL-WEBHOOK-012
+  Scenario: The same API Portal event delivered twice is processed once
+    Given I generate a unique resource name from "receiver-replayed-meter" and store it as "meterId"
+    And the control plane meter "${CTX:meterId}" is registered for cleanup
+    When the API Portal sends the "meter.created" event to the control plane signed with data:
+      """
+      {"handle":"${CTX:meterId}","display_name":"Replayed ${CTX:meterId}","type":"REQUEST_COUNT","filter_fields":[{"field":"Status","event_key":"response.status"}]}
+      """
+    Then the response status code should be 200
+    When the API Portal sends its last event to the control plane again
+    Then the response status code should be 200
+    And the JSON response field "status" should be "processed"
+    When I send a "GET" request to the control plane at "/meters/${CTX:meterId}"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Replayed ${CTX:meterId}"
+    When I send a "GET" request to the control plane at "/meters?query=${CTX:meterId}"
+    Then the response status code should be 200
+    And the JSON response array field "list" should have 1 item

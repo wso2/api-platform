@@ -16,272 +16,135 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal view resolution and scoped pages
 
-  Scenario: The organization root redirects to an existing fallback view
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default"
+@APIPORTAL @apiportal-view-pages
+Feature: A view serves exactly the API pages its labels allow
+  As an API Portal administrator
+  I want each view to address its pages by handle and show only the APIs that carry its labels
+  So that an audience never reaches an API, its Markdown or its specification through another view
+
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-071..075. Pages
+  # are anonymous. Every hidden page is paired with the same page served by the view that holds the
+  # API's label, so a broken route cannot pass as a hidden one. The default view is never deleted
+  # here: other runners in the block read it.
+
+  @APIP-CORE-071
+  Scenario Outline: The <root> redirects to a view of the configured organization
+    When I send an unauthenticated API Portal public "GET" request to "<path>"
     Then the response status code should be 302
     And the response header "Location" should contain "/api-portal/default/views/"
 
-  Scenario: The organization root with a trailing slash redirects to a view
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/"
-    Then the response status code should be 302
-    And the response header "Location" should contain "/api-portal/default/views/"
+    Examples:
+      | root                                | path                 |
+      | portal root                         | /api-portal          |
+      | organization root                   | /api-portal/default  |
+      | organization root with a slash      | /api-portal/default/ |
 
-  Scenario: The portal root redirects to the configured organization view
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal"
-    Then the response status code should be 302
-    And the response header "Location" should contain "/api-portal/default/views/"
+  @APIP-CORE-072
+  Scenario: A view is addressed by its handle, never by its display name
+    Given I generate a unique resource name from "portal-handle-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}          |
+      | displayName | Handle Resolution View |
+    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Handle Resolution View"
+    When I send an authenticated API Portal "GET" request to "/views/Handle%20Resolution%20View" as "admin"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/apis?view=${CTX:viewId}" as "admin"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/apis?view=Handle%20Resolution%20View" as "admin"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/mcp-servers?view=${CTX:viewId}" as "admin"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/mcp-servers?view=Handle%20Resolution%20View" as "admin"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "DELETE" request to "/views/Handle%20Resolution%20View" as "admin"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}" as "admin"
+    Then the response status code should be 200
 
-  Scenario: An administrator can delete a view while other views remain
+  @APIP-CORE-073
+  Scenario: An administrator deletes a view, and deleting it again is not found
     Given I generate a unique resource name from "portal-deletable-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id":"${CTX:viewId}","displayName":"Deletable View"}
-      """
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}  |
+      | displayName | Deletable View |
     When I send an authenticated API Portal "DELETE" request to "/views/${CTX:viewId}" as "admin"
     Then the response status code should be 204
     When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}" as "admin"
     Then the response status code should be 404
-
-  Scenario: Deleting an unknown view returns not found
-    Given I generate a unique resource name from "portal-absent-view" and store it as "viewId"
     When I send an authenticated API Portal "DELETE" request to "/views/${CTX:viewId}" as "admin"
     Then the response status code should be 404
-
-  Scenario: A view is resolved by its handle
-    Given I generate a unique resource name from "portal-handle-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id":"${CTX:viewId}","displayName":"View Handle Resolution Display Name"}
-      """
-    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}" as "admin"
-    Then the response status code should be 200
-    And the JSON response field "displayName" should be "View Handle Resolution Display Name"
-
-  Scenario: A view display name is not accepted as its handle
-    Given I generate a unique resource name from "portal-display-name-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id":"${CTX:viewId}","displayName":"Unresolvable View Display Name"}
-      """
-    When I send an authenticated API Portal "GET" request to "/views/Unresolvable%20View%20Display%20Name" as "admin"
-    Then the response status code should be 404
-
-  Scenario: A display name is not accepted by the API view filter
-    Given I generate a unique resource name from "portal-filter-handle-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id":"${CTX:viewId}","displayName":"Filter Handle Display Name"}
-      """
-    When I send an authenticated API Portal "GET" request to "/apis?view=Filter%20Handle%20Display%20Name" as "admin"
-    Then the response status code should be 404
-
-  Scenario: A display name is not accepted by the MCP view filter
-    Given I generate a unique resource name from "portal-mcp-filter-handle-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id":"${CTX:viewId}","displayName":"MCP Filter Handle Display Name"}
-      """
-    When I send an authenticated API Portal "GET" request to "/mcp-servers?view=MCP%20Filter%20Handle%20Display%20Name" as "admin"
-    Then the response status code should be 404
-
-  Scenario: Deleting a view by display name does not delete the view
-    Given I generate a unique resource name from "portal-delete-display-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id":"${CTX:viewId}","displayName":"Delete Display Name Only"}
-      """
-    When I send an authenticated API Portal "DELETE" request to "/views/Delete%20Display%20Name%20Only" as "admin"
-    Then the response status code should be 404
-    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}" as "admin"
+    When I send an authenticated API Portal "GET" request to "/views/default" as "admin"
     Then the response status code should be 200
 
-  Scenario: An omitted view filter leaves API listing unscoped
-    When I send an authenticated API Portal "GET" request to "/apis" as "admin"
-    Then the response status code should be 200
-
-  Scenario: A view filter returns only APIs carrying its label
+  @APIP-CORE-074
+  Scenario: An API's page, Markdown and specification are served only by a view that holds its label
     Given I generate a unique resource name from "portal-page-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id":"${CTX:labelId}","displayName":"Page Filter Label"}
-      """
     And I generate a unique resource name from "portal-page-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id":"${CTX:viewId}","displayName":"Page Filter View","labels":["${CTX:labelId}"]}
-      """
+    And I generate a unique resource name from "portal-outside-view" and store it as "outsideViewId"
     And I generate a unique resource name from "portal-page-api" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "rest" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"Page Filter API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":["${CTX:labelId}"],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
-    When I send an authenticated API Portal "GET" request to "/apis?view=${CTX:viewId}" as "publisher"
-    Then the response status code should be 200
-    And the response body should contain "${CTX:apiId}"
-
-  Scenario: Removing a view label hides an API from the view
-    Given I generate a unique resource name from "portal-page-remove-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id":"${CTX:labelId}","displayName":"Removable Page Label"}
-      """
-    And I generate a unique resource name from "portal-page-remove-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id":"${CTX:viewId}","displayName":"Removable Page View","labels":["${CTX:labelId}"]}
-      """
-    And I generate a unique resource name from "portal-page-remove-api" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "rest" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"Removable Page API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":["${CTX:labelId}"],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
-    When I send an authenticated API Portal "GET" request to "/apis?view=${CTX:viewId}" as "publisher"
-    Then the response body should contain "${CTX:apiId}"
-    When I send an authenticated API Portal "PUT" request to "/views/${CTX:viewId}" as "admin" with JSON body:
-      """
-      {"labels":[]}
-      """
-    Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/apis?view=${CTX:viewId}" as "publisher"
-    Then the response body should not contain "${CTX:apiId}"
-
-  Scenario: An API detail page is served inside a view containing its label
-    Given I generate a unique resource name from "portal-detail-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id":"${CTX:labelId}","displayName":"Detail Label"}
-      """
-    And I generate a unique resource name from "portal-detail-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id":"${CTX:viewId}","displayName":"Detail View","labels":["${CTX:labelId}"]}
-      """
-    And I generate a unique resource name from "portal-detail-api" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "rest" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"Detail API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":["${CTX:labelId}"],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}"
-    Then the response status code should be 200
-
-  Scenario: An API detail page is hidden outside its view
-    Given I generate a unique resource name from "portal-outside-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id":"${CTX:labelId}","displayName":"Outside Label"}
-      """
-    And I generate a unique resource name from "portal-outside-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id":"${CTX:viewId}","displayName":"Outside View"}
-      """
-    And I generate a unique resource name from "portal-outside-api" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "rest" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"Outside API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":["${CTX:labelId}"],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}"
-    Then the response status code should be 404
-
-  Scenario: An MCP detail page is served inside a view containing its label
-    Given I generate a unique resource name from "portal-mcp-detail-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-missing-page-api" and store it as "missingApiId"
     And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
       | id          | ${CTX:labelId} |
-      | displayName | MCP Detail     |
-    And I generate a unique resource name from "portal-mcp-detail-view" and store it as "viewId"
+      | displayName | Page Label     |
     And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
-      | id          | ${CTX:viewId}        |
-      | displayName | MCP Detail View      |
-      | labels      | ["${CTX:labelId}"]  |
-    And a unique API Portal MCP server with label "${CTX:labelId}" is created and stored as "mcpId"
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/mcp/${CTX:mcpId}"
+      | id          | ${CTX:viewId}      |
+      | displayName | Page View          |
+      | labels      | ["${CTX:labelId}"] |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "outsideViewId":
+      | id          | ${CTX:outsideViewId} |
+      | displayName | Outside View         |
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id     | ${CTX:apiId}       |
+      | name   | ${CTX:apiId}       |
+      | labels | ["${CTX:labelId}"] |
+    And the response status code should be 201
+
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}"
     Then the response status code should be 200
-
-  Scenario: An MCP detail page is hidden outside its view
-    Given I generate a unique resource name from "portal-mcp-outside-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
-      | id          | ${CTX:labelId} |
-      | displayName | MCP Outside    |
-    And I generate a unique resource name from "portal-mcp-outside-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
-      | id          | ${CTX:viewId}   |
-      | displayName | MCP Outside View |
-    And a unique API Portal MCP server with label "${CTX:labelId}" is created and stored as "mcpId"
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/mcp/${CTX:mcpId}"
-    Then the response status code should be 404
-
-  Scenario: A view-scoped API markdown route is hidden outside its view
-    Given I generate a unique resource name from "portal-markdown-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id":"${CTX:labelId}","displayName":"Markdown Label"}
-      """
-    And I generate a unique resource name from "portal-markdown-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id":"${CTX:viewId}","displayName":"Markdown View"}
-      """
-    And I generate a unique resource name from "portal-markdown-api" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "rest" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"Markdown Outside API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":["${CTX:labelId}"],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}.md"
-    Then the response status code should be 404
-
-  Scenario: A view-scoped API specification route is hidden outside its view
-    Given I generate a unique resource name from "portal-spec-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id":"${CTX:labelId}","displayName":"Specification Label"}
-      """
-    And I generate a unique resource name from "portal-spec-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id":"${CTX:viewId}","displayName":"Specification View"}
-      """
-    And I generate a unique resource name from "portal-spec-api" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "rest" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"Specification Outside API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":["${CTX:labelId}"],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
+    Then the response status code should be 200
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.json"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:outsideViewId}/api/${CTX:apiId}"
+    Then the response status code should be 404
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:outsideViewId}/api/${CTX:apiId}.md"
+    Then the response status code should be 404
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:outsideViewId}/api/${CTX:apiId}/docs/specification.json"
+    Then the response status code should be 404
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:missingApiId}"
     Then the response status code should be 404
 
-  Scenario: An unknown API handle is hidden inside a valid view
-    Given I generate a unique resource name from "portal-unknown-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id":"${CTX:viewId}","displayName":"Unknown API View"}
-      """
-    And I generate a unique resource name from "portal-unknown-api" and store it as "apiId"
+    When I send an authenticated API Portal "GET" request to "/apis?view=${CTX:viewId}" as "admin"
+    Then the response body should contain "${CTX:apiId}"
+    When I send an authenticated API Portal "PUT" request to "/views/${CTX:viewId}" as "admin" with JSON values:
+      | displayName | Page View |
+      | labels      | []        |
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/apis?view=${CTX:viewId}" as "admin"
+    Then the response body should not contain "${CTX:apiId}"
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}"
     Then the response status code should be 404
 
-  Scenario: Removing a label keeps an API hidden from a view-scoped page
-    Given I generate a unique resource name from "portal-scoped-remove-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id":"${CTX:labelId}","displayName":"Scoped Removal Label"}
-      """
-    And I generate a unique resource name from "portal-scoped-remove-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/views" as "admin" with body and stored as "viewId":
-      """
-      {"id":"${CTX:viewId}","displayName":"Scoped Removal View","labels":["${CTX:labelId}"]}
-      """
-    And I generate a unique resource name from "portal-scoped-remove-api" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "rest" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"Scoped Removal API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":["${CTX:labelId}"],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}"
+  @APIP-CORE-075
+  Scenario: An MCP server's page is served only by a view that holds its label
+    Given I generate a unique resource name from "portal-mcp-page-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-mcp-page-view" and store it as "viewId"
+    And I generate a unique resource name from "portal-mcp-outside-view" and store it as "outsideViewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId}  |
+      | displayName | MCP Page Label  |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | MCP Page View      |
+      | labels      | ["${CTX:labelId}"] |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "outsideViewId":
+      | id          | ${CTX:outsideViewId} |
+      | displayName | MCP Outside View     |
+    And a unique API Portal MCP server with label "${CTX:labelId}" is created and stored as "mcpId"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/mcp/${CTX:mcpId}"
     Then the response status code should be 200
-    When I send an authenticated API Portal "PUT" request to "/views/${CTX:viewId}" as "admin" with JSON body:
-      """
-      {"labels":[]}
-      """
-    Then the response status code should be 200
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:outsideViewId}/mcp/${CTX:mcpId}"
     Then the response status code should be 404

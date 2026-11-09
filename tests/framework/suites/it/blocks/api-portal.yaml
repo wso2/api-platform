@@ -60,6 +60,7 @@ blocks:
         features:
           - features/apiportal/core/resources.feature
       - name: mcp-servers
+        tags: "~@known-issue"
         features:
           - features/apiportal/ai/mcp_servers.feature
       - name: monetization-meters
@@ -78,12 +79,14 @@ blocks:
         features:
           - features/apiportal/subscriptions/subscriptions.feature
       - name: views-labels
+        tags: "~@known-issue"
         features:
           - features/apiportal/content/views_labels_advanced.feature
       - name: views-pages
         features:
           - features/apiportal/content/views_pages.feature
       - name: workflows
+        tags: "~@known-issue"
         features:
           - features/apiportal/ai/workflows.feature
       - name: content
@@ -92,9 +95,15 @@ blocks:
       - name: organization-content
         features:
           - features/apiportal/content/organization_content.feature
+      - name: llm-instructions
+        features:
+          - features/apiportal/content/llm_instructions.feature
       - name: api-keys
         features:
           - features/apiportal/subscriptions/api_keys.feature
+      - name: subscription-plans
+        features:
+          - features/apiportal/subscriptions/subscription_plans.feature
       - name: discovery
         features:
           - features/apiportal/ai/discovery.feature
@@ -107,6 +116,19 @@ blocks:
       - name: artifact-uploads
         features:
           - features/apiportal/core/artifact_upload.feature
+      - name: routing
+        features:
+          - features/apiportal/core/routing.feature
+      - name: applications
+        features:
+          - features/apiportal/applications/applications.feature
+      - name: key-managers
+        tags: "~@known-issue"
+        features:
+          - features/apiportal/applications/key_managers.feature
+      - name: oauth2-keys
+        features:
+          - features/apiportal/applications/oauth2_keys.feature
 
   # Webhook subscribers are organization-wide. Keep their intentionally failing
   # delivery targets isolated from every other API Portal runner.
@@ -141,6 +163,12 @@ blocks:
       - name: monetization-events
         features:
           - features/apiportal/monetization/events.feature
+      - name: application-deletion
+        features:
+          - features/apiportal/applications/application_deletion.feature
+      - name: organization-webhooks
+        features:
+          - features/apiportal/organizations/organization_webhooks.feature
 
   # The portal authorizes requests by scope (api-portal-auth-scope.toml), a portal-wide mode.
   - name: api-portal-auth-scope

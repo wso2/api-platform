@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@platform-api-gateway-api-portal
+@platform-api-gateway-api-portal @APIPORTAL
 Feature: Publishing is refused, and explained, when the control plane or the API Portal cannot accept it
   As an API publisher
   I want a rejected publish, deprecate or unpublish to say why and to leave everything as it was
@@ -37,6 +37,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     And I send a "GET" request to "${CTX:apiContext}/" until status 401
     And I generate a unique resource name from "publish-portal" and store it as "portalHandle"
 
+  @APIP-PUBLISHING-017
   @type:negative
   Scenario: Publishing without a saved draft is refused
     Given I register the API Portal "${CTX:portalHandle}" with the control plane
@@ -45,6 +46,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     And the JSON response field "code" should be "DRAFT_NOT_FOUND"
     And the API Portal should not list the API "${CTX:apiHandle}"
 
+  @APIP-PUBLISHING-018
   @type:negative
   Scenario: A draft cannot select a subscription plan that is not active
     Given I register the API Portal "${CTX:portalHandle}" with the control plane
@@ -58,6 +60,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     And the JSON response field "code" should be "PUBLICATION_VALIDATION_FAILED"
     And the JSON response field "message" should contain "not active"
 
+  @APIP-PUBLISHING-019
   @type:negative
   Scenario: A plan deactivated after the draft was saved blocks the publish
     Given I register the API Portal "${CTX:portalHandle}" with the control plane
@@ -77,6 +80,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     And the JSON response field "code" should be "PUBLICATION_VALIDATION_FAILED"
     And the API Portal should not list the API "${CTX:apiHandle}"
 
+  @APIP-PUBLISHING-020
   @type:negative
   Scenario: Unpublishing is refused while the API Portal still has subscriptions to the API
     Given I register the API Portal "${CTX:portalHandle}" with the control plane
@@ -94,6 +98,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     And the publication of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" should have status "PUBLISHED"
     And the API Portal should list the API "${CTX:apiHandle}" with status "PUBLISHED"
 
+  @APIP-PUBLISHING-021
   @type:negative
   Scenario: Unpublishing is refused while the API Portal still has API keys for the API
     Given I register the API Portal "${CTX:portalHandle}" with the control plane
@@ -110,6 +115,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     And the response body should not contain "ERR_KEY_EXIST"
     And the API Portal should list the API "${CTX:apiHandle}" with status "PUBLISHED"
 
+  @APIP-PUBLISHING-022
   Scenario: Unpublishing succeeds once the subscriptions and API keys are removed
     Given I register the API Portal "${CTX:portalHandle}" with the control plane
     And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
@@ -125,6 +131,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     Then the response status code should be 204
     And the API Portal should not list the API "${CTX:apiHandle}"
 
+  @APIP-PUBLISHING-023
   @type:negative
   Scenario: A wrong shared key is reported as an unavailable portal, not as a conflict
     Given I register the API Portal "${CTX:portalHandle}" with the control plane using a wrong shared key
@@ -141,6 +148,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     When I read the draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
     Then the response status code should be 200
 
+  @APIP-PUBLISHING-024
   Scenario: Publishing works once the shared key is rotated to the one the portal accepts
     Given I register the API Portal "${CTX:portalHandle}" with the control plane using a wrong shared key
     And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
@@ -154,6 +162,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     Then the response status code should be 201
     And the API Portal should list the API "${CTX:apiHandle}" with status "PUBLISHED"
 
+  @APIP-PUBLISHING-025
   @type:negative
   Scenario: A user without the publish scope cannot publish
     Given I register the API Portal "${CTX:portalHandle}" with the control plane
@@ -165,6 +174,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     Then the response status code should be 403
     And the API Portal should not list the API "${CTX:apiHandle}"
 
+  @APIP-PUBLISHING-026
   @type:negative
   Scenario: A user without the draft scope cannot save a draft
     Given I register the API Portal "${CTX:portalHandle}" with the control plane
@@ -174,6 +184,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
       """
     Then the response status code should be 403
 
+  @APIP-PUBLISHING-027
   @type:negative
   Scenario: Publishing an API or to a portal that does not exist is refused
     Given I register the API Portal "${CTX:portalHandle}" with the control plane
@@ -183,3 +194,25 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     When I send a "POST" request to the control plane at "/api-portals/no-such-portal/apis/rest-api/${CTX:apiHandle}/publish"
     Then the response status code should be 404
     And the JSON response field "code" should be "API_PORTAL_NOT_FOUND"
+
+  @APIP-PUBLISHING-041 @type:negative
+  Scenario: A draft with a label the API Portal does not have is refused, and publishes once the label exists
+    Given I register the API Portal "${CTX:portalHandle}" with the control plane
+    And I generate a unique resource name from "publish-missing-label" and store it as "labelHandle"
+    And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}       |
+      | version             | ${CTX:apiVersion}      |
+      | labels              | ["${CTX:labelHandle}"] |
+      | subscriptionPlanIds | ["${CTX:planHandle}"]  |
+    When I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 409
+    And the JSON response field "code" should be "PUBLICATION_PORTAL_CONFLICT"
+    And the API Portal should not list the API "${CTX:apiHandle}"
+    When I read the publication of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 404
+    Given a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelHandle":
+      | id          | ${CTX:labelHandle} |
+      | displayName | Partners           |
+    When I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 201
+    And the API Portal should list the API "${CTX:apiHandle}" with status "PUBLISHED"

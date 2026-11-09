@@ -16,25 +16,121 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@api-portal-priced-plans
-Feature: Priced subscription plans in the API Portal
+
+@APIPORTAL @apiportal-plan
+Feature: Subscription plans and their prices in the API Portal
   As an API Portal administrator
-  I want to give a plan a price, flat or by usage, when I create it
+  I want to define plans with limits, and give a plan a price, flat or by usage, when I create it
   So that the portal can sell it, and the price a subscriber agreed to never changes under them
+
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-049..057,
+  # at the API level. Plans are written by administrators only. Every refused create or change is
+  # followed by a read that shows nothing was stored or changed.
 
   Background:
     Given I generate a unique resource name from "portal-plan" and store it as "planId"
     And I generate a unique resource name from "portal-calls" and store it as "meterId"
-    And a unique API Portal resource is created at "/meters" as "admin" with body and stored as "meterId":
-      """
-      {"id":"${CTX:meterId}","displayName":"API calls ${CTX:meterId}","type":"REQUEST_COUNT","filterFields":[{"field":"Status","eventKey":"response.status"},{"field":"Method","eventKey":"request.verb"}]}
-      """
+    And a unique API Portal resource is created at "/meters" as "admin" with values and stored as "meterId":
+      | id           | ${CTX:meterId}                                                                                  |
+      | displayName  | API calls ${CTX:meterId}                                                                        |
+      | type         | REQUEST_COUNT                                                                                   |
+      | filterFields | [{"field":"Status","eventKey":"response.status"},{"field":"Method","eventKey":"request.verb"}] |
 
+  @APIP-CORE-049 @type:smoke
+  Scenario: An administrator manages a free plan with limits from creation to deletion
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}                                                                                                                      |
+      | displayName | Team ${CTX:planId}                                                                                                                 |
+      | refId       | team-plan-${CTX:planId}                                                                                                            |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":1000,"timeUnit":"HOUR"},{"limitType":"BANDWIDTH","limitCount":-1,"timeUnit":"MONTH"}] |
+    Then the response status code should be 201
+    And the JSON response field "paid" should be false
+    And the JSON response array field "limits" should have 2 items
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "refId" should be "team-plan-${CTX:planId}"
+    And the JSON response array "limits" item with "limitType" equal to "BANDWIDTH" should have "limitCount" equal to "-1"
+    And the JSON response array "limits" item with "limitType" equal to "REQUEST_COUNT" should have "timeUnit" equal to "HOUR"
+
+    When I send an authenticated API Portal "PUT" request to "/subscription-plans" as "admin" with JSON values:
+      | id          | ${CTX:planId}                                                          |
+      | displayName | Team plus ${CTX:planId}                                                |
+      | limits      | [{"limitType":"TOTAL_TOKEN_COUNT","limitCount":50000,"timeUnit":"DAY"}] |
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the JSON response field "displayName" should be "Team plus ${CTX:planId}"
+    And the JSON response array field "limits" should have 1 item
+    And the JSON response field "limits[0].limitType" should be "TOTAL_TOKEN_COUNT"
+
+    When I send an authenticated API Portal "DELETE" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 204
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 404
+
+  @APIP-CORE-050
+  Scenario: A plan created without an id gets a generated one
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "generatedPlanId":
+      | displayName | Generated ${CTX:planId}                                                  |
+      | limits      | [{"limitType":"EVENT_COUNT","limitCount":500,"timeUnit":"MINUTE"}]      |
+    Then the response status code should be 201
+    And the JSON response field "id" should match pattern "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:generatedPlanId}" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Generated ${CTX:planId}"
+
+  @APIP-CORE-051 @type:negative
+  Scenario Outline: A plan whose <problem> is refused with the reason and nothing is stored
+    When I send an authenticated API Portal "POST" request to "/subscription-plans" as "admin" with JSON values:
+      | id          | ${CTX:planId}         |
+      | displayName | Refused ${CTX:planId} |
+      | limits      | <limits>              |
+    Then the response status code should be 400
+    And the JSON response field "errors[0].message" should be "<message>"
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 404
+
+    Examples:
+      | problem                   | limits                                                                               | message                                                                   |
+      | limit count is zero       | [{"limitType":"REQUEST_COUNT","limitCount":0,"timeUnit":"MINUTE"}]                  | limitCount must be -1 (unlimited) or a positive number for each limit     |
+      | time amount is zero       | [{"limitType":"REQUEST_COUNT","limitCount":10,"timeUnit":"MINUTE","timeAmount":0}] | timeAmount must be a positive number when provided                        |
+
+  @APIP-CORE-052 @type:security
+  Scenario Outline: A <role> can read plans but cannot create, change or delete them
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}                                                       |
+      | displayName | Shared ${CTX:planId}                                                |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":100,"timeUnit":"DAY"}]  |
+    And I generate a unique resource name from "portal-denied-plan" and store it as "deniedPlanId"
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "<role>"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "POST" request to "/subscription-plans" as "<role>" with JSON values:
+      | id          | ${CTX:deniedPlanId} |
+      | displayName | Denied plan         |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "PUT" request to "/subscription-plans" as "<role>" with JSON values:
+      | id          | ${CTX:planId} |
+      | displayName | Renamed plan  |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "DELETE" request to "/subscription-plans/${CTX:planId}" as "<role>"
+    Then the response status code should be 403
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Shared ${CTX:planId}"
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:deniedPlanId}" as "admin"
+    Then the response status code should be 404
+
+    Examples:
+      | role      |
+      | publisher |
+      | developer |
+
+  @APIP-CORE-053
   Scenario: A flat-rate plan is priced once, and renaming it keeps its price
-    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with body and stored as "planId":
-      """
-      {"id":"${CTX:planId}","displayName":"Starter ${CTX:planId}","limits":[{"limitType":"REQUEST_COUNT","limitCount":60,"timeUnit":"MINUTE"}],"pricing":{"pricingType":"FLAT_RATE","currency":"usd","billingPeriod":"MONTH","flatAmount":"9.99"}}
-      """
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}                                                                         |
+      | displayName | Starter ${CTX:planId}                                                                 |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":60,"timeUnit":"MINUTE"}]                  |
+      | pricing     | {"pricingType":"FLAT_RATE","currency":"usd","billingPeriod":"MONTH","flatAmount":"9.99"} |
     Then the response status code should be 201
     And the JSON response field "paid" should be true
     And the JSON response field "pricing.currency" should be "USD"
@@ -46,32 +142,34 @@ Feature: Priced subscription plans in the API Portal
     And the JSON response field "billingPeriod" should be "MONTH"
 
     # Sending a price for a plan that exists is refused, and nothing changes.
-    When I send an authenticated API Portal "PUT" request to "/subscription-plans" as "admin" with JSON body:
-      """
-      {"id":"${CTX:planId}","displayName":"Starter ${CTX:planId}","limits":[{"limitType":"REQUEST_COUNT","limitCount":60,"timeUnit":"MINUTE"}],"pricing":{"pricingType":"FLAT_RATE","currency":"USD","billingPeriod":"MONTH","flatAmount":"19.99"}}
-      """
+    When I send an authenticated API Portal "PUT" request to "/subscription-plans" as "admin" with JSON values:
+      | id          | ${CTX:planId}                                                                          |
+      | displayName | Starter ${CTX:planId}                                                                  |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":60,"timeUnit":"MINUTE"}]                   |
+      | pricing     | {"pricingType":"FLAT_RATE","currency":"USD","billingPeriod":"MONTH","flatAmount":"19.99"} |
     Then the response status code should be 409
     And the JSON response field "code" should be "PLAN_PRICING_LOCKED"
     And the JSON response field "message" should be "The plan ${CTX:planId} already exists; its pricing can't be updated once a plan is created."
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the JSON response field "pricing.flatAmount" should be "9.99"
 
     # An update that sends no price keeps the price.
-    When I send an authenticated API Portal "PUT" request to "/subscription-plans" as "admin" with JSON body:
-      """
-      {"id":"${CTX:planId}","displayName":"Starter plus ${CTX:planId}","limits":[{"limitType":"REQUEST_COUNT","limitCount":120,"timeUnit":"MINUTE"}]}
-      """
+    When I send an authenticated API Portal "PUT" request to "/subscription-plans" as "admin" with JSON values:
+      | id          | ${CTX:planId}                                                         |
+      | displayName | Starter plus ${CTX:planId}                                            |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":120,"timeUnit":"MINUTE"}] |
     Then the response status code should be 200
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the JSON response field "displayName" should be "Starter plus ${CTX:planId}"
     And the JSON response field "pricing.flatAmount" should be "9.99"
 
+  @APIP-CORE-054
   Scenario: A usage-based plan prices reads per unit and writes in graduated tiers
-    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with body and stored as "planId":
-      """
-      {"id":"${CTX:planId}","displayName":"Pay as you go ${CTX:planId}","limits":[{"limitType":"REQUEST_COUNT","limitCount":-1}],"pricing":{"pricingType":"USAGE_BASED","currency":"EUR","billingPeriod":"YEAR","prices":[
-        {"meterId":"${CTX:meterId}","filters":[{"field":"method","operator":"EQUALS","values":["GET"]},{"field":"Status","operator":"GREATER_THAN_OR_EQUAL","values":["0200"]},{"field":"Status","operator":"LESS_THAN","values":["300"]}],"pricingModel":"PER_UNIT","unitAmount":"0.50","unitQuantity":1000},
-        {"meterId":"${CTX:meterId}","filters":[{"field":"Method","operator":"IN","values":["POST","PUT","POST"]}],"pricingModel":"GRADUATED","tiers":[{"upTo":1000,"unitAmount":"0"},{"upTo":null,"unitAmount":"0.002","flatAmount":"5"}]}
-      ]}}
-      """
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}                          |
+      | displayName | Pay as you go ${CTX:planId}            |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":-1}] |
+      | pricing     | {"pricingType":"USAGE_BASED","currency":"EUR","billingPeriod":"YEAR","prices":[{"meterId":"${CTX:meterId}","filters":[{"field":"method","operator":"EQUALS","values":["GET"]},{"field":"Status","operator":"GREATER_THAN_OR_EQUAL","values":["0200"]},{"field":"Status","operator":"LESS_THAN","values":["300"]}],"pricingModel":"PER_UNIT","unitAmount":"0.50","unitQuantity":1000},{"meterId":"${CTX:meterId}","filters":[{"field":"Method","operator":"IN","values":["POST","PUT","POST"]}],"pricingModel":"GRADUATED","tiers":[{"upTo":1000,"unitAmount":"0"},{"upTo":null,"unitAmount":"0.002","flatAmount":"5"}]}]} |
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}/pricing" as "admin"
     Then the response status code should be 200
     And the JSON response field "pricingType" should be "USAGE_BASED"
@@ -88,51 +186,61 @@ Feature: Priced subscription plans in the API Portal
     When I send an authenticated API Portal "GET" request to "/meters/${CTX:meterId}" as "admin"
     Then the JSON response field "planCount" should be 1
 
+  @APIP-CORE-055 @type:negative
   Scenario: A free plan has no price, its price can't be set later, and a price is never set or removed on its own
-    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with body and stored as "planId":
-      """
-      {"id":"${CTX:planId}","displayName":"Free ${CTX:planId}","limits":[{"limitType":"REQUEST_COUNT","limitCount":100,"timeUnit":"DAY"}]}
-      """
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}                                                       |
+      | displayName | Free ${CTX:planId}                                                  |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":100,"timeUnit":"DAY"}]  |
     Then the JSON response field "paid" should be false
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}/pricing" as "admin"
     Then the response status code should be 404
     And the JSON response field "message" should be "The plan is free: it has no pricing"
-    When I send an authenticated API Portal "PUT" request to "/subscription-plans" as "admin" with JSON body:
-      """
-      {"id":"${CTX:planId}","displayName":"Free ${CTX:planId}","pricing":{"pricingType":"FLAT_RATE","currency":"USD","billingPeriod":"MONTH","flatAmount":"5"}}
-      """
+    When I send an authenticated API Portal "PUT" request to "/subscription-plans" as "admin" with JSON values:
+      | id          | ${CTX:planId}                                                                       |
+      | displayName | Free ${CTX:planId}                                                                  |
+      | pricing     | {"pricingType":"FLAT_RATE","currency":"USD","billingPeriod":"MONTH","flatAmount":"5"} |
     Then the response status code should be 409
     And the JSON response field "code" should be "PLAN_PRICING_LOCKED"
-    When I send an authenticated API Portal "PUT" request to "/subscription-plans/${CTX:planId}/pricing" as "admin" with JSON body:
-      """
-      {"pricingType":"FLAT_RATE","currency":"USD","billingPeriod":"MONTH","flatAmount":"5"}
-      """
+    When I send an authenticated API Portal "PUT" request to "/subscription-plans/${CTX:planId}/pricing" as "admin" with JSON values:
+      | pricingType   | FLAT_RATE |
+      | currency      | USD       |
+      | billingPeriod | MONTH     |
+      | flatAmount    | 5         |
     Then the response status code should be 405
     When I send an authenticated API Portal "DELETE" request to "/subscription-plans/${CTX:planId}/pricing" as "admin"
     Then the response status code should be 405
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "paid" should be false
 
+  @APIP-CORE-056 @type:negative
   Scenario: A paid plan an API offers can't be deleted
-    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with body and stored as "planId":
-      """
-      {"id":"${CTX:planId}","displayName":"Pro ${CTX:planId}","limits":[{"limitType":"REQUEST_COUNT","limitCount":600,"timeUnit":"MINUTE"}],"pricing":{"pricingType":"FLAT_RATE","currency":"USD","billingPeriod":"MONTH","flatAmount":"49"}}
-      """
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}                                                                       |
+      | displayName | Pro ${CTX:planId}                                                                   |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":600,"timeUnit":"MINUTE"}]               |
+      | pricing     | {"pricingType":"FLAT_RATE","currency":"USD","billingPeriod":"MONTH","flatAmount":"49"} |
     And a REST API is created in the API Portal and stored as "apiId"
-    When I send an authenticated API Portal "PUT" multipart request to "/apis/${CTX:apiId}" as "publisher" with metadata only:
-      """
-      {"name":"Priced REST API","version":"v1.0","type":"REST","status":"PUBLISHED","endPoints":{"productionURL":"https://priced.example.invalid","sandboxURL":"https://priced-sandbox.example.invalid"},"subscriptionPlans":[{"id":"Gold"},{"id":"${CTX:planId}"}]}
-      """
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with definition "none" with values:
+      | id                | ${CTX:apiId}                              |
+      | name              | Priced REST API                           |
+      | subscriptionPlans | [{"id":"Gold"},{"id":"${CTX:planId}"}] |
     Then the response status code should be 200
     And the JSON response array "subscriptionPlans" should contain an item with "id" equal to "${CTX:planId}"
     When I send an authenticated API Portal "DELETE" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the response status code should be 409
     And the JSON response field "code" should be "PLAN_IN_USE"
     And the JSON response field "message" should be "The plan Pro ${CTX:planId} is in use and can't be deleted."
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 200
 
+  @APIP-CORE-057 @type:negative
   Scenario Outline: A price that can't be billed is refused with the reason, and no plan is created
-    When I send an authenticated API Portal "POST" request to "/subscription-plans" as "admin" with JSON body:
-      """
-      {"id":"${CTX:planId}","displayName":"Refused ${CTX:planId}","pricing":<pricing>}
-      """
+    When I send an authenticated API Portal "POST" request to "/subscription-plans" as "admin" with JSON values:
+      | id          | ${CTX:planId}         |
+      | displayName | Refused ${CTX:planId} |
+      | pricing     | <pricing>             |
     Then the response status code should be 400
     And the JSON response field "errors[0].message" should be "<message>"
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"

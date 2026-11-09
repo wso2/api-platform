@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@publication-monetization
+@publication-monetization @APIPORTAL
 Feature: Publishing priced plans to an API Portal
   As an API publisher who prices plans in the control plane
   I want publishing an API to bring its priced plans and their meters to the API Portal
@@ -52,6 +52,7 @@ Feature: Publishing priced plans to an API Portal
       | version             | ${CTX:apiVersion}  |
       | subscriptionPlanIds | ["${CTX:planId}"]  |
 
+  @APIP-PUBLISHING-013
   Scenario: Publishing an API with a usage-priced plan brings the meter and the priced plan to the API Portal
     When I send a "GET" request to the control plane at "/subscription-plans/${CTX:planId}"
     Then the JSON response field "usage.drafts" should be 1
@@ -83,6 +84,7 @@ Feature: Publishing priced plans to an API Portal
     And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
     Then the response status code should be 200
 
+  @APIP-PUBLISHING-014
   Scenario: A plan the API Portal already sells at another price blocks the publish
     Given a unique API Portal resource is created at "/meters" as "admin" with body and stored as "meterId":
       """
@@ -99,6 +101,7 @@ Feature: Publishing priced plans to an API Portal
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}/pricing" as "admin"
     Then the JSON response field "prices[0].unitAmount" should be "0.05"
 
+  @APIP-PUBLISHING-015
   Scenario: A meter the API Portal defines differently blocks the publish
     Given a unique API Portal resource is created at "/meters" as "admin" with body and stored as "meterId":
       """
@@ -110,6 +113,7 @@ Feature: Publishing priced plans to an API Portal
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the response status code should be 404
 
+  @APIP-PUBLISHING-016
   Scenario: Publishing brings a new limit to a plan the API Portal already sells at the same price
     Given a unique API Portal resource is created at "/meters" as "admin" with body and stored as "meterId":
       """

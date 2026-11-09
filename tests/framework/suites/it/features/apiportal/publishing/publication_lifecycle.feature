@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@platform-api-gateway-api-portal
+@platform-api-gateway-api-portal @APIPORTAL
 Feature: Publishing an API to an API Portal through the control plane
   As an API publisher
   I want to publish a REST or GraphQL API to an API Portal from the control plane
@@ -38,6 +38,7 @@ Feature: Publishing an API to an API Portal through the control plane
     And I generate a unique resource name from "publish-portal" and store it as "portalHandle"
     And I register the API Portal "${CTX:portalHandle}" with the control plane
 
+  @APIP-PUBLISHING-001
   @smoke
   Scenario: A deployed REST API is published to the API Portal through the control plane
     When I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
@@ -50,6 +51,7 @@ Feature: Publishing an API to an API Portal through the control plane
     And the API Portal should list the API "${CTX:apiHandle}" with status "PUBLISHED"
     And the API Portal should list the API "${CTX:apiHandle}" offering plan "${CTX:planHandle}"
 
+  @APIP-PUBLISHING-002
   Scenario: Publishing creates the selected plans the API Portal does not have yet
     Given the subscription plan "${CTX:planHandle}" is synced to the API Portal
     And I generate a unique resource name from "publish-second-plan" and store it as "secondPlan"
@@ -63,6 +65,7 @@ Feature: Publishing an API to an API Portal through the control plane
     And the API Portal should list the API "${CTX:apiHandle}" offering plan "${CTX:planHandle}"
     And the API Portal should list the API "${CTX:apiHandle}" offering plan "${CTX:secondPlan}"
 
+  @APIP-PUBLISHING-003
   Scenario: Republishing an edited draft replaces the listing in the API Portal
     Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
       | displayName         | ${CTX:apiHandle}      |
@@ -79,6 +82,7 @@ Feature: Publishing an API to an API Portal through the control plane
     And the API Portal should list the API "${CTX:apiHandle}" with display name "${CTX:apiHandle}-renamed"
     And the API Portal should list the API "${CTX:apiHandle}" with status "PUBLISHED"
 
+  @APIP-PUBLISHING-004
   Scenario: Deprecating a published API changes only its status
     Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
       | displayName         | ${CTX:apiHandle}      |
@@ -92,6 +96,7 @@ Feature: Publishing an API to an API Portal through the control plane
     And the API Portal should list the API "${CTX:apiHandle}" with status "DEPRECATED"
     And the API Portal should list the API "${CTX:apiHandle}" offering plan "${CTX:planHandle}"
 
+  @APIP-PUBLISHING-005
   @type:negative
   Scenario: Deprecating an already deprecated API is refused
     Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
@@ -104,6 +109,7 @@ Feature: Publishing an API to an API Portal through the control plane
     Then the response status code should be 409
     And the JSON response field "code" should be "PUBLICATION_STATE_CONFLICT"
 
+  @APIP-PUBLISHING-006
   Scenario: Unpublishing removes the listing from the API Portal and keeps a draft
     Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
       | displayName         | ${CTX:apiHandle}      |
@@ -119,6 +125,7 @@ Feature: Publishing an API to an API Portal through the control plane
     Then the response status code should be 200
     And the JSON response field "displayName" should be "${CTX:apiHandle}"
 
+  @APIP-PUBLISHING-007
   Scenario: Unpublishing keeps the draft that was saved after publishing
     Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
       | displayName         | ${CTX:apiHandle}      |
@@ -135,6 +142,7 @@ Feature: Publishing an API to an API Portal through the control plane
     When I read the draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
     Then the JSON response field "displayName" should be "${CTX:apiHandle}-next"
 
+  @APIP-PUBLISHING-008
   @type:negative
   Scenario: Unpublishing an already unpublished API is refused
     Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
@@ -147,6 +155,7 @@ Feature: Publishing an API to an API Portal through the control plane
     Then the response status code should be 409
     And the JSON response field "code" should be "PUBLICATION_STATE_CONFLICT"
 
+  @APIP-PUBLISHING-009
   @type:negative
   Scenario: An API that was never published cannot be deprecated or unpublished
     When I deprecate the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
@@ -156,6 +165,7 @@ Feature: Publishing an API to an API Portal through the control plane
     Then the response status code should be 409
     And the JSON response field "code" should be "PUBLICATION_STATE_CONFLICT"
 
+  @APIP-PUBLISHING-010
   @type:negative
   Scenario: A draft without a definition cannot be published
     Given I save a publication draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
@@ -167,6 +177,7 @@ Feature: Publishing an API to an API Portal through the control plane
     And the JSON response field "code" should be "PUBLICATION_VALIDATION_FAILED"
     And the API Portal should not list the API "${CTX:apiHandle}"
 
+  @APIP-PUBLISHING-011
   @type:negative
   Scenario: A draft with an invalid definition cannot be published
     Given I save a publication draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
@@ -182,6 +193,7 @@ Feature: Publishing an API to an API Portal through the control plane
     And the JSON response field "code" should be "PUBLICATION_VALIDATION_FAILED"
     And the API Portal should not list the API "${CTX:apiHandle}"
 
+  @APIP-PUBLISHING-012
   Scenario: An API that was never deployed to a gateway can be published
     Given I generate a unique resource name from "publish-idle-api" and store it as "idleHandle"
     And I generate a unique API context from "/publish-idle" and store it as "idleContext"
@@ -302,3 +314,232 @@ Feature: Publishing an API to an API Portal through the control plane
     Then the response status code should be 400
     And the JSON response field "code" should be "PUBLICATION_VALIDATION_FAILED"
     And the API Portal should not list the MCP server "${CTX:mcpHandle}"
+
+  @APIP-PUBLISHING-036
+  Scenario: A published API's page, specification and Markdown are served by the API Portal
+    Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    When I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 201
+    And the API Portal should list the API "${CTX:apiHandle}" offering plan "${CTX:planHandle}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiHandle}"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:apiHandle}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiHandle}/docs/specification.json"
+    Then the response status code should be 200
+    And the JSON response field "openapi" should be "3.0.3"
+    And the response body should contain "/ping"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiHandle}.md"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:apiHandle}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/apis.md"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:apiHandle}"
+
+  @APIP-PUBLISHING-037
+  Scenario: Unpublishing removes the API's page, Markdown and agent listings from the API Portal
+    Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    And the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiHandle}"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/apis.md"
+    Then the response body should contain "${CTX:apiHandle}"
+    When I unpublish the "RestApi" "${CTX:apiHandle}" from the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 204
+    And the API Portal should not list the API "${CTX:apiHandle}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiHandle}"
+    Then the response status code should be 404
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiHandle}/docs/specification.json"
+    Then the response status code should be 404
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiHandle}.md"
+    Then the response status code should be 404
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/apis.md"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:apiHandle}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/llms.txt"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:apiHandle}"
+
+  @APIP-PUBLISHING-038
+  Scenario: Republishing keeps the API Portal's subscriptions and shows the new description
+    Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | description         | First description     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    And the response status code should be 201
+    And an application subscribes to the published API "${CTX:apiHandle}" with plan "${CTX:planHandle}" in the API Portal and the subscription is stored as "subscriptionId"
+    When I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}-renamed |
+      | version             | ${CTX:apiVersion}        |
+      | description         | Second description       |
+      | subscriptionPlanIds | ["${CTX:planHandle}"]    |
+    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 200
+    And the API Portal should list the API "${CTX:apiHandle}" with display name "${CTX:apiHandle}-renamed"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiHandle}" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "description" should be "Second description"
+    When I send an authenticated API Portal "GET" request to "/subscriptions/${CTX:subscriptionId}" as "admin"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:planHandle}"
+
+  @APIP-PUBLISHING-039
+  Scenario: Deprecating keeps the plan on offer and the existing subscription in the API Portal
+    Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    And an application subscribes to the published API "${CTX:apiHandle}" with plan "${CTX:planHandle}" in the API Portal and the subscription is stored as "subscriptionId"
+    When I deprecate the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 200
+    And the API Portal should list the API "${CTX:apiHandle}" with status "DEPRECATED"
+    And the API Portal should list the API "${CTX:apiHandle}" offering plan "${CTX:planHandle}"
+    When I send an authenticated API Portal "GET" request to "/subscriptions/${CTX:subscriptionId}" as "admin"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:planHandle}"
+
+  @APIP-PUBLISHING-040
+  Scenario: An API published with a label appears only in the views of that label
+    Given I generate a unique resource name from "publish-partners" and store it as "partnersLabel"
+    And I generate a unique resource name from "publish-internal" and store it as "otherLabel"
+    And I generate a unique resource name from "publish-partners-view" and store it as "partnersView"
+    And I generate a unique resource name from "publish-internal-view" and store it as "otherView"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "partnersLabel":
+      | id          | ${CTX:partnersLabel} |
+      | displayName | Partners             |
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "otherLabel":
+      | id          | ${CTX:otherLabel} |
+      | displayName | Internal          |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "partnersView":
+      | id          | ${CTX:partnersView}       |
+      | displayName | Partners View             |
+      | labels      | ["${CTX:partnersLabel}"]  |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "otherView":
+      | id          | ${CTX:otherView}      |
+      | displayName | Internal View         |
+      | labels      | ["${CTX:otherLabel}"] |
+    And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}         |
+      | version             | ${CTX:apiVersion}        |
+      | labels              | ["${CTX:partnersLabel}"] |
+      | subscriptionPlanIds | ["${CTX:planHandle}"]    |
+    When I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:partnersView}/apis.md"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:apiHandle}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:otherView}/apis.md"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:apiHandle}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/apis.md"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:apiHandle}"
+
+  @APIP-PUBLISHING-042
+  Scenario: A plan in use cannot be renamed, re-limited or deleted in the control plane, and the API Portal keeps its copy
+    Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    And the response status code should be 201
+    When I send a "PUT" request to the control plane at "/subscription-plans/${CTX:planHandle}" with body:
+      """
+      {"id": "${CTX:planHandle}", "displayName": "${CTX:planHandle}", "status": "ACTIVE", "limits": [{"limitType": "REQUEST_COUNT", "timeUnit": "HOUR", "limitCount": 10000}]}
+      """
+    Then the response status code should be 200
+    When I send a "PUT" request to the control plane at "/subscription-plans/${CTX:planHandle}" with body:
+      """
+      {"id": "${CTX:planHandle}", "displayName": "${CTX:planHandle}-renamed", "status": "ACTIVE", "limits": [{"limitType": "REQUEST_COUNT", "timeUnit": "HOUR", "limitCount": 10000}]}
+      """
+    Then the response status code should be 409
+    And the JSON response field "code" should be "SUBSCRIPTION_PLAN_IN_USE"
+    When I send a "PUT" request to the control plane at "/subscription-plans/${CTX:planHandle}" with body:
+      """
+      {"id": "${CTX:planHandle}", "displayName": "${CTX:planHandle}", "status": "ACTIVE", "limits": [{"limitType": "REQUEST_COUNT", "timeUnit": "HOUR", "limitCount": 5}]}
+      """
+    Then the response status code should be 409
+    And the JSON response field "code" should be "SUBSCRIPTION_PLAN_IN_USE"
+    When I send a "DELETE" request to the control plane at "/subscription-plans/${CTX:planHandle}"
+    Then the response status code should be 409
+    And the JSON response field "code" should be "SUBSCRIPTION_PLAN_IN_USE"
+    When I send a "GET" request to the control plane at "/subscription-plans/${CTX:planHandle}"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "${CTX:planHandle}"
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planHandle}" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "limits[0].limitCount" should be 10000
+    And the API Portal should list the API "${CTX:apiHandle}" offering plan "${CTX:planHandle}"
+
+  @APIP-PUBLISHING-043
+  Scenario: A plan change made while it is unused reaches the API Portal on the next publish
+    Given I generate a unique resource name from "publish-spare-plan" and store it as "sparePlan"
+    And I create a subscription plan "${CTX:sparePlan}" allowing 20 requests per hour via the control plane
+    And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}                          |
+      | version             | ${CTX:apiVersion}                         |
+      | subscriptionPlanIds | ["${CTX:planHandle}", "${CTX:sparePlan}"] |
+    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    And the response status code should be 201
+    And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    And the response status code should be 200
+    When I send a "PUT" request to the control plane at "/subscription-plans/${CTX:sparePlan}" with body:
+      """
+      {"id": "${CTX:sparePlan}", "displayName": "${CTX:sparePlan}", "status": "ACTIVE", "limits": [{"limitType": "REQUEST_COUNT", "timeUnit": "HOUR", "limitCount": 40}]}
+      """
+    Then the response status code should be 200
+    # The control plane does not send the change on its own; the portal keeps its copy.
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:sparePlan}" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "limits[0].limitCount" should be 20
+    When I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}                          |
+      | version             | ${CTX:apiVersion}                         |
+      | subscriptionPlanIds | ["${CTX:planHandle}", "${CTX:sparePlan}"] |
+    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:sparePlan}" as "admin"
+    Then the JSON response field "limits[0].limitCount" should be 40
+    And the API Portal should list the API "${CTX:apiHandle}" offering plan "${CTX:sparePlan}"
+
+  @APIP-PUBLISHING-044 @type:negative
+  Scenario Outline: The API Portal refuses a <method> to <path> from a caller without the control plane's shared key
+    Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    And the response status code should be 201
+    And I generate a unique value from "not-the-shared-key" and store it as "wrongSharedKey"
+    When I send an unauthenticated API Portal "<method>" request to "<path>"
+    Then the response status code should be 401
+    When I send an unauthenticated API Portal "<method>" request to "<path>" with header "Authorization" set to "SharedKey ${CTX:wrongSharedKey}"
+    Then the response status code should be 401
+    And the response body should not contain "${CTX:wrongSharedKey}"
+    When I send an authenticated API Portal "<method>" request to "<path>" as "developer"
+    Then the response status code should be 403
+    And the API Portal should list the API "${CTX:apiHandle}" with status "PUBLISHED"
+    And the API Portal should list the API "${CTX:apiHandle}" offering plan "${CTX:planHandle}"
+
+    Examples:
+      | method | path                                     |
+      | POST   | /apis                                    |
+      | PUT    | /apis/${CTX:apiHandle}                   |
+      | DELETE | /apis/${CTX:apiHandle}                   |
+      | POST   | /subscription-plans                      |
+      | PUT    | /subscription-plans                      |
+      | DELETE | /subscription-plans/${CTX:planHandle}    |
+      | POST   | /meters                                  |

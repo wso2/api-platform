@@ -16,12 +16,107 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal response security
 
-  Scenario: The API Portal does not expose its framework identity on a public route
-    When I send an unauthenticated API Portal "GET" request to "/health"
-    Then the response header "X-Powered-By" should not exist
+@APIPORTAL @apiportal-security
+Feature: API Portal hardening: headers, error bodies, upload limits and outbound calls
+  As an API Portal operator
+  I want responses to disclose nothing about the portal's internals, uploads to stay within their
+  limit, and the try-it proxy to call only an API's registered public endpoints
+  So that the portal neither advertises what to attack nor becomes a way into the internal network
 
-  Scenario: The API Portal does not expose its framework identity on an API route
-    When I send an unauthenticated API Portal "GET" request to "/organizations/default"
-    Then the response header "X-Powered-By" should not exist
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-001 and 211..214, at the API level.
+  # Each route's status is asserted first, so a broken route cannot pass a header or body check by
+  # returning nothing. Every refusal is paired with the same request succeeding.
+
+  @APIP-CORE-001 @type:security
+  Scenario Outline: The <route kind> route does not expose the X-Powered-By header
+    When I send an unauthenticated API Portal "GET" request to "<path>"
+    Then the response status code should be <status>
+    And the response header "X-Powered-By" should not exist
+
+    Examples:
+      | route kind | path                                   | status |
+      | health     | /health                                | 200    |
+      | API        | /organizations/default                 | 401    |
+      | HTML page  | /api-portal/default/views/default/apis | 200    |
+
+  @APIP-CORE-212 @type:security
+  Scenario: A refused request is answered with a generic error that names no internals
+    Given I generate a unique resource name from "portal-error-label" and store it as "labelId"
+    When I send an authenticated API Portal "POST" request to "/labels" as "admin" with JSON values:
+      | displayName | Label without an id |
+    Then the response status code should be 400
+    And the JSON response field "code" should be 400
+    And the JSON response should have field "message"
+    And the response body should not contain "stack"
+    And the response body should not contain "node_modules"
+    And the response body should not contain "/app/"
+    And the response body should not contain "SELECT"
+    And the response body should not contain "    at "
+    When I send an authenticated API Portal "POST" request to "/labels" as "admin" with JSON values:
+      | id          | ${CTX:labelId}      |
+      | displayName | Label without an id |
+    Then the response status code should be 201
+    And I register API Portal resource "${CTX:labelId}" at "/labels" for cleanup
+
+  # Artifact uploads past the limit are APIP-CORE-109; this covers the other three upload kinds.
+  @APIP-CORE-213 @type:security
+  Scenario: A definition, content archive or theme just over the upload limit is refused without naming the limit, and one just under it is accepted
+    Given I generate a unique resource name from "portal-upload-limit" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "rest oversized" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+    Then the response status code should be 413
+    And the response body should not contain "10485760"
+    And the response body should not contain "10 MB"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 404
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "rest near-limit" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+    Then the response status code should be 201
+    When I upload API Portal content "oversized" for API "${CTX:apiId}" as "publisher"
+    Then the response status code should be 413
+    And the response body should not contain "10485760"
+    And the response body should not contain "10 MB"
+    When I upload API Portal content "near-limit" for API "${CTX:apiId}" as "publisher"
+    Then the response status code should be 201
+    Given I generate a unique resource name from "portal-upload-limit-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}     |
+      | displayName | Upload Limit View |
+    When I upload API Portal theme "oversized" for view "${CTX:viewId}" as "admin"
+    Then the response status code should be 413
+    And the response body should not contain "10485760"
+    And the response body should not contain "10 MB"
+    When I upload API Portal theme "near-limit" for view "${CTX:viewId}" as "admin"
+    Then the response status code should be 200
+
+  # A request without browser fetch metadata is refused as cross-site, and a registered public
+  # endpoint is called (its .invalid name never resolves, so the call fails upstream with 502):
+  # together they show the route works and that only the address decides the refusal.
+  @APIP-CORE-214 @type:security
+  Scenario Outline: The try-it proxy refuses <target kind> and calls the API's registered public endpoint
+    Given I generate a unique resource name from "portal-tryout" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id                   | ${CTX:apiId}                  |
+      | name                 | ${CTX:apiId}                  |
+      | endPoints.sandboxURL | http://169.254.169.254/latest |
+    Then the response status code should be 201
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/https://backend.example.invalid/ping"
+    Then the response status code should be 403
+    And the JSON response field "message" should be "Request origin is not allowed."
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/https://backend.example.invalid/ping" with header "Sec-Fetch-Site" set to "same-origin"
+    Then the response status code should be 502
+    And the JSON response field "error" should be "bad_gateway"
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/<target>" with header "Sec-Fetch-Site" set to "same-origin"
+    Then the response status code should be 422
+    And the JSON response field "error" should be "invalid_request"
+    And the JSON response field "message" should be "The requested target could not be called."
+    And the response body should not contain "<host>"
+
+    Examples:
+      | target kind                                       | target                                         | host            |
+      | the metadata address registered as its endpoint   | http://169.254.169.254/latest/meta-data/       | 169.254.169.254 |
+      | a loopback address                                | http://127.0.0.1:9243/api-portal/health        | 127.0.0.1       |
+      | an internal host name it never registered         | https://platform-api:9243/health               | platform-api    |

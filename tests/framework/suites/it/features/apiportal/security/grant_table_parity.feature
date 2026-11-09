@@ -15,10 +15,21 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal authorization grant-table parity
 
+@APIPORTAL @apiportal-security
+Feature: API Portal authorization grant-table parity
+  As an API Portal operator who maps the same roles in the portal and in platform-api
+  I want each shared role to grant the same permissions on both sides
+  So that a role means the same thing wherever it is checked
+
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-GRANT-TABLE-001..002. The role-to-scope
+  # mappings staged for the portal and for platform-api are compared; dp_narrow_it is the one
+  # documented difference.
+
+  @APIP-GRANT-TABLE-001
   Scenario: Shared IT roles have identical grants on both component sides
     Then the API Portal IT role mappings should match except for role "dp_narrow_it"
 
+  @APIP-GRANT-TABLE-002
   Scenario: The deliberate narrow-role grant difference remains enforced
     Then the API Portal IT role "dp_narrow_it" should be read-only on the portal side

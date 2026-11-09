@@ -16,25 +16,32 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@api-portal-paid-plans-without-billing
+
+@APIPORTAL @apiportal-plan
 Feature: Paid plans before billing is set up
   As an API Portal administrator preparing to sell plans
   I want to price plans and offer them on APIs before billing is connected
   So that the catalog is ready, while nobody can subscribe to a paid plan they could not be charged for
 
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-058..059, at the API level. This
+  # runner's portal has no billing configuration. The free Gold plan on the same API is the positive
+  # control for every refused paid subscription.
+
   Background:
     Given I generate a unique resource name from "unbilled-plan" and store it as "planId"
-    And a unique API Portal resource is created at "/subscription-plans" as "admin" with body and stored as "planId":
-      """
-      {"id":"${CTX:planId}","displayName":"Business ${CTX:planId}","limits":[{"limitType":"REQUEST_COUNT","limitCount":1000,"timeUnit":"MINUTE"}],"pricing":{"pricingType":"FLAT_RATE","currency":"USD","billingPeriod":"MONTH","flatAmount":"99"}}
-      """
+    And a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}                                                                         |
+      | displayName | Business ${CTX:planId}                                                                |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":1000,"timeUnit":"MINUTE"}]                |
+      | pricing     | {"pricingType":"FLAT_RATE","currency":"USD","billingPeriod":"MONTH","flatAmount":"99"} |
     And a REST API is created in the API Portal and stored as "apiId"
-    When I send an authenticated API Portal "PUT" multipart request to "/apis/${CTX:apiId}" as "publisher" with metadata only:
-      """
-      {"name":"Business REST API","version":"v1.0","type":"REST","status":"PUBLISHED","endPoints":{"productionURL":"https://business.example.invalid","sandboxURL":"https://business-sandbox.example.invalid"},"subscriptionPlans":[{"id":"Gold"},{"id":"${CTX:planId}"}]}
-      """
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with definition "none" with values:
+      | id                | ${CTX:apiId}                              |
+      | name              | Business REST API                         |
+      | subscriptionPlans | [{"id":"Gold"},{"id":"${CTX:planId}"}] |
     Then the response status code should be 200
 
+  @APIP-CORE-058 @type:negative
   Scenario: Without billing, a paid plan is offered on an API but can't be subscribed to or bought
     When I send an authenticated API Portal "GET" request to "/billing-configuration" as "admin"
     Then the response status code should be 404
@@ -46,18 +53,16 @@ Feature: Paid plans before billing is set up
     And the JSON response array "subscriptionPlans" should contain an item with "id" equal to "${CTX:planId}"
 
     # A paid plan is only ever bought through checkout, never subscribed to directly.
-    When I send an authenticated API Portal "POST" request to "/subscriptions" as "developer" with JSON body:
-      """
-      {"artifactId":"${CTX:apiId}","subscriptionPlanId":"${CTX:planId}"}
-      """
+    When I send an authenticated API Portal "POST" request to "/subscriptions" as "developer" with JSON values:
+      | artifactId         | ${CTX:apiId}  |
+      | subscriptionPlanId | ${CTX:planId} |
     Then the response status code should be 409
     And the JSON response field "code" should be "PAID_PLAN_REQUIRES_CHECKOUT"
     And the JSON response field "message" should be "This is a paid plan. Subscribe to it through checkout."
     # And without billing, checkout is not open.
-    When I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
-      """
-      {"artifactId":"${CTX:apiId}","subscriptionPlanId":"${CTX:planId}"}
-      """
+    When I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON values:
+      | artifactId         | ${CTX:apiId}  |
+      | subscriptionPlanId | ${CTX:planId} |
     Then the response status code should be 409
     And the JSON response field "code" should be "PLAN_NOT_AVAILABLE"
     And the JSON response field "message" should be "This plan cannot be bought right now."
@@ -65,14 +70,18 @@ Feature: Paid plans before billing is set up
     # The free plan on the same API is unaffected.
     When a developer subscription for API "${CTX:apiId}" using plan "Gold" is created and stored as "subscriptionId"
     Then the response status code should be 201
+    And the JSON response field "subscriptionPlanName" should be "Gold"
 
+  @APIP-CORE-059
   Scenario: A paid plan taken off an API with no subscriptions is simply removed
-    When I send an authenticated API Portal "PUT" multipart request to "/apis/${CTX:apiId}" as "publisher" with metadata only:
-      """
-      {"name":"Business REST API","version":"v1.0","type":"REST","status":"PUBLISHED","endPoints":{"productionURL":"https://business.example.invalid","sandboxURL":"https://business-sandbox.example.invalid"},"subscriptionPlans":[{"id":"Gold"}]}
-      """
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with definition "none" with values:
+      | id                | ${CTX:apiId}      |
+      | name              | Business REST API |
+      | subscriptionPlans | [{"id":"Gold"}]   |
     Then the response status code should be 200
     And the JSON response array "subscriptionPlans" should not contain an item with "id" equal to "${CTX:planId}"
     # Not offered anywhere, the plan can be deleted.
     When I send an authenticated API Portal "DELETE" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the response status code should be 204
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 404

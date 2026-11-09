@@ -34,7 +34,7 @@ Feature: Listing the versions of a REST API through the control plane
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "reading-list" and store it as "displayName"
 
-  @smoke
+  @APIP-CORE-018 @smoke
   Scenario: Every version of a display name is reported, in version order
     Given I generate a unique API context from "/papi-versions-v1" and store it as "contextV1"
     And I generate a unique API context from "/papi-versions-v2" and store it as "contextV2"
@@ -55,6 +55,7 @@ Feature: Listing the versions of a REST API through the control plane
     And the JSON response field "list[1].version" should be "v2.0"
     And the JSON response field "list[2].version" should be "v3.0"
 
+  @APIP-CORE-019
   Scenario: An unrelated API in the same project is not reported as a version
     Given I generate a unique resource name from "unrelated" and store it as "otherDisplayName"
     And I generate a unique API context from "/papi-versions-owned" and store it as "ownedContext"
@@ -69,6 +70,7 @@ Feature: Listing the versions of a REST API through the control plane
     And the response body should not contain "${CTX:otherDisplayName}"
 
   # projectId is documented as the project handle, not the UUID the row stores.
+  @APIP-CORE-020
   Scenario: Each version reports the handle of the project it lives in
     Given I generate a unique API context from "/papi-versions-project-handle" and store it as "apiContext"
     And I create a REST API "${CTX:displayName}-v1" via the control plane in project "${CTX:projectHandle}" with display name "${CTX:displayName}" version "v1.0" and context "${CTX:apiContext}"
@@ -81,6 +83,7 @@ Feature: Listing the versions of a REST API through the control plane
     And the JSON response should have field "list[0].createdAt"
 
   # A 404 here would make a client read "this name is free" as an error.
+  @APIP-CORE-021
   Scenario: An unused display name is an empty result, not a 404
     Given I generate a unique resource name from "never-created" and store it as "missingDisplayName"
     When I send a "GET" request to the control plane at "/rest-apis/versions?displayName=${CTX:missingDisplayName}"
@@ -91,12 +94,14 @@ Feature: Listing the versions of a REST API through the control plane
     # "0 items" also rules out null - the step fails a field that is not an array.
     And the JSON response array field "list" should have 0 items
 
+  @APIP-CORE-022
   Scenario: A missing displayName parameter is rejected rather than listing everything
     When I send a "GET" request to the control plane at "/rest-apis/versions"
     Then the response status code should be 400
 
   # Clients use this list to decide whether a create will be accepted, so the two endpoints
   # must agree. A repository unit test proves the two SQL statements do.
+  @APIP-CORE-023
   Scenario: What the list reports as taken is exactly what create refuses
     Given I generate a unique API context from "/papi-versions-agree-v1" and store it as "takenContext"
     And I generate a unique API context from "/papi-versions-agree-dup" and store it as "dupContext"

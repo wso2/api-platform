@@ -71,6 +71,12 @@ blocks:
       - name: devportal-monetization-webhook
         features:
           - features/apiportal/webhooks/monetization_webhook.feature
+      - name: application-gateway
+        features:
+          - features/apiportal/applications/application_gateway.feature
+      - name: subscription-gateway
+        features:
+          - features/apiportal/subscriptions/subscription_gateway.feature
       - name: publication-outage
         features:
           - features/apiportal/publishing/publication_outage.feature

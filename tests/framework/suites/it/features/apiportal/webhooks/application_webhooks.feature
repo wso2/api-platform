@@ -16,88 +16,78 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal application webhook events
 
-  Scenario: Application creation is delivered to a matching subscriber
-    Given I generate a unique resource name from "portal-application-webhook" and store it as "subscriberId"
-    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with body and stored as "subscriberId":
-      """
-      {"id":"${CTX:subscriberId}","displayName":"Application Events","targetUrl":"http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook","events":["application.*"]}
-      """
+@APIPORTAL @apiportal-application-webhook
+Feature: Application changes are delivered to the webhook subscribers that ask for them
+  As a system that mirrors the API Portal's applications
+  I want a signed event for every application created, changed or deleted, and only those I subscribed to
+  So that my copy of each developer's applications never drifts from the portal's
+
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-WEBHOOKS-009..010, at the API level. Each
+  # subscriber points at this scenario's partition of the testbench webhook sink. A subscriber that is
+  # not sent an event is checked through its own delivery list, beside a subscriber that is sent it.
+
+  @APIP-WEBHOOKS-009
+  Scenario: An application's whole life is delivered to a subscriber
+    Given I generate a unique resource name from "portal-app-subscriber" and store it as "subscriberId"
     And I generate a unique resource name from "portal-webhook-app" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with body and stored as "appId":
-      """
-      {"id":"${CTX:appId}","displayName":"Webhook Application","description":"created"}
-      """
+    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "subscriberId":
+      | id          | ${CTX:subscriberId} |
+      | displayName | ${CTX:subscriberId} |
+      | targetUrl   | http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook |
+      | events      | ["application.*"] |
+    When a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
+      | id          | ${CTX:appId}        |
+      | displayName | Webhook Application |
+      | description | Receives events        |
     When I wait for an API Portal webhook event "application.created" containing "${CTX:appId}"
     Then the JSON response field "event_type" should be "application.created"
     And the JSON response field "data.handle" should be "${CTX:appId}"
+    And the JSON response field "data.display_name" should be "Webhook Application"
+    And the JSON response field "data.type" should be "web"
+    And the JSON response array field "encrypted_fields" should have 0 items
+    And the JSON response should have field "org.ref_id"
+    And the API Portal delivery for subscriber "${CTX:subscriberId}" and event "application.created" should be "DELIVERED"
 
-  Scenario: Application updates are delivered to a matching subscriber
-    Given I generate a unique resource name from "portal-application-update-webhook" and store it as "subscriberId"
-    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with body and stored as "subscriberId":
-      """
-      {"id":"${CTX:subscriberId}","displayName":"Application Update Events","targetUrl":"http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook","events":["application.*"]}
-      """
-    And I generate a unique resource name from "portal-update-webhook-app" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with body and stored as "appId":
-      """
-      {"id":"${CTX:appId}","displayName":"Original Webhook Application","description":"before"}
-      """
-    When I send an authenticated API Portal "PUT" request to "/applications/${CTX:appId}" as "developer" with JSON body:
-      """
-      {"displayName":"Updated Webhook Application","description":"after"}
-      """
+    When I send an authenticated API Portal "PUT" request to "/applications/${CTX:appId}" as "developer" with JSON values:
+      | displayName | Updated Webhook Application |
+      | description | after                       |
     Then the response status code should be 200
     When I wait for an API Portal webhook event "application.updated" containing "${CTX:appId}"
-    Then the JSON response field "event_type" should be "application.updated"
-    And the JSON response field "data.display_name" should be "Updated Webhook Application"
+    Then the JSON response field "data.display_name" should be "Updated Webhook Application"
+    And the JSON response field "data.description" should be "after"
 
-  Scenario: Application deletion is delivered to a matching subscriber
-    Given I generate a unique resource name from "portal-application-delete-webhook" and store it as "subscriberId"
-    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with body and stored as "subscriberId":
-      """
-      {"id":"${CTX:subscriberId}","displayName":"Application Delete Events","targetUrl":"http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook","events":["application.*"]}
-      """
-    And I generate a unique resource name from "portal-delete-webhook-app" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with body and stored as "appId":
-      """
-      {"id":"${CTX:appId}","displayName":"Delete Webhook Application","description":"delete"}
-      """
     When I send an authenticated API Portal "DELETE" request to "/applications/${CTX:appId}" as "developer"
     Then the response status code should be 200
     When I wait for an API Portal webhook event "application.deleted" containing "${CTX:appId}"
-    Then the JSON response field "event_type" should be "application.deleted"
+    Then the JSON response field "data.handle" should be "${CTX:appId}"
 
-  Scenario: An application event is not delivered to a non-matching subscriber
-    Given I generate a unique resource name from "portal-application-pattern-webhook" and store it as "subscriberId"
-    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with body and stored as "subscriberId":
-      """
-      {"id":"${CTX:subscriberId}","displayName":"API Key Events Only","targetUrl":"http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook","events":["apikey.*"]}
-      """
-    And I generate a unique resource name from "portal-pattern-webhook-app" and store it as "appId"
-    When a unique API Portal resource is created at "/applications" as "developer" with body and stored as "appId":
-      """
-      {"id":"${CTX:appId}","displayName":"Pattern Mismatch Application","description":"not delivered"}
-      """
-    Then the response status code should be 201
-    And I verify no API Portal webhook event "application.created" containing "${CTX:appId}" is delivered
-
-  Scenario: Deleting an application twice does not publish a second event
-    Given I generate a unique resource name from "portal-application-delete-once-subscriber" and store it as "subscriberId"
-    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with body and stored as "subscriberId":
-      """
-      {"id":"${CTX:subscriberId}","displayName":"Application Delete Once Events","targetUrl":"http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook","events":["application.*"]}
-      """
-    And I generate a unique resource name from "portal-application-delete-once-webhook" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with body and stored as "appId":
-      """
-      {"id":"${CTX:appId}","displayName":"Delete Once Application","description":"delete once"}
-      """
-    When I send an authenticated API Portal "DELETE" request to "/applications/${CTX:appId}" as "developer"
-    Then the response status code should be 200
-    When I wait for an API Portal webhook event "application.deleted" containing "${CTX:appId}"
+    # Deleting it again finds nothing, and so reports nothing.
     And I reset API Portal webhook events
     When I send an authenticated API Portal "DELETE" request to "/applications/${CTX:appId}" as "developer"
     Then the response status code should be 404
     And I verify no API Portal webhook event "application.deleted" containing "${CTX:appId}" is delivered
+
+  @APIP-WEBHOOKS-010
+  Scenario: A subscriber is not sent application events it did not ask for
+    Given I generate a unique resource name from "portal-key-only-subscriber" and store it as "keySubscriberId"
+    And I generate a unique resource name from "portal-app-control-subscriber" and store it as "appSubscriberId"
+    And I generate a unique resource name from "portal-unmatched-app" and store it as "appId"
+    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "keySubscriberId":
+      | id          | ${CTX:keySubscriberId} |
+      | displayName | ${CTX:keySubscriberId} |
+      | targetUrl   | http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook |
+      | events      | ["apikey.*"] |
+    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "appSubscriberId":
+      | id          | ${CTX:appSubscriberId} |
+      | displayName | ${CTX:appSubscriberId} |
+      | targetUrl   | http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook |
+      | events      | ["application.*"] |
+    When a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
+      | id          | ${CTX:appId}        |
+      | displayName | Webhook Application |
+      | description | Receives events        |
+    Then the API Portal delivery for subscriber "${CTX:appSubscriberId}" and event "application.created" should be "DELIVERED"
+    When I send an authenticated API Portal "GET" request to "/webhook-subscribers/${CTX:keySubscriberId}/deliveries" as "admin"
+    Then the response status code should be 200
+    And the JSON response array field "list" should have 0 items

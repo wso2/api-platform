@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@platform-api-gateway-api-portal
+@platform-api-gateway-api-portal @APIPORTAL
 Feature: Publishing while the API Portal is unavailable
   As an API publisher
   I want a publish or deprecate that cannot reach the API Portal to fail without changing anything
@@ -38,6 +38,7 @@ Feature: Publishing while the API Portal is unavailable
     And I generate a unique resource name from "publish-portal" and store it as "portalHandle"
     And I register the API Portal "${CTX:portalHandle}" with the control plane
 
+  @APIP-PUBLISHING-033
   @type:negative
   Scenario: Publishing fails and promotes nothing while the API Portal is down
     Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
@@ -53,6 +54,7 @@ Feature: Publishing while the API Portal is unavailable
     When I read the draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
     Then the response status code should be 200
 
+  @APIP-PUBLISHING-034
   @type:negative
   Scenario: Deprecating fails and leaves the API published while the API Portal is down
     Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
@@ -68,6 +70,7 @@ Feature: Publishing while the API Portal is unavailable
     When I start the API Portal and wait until it is ready
     Then the API Portal should list the API "${CTX:apiHandle}" with status "PUBLISHED"
 
+  @APIP-PUBLISHING-035
   Scenario: The same publish succeeds once the API Portal is back
     Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
       | displayName         | ${CTX:apiHandle}      |

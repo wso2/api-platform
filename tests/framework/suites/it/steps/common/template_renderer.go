@@ -20,6 +20,7 @@ package common
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,6 +40,42 @@ const (
 	// embeddedSuiteRoot is where the framework's own suite sits in the repository.
 	embeddedSuiteRoot = "tests/framework/suites/it"
 )
+
+// RenderResourceTemplateJSON resolves a resource template beneath the suite root, renders it
+// with the values table and encodes the rendered mapping as the JSON document a publisher API
+// accepts.
+func RenderResourceTemplateJSON(ctx context.Context, root, name string, table *godog.Table) ([]byte, error) {
+	path, err := ResourceTemplatePath(root, name)
+	if err != nil {
+		return nil, err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read resource template %q: %w", name, err)
+	}
+	rendered, err := RenderResourceTemplate(ctx, name, content, table)
+	if err != nil {
+		return nil, fmt.Errorf("resource template %q: %w", name, err)
+	}
+	return YAMLToJSON([]byte(rendered))
+}
+
+// YAMLToJSON converts a YAML mapping document into JSON, keeping scalar types as YAML resolved
+// them. A document whose root is not a mapping is rejected.
+func YAMLToJSON(document []byte) ([]byte, error) {
+	var value any
+	if err := yaml.Unmarshal(document, &value); err != nil {
+		return nil, fmt.Errorf("parse rendered template: %w", err)
+	}
+	if _, ok := value.(map[string]any); !ok {
+		return nil, fmt.Errorf("rendered template is not a mapping")
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("encode rendered template as JSON: %w", err)
+	}
+	return encoded, nil
+}
 
 // RenderResourceTemplate renders a canonical or legacy suite resource template.
 func RenderResourceTemplate(ctx context.Context, name string, content []byte, table *godog.Table) (string, error) {

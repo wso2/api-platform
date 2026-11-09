@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@devportal-monetization-webhook
+@devportal-monetization-webhook @APIPORTAL
 Feature: Meters and priced plans made in the API Portal reach the control plane
   As an API Portal administrator who prices plans in the portal
   I want the meters and priced plans I make there to appear in the control plane on their own
@@ -28,6 +28,7 @@ Feature: Meters and priced plans made in the API Portal reach the control plane
     And I generate a unique resource name from "portal-made-calls" and store it as "meterId"
     And I generate a unique resource name from "portal-made-plan" and store it as "planId"
 
+  @APIP-DEVPORTAL-WEBHOOK-009
   Scenario: A meter and a usage-priced plan made in the API Portal appear in the control plane, and leave with them
     Given a unique API Portal resource is created at "/meters" as "admin" with body and stored as "meterId":
       """

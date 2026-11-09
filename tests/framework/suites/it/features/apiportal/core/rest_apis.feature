@@ -16,285 +16,587 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal REST API management
+@APIPORTAL @apiportal-rest-api
+Feature: REST APIs are managed through the API Portal REST API
+  As an API publisher
+  I want to create, find, update and delete the REST APIs the portal lists
+  So that developers see exactly the APIs I publish, and nobody else can change them
 
-  Scenario: A publisher creates and retrieves a REST API
-    Given a REST API is created in the API Portal and stored as "apiId"
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-007..017 and 113..124, at the API level:
+  # the /api-portal/api/v0.9/apis endpoints that the portal's admin UI and GitOps flows call.
+  # Every API is rendered from resources/templates/api-portal-api.yaml; a value of null leaves
+  # that field out of the request. Every refusal is paired with a request that succeeds, and every
+  # denied write is followed by a read that shows nothing changed. Public pages, Markdown and
+  # agent routes are read from the default view, which serves every API that carries no other
+  # label. Catalogue search runs on this block's PostgreSQL database (whole-word full-text search
+  # over metadata and definitions); SQLite and SQL Server search differently and are not covered here.
+
+  @APIP-CORE-007 @type:smoke
+  Scenario: A publisher manages a REST API from creation to deletion
+    Given I generate a unique resource name from "portal-rest-api" and store it as "apiId"
+    And I generate a unique resource name from "portal-rest-decoy" and store it as "decoyId"
+    And I generate a unique resource name from "portal-rest-tag" and store it as "tag"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id      | ${CTX:apiId}       |
+      | name    | ${CTX:apiId}       |
+      | version | v2.0               |
+      | tags    | ["${CTX:tag}"]     |
+    Then the response status code should be 201
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id      | ${CTX:decoyId}     |
+      | name    | ${CTX:apiId}       |
+      | version | v1.0               |
+      | tags    | ["${CTX:tag}"]     |
+    And the response status code should be 201
+
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 200
     And the JSON response field "type" should be "RestApi"
-
-  Scenario: A publisher updates a REST API
-    Given a REST API is created in the API Portal and stored as "apiId"
-    When I send an authenticated API Portal "PUT" multipart request to "/apis/${CTX:apiId}" as "publisher" with metadata:
-      """
-      {
-      "name": "Updated REST API",
-      "version": "v1.0",
-      "type": "REST",
-      "status": "PUBLISHED",
-      "endPoints": {
-        "productionURL": "https://updated.example.invalid",
-        "sandboxURL": "https://updated-sandbox.example.invalid"
-      }
-      }
-      """
+    And the JSON response field "name" should be "${CTX:apiId}"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=API_DEFINITION&fileName=definition.json" as "publisher"
     Then the response status code should be 200
-    And the JSON response field "name" should be "Updated REST API"
+    And the JSON response field "openapi" should be "3.0.3"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=API_DEFINITION&fileName=missing.json" as "publisher"
+    Then the response status code should be 404
 
-  Scenario: A publisher deletes a REST API
-    Given a REST API is created in the API Portal and stored as "apiId"
+    When I send an authenticated API Portal "GET" request to "/apis?name=${CTX:apiId}&version=v2.0&tags=${CTX:tag}" as "publisher"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:apiId}"
+    And the response body should not contain "${CTX:decoyId}"
+    When I send an authenticated API Portal "GET" request to "/apis?query=${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:apiId}"
+    # The query is ' OR '1'='1, URL-encoded: search treats it as text, never as SQL.
+    When I send an authenticated API Portal "GET" request to "/apis?query=%27%20OR%20%271%27%3D%271" as "publisher"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:apiId}"
+
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id      | ${CTX:apiId}         |
+      | name    | ${CTX:apiId}-renamed |
+      | version | v2.0                 |
+    Then the response status code should be 200
+    And the JSON response field "name" should be "${CTX:apiId}-renamed"
+
     When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 200
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until status 404
     Then the response status code should be 404
 
-  Scenario: A publisher filters REST APIs by exact name, version, and tag
-    Given I generate a unique resource name from "portal-filter-name" and store it as "filterName"
-    And I generate a unique resource name from "portal-filter-tag" and store it as "filterTag"
-    And a REST API with metadata values is created in the API Portal and stored as "matchingApiId":
-      | name    | ${CTX:filterName}           |
-      | version | v2.0                        |
-      | tags    | ["${CTX:filterTag}"]       |
-    And a REST API with metadata values is created in the API Portal and stored as "wrongVersionApiId":
-      | name    | ${CTX:filterName}           |
-      | version | v1.0                        |
-      | tags    | ["${CTX:filterTag}"]       |
-    And a REST API with metadata values is created in the API Portal and stored as "wrongTagApiId":
-      | name    | Wrong Tag API               |
-      | version | v2.0                        |
-      | tags    | ["other-filter-tag"]       |
-    When I send an authenticated API Portal "GET" request to "/apis?name=${CTX:filterName}&version=v2.0&tags=${CTX:filterTag}" as "publisher"
-    Then the response status code should be 200
-    And the response body should contain "${CTX:matchingApiId}"
-    And the response body should not contain "${CTX:wrongVersionApiId}"
-    And the response body should not contain "${CTX:wrongTagApiId}"
-
-  Scenario: API creation rejects an invalid OpenAPI definition
-    When I generate a unique resource name from "portal-invalid-api" and store it as "apiId"
-    And I send an authenticated API Portal "POST" multipart request to "/apis" as "publisher" with metadata and definition "not a valid openapi document":
-      """
-      {
-        "id": "${CTX:apiId}",
-        "name": "Invalid REST API",
-        "version": "v1.0",
-        "type": "REST",
-        "status": "PUBLISHED",
-        "endPoints": {
-          "productionURL": "https://backend.example.invalid",
-          "sandboxURL": "https://sandbox.example.invalid"
-        }
-      }
-      """
+  @APIP-CORE-008 @type:negative
+  Scenario Outline: Creating a REST API with <problem> is refused and stores nothing
+    Given I generate a unique resource name from "portal-rest-invalid" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "<definition>" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | <type>       |
     Then the response status code should be 400
+    And the response body should not contain "stack"
+    And the response body should not contain "node_modules"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 404
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+    Then the response status code should be 201
 
-  Scenario: API creation rejects a missing type
-    When I generate a unique resource name from "portal-no-type-api" and store it as "apiId"
-    And I send an authenticated API Portal "POST" multipart request to "/apis" as "publisher" with metadata:
-      """
-      {
-        "id": "${CTX:apiId}",
-        "name": "No Type REST API",
-        "version": "v1.0",
-        "status": "PUBLISHED",
-        "endPoints": {
-          "productionURL": "https://backend.example.invalid",
-          "sandboxURL": "https://sandbox.example.invalid"
-        }
-      }
-      """
-    Then the response status code should be 400
+    Examples:
+      | problem                       | definition              | type |
+      | an invalid OpenAPI definition | not an OpenAPI document | REST |
+      | no type                       | rest                    | null |
+      | the MCP type                  | rest                    | MCP  |
 
-  Scenario: API update rejects a missing type
-    Given a REST API is created in the API Portal and stored as "apiId"
-    When I send an authenticated API Portal "PUT" multipart request to "/apis/${CTX:apiId}" as "publisher" with metadata:
-      """
-      {
-        "name": "Updated Without Type",
-        "version": "v1.0",
-        "status": "PUBLISHED",
-        "endPoints": {
-          "productionURL": "https://updated.example.invalid",
-          "sandboxURL": "https://updated-sandbox.example.invalid"
-        }
-      }
-      """
-    Then the response status code should be 400
-
-  Scenario: API update rejects changing REST type
-    Given a REST API is created in the API Portal and stored as "apiId"
-    When I send an authenticated API Portal "PUT" multipart request to "/apis/${CTX:apiId}" as "publisher" with metadata:
-      """
-      {
-        "name": "Still REST API",
-        "version": "v1.0",
-        "type": "SOAP",
-        "status": "PUBLISHED",
-        "endPoints": {
-          "productionURL": "https://updated.example.invalid",
-          "sandboxURL": "https://updated-sandbox.example.invalid"
-        }
-      }
-      """
-    Then the response status code should be 409
+  @APIP-CORE-009 @type:negative
+  Scenario Outline: Updating a REST API with <problem> is refused and the API keeps its type
+    Given I generate a unique resource name from "portal-rest-retype" and store it as "apiId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+    And the response status code should be 201
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId}         |
+      | name | ${CTX:apiId}-changed |
+      | type | <type>               |
+    Then the response status code should be <status>
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
     Then the JSON response field "type" should be "RestApi"
-
-  Scenario: An unauthenticated caller cannot list REST APIs
-    When I send an unauthenticated API Portal "GET" request to "/apis"
-    Then the response status code should be 401
-
-  Scenario: API creation rejects a request whose type is MCP
-    When I generate a unique resource name from "portal-mcp-as-api" and store it as "apiId"
-    And I send an authenticated API Portal "POST" multipart request to "/apis" as "publisher" with metadata:
-      """
-      {
-        "id": "${CTX:apiId}",
-        "name": "MCP Submitted As API",
-        "version": "v1.0",
-        "type": "MCP",
-        "status": "PUBLISHED",
-        "endPoints": {
-          "productionURL": "https://backend.example.invalid",
-          "sandboxURL": "https://sandbox.example.invalid"
-        }
-      }
-      """
-    Then the response status code should be 400
-
-  Scenario: A developer cannot create a REST API
-    When I generate a unique resource name from "portal-forbidden-api" and store it as "apiId"
-    And I send an authenticated API Portal "POST" multipart request to "/apis" as "developer" with metadata:
-      """
-      {
-        "id": "${CTX:apiId}",
-        "name": "Forbidden REST API",
-        "version": "v1.0",
-        "type": "REST",
-        "status": "PUBLISHED",
-        "endPoints": {
-          "productionURL": "https://backend.example.invalid",
-          "sandboxURL": "https://sandbox.example.invalid"
-        }
-      }
-      """
-    Then the response status code should be 403
-
-  Scenario: A publisher retrieves an uploaded OpenAPI definition
-    Given a REST API is created in the API Portal and stored as "apiId"
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=API_DEFINITION&fileName=definition.json" as "publisher"
+    And the JSON response field "name" should be "${CTX:apiId}"
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId}         |
+      | name | ${CTX:apiId}-changed |
+      | type | REST                 |
     Then the response status code should be 200
-    And the response should be valid JSON
-    And the JSON response field "openapi" should be "3.0.3"
 
-  Scenario: A missing API definition returns not found
-    Given a REST API is created in the API Portal and stored as "apiId"
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=API_DEFINITION&fileName=missing.json" as "publisher"
-    Then the response status code should be 404
+    Examples:
+      | problem          | type | status |
+      | no type          | null | 400    |
+      | a different type | SOAP | 409    |
 
-  Scenario: A REST API returns its labels
-    Given I generate a unique resource name from "portal-api-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id":"${CTX:labelId}","displayName":"REST API Label"}
-      """
-    And I generate a unique value from "portal_rest_api_labelled" and store it as "apiName"
-    And a REST API with metadata values is created in the API Portal and stored as "apiId":
-      | name    | ${CTX:apiName}     |
-      | version | v1.0               |
-      | labels  | ["${CTX:labelId}"] |
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
-    Then the response status code should be 200
-    And the JSON response array field "labels" should have 1 item
-    And the JSON response field "labels[0]" should be "${CTX:labelId}"
-
-  Scenario: A publisher searches REST APIs by free-text query
-    Given a REST API is created in the API Portal and stored as "apiId"
-    When I send an authenticated API Portal "GET" request to "/apis?query=portal_rest_api" as "publisher"
-    Then the response status code should be 200
-    And the response should be valid JSON
-
-  Scenario: API update replaces its labels
+  @APIP-CORE-010
+  Scenario: An API's labels follow every update
     Given I generate a unique resource name from "portal-rest-label-a" and store it as "labelA"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelA":
-      """
-      {"id":"${CTX:labelA}","displayName":"Original Label"}
-      """
     And I generate a unique resource name from "portal-rest-label-b" and store it as "labelB"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelB":
-      """
-      {"id":"${CTX:labelB}","displayName":"Replacement Label"}
-      """
-    And I generate a unique resource name from "portal-rest-labeled-api" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "rest" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"Labeled API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":["${CTX:labelA}"],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
-    When I send an authenticated API Portal "PUT" multipart request to "/apis/${CTX:apiId}" as "publisher" with metadata:
-      """
-      {"name":"Labeled API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":["${CTX:labelB}"],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
+    And I generate a unique resource name from "portal-rest-labelled" and store it as "apiId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelA":
+      | id          | ${CTX:labelA} |
+      | displayName | Label A       |
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelB":
+      | id          | ${CTX:labelB} |
+      | displayName | Label B       |
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id     | ${CTX:apiId}        |
+      | name   | ${CTX:apiId}        |
+      | labels | ["${CTX:labelA}"]   |
+    Then the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the JSON response array field "labels" should have 1 item
+    And the JSON response field "labels[0]" should be "${CTX:labelA}"
+
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id     | ${CTX:apiId}        |
+      | name   | ${CTX:apiId}        |
+      | labels | ["${CTX:labelB}"]   |
     Then the response status code should be 200
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
-    Then the response status code should be 200
-    And the response body should contain "${CTX:labelB}"
+    Then the response body should contain "${CTX:labelB}"
     And the response body should not contain "${CTX:labelA}"
 
-  Scenario: API update preserves the same labels
-    Given I generate a unique resource name from "portal-rest-same-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id":"${CTX:labelId}","displayName":"Persistent Label"}
-      """
-    And I generate a unique resource name from "portal-rest-same-label-api" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "rest" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"Persistent API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":["${CTX:labelId}"],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
-    When I send an authenticated API Portal "PUT" multipart request to "/apis/${CTX:apiId}" as "publisher" with metadata:
-      """
-      {"name":"Persistent API","version":"v1.1","type":"REST","status":"PUBLISHED","labels":["${CTX:labelId}"],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id      | ${CTX:apiId}      |
+      | name    | ${CTX:apiId}      |
+      | version | v1.1              |
+      | labels  | ["${CTX:labelB}"] |
     Then the response status code should be 200
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
-    Then the response status code should be 200
-    And the response body should contain "${CTX:labelId}"
+    Then the JSON response array field "labels" should have 1 item
+    And the JSON response field "labels[0]" should be "${CTX:labelB}"
 
-  Scenario: API update adds labels to an unlabeled API
-    Given I generate a unique resource name from "portal-rest-added-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id":"${CTX:labelId}","displayName":"Added Label"}
-      """
-    And I generate a unique resource name from "portal-rest-unlabeled-api" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "rest" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"Unlabeled API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":[],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
-    When I send an authenticated API Portal "PUT" multipart request to "/apis/${CTX:apiId}" as "publisher" with metadata:
-      """
-      {"name":"Unlabeled API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":["${CTX:labelId}"],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
-    Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until the response body contains "${CTX:labelId}"
-    Then the response body should contain "${CTX:labelId}"
-
-  Scenario: API update removes all labels when an empty list is sent
-    Given I generate a unique resource name from "portal-rest-removed-label" and store it as "labelId"
-    And a unique API Portal resource is created at "/labels" as "admin" with body and stored as "labelId":
-      """
-      {"id":"${CTX:labelId}","displayName":"Removed Label"}
-      """
-    And I generate a unique resource name from "portal-rest-remove-label-api" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "rest" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"Relabeled API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":["${CTX:labelId}"],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
-    When I send an authenticated API Portal "PUT" multipart request to "/apis/${CTX:apiId}" as "publisher" with metadata:
-      """
-      {"name":"Relabeled API","version":"v1.0","type":"REST","status":"PUBLISHED","labels":[],"endPoints":{"productionURL":"https://api.invalid","sandboxURL":"https://api.invalid"}}
-      """
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id     | ${CTX:apiId} |
+      | name   | ${CTX:apiId} |
+      | labels | []           |
     Then the response status code should be 200
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the JSON response array field "labels" should have 0 items
+
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id     | ${CTX:apiId}      |
+      | name   | ${CTX:apiId}      |
+      | labels | ["${CTX:labelA}"] |
     Then the response status code should be 200
-    And the response body should not contain "${CTX:labelId}"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until the response body contains "${CTX:labelA}"
+    Then the JSON response field "labels[0]" should be "${CTX:labelA}"
+
+  @APIP-CORE-011 @type:negative
+  Scenario: A second API with an existing id is refused
+    Given I generate a unique resource name from "portal-rest-duplicate" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+    Then the response status code should be 201
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId}        |
+      | name | ${CTX:apiId}-second |
+    Then the response status code should be 409
+    And the response body should not contain "constraint"
+    And the response body should not contain "SQL"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the JSON response field "name" should be "${CTX:apiId}"
+
+  @APIP-CORE-012 @type:negative
+  Scenario: Requests for an API that does not exist return not found
+    Given a REST API is created in the API Portal and stored as "apiId"
+    And I generate a unique resource name from "portal-rest-missing" and store it as "missingId"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:missingId}" as "publisher"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:missingId}/assets?type=API_DEFINITION&fileName=definition.json" as "publisher"
+    Then the response status code should be 404
+    When I update the API Portal API "${CTX:missingId}" from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:missingId} |
+      | name | ${CTX:missingId} |
+    Then the response status code should be 404
+    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:missingId}" as "publisher"
+    Then the response status code should be 404
+
+  @APIP-CORE-013 @type:negative
+  Scenario: An API with a subscription cannot be deleted until the subscription ends
+    Given a REST API is created in the API Portal and stored as "apiId"
+    And a developer subscription for API "${CTX:apiId}" using plan "Gold" is created and stored as "subscriptionId"
+    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 409
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "DELETE" request to "/subscriptions/${CTX:subscriptionId}" as "developer"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+
+  @APIP-CORE-014 @type:negative
+  Scenario: An API with an active key cannot be deleted until the key is revoked
+    Given a REST API is created in the API Portal and stored as "apiId"
+    And a publisher API key for API "${CTX:apiId}" is generated and stored as "keyId"
+    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 409
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/revoke" as "publisher" with JSON values:
+      | keyId | ${CTX:keyId} |
+    Then the response status code should be 204
+    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+
+  @APIP-CORE-015 @type:security
+  Scenario: Anonymous callers cannot list or create REST APIs
+    When I send an unauthenticated API Portal "GET" request to "/apis"
+    Then the response status code should be 401
+    When I send an unauthenticated API Portal "POST" request to "/apis"
+    Then the response status code should be 401
+    When I send an authenticated API Portal "GET" request to "/apis" as "publisher"
+    Then the response status code should be 200
+
+  @APIP-CORE-016 @type:security
+  Scenario: A developer can read REST APIs but cannot create, update or delete them
+    Given a REST API is created in the API Portal and stored as "apiId"
+    And I generate a unique resource name from "portal-rest-denied" and store it as "deniedId"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "developer"
+    Then the response status code should be 200
+    And I store the API Portal response body as "originalApi"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "developer" with values:
+      | id   | ${CTX:deniedId} |
+      | name | ${CTX:deniedId} |
+    Then the response status code should be 403
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "developer" with values:
+      | id   | ${CTX:apiId}    |
+      | name | ${CTX:deniedId} |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "developer"
+    Then the response status code should be 403
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "developer"
+    Then the response status code should be 200
+    And the API Portal response body should equal stored "originalApi"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:deniedId}" as "publisher"
+    Then the response status code should be 404
+
+  @APIP-CORE-017 @type:negative
+  Scenario Outline: A REST API with an invalid <field> is refused and stores nothing
+    Given I generate a unique resource name from "portal-rest-bad-field" and store it as "apiId"
+    And I generate a unique resource name from "portal-missing-plan" and store it as "missingPlanId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id      | ${CTX:apiId} |
+      | name    | ${CTX:apiId} |
+      | <field> | <value>      |
+    Then the response status code should be <status>
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 404
+
+    Examples:
+      | field             | value                           | status |
+      | status            | BOGUS                           | 400    |
+      | agentVisibility   | BOGUS                           | 400    |
+      | subscriptionPlans | [{"id": "${CTX:missingPlanId}"}] | 404    |
+      | labels            | ["${CTX:missingPlanId}"]         | 404    |
+
+  @APIP-CORE-113
+  Scenario: An updated API's page and specification show its new endpoints
+    Given I generate a unique resource name from "portal-rest-moved" and store it as "apiId"
+    And I generate a unique resource name from "portal-rest-moved-tag" and store it as "tag"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+    Then the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/docs/specification.json"
+    Then the response status code should be 200
+    And the response body should contain "https://backend.example.invalid"
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id                      | ${CTX:apiId}                               |
+      | name                    | ${CTX:apiId}                               |
+      | description             | Moved to its new backend ${CTX:apiId}      |
+      | tags                    | ["${CTX:tag}"]                             |
+      | endPoints.productionURL | https://moved.example.invalid/${CTX:apiId} |
+      | endPoints.sandboxURL    | https://moved-sandbox.example.invalid      |
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the JSON response field "description" should be "Moved to its new backend ${CTX:apiId}"
+    And the JSON response field "tags[0]" should be "${CTX:tag}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/docs/specification.json"
+    Then the response status code should be 200
+    And the JSON response field "servers[0].url" should be "https://moved.example.invalid/${CTX:apiId}"
+    And the JSON response field "servers[1].url" should be "https://moved-sandbox.example.invalid"
+    And the response body should not contain "https://backend.example.invalid"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}"
+    Then the response status code should be 200
+    And the response body should contain "Moved to its new backend ${CTX:apiId}"
+    And the response body should contain "${CTX:tag}"
+
+  @APIP-CORE-114
+  Scenario: A deleted API is gone from its page, its Markdown and the agent listings
+    Given I generate a unique resource name from "portal-rest-deleted" and store it as "apiId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+    And the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}.md"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:apiId}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/apis.md"
+    Then the response body should contain "${CTX:apiId}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/llms.txt"
+    Then the response body should contain "${CTX:apiId}"
+
+    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=API_DEFINITION&fileName=definition.json" as "publisher"
+    Then the response status code should be 404
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}"
+    Then the response status code should be 404
+    And the response body should contain "Page not found"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}.md"
+    Then the response status code should be 404
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/apis.md"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:apiId}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/llms.txt"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:apiId}"
+
+  @APIP-CORE-115
+  Scenario: The API listing pages through its results
+    Given I generate a unique resource name from "portal-rest-page" and store it as "apiA"
+    And I generate a unique resource name from "portal-rest-page" and store it as "apiB"
+    And I generate a unique resource name from "portal-rest-page" and store it as "apiC"
+    And I generate a unique resource name from "portal-rest-page-tag" and store it as "tag"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiA}    |
+      | name | ${CTX:apiA}    |
+      | tags | ["${CTX:tag}"] |
+    And the response status code should be 201
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiB}    |
+      | name | ${CTX:apiB}    |
+      | tags | ["${CTX:tag}"] |
+    And the response status code should be 201
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiC}    |
+      | name | ${CTX:apiC}    |
+      | tags | ["${CTX:tag}"] |
+    And the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/apis?tags=${CTX:tag}" as "publisher"
+    Then the response status code should be 200
+    And the JSON response field "pagination.total" should be 3
+    And the JSON response array field "list" should have 3 items
+    When I send an authenticated API Portal "GET" request to "/apis?tags=${CTX:tag}&limit=2&offset=0" as "publisher"
+    Then the response status code should be 200
+    And the JSON response array field "list" should have 2 items
+    And the JSON response field "pagination.total" should be 3
+    And the JSON response field "pagination.limit" should be 2
+    And I store the JSON response field "list[0].id" as "firstPageA"
+    And I store the JSON response field "list[1].id" as "firstPageB"
+    When I send an authenticated API Portal "GET" request to "/apis?tags=${CTX:tag}&limit=2&offset=2" as "publisher"
+    Then the response status code should be 200
+    And the JSON response array field "list" should have 1 item
+    And the JSON response field "pagination.offset" should be 2
+    And the JSON response array "list" should not contain an item with "id" equal to "${CTX:firstPageA}"
+    And the JSON response array "list" should not contain an item with "id" equal to "${CTX:firstPageB}"
+
+  @APIP-CORE-116 @type:negative
+  Scenario Outline: An API listing with <parameter> is refused
+    When I send an authenticated API Portal "GET" request to "/apis?<query>" as "publisher"
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/apis?limit=100&offset=0" as "publisher"
+    Then the response status code should be 200
+
+    Examples:
+      | parameter            | query      |
+      | a limit of zero      | limit=0    |
+      | a limit over 100     | limit=101  |
+      | a non-numeric limit  | limit=abc  |
+      | a negative offset    | offset=-1  |
+      | an unknown parameter | colour=red |
+
+  @APIP-CORE-117 @type:negative
+  Scenario: A second API with the same name and version is refused
+    Given I generate a unique resource name from "portal-rest-namesake" and store it as "apiId"
+    And I generate a unique resource name from "portal-rest-namesake-copy" and store it as "copyId"
+    And I generate a unique resource name from "portal-rest-namesake-next" and store it as "nextId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+    Then the response status code should be 201
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:copyId} |
+      | name | ${CTX:apiId}  |
+    Then the response status code should be 409
+    And the response body should not contain "constraint"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:copyId}" as "publisher"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/apis?name=${CTX:apiId}" as "publisher"
+    Then the JSON response array field "list" should have 1 item
+    And the JSON response field "list[0].id" should be "${CTX:apiId}"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id      | ${CTX:nextId} |
+      | name    | ${CTX:apiId}  |
+      | version | v2.0          |
+    Then the response status code should be 201
+
+  @APIP-CORE-118 @type:negative
+  Scenario: A REST API without a name is refused and stores nothing
+    Given I generate a unique resource name from "portal-rest-nameless" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId} |
+      | name | null         |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 404
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+    Then the response status code should be 201
+
+  @APIP-CORE-120
+  Scenario: A deprecated API stays listed and subscribed, and can be published again
+    Given a REST API is created in the API Portal and stored as "apiId"
+    And a developer subscription for API "${CTX:apiId}" using plan "Gold" is created and stored as "subscriptionId"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}"
+    Then the response status code should be 200
+    And the response body should not contain "dp-badge--deprecated"
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id     | ${CTX:apiId} |
+      | name   | ${CTX:apiId} |
+      | status | DEPRECATED   |
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the JSON response field "status" should be "DEPRECATED"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}"
+    Then the response status code should be 200
+    And the response body should contain "dp-badge--deprecated"
+    When I send an authenticated API Portal "GET" request to "/apis?name=${CTX:apiId}" as "publisher"
+    Then the JSON response array "list" should contain an item with "id" equal to "${CTX:apiId}"
+    When I send an authenticated API Portal "GET" request to "/subscriptions/${CTX:subscriptionId}" as "developer"
+    Then the response status code should be 200
+    And the JSON response field "status" should be "ACTIVE"
+
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id     | ${CTX:apiId} |
+      | name   | ${CTX:apiId} |
+      | status | PUBLISHED    |
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}"
+    Then the response status code should be 200
+    And the response body should not contain "dp-badge--deprecated"
+
+  @APIP-CORE-121
+  Scenario: An API's owners and tags are stored, shown and found by search
+    Given I generate a unique resource name from "portal-rest-owned" and store it as "apiId"
+    And I generate a unique resource name from "portal-rest-owned-tag" and store it as "tag"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id     | ${CTX:apiId}                                                                                                                                                        |
+      | name   | ${CTX:apiId}                                                                                                                                                        |
+      | tags   | ["${CTX:tag}"]                                                                                                                                                      |
+      | owners | {"technicalOwner": "Tech Owner", "technicalOwnerEmail": "tech@example.invalid", "businessOwner": "Business Owner", "businessOwnerEmail": "business@example.invalid"} |
+    Then the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "developer"
+    Then the response status code should be 200
+    And the JSON response field "owners.technicalOwner" should be "Tech Owner"
+    And the JSON response field "owners.technicalOwnerEmail" should be "tech@example.invalid"
+    And the JSON response field "owners.businessOwner" should be "Business Owner"
+    And the JSON response field "owners.businessOwnerEmail" should be "business@example.invalid"
+    And the JSON response field "tags[0]" should be "${CTX:tag}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:tag}"
+    When I send an authenticated API Portal "GET" request to "/apis?query=${CTX:tag}" as "developer"
+    Then the response status code should be 200
+    And the JSON response array "list" should contain an item with "id" equal to "${CTX:apiId}"
+    When I send an authenticated API Portal "GET" request to "/apis?tags=${CTX:tag}" as "developer"
+    Then the JSON response array field "list" should have 1 item
+
+  @APIP-CORE-122
+  Scenario: The plans an API offers follow every update
+    Given I generate a unique resource name from "portal-rest-plans" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id                | ${CTX:apiId}     |
+      | name              | ${CTX:apiId}     |
+      | subscriptionPlans | [{"id": "Gold"}] |
+    Then the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "developer"
+    Then the JSON response array field "subscriptionPlans" should have 1 item
+    And the JSON response field "subscriptionPlans[0].id" should be "Gold"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}"
+    Then the response body should contain "aov-plans-wrap"
+
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id                | ${CTX:apiId}                       |
+      | name              | ${CTX:apiId}                       |
+      | subscriptionPlans | [{"id": "Gold"}, {"id": "Silver"}] |
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "developer"
+    Then the JSON response array field "subscriptionPlans" should have 2 items
+    And the JSON response array "subscriptionPlans" should contain an item with "id" equal to "Silver"
+
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id                | ${CTX:apiId} |
+      | name              | ${CTX:apiId} |
+      | subscriptionPlans | []           |
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "developer"
+    Then the response body should not contain "Silver"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}"
+    Then the response status code should be 200
+    And the response body should not contain "aov-plans-wrap"
+    When I send an authenticated API Portal "POST" request to "/subscriptions" as "developer" with JSON values:
+      | artifactId         | ${CTX:apiId} |
+      | subscriptionPlanId | Gold         |
+    Then the response status code should be 400
+    And the response body should contain "This API does not support subscriptions"
+    When I send an authenticated API Portal "GET" request to "/subscriptions?artifactId=${CTX:apiId}" as "developer"
+    Then the response status code should be 200
+    And the JSON response array field "list" should have 0 items
+
+  @APIP-CORE-123
+  Scenario: Catalogue search matches an API's description, tags and definition by whole word
+    Given I generate a unique resource name from "portal-rest-searched" and store it as "apiId"
+    And I generate a unique resource name from "portal-rest-searched-tag" and store it as "tag"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "rest titled Pomegranate ledger ${CTX:apiId}" with values:
+      | id          | ${CTX:apiId}                             |
+      | name        | ${CTX:apiId}                             |
+      | description | Kumquatorchard settlement ${CTX:apiId}   |
+      | tags        | ["${CTX:tag}"]                           |
+    Then the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/apis?query=kumquatorchard" as "developer"
+    Then the response status code should be 200
+    And the JSON response array "list" should contain an item with "id" equal to "${CTX:apiId}"
+    When I send an authenticated API Portal "GET" request to "/apis?query=${CTX:tag}" as "developer"
+    Then the JSON response array "list" should contain an item with "id" equal to "${CTX:apiId}"
+    When I send an authenticated API Portal "GET" request to "/apis?query=pomegranate" as "developer"
+    Then the JSON response array "list" should contain an item with "id" equal to "${CTX:apiId}"
+    When I send an authenticated API Portal "GET" request to "/apis?query=kumquatorch" as "developer"
+    Then the response status code should be 200
+    And the JSON response array "list" should not contain an item with "id" equal to "${CTX:apiId}"
+
+  @APIP-CORE-124
+  Scenario: A search that matches nothing is empty, and clearing the search lists the catalogue again
+    Given I generate a unique resource name from "portal-rest-unmatched" and store it as "missingTerm"
+    And a REST API is created in the API Portal and stored as "apiId"
+    When I send an authenticated API Portal "GET" request to "/apis?query=${CTX:missingTerm}" as "developer"
+    Then the response status code should be 200
+    And the JSON response field "count" should be 0
+    And the JSON response array field "list" should have 0 items
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/apis?query=${CTX:missingTerm}"
+    Then the response status code should be 200
+    And the response body should contain "No APIs available yet"
+    And the response body should not contain "apilist-results-count"
+    When I send an authenticated API Portal "GET" request to "/apis?query=" as "developer"
+    Then the response status code should be 400
+    And the response body should contain "query"
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/apis?query="
+    Then the response status code should be 200
+    And the response body should contain "apilist-results-count"
+    And the response body should contain "apiCard-${CTX:apiId}"

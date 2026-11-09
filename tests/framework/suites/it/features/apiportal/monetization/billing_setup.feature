@@ -16,16 +16,21 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@api-portal-billing-setup
+@APIPORTAL @api-portal-billing-setup
 Feature: Setting up billing in the API Portal
   As an API Portal administrator
   I want to connect Moesif and Stripe with my keys, and remove them again
   So that paid plans can be sold, and nothing made with my keys is left behind when I stop
 
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-BILLING-001..006 and 015, at the API
+  # level. The api-portal-billing block gives this runner a portal of its own, billed through the
+  # testbench Stripe and Moesif services, which are reset before every scenario.
+
   Background:
     Given I send a "POST" request to the "stripe" service at "/test/reset"
     And I send a "POST" request to the "moesif" service at "/test/reset"
 
+  @APIP-BILLING-001
   Scenario: Setting up billing connects Moesif to Stripe and registers both event endpoints
     When I set up billing in the API Portal
     Then the response status code should be 201
@@ -58,8 +63,12 @@ Feature: Setting up billing in the API Portal
     Then the JSON response field "partnerAccounts.stripe" should not exist
     When I send an authenticated API Portal "GET" request to "/billing-configuration" as "admin"
     Then the response status code should be 404
+    # Removing it again finds nothing to remove.
+    When I send an authenticated API Portal "DELETE" request to "/billing-configuration" as "admin"
+    Then the response status code should be 404
+    And the JSON response field "message" should be "Billing is not set up for this organization."
 
-  @type:negative
+  @APIP-BILLING-002 @type:negative
   Scenario: A Stripe key Stripe refuses is reported against it, and nothing is set up
     Given I send a "POST" request to the "stripe" service at "/test/fail" with body:
       """
@@ -75,7 +84,7 @@ Feature: Setting up billing in the API Portal
     When I send an authenticated API Portal "GET" request to "/billing-configuration" as "admin"
     Then the response status code should be 404
 
-  @type:negative
+  @APIP-BILLING-003 @type:negative
   Scenario: A Moesif that can't be reached is reported as unavailable
     Given I send a "POST" request to the "moesif" service at "/test/fail" with body:
       """
@@ -88,7 +97,7 @@ Feature: Setting up billing in the API Portal
     When I send an authenticated API Portal "GET" request to "/billing-configuration" as "admin"
     Then the response status code should be 404
 
-  @type:negative
+  @APIP-BILLING-004 @type:negative
   Scenario: A step that fails undoes the steps before it
     Given I send a "POST" request to the "stripe" service at "/test/fail" with body:
       """
@@ -105,7 +114,7 @@ Feature: Setting up billing in the API Portal
     When I send an authenticated API Portal "GET" request to "/billing-configuration" as "admin"
     Then the response status code should be 404
 
-  @type:negative
+  @APIP-BILLING-005 @type:negative
   Scenario Outline: Keys that are not what billing needs are refused before any provider is called
     When I set up billing in the API Portal with values:
       | <field> | <value> |
@@ -123,6 +132,7 @@ Feature: Setting up billing in the API Portal
       | webhookBaseUrl               | http://api-portal:9543 | Enter an https address                                           |
       | stripeApiKey                 |                        | stripeApiKey is required                                         |
 
+  @APIP-BILLING-006
   Scenario: The portal's event endpoint moves to another address, keeping its signing secret
     Given I set up billing in the API Portal
     And the response status code should be 201
@@ -143,3 +153,38 @@ Feature: Setting up billing in the API Portal
     When I send a "GET" request to the "stripe" service at "/test/state"
     Then the JSON response array field "webhookEndpoints" should have 2 items
     And the JSON response array "webhookEndpoints" item with "metadata.wso2_api_portal" equal to "true" should have "url" equal to "${CTX:movedEndpointUrl}"
+
+  @APIP-BILLING-015 @type:security
+  Scenario Outline: A <role> can't read, set up, move or remove billing
+    Given I set up billing in the API Portal
+    And the response status code should be 201
+    And I store the JSON response field "webhookEndpointUrl" as "endpointUrl"
+    When I send an authenticated API Portal "GET" request to "/billing-configuration" as "<role>"
+    Then the response status code should be 403
+    # The scope is checked before the body, so no keys are needed to be refused.
+    When I send an authenticated API Portal "POST" request to "/billing-configuration" as "<role>" with JSON body:
+      """
+      {}
+      """
+    Then the response status code should be 403
+    When I send an authenticated API Portal "PUT" request to "/billing-configuration/webhook-endpoint" as "<role>" with JSON values:
+      | webhookBaseUrl | https://api-portal:9543/denied |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "DELETE" request to "/billing-configuration" as "<role>"
+    Then the response status code should be 403
+    When I send an unauthenticated API Portal "GET" request to "/billing-configuration"
+    Then the response status code should be 401
+    And the response body should not contain "STRIPE"
+    # Billing is as the administrator left it: both endpoints are in Stripe, and none was moved.
+    When I send a "GET" request to the "stripe" service at "/test/state"
+    Then the JSON response array field "webhookEndpoints" should have 2 items
+    And the JSON response array "webhookEndpoints" item with "metadata.wso2_api_portal" equal to "true" should have "url" equal to "${CTX:endpointUrl}"
+    When I send an authenticated API Portal "GET" request to "/billing-configuration" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "mode" should be "TEST"
+    And the JSON response field "webhookEndpointUrl" should be "${CTX:endpointUrl}"
+
+    Examples:
+      | role      |
+      | publisher |
+      | developer |
