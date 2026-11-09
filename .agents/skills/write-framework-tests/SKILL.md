@@ -94,11 +94,11 @@ grep -rn "sc.Step(\`\^.*<a word from your step>" suites/<suite>/steps
 it is created, as the actor that created it, and deregister what the scenario deletes
 itself.
 
-- A resource created by clicking in a browser is invisible to the framework. Register it in
-  the same step that clicks, as soon as the console confirms the creation (for example from
-  the ID in the console's network response), so a later failure in that step or the next one
-  cannot skip the registration. If registration fails, delete the resource on a best-effort
-  basis and fail the step.
+- A resource created by clicking in a browser is invisible to the framework, and a click can
+  create it even when the step then times out. Generate its name or handle first, register it
+  for cleanup **before** the click, then click. The deleter must treat a 404 as already
+  deleted, so a creation that never happened is not a failure. `startWizard` in
+  `suites/ui/steps/apiportal/api_wizard.go` shows the pattern.
 - A cleanup failure in the log (`WARN resource cleanup failed`) is a leak, not noise.
 - Cloud scenarios run against a shared organisation: create only what the scenario owns,
   never change a shared resource (the organisation's gateway, for example) without restoring

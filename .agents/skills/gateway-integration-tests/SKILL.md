@@ -30,8 +30,10 @@ conventions for writing features and steps.
 - Suite: `suites/it/it-suite.yaml` holds the shared settings; the **blocks** live in
   `suites/it/blocks/*.yaml`, one file per combination of products. A block is a set of
   components (gateway, database, testbench, platform-api, …) started once; inside each block,
-  **runners** (lists of feature files that run against that block). Blocks with a database
-  matrix expand to one variant per engine: `<block>/sqlite`, `<block>/postgres`, `<block>/sqlserver`.
+  **runners** (lists of feature files that run against that block). A block with a database
+  matrix expands to one variant per engine (`gateway-core/sqlite`, `/postgres`, `/sqlserver`);
+  a matrix on two components names each variant after both
+  (`platform-api-core/api-sqlite_gateway-sqlite`).
 - Writing a new test: follow [[write-framework-tests]]. In short: start from its entry in the
   feature's scenario list (`scenarios/on-prem/<CODE>.yaml`), then pick the block file by the
   products the feature checks, and add the feature to an existing runner that fits it, or else

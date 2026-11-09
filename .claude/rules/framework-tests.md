@@ -26,7 +26,8 @@ never break.
    last resort, with the reason written in a comment above it.
 
 3. **Clean up everything a test creates.** Register each resource with the cleanup registry as
-   it is created, as the actor that created it, including what a browser click creates.
+   it is created, as the actor that created it. A resource a browser click creates is registered
+   under its generated name before the click, with a deleter that treats 404 as deleted.
    A cleanup failure in the log is a leak, never noise.
 
 4. **Assert exactly what the entry expects.** Never widen an assertion (`401 || 403`) or assert
