@@ -33,9 +33,9 @@ conventions for writing features and steps.
   **runners** (lists of feature files that run against that block). Blocks with a database matrix expand
   to one variant per engine: `<block>/sqlite`, `<block>/postgres`, `<block>/sqlserver`.
 - Adding a feature to the suite: pick the block file by the products the feature checks and add a
-  runner to its first block, the generic block that most tests fit in. Use another block only
-  when the feature cannot run there, and add a new block or a new block file only as the last
-  resort. The rules are in "Integration Suite Blocks" in
+  runner to an existing block in it that fits the feature (most fit the file's generic block,
+  such as `gateway-core`). Add a new block or a new block file only as the last resort, when no
+  existing block fits. The rules are in "Integration Suite Blocks" in
   `tests/framework/CLAUDE.md`.
 - Features: `suites/it/features/<area>/…/*.feature`. Each feature file starts with a tag
   (e.g. `@config-dump`).

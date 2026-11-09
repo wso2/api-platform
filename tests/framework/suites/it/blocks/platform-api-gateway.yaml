@@ -19,9 +19,9 @@
 # Platform API and gateway blocks: the control plane managing gateways, with no API Portal.
 #
 # Adding a test:
-#   1. Add a runner to the main block (the first one below). It is the generic block that
-#      most tests fit in, so this is the default.
-#   2. Only if that cannot work, add a new block. This is the last resort: the test needs a
+#   1. Add a runner to an existing block below that fits the test: one whose product settings
+#      (overlay) and isolation the test can run with. Most tests fit the generic platform-api-core block.
+#   2. Only if no block fits, add a new block. This is the last resort: the test needs a
 #      product setting (an overlay) the other runners must not see, or must run alone (it
 #      restarts a product, counts metrics, or expects an empty product). Say why in a comment
 #      above the block.
@@ -30,8 +30,8 @@
 # Feature paths are relative to suites/it, as in it-suite.yaml.
 
 blocks:
-  # The main Platform API block: Platform API managing a gateway. A new control plane test goes
-  # here unless it needs its own settings or must run alone.
+  # The generic Platform API block: Platform API managing a gateway. Most control plane tests fit
+  # here; one that needs its own settings or must run alone goes in a block that has them.
   - name: platform-api-core
     parallel: 2
     components:

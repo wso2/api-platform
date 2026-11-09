@@ -36,10 +36,11 @@ code, whether you changed gateway components or only test files.
    ```
 
 3. **Adding a feature to the suite.** The blocks live in `tests/framework/suites/it/blocks/`, one
-   file per combination of products the tests check. In the file that matches your feature, the
-   first block is the generic block that most tests fit in: add your runner there. Only when the
-   feature cannot run there (it needs a product setting the other runners must not see, or must
-   run alone) does it go in another block, and a new block or block file is the last resort.
+   file per combination of products the tests check. In the file that matches your feature, add
+   your runner to an existing block that fits it: one whose settings and isolation your feature
+   can run with. Most features fit the file's generic block, such as `gateway-core`. A new block
+   (when no block fits: the feature needs a product setting the other runners must not see, or
+   must run alone) or a new block file is the last resort.
    Follow "Integration Suite Blocks" in `tests/framework/CLAUDE.md`.
 
 4. **Restore `gateway/build-manifest.yaml` before committing.** A source build rewrites it with the

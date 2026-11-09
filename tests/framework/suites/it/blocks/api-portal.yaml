@@ -20,9 +20,9 @@
 # mode runs without it), but no gateway.
 #
 # Adding a test:
-#   1. Add a runner to the main block (the first one below). It is the generic block that
-#      most tests fit in, so this is the default.
-#   2. Only if that cannot work, add a new block. This is the last resort: the test needs a
+#   1. Add a runner to an existing block below that fits the test: one whose product settings
+#      (overlay) and isolation the test can run with. Most tests fit the generic api-portal-core block.
+#   2. Only if no block fits, add a new block. This is the last resort: the test needs a
 #      product setting (an overlay) the other runners must not see, or must run alone (it
 #      restarts a product, counts metrics, or expects an empty product). Say why in a comment
 #      above the block.
@@ -31,8 +31,8 @@
 # Feature paths are relative to suites/it, as in it-suite.yaml.
 
 blocks:
-  # The main API Portal block. A new API Portal test goes here unless it needs its own portal
-  # settings or must run alone.
+  # The generic API Portal block. Most API Portal tests fit here; one that needs its own portal
+  # settings or must run alone goes in a block that has them.
   - name: api-portal-core
     parallel: 9
     components:

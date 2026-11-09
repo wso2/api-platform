@@ -451,7 +451,7 @@ one combination of the products its tests check. Helper services (`testbench`, `
 `a2a-trip-planner`) do not count towards the combination, and neither does a product a block
 starts only because another needs it (the Platform API an API Portal depends on).
 
-| File | Products the tests check | Main block |
+| File | Products the tests check | Generic block |
 |---|---|---|
 | `blocks/gateway.yaml` | gateway | `gateway-core` |
 | `blocks/platform-api.yaml` | Platform API | (its only block) |
@@ -462,13 +462,14 @@ starts only because another needs it (the Platform API an API Portal depends on)
 To add a feature to the suite:
 
 1. Pick the file by the products the feature's scenarios check.
-2. Add a runner to that file's main block, the first block in the file. It is the generic
-   block that most tests fit in, so this is the default.
-3. Add a new block only as the last resort, when the feature needs a product setting (an
-   overlay) the main block's other runners must not see, or must run alone because it
+2. Add a runner to an existing block in that file that fits the feature: one whose product
+   settings (overlay) and isolation the feature can run with. Most features fit the file's
+   generic block in the table above; a feature that needs a special setting or isolation may
+   fit an existing block that already has it.
+3. Add a new block only as the last resort, when no existing block fits: the feature needs a
+   product setting (an overlay) other runners must not see, or must run alone because it
    restarts or stops a product, reads gateway-wide counters or logs, or expects a product with
-   no other state. First check whether an existing block in the file already has that setting
-   or isolation, and add the runner there. Write the reason as a comment above a new block.
+   no other state. Write the reason as a comment above the new block.
 4. A new combination of products is an even worse last resort: check that the feature cannot
    be tested with an existing combination first. If it really needs one, add
    `blocks/<products>.yaml` with the same header as the other files, list it in
