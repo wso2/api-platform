@@ -2088,8 +2088,9 @@ function parseApiMetadataFromYamlRequest(req) {
 }
 
 /*
- * The YAML shorthand `requestCount` / `eventCount` as a limit. It names no window, and the portal has
- * always shown it per minute, so it is a per-minute limit. Undefined when the YAML has no shorthand.
+ * The YAML shorthand `requestCount` / `eventCount` as a limit, which sets the plan's request-count or
+ * event-count condition. It names no window, and the portal has always shown it per minute, so it is a
+ * per-minute limit. Undefined when the YAML has no shorthand.
  */
 function legacyLimitsFromSpec(spec) {
     const type = (spec.type || '').toLowerCase();
@@ -2114,7 +2115,7 @@ function mapYamlToSubscriptionPlan(item) {
         conditions: spec.conditions,
         pricing: spec.pricing,
     };
-    // Only limits the YAML gives: an empty list would remove the plan's request-count condition.
+    // Only limits the YAML gives: an empty list would remove the plan's request-count and event-count conditions.
     const limits = Array.isArray(spec.limits) ? spec.limits : legacyLimitsFromSpec(spec);
     if (limits !== undefined) plan.limits = limits;
     return plan;

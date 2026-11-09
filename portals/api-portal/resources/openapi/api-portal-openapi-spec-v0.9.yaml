@@ -4078,7 +4078,8 @@ components:
         create/upsert; each object carries its rate/quota rules in `limits`. Alternatively, upload a YAML file in
         the `subscriptionPlan` multipart field; use `kind: SubscriptionPlan` for a single plan or
         `kind: SubscriptionPlanList` with an `items` array for bulk operations. YAML uploads may use the legacy
-        `type: requestcount` or `type: eventcount` shorthand, which is converted into `limits` before storage. A
+        `type: requestcount` or `type: eventcount` shorthand, which is converted into `limits` before storage (a
+        per-minute request-count or event-count condition). A
         paid plan's `spec.pricing` takes the same fields as `pricing` in JSON and follows the same rules.
       content:
         application/json:
@@ -6198,14 +6199,14 @@ components:
           type: array
           description: >-
             The plan's conditions. A plan saved before conditions shows its REQUEST_COUNT and EVENT_COUNT limits as
-            a request-count condition.
+            its request-count and event-count conditions.
           items:
             $ref: "#/components/schemas/SubscriptionPlanCondition"
         limits:
           type: array
           description: >-
-            The windows of the plan's request-count condition as REQUEST_COUNT limits, kept for older clients.
-            Empty when the plan has no request-count condition.
+            The windows of the plan's request-count and event-count conditions as REQUEST_COUNT and EVENT_COUNT
+            limits, kept for older clients. Empty when the plan has neither condition.
           items:
             type: object
             properties:
@@ -6455,8 +6456,8 @@ components:
         - type
         - params
       description: >-
-        One condition of a subscription plan. A built-in condition (request-count, tool-call-count, token-count) has the
-        id its type fixes (requests, tool-calls, tokens) and its windows as params: `{"limits": [{"count", "timeAmount",
+        One condition of a subscription plan. A built-in condition (request-count, event-count, tool-call-count,
+        token-count) has the id its type fixes (requests, events, tool-calls, tokens) and its windows as params: `{"limits": [{"count", "timeAmount",
         "timeUnit"}], "onExceed", "tokenType"}`, with timeUnit one of MINUTE, HOUR, DAY or MONTH, onExceed reject
         (default) or allow, and tokenType total (default), prompt or completion for a token-count condition only. A
         custom condition has an id of its own (lowercase letters, digits and hyphens) and key-value pairs as params,
@@ -6471,6 +6472,7 @@ components:
             - request-count
             - tool-call-count
             - token-count
+            - event-count
             - custom
         params:
           type: object
@@ -6531,18 +6533,18 @@ components:
           type: array
           maxItems: 20
           description: >-
-            The plan's conditions: at most one of each built-in type (request-count, tool-call-count, token-count)
-            and any number of custom conditions, up to 20. Replaces all of them on update, and [] removes them all;
+            The plan's conditions: at most one of each built-in type (request-count, event-count, tool-call-count,
+            token-count) and any number of custom conditions, up to 20. Replaces all of them on update, and [] removes them all;
             omit it to keep them.
           items:
             $ref: "#/components/schemas/SubscriptionPlanCondition"
         limits:
           type: array
           description: >-
-            Kept for older clients: use `conditions` instead. Sent without `conditions`, the REQUEST_COUNT and
-            EVENT_COUNT limits that have a timeUnit set the plan's request-count condition (the subscription rate
-            limit counts events as requests), and its other conditions are kept; an empty list removes the
-            request-count condition. Unlimited (-1) limits and other limit types are not kept. Ignored when
+            Kept for older clients: use `conditions` instead. Sent without `conditions`, the REQUEST_COUNT limits
+            that have a timeUnit set the plan's request-count condition and the EVENT_COUNT limits its event-count
+            condition, and its other conditions are kept; a type with no such limits has its condition removed, so
+            an empty list removes both. Unlimited (-1) limits and other limit types are not kept. Ignored when
             `conditions` is sent.
           items:
             type: object

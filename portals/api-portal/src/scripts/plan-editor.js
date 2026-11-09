@@ -27,7 +27,7 @@
   var editPlanId = null;
 
   var TIME_UNITS  = ['MINUTE','HOUR','DAY','MONTH'];
-  var BUILT_IN_IDS = { 'request-count': 'requests', 'tool-call-count': 'tool-calls', 'token-count': 'tokens' };
+  var BUILT_IN_IDS = { 'request-count': 'requests', 'event-count': 'events', 'tool-call-count': 'tool-calls', 'token-count': 'tokens' };
   var CUSTOM_ID = /^[a-z][a-z0-9-]{0,62}$/;
   var MAX_CONDITIONS = 20;
   var MAX_WINDOWS = 10;
@@ -36,6 +36,9 @@
   var TYPES = [
     { type: 'request-count', name: 'Request count', icon: 'bi-activity', scope: 'REST API only',
       desc: 'Requests per period, for the whole REST API.', menu: 'REST APIs only. Counts every request.' },
+    { type: 'event-count', name: 'Event count', icon: 'bi-broadcast', scope: 'Event APIs only',
+      desc: 'Events per period, for the whole WebSocket or WebSub API.',
+      menu: 'WebSocket and WebSub APIs only. Counts every event.' },
     { type: 'tool-call-count', name: 'Tool-call count', icon: 'bi-wrench', scope: 'MCP only',
       desc: 'MCP tools/call per period, for the whole MCP proxy. initialize and tools/list are not counted.',
       menu: 'MCP proxies only. Counts tools/call.' },
@@ -49,7 +52,7 @@
   TYPES.forEach(function (t) { TYPE_OF[t.type] = t; });
 
   var UNIT_WORDS = { MINUTE: 'minute', HOUR: 'hour', DAY: 'day', MONTH: 'month' };
-  var WHAT = { 'request-count': 'requests', 'tool-call-count': 'tool calls' };
+  var WHAT = { 'request-count': 'requests', 'event-count': 'events', 'tool-call-count': 'tool calls' };
   var TOKEN_WORDS = { total: 'tokens', prompt: 'prompt tokens', completion: 'completion tokens' };
 
   function v(id) { var e=document.getElementById(id); return e?e.value.trim():''; }

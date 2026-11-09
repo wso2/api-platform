@@ -21,8 +21,8 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const {
-    normalizeConditions, requestWindowsFromLimits, requestCondition, withRequestCondition,
-    requestLimitsFromConditions, displayLimits, conditionChips, limitLines,
+    normalizeConditions, windowsFromLimits, limitCondition, withCondition, conditionsFromLimits,
+    legacyLimitsFromConditions, displayLimits, conditionChips, limitLines,
 } = require('./subscriptionPlanConditions');
 const { ValidationError } = require('./errors/customErrors');
 
@@ -40,10 +40,12 @@ function refused(conditions, message) {
 test('built-in conditions get their fixed ids and defaults', () => {
     assert.deepEqual(normalizeConditions([
         limitsOf('request-count', w(10, 0, ' minute ')),
+        { id: 'events', type: 'event-count', params: { limits: [w(50, 0, 'hour'), w(500, 1, 'DAY')], onExceed: 'allow' } },
         limitsOf('tool-call-count', w(5, 2, 'HOUR')),
         { id: 'tokens', type: 'token-count', params: { limits: [w(100, 1, 'MONTH')], onExceed: 'allow' } },
     ]), [
         { id: 'requests', type: 'request-count', params: { limits: [w(10, 1, 'MINUTE')], onExceed: 'reject' } },
+        { id: 'events', type: 'event-count', params: { limits: [w(50, 1, 'HOUR'), w(500, 1, 'DAY')], onExceed: 'allow' } },
         { id: 'tool-calls', type: 'tool-call-count', params: { limits: [w(5, 2, 'HOUR')], onExceed: 'reject' } },
         { id: 'tokens', type: 'token-count', params: { limits: [w(100, 1, 'MONTH')], onExceed: 'allow', tokenType: 'total' } },
     ]);
@@ -59,7 +61,7 @@ test('the Platform API rules are enforced with its messages', () => {
     refused({}, 'conditions must be a list');
     refused(Array.from({ length: 21 }, (_, i) => ({ id: `c${i}`, type: 'custom', params: {} })), 'a plan can have at most 20 conditions');
     refused([{ params: {} }], 'conditions[0]: type is required');
-    refused([{ type: 'quota', params: {} }], 'conditions[0]: type must be one of request-count, tool-call-count, token-count or custom');
+    refused([{ type: 'quota', params: {} }], 'conditions[0]: type must be one of request-count, tool-call-count, token-count, event-count or custom');
     refused([{ id: 'calls', ...limitsOf('request-count', w(1, 1, 'MINUTE')) }], 'conditions[0]: the id of a request-count condition is requests');
     refused([limitsOf('tool-call-count', w(1, 1, 'MINUTE')), limitsOf('tool-call-count', w(1, 1, 'DAY'))],
         'conditions[1]: a plan can have only one tool-call-count condition');
@@ -77,6 +79,14 @@ test('the Platform API rules are enforced with its messages', () => {
     refused([{ type: 'token-count', params: { limits: [w(1, 1, 'DAY')], tokenType: 'cached' } }], 'conditions[0]: params.tokenType must be total, prompt or completion');
     refused([{ type: 'request-count', params: { limits: [w(1, 1, 'DAY')], tokenType: 'total' } }], 'conditions[0]: params.tokenType is for token-count conditions only');
     refused([{ type: 'request-count', params: { limits: [w(1, 1, 'DAY')], burst: 2 } }], 'conditions[0]: invalid params: unknown field "burst"');
+    refused([{ id: 'event', ...limitsOf('event-count', w(1, 1, 'MINUTE')) }], 'conditions[0]: the id of a event-count condition is events');
+    refused([limitsOf('event-count', w(1, 1, 'MINUTE')), limitsOf('event-count', w(1, 1, 'DAY'))],
+        'conditions[1]: a plan can have only one event-count condition');
+    refused([limitsOf('event-count')], 'conditions[0]: params.limits needs at least one limit');
+    refused([limitsOf('event-count', w(1, 60, 'MINUTE'), w(2, 1, 'HOUR'))],
+        'conditions[0].params.limits[1]: the condition already has a limit over 1 HOUR; each limit needs a window of its own length');
+    refused([{ type: 'event-count', params: { limits: [w(1, 1, 'DAY')], tokenType: 'total' } }], 'conditions[0]: params.tokenType is for token-count conditions only');
+    refused([{ id: 'events', type: 'custom', params: {} }], 'conditions[0]: events is the id of a built-in condition');
     refused([{ id: 'Region', type: 'custom', params: {} }],
         'conditions[0]: a custom condition needs an id of lowercase letters, digits and hyphens, starting with a letter (at most 63 characters)');
     refused([{ id: 'tokens', type: 'custom', params: {} }], 'conditions[0]: tokens is the id of a built-in condition');
@@ -90,65 +100,114 @@ test('the Platform API rules are enforced with its messages', () => {
     refused([{ type: 'request-count', params: { limits: [w(1, 1, 'DAY')], onExceed: false } }], 'conditions[0]: params.onExceed must be reject or allow');
     refused([{ type: 'token-count', params: { limits: [w(1, 1, 'DAY')], tokenType: 0 } }], 'conditions[0]: params.tokenType must be total, prompt or completion');
     refused([{ type: 'request-count', params: { limits: [w(1, 1, 'DAY')], tokenType: false } }], 'conditions[0]: params.tokenType is for token-count conditions only');
-    refused([limitsOf('constructor', w(1, 1, 'DAY'))], 'conditions[0]: type must be one of request-count, tool-call-count, token-count or custom');
+    refused([limitsOf('constructor', w(1, 1, 'DAY'))], 'conditions[0]: type must be one of request-count, tool-call-count, token-count, event-count or custom');
 });
 
-test('request windows come from the REQUEST_COUNT and EVENT_COUNT limits that have a window', () => {
-    assert.deepEqual(requestWindowsFromLimits([
+test('request-count windows come from the REQUEST_COUNT limits, event-count windows from the EVENT_COUNT ones', () => {
+    const limits = [
         { limit_type: 'REQUEST_COUNT', limit_count: '100', time_unit: 'MINUTE', time_amount: 1 },
         { limitType: 'REQUEST_COUNT', limitCount: 6000, timeUnit: 'hour' },
         { limitType: 'REQUEST_COUNT', limitCount: 50, timeUnit: 'MINUTE', timeAmount: 60 },
         { limitType: 'EVENT_COUNT', limitCount: 9, timeUnit: 'DAY' },
-        { limitType: 'EVENT_COUNT', limitCount: 7, timeUnit: 'MINUTE' },
+        { limitType: 'EVENT_COUNT', limitCount: 7, timeUnit: 'MINUTE', timeAmount: 1440 },
+        { limitType: 'EVENT_COUNT', limitCount: -1, timeUnit: 'HOUR' },
         { limitType: 'REQUEST_COUNT', limitCount: -1, timeUnit: 'DAY' },
-        { limitType: 'REQUEST_COUNT', limitCount: 9, timeUnit: null },
+        { limitType: 'REQUEST_COUNT', limitCount: 9, timeUnit: 'WEEK' },
         { limitType: 'BANDWIDTH', limitCount: 9, timeUnit: 'MONTH' },
-    ]), [w(100, 1, 'MINUTE'), w(6000, 1, 'HOUR'), w(9, 1, 'DAY')]);
-    assert.equal(requestCondition([]), null);
+    ];
+    assert.deepEqual(windowsFromLimits(limits), [w(100, 1, 'MINUTE'), w(6000, 1, 'HOUR')]);
+    assert.deepEqual(windowsFromLimits(limits, 'request-count'), [w(100, 1, 'MINUTE'), w(6000, 1, 'HOUR')]);
+    assert.deepEqual(windowsFromLimits(limits, 'event-count'), [w(9, 1, 'DAY')]);
+    assert.equal(limitCondition('event-count', []), null);
     // A stored limit with no unit came from the YAML shorthand: it is per minute, not dropped.
-    assert.deepEqual(requestWindowsFromLimits([{ limit_type: 'REQUEST_COUNT', limit_count: 10000, time_unit: null, time_amount: 1 }]),
+    assert.deepEqual(windowsFromLimits([{ limit_type: 'REQUEST_COUNT', limit_count: 10000, time_unit: null, time_amount: 1 }]),
         [w(10000, 1, 'MINUTE')]);
+    assert.deepEqual(windowsFromLimits([{ limit_type: 'EVENT_COUNT', limit_count: 500, time_unit: null, time_amount: 1 }], 'event-count'),
+        [w(500, 1, 'MINUTE')]);
+    // A limit without a type is a request limit.
+    assert.deepEqual(windowsFromLimits([{ limitCount: 5, timeUnit: 'DAY' }], 'event-count'), []);
 });
 
-test('the request-count condition is replaced in place, added first, or removed', () => {
+test('a condition is replaced in place, added first, or removed', () => {
     const tools = { id: 'tool-calls', type: 'tool-call-count', params: {} };
     const custom = { id: 'x', type: 'custom', params: {} };
-    const old = requestCondition([w(1, 1, 'DAY')]);
-    const next = requestCondition([w(2, 1, 'DAY')], 'allow');
-    assert.deepEqual(withRequestCondition([tools, old, custom], next), [tools, next, custom]);
-    assert.deepEqual(withRequestCondition([tools], next), [next, tools]);
-    assert.deepEqual(withRequestCondition([tools, old], null), [tools]);
-    assert.deepEqual(requestLimitsFromConditions([tools, next]),
-        [{ limitType: 'REQUEST_COUNT', limitCount: 2, timeUnit: 'DAY', timeAmount: 1 }]);
-    assert.deepEqual(requestLimitsFromConditions([tools]), []);
+    const old = limitCondition('request-count', [w(1, 1, 'DAY')]);
+    const next = limitCondition('request-count', [w(2, 1, 'DAY')], 'allow');
+    assert.deepEqual(withCondition([tools, old, custom], 'request-count', next), [tools, next, custom]);
+    assert.deepEqual(withCondition([tools], 'request-count', next), [next, tools]);
+    assert.deepEqual(withCondition([tools, old], 'request-count', null), [tools]);
+    const events = limitCondition('event-count', [w(3, 1, 'HOUR')]);
+    assert.deepEqual(events, { id: 'events', type: 'event-count', params: { limits: [w(3, 1, 'HOUR')], onExceed: 'reject' } });
+    assert.deepEqual(withCondition([tools, events], 'event-count', null), [tools]);
+});
+
+test('limits sent alone set the request-count and event-count conditions, and keep the others', () => {
+    const tools = { id: 'tool-calls', type: 'tool-call-count', params: {} };
+    const custom = { id: 'x', type: 'custom', params: {} };
+    const requests = limitCondition('request-count', [w(1, 1, 'DAY')], 'allow');
+    const events = limitCondition('event-count', [w(2, 1, 'DAY')], 'allow');
+    const both = [
+        { limitType: 'EVENT_COUNT', limitCount: 20, timeUnit: 'HOUR' },
+        { limitType: 'REQUEST_COUNT', limitCount: 10, timeUnit: 'MINUTE' },
+    ];
+    // Each keeps its place and its onExceed.
+    assert.deepEqual(conditionsFromLimits([tools, events, custom, requests], both), [
+        tools, limitCondition('event-count', [w(20, 1, 'HOUR')], 'allow'), custom, limitCondition('request-count', [w(10, 1, 'MINUTE')], 'allow'),
+    ]);
+    // New ones go first, request-count before event-count.
+    assert.deepEqual(conditionsFromLimits([tools], both), [
+        limitCondition('request-count', [w(10, 1, 'MINUTE')]), limitCondition('event-count', [w(20, 1, 'HOUR')]), tools,
+    ]);
+    // A type with no usable limits loses its condition.
+    assert.deepEqual(conditionsFromLimits([requests, events, tools], [both[1]]),
+        [limitCondition('request-count', [w(10, 1, 'MINUTE')], 'allow'), tools]);
+    assert.deepEqual(conditionsFromLimits([requests, events, tools], []), [tools]);
+    // The default AsyncUnlimited plan: an unlimited event limit is no condition.
+    assert.deepEqual(conditionsFromLimits([], [{ limitType: 'EVENT_COUNT', timeUnit: null, timeAmount: 1, limitCount: -1 }]), []);
+});
+
+test('the request-count and event-count windows are read back as REQUEST_COUNT and EVENT_COUNT limits', () => {
+    const tools = { id: 'tool-calls', type: 'tool-call-count', params: { limits: [w(1, 1, 'DAY')] } };
+    assert.deepEqual(legacyLimitsFromConditions([
+        tools,
+        limitCondition('event-count', [w(3, 1, 'HOUR'), w(30, 1, 'DAY')]),
+        limitCondition('request-count', [w(2, 1, 'DAY')], 'allow'),
+    ]), [
+        { limitType: 'EVENT_COUNT', limitCount: 3, timeUnit: 'HOUR', timeAmount: 1 },
+        { limitType: 'EVENT_COUNT', limitCount: 30, timeUnit: 'DAY', timeAmount: 1 },
+        { limitType: 'REQUEST_COUNT', limitCount: 2, timeUnit: 'DAY', timeAmount: 1 },
+    ]);
+    assert.deepEqual(legacyLimitsFromConditions([tools]), []);
 });
 
 test('plan cards show each window of the built-in conditions', () => {
     const conditions = normalizeConditions([
         limitsOf('request-count', w(10, 1, 'MINUTE')),
+        limitsOf('event-count', w(20, 1, 'HOUR')),
         limitsOf('tool-call-count', w(5, 2, 'HOUR')),
         { type: 'token-count', params: { limits: [w(100, 1, 'DAY')], tokenType: 'prompt' } },
         { id: 'region', type: 'custom', params: { zone: 'eu' } },
     ]);
     assert.deepEqual(displayLimits(conditions), [
         { limitType: 'REQUEST_COUNT', limitCount: 10, timeAmount: 1, timeUnit: 'MINUTE' },
+        { limitType: 'EVENT_COUNT', limitCount: 20, timeAmount: 1, timeUnit: 'HOUR' },
         { limitType: 'TOOL_CALL_COUNT', limitCount: 5, timeAmount: 2, timeUnit: 'HOUR' },
         { limitType: 'PROMPT_TOKEN_COUNT', limitCount: 100, timeAmount: 1, timeUnit: 'DAY' },
     ]);
-    assert.deepEqual(displayLimits(conditions, { events: true }).map((l) => l.limitType),
-        ['EVENT_COUNT', 'TOOL_CALL_COUNT', 'PROMPT_TOKEN_COUNT']);
     assert.deepEqual(displayLimits(undefined), []);
 });
 
 test('the plans table shows one chip per condition, with every limit for its hover card', () => {
     const chips = conditionChips(normalizeConditions([
         { type: 'request-count', params: { limits: [w(344, 1, 'MINUTE'), w(43543, 2, 'HOUR')], onExceed: 'allow' } },
+        limitsOf('event-count', w(9000, 1, 'DAY')),
         { type: 'token-count', params: { limits: [w(1000000, 1, 'MONTH')], tokenType: 'prompt' } },
         { id: 'business-hours', type: 'custom', params: { peakStart: '08:00', peakLimit: 50 } },
         { id: 'empty', type: 'custom', params: {} },
     ]));
     assert.deepEqual(chips, [
         { label: 'Requests', first: '344 / min', more: 1, details: ['344 / min', '43,543 / 2 hr', 'Allowed past the limit'] },
+        { label: 'Events', first: '9,000 / day', more: 0, details: ['9,000 / day'] },
         { label: 'Prompt tokens', first: '1,000,000 / mo', more: 0, details: ['1,000,000 / mo'] },
         { label: 'Custom', first: 'business-hours', more: 0, details: ['peakLimit = 50', 'peakStart = 08:00'], custom: true },
         { label: 'Custom', first: 'empty', more: 0, details: ['No values'], custom: true },
@@ -156,9 +215,10 @@ test('the plans table shows one chip per condition, with every limit for its hov
     assert.deepEqual(conditionChips(undefined), []);
 });
 
-test('plan cards list every limit as subscribers read it, events on event-based APIs', () => {
+test('plan cards list every limit as subscribers read it', () => {
     const conditions = normalizeConditions([
         { type: 'request-count', params: { limits: [w(1000, 1, 'HOUR'), w(5000, 2, 'DAY')] } },
+        { type: 'event-count', params: { limits: [w(20000, 1, 'MINUTE')], onExceed: 'allow' } },
         { type: 'tool-call-count', params: { limits: [w(500, 1, 'DAY')], onExceed: 'allow' } },
         { type: 'token-count', params: { limits: [w(1000000, 1, 'MONTH')], tokenType: 'completion' } },
         { id: 'region', type: 'custom', params: { zone: 'eu' } },
@@ -166,9 +226,9 @@ test('plan cards list every limit as subscribers read it, events on event-based 
     assert.deepEqual(limitLines(conditions), [
         { text: '1,000 requests / hour', allow: false },
         { text: '5,000 requests / 2 days', allow: false },
+        { text: '20,000 events / minute', allow: true },
         { text: '500 tool calls / day', allow: true },
         { text: '1,000,000 completion tokens / month', allow: false },
     ]);
-    assert.equal(limitLines(conditions, { events: true })[0].text, '1,000 events / hour');
     assert.deepEqual(limitLines(undefined), []);
 });

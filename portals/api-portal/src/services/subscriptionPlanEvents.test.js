@@ -79,6 +79,29 @@ test('a plan created in the portal is sent under its own handle, which becomes i
     assert.deepStrictEqual(opts, { transaction: tx, orgId: 'org-1', aggregateType: 'subscription_plan', aggregateId: 'p1' });
 });
 
+test('a plan\'s event-count condition is sent, and its windows as EVENT_COUNT limits', async () => {
+    const { events, calls } = load();
+    const conditions = [
+        { id: 'requests', type: 'request-count', params: { limits: [{ count: 10, timeAmount: 1, timeUnit: 'MINUTE' }], onExceed: 'reject' } },
+        { id: 'events', type: 'event-count', params: { limits: [{ count: 500, timeAmount: 1, timeUnit: 'HOUR' }], onExceed: 'allow' } },
+    ];
+    const plan = {
+        uuid: 'p4', handle: 'stream', ref_id: 'stream', display_name: 'Stream', conditions, limits: [
+            { limit_type: 'REQUEST_COUNT', limit_count: 10, time_unit: 'MINUTE', time_amount: 1 },
+            { limit_type: 'EVENT_COUNT', limit_count: 500, time_unit: 'HOUR', time_amount: 1 },
+        ],
+    };
+
+    await events.publishPlanUpsert(events.EVENT.UPDATED, 'org-1', plan, {});
+
+    const { payload } = calls.published[0];
+    assert.deepStrictEqual(payload.conditions, conditions);
+    assert.deepStrictEqual(payload.limits, [
+        { limit_type: 'REQUEST_COUNT', limit_count: 10, time_unit: 'MINUTE', time_amount: 1 },
+        { limit_type: 'EVENT_COUNT', limit_count: 500, time_unit: 'HOUR', time_amount: 1 },
+    ]);
+});
+
 // The pricing never changes, so an update carries the same pricing: a Platform API that missed the
 // created event gets it with the update.
 test('a paid plan\'s created and updated events both carry its pricing', async () => {

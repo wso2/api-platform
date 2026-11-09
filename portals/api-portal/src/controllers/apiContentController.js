@@ -95,7 +95,7 @@ const loadAPIs = async (req, res, next) => {
 
             for (const metaData of metaDataList) {
                 const listedApiId = metaData.subscriptionPlans?.length ? await apiDao.getId(orgId, metaData.id) : null;
-                metaData.subscriptionPlanDetails = await util.appendSubscriptionPlanDetails(orgId, metaData.subscriptionPlans, listedApiId, metaData.type);
+                metaData.subscriptionPlanDetails = await util.appendSubscriptionPlanDetails(orgId, metaData.subscriptionPlans, listedApiId);
             }
 
             // Load subscriptions for APIs with subscription plans (single call for all)
@@ -252,7 +252,7 @@ const loadAPIContent = async (req, res, next) => {
                 apiId: apiId,
             });
             
-            let subscriptionPlans = await util.appendSubscriptionPlanDetails(orgId, metaData.subscriptionPlans, apiId, metaData.type);
+            let subscriptionPlans = await util.appendSubscriptionPlanDetails(orgId, metaData.subscriptionPlans, apiId);
             //check whether api content exists
             let loadDefault = false
             let apiDetails = "";
@@ -1190,7 +1190,7 @@ const loadAPIContentMd = async (req, res) => {
             return res.status(404).send('# Not Found\n\nThis API is not available for agents.');
         }
 
-        const subscriptionPlans = await util.appendSubscriptionPlanDetails(orgId, metaData.subscriptionPlans, apiId, metaData.type);
+        const subscriptionPlans = await util.appendSubscriptionPlanDetails(orgId, metaData.subscriptionPlans, apiId);
 
         const isMCPFromRegistry = metaData?.type === constants.API_TYPE.MCP && !metaData.refId;
         let showOAuth2 = true;

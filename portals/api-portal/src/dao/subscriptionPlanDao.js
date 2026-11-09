@@ -45,7 +45,10 @@ const buildSubscriptionPlanRow = (orgId, plan) => {
   };
 };
 
-/** Validates the `limits` older clients send; their REQUEST_COUNT and EVENT_COUNT limits are kept, as the request-count condition. */
+/**
+ * Validates the `limits` older clients send; their REQUEST_COUNT and EVENT_COUNT limits are kept, as
+ * the request-count and event-count conditions.
+ */
 const normalizeLimits = (limits) => {
   if (!Array.isArray(limits)) return [];
   return limits.map(l => {
@@ -111,7 +114,10 @@ const toCondition = (row) => ({
 
 const WINDOW_MINUTES = { MINUTE: 1, HOUR: 60, DAY: 24 * 60, MONTH: 31 * 24 * 60 };
 
-/** Reads the REQUEST_COUNT and EVENT_COUNT rows of plans saved before conditions as each plan's request-count condition. */
+/**
+ * Reads the REQUEST_COUNT and EVENT_COUNT rows of plans saved before conditions as each plan's
+ * request-count and event-count conditions.
+ */
 const loadLegacyLimits = async (plans, exec) => {
   const ids = [...new Set(plans.map((p) => p.uuid))];
   if (ids.length === 0) return;
@@ -122,19 +128,16 @@ const loadLegacyLimits = async (plans, exec) => {
   );
   const grouped = groupBy(rows, 'plan_uuid');
   for (const plan of plans) {
-    // Old rows carry no order of their own: shortest window first, a request limit before an event
-    // limit of the same length.
+    // Old rows carry no order of their own: shortest window first.
     const length = (l) => (WINDOW_MINUTES[String(l.time_unit).toUpperCase()] || 0) * (Number(l.time_amount) || 1);
-    const limits = [...(grouped.get(plan.uuid) || [])].sort((a, b) =>
-      length(a) - length(b) || (a.limit_type === 'REQUEST_COUNT' ? 0 : 1) - (b.limit_type === 'REQUEST_COUNT' ? 0 : 1));
-    const request = planConditions.requestCondition(planConditions.requestWindowsFromLimits(limits));
-    plan.conditions = request ? [request] : [];
+    const limits = [...(grouped.get(plan.uuid) || [])].sort((a, b) => length(a) - length(b));
+    plan.conditions = planConditions.conditionsFromLimits([], limits);
   }
 };
 
 /**
- * Attaches `.conditions` to each plan, and `.limits`: the REQUEST_COUNT limits of its request-count
- * condition, for the clients and events that predate conditions. A plan saved before conditions is
+ * Attaches `.conditions` to each plan, and `.limits`: the REQUEST_COUNT and EVENT_COUNT limits of its
+ * request-count and event-count conditions, for the clients and events that predate conditions. A plan saved before conditions is
  * read from subscription_plan_limits.
  */
 const attachConditions = async (plans, t) => {
@@ -156,23 +159,27 @@ const attachConditions = async (plans, t) => {
     await loadLegacyLimits(plans.filter((p) => p.conditions.length === 0), exec);
   }
   for (const plan of plans) {
-    plan.limits = planConditions.requestLimitsFromConditions(plan.conditions).map((l) => ({
+    plan.limits = planConditions.legacyLimitsFromConditions(plan.conditions).map((l) => ({
       limit_type: l.limitType, time_unit: l.timeUnit, time_amount: l.timeAmount, limit_count: l.limitCount,
     }));
   }
   return plans;
 };
 
-/** Stores the request-count condition in subscription_plan_limits, for a database not upgraded yet. */
+/**
+ * Stores the request-count and event-count conditions in subscription_plan_limits, as REQUEST_COUNT
+ * and EVENT_COUNT rows, for a database not upgraded yet.
+ */
 const saveLegacyLimits = async (planId, conditions, schema, exec) => {
   // subscription_plan_limits keeps neither other condition types nor onExceed: allow.
-  if (!schema.legacyLimits || conditions.some((c) => c.type !== planConditions.TYPE.REQUEST_COUNT
+  const { REQUEST_COUNT, EVENT_COUNT } = planConditions.TYPE;
+  if (!schema.legacyLimits || conditions.some((c) => ![REQUEST_COUNT, EVENT_COUNT].includes(c.type)
       || c.params?.onExceed === 'allow')) {
     throw new CustomError(503, 'Service Unavailable',
       'The database has no subscription_plan_conditions table; run this release\'s database schema script to store this plan\'s conditions.');
   }
   await exec.execute(`DELETE FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid = ? AND portal_id = ?`, [planId, getPortalId()]);
-  for (const l of planConditions.requestLimitsFromConditions(conditions)) {
+  for (const l of planConditions.legacyLimitsFromConditions(conditions)) {
     await exec.execute(
       `INSERT INTO ${SUBSCRIPTION_PLAN_LIMITS_TABLE} (uuid, portal_id, plan_uuid, limit_type, time_unit, time_amount, limit_count)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -183,8 +190,8 @@ const saveLegacyLimits = async (planId, conditions, schema, exec) => {
 
 /**
  * Saves the plan's conditions. `conditions` replaces them all. `limits` sent alone, by clients that
- * predate conditions, sets the request-count condition from its REQUEST_COUNT limits and keeps the
- * others. With neither, an update keeps them. Saving moves a plan off subscription_plan_limits.
+ * predate conditions, sets the request-count and event-count conditions from its REQUEST_COUNT and
+ * EVENT_COUNT limits and keeps the others. With neither, an update keeps them. Saving moves a plan off subscription_plan_limits.
  */
 const savePlanDetails = async (planId, plan, isNew, t) => {
   const exec = t || db;
@@ -194,11 +201,9 @@ const savePlanDetails = async (planId, plan, isNew, t) => {
     conditions = planConditions.normalizeConditions(plan.conditions);
   } else if (hasLimits) {
     const current = isNew ? [] : (await attachConditions([{ uuid: planId }], t))[0].conditions;
-    const onExceed = current.find((c) => c.type === planConditions.TYPE.REQUEST_COUNT)?.params?.onExceed;
-    const request = planConditions.requestCondition(
-      planConditions.requestWindowsFromLimits(normalizeLimits(plan.limits)), onExceed);
-    // Checked again: adding the request-count condition can take a plan past its 20 conditions.
-    conditions = planConditions.normalizeConditions(planConditions.withRequestCondition(current, request));
+    // Checked again: adding the request-count or event-count condition can take a plan past its 20 conditions.
+    conditions = planConditions.normalizeConditions(
+      planConditions.conditionsFromLimits(current, normalizeLimits(plan.limits)));
   } else if (isNew) {
     conditions = [];
   } else {

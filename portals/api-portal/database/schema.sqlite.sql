@@ -240,7 +240,7 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
 CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_plan_org_handle ON subscription_plans(org_uuid, handle, portal_id);
 
 -- Subscription Plan Conditions table: a plan's conditions in order. condition_type is request-count,
--- tool-call-count, token-count or custom. params is JSON, for example
+-- event-count, tool-call-count, token-count or custom. params is JSON, for example
 -- {"limits":[{"count":100,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}.
 -- Replaces subscription_plan_limits. A plan with no rows here is read from that table if it exists.
 CREATE TABLE IF NOT EXISTS subscription_plan_conditions (
