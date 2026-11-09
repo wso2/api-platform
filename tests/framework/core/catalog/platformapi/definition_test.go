@@ -85,6 +85,37 @@ func TestMintSecondOrganizationToken(t *testing.T) {
 	require.ErrorContains(t, err, "reading the administrator token")
 }
 
+func TestMintNoScopeToken(t *testing.T) {
+	key, err := jwt.ParseRSAPrivateKeyFromPEM(shared.ControlPlaneCrypto()["keys/jwt_private.pem"])
+	require.NoError(t, err)
+	admin, err := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss": "platform-api", "sub": "admin", "username": "admin", "organization": "default-org-uuid",
+		"org_handle": "default", "scope": "ap:rest_api:manage ap:gateway:manage",
+		"roles": []string{"ap_admin"}, "exp": time.Now().Add(time.Hour).Unix(),
+	}).SignedString(key)
+	require.NoError(t, err)
+
+	now := time.Unix(1_800_000_000, 0)
+	minted, err := mintNoScopeToken(admin, now)
+	require.NoError(t, err)
+
+	public, err := jwt.ParseRSAPublicKeyFromPEM(shared.ControlPlaneCrypto()["keys/jwt_public.pem"])
+	require.NoError(t, err)
+	claims := jwt.MapClaims{}
+	_, err = jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}), jwt.WithTimeFunc(func() time.Time { return now })).
+		ParseWithClaims(minted, claims, func(*jwt.Token) (any, error) { return public, nil })
+	require.NoError(t, err, "the control plane verifies the token with its public key")
+
+	require.Equal(t, "", claims["scope"], "no scope is granted")
+	require.Empty(t, claims["roles"], "no role is granted")
+	require.Equal(t, "default-org-uuid", claims["organization"], "the caller stays in its organization")
+	require.Equal(t, "admin", claims["sub"])
+	require.Equal(t, "platform-api", claims["iss"])
+
+	_, err = mintNoScopeToken("not-a-token", now)
+	require.ErrorContains(t, err, "reading the administrator token")
+}
+
 func TestPlatformAPIMountsThePortalCertificateWithoutChangingTheSharedCryptoMaterial(t *testing.T) {
 	definition := PlatformAPI()
 

@@ -21,8 +21,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders, screen } from '@/test/utils';
 import { ApiDesignerCanvasIllustration } from './ApiDesignerCanvasIllustration';
+import { DocumentsIllustration } from './DocumentsIllustration';
 import { PortalPublishIllustration } from './PortalPublishIllustration';
 import { ReadyToConnectIllustration } from './ReadyToConnectIllustration';
+import { ServiceAccountsIllustration } from './ServiceAccountsIllustration';
 
 type ObserverCallback = (entries: { contentRect: { width: number } }[]) => void;
 
@@ -99,6 +101,25 @@ describe('animated illustrations', () => {
         'Published',
         'Visible to developers',
         '1 of 1 portals',
+      ]) {
+        expect(screen.getByText(text)).toBeInTheDocument();
+      }
+    });
+  });
+
+  describe('DocumentsIllustration', () => {
+    it('is decorative and walks the documents list from empty to a document added', () => {
+      const { container } = renderWithProviders(<DocumentsIllustration />);
+
+      expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'true');
+      for (const text of [
+        'docs / untitled-api',
+        'API documents',
+        'Guides, samples and support',
+        'Getting started',
+        'Added',
+        'Visible to developers',
+        '2 documents',
       ]) {
         expect(screen.getByText(text)).toBeInTheDocument();
       }

@@ -102,6 +102,30 @@ describe('getBillingOrganization', () => {
     expect(fetchMock).toHaveBeenCalledWith(expected, expect.anything());
   });
 
+  /**
+   * A deployment that routes billing apart from the proxy names its path in
+   * `billingBaseUrl`. Only a same-origin path is taken; anything else falls
+   * back to the proxy route.
+   */
+  it.each([
+    ['/_api/billing/api/v1', '/_api/billing/api/v1/organization?product=api-platform'],
+    ['/_api/billing/api/v1/', '/_api/billing/api/v1/organization?product=api-platform'],
+    [
+      'https://billing.example.com/v1',
+      '/api-management/proxy/billing/organization?product=api-platform',
+    ],
+    ['//billing.example.com', '/api-management/proxy/billing/organization?product=api-platform'],
+    ['', '/api-management/proxy/billing/organization?product=api-platform'],
+  ])('reads billing at billingBaseUrl %j when it is a same-origin path', async (own, expected) => {
+    vi.spyOn(runtimeConfig, 'platformApiBaseUrl', 'get').mockReturnValue('/api-management/proxy');
+    vi.spyOn(runtimeConfig, 'billingBaseUrl', 'get').mockReturnValue(own);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(okResponse({}));
+
+    await getBillingOrganization();
+
+    expect(fetchMock).toHaveBeenCalledWith(expected, expect.anything());
+  });
+
   it('lets a later caller retry after a failed read, rather than caching the rejection', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

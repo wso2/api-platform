@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -297,6 +298,50 @@ var approvedCloudDataPlaneHost = regexp.MustCompile(
 	`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.gateway(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.wso2\.com$`,
 )
 
+// cloudLocalDataPlaneEnv, when set to a true value, also approves gateway URLs on a .localhost
+// host over http or https and any port: the data plane of a cloud that runs on the developer's
+// machine. It is off by default, and no other destination is widened.
+const cloudLocalDataPlaneEnv = "CLOUD_IT_LOCAL_DATA_PLANE"
+
+// cloudLocalDataPlanePortEnv names the port the local data plane serves plain http on. The platform
+// reports a gateway as https://<host> with no port, which on a developer's machine reaches nothing, so
+// an approved local URL that carries no port is called on this one over http instead.
+const cloudLocalDataPlanePortEnv = "CLOUD_IT_LOCAL_DATA_PLANE_PORT"
+
+var approvedLocalDataPlaneHost = regexp.MustCompile(
+	`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+localhost$`,
+)
+
+func localDataPlaneEnabled() bool {
+	enabled, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(cloudLocalDataPlaneEnv)))
+	return err == nil && enabled
+}
+
+// approvedLocalDataPlaneTarget reports whether target is an http(s) URL on a named .localhost
+// host with no credentials. IP literals never match.
+func approvedLocalDataPlaneTarget(parsed *url.URL) bool {
+	if parsed.User != nil || parsed.Host == "" {
+		return false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+	return approvedLocalDataPlaneHost.MatchString(strings.ToLower(parsed.Hostname()))
+}
+
+// localDataPlaneTarget sends an approved local URL that names no port to the local data plane's http
+// port, when CLOUD_IT_LOCAL_DATA_PLANE_PORT holds one. Any other URL is returned as it came.
+func localDataPlaneTarget(parsed *url.URL, target string) string {
+	port, err := strconv.Atoi(strings.TrimSpace(os.Getenv(cloudLocalDataPlanePortEnv)))
+	if err != nil || port < 1 || port > 65535 || parsed.Port() != "" {
+		return target
+	}
+	rewritten := *parsed
+	rewritten.Scheme = "http"
+	rewritten.Host = net.JoinHostPort(parsed.Hostname(), strconv.Itoa(port))
+	return rewritten.String()
+}
+
 func (s *Steps) resolveDataPlaneURL(ctx context.Context, target string) (string, error) {
 	if s != nil && s.dataPlaneURLResolver != nil {
 		return s.dataPlaneURLResolver(ctx, target)
@@ -323,6 +368,9 @@ func resolveCloudDataPlaneURL(_ context.Context, target string) (string, error) 
 	parsed, err := url.Parse(target)
 	if err != nil {
 		return "", fmt.Errorf("invalid cloud data-plane URL %q: %w", target, err)
+	}
+	if localDataPlaneEnabled() && approvedLocalDataPlaneTarget(parsed) {
+		return localDataPlaneTarget(parsed, target), nil
 	}
 	if parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
 		return "", fmt.Errorf("cloud data-plane target must be an approved HTTPS URL, got %q", target)
@@ -590,128 +638,6 @@ func (s *Steps) selectGatewayEnvironment(ctx context.Context) error {
 		}
 	}
 	return fmt.Errorf("APIP environment list contains no usable environment")
-}
-
-func (s *Steps) createManagedGateway(ctx context.Context) error {
-	environment, err := requiredValue(ctx, keyEnvironmentName)
-	if err != nil {
-		return err
-	}
-	_, err = s.createManagedGatewayIn(ctx, environment)
-	return err
-}
-
-// createManagedGatewayIn creates a uniquely named managed gateway in an environment, registers it
-// for cleanup before the request, and keeps its id as the scenario's managed gateway. The platform
-// registers a gateway as "<environment>-<handle>" within 40 characters, so a name too long for the
-// environment is sent with a handle cut to fit.
-func (s *Steps) createManagedGatewayIn(ctx context.Context, environment string) (string, error) {
-	// "sgw", not "syn-gateway": a managed gateway's handle is bounded by the
-	// release label the control plane renders from it, which spends the
-	// environment name twice and leaves 15 characters in a "development"
-	// environment. Unique() adds 11 ("-<suffix8>-<n>"), so the base has to fit in
-	// the rest. A longer base is accepted at create time and then fails to apply,
-	// leaving a gateway that never becomes ready.
-	if err := generateResourceAndStore(ctx, "sgw", keyManagedGatewayID); err != nil {
-		return "", err
-	}
-	name, err := requiredValue(ctx, keyManagedGatewayID)
-	if err != nil {
-		return "", err
-	}
-	request := map[string]string{"displayName": name, "environment": environment}
-	handle := name
-	if budget := gatewayHandleBudget(environment); len(name) > budget {
-		handle = handleOfLength(name, budget)
-		request["handle"] = handle
-	}
-	// The managed-gateway API normally derives its registration id from the
-	// environment and handle. Keep that deterministic fallback registered so
-	// cleanup can still attempt deletion if a successful create has no decodable body.
-	cleanupID := environment + "-" + handle
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindGateway, ID: cleanupID, Actor: resourceActor, Description: "managed gateway " + cleanupID,
-	}); err != nil {
-		return "", fmt.Errorf("registering managed gateway %q for cleanup: %w", cleanupID, err)
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/managed-gateways", request)
-	if err != nil {
-		return "", err
-	}
-	if resp.StatusCode != http.StatusCreated {
-		return "", responseError(resp)
-	}
-	id, err := stringField(resp, "id")
-	if err != nil {
-		return "", fmt.Errorf("creating APIP managed gateway: %w", err)
-	}
-	if id != cleanupID {
-		deregister(ctx, cleanup.KindGateway, cleanupID)
-		if err := cleanup.Register(ctx, cleanup.Resource{
-			Kind: cleanup.KindGateway, ID: id, Actor: resourceActor, Description: "managed gateway " + id,
-		}); err != nil {
-			return "", fmt.Errorf("registering managed gateway %q for cleanup: %w", id, err)
-		}
-	}
-	if err := tcontext.Set(ctx, keyManagedGatewayEnv, environment); err != nil {
-		return "", err
-	}
-	return id, tcontext.Set(ctx, keyManagedGatewayID, id)
-}
-
-func (s *Steps) getManagedGateway(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyManagedGatewayID)
-	if err != nil {
-		return err
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/managed-gateways/"+url.PathEscape(id), nil)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return responseError(resp)
-	}
-	got, err := stringField(resp, "id")
-	if err != nil {
-		return fmt.Errorf("retrieving APIP managed gateway: %w", err)
-	}
-	if got != id {
-		return fmt.Errorf("retrieved APIP gateway id = %q, want %q", got, id)
-	}
-	return nil
-}
-
-func (s *Steps) deleteManagedGateway(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyManagedGatewayID)
-	if err != nil {
-		return err
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodDelete, "/managed-gateways/"+url.PathEscape(id), nil)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
-		return responseError(resp)
-	}
-	if resp.StatusCode == http.StatusNotFound {
-		deregister(ctx, cleanup.KindGateway, id)
-	}
-	return tcontext.Set(ctx, keyGatewayDeleteStatus, fmt.Sprint(resp.StatusCode))
-}
-
-func (s *Steps) verifyManagedGatewayDeleted(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyManagedGatewayID)
-	if err != nil {
-		return err
-	}
-	if err := s.awaitNotFound(ctx, "/managed-gateways/"+url.PathEscape(id), "managed gateway "+id); err != nil {
-		if status := optionalValue(ctx, keyGatewayDeleteStatus); status != "" {
-			return fmt.Errorf("%w (the delete was answered %s)", err, status)
-		}
-		return err
-	}
-	deregister(ctx, cleanup.KindGateway, id)
-	return nil
 }
 
 func (s *Steps) awaitNotFound(ctx context.Context, path, what string) error {

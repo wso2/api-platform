@@ -53,8 +53,10 @@ var (
 	gatewayEncryptionOnce sync.Once
 	gatewayEncryptionData []byte
 
-	jevTLSOnce sync.Once
-	jevTLSData *KeyPairPEM
+	jevTLSOnce   sync.Once
+	jevTLSData   *KeyPairPEM
+	specsTLSOnce sync.Once
+	specsTLSData *KeyPairPEM
 )
 
 // IdentityProviderHost is the host name the testbench identity provider is reached at from
@@ -246,6 +248,19 @@ func GatewayEncryptionKey() []byte {
 		gatewayEncryptionData = key
 	})
 	return append([]byte(nil), gatewayEncryptionData...)
+}
+
+// SpecsTLS returns the certificate and key the testbench specs service serves HTTPS with. A
+// platform-api that imports OpenAPI documents by URL is given this certificate to trust.
+func SpecsTLS() *KeyPairPEM {
+	specsTLSOnce.Do(func() {
+		pair, err := SelfSignedCert("testbench", []string{"testbench", "localhost"})
+		if err != nil {
+			panic(err)
+		}
+		specsTLSData = pair
+	})
+	return specsTLSData
 }
 
 // JevTLS returns the certificate and key the testbench Jev service serves HTTPS with. The

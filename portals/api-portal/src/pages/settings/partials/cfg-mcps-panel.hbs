@@ -40,7 +40,11 @@
                 </td>
                 <td>
                   <div class="cfg-api-cell">
+                    {{#if thumbnailUrl}}
+                    <img class="cfg-api-avatar cfg-api-avatar--img" src="{{thumbnailUrl}}" alt="">
+                    {{else}}
                     <span class="cfg-api-avatar cfg-api-avatar--mcp">{{firstTwoLetters apiName}}</span>
+                    {{/if}}
                     <div>
                       <div class="cfg-cell-name">{{apiName}}</div>
                       <div class="cfg-cell-context">/{{apiHandle}}</div>

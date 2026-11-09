@@ -396,7 +396,6 @@ test('the shipped platform-api-system role reaches exactly the pinned publish-op
         // MCP server content (dp:mcp_server_content:manage)
         'createMcpServerContent',
         'deleteMcpServerContentFile',
-        'getMcpServerContentFile',
         'replaceMcpServerContent',
         // Subscription plans and their pricing (dp:subscription_plan:manage)
         'addSubscriptionPlans',

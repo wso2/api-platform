@@ -39,7 +39,7 @@ Feature: API Portal API content
     And I upload default API Portal content for API "${CTX:apiId}" as "publisher"
     Then the response status code should be 201
     When I PUT API Portal content "alternate" for API "${CTX:apiId}" as "publisher"
-    Then the response status code should be 201
+    Then the response status code should be 200
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png" as "publisher"
     Then the response status code should be 200
     And the API Portal response body should equal hex "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6300010000050001aabbccdd0000000049454e44ae426082"

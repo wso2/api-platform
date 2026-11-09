@@ -33,6 +33,7 @@ export const FEATURES = [
   'compliance',
   'subscription-plans',
   'meters',
+  'service-accounts',
   'paidplan',
 ] as const;
 

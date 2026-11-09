@@ -137,7 +137,7 @@ func actorCredentials(who string) (actor.Credentials, error) {
 	case "developer":
 		return actor.Developer(), nil
 	default:
-		return actor.Credentials{}, fmt.Errorf("unknown control-plane actor %q: supported actors are admin, publisher, developer, and %s", who, secondOrganizationAdmin)
+		return actor.Credentials{}, fmt.Errorf("unknown control-plane actor %q: supported actors are admin, publisher, developer, %s and %s", who, secondOrganizationAdmin, noScopeCaller)
 	}
 }
 
@@ -145,8 +145,18 @@ func actorCredentials(who string) (actor.Credentials, error) {
 // in features.
 const secondOrganizationAdmin = "org B admin"
 
+// noScopeCaller names, in features, the administrator signed in with every role and scope removed.
+const noScopeCaller = "a caller with no scope"
+
 // actorBearer returns a control-plane bearer token for a feature's actor.
 func actorBearer(ctx context.Context, base, who string) (string, error) {
+	if strings.TrimSpace(who) == noScopeCaller {
+		bearer, err := controlplane.NoScopeLogin(ctx, base)
+		if err != nil {
+			return "", fmt.Errorf("authenticating to the control plane as %q: %w", noScopeCaller, err)
+		}
+		return bearer, nil
+	}
 	if strings.TrimSpace(who) == secondOrganizationAdmin {
 		bearer, err := controlplane.SecondOrganizationLogin(ctx, base)
 		if err != nil {

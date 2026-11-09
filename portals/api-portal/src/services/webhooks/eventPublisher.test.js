@@ -30,7 +30,7 @@ const path = require('node:path');
 
 const EVENT_DAO_PATH = path.resolve(__dirname, '../../dao/eventDao.js');
 const REGISTRY_PATH = path.resolve(__dirname, './subscriberRegistry.js');
-const CRYPTO_PATH = path.resolve(__dirname, './envelopeCrypto.js');
+const AT_REST_PATH = path.resolve(__dirname, './fieldAtRest.js');
 const LOGGER_PATH = path.resolve(__dirname, '../../config/logger.js');
 const PUBLISHER_PATH = path.resolve(__dirname, './eventPublisher.js');
 
@@ -41,21 +41,28 @@ function stub(modulePath, exports) {
 }
 
 function loadPublisher({ subscribers, unreadable }) {
-    const calls = { failed: [], deliveries: [] };
+    const calls = { failed: [], deliveries: [], stored: [] };
     const event = { uuid: 'e1', status: 'PENDING', save: async () => event };
     stub(EVENT_DAO_PATH, {
         create: async () => event,
         recordUndeliverable: async (eventId, subs, reason) => calls.failed.push({ eventId, ids: subs.map((s) => s.id), reason }),
-        createDeliveries: async (eventId, subs) => calls.deliveries.push({ eventId, ids: subs.map((s) => s.id) }),
+        createDeliveries: async (eventId, subs, stored) => {
+            calls.deliveries.push({ eventId, ids: subs.map((s) => s.id) });
+            calls.stored.push(stored);
+        },
     });
     stub(REGISTRY_PATH, { matchSubscribers: async () => ({ subscribers, unreadable }), UNREADABLE_SECRET: UNREADABLE });
-    stub(CRYPTO_PATH, { encryptField: (secret, value) => ({ sealed: `${secret}:${value}` }) });
+    stub(AT_REST_PATH, {
+        sealAtRest: (field, value) => `at-rest:${field}:${value}`,
+        SEALED_AT_REST_KEY: '__sealed_at_rest',
+        SEALED_AT_REST_VERSION: 'v1',
+    });
     stub(LOGGER_PATH, { info() {}, warn() {}, error() {} });
     delete require.cache[PUBLISHER_PATH];
     try {
         return { publisher: require(PUBLISHER_PATH), calls, event };
     } finally {
-        for (const p of [EVENT_DAO_PATH, REGISTRY_PATH, CRYPTO_PATH, LOGGER_PATH, PUBLISHER_PATH]) delete require.cache[p];
+        for (const p of [EVENT_DAO_PATH, REGISTRY_PATH, AT_REST_PATH, LOGGER_PATH, PUBLISHER_PATH]) delete require.cache[p];
     }
 }
 
@@ -95,4 +102,13 @@ test('without unreadable subscribers no failed delivery is recorded', async () =
     await publishKey(none.publisher);
     assert.deepStrictEqual(none.calls.deliveries, []);
     assert.strictEqual(none.event.status, 'ALL_DELIVERED');
+});
+
+test('secret field values are stored sealed at rest, never plaintext and never under the subscriber secret', async () => {
+    const { publisher, calls } = loadPublisher({ subscribers: [readable], unreadable: [] });
+    await publishKey(publisher);
+    assert.deepStrictEqual(calls.stored, [{
+        s1: { apiKey: 'at-rest:apiKey:secret-value', __sealed_at_rest: 'v1' },
+    }]);
+    assert.ok(!JSON.stringify(calls.stored).includes('secret-s1'), 'the subscriber secret must not seal stored values');
 });

@@ -19,10 +19,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { ApiError } from '../../../core/errors';
+import { HANDLED_LOCALLY } from '../../../core/queryClient';
 import { useApiScope } from '../../../core/scope';
 import {
   addGatewaysToApi,
+  invokeRestApiOnGateway,
   type AddGatewaysToApiBody,
+  type InvokeRestApiOnGatewayBody,
+  type InvokeRestApiOnGatewayResponse,
   type ListRestApiGatewaysQuery,
   type RestApiGatewayListResponse,
 } from './apiGateways.endpoints';
@@ -103,5 +107,25 @@ export const useRestApiGatewayOptions = (
         id: gateway.id,
         label: gateway.displayName,
       })),
+  });
+};
+
+export type InvokeRestApiOnGatewayVariables = {
+  body: InvokeRestApiOnGatewayBody;
+  signal?: AbortSignal;
+};
+
+/**
+ * Sends one test request to the REST API as deployed on a gateway (the Test
+ * console). The console shows any failure itself, so the global error snackbar
+ * stays out of it, and a test request is never resent behind the user's back.
+ */
+export const useInvokeRestApiOnGateway = (overrides: { orgId?: string } = {}) => {
+  const { orgId } = useApiScope(overrides);
+
+  return useMutation<InvokeRestApiOnGatewayResponse, ApiError, InvokeRestApiOnGatewayVariables>({
+    mutationFn: ({ body, signal }) => invokeRestApiOnGateway(body, { orgId, signal }),
+    meta: HANDLED_LOCALLY,
+    retry: false,
   });
 };

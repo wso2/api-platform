@@ -206,7 +206,7 @@ const messages = defineMessages({
   },
 });
 
-const BRAND_LOGO_HEIGHT = 56;
+const BRAND_LOGO_HEIGHT = 44;
 
 type LoginLocationState = {
   confirmationKey?: string;

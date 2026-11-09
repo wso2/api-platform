@@ -83,7 +83,7 @@ export type GatewayFormProps = {
 };
 
 /** Shown before a name is typed, so the naming rule is known up front. */
-const NAME_HELPER_TEXT = 'The gateway handle is derived from this name and cannot be changed later.';
+const NAME_HELPER_TEXT = 'The API gateway handle is derived from this name and cannot be changed later.';
 
 /** A plausible local endpoint, shown pre-filled so the field reads as "edit this" rather than "write one from scratch". */
 const SAMPLE_SELF_HOSTED_URL = 'https://localhost:8443';
@@ -100,14 +100,14 @@ const HOSTING_OPTIONS: {
   {
     value: 'managed',
     icon: Cloud,
-    title: 'WSO2 managed (cloud)',
-    description: 'WSO2 runs, scales, and upgrades the gateway for you. No infrastructure to maintain.',
+    title: 'WSO2 managed API gateway (cloud)',
+    description: 'WSO2 runs, scales, and upgrades the API gateway for you. No infrastructure to maintain.',
   },
   {
     value: 'self-hosted',
     icon: Server,
-    title: 'Self-hosted',
-    description: 'Run the gateway on your own infrastructure and connect it to this control plane.',
+    title: 'Self-hosted API gateway',
+    description: 'Run the API gateway on your own infrastructure and connect it to this control plane.',
   },
 ];
 
@@ -251,7 +251,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
 
       <Stack spacing={2} mt={2}>
         <PageTitle>
-          <PageTitle.Header>{isEdit ? 'Edit Gateway' : 'Add Gateway'}</PageTitle.Header>
+          <PageTitle.Header>{isEdit ? 'Edit API Gateway' : 'Add API Gateway'}</PageTitle.Header>
         </PageTitle>
       </Stack>
 
@@ -318,7 +318,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
                         Compare hosting options
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        See how WSO2 managed and self-hosted gateways differ.
+                        See how WSO2 managed and self-hosted API gateways differ.
                       </Typography>
                     </Box>
                     <IconButton onClick={() => setShowCompare(false)} aria-label="Close">
@@ -353,7 +353,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
                   <TextField
                     fullWidth
                     required
-                    placeholder="Enter gateway name"
+                    placeholder="Enter API gateway name"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     error={Boolean(nameError)}
@@ -395,7 +395,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
                   {typeVersions.length > 0 ? (
                     <Grid size={{ xs: 12 }}>
                       <FormControl fullWidth>
-                        <FormLabel required>Gateway Version</FormLabel>
+                        <FormLabel required>API Gateway Version</FormLabel>
                         <Select
                           value={version}
                           onChange={(event) => setVersion(event.target.value)}
@@ -431,15 +431,15 @@ const GatewayForm: FC<GatewayFormProps> = ({
                         placeholder={SAMPLE_SELF_HOSTED_URL}
                         value={url}
                         onChange={(event) => setUrl(event.target.value)}
-                        helperText="The endpoint this gateway will answer on. Change it to match your own infrastructure."
+                        helperText="The endpoint this API gateway will answer on. Change it to match your own infrastructure."
                       />
                     </FormControl>
                   </Grid>
 
                   <Grid size={{ xs: 12 }}>
                     <Alert severity="info">
-                      After you add the gateway, you get a registration token and setup commands to run it
-                      on your infrastructure. The gateway stays inactive until it connects to the control
+                      After you add the API gateway, you get a registration token and setup commands to run it
+                      on your infrastructure. The API gateway stays inactive until it connects to the control
                       plane.
                     </Alert>
                   </Grid>
@@ -451,8 +451,8 @@ const GatewayForm: FC<GatewayFormProps> = ({
                   // Only a WSO2-managed gateway can be the environment's default, so
                   // there is no switch to offer; say why rather than leave it missing.
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    Self-hosted gateways are never the default gateway of an environment. Select this
-                    gateway explicitly when you deploy to it.
+                    Self-hosted API gateways are never the default API gateway of an environment. Select this
+                    API gateway explicitly when you deploy to it.
                   </Typography>
                 ) : (
                   <FormControlLabel
@@ -470,7 +470,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
                         onChange={(event) => setIsDefault(event.target.checked)}
                       />
                     }
-                    label="Default gateway for this environment"
+                    label="Default API gateway for this environment"
                   />
                 )}
               </Grid>
@@ -492,7 +492,7 @@ const GatewayForm: FC<GatewayFormProps> = ({
                 onClick={handleSubmit}
                 startIcon={submitting ? <CircularProgress size={16} color="inherit" /> : undefined}
               >
-                {submitting ? (isEdit ? 'Saving…' : 'Adding…') : isEdit ? 'Save Changes' : 'Add Gateway'}
+                {submitting ? (isEdit ? 'Saving…' : 'Adding…') : isEdit ? 'Save Changes' : 'Add API Gateway'}
               </Button>
             </span>
           </Tooltip>
