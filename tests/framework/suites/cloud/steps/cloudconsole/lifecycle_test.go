@@ -250,8 +250,18 @@ func TestTableValuesRejectsMalformedTables(t *testing.T) {
 func TestNewAPIDefinitionDefaults(t *testing.T) {
 	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
 
+	t.Setenv(backendEnv, "")
 	definition, err := newAPIDefinition(ctx, "syn-api-1", "default", nil)
 	require.NoError(t, err)
+	require.Equal(t, map[string]any{"main": map[string]string{"url": defaultBackend}}, definition["upstream"])
+	t.Setenv(backendEnv, "https://backend.example.com/mock/")
+	overridden, err := newAPIDefinition(ctx, "syn-api-1", "default", nil)
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"main": map[string]string{"url": "https://backend.example.com/mock"}}, overridden["upstream"])
+	t.Setenv(backendEnv, "http://backend.example.com")
+	_, err = newAPIDefinition(ctx, "syn-api-1", "default", nil)
+	require.ErrorContains(t, err, backendEnv)
+	t.Setenv(backendEnv, "")
 	require.Equal(t, "syn-api-1", definition["id"])
 	require.Equal(t, "Synthetic syn-api-1", definition["displayName"])
 	require.Equal(t, "/syn-api-1/v1", definition["context"])
@@ -359,7 +369,7 @@ func TestAssertAPIResponseMatchesRequestedPost(t *testing.T) {
 	funnel := httpx.NewFunnel(httpx.NewClient(httpx.Options{}), 0, 0)
 	steps := &Steps{funnel: funnel}
 
-	require.NoError(t, funnel.Publish(ctx, &httpx.Response{StatusCode: http.StatusOK, Body: []byte(`{"id":2}`)}))
+	require.NoError(t, funnel.Publish(ctx, &httpx.Response{StatusCode: http.StatusOK, Body: []byte(`{"method":"GET","path":"/posts/2"}`)}))
 	require.NoError(t, steps.assertAPIResponse(ctx, 2))
 	require.ErrorContains(t, steps.assertAPIResponse(ctx, 1), "contain post 1")
 }
@@ -1011,13 +1021,11 @@ func TestEchoBackendSteps(t *testing.T) {
 		require.Error(t, steps.useEchoBackend(ctx), invalid)
 	}
 
-	publishedResponse(t, steps, ctx, 200, `{"url":"https://echo.example.com/base/posts/1"}`)
+	publishedResponse(t, steps, ctx, 200, `{"method":"GET","path":"/base/posts/1"}`)
 	require.NoError(t, steps.assertEchoBackendReceived(ctx, "/posts/1"))
+	publishedResponse(t, steps, ctx, 200, `{"method":"GET","path":"/posts/1"}`)
+	require.NoError(t, steps.assertEchoBackendReceived(ctx, "/posts/1"), "the backend's base path may be stripped before it receives the request")
 	require.ErrorContains(t, steps.assertEchoBackendReceived(ctx, "/posts/2"), "received path")
-	publishedResponse(t, steps, ctx, 200, `{"url":"https://other.example.net/base/posts/1"}`)
-	require.ErrorContains(t, steps.assertEchoBackendReceived(ctx, "/posts/1"), "echo came from host")
-	publishedResponse(t, steps, ctx, 200, `{"url":"http://ECHO.example.com/base/posts/1"}`)
-	require.NoError(t, steps.assertEchoBackendReceived(ctx, "/posts/1"), "the host compares without case and the scheme is not part of the check")
 	publishedResponse(t, steps, ctx, 200, `{"userId":1,"id":1}`)
 	require.ErrorContains(t, steps.assertEchoBackendReceived(ctx, "/posts/1"), "not an echo")
 

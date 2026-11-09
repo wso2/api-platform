@@ -299,11 +299,13 @@ func (s *Steps) assertAPIResponse(ctx context.Context, post int) error {
 	if err != nil {
 		return err
 	}
-	var body map[string]any
+	var body struct {
+		Path string `json:"path"`
+	}
 	if err := json.Unmarshal(response.Body, &body); err != nil {
 		return fmt.Errorf("decoding the synthetic REST API response: %w (%s)", err, response.Describe())
 	}
-	if body["id"] != float64(post) {
+	if !strings.HasSuffix(body.Path, fmt.Sprintf("/posts/%d", post)) {
 		return fmt.Errorf("expected the synthetic REST API response to contain post %d, got %s", post, response.Describe())
 	}
 	return nil

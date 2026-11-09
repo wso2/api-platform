@@ -39,9 +39,23 @@ import (
 const (
 	// echoBackendEnv overrides the backend deployment overrides are pointed at.
 	echoBackendEnv = "CLOUD_IT_ECHO_BACKEND_URL"
-	// defaultEchoBackend is a public service that answers with the URL it was asked for.
-	defaultEchoBackend = "https://httpbin.org/anything"
+	// defaultEchoBackend is the testbench echo service, which answers with the request it received.
+	defaultEchoBackend = "https://development-wso2cloud.gateway.dev.cloud.wso2.com/apip-testbench-mocks/echo"
 )
+
+// testbenchURL reads the https base URL of a testbench service from the environment, falling
+// back to the given default, without a trailing slash.
+func testbenchURL(env, fallback string) (string, error) {
+	value := strings.TrimSpace(os.Getenv(env))
+	if value == "" {
+		value = fallback
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return "", fmt.Errorf("%s must be an https URL with a host", env)
+	}
+	return strings.TrimRight(value, "/"), nil
+}
 
 // deployedTimeout bounds how long a deployment on a gateway may take to report DEPLOYED.
 const deployedTimeout = 10 * time.Minute
@@ -567,47 +581,29 @@ func (s *Steps) assertDeploymentReportsEchoEndpoint(ctx context.Context) error {
 
 // useEchoBackend records the backend deployment overrides are pointed at.
 func (s *Steps) useEchoBackend(ctx context.Context) error {
-	backend := strings.TrimSpace(os.Getenv(echoBackendEnv))
-	if backend == "" {
-		backend = defaultEchoBackend
+	backend, err := testbenchURL(echoBackendEnv, defaultEchoBackend)
+	if err != nil {
+		return err
 	}
-	parsed, err := url.Parse(backend)
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
-		return fmt.Errorf("%s must be an https URL with a host", echoBackendEnv)
-	}
-	return tcontext.Set(ctx, keyEchoBackendURL, strings.TrimRight(backend, "/"))
+	return tcontext.Set(ctx, keyEchoBackendURL, backend)
 }
 
-// assertEchoBackendReceived checks that the data-plane response comes from the echo backend and
-// that the backend saw the given path below its own base path.
+// assertEchoBackendReceived checks that the data-plane response is the echo backend's reflection of
+// the request and that the path it saw ends with the given path, whether or not the route in front
+// of the backend keeps the backend's own base path.
 func (s *Steps) assertEchoBackendReceived(ctx context.Context, path string) error {
 	response, err := httpx.Published(ctx)
 	if err != nil {
 		return err
 	}
-	backend, err := requiredValue(ctx, keyEchoBackendURL)
-	if err != nil {
-		return err
-	}
-	base, err := url.Parse(backend)
-	if err != nil {
-		return err
-	}
 	var echoed struct {
-		URL string `json:"url"`
+		Path string `json:"path"`
 	}
-	if err := json.Unmarshal(response.Body, &echoed); err != nil || echoed.URL == "" {
+	if err := json.Unmarshal(response.Body, &echoed); err != nil || echoed.Path == "" {
 		return fmt.Errorf("the response is not an echo of the request: %s", response.Describe())
 	}
-	received, err := url.Parse(echoed.URL)
-	if err != nil {
-		return fmt.Errorf("the echoed URL is not valid: %w", err)
-	}
-	if !strings.EqualFold(received.Host, base.Host) {
-		return fmt.Errorf("the echo came from host %q, want %q", received.Host, base.Host)
-	}
-	if want := strings.TrimRight(base.Path, "/") + path; received.Path != want {
-		return fmt.Errorf("the echo backend received path %q, want %q", received.Path, want)
+	if !strings.HasSuffix(echoed.Path, path) {
+		return fmt.Errorf("the echo backend received path %q, want one ending in %q", echoed.Path, path)
 	}
 	return nil
 }
