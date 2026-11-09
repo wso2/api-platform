@@ -20,7 +20,26 @@ Feature: APIP cloud promotion along a deployment pipeline
   I want an API to reach a later environment only by promotion, carrying the build the earlier one runs
   So that no environment runs a build that skipped the one before it
 
-  @TC_APIP_PROM_001 @ID_APIP_PROMOTION_001
+  @TC_APIP_PROM_007 @ID_APIP_PROMOTION_001
+  Scenario: Promoting into an environment that has no active gateway is refused
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    And I create 1 synthetic non-production APIP environment
+    And I create a synthetic deployment pipeline with the promotion paths:
+      | source                         | targets                           |
+      | ${CTX:cloudGatewayEnvironment} | ${CTX:cloudSyntheticEnvironment1} |
+    And I create a synthetic APIP project bound to the synthetic deployment pipeline
+    When I create a synthetic REST API in the synthetic APIP project
+    And I request a deployment of the synthetic REST API with:
+      | environment     | ${CTX:cloudSyntheticEnvironment1} |
+      | fromEnvironment | ${CTX:cloudGatewayEnvironment}    |
+    Then the cloud API response status code should be 409
+    And the cloud API error code should be "gateway_not_active"
+    And the cloud API response body should contain "${CTX:cloudSyntheticEnvironment1}"
+    And the deployment stage of synthetic APIP environment 1 should show no gateway as deployed
+
+  @TC_APIP_PROM_001 @ID_APIP_PROMOTION_002
   Scenario: An API promoted along a pipeline is served by the gateway of the target environment
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -49,7 +68,7 @@ Feature: APIP cloud promotion along a deployment pipeline
     Then I send a "GET" request to "${CTX:cloudSyntheticEndpoint1}/${CTX:cloudAPIID}/v1/posts/1" until status 200
     And the synthetic REST API data-plane response should contain post 1
 
-  @TC_APIP_PROM_002 @ID_APIP_PROMOTION_002
+  @TC_APIP_PROM_002 @ID_APIP_PROMOTION_003
   Scenario: Deploying directly to an environment a promotion path leads to is refused
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -67,7 +86,7 @@ Feature: APIP cloud promotion along a deployment pipeline
     And the cloud API response body should contain "${CTX:cloudSyntheticEnvironment1}"
     And the deployment stage of synthetic APIP environment 1 should show no gateway as deployed
 
-  @TC_APIP_PROM_003 @ID_APIP_PROMOTION_003
+  @TC_APIP_PROM_003 @ID_APIP_PROMOTION_004
   Scenario: A promotion that names no build carries the build the source environment is running
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -97,7 +116,7 @@ Feature: APIP cloud promotion along a deployment pipeline
     And the deployment stage of synthetic APIP environment 1 should show its gateway running the rendered build
     And the deployment stage of the active gateway's environment should show the active gateway as DEPLOYED
 
-  @TC_APIP_PROM_004 @ID_APIP_PROMOTION_004
+  @TC_APIP_PROM_004 @ID_APIP_PROMOTION_005
   Scenario: Promoting a build that is not deployed in the source environment is refused
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -130,7 +149,7 @@ Feature: APIP cloud promotion along a deployment pipeline
     And the cloud API response body should contain "${CTX:cloudDeployedBuildID}"
     And the deployment stage of synthetic APIP environment 1 should show no gateway as deployed
 
-  @TC_APIP_PROM_005 @ID_APIP_PROMOTION_005
+  @TC_APIP_PROM_005 @ID_APIP_PROMOTION_006
   Scenario: Promotion follows the environment chain of the pipeline in order
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -173,7 +192,7 @@ Feature: APIP cloud promotion along a deployment pipeline
     And the synthetic REST API should be DEPLOYED on every gateway the deployment request named
     And the deployment stage of synthetic APIP environment 2 should show its gateway running the rendered build
 
-  @TC_APIP_PROM_008 @ID_APIP_PROMOTION_006
+  @TC_APIP_PROM_008 @ID_APIP_PROMOTION_007
   Scenario: A promoted deployment can be undeployed in the target environment alone
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -205,7 +224,7 @@ Feature: APIP cloud promotion along a deployment pipeline
     Then I send a "GET" request to "${CTX:cloudSyntheticEndpoint1}/${CTX:cloudAPIID}/v1/posts/1" until status 404
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
 
-  @TC_APIP_PROM_009 @ID_APIP_PROMOTION_007
+  @TC_APIP_PROM_009 @ID_APIP_PROMOTION_008
   Scenario: Which environments can be deployed to directly follows the pipeline as it is now
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -236,22 +255,3 @@ Feature: APIP cloud promotion along a deployment pipeline
     Then the cloud API response status code should be 400
     And the cloud API response body should contain "is a promotion target"
     And the cloud API response body should contain "${CTX:cloudGatewayEnvironment}"
-
-  @TC_APIP_PROM_007 @ID_APIP_PROMOTION_008
-  Scenario: Promoting into an environment that has no active gateway is refused
-    Given I obtain an APIP cloud console token
-    And I find the default APIP project
-    And I find an active APIP gateway
-    And I create 1 synthetic non-production APIP environment
-    And I create a synthetic deployment pipeline with the promotion paths:
-      | source                         | targets                           |
-      | ${CTX:cloudGatewayEnvironment} | ${CTX:cloudSyntheticEnvironment1} |
-    And I create a synthetic APIP project bound to the synthetic deployment pipeline
-    When I create a synthetic REST API in the synthetic APIP project
-    And I request a deployment of the synthetic REST API with:
-      | environment     | ${CTX:cloudSyntheticEnvironment1} |
-      | fromEnvironment | ${CTX:cloudGatewayEnvironment}    |
-    Then the cloud API response status code should be 409
-    And the cloud API error code should be "gateway_not_active"
-    And the cloud API response body should contain "${CTX:cloudSyntheticEnvironment1}"
-    And the deployment stage of synthetic APIP environment 1 should show no gateway as deployed
