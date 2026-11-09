@@ -21,6 +21,13 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('./config/logger');
 const { config } = require('./config/configLoader');
+
+// Read the TLS certificate and key before anything below loads the database
+// driver (db/driver opens SQLite as soon as it is required, and the webhook
+// modules require it too), so a missing certificate stops startup with a clear
+// message before any database is opened or created.
+const { readServerCertificateOrExit } = require('./config/serverCertificate');
+const serverCertificate = readServerCertificateOrExit(config, logger);
 const { buildTLSOptions } = require('./config/tlsOptions');
 const { buildOutboundAgents } = require('./config/httpClientOptions');
 const webhookDispatcher = require('./services/webhooks/dispatcher');
@@ -176,6 +183,8 @@ async function startServer() {
         process.exit(1);
     }
 
+    const useHttps = serverCertificate !== null;
+
     await ensureSchema();
 
     // Seed before binding the listener, not from the 'listening' callback. This
@@ -193,24 +202,17 @@ async function startServer() {
         await logMultiOrganizationMode();
     }
 
-    if (!config.server.https.enabled || config.designMode?.enabled) {
+    if (!useHttps) {
         server = http.createServer(app).listen(PORT, '0.0.0.0', onListening);
     } else {
     try {
-        const certPath = path.resolve(config.server.https.certFile);
-        const keyPath = path.resolve(config.server.https.keyFile);
-
-        const serverCert = fs.readFileSync(certPath);
-        const serverKey = fs.readFileSync(keyPath);
-
         // TLS version bounds + ECDH/group preference list, config-gated — see
         // js-post-quantum-cryptography.md. Throws (caught below) on an invalid
         // value, so a bad config fails startup rather than silently degrading.
         const tlsOptions = buildTLSOptions(config.server.https);
 
         server = https.createServer({
-            key: serverKey,
-            cert: serverCert,
+            ...serverCertificate,
             ...tlsOptions,
         }, app).listen(PORT, onListening);
 

@@ -293,7 +293,7 @@ variable no key references does nothing, silently.
 
 Following `platform-api/config/config.toml`, tokens are used sparingly: a key gets one
 only where something actually drives it — the Compose database overrides,
-`npm run start:local`, `docker-entrypoint.sh`, or a secret. Everything else is a plain
+`npm run start:local`, the Docker image, or a secret. Everything else is a plain
 literal, so the file states its own effective configuration.
 
 These are the variables the shipped `configs/config.toml` honours:

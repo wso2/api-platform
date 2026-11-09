@@ -24,7 +24,7 @@ const crypto = require('crypto');
 const toml = require('smol-toml');
 const Handlebars = require('handlebars');
 const { DEFAULTS } = require('./configDefaults');
-const { snakeToCamelDeep, mergeOver, parseConfigPaths } = require('./configMerge');
+const { snakeToCamelDeep, mergeOver, resolveConfigPaths } = require('./configMerge');
 // Requires nothing from this module in return, so loading the grant table from the
 // startup validation below cannot cycle.
 const roleScopeMap = require('./roleScopeMap');
@@ -298,8 +298,9 @@ function interpolateTree(value, fieldPath) {
 // Startup config resolution
 // ---------------------------------------------------------------------------
 //
-// Resolved once, at module load, from the repeatable `--config` flag — the JS
-// counterpart to the Go components' `-config`. At least one `--config` is
+// Resolved once, at module load, from APIP_AP_CONFIG_PATH (the base file; the
+// Docker image sets it) followed by the repeatable `--config` flag — the JS
+// counterpart to the Go components' `-config`. At least one of the two is
 // REQUIRED: there is no default path and no silent fallback to built-in
 // DEFAULTS. Because env vars reach config only through explicit {{ env }} tokens
 // in a file (there is no APIP_AP_* env-prefix provider), a missing config file
@@ -317,7 +318,7 @@ function fatalConfig(message) {
 
 let configPaths;
 try {
-    configPaths = parseConfigPaths(process.argv.slice(2));
+    configPaths = resolveConfigPaths(process.argv.slice(2), process.env);
 } catch (err) {
     fatalConfig(err.message);
 }
@@ -326,8 +327,8 @@ if (configPaths.length === 0) {
     fatalConfig(
         'no configuration file provided. Pass at least one --config <path> ' +
         '(repeatable; later files override earlier ones, key by key), e.g. ' +
-        '--config configs/config.toml. There is no default path and no ' +
-        'silent-defaults fallback.'
+        '--config configs/config.toml, or set APIP_AP_CONFIG_PATH to the base ' +
+        'file. There is no default path and no silent-defaults fallback.'
     );
 }
 

@@ -91,14 +91,28 @@ func TestAPIPortalBuildDeclaresBrowserCoverage(t *testing.T) {
 	require.NotEmpty(t, spec.Coverage.Browser.Include)
 }
 
-func TestAPIPortalBuildIncludesCoverageScriptsContext(t *testing.T) {
+func TestAPIPortalCoverageBuildUsesBakeWithCoverageScripts(t *testing.T) {
 	spec, err := BuildSpec("test")
 	require.NoError(t, err)
 	commands, err := spec.Plan("/repo", "test", spec.Coverage)
 	require.NoError(t, err)
 	require.Len(t, commands, 1)
-	require.Contains(t, strings.Join(commands[0].Args, " "),
-		"--build-context coverage-scripts=../../tests/framework/tools")
+	args := strings.Join(commands[0].Args, " ")
+	require.Contains(t, args, "docker buildx bake -f docker-bake.coverage.hcl")
+	require.Contains(t, args, "--allow=fs.read=..")
+	require.Contains(t, args, "--allow=fs.read=../../tests/framework/tools")
+	require.Contains(t, args, "--set coverage.tags=ghcr.io/wso2/api-platform/api-portal:test")
+	require.True(t, strings.HasSuffix(args, "--load coverage"), "the coverage plan must load the coverage target: %s", args)
+}
+
+func TestAPIPortalPlainBuildNeedsNoExtraContext(t *testing.T) {
+	spec, err := BuildSpec("test")
+	require.NoError(t, err)
+	commands, err := spec.Plan("/repo", "test", builder.CoverageSpec{})
+	require.NoError(t, err)
+	require.Len(t, commands, 1)
+	args := strings.Join(commands[0].Args, " ")
+	require.Equal(t, "docker buildx build -f Dockerfile --tag ghcr.io/wso2/api-platform/api-portal:test --load ..", args)
 }
 
 func TestAPIPortalSupportsPostgresAndSQLServer(t *testing.T) {

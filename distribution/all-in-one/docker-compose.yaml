@@ -37,8 +37,9 @@ services:
 
   api-portal:
     build:
-      context: ../../portals/api-portal
-      dockerfile: Dockerfile
+      # The Dockerfile reads api-portal/..., so it builds from portals/.
+      context: ../../portals
+      dockerfile: api-portal/Dockerfile
     container_name: api-portal
     environment:
       - APIP_AP_SERVER_HTTPS_ENABLED=false

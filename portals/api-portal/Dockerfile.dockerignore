@@ -1,0 +1,38 @@
+# Applies to every build of the Dockerfile next to it, whatever folder it builds
+# from: the Dockerfile reads api-portal/..., so builds from source use the
+# repository's portals/ folder, and release builds the unzipped binary zip. Only the
+# paths the Dockerfile's COPY lines read are sent, so these rules only need to cover
+# what could sit inside them.
+
+# Installed fresh inside the image by npm ci.
+api-portal/node_modules
+
+# Local dev SQLite databases. A stale copy baked into the image is root-owned and
+# shadows the real runtime database at the configured path, so every write fails
+# as "readonly database".
+api-portal/**/*.db
+
+# setup.sh output: the bind-mounted TLS certificate. A stale copy baked into the
+# image could resurface a removed or rotated secret.
+api-portal/resources/certificates/
+
+# Unit tests sit next to the code in src/; the image never runs them.
+api-portal/**/*.test.js
+
+# Logs and editor metadata.
+api-portal/**/*.log
+api-portal/**/.DS_Store
+
+# The rest of what .gitignore keeps out of src/, database/ and resources/, so images
+# built from source hold the same files as release images, which are built from the
+# binary zip (git ls-files, so .gitignore applies there): setup.sh's JWT keypair,
+# key files, local config and secret files, mock data and generated content.
+api-portal/resources/keys/
+api-portal/**/*.pem
+api-portal/**/config*.json
+api-portal/**/secret*.json
+api-portal/resources/default-layout
+api-portal/resources/mock
+api-portal/src/.tmp
+api-portal/src/config/config.js
+api-portal/src/defaultContent.zip
