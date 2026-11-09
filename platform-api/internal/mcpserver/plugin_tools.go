@@ -56,6 +56,9 @@ func (s *Server) addPluginTools(srv *mcp.Server, tools []pdk.MCPTool) error {
 		if tool.Risk == pdk.MCPDestructive && schema.Properties["confirm"] != nil {
 			return fmt.Errorf("mcp server: plugin tool %q: a destructive tool gets confirm from the server; leave it out of the input", tool.Name)
 		}
+		// A replacement serves the API types its plugin handles, not the ones the
+		// built-in tool was narrowed to.
+		delete(s.toolTypes, tool.Name)
 		apiType := schema.Properties["apiType"]
 		// Only a string apiType is the platform's API type; any other type keeps its own schema.
 		s.inputSchema(schema, tool.Name, apiType != nil && (apiType.Type == "string" || slices.Contains(apiType.Types, "string")))

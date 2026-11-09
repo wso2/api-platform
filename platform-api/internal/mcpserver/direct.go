@@ -384,13 +384,12 @@ func (g graphQLAPIs) create(org, user string, payload []byte) (any, error) {
 // update sends the merged API back. A read never returns the SDL, so a payload
 // that does not set a new schema would otherwise re-resolve it from nothing:
 // the stored SDL is sent with it, unless the API is set to introspect its
-// upstream, which re-reads the schema on every save anyway.
+// upstream, which re-reads the schema on every save anyway. An API made from
+// an SDL file keeps schemaSource "file", which the service takes as SDL text;
+// any other source is sent as "inline", since a read never returns the sdlUrl.
 func (g graphQLAPIs) update(org, user, id string, whole []byte) (any, error) {
 	req, err := decode[api.GraphQLAPI](whole, "graphql-api")
 	if err != nil {
-		return nil, err
-	}
-	if err := checkSchemaSource(req.SchemaSource); err != nil {
 		return nil, err
 	}
 	newSchema := strings.TrimSpace(valueOf(req.Sdl)) != "" || strings.TrimSpace(valueOf(req.SdlUrl)) != ""
@@ -400,8 +399,11 @@ func (g graphQLAPIs) update(org, user, id string, whole []byte) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		inline := api.GraphQLAPISchemaSourceInline
-		req.SchemaSource, req.Sdl = &inline, &sdl
+		source := api.GraphQLAPISchemaSourceInline
+		if req.SchemaSource != nil && *req.SchemaSource == api.GraphQLAPISchemaSourceFile {
+			source = api.GraphQLAPISchemaSourceFile
+		}
+		req.SchemaSource, req.Sdl = &source, &sdl
 	}
 	return g.apis.Update(org, id, user, req)
 }
@@ -440,8 +442,8 @@ func (g graphQLAPIs) apiGateways(org, id string) ([]api.RESTAPIGatewayResponse, 
 	return res.List, nil
 }
 
-// checkSchemaSource refuses schemaSource "file": it names an uploaded SDL file,
-// which a JSON payload cannot carry.
+// checkSchemaSource refuses schemaSource "file" on create: it names an uploaded
+// SDL file, which a JSON payload cannot carry.
 func checkSchemaSource[T ~string](source *T) error {
 	if source != nil && string(*source) == "file" {
 		return fail("schemaSource \"file\" needs an uploaded file; send the SDL as sdl with schemaSource \"inline\", or use \"url\" or \"introspection\"")

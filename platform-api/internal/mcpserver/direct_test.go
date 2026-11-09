@@ -424,8 +424,8 @@ const testSDL = "type Query { country(code: ID!): Country }\ntype Country { code
 
 // TestDirect_GraphQLKeepsItsSchema checks what the graphql-api adapter adds to
 // the service: a read never returns the SDL, so an update that sets no new
-// schema keeps the stored one; a file source is refused; and its definition
-// is the SDL.
+// schema keeps the stored one and its file source; create refuses a file
+// source; and its definition is the SDL.
 func TestDirect_GraphQLKeepsItsSchema(t *testing.T) {
 	ctx := context.Background()
 	env := newRealDirect(t)
@@ -453,9 +453,23 @@ func TestDirect_GraphQLKeepsItsSchema(t *testing.T) {
 	assert.Equal(t, "application/graphql", doc.ContentType)
 	assert.Contains(t, doc.Content, "country(code: ID!)", "the update kept the schema")
 
+	// An API made from an SDL file in the console reads back with schemaSource
+	// "file": a metadata-only update keeps both its SDL and its source.
 	whole["schemaSource"] = "file"
 	_, err = env.updateAPI(ctx, env.caller, graphql, id, whole)
-	assert.ErrorContains(t, err, `schemaSource "file"`)
+	require.NoError(t, err)
+	whole, err = env.getAPI(ctx, env.caller, graphql, id)
+	require.NoError(t, err)
+	assert.Equal(t, "file", whole["schemaSource"])
+	whole["description"] = "metadata only, again"
+	_, err = env.updateAPI(ctx, env.caller, graphql, id, whole)
+	require.NoError(t, err)
+	whole, err = env.getAPI(ctx, env.caller, graphql, id)
+	require.NoError(t, err)
+	assert.Equal(t, "file", whole["schemaSource"], "the file source is kept")
+	doc, err = env.getDefinition(ctx, env.caller, graphql, id)
+	require.NoError(t, err)
+	assert.Contains(t, doc.Content, "country(code: ID!)", "the update kept the schema")
 
 	gateways, err := env.listAPIGateways(ctx, env.caller, graphql, id)
 	require.NoError(t, err)
