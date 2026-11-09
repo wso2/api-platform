@@ -10,6 +10,8 @@
 
 - Test on-premises product behaviour in `suites/it`, and its portal journeys in `suites/ui`.
   Test behaviour that exists only in the hosted cloud in `suites/cloud`.
+- Every test starts from an entry in a scenario list: `scenarios/on-prem/` for `suites/it`
+  and `suites/ui`, `scenarios/cloud/` for `suites/cloud`. See "Scenario Lists".
 - The cloud suite runs from the apim-saas e2e image against a shared organisation. On a pull
   request it is only compiled and its step unit tests run, so its scenarios must be safe to
   run repeatedly against shared, long-lived resources.
@@ -482,14 +484,20 @@ To add a feature to the suite:
 
 ## Scenario Lists
 
-A product feature with a scenario list has `scenarios/<CODE>.yaml` (for example
-`scenarios/AIW-LLM.yaml`): one entry per scenario ID, kept by hand. Scenarios without an ID
-are fine; the rules below apply to those that carry one.
+Every test starts from a scenario list: one file per product feature, one entry per
+scenario ID, kept by hand.
 
-- Each entry records both layers: `ui` (browser journeys under `suites/ui`) and `it`
-  (API-level scenarios under `suites/it`). A layer's status is `automated`, `known-issue`
-  (with `issue`), `exempt` (with `reason`, approved by the feature owner) or `planned`, and
-  `refs` names the feature file and scenario that automate it.
+| Lists | For | Layers each entry records |
+|---|---|---|
+| `scenarios/on-prem/<CODE>.yaml` (for example `scenarios/on-prem/AIW-LLM.yaml`) | `suites/it` and `suites/ui` | `it` (API-level scenarios under `suites/it`) and `ui` (browser journeys under `suites/ui`) |
+| `scenarios/cloud/<CODE>.yaml` | `suites/cloud` | `cloud` (scenarios under `suites/cloud`) |
+
+Before writing a scenario, find the entry it automates in its feature's list. If the entry
+does not exist, have it added first; if the feature has no list, start one.
+
+- A layer's status is `automated`, `known-issue` (with `issue`), `exempt` (with `reason`,
+  approved by the feature owner) or `planned`, and `refs` names the feature file and
+  scenario that automate it.
 - Tag each scenario with every ID it covers (`@AIW-PRV-001`), on the scenario only, and the
   feature with the list's code (`@AIW-LLM`). Update the entry's `refs` and status with the
   scenario.
@@ -540,7 +548,7 @@ duplicating it.
 
 ### Feature level
 
-- Search the feature's scenario list under `scenarios/` and the existing `.feature` files
+- Search the feature's scenario list under `scenarios/on-prem/` or `scenarios/cloud/` and the existing `.feature` files
   for the behaviour under test.
 - Add scenarios to the existing feature file when it already owns the behavior.
 - Extend a `Scenario Outline` with another example when only the inputs differ.

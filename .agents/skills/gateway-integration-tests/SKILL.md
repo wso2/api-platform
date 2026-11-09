@@ -32,7 +32,8 @@ conventions for writing features and steps.
   components (gateway, database, testbench, platform-api, …) started once; inside each block,
   **runners** (lists of feature files that run against that block). Blocks with a database matrix expand
   to one variant per engine: `<block>/sqlite`, `<block>/postgres`, `<block>/sqlserver`.
-- Adding a feature to the suite: pick the block file by the products the feature checks and add a
+- Adding a feature to the suite: start from its entry in the feature's scenario list
+  (`scenarios/on-prem/<CODE>.yaml`), then pick the block file by the products the feature checks and add a
   runner to an existing block in it that fits the feature (most fit the file's generic block,
   such as `gateway-core`). Add a new block or a new block file only as the last resort, when no
   existing block fits. The rules are in "Integration Suite Blocks" in

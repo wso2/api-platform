@@ -82,7 +82,7 @@ suites/
   it/               on-premises products at the API level; blocks in it/blocks/
   ui/               on-premises portals through the browser
   cloud/            the hosted APIP cloud
-scenarios/          one scenario list per feature (TENANT.yaml, ...)
+scenarios/          one scenario list per feature: on-prem/ (TENANT.yaml, ...) for it and ui, cloud/ for cloud
 ```
 
 Which suite a test belongs in, how each suite lays out its feature files and step packages, and
@@ -105,11 +105,13 @@ before changing one — most encode a failure mode that presents as a passing te
 
 ## Scenario lists
 
-Some product features have a scenario list: `scenarios/<CODE>.yaml` (for example
-`scenarios/TENANT.yaml`), one entry per scenario ID with its title, priority and how each
-layer covers it. `it` is the API level and `ui` the browser. Each layer is `automated`,
-`known-issue` (with the issue link), `exempt` (with the reason) or `planned`, and `refs` name
-the feature file and scenario that automate it. The lists are kept by hand.
+Every test starts from a scenario list: `scenarios/on-prem/<CODE>.yaml` for the `it` and `ui`
+suites (for example `scenarios/on-prem/TENANT.yaml`) and `scenarios/cloud/<CODE>.yaml` for the
+cloud suite. A list has one entry per scenario ID with its title, priority and how each layer
+covers it: `it` is the API level and `ui` the browser in an on-prem list, `cloud` the cloud suite
+in a cloud list. Each layer is `automated`, `known-issue` (with the issue link), `exempt` (with
+the reason) or `planned`, and `refs` name the feature file and scenario that automate it. The
+lists are kept by hand.
 
 A scenario is tagged with every ID it covers (`@TENANT-004`) and its feature with the list's
 code (`@TENANT`), so `-feature-tags=@TENANT-004` runs one ID and `-feature-tags=@TENANT` a

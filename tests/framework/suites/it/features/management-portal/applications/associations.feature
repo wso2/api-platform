@@ -22,7 +22,7 @@ Feature: LLM providers and LLM proxies are associated with applications
   I want to associate my application with the LLM providers and LLM proxies it calls
   So that I can see which of its keys belong to each of them
 
-  # Scenarios GENAPP-004 to 006 (scenarios/GENAPP.yaml). Associations are stored by the control
+  # Scenarios GENAPP-004 to 006 (scenarios/on-prem/GENAPP.yaml). Associations are stored by the control
   # plane alone, so no artifact is deployed.
 
   Background:

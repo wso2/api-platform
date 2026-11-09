@@ -159,7 +159,7 @@ blocks:
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_import.feature
         tags: "gateway-version>1.2.0"
-      # Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), AI Workspace provider creation through the control plane. Runs on
+      # Scenarios AIW-LLM (scenarios/on-prem/AIW-LLM.yaml), AI Workspace provider creation through the control plane. Runs on
       # every platform-api database: the generated provider ID is stored in a bounded column.
       - name: aiw-llm-provider-create
         features:
@@ -185,7 +185,7 @@ blocks:
         features:
           - features/ai-workspace/llm-providers/deploy.feature
         tags: "~@known-issue"
-      # Scenarios GENAPP (scenarios/GENAPP.yaml): application key mappings and associations. Runs on every
+      # Scenarios GENAPP (scenarios/on-prem/GENAPP.yaml): application key mappings and associations. Runs on every
       # platform-api database: the mappings and associations are the control plane's store.
       - name: applications
         features:

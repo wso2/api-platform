@@ -35,7 +35,8 @@ code, whether you changed gateway components or only test files.
    go test ./suites/it -count=1 -v -timeout=60m -blocks <block>/sqlite -feature-tags "@<feature-tag>"
    ```
 
-3. **Adding a feature to the suite.** The blocks live in `tests/framework/suites/it/blocks/`, one
+3. **Adding a feature to the suite.** Start from the feature's scenario list in
+   `tests/framework/scenarios/on-prem/` (see "Scenario Lists" in `tests/framework/CLAUDE.md`). The blocks live in `tests/framework/suites/it/blocks/`, one
    file per combination of products the tests check. In the file that matches your feature, add
    your runner to an existing block that fits it: one whose settings and isolation your feature
    can run with. Most features fit the file's generic block, such as `gateway-core`. A new block
