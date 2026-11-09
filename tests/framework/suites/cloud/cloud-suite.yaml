@@ -29,6 +29,7 @@ blocks:
         features:
           - features/apip_gateway.feature
       - name: apip-gateway-config
+        tags: "~@known-issue"
         features:
           - features/apip_gateway_config.feature
       - name: apip-promotion

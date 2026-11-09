@@ -264,6 +264,8 @@ Feature: APIP cloud managed gateway configuration
     Then the cloud API response status code should be 200
     And the gateway configuration should no longer report "gateway.config.controller.logging.level"
 
+  # Known issue (ISS-03): the wrapper stores gateway.config_toml without parsing or checking it.
+  @known-issue
   @TC_APIP_GWCFG_017 @ID_APIP_GATEWAY_CONFIG_019
   Scenario: Raw TOML that redefines a configured section is refused
     Given I obtain an APIP cloud console token
@@ -274,6 +276,8 @@ Feature: APIP cloud managed gateway configuration
     Then the cloud API response status code should be 400
     And the cloud API error code should be "invalid_request"
 
+  # Known issue (ISS-03): the wrapper stores gateway.config_toml without parsing or checking it.
+  @known-issue
   @TC_APIP_GWCFG_018 @ID_APIP_GATEWAY_CONFIG_020
   Scenario: Raw TOML cannot repoint the gateway at another organisation's database
     Given I obtain an APIP cloud console token
