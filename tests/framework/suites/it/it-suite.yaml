@@ -464,6 +464,11 @@ blocks:
       - name: api-deploy
         features:
           - features/gateway/core/api_deploy.feature
+      # Failover re-attempts one client request against several providers, so it needs
+      # the testbench as a healthy fallback and an unresolvable host as the dead primary.
+      - name: model-failover-core
+        features:
+          - features/gateway/ai/model_failover_core.feature
       - name: upstream-url-validation
         tags: "gateway-version>=1.2.0"
         features:
