@@ -21,13 +21,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import {
-  aMeter,
   aPlanPricing,
   aSubscriptionPlan,
   collection,
   failure,
   recorder,
-  resource,
   type SubscriptionPlanFixture,
 } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
@@ -40,13 +38,21 @@ const ORG = 'api-platform-demo';
 const PLANS_PATH = '/subscription-plans';
 
 const bronze = aSubscriptionPlan({
+  conditions: [
+    {
+      id: 'requests',
+      params: { limits: [{ count: 1000, timeAmount: 1, timeUnit: 'HOUR' }], onExceed: 'reject' },
+      type: 'request-count',
+    },
+  ],
+  description: 'For trying the API out.',
   displayName: 'Bronze',
   id: 'bronze',
   limits: [
     { limitCount: 1000, limitType: 'REQUEST_COUNT', stopOnQuotaReach: true, timeAmount: 1, timeUnit: 'HOUR' },
   ],
 });
-const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' }); // no limits — "Unlimited"
+const gold = aSubscriptionPlan({ description: 'For production traffic.', displayName: 'Gold', id: 'gold' });
 const legacy = aSubscriptionPlan({ displayName: 'Legacy', id: 'legacy', status: 'INACTIVE' });
 
 const silver = aSubscriptionPlan({ displayName: 'Silver', id: 'silver' });
@@ -88,9 +94,8 @@ describe('SubscriptionPlansTab', () => {
 
     await screen.findByText('Bronze');
     expect(cardOrder(['Bronze', 'Gold', 'Legacy'])).toEqual(['Bronze', 'Gold']);
-    expect(screen.getByText('1,000')).toBeInTheDocument();
-    expect(screen.getByText('requests / hour')).toBeInTheDocument();
-    expect(screen.getAllByText('Unlimited')).toHaveLength(1);
+    expect(screen.getByText('For trying the API out.')).toBeInTheDocument();
+    expect(screen.getByText('For production traffic.')).toBeInTheDocument();
     expect(screen.queryByText(/Legacy|Inactive/)).not.toBeInTheDocument();
     expect(summaryText('1 of 2 plans selected')).toBeInTheDocument();
   });
@@ -132,9 +137,11 @@ describe('SubscriptionPlansTab', () => {
     expect(cardOrder(['Legacy', 'Bronze'])).toEqual(['Legacy', 'Bronze']);
   });
 
-  it("shows a paid plan's pricing on its card, and none on a free plan's", async () => {
+  it("shows each plan's name and description only: no limit and no price", async () => {
     const starter = aSubscriptionPlan({
+      description: 'Small teams.',
       displayName: 'Starter',
+      expiryTime: '2027-03-31T00:00:00Z',
       id: 'starter',
       pricing: aPlanPricing({
         subscriptionPlanId: 'starter',
@@ -143,23 +150,85 @@ describe('SubscriptionPlansTab', () => {
         prices: [],
       }),
     });
-    const payAsYouGo = aSubscriptionPlan({
-      displayName: 'Pay as you go',
-      id: 'pay-as-you-go',
-      pricing: aPlanPricing({ subscriptionPlanId: 'pay-as-you-go' }),
-    });
-    // A per-unit price counts what its meter counts, so the meter is read for its unit.
-    server.use(
-      collection(PLANS_PATH, [bronze, starter, payAsYouGo]),
-      resource('/meters/successful-calls', aMeter()),
-    );
+    // No meter handler: a card no longer reads one, and an unhandled request fails the test.
+    server.use(collection(PLANS_PATH, [bronze, starter]));
 
     renderTab();
 
-    expect(await screen.findByText('$0.01 per request, billed monthly')).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: /Starter/ })).toHaveTextContent('$29.00 / month');
-    expect(screen.getByRole('checkbox', { name: /Bronze/ })).not.toHaveTextContent('$');
-    expect(screen.queryByText('Free')).not.toBeInTheDocument();
+    const card = await screen.findByRole('checkbox', { name: /Starter/ });
+    expect(card).toHaveTextContent('Small teams.');
+    expect(card).toHaveTextContent(/Expires .*2027/);
+    expect(card).not.toHaveTextContent('$');
+    const bronzeCard = screen.getByRole('checkbox', { name: /Bronze/ });
+    expect(bronzeCard).not.toHaveTextContent(/1,000|requests|Unlimited/);
+    expect(bronzeCard.querySelectorAll('.MuiChip-root')).toHaveLength(0);
+  });
+
+  describe('the note on the policies the selected plans need', () => {
+    const note = () => screen.queryByRole('alert');
+
+    it('asks for subscription-validation while a plan is selected and the API lacks it', async () => {
+      server.use(collection(PLANS_PATH, [bronze, gold]));
+
+      renderTab({
+        apiName: 'Cat Facts API',
+        attachedPolicies: new Set(['jwt-auth']),
+        values: values({ subscriptionPlanIds: ['gold'] }),
+      });
+
+      await screen.findByText('Gold');
+      expect(note()).toHaveTextContent(
+        'Attach this policy to Cat Facts API and redeploy it to the gateway, so the plans are enforced:',
+      );
+      expect(note()).toHaveTextContent('subscription-validation');
+      expect(note()).toHaveTextContent(
+        'You can publish now. Nothing breaks: subscribers can see the plans and subscribe, and the plan conditions apply once the API is deployed with this policy.',
+      );
+    });
+
+    it('shows nothing when the API has subscription-validation', async () => {
+      server.use(collection(PLANS_PATH, [bronze, gold]));
+
+      renderTab({
+        apiName: 'Cat Facts API',
+        attachedPolicies: new Set(['subscription-validation']),
+        values: values({ subscriptionPlanIds: ['bronze', 'gold'] }),
+      });
+
+      await screen.findByText('Gold');
+      expect(note()).not.toBeInTheDocument();
+    });
+
+    it('shows nothing while no plan is selected, and appears once one is', async () => {
+      server.use(collection(PLANS_PATH, [bronze, gold]));
+      const props = { apiName: 'Cat Facts API', attachedPolicies: new Set<string>() };
+
+      const { rerender } = renderTab({ ...props, values: values() });
+
+      await screen.findByText('Gold');
+      expect(note()).not.toBeInTheDocument();
+
+      rerender(
+        <ApiScopeProvider orgId={ORG}>
+          <SubscriptionPlansTab {...props} values={values({ subscriptionPlanIds: ['bronze'] })} />
+        </ApiScopeProvider>,
+      );
+      expect(await screen.findByRole('alert')).toHaveTextContent('subscription-validation');
+    });
+
+    it('never shows in the published view', async () => {
+      server.use(collection(PLANS_PATH, [bronze, gold]));
+
+      renderTab({
+        apiName: 'Cat Facts API',
+        attachedPolicies: new Set<string>(),
+        readOnly: true,
+        values: values({ subscriptionPlanIds: ['gold'] }),
+      });
+
+      await screen.findByText('Gold');
+      expect(note()).not.toBeInTheDocument();
+    });
   });
 
   it('loads every page of plans, not just the first 20', async () => {
@@ -351,7 +420,7 @@ describe('SubscriptionPlansTab', () => {
     const card = await screen.findByRole('checkbox', { name: /Platinum/ });
     expect(card.querySelector('del')).toHaveTextContent('Platinum');
     expect(card.querySelectorAll('.MuiChip-root')).toHaveLength(0);
-    expect(card).not.toHaveTextContent('Unlimited');
+    expect(card).not.toHaveTextContent('For trying the API out.');
     expect(card).toHaveTextContent('Deleted since last publish');
     expect(cardOrder(['Platinum', 'Bronze'])[0]).toBe('Platinum');
     expect(summaryText('2 plans published')).toBeInTheDocument();
@@ -373,7 +442,7 @@ describe('SubscriptionPlansTab', () => {
 
     const draftCard = await screen.findByRole('checkbox', { name: /Bronze/ });
     expect(draftCard).not.toHaveTextContent('Edited');
-    expect(draftCard).toHaveTextContent('1,000');
+    expect(draftCard).toHaveTextContent('For trying the API out.');
 
     rerender(
       <ApiScopeProvider orgId={ORG}>
@@ -386,9 +455,9 @@ describe('SubscriptionPlansTab', () => {
     expect(chip).toHaveClass('MuiChip-outlined');
     expect(chip?.querySelector('svg')).toBeNull();
     expect(published).toHaveTextContent('Edited since last publish');
-    expect(published).not.toHaveTextContent('1,000');
+    expect(published).not.toHaveTextContent('For trying the API out.');
     expect(screen.getByRole('checkbox', { name: /Gold/ })).not.toHaveTextContent('Edited');
-    expect(screen.getByRole('checkbox', { name: /Gold/ })).toHaveTextContent('Unlimited');
+    expect(screen.getByRole('checkbox', { name: /Gold/ })).toHaveTextContent('For production traffic.');
   });
 
   it('draft: shows no chip on any card', async () => {
@@ -439,7 +508,7 @@ describe('SubscriptionPlansTab', () => {
     const inactiveEdited = await screen.findByRole('checkbox', { name: /Legacy/ });
     expect(inactiveEdited).toHaveTextContent('Inactive');
     expect(inactiveEdited.querySelectorAll('.MuiChip-root')).toHaveLength(1);
-    expect(inactiveEdited).not.toHaveTextContent('Unlimited');
+    expect(inactiveEdited).not.toHaveTextContent('For');
     expect(inactiveEdited).toHaveTextContent('Edited since last publish');
     expect(screen.getByRole('checkbox', { name: /Bronze/ }).querySelectorAll('.MuiChip-root')).toHaveLength(1);
     expect(screen.getByRole('checkbox', { name: /Bronze/ })).toHaveTextContent('Edited');

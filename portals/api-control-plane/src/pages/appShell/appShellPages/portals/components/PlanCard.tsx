@@ -18,10 +18,10 @@
 
 import { alpha, Box, Chip, Form, Tooltip, Typography, type Theme } from '@wso2/oxygen-ui';
 import { Check } from '@wso2/oxygen-ui-icons-react';
-import { defineMessages, FormattedMessage, FormattedNumber, useIntl, type MessageDescriptor } from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
+import { useFormatters } from '@/i18n/useFormatters';
 import { focusRingSx } from '@/theme/receipes';
-import type { PlanLimitDisplay } from '../utils/subscriptionPlanLimit';
 
 const messages = defineMessages({
   inactive: {
@@ -59,10 +59,10 @@ const messages = defineMessages({
     defaultMessage: 'Deleted since last publish',
     description: 'Helper text on a published plan card whose plan was deleted after it was last published.',
   },
-  unlimitedValue: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.unlimitedValue',
-    defaultMessage: 'Unlimited',
-    description: 'Plan card value when the plan has no configured limit.',
+  expires: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.expires',
+    defaultMessage: 'Expires {date}',
+    description: 'Chip after the name of a plan that has an expiry. {date} is a formatted date.',
   },
 });
 
@@ -75,10 +75,11 @@ type PlanCardProps = {
   edited?: boolean;
   /** Published view only: the draft never offers an inactive plan. */
   inactive?: boolean;
-  /** Absent for a deleted plan, whose limit is no longer known. */
-  limit?: PlanLimitDisplay;
+  /** What the plan offers, as written in Settings. Absent for a deleted plan. */
+  description?: string;
+  /** When the plan expires, if it does. Absent for a deleted plan. */
+  expiryTime?: string | null;
   onToggle?: () => void;
-  pricing?: string;
   readOnly?: boolean;
   selected: boolean;
 };
@@ -92,8 +93,8 @@ type Chipped = 'inactive' | 'edited';
 /** Side of the leading checkbox square. */
 const CHECK_SIZE = 20;
 
-/** Room for the limit, so cards with and without one stay level. */
-const BODY_MIN_HEIGHT = 42;
+/** Room for two lines of description, so cards with and without one stay level. */
+const BODY_MIN_HEIGHT = 40;
 
 /** The drawn checkbox at the card's left; a real checkbox cannot nest inside a button. A plan no longer available is drawn grey. */
 function SelectionSquare({ accent, selected, unavailable }: { accent: Accent; selected: boolean; unavailable: boolean }) {
@@ -155,24 +156,27 @@ const planCardSx = (
 /**
  * One plan in the grid: a single `Form.CardButton` with the `checkbox` role, so the whole card is the hit target
  * (the square is drawn; a real checkbox cannot nest in a button).
+ * It shows the plan's name and description only, plus when it expires: what a subscriber chooses by, not its limits
+ * or price, which Manage › Subscription Plans shows.
  * The published card (`readOnly`) shows what became of the plan since publish: a deleted or inactive plan goes grey
  * and keeps its tick; deleted is struck through; inactive or edited gets an outlined chip (inactive wins). An edited
- * plan hides its limit, which would be the current one, not the published one.
+ * plan's description gives way to an "Edited since last publish" line, as it would be the current one.
  * `readOnly` never sets `disabled`, so hovering still shows the tooltip.
  */
 export function PlanCard({
   deleted = false,
+  description,
   disabled,
   displayName,
   edited = false,
+  expiryTime,
   inactive = false,
-  limit,
   onToggle,
-  pricing,
   readOnly,
   selected,
 }: PlanCardProps) {
   const intl = useIntl();
+  const { shortDate } = useFormatters();
   const accent: Accent = readOnly ? 'success' : 'primary';
   // A deleted or inactive plan is still held by the listing, but is no longer available.
   const unavailable = Boolean(readOnly) && (deleted || inactive);
@@ -187,7 +191,7 @@ export function PlanCard({
   else if (chip === 'edited') hint = messages.editedPublishedHint;
   const tooltip = hint ? intl.formatMessage(hint) : '';
 
-  // Where the limit would sit: an edited or deleted plan has none to show, even when the chip says Inactive.
+  // Where the description would sit: an edited or deleted plan has none to show, even when the chip says Inactive.
   const editedSincePublish = Boolean(readOnly) && !deleted && edited;
   let helper: MessageDescriptor | undefined;
   if (readOnly && deleted) helper = messages.deletedSincePublish;
@@ -228,33 +232,32 @@ export function PlanCard({
               variant="outlined"
             />
           )}
+          {expiryTime && !deleted && (
+            <Chip
+              label={<FormattedMessage {...messages.expires} values={{ date: shortDate(expiryTime) }} />}
+              size="small"
+              sx={{ flexShrink: 0 }}
+            />
+          )}
         </Box>
 
         <Box sx={{ minHeight: BODY_MIN_HEIGHT, textAlign: 'start', width: '100%' }}>
-          {helper && (
+          {helper ? (
             <Typography color="text.secondary" variant="body2">
               <FormattedMessage {...helper} />
             </Typography>
-          )}
-          {limit && !editedSincePublish && (
-            <Box sx={{ alignItems: 'baseline', columnGap: 1, display: 'flex' }}>
+          ) : (
+            description && (
               <Typography
-                sx={{ flexShrink: 0, fontSize: '1.75rem', fontVariantNumeric: 'tabular-nums', fontWeight: 600, lineHeight: 1.15 }}
-                variant="h4"
+                color="text.secondary"
+                sx={{ display: '-webkit-box', overflow: 'hidden', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}
+                variant="body2"
               >
-                {limit.unlimited ? (
-                  <FormattedMessage {...messages.unlimitedValue} />
-                ) : (
-                  <FormattedNumber value={limit.count} />
-                )}
+                {description}
               </Typography>
-              <Typography color="text.secondary" noWrap sx={{ minWidth: 0 }} variant="body2">
-                <FormattedMessage {...limit.unit} values={limit.unlimited ? undefined : limit.unitValues} />
-              </Typography>
-            </Box>
+            )
           )}
         </Box>
-        {pricing && <Typography variant="body2">{pricing}</Typography>}
       </Form.CardButton>
     </Tooltip>
   );

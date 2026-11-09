@@ -16,9 +16,16 @@
  * under the License.
  */
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 
-import type { ApiError } from '../../core/errors';
+import { isApiError, type ApiError } from '../../core/errors';
 import { HANDLED_LOCALLY } from '../../core/queryClient';
 import { useApiScope } from '../../core/scope';
 import {
@@ -192,6 +199,56 @@ export const useApiPublicationDefinition = (
     ...apiPublicationQueries.publicationDefinition(org!, apiPortalId!, apiType!, apiId!),
     enabled: Boolean(org && apiPortalId && apiType && apiId),
   });
+};
+
+/** How many portals the plans rollup reads; an organization has far fewer. */
+const PORTAL_LIMIT = 100;
+
+const combinePublishedPlans = (results: UseQueryResult<Publication>[]) => ({
+  error: results.find((result) => result.error && !(isApiError(result.error) && result.error.isNotFound))
+      ?.error ?? null,
+  isPending: results.some((result) => result.isPending),
+  planIds: [
+    ...new Set(
+      results.flatMap((result) =>
+        (result.data?.subscriptionPlans ?? [])
+          .filter((plan) => plan.sourceStatus !== 'DELETED')
+          .map((plan) => plan.id),
+      ),
+    ),
+  ],
+});
+
+/**
+ * The subscription plans an API offers: those its live listings (published or deprecated) hold
+ * on any API Portal, once each, leaving out plans deleted since. Plans are chosen when the API is
+ * published, so this is the set subscribers can pick from. A listing unpublished between the two
+ * reads (404) is skipped; any other failure is `error`.
+ */
+export const useApiPublishedPlanIds = (
+  apiType: string | undefined,
+  apiId: string | undefined,
+  overrides: { orgId?: string } = {},
+) => {
+  const { org } = useApiScope(overrides);
+  const listQuery = useApiPublications(apiType, apiId, { limit: PORTAL_LIMIT }, overrides);
+  const portalIds = (listQuery.data?.list ?? [])
+    .filter((item) => item.status === 'PUBLISHED' || item.status === 'DEPRECATED')
+    .flatMap((item) => (item.apiPortalId ? [item.apiPortalId] : []));
+
+  const listings = useQueries({
+    combine: combinePublishedPlans,
+    queries: portalIds.map((apiPortalId) => ({
+      ...apiPublicationQueries.publication(org!, apiPortalId, apiType!, apiId!),
+      enabled: Boolean(org && apiType && apiId),
+    })),
+  });
+
+  return {
+    error: listQuery.error ?? listings.error,
+    isPending: listQuery.isPending || listings.isPending,
+    planIds: listings.planIds,
+  };
 };
 
 /**

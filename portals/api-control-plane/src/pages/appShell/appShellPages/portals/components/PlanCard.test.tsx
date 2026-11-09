@@ -18,37 +18,35 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { aSubscriptionPlan } from '@/test/msw';
 import { renderWithProviders, screen } from '@/test/utils';
-import { getPlanLimitDisplay } from '../utils/subscriptionPlanLimit';
 import { PlanCard } from './PlanCard';
 
-const limit = getPlanLimitDisplay(aSubscriptionPlan({ displayName: 'Plan', id: 'plan' })); // no limits: "Unlimited"
+const description = 'For trying the API out.';
 
 const chipsOf = (card: HTMLElement) => [...card.querySelectorAll('.MuiChip-root')];
 
 describe('PlanCard', () => {
-  it('draft: shows only the name and the limit, whatever the plan has become', () => {
+  it('draft: shows only the name and the description, whatever the plan has become', () => {
     renderWithProviders(
-      <PlanCard deleted displayName="Plan" edited inactive limit={limit} selected />,
+      <PlanCard deleted displayName="Plan" edited inactive description={description} selected />,
     );
 
     const card = screen.getByRole('checkbox', { name: /Plan/ });
     expect(chipsOf(card)).toHaveLength(0);
     expect(card.querySelector('del')).toBeNull();
-    expect(card).toHaveTextContent('Unlimited');
+    expect(card).toHaveTextContent(description);
   });
 
-  it('published: a plain plan has no chip and keeps its limit', () => {
-    renderWithProviders(<PlanCard displayName="Plan" limit={limit} readOnly selected />);
+  it('published: a plain plan has no chip and keeps its description', () => {
+    renderWithProviders(<PlanCard displayName="Plan" description={description} readOnly selected />);
 
     const card = screen.getByRole('checkbox', { name: /Plan/ });
     expect(chipsOf(card)).toHaveLength(0);
-    expect(card).toHaveTextContent('Unlimited');
+    expect(card).toHaveTextContent(description);
   });
 
   it('published: an edited plan gets an outlined chip with no icon, right after the name', () => {
-    renderWithProviders(<PlanCard displayName="Plan" edited limit={limit} readOnly selected />);
+    renderWithProviders(<PlanCard displayName="Plan" edited description={description} readOnly selected />);
 
     const card = screen.getByRole('checkbox', { name: /Plan/ });
     const [chip] = chipsOf(card);
@@ -56,17 +54,17 @@ describe('PlanCard', () => {
     expect(chip).toHaveClass('MuiChip-outlined', 'MuiChip-colorWarning');
     expect(chip.querySelector('svg')).toBeNull();
     expect(screen.getByText('Plan').nextElementSibling).toBe(chip);
-    // The card could only show the plan's current limit, so it shows none.
-    expect(card).not.toHaveTextContent('Unlimited');
+    // The card could only show the plan's current description, so it shows none.
+    expect(card).not.toHaveTextContent(description);
     expect(card).toHaveTextContent('Edited since last publish');
   });
 
-  it('published: an inactive plan gets an outlined chip and keeps its limit', () => {
-    renderWithProviders(<PlanCard displayName="Plan" inactive limit={limit} readOnly selected />);
+  it('published: an inactive plan gets an outlined chip and keeps its description', () => {
+    renderWithProviders(<PlanCard displayName="Plan" inactive description={description} readOnly selected />);
 
     const card = screen.getByRole('checkbox', { name: /Plan/ });
     const chips = chipsOf(card);
-    expect(card).toHaveTextContent('Unlimited');
+    expect(card).toHaveTextContent(description);
     expect(chips).toHaveLength(1);
     expect(chips[0]).toHaveTextContent('Inactive');
     expect(chips[0]).toHaveClass('MuiChip-outlined', 'MuiChip-colorDefault');
@@ -74,14 +72,14 @@ describe('PlanCard', () => {
     expect(card).not.toHaveTextContent('since last publish');
   });
 
-  it('published: an inactive plan that was also edited wears Inactive but hides its limit', () => {
-    renderWithProviders(<PlanCard displayName="Plan" edited inactive limit={limit} readOnly selected />);
+  it('published: an inactive plan that was also edited wears Inactive but hides its description', () => {
+    renderWithProviders(<PlanCard displayName="Plan" edited inactive description={description} readOnly selected />);
 
     const card = screen.getByRole('checkbox', { name: /Plan/ });
     const chips = chipsOf(card);
     expect(chips).toHaveLength(1);
     expect(chips[0]).toHaveTextContent('Inactive');
-    expect(card).not.toHaveTextContent('Unlimited');
+    expect(card).not.toHaveTextContent(description);
     expect(card).toHaveTextContent('Edited since last publish');
   });
 
@@ -97,8 +95,32 @@ describe('PlanCard', () => {
   });
 
   it('draft: shows no since-last-publish line', () => {
-    renderWithProviders(<PlanCard deleted displayName="Plan" edited limit={limit} selected />);
+    renderWithProviders(<PlanCard deleted displayName="Plan" edited description={description} selected />);
 
     expect(screen.getByRole('checkbox', { name: /Plan/ })).not.toHaveTextContent('since last publish');
+  });
+
+  it('shows no limit or price, only the name and the description', () => {
+    renderWithProviders(<PlanCard description={description} displayName="Plan" selected={false} />);
+
+    const card = screen.getByRole('checkbox', { name: /Plan/ });
+    expect(card).toHaveTextContent(`Plan${description}`);
+    expect(card).not.toHaveTextContent(/requests|Unlimited|\$/);
+  });
+
+  it('shows when a plan expires in a chip after its name', () => {
+    renderWithProviders(
+      <PlanCard displayName="Plan" expiryTime="2027-03-31T00:00:00Z" selected={false} />,
+    );
+
+    const [chip] = chipsOf(screen.getByRole('checkbox', { name: /Plan/ }));
+    expect(chip).toHaveTextContent(/^Expires .*2027/);
+    expect(screen.getByText('Plan').nextElementSibling).toBe(chip);
+  });
+
+  it('shows no expiry chip on a plan that never expires', () => {
+    renderWithProviders(<PlanCard displayName="Plan" expiryTime={null} selected={false} />);
+
+    expect(chipsOf(screen.getByRole('checkbox', { name: /Plan/ }))).toHaveLength(0);
   });
 });

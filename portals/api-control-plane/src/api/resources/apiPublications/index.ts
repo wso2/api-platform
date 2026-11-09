@@ -56,6 +56,7 @@ export {
   useApiPublicationLandingPage,
   useApiPublicationThumbnail,
   useApiPublications,
+  useApiPublishedPlanIds,
   useDeprecateApiOnApiPortal,
   usePublishApiToApiPortal,
   useSaveApiPublicationDraft,
