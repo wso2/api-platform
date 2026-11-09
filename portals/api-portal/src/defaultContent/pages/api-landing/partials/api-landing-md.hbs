@@ -12,9 +12,9 @@
 {{#if subscriptionPlans.length}}
 ## Subscription Plans
 
-| Plan | Limits | Description |
-|------|--------------|-------------|
-{{#each subscriptionPlans}}| {{displayName}} | {{#if limits.length}}{{#each limits}}{{#if (eq limitCount -1)}}Unlimited{{else}}{{limitCount}}{{/if}}{{#if timeUnit}} / {{timeAmount}} {{timeUnit}}{{/if}}{{#unless @last}}, {{/unless}}{{/each}}{{else if requestCount}}{{requestCount}}{{else}}—{{/if}} | {{description}} |
+| Plan | Conditions | Description |
+|------|------------|-------------|
+{{#each subscriptionPlans}}| {{displayName}} | {{#each limitLines}}{{text}}{{#if allow}} (overage allowed){{/if}}{{#unless @last}}, {{/unless}}{{else}}Unlimited{{/each}} | {{description}} |
 {{/each}}
 {{/if}}
 ## Authentication

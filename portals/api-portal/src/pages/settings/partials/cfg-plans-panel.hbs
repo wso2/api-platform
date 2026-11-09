@@ -1,9 +1,12 @@
       <!-- ══ Subscription Plans ══ -->
       <div class="cfg-panel" id="cfg-plans">
+        <!-- Two sibling views, one visible at a time (see plan-editor.js): the list below, and the
+             add/edit form in cfg-plan-form-view. Deleting still uses a modal, as elsewhere in settings. -->
+        <div id="pln-list-view">
         <div class="cfg-panel-header">
           <div>
             <h2 class="cfg-panel-title">Subscription Plans</h2>
-            <p class="cfg-panel-desc">Define the rate and quota tiers applications can subscribe to.</p>
+            <p class="cfg-panel-desc">Define the plans subscribers can choose, each with its conditions and price.</p>
           </div>
           <button class="cfg-btn-primary" id="cfg-add-plan-btn" type="button">
             <i class="bi bi-plus"></i> Add plan
@@ -15,7 +18,7 @@
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Limits</th>
+                <th>Conditions</th>
                 <th>Pricing</th>
                 <th style="width:90px;"></th>
               </tr>
@@ -32,15 +35,35 @@
                 data-refid="{{refId}}">
                 <td>
                   <div style="font-size:.875rem;font-weight:600;color:#1a2433;">{{displayName}}</div>
-                  {{#if description}}<div style="font-size:.75rem;color:#637282;margin-top:2px;">{{description}}</div>{{/if}}
+                  {{#if description}}<div class="cfg-plan-desc" title="{{description}}">{{description}}</div>{{/if}}
                 </td>
                 <td>
-                  {{#if displayLimits.length}}
-                    {{#displayLimits}}
-                    <span class="cfg-limit-badge">{{limitTypeLabel limitType}} · {{#if (eq limitCount -1)}}∞{{else}}{{limitCount}}{{/if}}{{#if timeUnit}} / {{#unless (eq timeAmount 1)}}{{timeAmount}} {{/unless}}{{timeUnitLabel timeUnit}}{{/if}}</span>
-                    {{/displayLimits}}
+                  {{#if conditionChips.length}}
+                  <div class="cfg-cond-chips">
+                    {{#conditionChips}}
+                    {{!-- One chip per condition; hovering or focusing it lists every limit. --}}
+                    <span class="cfg-cond-chip" tabindex="0">
+                      <span class="cfg-cond-chip-name">{{label}}</span>
+                      <span class="cfg-cond-chip-value">{{first}}</span>
+                      {{#if more}}<span class="cfg-cond-chip-more">+{{more}}</span>{{/if}}
+                      <span class="cfg-cond-tip" role="tooltip">
+                        <span class="cfg-cond-tip-title">{{label}}{{#if custom}} · {{first}}{{/if}}</span>
+                        {{#details}}<span class="cfg-cond-tip-line">{{this}}</span>{{/details}}
+                      </span>
+                    </span>
+                    {{/conditionChips}}
+                    {{#if moreConditions.length}}
+                    <span class="cfg-cond-chip cfg-cond-chip--more" tabindex="0" aria-label="{{moreConditions.length}} more conditions">
+                      <span class="cfg-cond-chip-more">+{{moreConditions.length}}</span>
+                      <span class="cfg-cond-tip" role="tooltip">
+                        <span class="cfg-cond-tip-title">More conditions</span>
+                        {{#moreConditions}}<span class="cfg-cond-tip-line">{{this}}</span>{{/moreConditions}}
+                      </span>
+                    </span>
+                    {{/if}}
+                  </div>
                   {{else}}
-                    <span style="color:#9aa3af;font-size:.8rem;">—</span>
+                    <span style="color:#9aa3af;font-size:.8rem;">Unlimited</span>
                   {{/if}}
                 </td>
                 <td>
@@ -52,10 +75,8 @@
                 </td>
                 <td>
                   <div class="cfg-row-actions">
-                    <button class="cfg-icon-btn cfg-plan-edit-btn" type="button"
-                      data-id="{{planId}}" data-name="{{planName}}" data-display="{{displayName}}"
-                      data-desc="{{description}}" data-conditions="{{{jsonAttr conditions}}}" data-pricing="{{{jsonAttr pricing}}}"
-                      data-refid="{{refId}}" title="Edit">
+                    <button class="cfg-icon-btn cfg-plan-edit-btn" type="button" data-id="{{planId}}"
+                      title="Edit" aria-label="Edit {{displayName}}">
                       <i class="bi bi-pencil"></i>
                     </button>
                     <button class="cfg-icon-btn cfg-icon-btn--danger cfg-plan-delete-btn" type="button"
@@ -73,4 +94,6 @@
             </tbody>
           </table>
         </div>
+        </div><!-- /#pln-list-view -->
+{{> cfg-plan-form-view}}
       </div><!-- /#cfg-plans -->

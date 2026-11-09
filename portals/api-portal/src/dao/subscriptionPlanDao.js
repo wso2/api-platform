@@ -49,17 +49,20 @@ const buildSubscriptionPlanRow = (orgId, plan) => {
 const normalizeLimits = (limits) => {
   if (!Array.isArray(limits)) return [];
   return limits.map(l => {
-    if (typeof l.limitCount !== 'number' || !Number.isFinite(l.limitCount) ||
-        (l.limitCount !== -1 && l.limitCount <= 0)) {
-      throw new ValidationError('limitCount must be -1 (unlimited) or a positive number for each limit');
+    if (!Number.isSafeInteger(l.limitCount) || (l.limitCount !== -1 && l.limitCount <= 0)) {
+      throw new ValidationError('limitCount must be -1 (unlimited) or a positive whole number for each limit');
     }
     const limitType = (l.limitType || 'REQUEST_COUNT').toUpperCase();
     if (!VALID_LIMIT_TYPES.includes(limitType)) {
       throw new ValidationError(`limitType must be one of ${VALID_LIMIT_TYPES.join(', ')}`);
     }
     if (l.timeAmount !== undefined && l.timeAmount !== null &&
-        (typeof l.timeAmount !== 'number' || !Number.isFinite(l.timeAmount) || l.timeAmount <= 0)) {
-      throw new ValidationError('timeAmount must be a positive number when provided');
+        (!Number.isSafeInteger(l.timeAmount) || l.timeAmount <= 0)) {
+      throw new ValidationError('timeAmount must be a positive whole number when provided');
+    }
+    // A limit with no window can't be enforced; refusing it beats saving the plan as unlimited.
+    if (l.limitCount !== -1 && ['REQUEST_COUNT', 'EVENT_COUNT'].includes(limitType) && !l.timeUnit) {
+      throw new ValidationError('timeUnit (MINUTE, HOUR, DAY or MONTH) is required for each request or event limit');
     }
     return {
       limit_type: limitType,
@@ -162,7 +165,9 @@ const attachConditions = async (plans, t) => {
 
 /** Stores the request-count condition in subscription_plan_limits, for a database not upgraded yet. */
 const saveLegacyLimits = async (planId, conditions, schema, exec) => {
-  if (!schema.legacyLimits || conditions.some((c) => c.type !== planConditions.TYPE.REQUEST_COUNT)) {
+  // subscription_plan_limits keeps neither other condition types nor onExceed: allow.
+  if (!schema.legacyLimits || conditions.some((c) => c.type !== planConditions.TYPE.REQUEST_COUNT
+      || c.params?.onExceed === 'allow')) {
     throw new CustomError(503, 'Service Unavailable',
       'The database has no subscription_plan_conditions table; run this release\'s database schema script to store this plan\'s conditions.');
   }
@@ -192,7 +197,8 @@ const savePlanDetails = async (planId, plan, isNew, t) => {
     const onExceed = current.find((c) => c.type === planConditions.TYPE.REQUEST_COUNT)?.params?.onExceed;
     const request = planConditions.requestCondition(
       planConditions.requestWindowsFromLimits(normalizeLimits(plan.limits)), onExceed);
-    conditions = planConditions.withRequestCondition(current, request);
+    // Checked again: adding the request-count condition can take a plan past its 20 conditions.
+    conditions = planConditions.normalizeConditions(planConditions.withRequestCondition(current, request));
   } else if (isNew) {
     conditions = [];
   } else {

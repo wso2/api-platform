@@ -109,6 +109,18 @@ const helpers = {
 
     // String helpers
     lowercase: (str) => typeof str === 'string' ? str.toLowerCase() : str,
+    // The kind of artifact, as subscribers read it: MCP, REST, GraphQL and so on.
+    apiTypeLabel: (type) => {
+        const map = { mcp: 'MCP', restapi: 'REST', rest: 'REST', graphql: 'GraphQL', soap: 'SOAP', ws: 'WebSocket', websubapi: 'WebSub' };
+        return map[String(type || '').toLowerCase()] || String(type || 'REST');
+    },
+    isMcpType: (type) => String(type || '').toLowerCase() === 'mcp',
+    // A date without its time, for "since" columns.
+    formatDate: (value) => {
+        if (value == null || value === '') return '';
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString(undefined, { dateStyle: 'medium' });
+    },
     // Display only. Used for identifiers that are lowercase by contract — driver
     // type ids, for one — so it must never be applied to a value being sent back.
     // The product name for a key manager driver `type`. Looked up rather than

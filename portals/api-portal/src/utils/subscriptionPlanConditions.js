@@ -87,10 +87,10 @@ function normalizeLimitParams(field, type, params) {
         if (!isObject(w)) throw new ValidationError(`${limitField}: invalid params: a limit must be an object`);
         checkKnownKeys(field, w, ['count', 'timeAmount', 'timeUnit']);
         const count = w.count ?? 0;
-        if (!Number.isInteger(count)) throw new ValidationError(`${limitField}: count must be a whole number`);
+        if (!Number.isSafeInteger(count)) throw new ValidationError(`${limitField}: count must be a whole number`);
         if (count < 1) throw new ValidationError(`${limitField}: count must be at least 1`);
         let timeAmount = w.timeAmount ?? 0;
-        if (!Number.isInteger(timeAmount)) throw new ValidationError(`${limitField}: timeAmount must be a whole number`);
+        if (!Number.isSafeInteger(timeAmount)) throw new ValidationError(`${limitField}: timeAmount must be a whole number`);
         if (timeAmount === 0) timeAmount = 1;
         else if (timeAmount < 0) throw new ValidationError(`${limitField}: timeAmount must be at least 1`);
         if (w.timeUnit !== undefined && w.timeUnit !== null && typeof w.timeUnit !== 'string') {
@@ -107,16 +107,17 @@ function normalizeLimitParams(field, type, params) {
         seen.add(key);
         return { count, timeAmount, timeUnit };
     });
-    const out = { limits: windows, onExceed: onExceed || 'reject' };
+    // A value that is given is checked as it is: false or 0 is refused, not taken as the default.
+    const out = { limits: windows, onExceed: onExceed ?? 'reject' };
     if (!ON_EXCEED.includes(out.onExceed)) {
         throw new ValidationError(`${field}: params.onExceed must be reject or allow`);
     }
     if (type === TYPE.TOKEN_COUNT) {
-        out.tokenType = tokenType || 'total';
+        out.tokenType = tokenType ?? 'total';
         if (!TOKEN_TYPES.includes(out.tokenType)) {
             throw new ValidationError(`${field}: params.tokenType must be total, prompt or completion`);
         }
-    } else if (tokenType) {
+    } else if (tokenType !== undefined && tokenType !== null) {
         throw new ValidationError(`${field}: params.tokenType is for token-count conditions only`);
     }
     return out;
@@ -164,7 +165,7 @@ function normalizeConditions(conditions) {
         const type = typeof c.type === 'string' ? c.type.trim() : '';
         let id = typeof c.id === 'string' ? c.id.trim() : '';
         let params;
-        if (type in BUILT_IN_IDS) {
+        if (Object.prototype.hasOwnProperty.call(BUILT_IN_IDS, type)) {
             const fixedId = BUILT_IN_IDS[type];
             if (id !== '' && id !== fixedId) {
                 throw new ValidationError(`${field}: the id of a ${type} condition is ${fixedId}`);
@@ -269,7 +270,51 @@ function displayLimits(conditions, { events = false } = {}) {
     return out;
 }
 
+const CHIP_NAMES = { [TYPE.REQUEST_COUNT]: 'Requests', [TYPE.TOOL_CALL_COUNT]: 'Tool calls', [TYPE.TOKEN_COUNT]: 'Tokens' };
+const TOKEN_NAMES = { total: 'Tokens', prompt: 'Prompt tokens', completion: 'Completion tokens' };
+const SHORT_UNITS = { MINUTE: 'min', HOUR: 'hr', DAY: 'day', MONTH: 'mo' };
+
+/**
+ * One chip per condition for the plans table: its first limit and how many more it has, with every
+ * limit (or a custom condition's values) for the chip's hover card.
+ */
+const conditionChips = (conditions) => (conditions || []).map((c) => {
+    const params = c.params || {};
+    if (c.type === TYPE.CUSTOM) {
+        const values = Object.entries(params).map(([k, v]) => `${k} = ${typeof v === 'string' ? v : JSON.stringify(v)}`);
+        return { label: 'Custom', first: c.id, more: 0, details: values.length ? values : ['No values'], custom: true };
+    }
+    const name = c.type === TYPE.TOKEN_COUNT ? TOKEN_NAMES[params.tokenType] || 'Tokens' : CHIP_NAMES[c.type] || c.type;
+    const windows = (params.limits || []).map((w) =>
+        `${Number(w.count).toLocaleString('en-US')} / ${w.timeAmount > 1 ? w.timeAmount + ' ' : ''}${SHORT_UNITS[w.timeUnit] || String(w.timeUnit).toLowerCase()}`);
+    const details = windows.concat(params.onExceed === 'allow' ? ['Allowed past the limit'] : []);
+    return { label: name, first: windows[0] || 'No limit', more: Math.max(windows.length - 1, 0), details };
+});
+
+const UNIT_WORDS = { MINUTE: 'minute', HOUR: 'hour', DAY: 'day', MONTH: 'month' };
+const LINE_WHAT = { [TYPE.REQUEST_COUNT]: 'requests', [TYPE.TOOL_CALL_COUNT]: 'tool calls' };
+const TOKEN_WHAT = { total: 'tokens', prompt: 'prompt tokens', completion: 'completion tokens' };
+
+/**
+ * One line per limit, as plan cards show them to subscribers ("1,000 requests / hour"), flagged when
+ * the plan lets calls through past it. Request limits read as events on event-based APIs. Custom
+ * conditions are for policies, not subscribers, so they have no line.
+ */
+const limitLines = (conditions, { events = false } = {}) => (conditions || []).flatMap((c) => {
+    if (c.type === TYPE.CUSTOM) return [];
+    const params = c.params || {};
+    let what = c.type === TYPE.TOKEN_COUNT ? TOKEN_WHAT[params.tokenType] || 'tokens' : LINE_WHAT[c.type] || c.type;
+    if (c.type === TYPE.REQUEST_COUNT && events) what = 'events';
+    return (params.limits || []).map((w) => {
+        const word = UNIT_WORDS[w.timeUnit] || String(w.timeUnit).toLowerCase();
+        const window = w.timeAmount > 1 ? `${w.timeAmount} ${word}s` : word;
+        return { text: `${Number(w.count).toLocaleString('en-US')} ${what} / ${window}`, allow: params.onExceed === 'allow' };
+    });
+});
+
 module.exports = {
+    conditionChips,
+    limitLines,
     displayLimits,
     TYPE,
     BUILT_IN_IDS,

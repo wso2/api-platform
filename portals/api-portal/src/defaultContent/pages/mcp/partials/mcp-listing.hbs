@@ -107,11 +107,12 @@
           </div>
 
           <!-- Footer -->
-          {{#if subscriptionPlans.length}}
+          {{!-- Counts the plans the server page shows: a paid plan not on sale for it is left out. --}}
+          {{#if subscriptionPlanDetails.length}}
           <div class="api-card-footer">
             <div class="api-card-footer-left">
               <a href="{{../baseUrl}}/mcp/{{id}}#subscriptionPlans" class="api-plans-link">
-                <i class="bi bi-tag"></i> {{subscriptionPlans.length}} {{conditionalIf (eq subscriptionPlans.length 1) "plan" "plans"}}
+                <i class="bi bi-tag"></i> {{subscriptionPlanDetails.length}} {{conditionalIf (eq subscriptionPlanDetails.length 1) "plan" "plans"}}
               </a>
             </div>
             {{#if hasSubscription}}

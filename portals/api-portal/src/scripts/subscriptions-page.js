@@ -33,11 +33,13 @@ function openSubManage(subId) {
         planName: row.dataset.planName || '',
         status: row.dataset.status || 'ACTIVE',
         paid: row.dataset.paid === 'true',
+        mcp: row.dataset.mcp === 'true',
     };
     _manageRevealed = false;
 
     document.getElementById('subManageApiName').textContent = _manageSub.apiName;
     document.getElementById('subManagePlanName').textContent = _manageSub.planName;
+    document.getElementById('subManageKind').textContent = _manageSub.mcp ? 'MCP server subscription' : 'API subscription';
     updateSubManageStatus(_manageSub.status);
     document.getElementById('subManageTokenVal').textContent = '•'.repeat(28);
     const revealIcon = document.getElementById('subManageRevealIcon');

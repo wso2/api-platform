@@ -744,7 +744,7 @@ func (u *Steps) openNewPlan(ctx context.Context, page playwright.Page, prefix st
 	if err := page.Locator("#cfg-add-plan-btn").Click(); err != nil {
 		return "", fmt.Errorf("opening the plan form: %w", err)
 	}
-	if err := u.expect.Locator(page.Locator("#cfg-plan-modal-save")).ToBeDisabled(); err != nil {
+	if err := u.expect.Locator(page.Locator("#pol-save")).ToBeDisabled(); err != nil {
 		return "", fmt.Errorf("Add plan should wait for a name: %w", err)
 	}
 	return name, fillAndCheck(page, "#pol-display", name)
@@ -792,15 +792,15 @@ func (u *Steps) paidPlanNeedsBilling(ctx context.Context) error {
 	if err := page.Locator("#pol-paid-setup").Click(); err != nil {
 		return err
 	}
-	if err := u.expect.Locator(page.Locator("#cfg-plan-modal")).ToBeHidden(); err != nil {
+	if err := u.expect.Locator(page.Locator("#pln-form-view")).ToBeHidden(); err != nil {
 		return err
 	}
 	return u.expect.Locator(page.Locator("#cfg-billing")).ToBeVisible()
 }
 
-// priceFlatRatePlanInSettings adds a flat rate plan: the form refuses a limit count and a time
-// amount that are not positive and amounts that are not prices; the currency is chosen from the
-// searchable list by keyboard and pointer.
+// priceFlatRatePlanInSettings adds a flat rate plan with a request-count condition: the form refuses a
+// limit count and a time amount that are not positive and amounts that are not prices; the currency
+// is chosen from the searchable list by keyboard and pointer.
 func (u *Steps) priceFlatRatePlanInSettings(ctx context.Context) error {
 	page, err := u.openSettingsPanel(ctx, "cfg-plans")
 	if err != nil {
@@ -813,12 +813,14 @@ func (u *Steps) priceFlatRatePlanInSettings(ctx context.Context) error {
 	if err := fillAndCheck(page, "#pol-desc", "A flat monthly fee"); err != nil {
 		return err
 	}
-	addLimit := page.Locator("#pol-add-limit-btn")
-	limits := page.Locator("#pol-limits-list .cfg-limit-row")
-	for range 2 {
-		if err := addLimit.Click(); err != nil {
-			return err
-		}
+	// A new plan offers the condition types; choosing one adds it with one limit to fill.
+	if err := page.Locator(`.pln-type-card[data-type="request-count"]`).Click(); err != nil {
+		return fmt.Errorf("choosing a request-count condition: %w", err)
+	}
+	condition := page.Locator(".pln-cond").First()
+	limits := condition.Locator(".cfg-limit-row")
+	if err := condition.Locator("button", playwright.LocatorLocatorOptions{HasText: "Add limit"}).Click(); err != nil {
+		return err
 	}
 	if err := limits.Nth(1).Locator(".cfg-limit-remove-btn").Click(); err != nil {
 		return err
@@ -827,7 +829,7 @@ func (u *Steps) priceFlatRatePlanInSettings(ctx context.Context) error {
 	if err := limit.Locator(".cfg-limit-count").Fill("0"); err != nil {
 		return err
 	}
-	if err := u.saveExpecting(page, "#cfg-plan-modal-save", "Limit count must be -1 (unlimited) or a positive number."); err != nil {
+	if err := u.saveExpecting(page, "#pol-save", "Request count: each limit needs a count of at least 1."); err != nil {
 		return err
 	}
 	if err := limit.Locator(".cfg-limit-count").Fill("1000"); err != nil {
@@ -836,7 +838,7 @@ func (u *Steps) priceFlatRatePlanInSettings(ctx context.Context) error {
 	if err := limit.Locator(".cfg-limit-amount").Fill("0"); err != nil {
 		return err
 	}
-	if err := u.saveExpecting(page, "#cfg-plan-modal-save", "Limit time amount must be a positive number."); err != nil {
+	if err := u.saveExpecting(page, "#pol-save", "Request count: each limit needs a time window of at least 1."); err != nil {
 		return err
 	}
 	if err := limit.Locator(".cfg-limit-amount").Fill("1"); err != nil {
@@ -932,14 +934,14 @@ func (u *Steps) priceFlatRatePlanInSettings(ctx context.Context) error {
 		if err := fillAndCheck(page, "#pol-flat-amount", amount); err != nil {
 			return err
 		}
-		if err := u.saveExpecting(page, "#cfg-plan-modal-save", message); err != nil {
+		if err := u.saveExpecting(page, "#pol-save", message); err != nil {
 			return err
 		}
 	}
 	if err := fillAndCheck(page, "#pol-flat-amount", "49.00"); err != nil {
 		return err
 	}
-	if err := u.saveAndReload(page, page.Locator("#cfg-plan-modal-save"), "Plan created."); err != nil {
+	if err := u.saveAndReload(page, page.Locator("#pol-save"), "Plan created."); err != nil {
 		return err
 	}
 	return u.registerPlan(ctx, page, name)
@@ -959,7 +961,7 @@ func (u *Steps) editAndDeletePlan(ctx context.Context) error {
 	if err := row.Locator(".cfg-plan-edit-btn").Click(); err != nil {
 		return err
 	}
-	if err := u.expect.Locator(page.Locator("#cfg-plan-modal-title")).ToHaveText("Edit subscription plan"); err != nil {
+	if err := u.expect.Locator(page.Locator("#pln-form-title")).ToHaveText("Edit subscription plan"); err != nil {
 		return err
 	}
 	if err := u.expect.Locator(page.Locator("#pol-pricing-fields input").First()).ToBeDisabled(); err != nil {
@@ -968,7 +970,7 @@ func (u *Steps) editAndDeletePlan(ctx context.Context) error {
 	if err := fillAndCheck(page, "#pol-desc", "A flat yearly fee"); err != nil {
 		return err
 	}
-	if err := u.saveAndReload(page, page.Locator("#cfg-plan-modal-save"), "Plan updated."); err != nil {
+	if err := u.saveAndReload(page, page.Locator("#pol-save"), "Plan updated."); err != nil {
 		return err
 	}
 	if err := row.Locator(".cfg-plan-delete-btn").Click(); err != nil {
@@ -1055,7 +1057,7 @@ func (u *Steps) priceUsagePlanInSettings(ctx context.Context) error {
 	if err := page.Locator(`input[name="pol-pricing-type"][value="USAGE_BASED"]`).Check(); err != nil {
 		return err
 	}
-	save := "#cfg-plan-modal-save"
+	save := "#pol-save"
 	first := u.price(page, 1)
 	if err := u.expect.Locator(first.box.Locator(".pol-price-remove")).ToBeHidden(); err != nil {
 		return fmt.Errorf("the only price should have no Remove: %w", err)

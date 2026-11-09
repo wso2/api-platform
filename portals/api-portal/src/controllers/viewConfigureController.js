@@ -55,6 +55,13 @@ const constants = require('../utils/constants');
 // almost all settings data is keyed by org. The two genuinely view-scoped panels
 // (LLM Instructions, API Workflows) render for an initial view (default, or the
 // first view) and switch client-side via the in-page view selector.
+// The plans table shows a plan's first four conditions as chips; a "+N" chip lists the rest on hover.
+const MAX_CHIPS = 4;
+const visibleChips = (chips) => ({
+    conditionChips: chips.slice(0, MAX_CHIPS),
+    moreConditions: chips.slice(MAX_CHIPS).map(c => `${c.label} · ${c.first}${c.more ? ` (+${c.more})` : ''}`),
+});
+
 const loadSettingsPage = async (req, res) => {
 
     let orgId;
@@ -194,7 +201,7 @@ const loadSettingsPage = async (req, res) => {
                 pricing: p.pricing ? new PlanPricingDTO(p.pricing) : null,
             })).map(p => ({
                 ...p,
-                displayLimits: planConditions.displayLimits(p.conditions),
+                ...visibleChips(planConditions.conditionChips(p.conditions)),
                 pricingText: pricingSummary(p.pricing, metersByHandle),
             }));
         } catch (err) {

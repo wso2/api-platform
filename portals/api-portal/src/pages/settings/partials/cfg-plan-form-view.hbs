@@ -1,0 +1,38 @@
+      <!-- ══ Add / Edit subscription plan (inline view) ══ -->
+      <!-- Sibling of #pln-list-view inside the Subscription Plans panel; plan-editor.js swaps which
+           of the two is displayed, as the Webhooks panel does. -->
+      <div id="pln-form-view" style="display:none;">
+        <a href="#" class="cfg-wizard-back" id="pln-form-back">
+          <i class="bi bi-arrow-left"></i> Back to subscription plans
+        </a>
+        <div class="cfg-panel-header">
+          <div>
+            <h2 class="cfg-panel-title" id="pln-form-title">Add subscription plan</h2>
+            <p class="cfg-panel-desc">Set the conditions subscribers get on each API and MCP server that offers this plan, and what it costs.</p>
+          </div>
+        </div>
+
+        <div class="pln-layout">
+          <div class="pln-main" id="pol-form">
+            {{> cfg-plan-form}}
+            <div class="pln-actions">
+              <button type="button" class="cfg-btn-secondary" id="pol-cancel">Cancel</button>
+              <button type="button" class="cfg-btn-primary" id="pol-save">Add plan</button>
+            </div>
+          </div>
+
+          <aside class="pln-side" aria-label="Preview">
+            <div class="pln-preview-label">Preview</div>
+            <div class="pln-preview" aria-live="polite">
+              <div class="pln-preview-head">
+                <span class="pln-preview-icon" aria-hidden="true"><i class="bi bi-lightning-charge"></i></span>
+                <span class="pln-preview-name" id="pln-preview-name">Plan name</span>
+              </div>
+              <p class="pln-preview-desc" id="pln-preview-desc"></p>
+              <ul class="pln-preview-limits" id="pln-preview-limits"></ul>
+              <div class="pln-preview-price" id="pln-preview-price">Free</div>
+            </div>
+            <p class="pln-preview-note">How the plan reads to subscribers on the API and MCP server pages.</p>
+          </aside>
+        </div>
+      </div>

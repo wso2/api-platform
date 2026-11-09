@@ -96,6 +96,7 @@ const as = (extra) => Object.assign(
 const create = (body) => call(plans.addSubscriptionPlans, as({ body }));
 const put = (body) => call(plans.putSubscriptionPlans, as({ body }));
 const get = (planId) => call(plans.getSubscriptionPlan, as({ params: { planId } }));
+const yamlPlan = (fn, text) => call(fn, as({ files: { subscriptionPlan: [{ buffer: Buffer.from(text) }] } }));
 const window_ = (count, timeAmount, timeUnit) => ({ count, timeAmount, timeUnit });
 const db = new Database(DB_FILE);
 const conditionRows = (handle) => db.prepare(
@@ -166,6 +167,18 @@ const UPGRADED_PROBE = `
     out.cleared = await put({ id: 'silver', displayName: 'Silver', conditions: [] });
     out.clearedRows = conditionRows('silver');
 
+    // Old-style limits that would otherwise drop the request quota are refused.
+    out.fractional = await put({ id: 'silver', displayName: 'Silver', limits: [{ limitType: 'REQUEST_COUNT', limitCount: 1.5, timeUnit: 'MINUTE' }] });
+    out.unitless = await create({ id: 'unitless', displayName: 'Unitless', limits: [{ limitType: 'REQUEST_COUNT', limitCount: 100 }] });
+    // YAML: the requestCount shorthand is a per-minute limit; an update that gives no limits keeps them.
+    out.yamlShorthand = await yamlPlan(plans.addSubscriptionPlans,
+        'kind: SubscriptionPlan\\nmetadata:\\n  name: yaml-plan\\nspec:\\n  displayName: YAML plan\\n  type: requestcount\\n  requestCount: 10000\\n');
+    out.yamlRenamed = await yamlPlan(plans.putSubscriptionPlans,
+        'kind: SubscriptionPlan\\nmetadata:\\n  name: yaml-plan\\nspec:\\n  displayName: YAML plan 2\\n');
+    // A limits-only update can't take a plan past 20 conditions.
+    out.full = await create({ id: 'full', displayName: 'Full', conditions: Array.from({ length: 20 }, (_, i) => ({ id: 'c' + i, type: 'custom', params: {} })) });
+    out.fullPlusLimit = await put({ id: 'full', displayName: 'Full', limits: [{ limitType: 'REQUEST_COUNT', limitCount: 5, timeUnit: 'MINUTE' }] });
+
     await call(plans.deleteSubscriptionPlan, as({ params: { planId: 'gold' } }));
     out.orphanRows = db.prepare('SELECT COUNT(*) AS n FROM subscription_plan_conditions WHERE plan_uuid NOT IN (SELECT uuid FROM subscription_plans)').get().n;
 
@@ -188,6 +201,11 @@ const NOT_UPGRADED_PROBE = `
         { type: 'tool-call-count', params: { limits: [window_(5, 1, 'MINUTE')] } },
     ] });
     out.toolsStored = planCount('tools');
+    // The legacy table has no onExceed, so allow can't be kept there.
+    out.allow = await create({ id: 'allow', displayName: 'Allow', conditions: [
+        { type: 'request-count', params: { limits: [window_(5, 1, 'MINUTE')], onExceed: 'allow' } },
+    ] });
+    out.allowStored = planCount('allow');
 
     process.stdout.write('\\nPROBE_JSON:' + JSON.stringify(out) + '\\n');
     process.exit(0);
@@ -308,7 +326,7 @@ test('saving the limits of a plan saved before conditions moves it to conditions
     assert.deepEqual(r.legacyRowsAfterSave, []);
 });
 
-test('limits sent alone become the request-count condition; unlimited and unit-less limits are left out', () => {
+test('limits sent alone become the request-count condition; unlimited limits are left out', () => {
     const r = upgraded();
     assert.equal(r.silver.status, 201);
     assert.deepEqual(r.silver.body.conditions, [requests([w(500, 1, 'MINUTE')])]);
@@ -358,4 +376,30 @@ test('a database without the conditions table refuses conditions it can\'t hold,
     assert.equal(r.tools.status, 503);
     assert.match(JSON.stringify(r.tools.body), /run this release's database schema script/);
     assert.equal(r.toolsStored, 0);
+});
+
+test('old-style limits that would drop the request quota are refused with 400', () => {
+    const r = upgraded();
+    assert.equal(r.fractional.status, 400);
+    assert.match(JSON.stringify(r.fractional.body), /positive whole number/);
+    assert.equal(r.unitless.status, 400);
+    assert.match(JSON.stringify(r.unitless.body), /timeUnit \(MINUTE, HOUR, DAY or MONTH\) is required/);
+    assert.equal(r.full.status, 201);
+    assert.equal(r.fullPlusLimit.status, 400);
+    assert.match(JSON.stringify(r.fullPlusLimit.body), /a plan can have at most 20 conditions/);
+});
+
+test('a database without the conditions table refuses onExceed allow, which it can\'t keep', () => {
+    const r = notUpgraded();
+    assert.equal(r.allow.status, 503);
+    assert.equal(r.allowStored, 0);
+});
+
+test('YAML: requestCount is a per-minute limit, and an update without limits keeps them', () => {
+    const r = upgraded();
+    assert.equal(r.yamlShorthand.status, 201);
+    assert.deepEqual(r.yamlShorthand.body.conditions, [requests([w(10000, 1, 'MINUTE')])]);
+    assert.equal(r.yamlRenamed.status, 200);
+    assert.equal(r.yamlRenamed.body.displayName, 'YAML plan 2');
+    assert.deepEqual(r.yamlRenamed.body.conditions, [requests([w(10000, 1, 'MINUTE')])]);
 });

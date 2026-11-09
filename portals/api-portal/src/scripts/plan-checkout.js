@@ -82,7 +82,9 @@
             pricing.appendChild(row(tier.dataset.label, tier.dataset.amounts));
           });
         });
-        var limit = text(card.querySelector('.aov-plan-limit'));
+        var limit = Array.prototype.map.call(card.querySelectorAll('.aov-plan-limit li'), function (li) {
+          return li.textContent.replace(/\s+/g, ' ').trim();
+        }).join(' · ');
         if (limit) pricing.appendChild(row('Rate limit', limit));
 
         // A flat rate is charged up front; usage is invoiced afterwards. The amounts carry their currency.

@@ -41,18 +41,8 @@
       <span class="aov-recommended-badge mcp-recommended-badge" style="display:none;">RECOMMENDED</span>
       {{/unless}}
     </div>
+    {{> plan-limits}}
     {{> plan-price}}
-    <div class="aov-plan-limit">
-      {{#if limits.length}}{{#with (lookup limits 0)}}
-      <span class="aov-plan-count">{{#if (eq limitCount -1)}}∞{{else}}{{limitCount}}{{/if}}</span>
-      <span class="aov-plan-unit">{{limitTypeLabel limitType}}{{#if timeUnit}} / {{#unless (eq timeAmount 1)}}{{timeAmount}} {{/unless}}{{timeUnitLabel timeUnit}}{{/if}}</span>
-      {{/with}}{{else if requestCount}}
-      <span class="aov-plan-count">{{requestCount}}</span>
-      <span class="aov-plan-unit">requests / min</span>
-      {{else}}
-      <span class="aov-plan-count">—</span>
-      {{/if}}
-    </div>
     <div class="position-relative">
       {{#if ../isAuthenticated}}
         {{#if (isCurrentPlan id @root.subscriptions)}}
