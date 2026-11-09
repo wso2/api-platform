@@ -40,6 +40,7 @@ import type { PublicationSummaryItem } from '@/api/resources/apiPublications';
 import devportalLogoUrl from '@/assets/icons/devportal-logo.png';
 import { useFormatters } from '@/i18n/useFormatters';
 import { hairline } from '@/theme/receipes';
+import type { PublishTarget } from '../publishTarget';
 import { buildViewInPortalUrl, isListedOnPortal, publicationStatusMeta } from '../utils/publicationDisplay';
 
 const messages = defineMessages({
@@ -47,7 +48,12 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.publish',
     defaultMessage: 'Publish',
     description:
-      'Split button action publishing this API to this portal straight away, with all its documents attached and no subscription plan selected.',
+      'Split button action, offered only while nothing is saved for this API on this portal, that publishes it there straight away.',
+  },
+  publishing: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.publishing',
+    defaultMessage: 'Publishing\u2026',
+    description: 'The Publish button\u2019s label while its publish runs.',
   },
   moreActions: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.moreActions',
@@ -72,16 +78,19 @@ const messages = defineMessages({
 });
 
 type PortalPublicationCardProps = {
-  apiHandle: string;
+  /** Starts a one-click Publish to this portal; the listing runs it. */
+  onPublish: () => void;
   orgHandle: string;
   publication: PublicationSummaryItem;
-  /** This API's publish page for a portal; the API kind decides where that lives. */
-  publishPath: (apiPortalId: string) => string;
   /**
    * Set when the caller may not publish this kind of API: the publish buttons
    * are disabled and this explains why.
    */
   publishDeniedTooltip?: string;
+  /** Held by the listing, so a card filtered out and back mid-publish still shows it running. */
+  publishing: boolean;
+  /** Which API, and where its publish pages live. */
+  target: PublishTarget;
 };
 
 const AVATAR_SIZE = 72;
@@ -139,16 +148,17 @@ function DetailRow({ children, label }: { children: ReactNode; label: ReactNode 
 }
 
 /**
- * One API Portal, annotated with this API's own publication state: its status,
- * when it last changed, and whether a draft is waiting. The card itself is not
- * clickable; "Configure & Publish" opens the flow.
+ * One API Portal, annotated with this API's publication status there and when
+ * it last changed. The card itself is not clickable; its button publishes
+ * straight away or opens the publish page.
  */
 export function PortalPublicationCard({
-  apiHandle,
+  onPublish,
   orgHandle,
   publication,
-  publishPath,
   publishDeniedTooltip,
+  publishing,
+  target,
 }: PortalPublicationCardProps) {
   const intl = useIntl();
   const { relativeTime } = useFormatters();
@@ -158,29 +168,29 @@ export function PortalPublicationCard({
   // NOT_PUBLISHED has never had a page on the portal to link to.
   const viewInPortalHref =
     publication.apiPortalUrl && isListedOnPortal(publication.status)
-      ? buildViewInPortalUrl(publication.apiPortalUrl, orgHandle, apiHandle)
+      ? buildViewInPortalUrl(publication.apiPortalUrl, orgHandle, target.apiHandle)
       : undefined;
 
   // Without an id there is no publish flow to open.
-  const publishHref = publication.apiPortalId ? publishPath(publication.apiPortalId) : undefined;
+  const publishHref = publication.apiPortalId ? target.publishPath(publication.apiPortalId) : undefined;
 
   const navigate = useNavigate();
   const [mode, setMode] = useState<PublishMode>('publish');
   const [menuOpen, setMenuOpen] = useState(false);
   const anchorRef = useRef<HTMLDivElement>(null);
 
-  // Both open the publish page with every document selected (a saved selection is kept for
-  // "Configure & Publish"). "Publish" also publishes once the page is ready, so the same checks and
-  // saves apply; no subscription plan is selected either way.
-  const runPublish = () => {
+  // One-click Publish only while nothing is saved here, so it never has a draft or a live listing to replace.
+  const nothingSaved = publication.status === 'NOT_PUBLISHED' && !publication.draftUpdatedAt;
+  const publishBlocked = !publishHref || publishDeniedTooltip !== undefined || publishing;
+  const splitButtonLabel = publishing
+    ? messages.publishing
+    : mode === 'publish'
+      ? messages.publish
+      : messages.configureAndPublish;
+
+  const openPublishPage = () => {
     if (!publishHref) return;
-    navigate(publishHref, {
-      state: {
-        portalName: publication.apiPortalName,
-        documents: mode === 'publish' ? 'all' : 'default',
-        autoPublish: mode === 'publish',
-      },
-    });
+    navigate(publishHref, { state: { portalName: publication.apiPortalName } });
   };
 
   return (
@@ -232,45 +242,63 @@ export function PortalPublicationCard({
         <Stack alignItems="center" direction="row" spacing={2}>
           <Tooltip title={publishDeniedTooltip ?? ''}>
             <Box sx={{ flex: 1, minWidth: 0 }}>
-              <ButtonGroup
-                disabled={!publishHref || publishDeniedTooltip !== undefined}
-                ref={anchorRef}
-                size="small"
-                sx={{ display: 'flex', width: '100%' }}
-                variant="contained"
-              >
+              {nothingSaved ? (
+                <>
+                  <ButtonGroup
+                    disabled={publishBlocked}
+                    ref={anchorRef}
+                    size="small"
+                    sx={{ display: 'flex', width: '100%' }}
+                    variant="contained"
+                  >
+                    <Button
+                      aria-describedby={nameId}
+                      loading={publishing}
+                      loadingPosition="start"
+                      onClick={() => (mode === 'publish' ? onPublish() : openPublishPage())}
+                      startIcon={mode === 'publish' && <Megaphone size={16} />}
+                      sx={{ '&&': { flex: '1 1 auto', minWidth: 0 }, whiteSpace: 'nowrap' }}
+                    >
+                      <FormattedMessage {...splitButtonLabel} />
+                    </Button>
+                    <Button
+                      aria-expanded={menuOpen}
+                      aria-haspopup="menu"
+                      aria-label={intl.formatMessage(messages.moreActions)}
+                      onClick={() => setMenuOpen((open) => !open)}
+                      sx={{ '&&': { flex: '0 0 40px', minWidth: 40, px: 0 } }}
+                    >
+                      <ChevronDown size={16} />
+                    </Button>
+                  </ButtonGroup>
+                  <Menu anchorEl={anchorRef.current} onClose={() => setMenuOpen(false)} open={menuOpen}>
+                    {(['publish', 'review'] as const).map((option) => (
+                      <MenuItem
+                        key={option}
+                        onClick={() => {
+                          setMode(option);
+                          setMenuOpen(false);
+                        }}
+                        selected={option === mode}
+                      >
+                        <FormattedMessage {...(option === 'publish' ? messages.publish : messages.configureAndPublish)} />
+                      </MenuItem>
+                    ))}
+                  </Menu>
+                </>
+              ) : (
                 <Button
                   aria-describedby={nameId}
-                  onClick={runPublish}
-                  startIcon={mode === 'publish' && <Megaphone size={16} />}
-                  sx={{ '&&': { flex: '1 1 auto', minWidth: 0 }, whiteSpace: 'nowrap' }}
+                  disabled={publishBlocked}
+                  fullWidth
+                  onClick={openPublishPage}
+                  size="small"
+                  sx={{ whiteSpace: 'nowrap' }}
+                  variant="contained"
                 >
-                  <FormattedMessage {...(mode === 'publish' ? messages.publish : messages.configureAndPublish)} />
+                  <FormattedMessage {...messages.configureAndPublish} />
                 </Button>
-                <Button
-                  aria-expanded={menuOpen}
-                  aria-haspopup="menu"
-                  aria-label={intl.formatMessage(messages.moreActions)}
-                  onClick={() => setMenuOpen((open) => !open)}
-                  sx={{ '&&': { flex: '0 0 40px', minWidth: 40, px: 0 } }}
-                >
-                  <ChevronDown size={16} />
-                </Button>
-              </ButtonGroup>
-              <Menu anchorEl={anchorRef.current} onClose={() => setMenuOpen(false)} open={menuOpen}>
-                {(['publish', 'review'] as const).map((option) => (
-                  <MenuItem
-                    key={option}
-                    onClick={() => {
-                      setMode(option);
-                      setMenuOpen(false);
-                    }}
-                    selected={option === mode}
-                  >
-                    <FormattedMessage {...(option === 'publish' ? messages.publish : messages.configureAndPublish)} />
-                  </MenuItem>
-                ))}
-              </Menu>
+              )}
             </Box>
           </Tooltip>
           <Button

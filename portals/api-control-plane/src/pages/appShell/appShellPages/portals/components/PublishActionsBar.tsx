@@ -93,8 +93,6 @@ export type PublishActionsBarProps = {
   deprecating: boolean;
   onDeprecate: () => void;
   onPublish: () => void;
-  /** Holds Publish back (not Save Draft), e.g. while the documents it should carry are still loading. */
-  publishDisabled?: boolean;
   onSaveDraft: () => void;
   onUnpublish: () => void;
   publishing: boolean;
@@ -174,7 +172,6 @@ export function PublishActionsBar({
   isPublished,
   onDeprecate,
   onPublish,
-  publishDisabled = false,
   onSaveDraft,
   onUnpublish,
   publishing,
@@ -232,7 +229,6 @@ export function PublishActionsBar({
 
       <ButtonGroup color={ACTION_COLOR[effectiveAction]} disabled={busy} variant="contained">
         <Button
-          disabled={effectiveAction === 'publish' && publishDisabled}
           loading={running[effectiveAction]}
           loadingPosition="start"
           onClick={run[effectiveAction]}

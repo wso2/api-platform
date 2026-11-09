@@ -20,16 +20,18 @@ import { describe, expect, it } from 'vitest';
 
 import { aPublicationSummary } from '@/test/msw';
 import { renderWithProviders, screen } from '@/test/utils';
+import { restPublishTarget } from '../publishTarget';
 import { PortalPublicationCard } from './PortalPublicationCard';
 
 const renderCard = (publishDeniedTooltip?: string) =>
   renderWithProviders(
     <PortalPublicationCard
-      apiHandle="pets"
+      onPublish={() => {}}
       orgHandle="acme"
       publication={aPublicationSummary()}
       publishDeniedTooltip={publishDeniedTooltip}
-      publishPath={(id) => `/acme/apis/pets/portals/${id}/publish`}
+      publishing={false}
+      target={restPublishTarget('acme', 'shop', 'pets')}
     />,
   );
 

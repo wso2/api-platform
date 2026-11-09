@@ -21,7 +21,7 @@ import { Box, PageTitle, SearchBar, Stack, Typography } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
-import { useApiPublications } from '@/api/resources/apiPublications';
+import { useApiPublications, type PublicationSummaryItem } from '@/api/resources/apiPublications';
 import { PortalPublishIllustration } from '@/components/illustrations/PortalPublishIllustration';
 import { EmptyState, LoadingState } from '@/components/StateViews';
 import { useExtensions } from '@/extensions';
@@ -30,6 +30,7 @@ import { useActionPermission, useCan } from '@/permissions';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { PortalPublicationCard } from './components/PortalPublicationCard';
 import { PublicationLoadError } from './components/PublicationLoadError';
+import { PublishWithDefaults } from './components/PublishWithDefaults';
 import { restPublishTarget, type PublishTarget } from './publishTarget';
 
 const messages = defineMessages({
@@ -113,14 +114,27 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
   );
   const target = targetProp ?? restTarget;
   const apiHandler = target.apiHandle;
-  // A card's Publish opens the publish page and publishes from it; without the
-  // kind's publication scope the cards say why instead of starting a call that
-  // fails. Both kinds asked unconditionally (hooks), then the target's is used.
+  // A card's Publish publishes from the card; without the kind's publication
+  // scope the cards say why instead of starting a call that fails. Both kinds
+  // asked unconditionally (hooks), then the target's is used.
   const restPublish = useActionPermission('publishRestApiToApiPortal');
   const graphqlPublish = useActionPermission('publishGraphQLApiToApiPortal');
   const publishPermission = target.definitionKind === 'graphql' ? graphqlPublish : restPublish;
 
   const [search, setSearch] = useState('');
+  // One-click publishes still running, by portal id. Held here and run outside the cards, so a card
+  // hidden by the search or a list reload neither cuts its publish short nor offers Publish again.
+  const [publishing, setPublishing] = useState<Record<string, PublicationSummaryItem>>({});
+  const startPublish = (publication: PublicationSummaryItem) => {
+    const { apiPortalId } = publication;
+    if (apiPortalId) setPublishing((running) => ({ ...running, [apiPortalId]: publication }));
+  };
+  const endPublish = (apiPortalId: string) =>
+    setPublishing((running) => {
+      const next = { ...running };
+      delete next[apiPortalId];
+      return next;
+    });
   const publicationsQuery = useApiPublications(target.apiType, apiHandler, { limit: LIST_LIMIT });
 
   // The empty-state "Add Portal" action points at the org-level portal registry,
@@ -133,17 +147,39 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
   const canCreatePortal = useCan('CreateApiPortal');
   const offerAddPortal = hasManagedPortalsExtension && canCreatePortal;
 
+  // Rendered first in every branch below, so React keeps them mounted whichever one shows.
+  const runningPublishes = Object.entries(publishing).map(([apiPortalId, publication]) => (
+    <PublishWithDefaults
+      apiPortalId={apiPortalId}
+      key={apiPortalId}
+      onDone={() => endPublish(apiPortalId)}
+      onOpenPage={() =>
+        navigate(target.publishPath(apiPortalId), { state: { portalName: publication.apiPortalName } })
+      }
+      portalName={publication.apiPortalName || apiPortalId}
+      target={target}
+    />
+  ));
+
   // `isPending`, not `isLoading`: a disabled query reports `isLoading: false`
   // with no data, which would flash the empty state while scope resolves.
   if (publicationsQuery.isPending) {
-    return <LoadingState label={intl.formatMessage(messages.loading)} />;
+    return (
+      <>
+        {runningPublishes}
+        <LoadingState label={intl.formatMessage(messages.loading)} />
+      </>
+    );
   }
   if (publicationsQuery.error) {
     return (
-      <PublicationLoadError
-        error={publicationsQuery.error}
-        fallbackMessage={intl.formatMessage(messages.errorMessage)}
-      />
+      <>
+        {runningPublishes}
+        <PublicationLoadError
+          error={publicationsQuery.error}
+          fallbackMessage={intl.formatMessage(messages.errorMessage)}
+        />
+      </>
     );
   }
 
@@ -160,6 +196,7 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
 
   return (
     <>
+      {runningPublishes}
       <PageTitle>
         <PageTitle.Header>
           <FormattedMessage
@@ -220,12 +257,13 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
             >
               {visiblePublications.map((publication) => (
                 <PortalPublicationCard
-                  apiHandle={apiHandler}
                   key={publication.apiPortalId}
+                  onPublish={() => startPublish(publication)}
                   orgHandle={orgHandle}
                   publication={publication}
                   publishDeniedTooltip={publishPermission.allowed ? undefined : publishPermission.tooltip}
-                  publishPath={target.publishPath}
+                  publishing={Boolean(publication.apiPortalId && publishing[publication.apiPortalId])}
+                  target={target}
                 />
               ))}
             </Box>
