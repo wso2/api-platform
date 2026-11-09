@@ -193,7 +193,7 @@ func newRealDirect(t *testing.T) realDirect {
 	proxies.SetTemplateRepository(templateRepo)
 
 	dir, err := newDirect(Deps{
-		Projects: service.NewProjectService(projectRepo, orgRepo, apiRepo, mcpProxyRepo, agentProxyRepo, appRepo, auditRepo, identity, logger),
+		Projects: service.NewProjectService(projectRepo, orgRepo, apiRepo, graphqlAPIRepo, proxyRepo, mcpProxyRepo, agentProxyRepo, appRepo, auditRepo, identity, nil, logger),
 		APIs: service.NewAPIService(apiRepo, projectRepo, orgRepo, gatewayRepo, deploymentRepo,
 			subscriptionPlanRepo, customPolicyRepo, events, apiUtil, logger, auditRepo, identity),
 		Deployments: service.NewDeploymentService(apiRepo, artifactRepo, deploymentRepo, gatewayRepo, orgRepo, apiKeyRepo, events, auditRepo, apiUtil, definitions, identity, cfg, logger),

@@ -129,6 +129,7 @@ func (u *Steps) Register(sc *godog.ScenarioContext) {
 	sc.Step(`^the user signs in and returns to the seeded API's API Keys page$`, u.signInAndReturnToSeededAPIKeys)
 	u.registerBillingSteps(sc)
 	u.registerPaidSubscriptionSteps(sc)
+	u.registerAPIWizardSteps(sc)
 }
 
 const (

@@ -241,8 +241,9 @@ func TestProjectDeletionIsRefusedWhileAgentProxiesRemain(t *testing.T) {
 			{ID: "project-2", Handle: "second-project", OrganizationID: agentTestOrg},
 		},
 	}
-	svc := NewProjectService(projectRepo, nil, &emptyAPIRepo{}, &mockAgentProjectMCPRepo{},
-		agentRepo, &emptyApplicationRepo{}, &noopAuditRepo{}, newTestIdentityService(), slog.Default())
+	svc := NewProjectService(projectRepo, nil, &emptyAPIRepo{}, &countingGraphQLRepo{}, &countingLLMProxyRepo{},
+		&mockAgentProjectMCPRepo{}, agentRepo, &emptyApplicationRepo{}, &noopAuditRepo{}, newTestIdentityService(),
+		nil, slog.Default())
 
 	err := svc.DeleteProject("default-project", agentTestOrg, "alice")
 	if !apperror.ValidationFailed.Is(err) {
@@ -282,6 +283,10 @@ type emptyAPIRepo struct{ repository.APIRepository }
 
 func (emptyAPIRepo) GetAPIsByProjectUUID(projectUUID, orgID string) ([]*model.API, error) {
 	return nil, nil
+}
+
+func (emptyAPIRepo) CountAPIsByOrganizationUUID(orgUUID, projectUUID, search string) (int, error) {
+	return 0, nil
 }
 
 type mockAgentProjectMCPRepo struct{ repository.MCPProxyRepository }

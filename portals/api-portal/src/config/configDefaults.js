@@ -372,6 +372,11 @@ const DEFAULTS = {
             tlsSkipVerify: false,
         },
     },
+    // When true, Settings hides the Monetization section (Billing, Meters, Usage & Revenue) and the
+    // plan dialog's Paid plan option. Billing already set up keeps working.
+    monetization: {
+        disabled: false,
+    },
     // Billing providers (Stripe, Moesif). The keys are entered in Settings › Billing, not here.
     billing: {
         stripe: {

@@ -16,45 +16,104 @@
  * under the License.
  */
 
-import { ColorSchemeSVG } from '@wso2/oxygen-ui';
+import { Card, CardContent } from '@wso2/oxygen-ui';
+import { Eye, FileText } from '@wso2/oxygen-ui-icons-react';
+import { FormattedMessage } from 'react-intl';
+
+import './DocumentsIllustration.css';
+import { illustrationCardSx } from './illustrationCardSx';
+
+/** A sample path, not UI copy, so it is not translated. */
+const SAMPLE_PATH = 'docs / untitled-api';
 
 /**
- * A small stack of an API's documents — a guide open on top of the others,
- * with the type tabs they are grouped under — for the first-run `EmptyState`
- * on Develop › Documents. Drawn in the same shapes and colour roles as
- * `GatewayIllustration`, `MonitorIllustration` and `ProjectFolderIllustration`
- * so every empty page in the console reads as one family.
- *
- * Purely decorative: the `EmptyState` heading carries the meaning, so it is
- * hidden from assistive technology.
+ * Decorative documents animation for the Develop › Documents empty state: a docs
+ * window appears, a new guide drops into the list and is marked added, and the
+ * footer counts the documents visible to developers. Colours come from the theme
+ * through `--docs-*` variables; purely decorative, so it is hidden from assistive
+ * technology.
  */
 export function DocumentsIllustration() {
   return (
-    <ColorSchemeSVG aria-hidden height={140} viewBox="0 0 220 140" width={220}>
-      {/* The documents behind, fanned out. */}
-      <rect fill="muted" height={84} rx={6} width={64} x={58} y={30} />
-      <rect fill="muted" height={84} rx={6} width={64} x={70} y={24} />
-
-      {/* The open guide: a dark slab with its page filled with the page
-          background, so it stays legible whichever way the slab resolves. */}
-      <rect fill="text-primary" height={92} rx={6} width={72} x={84} y={18} />
-      <rect fill="primary" height={10} rx={2} width={10} x={94} y={28} />
-      <rect fill="muted" height={5} rx={2} width={34} x={108} y={31} />
-      <rect fill="background" height={56} rx={3} width={56} x={92} y={46} />
-      <rect fill="primary" height={5} rx={2} width={30} x={98} y={53} />
-      <rect fill="muted" height={4} rx={2} width={44} x={98} y={64} />
-      <rect fill="muted" height={4} rx={2} width={38} x={98} y={73} />
-      <rect fill="muted" height={4} rx={2} width={42} x={98} y={82} />
-      <rect fill="muted" height={4} rx={2} width={24} x={98} y={91} />
-
-      {/* The type tabs the documents are filed under. */}
-      <path d="M156 44h14" stroke="primary" strokeLinecap="round" strokeWidth={2} />
-      <rect fill="primary" height={16} rx={4} width={36} x={170} y={36} />
-      <path d="M156 66h14" stroke="primary" strokeLinecap="round" strokeWidth={2} />
-      <rect fill="primary" height={16} rx={4} width={36} x={170} y={58} />
-
-      {/* The surface it rests on. */}
-      <path d="M50 132h120" stroke="border" strokeLinecap="round" strokeWidth={2} />
-    </ColorSchemeSVG>
+    <Card
+      className="api-docs-animation"
+      aria-hidden="true"
+      sx={(theme) => illustrationCardSx('docs', theme)}
+    >
+      <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
+        <div className="api-docs-bar">
+          <i />
+          <i />
+          <i />
+          <span className="api-docs-url mono">{SAMPLE_PATH}</span>
+        </div>
+        <div className="api-docs-body">
+          <div className="api-docs-title">
+            <FormattedMessage
+              id="apiControlPlane.components.DocumentsIllustration.title"
+              defaultMessage="API documents"
+              description="Heading of the animated documents preview."
+            />
+          </div>
+          <div className="api-docs-sub">
+            <FormattedMessage
+              id="apiControlPlane.components.DocumentsIllustration.subtitle"
+              defaultMessage="Guides, samples and support"
+              description="Subheading of the animated documents preview."
+            />
+          </div>
+          <div className="api-docs-list">
+            <div className="api-docs-row">
+              <FileText size={16} color="var(--docs-muted)" />
+              <div className="api-docs-lines">
+                <span className="api-docs-ln" style={{ width: '70%' }} />
+                <span className="api-docs-ln dim" style={{ width: '45%' }} />
+              </div>
+            </div>
+            <div className="api-docs-slot">
+              <div className="api-docs-slot-empty" />
+              <div className="api-docs-card">
+                <FileText size={18} color="var(--docs-accent)" />
+                <div className="api-docs-lines">
+                  <div className="api-docs-card-top">
+                    <span className="api-docs-card-title">
+                      <FormattedMessage
+                        id="apiControlPlane.components.DocumentsIllustration.sampleTitle"
+                        defaultMessage="Getting started"
+                        description="Name of the sample document that drops into the animated documents preview."
+                      />
+                    </span>
+                    <span className="api-docs-badge">
+                      <FormattedMessage
+                        id="apiControlPlane.components.DocumentsIllustration.added"
+                        defaultMessage="Added"
+                        description="Badge on the sample document in the animated documents preview."
+                      />
+                    </span>
+                  </div>
+                  <span className="api-docs-grow l1" />
+                  <span className="api-docs-grow l2" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="api-docs-foot">
+            <Eye size={12} color="var(--docs-accent)" />
+            <FormattedMessage
+              id="apiControlPlane.components.DocumentsIllustration.visible"
+              defaultMessage="Visible to developers"
+              description="Footer of the animated documents preview."
+            />
+            <span className="api-docs-count mono">
+              <FormattedMessage
+                id="apiControlPlane.components.DocumentsIllustration.count"
+                defaultMessage="2 documents"
+                description="Footer count in the animated documents preview."
+              />
+            </span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

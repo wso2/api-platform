@@ -96,6 +96,14 @@ func issueCredentials(now time.Time, lifetime time.Duration) (string, credential
 }
 
 // issuedCredential re-derives an STS-issued credential from its access key ID.
+// Issued secrets and session tokens start with the same markers the fixture credentials contain,
+// "SecretAccessKey000" and "SessionToken0001", so a test that searches for them also finds an
+// issued one. An issued secret is 40 characters long, as an AWS secret access key is.
+const (
+	issuedSecretPrefix = "testIssuedSecretAccessKey000"
+	issuedTokenPrefix  = "testIssuedSessionToken0001"
+)
+
 func issuedCredential(accessKeyID string) (credential, bool) {
 	digits, ok := strings.CutPrefix(accessKeyID, issuedKeyPrefix)
 	if !ok || len(accessKeyID) != 20 {
@@ -107,8 +115,8 @@ func issuedCredential(accessKeyID string) (credential, bool) {
 	}
 	secret := derive("secret", accessKeyID)
 	return credential{
-		secretAccessKey: hex.EncodeToString(secret)[:40],
-		sessionToken:    base64.RawURLEncoding.EncodeToString(derive("token", accessKeyID)),
+		secretAccessKey: issuedSecretPrefix + hex.EncodeToString(secret)[:40-len(issuedSecretPrefix)],
+		sessionToken:    issuedTokenPrefix + base64.RawURLEncoding.EncodeToString(derive("token", accessKeyID)),
 		expiresAt:       time.Unix(seconds, 0).UTC(),
 	}, true
 }

@@ -861,11 +861,16 @@ function validateArtifactConfig(artifacts) {
 validateArtifactConfig(config.artifacts);
 
 /**
- * Fail-closed startup check: the billing settings below must be whole numbers of at least 1, and
- * the Moesif keys set in config must come as a pair, for one Moesif application, and only outside
- * multi-organization mode.
+ * Fail-closed startup check: monetization.disabled must be true or false, the billing settings
+ * below must be whole numbers of at least 1, and the Moesif keys set in config must come as a pair,
+ * for one Moesif application, and only outside multi-organization mode.
  */
 function validateBillingConfig(cfg) {
+    const disabled = cfg.monetization?.disabled;
+    if (typeof disabled !== 'boolean') {
+        process.stderr.write(`[FATAL] monetization.disabled must be true or false, got ${JSON.stringify(disabled)}.\n`);
+        process.exit(1);
+    }
     const billing = cfg.billing;
     const settings = {
         'billing.stripe.webhook_signature_tolerance_sec': billing?.stripe?.webhookSignatureToleranceSec,

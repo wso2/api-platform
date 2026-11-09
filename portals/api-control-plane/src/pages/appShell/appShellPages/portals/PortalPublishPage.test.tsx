@@ -19,7 +19,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import { http as mswHttp, HttpResponse } from 'msw';
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
@@ -111,6 +111,35 @@ function renderPage(queryClient?: QueryClient) {
     },
   );
 }
+
+
+/** Opens the page the way the portal card does: through a navigation carrying state. */
+function renderFromCard(state: Record<string, unknown>) {
+  return renderWithProviders(
+    <ApiScopeProvider orgId={ORG}>
+      <Routes>
+        <Route
+          element={<Navigate replace state={state} to={routes.apiPortalPublish(ORG, PROJECT, API, PORTAL)} />}
+          path="/launch"
+        />
+        <Route element={<PortalPublishPage />} path={routes.apiPortalPublish()} />
+        <Route element={<div>portals listing</div>} path={routes.apiPortals()} />
+      </Routes>
+    </ApiScopeProvider>,
+    {
+      route: '/launch',
+      scope: makeConsoleScope({
+        component: api,
+        params: { apiHandler: API, orgHandle: ORG, projectHandler: PROJECT },
+      }),
+    },
+  );
+}
+
+const TWO_DOCS = [
+  { contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' },
+  { contentType: 'text/markdown', displayName: 'Common questions', id: 'faq', type: 'FAQ' },
+];
 
 const DRAFT_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/draft`;
 const DRAFT_DEFINITION_PATH = `${DRAFT_PATH}/definition`;
@@ -2336,5 +2365,248 @@ describe('PortalPublishPage — landing page', () => {
 
     expect(await screen.findByText('The portal shows its default page.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create from API details' })).not.toBeInTheDocument();
+  });
+
+  describe('opened from the portal card', () => {
+    it('publishes straight away with every document attached and no plan selected', async () => {
+      servePublicationState({ plans: [aSubscriptionPlan({ displayName: 'Gold', id: 'gold', status: 'ACTIVE' })] });
+      const draftRequests = recorder();
+      const publishRequests = recorder();
+      server.use(
+        collection(DOCS_PATH, TWO_DOCS),
+        accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+        accepts('put', DRAFT_DEFINITION_PATH, undefined),
+        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+      );
+
+      renderFromCard({ autoPublish: true, documents: 'all', portalName: 'Acme' });
+
+      await waitFor(() => expect(publishRequests.count()).toBe(1));
+      const body = JSON.parse(draftRequests.last()?.body ?? '{}');
+      expect([...body.docIds].sort()).toEqual(['faq', 'guide']);
+      expect(body.subscriptionPlanIds ?? []).toEqual([]);
+      expect(await screen.findByText('portals listing')).toBeInTheDocument();
+    });
+
+    it('only selects the documents for "Configure & Publish", leaving the publish to the user', async () => {
+      servePublicationState();
+      const publishRequests = recorder();
+      server.use(
+        collection(DOCS_PATH, TWO_DOCS),
+        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+      );
+
+      const { user } = renderFromCard({ documents: 'default' });
+
+      await screen.findByDisplayValue('Loan Management Service');
+      await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+      await screen.findByText('Common questions');
+      await waitFor(() => expect(documentBox('Common questions')).toBeChecked());
+      expect(documentBox('Getting started')).toBeChecked();
+      expect(publishRequests.count()).toBe(0);
+    });
+
+    it('keeps a saved selection for "Configure & Publish" instead of selecting everything', async () => {
+      servePublicationState({
+        draft: aPublicationDraftDetails({ documents: publicationSelections({ displayName: 'Getting started', id: 'guide' }) }),
+      });
+      server.use(collection(DOCS_PATH, TWO_DOCS));
+
+      const { user } = renderFromCard({ documents: 'default' });
+
+      await screen.findByDisplayValue('Loan Management Service');
+      await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+      await screen.findByText('Common questions');
+      expect(documentBox('Getting started')).toBeChecked();
+      expect(documentBox('Common questions')).not.toBeChecked();
+    });
+
+    it('clears a plan the saved draft selected, since publishing from the card carries none', async () => {
+      const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold', status: 'ACTIVE' });
+      servePublicationState({
+        draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections('gold') }),
+        plans: [gold],
+      });
+      const draftRequests = recorder();
+      const publishRequests = recorder();
+      server.use(
+        collection(DOCS_PATH, TWO_DOCS),
+        accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+        accepts('put', DRAFT_DEFINITION_PATH, undefined),
+        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+      );
+
+      renderFromCard({ autoPublish: true, documents: 'all' });
+
+      await waitFor(() => expect(publishRequests.count()).toBe(1));
+      expect(JSON.parse(draftRequests.last()?.body ?? '{}').subscriptionPlanIds ?? []).toEqual([]);
+    });
+
+    it('holds Publish back until the documents are selected', async () => {
+      servePublicationState();
+      let release: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      server.use(
+        mswHttp.get(apiUrl(DOCS_PATH), async () => {
+          await gate;
+          return HttpResponse.json({
+            count: 2,
+            list: TWO_DOCS,
+            pagination: { limit: 100, offset: 0, total: 2 },
+          });
+        }),
+      );
+
+      renderFromCard({ documents: 'default' });
+
+      await screen.findByDisplayValue('Loan Management Service');
+      expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled();
+      release();
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
+    });
+
+    it('reports a failed document load with a retry, and publishes nothing meanwhile', async () => {
+      servePublicationState();
+      const publishRequests = recorder();
+      let attempts = 0;
+      server.use(
+        mswHttp.get(apiUrl(DOCS_PATH), () => {
+          attempts += 1;
+          return attempts === 1
+            ? HttpResponse.json({ code: 'INTERNAL_ERROR', message: 'boom' }, { status: 500 })
+            : HttpResponse.json({ count: 2, list: TWO_DOCS, pagination: { limit: 100, offset: 0, total: 2 } });
+        }),
+        accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+        accepts('put', DRAFT_DEFINITION_PATH, undefined),
+        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+      );
+
+      const { user } = renderFromCard({ autoPublish: true, documents: 'all' });
+
+      expect(await screen.findByText(/documents could not be loaded/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled();
+      expect(publishRequests.count()).toBe(0);
+
+      await user.click(screen.getByRole('button', { name: 'Retry' }));
+
+      await waitFor(() => expect(publishRequests.count()).toBe(1));
+    });
+
+    it('does not publish automatically when the document list is cut short, and says so', async () => {
+      servePublicationState();
+      const publishRequests = recorder();
+      server.use(
+        mswHttp.get(apiUrl(DOCS_PATH), ({ request }) => {
+          const offset = Number(new URL(request.url).searchParams.get('offset') ?? 0);
+          const list = Array.from({ length: 100 }, (_, i) => ({
+            contentType: 'text/markdown',
+            displayName: `Doc ${offset + i}`,
+            id: `doc-${offset + i}`,
+            type: 'HowTo',
+          }));
+          return HttpResponse.json({ count: list.length, list, pagination: { limit: 100, offset, total: 6000 } });
+        }),
+        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+      );
+
+      renderFromCard({ autoPublish: true, documents: 'all' });
+
+      expect(await screen.findByText(/too many documents to attach them all/, undefined, { timeout: 5000 })).toBeInTheDocument();
+      expect(publishRequests.count()).toBe(0);
+      expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled();
+    });
+
+    it('consumes the one-shot state, so coming back to the page does not publish again', async () => {
+      servePublicationState();
+      const publishRequests = recorder();
+      server.use(
+        collection(DOCS_PATH, TWO_DOCS),
+        accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+        accepts('put', DRAFT_DEFINITION_PATH, undefined),
+        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+      );
+
+      renderFromCard({ autoPublish: true, documents: 'all', portalName: 'Acme' });
+      await waitFor(() => expect(publishRequests.count()).toBe(1));
+      await screen.findByText('portals listing');
+
+      // Browser Back to the publish page: the entry's state was replaced when it was consumed.
+      window.history.back();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(publishRequests.count()).toBe(1);
+    });
+
+    it('shows the draft, not the live version, when an automatic publish fails validation', async () => {
+      servePublicationState({ publication: aPublication() });
+      server.use(
+        collection(DOCS_PATH, TWO_DOCS),
+        accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+        accepts('put', DRAFT_DEFINITION_PATH, undefined),
+        failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED', {
+          errors: [{ field: 'definition', message: 'A definition is required to publish this API' }],
+        }),
+      );
+
+      renderFromCard({ autoPublish: true, documents: 'all' });
+
+      await waitFor(() =>
+        expect(screen.getByRole('tab', { name: 'Specification' })).toHaveAttribute('aria-selected', 'true'),
+      );
+      expect(screen.getByRole('button', { name: 'Draft' })).toHaveAttribute('aria-pressed', 'true');
+    });
+  });
+
+  describe('Published version actions', () => {
+    it('makes Unpublish the main action, and unpublishes after confirmation', async () => {
+      servePublicationState({ publication: aPublication() });
+      server.use(noContent('post', UNPUBLISH_PATH, { record: requests }));
+
+      const { user } = renderPage();
+
+      await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+      expect(screen.queryByRole('button', { name: 'Save Draft' })).not.toBeInTheDocument();
+      await confirmInDialog(user);
+
+      await waitFor(() => expect(requests.count()).toBe(1));
+    });
+
+    it('keeps Deprecate behind the arrow, arms it, then deprecates after confirmation', async () => {
+      servePublicationState({ publication: aPublication() });
+      server.use(accepts('post', DEPRECATE_PATH, aPublication({ status: 'DEPRECATED' }), { record: requests }));
+
+      const { user } = renderPage();
+
+      await screen.findByRole('button', { name: 'Unpublish' });
+      expect(screen.queryByRole('button', { name: 'Deprecate' })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+      await user.click(await screen.findByRole('menuitem', { name: 'Deprecate' }));
+      // Picking it only arms the main button; nothing is sent until that is clicked and confirmed.
+      expect(requests.count()).toBe(0);
+      await user.click(await screen.findByRole('button', { name: 'Deprecate' }));
+      await confirmInDialog(user);
+
+      await waitFor(() => expect(requests.count()).toBe(1));
+    });
+
+    it('offers no Deprecate once the listing is already deprecated, while Unpublish stays available', async () => {
+      servePublicationState({ publication: aPublication({ status: 'DEPRECATED' }) });
+
+      const { user } = renderPage();
+
+      expect(await screen.findByRole('button', { name: 'Unpublish' })).toBeEnabled();
+      await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+      expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('shows neither action when the API is not live on the portal', async () => {
+      servePublicationState();
+
+      renderPage();
+
+      await screen.findByDisplayValue('Loan Management Service');
+      expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
+    });
   });
 });

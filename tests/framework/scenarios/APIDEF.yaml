@@ -1,0 +1,180 @@
+# Scenario list: REST API Definition Import and Update (APIDEF).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: APIDEF
+title: REST API Definition Import and Update
+scenarios:
+  - id: APIDEF-001
+    title: "Import an OpenAPI 3.0 file with a path parameter to create an API with name, version, context, description and upstream, then deploy it and call one operation; 201, the API has those details, lifecycle CREATED and the right project, one operation per path and method, GET /openapi returns the uploaded definition, the UI shows the operations and the definition, and the call reaches the upstream with its path parameter."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/api-definitions/import.feature
+          scenario: "An API imported from an OpenAPI file has the given details, the definition's operations and the stored definition, and serves them"
+  - id: APIDEF-002
+    title: "Import the same definition from an HTTPS URL, check the API, then deploy it and call one operation; the same results as importing the file."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher creates an API from an OpenAPI URL"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/api-definitions/import.feature
+          scenario: "An API imported from an OpenAPI URL over HTTPS has the given details, the definition's operations and the stored definition, and serves them"
+  - id: APIDEF-003
+    title: "With version v1.0 imported from definition A, import definition B under the same display name as version 2.0 with a new id and context; both versions are listed under the display name, each has only its own operations and stored definition, and v1.0 is unchanged."
+    priority: P2
+    ui:
+      status: exempt
+      reason: "Listing two versions of an API is shown by the API and the console's API list; there is no console flow for this beyond creating each version."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/api-definitions/import.feature
+          scenario: "A second version imported under the same display name keeps each version's own operations and definition"
+  - id: APIDEF-004
+    title: "On a deployed imported API whose operation1 has a policy, upload a definition that keeps operation1, adds an operation and removes another, then redeploy; the operations follow the new definition and operation1 keeps its policy, GET /openapi returns the new definition, the new operation answers and the removed one returns 404."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher replaces a deployed API's definition and redeploys it"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/api-definitions/update.feature
+          scenario: "A new definition adds and removes operations, an operation it keeps keeps its policy, and a redeploy serves the result"
+  - id: APIDEF-005
+    title: "On a deployed imported API whose operation1 has a policy, upload a definition that renames operation1's path, then redeploy; the renamed operation has no policy and is called without it."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher replaces a deployed API's definition and redeploys it"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/api-definitions/update.feature
+          scenario: "A definition that renames an operation's path gives the renamed operation no policy, and it works without it"
+  - id: APIDEF-006
+    title: "For a REST API created on a gateway and synced to the control plane (read-only), upload a definition with an extra operation, check it, then redeploy and call the new operation; GET /openapi returns the new definition but the operations do not change, the redeploy is refused, the gateway is unaffected and the new operation cannot be called."
+    priority: P2
+    ui:
+      status: exempt
+      reason: "A read-only API comes only from a gateway, which no console action creates; the control plane's handling of it is API-level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/api-definitions/update_read_only.feature
+          scenario: "A definition uploaded for a gateway-originated API is stored, but its operations, its gateway and its deployments do not change"
+  - id: APIDEF-007
+    title: "Delete an imported API, then import again with the same id and a different definition; the delete also removes the definition, and the new API has the new definition."
+    priority: P2
+    ui:
+      status: exempt
+      reason: "The console has no single flow that deletes an API and re-imports it under the same id; the API covers it."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/api-definitions/import.feature
+          scenario: "Deleting an imported API removes its definition, and the same id imports again with a new definition"
+  - id: APIDEF-008
+    title: "Import with both a file and a URL, then with neither; 400, provide either file or url, and no API is created."
+    priority: P2
+    ui:
+      status: exempt
+      reason: "The console sends exactly one definition source and cannot send both or none."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/api-definitions/import.feature
+          scenario: "Importing with both a file and a URL, or with neither, is refused and creates nothing"
+  - id: APIDEF-009
+    title: "Import as a file a document that is not valid OpenAPI 3.x, a Swagger 2.0 document and one with empty paths; 400 with the reason for each (invalid definition, Swagger 2 not supported, at least one operation required), and no API is created."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/api-definitions/import.feature
+          scenario: "Importing a file that is not a usable OpenAPI 3.x definition is refused with its reason and creates nothing"
+  - id: APIDEF-010
+    title: "Validate an invalid OpenAPI 3.x file (POST /rest-apis/validate-openapi); 200 with isValid false, the errors listed and a content field."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/api-definitions/validate.feature
+          scenario: "Validating an invalid OpenAPI file lists its errors and returns its content"
+  - id: APIDEF-011
+    title: "Validate a URL that serves content that is not a valid definition; 200 with isValid false, the errors listed and no content field."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The console turns a fetched definition into a file before validating it, so the URL validation response is API-level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/api-definitions/validate.feature
+          scenario: "Validating a URL that serves no OpenAPI definition lists its errors and returns no content"
+  - id: APIDEF-012
+    title: "Import a definition just over the configured size limit, as a file and from a URL; 413, the UI shows the definition-too-large message, and no API is created."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/api-definitions/limits.feature
+          scenario: "A definition just over the configured size is refused as too large, as a file and from a URL, and creates nothing"
+  - id: APIDEF-013
+    title: "Import from the cloud metadata address (http://169.254.169.254/...) and from a file:// URL; 400 with a generic fetch error that names no internal host or address, and no API is created."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "Refusing internal addresses is the control plane's URL-fetch guard, checked at the API; the console only shows the error it returns."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/api-definitions/limits.feature
+          scenario: "Importing from the cloud metadata address or a file URL is refused with a generic error and creates nothing"
+  - id: APIDEF-014
+    title: "With a token holding only ap:rest_api:read, and with one holding no scope, call validate, import and PUT /openapi; 403 each time, while GET /openapi works with read."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Scopes are enforced by the control plane; the console's file-based login cannot sign in a user with only these scopes."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/api-definitions/authz.feature
+          scenario: "A caller without a create or update scope cannot validate, import or replace a definition, and a reader can still read one"

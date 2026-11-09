@@ -54,6 +54,12 @@ export function LoadingState({
 type EmptyStateProps = {
   title: string;
   description?: string;
+  /**
+   * Keep the description on one line (illustration layout only), lifting the
+   * usual 440px column cap. For short sentences that would otherwise orphan a
+   * word onto a second line; long text should leave this off.
+   */
+  singleLineDescription?: boolean;
   /** Rendered only alongside `onAction`; one empty state offers one way out. */
   actionLabel?: string;
   /** Leading mark on the action button, e.g. `<Plus />` for a create prompt. */
@@ -81,6 +87,7 @@ type EmptyStateProps = {
 export function EmptyState({
   title,
   description,
+  singleLineDescription = false,
   actionLabel,
   actionIcon,
   illustration,
@@ -112,12 +119,22 @@ export function EmptyState({
           py: 6,
         }}
       >
-        <Stack alignItems="center" spacing={1} sx={{ maxWidth: 440 }}>
+        <Stack
+          alignItems="center"
+          spacing={1}
+          sx={{ maxWidth: singleLineDescription ? 'none' : 440 }}
+        >
           {illustration}
           <Typography sx={{ fontWeight: 700, pt: 2 }} variant="h5">
             {title}
           </Typography>
-          {description && <SecondaryText sx={{ textAlign: 'center' }}>{description}</SecondaryText>}
+          {description && (
+            <SecondaryText
+              sx={{ textAlign: 'center', whiteSpace: singleLineDescription ? 'nowrap' : undefined }}
+            >
+              {description}
+            </SecondaryText>
+          )}
           {action && <Box sx={{ pt: 2 }}>{action}</Box>}
         </Stack>
       </Box>

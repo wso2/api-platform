@@ -176,6 +176,7 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
           }
           description={intl.formatMessage(messages.emptyDescription)}
           illustration={<PortalPublishIllustration />}
+          singleLineDescription
           onAction={
             hasManagedPortalsExtension
               ? () => navigate(routes.managedApiPortals(orgHandle))
