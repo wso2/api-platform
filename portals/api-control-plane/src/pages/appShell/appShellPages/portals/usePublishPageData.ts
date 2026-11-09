@@ -123,10 +123,11 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
     apiType,
     publicationHasLandingPage ? apiHandler : undefined,
   );
-  // Last tier, asked for only once the two above are known to have nothing.
-  const apiOwnThumbnailNeeded =
-    !draftQuery.isPending && !publicationQuery.isPending && !draftHasThumbnail && !publicationHasThumbnail;
-  const apiThumbnailQuery = useApiThumbnail(apiType, apiOwnThumbnailNeeded ? apiHandler : undefined);
+  // Last tier, asked for once the two above are known; beside a saved thumbnail it backs the reload icon,
+  // so it only holds the page back when the two above have nothing.
+  const savedTiersKnown = !draftQuery.isPending && !publicationQuery.isPending;
+  const apiOwnThumbnailNeeded = savedTiersKnown && !draftHasThumbnail && !publicationHasThumbnail;
+  const apiThumbnailQuery = useApiThumbnail(apiType, savedTiersKnown ? apiHandler : undefined);
 
   const publicationDefinitionQuery = useApiPublicationDefinition(
     apiPortalId,
@@ -137,10 +138,11 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
 
   // Last fallback tier: the API's own stored definition — a REST API's OpenAPI
   // document, which 404s when none has ever been uploaded, or a GraphQL API's SDL.
-  const restDefinitionQuery = useRestApiOpenApi(
-    publicationDefinitionAbsent && !isGraphQL ? apiHandler : undefined,
-  );
-  const sdlQuery = useGraphQLApiSdl(publicationDefinitionAbsent && isGraphQL ? apiHandler : undefined);
+  // Also read beside a saved draft or publication, to tell whether the API's has changed since;
+  // only as the last tier does it hold the page back or fail it.
+  const apiDefinitionWanted = publicationDefinitionAbsent || Boolean(draft || publication);
+  const restDefinitionQuery = useRestApiOpenApi(apiDefinitionWanted && !isGraphQL ? apiHandler : undefined);
+  const sdlQuery = useGraphQLApiSdl(apiDefinitionWanted && isGraphQL ? apiHandler : undefined);
   const apiOpenApiQuery = isGraphQL ? sdlQuery : restDefinitionQuery;
 
   // Where the API is served; the first is the Production URL's default.
@@ -172,7 +174,7 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
     publicationQuery,
     draftDefinitionQuery,
     publicationDefinitionQuery,
-    apiOpenApiQuery,
+    ...(publicationDefinitionAbsent ? [apiOpenApiQuery] : []),
     draftThumbnailQuery,
     publicationThumbnailQuery,
     draftLandingPageQuery,
@@ -195,7 +197,7 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
       publicationQuery,
       draftDefinitionQuery,
       ...(draftDefinitionAbsent ? [publicationDefinitionQuery] : []),
-      apiOpenApiQuery,
+      ...(publicationDefinitionAbsent ? [apiOpenApiQuery] : []),
     ].find((query) => isApiError(query.error) && !query.error.isNotFound)?.error;
 
   const draftDefinitionData = liveData(draftDefinitionQuery);
@@ -229,7 +231,7 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
     const definition =
       (draftDefinitionData && readStoredDefinition(draftDefinitionData.text, draftDefinitionData.contentType)) ??
       publishedDefinition ??
-      apiDefinition;
+      (publicationDefinitionAbsent ? apiDefinition : undefined);
     const apiOwnThumbnail = apiThumbnailQuery.blob;
     const thumbnailBlob = draftHasThumbnail
       ? draftThumbnail
@@ -264,12 +266,15 @@ export function usePublishPageData(apiPortalId: string, target: PublishTarget, w
     publishedThumbnail,
     draftDefinitionData,
     publishedDefinition,
+    publicationDefinitionAbsent,
     apiDefinition,
     productionUrlOptions,
   ]);
 
   return {
     api: apiQuery.data,
+    apiDefinition,
+    apiThumbnail: { blob: apiThumbnailQuery.blob, error: apiThumbnailQuery.error, isPending: apiThumbnailQuery.isPending },
     draft,
     error,
     isLoading,
