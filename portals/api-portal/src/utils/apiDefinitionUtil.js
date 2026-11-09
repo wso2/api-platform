@@ -17,6 +17,7 @@
  */
 const logger = require('../config/logger');
 const yaml = require('./yaml');
+const constants = require('./constants');
 
 const securitySchemeHasApiKey = (securityScheme) =>
     Array.isArray(securityScheme) && securityScheme.includes('api_key');
@@ -59,44 +60,27 @@ const findSubscriptionTokenHeader = (apiDefinition) => {
     return null;
 };
 
-const apiDefinitionHasApiKeySecurity = (apiDefinition) => {
-    if (!apiDefinition || typeof apiDefinition !== 'object') {
-        return false;
-    }
-
-    const securitySchemes = apiDefinition.components?.securitySchemes || apiDefinition.securityDefinitions;
-    if (securitySchemes && typeof securitySchemes === 'object') {
-        return Object.values(securitySchemes).some((scheme) => {
-            if (!scheme || typeof scheme !== 'object') {
-                return false;
-            }
-            const type = String(scheme.type || '').toLowerCase();
-            return type === 'apikey' || type === 'httpapikey' || type === 'http_api_key';
-        });
-    }
-
-    return false;
-};
+// API types for which API keys are not offered.
+const API_KEY_UNSUPPORTED_TYPES = [
+    constants.API_TYPE.GRAPHQL,
+    constants.API_TYPE.MCP,
+    constants.API_TYPE.SOAP,
+];
 
 /**
- * Whether an API uses API Key security, driven by its API definition's security schemes.
+ * Whether API Key options (sidebar item, API Keys page) are offered for an API.
+ *
+ * Deliberately independent of the API definition: an OpenAPI spec is not required
+ * to declare an apiKey security scheme for users to be able to generate API keys.
  *
  * @param {object} metaData - Metadata in APIM DTO shape
- * @param {string|object|null} apiDefinition - Optional raw API definition to inspect for apiKey security
  * @returns {boolean}
  */
-function apiUsesApiKeySecurity(metaData, apiDefinition = null) {
+function apiUsesApiKeySecurity(metaData) {
     if (!metaData) {
         return false;
     }
-
-    if (apiDefinition) {
-        const parsedDefinition = parseApiDefinition(apiDefinition);
-        return apiDefinitionHasApiKeySecurity(parsedDefinition);
-    }
-
-    // No API definition available to inspect.
-    return false;
+    return !API_KEY_UNSUPPORTED_TYPES.includes(metaData.type);
 }
 
 module.exports = {

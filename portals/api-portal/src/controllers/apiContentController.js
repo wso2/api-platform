@@ -921,45 +921,26 @@ async function getApiDefinitionFileContent(orgId, apiId) {
 
 /**
  * Single source of truth for the "API Keys" sidebar item visibility on any
- * API-scoped page (landing, documentation, api-keys). It loads the stored API
- * definition and inspects its security schemes so every page derives the flag
- * the same way — previously each page computed it separately and some (e.g. the
- * documentation page) omitted the definition, hiding the nav item inconsistently.
+ * API-scoped page (landing, documentation, api-keys), so every page derives the
+ * flag the same way.
  *
- * GraphQL/MCP/SOAP definitions are not OpenAPI security-scheme documents we can
- * inspect for apiKey security, so they resolve to false without a definition load.
+ * The result does not depend on the API definition's security schemes. GraphQL,
+ * MCP and SOAP APIs do not get API keys.
+ *
+ * The orgId, apiId and preloadedDefinition parameters are no longer used; they
+ * are kept so existing callers do not need to change.
  *
  * @param {string} orgId
  * @param {string} apiId
  * @param {string} apiType - constants.API_TYPE.*
  * @param {object} metaData - any truthy metadata object for the API
- * @param {string|object} [preloadedDefinition] - the API definition if the caller
- *        already loaded it (pass to avoid a second read); omit to load from storage.
  * @returns {Promise<boolean>}
  */
-async function resolveShowApiKeysNav(orgId, apiId, apiType, metaData, preloadedDefinition) {
+async function resolveShowApiKeysNav(orgId, apiId, apiType, metaData) {
     if (!metaData) {
         return false;
     }
-    if (apiType === constants.API_TYPE.GRAPHQL
-        || apiType === constants.API_TYPE.MCP
-        || apiType === constants.API_TYPE.SOAP) {
-        return false;
-    }
-    let apiDefinition = preloadedDefinition;
-    if (apiDefinition === undefined) {
-        apiDefinition = null;
-        try {
-            apiDefinition = await getApiDefinitionFileContent(orgId, apiId);
-        } catch (definitionErr) {
-            logger.debug('Could not load API definition for API keys nav check', {
-                orgId,
-                apiId,
-                error: definitionErr.message
-            });
-        }
-    }
-    return apiUsesApiKeySecurity(metaData, apiDefinition);
+    return apiUsesApiKeySecurity({ ...metaData, type: apiType ?? metaData.type });
 }
 
 function parseApiDefinitionContent(apiDefinitionContent) {
