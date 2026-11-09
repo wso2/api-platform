@@ -20,10 +20,10 @@
 # publishing from the control plane to the portal and portal credentials reaching
 # the gateway.
 #
-# Adding a test: add a runner to the block below. A new block is the last resort (a product
-# setting the other runners must not see, or a test that must run alone); say why in a
-# comment above it. A new combination (a new file) is an even worse last resort; see
-# it-suite.yaml.
+# Adding a test: add it to an existing runner below that fits it, or else add a runner to the
+# block below. A new block is the last resort (a product setting the other runners must not
+# see, or a test that must run alone); say why in a comment above it. A new combination (a
+# new file) is an even worse last resort; see it-suite.yaml.
 # Feature paths are relative to suites/it, as in it-suite.yaml.
 
 blocks:

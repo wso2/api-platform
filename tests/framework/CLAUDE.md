@@ -466,10 +466,11 @@ starts only because another needs it (the Platform API an API Portal depends on)
 To add a feature to the suite:
 
 1. Pick the file by the products the feature's scenarios check.
-2. Add a runner to an existing block in that file that fits the feature: one whose product
-   settings (overlay) and isolation the feature can run with. Most features fit the file's
-   generic block in the table above; a feature that needs a special setting or isolation may
-   fit an existing block that already has it.
+2. Add the feature to an existing runner in that file whose setup, dependencies and tags fit
+   it. Otherwise add a runner to an existing block that fits: one whose product settings
+   (overlay) and isolation the feature can run with. Most features fit the file's generic
+   block in the table above; a feature that needs a special setting or isolation may fit an
+   existing block that already has it.
 3. Add a new block only as the last resort, when no existing block fits: the feature needs a
    product setting (an overlay) other runners must not see, or must run alone because it
    restarts or stops a product, reads gateway-wide counters or logs, or expects a product with

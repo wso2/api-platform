@@ -21,8 +21,8 @@ never break.
 
 2. **The right suite, file and block.** On-premises API-level behaviour goes in `suites/it`,
    portal journeys in `suites/ui`, cloud-only behaviour in `suites/cloud`. Add a scenario to the
-   feature file that already owns the behaviour, and a runner to an existing block that fits
-   it. A new block, a new block file (a new combination of components) or a new overlay is the
+   feature file that already owns the behaviour, and the feature to an existing runner that
+   fits it, or else a runner to an existing block that fits it. A new block, a new block file (a new combination of components) or a new overlay is the
    last resort, with the reason written in a comment above it.
 
 3. **Clean up everything a test creates.** Register each resource with the cleanup registry as
@@ -46,7 +46,7 @@ never break.
 
 > **Before outputting a test change:**
 > * Does every new or changed scenario carry the ID of an entry in its scenario list (added in this change if new, with the next free ID), and is the entry's status and `refs` updated?
-> * Is the scenario in the feature file that owns the behaviour, and its runner in an existing block that fits? If a new block, block file or overlay was added, is the reason in a comment above it?
+> * Is the scenario in the feature file that owns the behaviour, and the feature in an existing runner that fits, or a runner in an existing block that fits? If a new block, block file or overlay was added, is the reason in a comment above it?
 > * Is every resource the scenario creates, including through the browser, registered for cleanup?
 > * Are the assertions exact, with a positive control for each negative one, and is every `@known-issue` scenario excluded by its runner and linked to an issue?
 > * For the cloud suite: does the scenario leave every shared resource as it found it?

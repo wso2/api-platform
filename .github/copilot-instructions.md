@@ -39,9 +39,10 @@ code, whether you changed gateway components or only test files.
    through writing a test end to end. In short:
    - Start from the feature's entry in its scenario list under `tests/framework/scenarios/on-prem/`.
    - The blocks live in `tests/framework/suites/it/blocks/`, one file per combination of products
-     the tests check. In the file that matches your feature, add your runner to an existing block
-     that fits it: one whose settings and isolation your feature can run with. Most features fit
-     the file's generic block, such as `gateway-core`.
+     the tests check. In the file that matches your feature, add it to an existing runner that
+     fits it, or else add a runner to an existing block that fits: one whose settings and
+     isolation your feature can run with. Most features fit the file's generic block, such as
+     `gateway-core`.
    - A new block (when no block fits: the feature needs a product setting the other runners must
      not see, or must run alone) or a new block file is the last resort.
 

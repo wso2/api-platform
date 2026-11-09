@@ -95,7 +95,10 @@ it is created, as the actor that created it, and deregister what the scenario de
 itself.
 
 - A resource created by clicking in a browser is invisible to the framework. Register it in
-  a step after the click, or the run leaves it behind while staying green.
+  the same step that clicks, as soon as the console confirms the creation (for example from
+  the ID in the console's network response), so a later failure in that step or the next one
+  cannot skip the registration. If registration fails, delete the resource on a best-effort
+  basis and fail the step.
 - A cleanup failure in the log (`WARN resource cleanup failed`) is a leak, not noise.
 - Cloud scenarios run against a shared organisation: create only what the scenario owns,
   never change a shared resource (the organisation's gateway, for example) without restoring
@@ -103,12 +106,19 @@ itself.
 
 ## Step 7: Put the feature in a runner
 
-- IT: pick the block file under `suites/it/blocks/` by the products the scenarios check, then
-  add a runner to an existing block in it that fits: most features fit the file's generic
-  block. A new block, or a new block file, is the last resort ("Integration Suite Blocks").
-- UI: add a runner to an existing block in `suites/ui/ui-suite.yaml` that starts the portal
-  the journey uses, on the same terms.
-- Cloud: add a runner to the `apip-cloud` block in `suites/cloud/cloud-suite.yaml`.
+Reuse before adding, in this order ("Runner and block levels" in `CLAUDE.md`):
+
+1. Add the feature to an existing runner whose setup, dependencies and tags fit it.
+2. Otherwise add a runner to an existing block that fits. A new runner is only for a feature
+   that needs a different grouping or lifecycle.
+3. A new block, or a new block file, is the last resort ("Integration Suite Blocks").
+
+Where to look:
+
+- IT: the block file under `suites/it/blocks/` for the products the scenarios check; most
+  features fit the file's generic block.
+- UI: `suites/ui/ui-suite.yaml`, a block that starts the portal the journey uses.
+- Cloud: the `apip-cloud` block in `suites/cloud/cloud-suite.yaml`.
 - A runner that hosts `@known-issue` scenarios excludes them: `tags: "~@known-issue"`. A
   Gateway release boundary goes in the runner's tags (`gateway-version>=1.2.0;~@known-issue`),
   never in feature tags.
@@ -116,16 +126,18 @@ itself.
 ## Step 8: Run it and prove it
 
 ```bash
-# IT: the block variant that hosts the runner, narrowed to the feature's tag
-go test ./suites/it -count=1 -v -timeout=60m -blocks <block>/sqlite -feature-tags "@<tag>"
+# IT: the block (or block variant) that hosts the runner, narrowed to the feature's tag
+go test ./suites/it -count=1 -v -timeout=60m -blocks <block-or-variant> -feature-tags "@<tag>"
 # UI
 go test ./suites/ui -count=1 -v -timeout=25m -blocks <block> -feature-tags "@<tag>"
 # Cloud: compile and unit-test locally; a real run needs a cloud environment and token
 GOWORK=off CGO_ENABLED=0 go test -c -o /dev/null ./suites/cloud && go test -count=1 ./suites/cloud/steps/...
 ```
 
-- A block with a matrix on two components names its variants after both
-  (`platform-api-core/api-sqlite_gateway-sqlite`); an unknown name prints the valid ones.
+- A block without a database matrix is selected by its bare name (`api-portal-core`). A block
+  with a matrix runs as one variant per engine (`gateway-core/sqlite`), and a matrix on two
+  components names each variant after both (`platform-api-core/api-sqlite_gateway-sqlite`).
+  An unknown name fails with the list of valid ones.
 - Check the output says the scenario ran (`N scenarios (N passed)`), not that it was skipped.
 - A scenario is done when it passes three local runs in a row and fails when you temporarily
   break the condition it asserts.

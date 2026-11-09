@@ -20,8 +20,9 @@
 # mode runs without it), but no gateway.
 #
 # Adding a test:
-#   1. Add a runner to an existing block below that fits the test: one whose product settings
-#      (overlay) and isolation the test can run with. Most tests fit the generic api-portal-core block.
+#   1. Add the test to an existing runner below that fits it, or else add a runner to an
+#      existing block that fits: one whose product settings (overlay) and isolation the test
+#      can run with. Most tests fit the generic api-portal-core block.
 #   2. Only if no block fits, add a new block. This is the last resort: the test needs a
 #      product setting (an overlay) the other runners must not see, or must run alone (it
 #      restarts a product, counts metrics, or expects an empty product). Say why in a comment

@@ -34,8 +34,9 @@ conventions for writing features and steps.
   matrix expand to one variant per engine: `<block>/sqlite`, `<block>/postgres`, `<block>/sqlserver`.
 - Writing a new test: follow [[write-framework-tests]]. In short: start from its entry in the
   feature's scenario list (`scenarios/on-prem/<CODE>.yaml`), then pick the block file by the
-  products the feature checks and add a runner to an existing block in it that fits the feature
-  (most fit the file's generic block, such as `gateway-core`). Add a new block or a new block
+  products the feature checks, and add the feature to an existing runner that fits it, or else
+  a runner to an existing block that fits (most fit the file's generic block, such as
+  `gateway-core`). Add a new block or a new block
   file only as the last resort, when no existing block fits.
 - Features: `suites/it/features/<area>/…/*.feature`. Each feature file starts with a tag
   (e.g. `@config-dump`).
