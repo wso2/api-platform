@@ -23,8 +23,8 @@ Feature: Deleting an application unlinks its credentials without revoking them
   I want deleting an application to remove only the application
   So that the API keys, subscriptions and OAuth2 clients I grouped in it keep working
 
-  # Scenario APIPORTAL (scenarios/APIPORTAL.yaml) APIP-WEBHOOKS-024, at the API level. Workbook row
-  # APIP-014 step 5, portal and webhook side; the gateway side is APIP-DEVPORTAL-WEBHOOK-002. It runs
+  # Scenario APIPORTAL (scenarios/APIPORTAL.yaml) APIP-WEBHOOKS-024, at the API level.
+  # The gateway side is APIP-DEVPORTAL-WEBHOOK-002. It runs
   # in the api-portal-webhooks block because webhook subscribers are organization-wide. The key
   # manager points at this scenario's partition of the testbench OAuth2 mock, whose fixed client is
   # "test-client" / "test-secret" — a mock credential, never a real one.

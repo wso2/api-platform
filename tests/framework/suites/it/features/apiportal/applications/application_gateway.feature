@@ -24,7 +24,7 @@ Feature: API keys keep working at the gateway after their application is deleted
   So that tidying my applications never breaks a client that is still calling the API
 
   # Scenario APIPORTAL (scenarios/APIPORTAL.yaml) APIP-DEVPORTAL-WEBHOOK-002, at the API level.
-  # Workbook row APIP-014 step 5, gateway side; the portal and webhook side is APIP-WEBHOOKS-024.
+  # The portal and webhook side is APIP-WEBHOOKS-024.
   # The portal's credentials reach the gateway through its signed webhook to platform-api, as in
   # webhooks/devportal_webhook.feature, whose fixtures create the application and the key as the
   # administrator. The portal dispatches events in the order they occur, so a second key revoked

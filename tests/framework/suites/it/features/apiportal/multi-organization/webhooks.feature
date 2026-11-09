@@ -16,11 +16,13 @@
 # under the License.
 # --------------------------------------------------------------------
 
+@APIPORTAL
 Feature: API Portal multi-organization webhook delivery
 
   # The dispatcher and delivery worker of a multi-organization portal handle every organization
   # under its portal_id; each organization's subscribers still receive only its own events.
 
+  @APIP-MULTI-ORGANIZATION-029
   Scenario: Each organization's subscribers receive exactly that organization's events, once
     Given I generate a unique resource name from "hook-a" and store it as "hookA"
     And I generate a unique resource name from "hook-b" and store it as "hookB"

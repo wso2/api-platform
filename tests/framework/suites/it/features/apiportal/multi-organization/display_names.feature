@@ -16,12 +16,14 @@
 # under the License.
 # --------------------------------------------------------------------
 
+@APIPORTAL
 Feature: API Portal shows users by display name in audit fields
 
   # Each scenario signs in as its own IdP user: a fresh UUID as the sub, with or without a name
   # claim. Audit fields show the stored display name, else the sub; a name is taken only from a
   # verified token.
 
+  @APIP-MULTI-ORGANIZATION-035
   Scenario: A user whose token carries a name is shown by that name
     Given I generate a UUID and store it as "userSub"
     And I mint an API Portal IDP token stored as "token" with claims:
@@ -38,6 +40,7 @@ Feature: API Portal shows users by display name in audit fields
     Then the response status code should be 200
     And the JSON response array "list" item with "id" equal to "${CTX:appId}" should have "createdBy" equal to "Ada Lovelace"
 
+  @APIP-MULTI-ORGANIZATION-036
   Scenario: A user whose token carries no name is shown by their subject
     Given I generate a UUID and store it as "userSub"
     And I mint an API Portal IDP token stored as "token" with claims:
@@ -50,6 +53,7 @@ Feature: API Portal shows users by display name in audit fields
     And the JSON response field "createdBy" should be "${CTX:userSub}"
     And the JSON response field "updatedBy" should be "${CTX:userSub}"
 
+  @APIP-MULTI-ORGANIZATION-037
   Scenario: A later token without a name keeps the stored name
     Given I generate a UUID and store it as "userSub"
     And I mint an API Portal IDP token stored as "namedToken" with claims:
@@ -72,6 +76,7 @@ Feature: API Portal shows users by display name in audit fields
     And the JSON response field "createdBy" should be "Ada Lovelace"
     And the JSON response field "updatedBy" should be "Ada Lovelace"
 
+  @APIP-MULTI-ORGANIZATION-038
   Scenario: A name changed without re-signing the token is rejected and never stored
     Given I generate a UUID and store it as "userSub"
     And I mint an API Portal IDP token stored as "token" with claims:

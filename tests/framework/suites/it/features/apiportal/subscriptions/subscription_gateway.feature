@@ -38,7 +38,6 @@ Feature: The gateway enforces the subscriptions and API keys held in the API Por
     And I generate a unique resource name from "subscription-gateway-api" and store it as "apiHandle"
     And I generate a unique API context from "/subscription-gateway" and store it as "apiContext"
 
-  # Workbook rows APIP-024 step 4 and APIP-027 step 3.
   @APIP-DEVPORTAL-WEBHOOK-004 @type:security
   Scenario: The gateway takes the subscription token only from Subscription-Key, and only together with the API key
     Given I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -75,7 +74,6 @@ Feature: The gateway enforces the subscriptions and API keys held in the API Por
     And I send a "GET" request to "${CTX:apiContext}/"
     Then the response status code should be 200
 
-  # Workbook row APIP-024 steps 1, 2 and 5.
   @APIP-DEVPORTAL-WEBHOOK-005
   Scenario: A suspended or ended subscription is refused at the gateway, and subscribing again gives a new token
     Given I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -122,7 +120,6 @@ Feature: The gateway enforces the subscriptions and API keys held in the API Por
     And I send a "GET" request to "${CTX:apiContext}/"
     Then the response status code should be 403
 
-  # Workbook row APIP-027 step 1 (gateway side).
   @APIP-DEVPORTAL-WEBHOOK-006 @type:security
   Scenario: Another user's attempts to rotate or revoke an API key leave it working at the gateway
     Given I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane

@@ -16,6 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
+@APIPORTAL
 Feature: API Portal multi-organization isolation
 
   # The org claims deliberately differ from the handles the organization names derive.
@@ -33,6 +34,7 @@ Feature: API Portal multi-organization isolation
       | org_name | Org B ${CTX:isoB}    |
       | roles    | ["ap_admin"]         |
 
+  @APIP-MULTI-ORGANIZATION-015
   Scenario: An organization never sees another organization's APIs
     Given a unique API Portal REST API is created in portal "api-portal-multi-organization" with token "tokenA" and stored as "api"
     When I send an API Portal "GET" request to "/apis/${CTX:api}" using portal "api-portal-multi-organization" with token "tokenA"
@@ -47,7 +49,17 @@ Feature: API Portal multi-organization isolation
       {"id": "stolen"}
       """
     Then the response status code should be 404
+    Given the API Portal browser "visitor" has no IDP session
+    When I browse API Portal page "/api-portal/org-a-${CTX:isoA}/views/default/apis" using portal "api-portal-multi-organization" as browser "visitor"
+    Then the response status code should be 200
+    And the API Portal browser "visitor" should be on page "/api-portal/org-a-${CTX:isoA}/views/default/apis"
+    And the response body should contain "${CTX:api}"
+    When I browse API Portal page "/api-portal/org-b-${CTX:isoB}/views/default/apis" using portal "api-portal-multi-organization" as browser "visitor"
+    Then the response status code should be 200
+    And the API Portal browser "visitor" should be on page "/api-portal/org-b-${CTX:isoB}/views/default/apis"
+    And the response body should not contain "${CTX:api}"
 
+  @APIP-MULTI-ORGANIZATION-016
   Scenario: The organization APIs accept only the caller's own organization
     When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "tokenB"
     Then the response status code should be 200
@@ -63,6 +75,7 @@ Feature: API Portal multi-organization isolation
       """
     Then the response status code should be 403
 
+  @APIP-MULTI-ORGANIZATION-017
   Scenario: The MCP registry's write endpoints act only in the caller's own organization
     Given a unique API Portal MCP server is created in portal "api-portal-multi-organization" with token "tokenA" and stored as "mcp"
     When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "tokenB"
@@ -80,6 +93,7 @@ Feature: API Portal multi-organization isolation
     When I send an API Portal "DELETE" request to "/api-portal/registry/org-a-${CTX:isoA}/v0.1/servers/${CTX:mcp}/versions/1.0.0" using portal "api-portal-multi-organization" with token "tokenA"
     Then the response status code should be 200
 
+  @APIP-MULTI-ORGANIZATION-018
   Scenario: A claim is matched on idp_ref_id only, never on a handle
     Given I mint an API Portal IDP token stored as "tokenHandle" with claims:
       | sub    | h                     |
@@ -90,3 +104,38 @@ Feature: API Portal multi-organization isolation
     When I send an API Portal "GET" request to "/organizations/org-a-${CTX:isoA}" using portal "api-portal-multi-organization" with token "tokenHandle"
     Then the response status code should be 403
     And the API Portal "api-portal-multi-organization" organization with IDP reference "org-a-${CTX:isoA}" should have a handle matching "org-a-${CTX:isoA}-[0-9a-f]{6}"
+
+  @APIP-MULTI-ORGANIZATION-039 @type:security
+  Scenario: An administrator updates their own organization and no other
+    Given I mint an API Portal IDP token stored as "tokenSubscriber" with claims:
+      | sub    | sue               |
+      | org_id | ${CTX:isoA}       |
+      | roles  | ["ap_subscriber"] |
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "tokenB"
+    Then the response status code should be 200
+    When I send an API Portal "PUT" request to "/organizations/org-a-${CTX:isoA}" using portal "api-portal-multi-organization" with token "tokenA" and JSON body:
+      """
+      {"id": "org-a-${CTX:isoA}", "idpRefId": "${CTX:isoA}", "displayName": "Renamed ${CTX:isoA}"}
+      """
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Renamed ${CTX:isoA}"
+    When I send an API Portal "GET" request to "/organizations/org-a-${CTX:isoA}" using portal "api-portal-multi-organization" with token "tokenA"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Renamed ${CTX:isoA}"
+    When I send an API Portal "GET" request to "/organizations/org-b-${CTX:isoB}" using portal "api-portal-multi-organization" with token "tokenB"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Org B ${CTX:isoB}"
+    When I send an API Portal "PUT" request to "/organizations/org-a-${CTX:isoA}" using portal "api-portal-multi-organization" with token "tokenA" and JSON body:
+      """
+      {"id": "org-a-${CTX:isoA}", "idpRefId": "elsewhere-${CTX:isoA}", "displayName": "Re-pointed ${CTX:isoA}"}
+      """
+    Then the response status code should be 400
+    When I send an API Portal "PUT" request to "/organizations/org-a-${CTX:isoA}" using portal "api-portal-multi-organization" with token "tokenSubscriber" and JSON body:
+      """
+      {"id": "org-a-${CTX:isoA}", "idpRefId": "${CTX:isoA}", "displayName": "Subscriber ${CTX:isoA}"}
+      """
+    Then the response status code should be 403
+    When I send an API Portal "GET" request to "/organizations/org-a-${CTX:isoA}" using portal "api-portal-multi-organization" with token "tokenA"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Renamed ${CTX:isoA}"
+    And the JSON response field "idpRefId" should be "${CTX:isoA}"

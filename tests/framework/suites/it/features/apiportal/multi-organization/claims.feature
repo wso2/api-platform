@@ -16,11 +16,13 @@
 # under the License.
 # --------------------------------------------------------------------
 
+@APIPORTAL
 Feature: API Portal multi-organization organization claims
 
   # The portal serves every organization under its portal_id and provisions the
   # organization an unknown org claim names.
 
+  @APIP-MULTI-ORGANIZATION-001
   Scenario: The configured organization is served as always
     Given I mint an API Portal IDP token stored as "token" with claims:
       | sub    | alice        |
@@ -30,6 +32,7 @@ Feature: API Portal multi-organization organization claims
     Then the response status code should be 200
     And the JSON response field "id" should be "default"
 
+  @APIP-MULTI-ORGANIZATION-002
   Scenario Outline: A claim differing only in case or trailing spaces does not match an organization
     # SQL Server's default collation would match these to "default" in the query itself.
     Given I mint an API Portal IDP token stored as "token" with claims:
@@ -45,6 +48,7 @@ Feature: API Portal multi-organization organization claims
       | Default    |
       | "default " |
 
+  @APIP-MULTI-ORGANIZATION-003
   Scenario: An unknown organization is provisioned from the claim and named from the org-name claim
     Given I generate a unique resource name from "globex" and store it as "globex"
     And I mint an API Portal IDP token stored as "token" with claims:
@@ -58,10 +62,17 @@ Feature: API Portal multi-organization organization claims
     When I send an API Portal "GET" request to "/views" using portal "api-portal-multi-organization" with token "token"
     Then the response status code should be 200
     And the response body should match pattern ".id.:\s*.default."
+    When I send an API Portal "GET" request to "/labels" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 200
+    And the response body should match pattern ".id.:\s*.default."
+    When I send an API Portal "GET" request to "/subscription-plans" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 200
+    And the response body should contain "Bronze"
     When I send an API Portal "GET" request to "/organizations/globex-${CTX:globex}" using portal "api-portal-multi-organization" with token "token"
     Then the response status code should be 200
     And the JSON response field "idpRefId" should be "${CTX:globex}"
 
+  @APIP-MULTI-ORGANIZATION-004
   Scenario: The org-handle claim becomes the provisioned organization's handle as it is
     Given I generate a unique resource name from "handled" and store it as "handled"
     And I mint an API Portal IDP token stored as "token" with claims:
@@ -74,6 +85,7 @@ Feature: API Portal multi-organization organization claims
     Then the response status code should be 200
     And the API Portal "api-portal-multi-organization" organization with IDP reference "${CTX:handled}" should have handle "hnd-${CTX:handled}" and display name "Handled Org ${CTX:handled}"
 
+  @APIP-MULTI-ORGANIZATION-005
   Scenario: A token issued to another application is rejected
     Given I mint an API Portal IDP token stored as "token" with claims:
       | sub    | aud            |
@@ -83,6 +95,7 @@ Feature: API Portal multi-organization organization claims
     When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
     Then the response status code should be 401
 
+  @APIP-MULTI-ORGANIZATION-006
   Scenario: A credential with no organization claim falls back to the configured organization
     Given I mint an API Portal IDP token stored as "token" with claims:
       | sub   | nora         |
@@ -90,6 +103,7 @@ Feature: API Portal multi-organization organization claims
     When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
     Then the response status code should be 200
 
+  @APIP-MULTI-ORGANIZATION-007
   Scenario: An org-handle claim is not taken for the organization claim
     Given I generate a unique resource name from "byhandle" and store it as "byhandle"
     And I mint an API Portal IDP token stored as "token" with claims:
@@ -100,6 +114,7 @@ Feature: API Portal multi-organization organization claims
     Then the response status code should be 200
     And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:byhandle}"
 
+  @APIP-MULTI-ORGANIZATION-008
   Scenario: A single-entry list claim is that organization, and one naming two is refused
     Given I generate a unique resource name from "listed" and store it as "listed"
     And I mint an API Portal IDP token stored as "plain" with claims:
@@ -121,6 +136,7 @@ Feature: API Portal multi-organization organization claims
     When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "double"
     Then the response status code should be 403
 
+  @APIP-MULTI-ORGANIZATION-009
   Scenario: Concurrent first use of a new organization provisions it exactly once
     Given I generate a unique resource name from "race" and store it as "race"
     And I mint an API Portal IDP token stored as "token" with claims:
@@ -134,6 +150,7 @@ Feature: API Portal multi-organization organization claims
   # Per-organization issuers: the testbench signs a token issued as ".../o/<org>/oauth2/token"
   # with that organization's own key, served at ".../o/<org>/oauth2/jwks".
 
+  @APIP-MULTI-ORGANIZATION-010
   Scenario: A token from an organization's own issuer is verified with that organization's keys
     Given I generate a unique resource name from "suborg" and store it as "suborg"
     And I mint an API Portal IDP token stored as "token" with claims:
@@ -147,6 +164,7 @@ Feature: API Portal multi-organization organization claims
     Then the response status code should be 200
     And the API Portal "api-portal-multi-organization" should have 1 organizations with IDP reference "${CTX:suborg}"
 
+  @APIP-MULTI-ORGANIZATION-011
   Scenario: The template organization claim, not the organization claim, must name the issuer's organization
     # org_id names the issuer's organization, but org_handle, the binding claim, doesn't.
     Given I generate a unique resource name from "unbound" and store it as "unbound"
@@ -160,6 +178,7 @@ Feature: API Portal multi-organization organization claims
     Then the response status code should be 401
     And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:unbound}"
 
+  @APIP-MULTI-ORGANIZATION-012
   Scenario: A per-organization token without the organization claim is rejected, not admitted to the configured organization
     # Bound through org_handle, but no org_id: one organization's issuer must not vouch
     # for a credential that would fall back to the configured organization.
@@ -172,6 +191,7 @@ Feature: API Portal multi-organization organization claims
     When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
     Then the response status code should be 401
 
+  @APIP-MULTI-ORGANIZATION-013
   Scenario: A token whose issuer names an organization whose keys didn't sign it is rejected
     # Signed by "signer"'s key, but claiming to be issued by, and for, "forged": the portal
     # fetches "forged"'s keys, which don't verify it.
@@ -188,6 +208,7 @@ Feature: API Portal multi-organization organization claims
     Then the response status code should be 401
     And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:forged}"
 
+  @APIP-MULTI-ORGANIZATION-014
   Scenario Outline: A token from an issuer that fits neither the configured issuer nor the template is rejected
     Given I generate a unique resource name from "stray" and store it as "stray"
     And I mint an API Portal IDP token stored as "token" with claims:
@@ -204,3 +225,31 @@ Feature: API Portal multi-organization organization claims
       | issuer                                                    |
       | https://testbench:3015/t/${CTX:stray}/oauth2/token        |
       | https://testbench:3015/o/${CTX:stray}.x/oauth2/token      |
+
+  @APIP-MULTI-ORGANIZATION-040
+  Scenario: A later token with new organization names leaves the provisioned names unchanged
+    Given I generate a unique resource name from "renamed" and store it as "renamed"
+    And I mint an API Portal IDP token stored as "first" with claims:
+      | sub        | r1                    |
+      | org_id     | ${CTX:renamed}        |
+      | org_name   | First ${CTX:renamed}  |
+      | org_handle | first-${CTX:renamed}  |
+      | roles      | ["ap_admin"]          |
+    And I mint an API Portal IDP token stored as "later" with claims:
+      | sub        | r2                    |
+      | org_id     | ${CTX:renamed}        |
+      | org_name   | Second ${CTX:renamed} |
+      | org_handle | second-${CTX:renamed} |
+      | roles      | ["ap_admin"]          |
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "first"
+    Then the response status code should be 200
+    And the API Portal "api-portal-multi-organization" organization with IDP reference "${CTX:renamed}" should have handle "first-${CTX:renamed}" and display name "First ${CTX:renamed}"
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "later"
+    Then the response status code should be 200
+    And the API Portal "api-portal-multi-organization" should have 1 organization with IDP reference "${CTX:renamed}"
+    And the API Portal "api-portal-multi-organization" organization with IDP reference "${CTX:renamed}" should have handle "first-${CTX:renamed}" and display name "First ${CTX:renamed}"
+    When I send an API Portal "GET" request to "/organizations/first-${CTX:renamed}" using portal "api-portal-multi-organization" with token "later"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "First ${CTX:renamed}"
+    When I send an API Portal "GET" request to "/organizations/second-${CTX:renamed}" using portal "api-portal-multi-organization" with token "later"
+    Then the response status code should be 403

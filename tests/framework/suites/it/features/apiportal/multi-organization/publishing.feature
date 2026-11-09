@@ -16,6 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
+@APIPORTAL
 Feature: API Portal multi-organization publishing with the shared key
 
   # The portal holds one shared key for every platform-api caller, so a shared-key call cannot
@@ -36,6 +37,7 @@ Feature: API Portal multi-organization publishing with the shared key
     And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "skOrgToken"
     And the response status code should be 200
 
+  @APIP-MULTI-ORGANIZATION-030
   Scenario: A shared-key call publishes into the configured organization
     When I publish a unique REST API to API Portal "api-portal-multi-organization" with the shared key and store its id as "api"
     Then the response status code should be 201
@@ -48,6 +50,7 @@ Feature: API Portal multi-organization publishing with the shared key
     When I send an API Portal "GET" request to "/apis/${CTX:named}" using portal "api-portal-multi-organization" with token "defaultToken"
     Then the response status code should be 200
 
+  @APIP-MULTI-ORGANIZATION-031
   Scenario Outline: A shared-key call naming another organization is refused and creates nothing
     When I publish a unique REST API to API Portal "api-portal-multi-organization" with the shared key and header "organization" set to "<organization>" and store its id as "refused"
     Then the response status code should be 403
@@ -62,6 +65,7 @@ Feature: API Portal multi-organization publishing with the shared key
       | ${CTX:skOrg}           |
       | no-such-${CTX:skOrg}   |
 
+  @APIP-MULTI-ORGANIZATION-032
   Scenario: A shared-key call with the wrong key is rejected
     When I publish a unique REST API to API Portal "api-portal-multi-organization" with shared key "not-the-key" and store its id as "wrong"
     Then the response status code should be 401

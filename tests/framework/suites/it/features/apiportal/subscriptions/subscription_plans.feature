@@ -30,7 +30,6 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
   Background:
     Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
 
-  # Workbook row APIP-023 step 2.
   @APIP-CORE-187
   Scenario Outline: A plan limit of <case> is accepted and stored as given
     Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
@@ -53,7 +52,6 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
       | requests per day      | [{"limitType":"REQUEST_COUNT","limitCount":5000,"timeUnit":"DAY"}]      | REQUEST_COUNT     | 5000  | DAY      |
       | bandwidth per month   | [{"limitType":"BANDWIDTH","limitCount":2048,"timeUnit":"MONTH"}]        | BANDWIDTH         | 2048  | MONTH    |
 
-  # Workbook row APIP-023 step 2.
   @APIP-CORE-188 @type:negative
   Scenario Outline: A plan limit with <problem> is refused and nothing is stored
     When I send an authenticated API Portal "POST" request to "/subscription-plans" as "admin" with JSON values:
@@ -72,7 +70,6 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
       | an unknown time unit  | [{"limitType":"REQUEST_COUNT","limitCount":10,"timeUnit":"WEEK"}]   | timeUnit   |
       | a count of -2         | [{"limitType":"REQUEST_COUNT","limitCount":-2,"timeUnit":"MINUTE"}] | limitCount |
 
-  # Workbook row APIP-023 step 4.
   @APIP-CORE-189 @type:negative
   Scenario: A free plan with a subscription can't be deleted or taken off its API, and the subscription keeps working
     Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":

@@ -24,8 +24,7 @@ Feature: Developers obtain OAuth2 credentials and tokens through the API Portal
   So that I can call OAuth2-secured APIs in production and sandbox, and the portal never keeps my secret
 
   # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-178..182, at the API level.
-  # Workbook row APIP-016 steps 3, 4, 6, 7 and 8; steps 1 and 2 are covered by APIP-CORE-030. Key
-  # managers point at this scenario's partition of the testbench OAuth2 mock, whose fixed client is
+  # Key managers point at this scenario's partition of the testbench OAuth2 mock, whose fixed client is
   # "test-client" / "test-secret" — a mock credential, never a real one. The portal must never echo
   # or store the secret. Importing a client uses a "provision" key manager, which registers nothing
   # at the identity provider; its provisioning password is generated per run.

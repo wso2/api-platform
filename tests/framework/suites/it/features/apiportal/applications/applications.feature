@@ -23,7 +23,7 @@ Feature: Developers own the applications they create in the API Portal
   So that the credentials I group in them stay mine and are named the way I expect
 
   # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-163..169, at the API level.
-  # Workbook row APIP-014 steps 1 to 4. The application events are asserted by APIP-WEBHOOKS-009,
+  # The application events are asserted by APIP-WEBHOOKS-009,
   # and deleting an application that holds credentials by APIP-WEBHOOKS-024 and
   # APIP-DEVPORTAL-WEBHOOK-002. The suite has one developer, so the administrator, who holds every
   # application scope, plays the second user: applications are owned by their creator, not by role.

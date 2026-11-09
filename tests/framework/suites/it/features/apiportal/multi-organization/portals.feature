@@ -16,6 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
+@APIPORTAL
 Feature: API Portal multi-organization on a database shared with other portals
 
   # Other portals may share the database under their own portal_id. The seeded rows stand in
@@ -32,6 +33,7 @@ Feature: API Portal multi-organization on a database shared with other portals
       | org_handle | ${CTX:shared} |
       | roles      | ["ap_admin"]  |
 
+  @APIP-MULTI-ORGANIZATION-033
   Scenario: Another portal's organization with the same IDP reference is neither used nor in the way
     # The seeded organization has the same idp_ref_id, handle and display name the token's
     # claims provision, so a lookup that reached across portals would resolve to it, or
@@ -43,6 +45,7 @@ Feature: API Portal multi-organization on a database shared with other portals
     Then the response status code should be 200
     And the JSON response field "idpRefId" should be "${CTX:shared}"
 
+  @APIP-MULTI-ORGANIZATION-034
   Scenario: Events and deliveries under a portal_id no portal serves are left alone
     # The portal's own event is delivered after the rows are seeded, which proves its
     # dispatcher and delivery worker have both run since.

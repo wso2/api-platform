@@ -24,8 +24,7 @@ Feature: Administrators register the key managers developers get OAuth2 tokens f
   So that developers get tokens only from identity providers I have enabled, and the portal never reaches an address it must not
 
   # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-170..177, at the API level.
-  # Workbook row APIP-015 steps 1, 2, 3, 5 and 7; steps 1 and 6 are also covered by APIP-CORE-029
-  # and APIP-CORE-031. Key managers point at this scenario's partition of the testbench OAuth2 mock,
+  # Key managers point at this scenario's partition of the testbench OAuth2 mock,
   # whose fixed client is "test-client" / "test-secret" — a mock credential, never a real one. A
   # provisioning credential is generated per run and must never come back in a response.
 

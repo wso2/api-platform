@@ -106,7 +106,6 @@ Feature: Developers subscribe to APIs through the API Portal REST API
     When I send an authenticated API Portal "GET" request to "/subscriptions/${CTX:missingSubscriptionId}" as "developer"
     Then the response status code should be 404
 
-  # Workbook row APIP-025 step 2.
   @APIP-CORE-183 @type:negative
   Scenario: A subscription without a plan or to an API without plans is refused, and a plan change without a plan changes nothing
     Given a REST API is created in the API Portal and stored as "planlessApiId"
@@ -149,7 +148,6 @@ Feature: Developers subscribe to APIs through the API Portal REST API
     And the JSON response field "subscriptionPlanName" should be "Gold"
     And the JSON response field "status" should be "ACTIVE"
 
-  # Workbook row APIP-025 step 3.
   @APIP-CORE-184
   Scenario: Subscriptions are listed per API, and an unknown API is not found
     Given a REST API is created in the API Portal and stored as "otherApiId"
@@ -169,7 +167,6 @@ Feature: Developers subscribe to APIs through the API Portal REST API
     Then the response status code should be 404
     And the JSON response field "code" should be "RESOURCE_NOT_FOUND"
 
-  # Workbook row APIP-025 step 4.
   @APIP-CORE-185 @type:security
   Scenario: Another user can neither see nor change a developer's subscription
     Given a developer subscription for API "${CTX:apiId}" using plan "Gold" is created and stored as "subscriptionId"
@@ -196,7 +193,7 @@ Feature: Developers subscribe to APIs through the API Portal REST API
     And the JSON response field "status" should be "ACTIVE"
     And the JSON response field "subscriptionToken" should be "${CTX:originalToken}"
 
-  # Workbook row APIP-025 step 5. No actor of this block holds dp:subscription:update without
+  # No actor of this block holds dp:subscription:update without
   # dp:subscription:manage, so the refusal is shown for the publisher, which holds only
   # dp:subscription:read.
   @APIP-CORE-186 @type:security

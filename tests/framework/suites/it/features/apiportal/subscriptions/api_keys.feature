@@ -125,7 +125,6 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
     When I send an authenticated API Portal "GET" request to "/api-keys?limit=100" as "publisher"
     Then the response status code should be 200
 
-  # Workbook row APIP-027 step 1.
   @APIP-CORE-190 @type:security
   Scenario: Another user can neither see, rotate, revoke nor link a developer's API key
     Given I generate a unique resource name from "portal-other-user-app" and store it as "adminAppId"
@@ -153,7 +152,6 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
     And the JSON response array "list" item with "id" equal to "${CTX:keyId}" should have "status" equal to "ACTIVE"
     And the JSON response array "list" item with "id" equal to "${CTX:keyId}" should have "appId" equal to "null"
 
-  # Workbook row APIP-027 step 2.
   @APIP-CORE-191 @type:security
   Scenario: API key requests without a session are refused
     When I send an unauthenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate"
@@ -169,7 +167,6 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
     Then the response status code should be 200
     And the JSON response array "list" should contain an item with "id" equal to "${CTX:keyId}"
 
-  # Workbook row APIP-026 step 3.
   @APIP-CORE-192
   Scenario Outline: A key with <case> is issued with that expiry
     When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON body:
@@ -190,7 +187,6 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
       | an expiry in epoch millis   | epoch-millis-key  | 2051222400000               | 2035-01-01T00:00:00.000Z |
       | the longest id, 128 letters | k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde | "2035-01-01T00:00:00Z" | 2035-01-01T00:00:00.000Z |
 
-  # Workbook row APIP-026 step 3.
   @APIP-CORE-193 @type:negative
   Scenario Outline: A key whose <problem> is refused and no key is issued
     When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON values:
@@ -211,7 +207,6 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
       | expiry has no time zone         | no-zone-key | 2035-01-01T00:00:00  |
       | expiry is after the year 2100   | late-key    | 2101-01-01T00:00:00Z |
 
-  # Workbook row APIP-026 steps 2 (portal side) and 6.
   @APIP-CORE-195
   Scenario: A key without an expiry never expires, and both key listings page through their results
     Given a "developer" API key for API "${CTX:apiId}" is generated and stored as "firstKeyId"
