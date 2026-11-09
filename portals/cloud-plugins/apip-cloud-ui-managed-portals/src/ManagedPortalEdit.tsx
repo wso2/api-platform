@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   CircularProgress,
@@ -162,6 +163,13 @@ function EditForm({ portal, update, onCancel, onSaved }: EditFormProps) {
           <PageTitle.Header>Edit Portal</PageTitle.Header>
         </PageTitle>
       </Stack>
+
+      {portal.lastChangeError && (
+        <Alert severity="error" sx={{ mt: 2, maxWidth: 820 }}>
+          {portal.lastChangeError.message}
+          {portal.lastChangeError.at && ` (${new Date(portal.lastChangeError.at).toLocaleString()})`}
+        </Alert>
+      )}
 
       <Box sx={{ mt: 2, maxWidth: 820 }}>
         <Grid container spacing={2}>

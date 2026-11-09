@@ -26,6 +26,7 @@ import { openableProps } from '@/components/openable';
 import { focusRingSx } from '@/theme';
 import { useFormatters } from '@/i18n/useFormatters';
 import { useCan } from '@/permissions/useCan';
+import { isFeatureDisabled } from '@/config/features';
 
 const AVATAR_SIZE = 40;
 const AVATAR_ICON_SIZE = 22;
@@ -90,7 +91,7 @@ type ProjectRowProps = {
 /** One project as a row: identity on the left, when it last changed on the right. */
 function ProjectRow({ project, onOpen, onDelete }: ProjectRowProps) {
   const intl = useIntl();
-  const canDelete = useCan('DeleteProject');
+  const canDelete = useCan('DeleteProject') && !isFeatureDisabled('project-delete');
   const { relativeTime } = useFormatters();
 
   return (

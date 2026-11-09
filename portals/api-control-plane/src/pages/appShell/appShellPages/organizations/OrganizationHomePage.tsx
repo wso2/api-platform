@@ -59,6 +59,7 @@ import ExploreMoreCard from './components/ExploreMoreCard';
 import { Can } from '@/permissions/Can';
 import { CanCreate } from '@/permissions/CanCreate';
 import type { LimitedComponent } from '@/hooks/useResourceLimits';
+import { isFeatureDisabled } from '@/config/features';
 
 const messages = defineMessages({
   apiAction: {
@@ -127,15 +128,15 @@ const messages = defineMessages({
   },
   gatewayAction: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayAction',
-    defaultMessage: 'Connect a gateway',
+    defaultMessage: 'Connect an API gateway',
   },
   gatewayDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayDescription',
-    defaultMessage: 'Run your APIs on a managed gateway or a self-hosted one.',
+    defaultMessage: 'Run your APIs on a managed API gateway or a self-hosted one.',
   },
   gatewayTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayTitle',
-    defaultMessage: 'Gateways',
+    defaultMessage: 'API Gateways',
   },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.loading',
@@ -238,13 +239,6 @@ function OverviewCard({
                 '& svg': {
                   strokeWidth: 1.75,
                 },
-                ...theme.applyStyles('dark', {
-                  background:
-                    'radial-gradient(ellipse at 30% 25%, #493021 0%, #35251b 50%, #251e17 100%)',
-                  borderColor: '#61412b',
-                  boxShadow: 'inset 0 0 0 0.5px rgba(224, 150, 91, 0.06)',
-                  color: '#d88049',
-                }),
               };
             }}
             variant="rounded"
@@ -400,7 +394,7 @@ function OrganizationHomePageContent() {
               }}
             />
           </Typography>
-          <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 800 }} variant="body1">
+          <Typography color="text.secondary" sx={{ mt: 1 }} variant="body1">
             <FormattedMessage {...messages.bannerDescription} />
           </Typography>
         </Box>
@@ -542,14 +536,7 @@ function OrganizationHomePageContent() {
                             width: '100%',
                           }}
                         >
-                          <Avatar
-                            sx={{
-                              bgcolor: 'primary.main',
-                              color: 'primary.contrastText',
-                              height: 32,
-                              width: 32,
-                            }}
-                          >
+                          <Avatar sx={{ height: 32, width: 32 }}>
                             {project.displayName.charAt(0).toUpperCase()}
                           </Avatar>
                           <Box sx={{ flexGrow: 1, minWidth: 0, overflow: 'hidden' }}>
@@ -602,24 +589,26 @@ function OrganizationHomePageContent() {
                           )}
                         </Box>
                       </ButtonBase>
-                      <Can do="DeleteProject" denied="hide">
-                        <IconButton
-                          aria-label={intl.formatMessage(messages.deleteAriaLabel, {
-                            name: project.displayName,
-                          })}
-                          className="project-delete-action"
-                          color="error"
-                          onClick={() => setProjectToDelete(project)}
-                          size="small"
-                          sx={{
-                            flexShrink: 0,
-                            mr: 1.5,
-                            opacity: { md: 0, xs: 1 },
-                          }}
-                        >
-                          <Trash2 size={18} />
-                        </IconButton>
-                      </Can>
+                      {!isFeatureDisabled('project-delete') && (
+                        <Can do="DeleteProject" denied="hide">
+                          <IconButton
+                            aria-label={intl.formatMessage(messages.deleteAriaLabel, {
+                              name: project.displayName,
+                            })}
+                            className="project-delete-action"
+                            color="error"
+                            onClick={() => setProjectToDelete(project)}
+                            size="small"
+                            sx={{
+                              flexShrink: 0,
+                              mr: 1.5,
+                              opacity: { md: 0, xs: 1 },
+                            }}
+                          >
+                            <Trash2 size={18} />
+                          </IconButton>
+                        </Can>
+                      )}
                     </Box>
                   ))}
                 </Stack>

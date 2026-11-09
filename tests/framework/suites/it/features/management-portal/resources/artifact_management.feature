@@ -102,3 +102,191 @@ Feature: Artifacts keep their definition, project and authorship through their l
     Then the response status code should be 201
     And the JSON response field "createdBy" should be "publisher"
     And the JSON response field "updatedBy" should be "publisher"
+
+  # The scenarios below sign in as IdP users rather than the file-mode actors: each token carries
+  # a fresh UUID as its sub, with or without a name claim. Audit fields show the stored display
+  # name, else the sub. The file-mode actors never carry a name, so the scenarios above keep
+  # asserting their usernames.
+
+  Scenario: A user whose token carries a name is shown by that name
+    Given I generate a UUID and store it as "userSub"
+    And I generate a unique resource name from "art-named" and store it as "apiName"
+    And I generate a unique API context from "/art-named" and store it as "apiContext"
+    And I mint a control-plane token stored as "userToken" for the "publisher" role with claims:
+      | sub  | ${CTX:userSub} |
+      | name | Ada Lovelace   |
+    When I send a "POST" request to the control plane at "/rest-apis" with token "userToken" with body:
+      """
+      {"displayName": "${CTX:apiName}", "context": "${CTX:apiContext}", "version": "v1", "projectId": "${CTX:projectA}", "upstream": {"main": {"url": "http://backend.example.com"}}, "operations": [{"request": {"method": "GET", "path": "/health"}}]}
+      """
+    Then the response status code should be 201
+    And I store the JSON response field "id" as "apiHandle"
+    And the JSON response field "createdBy" should be "Ada Lovelace"
+    And the JSON response field "updatedBy" should be "Ada Lovelace"
+    When I send a "GET" request to the control plane at "/rest-apis/${CTX:apiHandle}"
+    Then the response status code should be 200
+    And the JSON response field "createdBy" should be "Ada Lovelace"
+    And the JSON response field "updatedBy" should be "Ada Lovelace"
+    When I send a "GET" request to the control plane at "/rest-apis?projectId=${CTX:projectA}"
+    Then the response status code should be 200
+    And the JSON response array "list" item with "id" equal to "${CTX:apiHandle}" should have "createdBy" equal to "Ada Lovelace"
+
+  Scenario: A user whose token carries no name is shown by their subject
+    Given I generate a UUID and store it as "userSub"
+    And I generate a unique resource name from "art-unnamed" and store it as "apiName"
+    And I generate a unique API context from "/art-unnamed" and store it as "apiContext"
+    And I mint a control-plane token stored as "userToken" for the "publisher" role with claims:
+      | sub | ${CTX:userSub} |
+    When I send a "POST" request to the control plane at "/rest-apis" with token "userToken" with body:
+      """
+      {"displayName": "${CTX:apiName}", "context": "${CTX:apiContext}", "version": "v1", "projectId": "${CTX:projectA}", "upstream": {"main": {"url": "http://backend.example.com"}}, "operations": [{"request": {"method": "GET", "path": "/health"}}]}
+      """
+    Then the response status code should be 201
+    And I store the JSON response field "id" as "apiHandle"
+    And the JSON response field "createdBy" should be "${CTX:userSub}"
+    And the JSON response field "updatedBy" should be "${CTX:userSub}"
+    When I send a "GET" request to the control plane at "/rest-apis/${CTX:apiHandle}"
+    Then the response status code should be 200
+    And the JSON response field "createdBy" should be "${CTX:userSub}"
+    And the JSON response field "updatedBy" should be "${CTX:userSub}"
+
+  Scenario: A later token without a name keeps the stored name
+    Given I generate a UUID and store it as "userSub"
+    And I generate a unique resource name from "art-keep" and store it as "apiName"
+    And I generate a unique API context from "/art-keep" and store it as "apiContext"
+    And I mint a control-plane token stored as "namedToken" for the "publisher" role with claims:
+      | sub  | ${CTX:userSub} |
+      | name | Ada Lovelace   |
+    And I mint a control-plane token stored as "unnamedToken" for the "publisher" role with claims:
+      | sub | ${CTX:userSub} |
+    When I send a "POST" request to the control plane at "/rest-apis" with token "namedToken" with body:
+      """
+      {"displayName": "${CTX:apiName}", "context": "${CTX:apiContext}", "version": "v1", "projectId": "${CTX:projectA}", "upstream": {"main": {"url": "http://backend.example.com"}}, "operations": [{"request": {"method": "GET", "path": "/health"}}]}
+      """
+    Then the response status code should be 201
+    And I store the JSON response field "id" as "apiHandle"
+    When I send a "PUT" request to the control plane at "/rest-apis/${CTX:apiHandle}" with token "unnamedToken" with body:
+      """
+      {"displayName": "${CTX:apiName}", "context": "${CTX:apiContext}", "version": "v1", "projectId": "${CTX:projectA}", "description": "updated", "upstream": {"main": {"url": "http://backend.example.com"}}, "operations": [{"request": {"method": "GET", "path": "/health"}}]}
+      """
+    Then the response status code should be 200
+    When I send a "GET" request to the control plane at "/rest-apis/${CTX:apiHandle}"
+    Then the response status code should be 200
+    And the JSON response field "createdBy" should be "Ada Lovelace"
+    And the JSON response field "updatedBy" should be "Ada Lovelace"
+
+  Scenario: A name first sent after earlier changes is shown on those changes too
+    Given I generate a UUID and store it as "userSub"
+    And I generate a unique resource name from "art-late" and store it as "apiName"
+    And I generate a unique API context from "/art-late" and store it as "apiContext"
+    And I mint a control-plane token stored as "unnamedToken" for the "publisher" role with claims:
+      | sub | ${CTX:userSub} |
+    And I mint a control-plane token stored as "namedToken" for the "publisher" role with claims:
+      | sub  | ${CTX:userSub} |
+      | name | Ada Lovelace   |
+    When I send a "POST" request to the control plane at "/rest-apis" with token "unnamedToken" with body:
+      """
+      {"displayName": "${CTX:apiName}", "context": "${CTX:apiContext}", "version": "v1", "projectId": "${CTX:projectA}", "upstream": {"main": {"url": "http://backend.example.com"}}, "operations": [{"request": {"method": "GET", "path": "/health"}}]}
+      """
+    Then the response status code should be 201
+    And I store the JSON response field "id" as "apiHandle"
+    And the JSON response field "createdBy" should be "${CTX:userSub}"
+    And the JSON response field "updatedBy" should be "${CTX:userSub}"
+    When I send a "PUT" request to the control plane at "/rest-apis/${CTX:apiHandle}" with token "namedToken" with body:
+      """
+      {"displayName": "${CTX:apiName}", "context": "${CTX:apiContext}", "version": "v1", "projectId": "${CTX:projectA}", "description": "updated", "upstream": {"main": {"url": "http://backend.example.com"}}, "operations": [{"request": {"method": "GET", "path": "/health"}}]}
+      """
+    Then the response status code should be 200
+    When I send a "GET" request to the control plane at "/rest-apis/${CTX:apiHandle}"
+    Then the response status code should be 200
+    And the JSON response field "createdBy" should be "Ada Lovelace"
+    And the JSON response field "updatedBy" should be "Ada Lovelace"
+
+  Scenario: A changed name replaces the stored one
+    Given I generate a UUID and store it as "userSub"
+    And I generate a unique resource name from "art-rename" and store it as "apiName"
+    And I generate a unique API context from "/art-rename" and store it as "apiContext"
+    And I mint a control-plane token stored as "firstToken" for the "publisher" role with claims:
+      | sub  | ${CTX:userSub} |
+      | name | Ada Lovelace   |
+    And I mint a control-plane token stored as "renamedToken" for the "publisher" role with claims:
+      | sub  | ${CTX:userSub} |
+      | name | Ada King       |
+    When I send a "POST" request to the control plane at "/rest-apis" with token "firstToken" with body:
+      """
+      {"displayName": "${CTX:apiName}", "context": "${CTX:apiContext}", "version": "v1", "projectId": "${CTX:projectA}", "upstream": {"main": {"url": "http://backend.example.com"}}, "operations": [{"request": {"method": "GET", "path": "/health"}}]}
+      """
+    Then the response status code should be 201
+    And I store the JSON response field "id" as "apiHandle"
+    When I send a "PUT" request to the control plane at "/rest-apis/${CTX:apiHandle}" with token "renamedToken" with body:
+      """
+      {"displayName": "${CTX:apiName}", "context": "${CTX:apiContext}", "version": "v1", "projectId": "${CTX:projectA}", "description": "updated", "upstream": {"main": {"url": "http://backend.example.com"}}, "operations": [{"request": {"method": "GET", "path": "/health"}}]}
+      """
+    Then the response status code should be 200
+    When I send a "GET" request to the control plane at "/rest-apis/${CTX:apiHandle}"
+    Then the response status code should be 200
+    And the JSON response field "createdBy" should be "Ada King"
+    And the JSON response field "updatedBy" should be "Ada King"
+
+  Scenario: Each change shows its own author when a named user and a file-mode user share a resource
+    Given I generate a UUID and store it as "userSub"
+    And I generate a unique resource name from "art-mixed" and store it as "apiName"
+    And I generate a unique API context from "/art-mixed" and store it as "apiContext"
+    And I mint a control-plane token stored as "userToken" for the "publisher" role with claims:
+      | sub  | ${CTX:userSub} |
+      | name | Ada Lovelace   |
+    When I send a "POST" request to the control plane at "/rest-apis" with token "userToken" with body:
+      """
+      {"displayName": "${CTX:apiName}", "context": "${CTX:apiContext}", "version": "v1", "projectId": "${CTX:projectA}", "upstream": {"main": {"url": "http://backend.example.com"}}, "operations": [{"request": {"method": "GET", "path": "/health"}}]}
+      """
+    Then the response status code should be 201
+    And I store the JSON response field "id" as "apiHandle"
+    When I send a "PUT" request to the control plane at "/rest-apis/${CTX:apiHandle}" as "publisher" with body:
+      """
+      {"displayName": "${CTX:apiName}", "context": "${CTX:apiContext}", "version": "v1", "projectId": "${CTX:projectA}", "description": "updated", "upstream": {"main": {"url": "http://backend.example.com"}}, "operations": [{"request": {"method": "GET", "path": "/health"}}]}
+      """
+    Then the response status code should be 200
+    When I send a "GET" request to the control plane at "/rest-apis/${CTX:apiHandle}"
+    Then the response status code should be 200
+    And the JSON response field "createdBy" should be "Ada Lovelace"
+    And the JSON response field "updatedBy" should be "publisher"
+
+  Scenario Outline: A name is stored trimmed, without control characters and within 255 UTF-16 code units
+    Given I generate a UUID and store it as "userSub"
+    And I generate a unique resource name from "art-norm" and store it as "apiName"
+    And I generate a unique API context from "/art-norm" and store it as "apiContext"
+    And I mint a control-plane token stored as "userToken" for the "publisher" role with claims:
+      | sub  | ${CTX:userSub} |
+      | name | <claim>        |
+    When I send a "POST" request to the control plane at "/rest-apis" with token "userToken" with body:
+      """
+      {"displayName": "${CTX:apiName}", "context": "${CTX:apiContext}", "version": "v1", "projectId": "${CTX:projectA}", "upstream": {"main": {"url": "http://backend.example.com"}}, "operations": [{"request": {"method": "GET", "path": "/health"}}]}
+      """
+    Then the response status code should be 201
+    And I store the JSON response field "id" as "apiHandle"
+    When I send a "GET" request to the control plane at "/rest-apis/${CTX:apiHandle}"
+    Then the response status code should be 200
+    And the JSON response field "createdBy" should be "<shown>"
+    And the JSON response field "updatedBy" should be "<shown>"
+
+    Examples:
+      | claim                   | shown         |
+      | "  Grace Hopper  "      | Grace Hopper  |
+      | "Ada\u0007 Lovelace"    | Ada Lovelace  |
+      | 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 | 😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 |
+
+  Scenario: A subscription plan shows its creator by name
+    Given I generate a UUID and store it as "userSub"
+    And I generate a unique resource name from "art-plan" and store it as "planId"
+    And I mint a control-plane token stored as "adminToken" for the "admin" role with claims:
+      | sub  | ${CTX:userSub} |
+      | name | Ada Lovelace   |
+    When I send a "POST" request to the control plane at "/subscription-plans" with token "adminToken" with body:
+      """
+      {"id": "${CTX:planId}", "displayName": "${CTX:planId}", "status": "ACTIVE", "limits": [{"limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "limitCount": 10}]}
+      """
+    Then the response status code should be 201
+    And the JSON response field "createdBy" should be "Ada Lovelace"
+    When I send a "GET" request to the control plane at "/subscription-plans/${CTX:planId}"
+    Then the response status code should be 200
+    And the JSON response field "createdBy" should be "Ada Lovelace"

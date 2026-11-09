@@ -1,0 +1,9 @@
+# Deployment-timeout timings for the deployment-sync scenarios.
+#
+# The defaults (a 60s timeout checked every 20s) are chosen for operators; a scenario that waits
+# for a deployment to time out would spend up to 80s on each. A 30s timeout checked every 5s
+# still leaves a healthy gateway's acknowledgement far inside the window.
+[platform_api.deployments]
+timeout_enabled = true
+timeout_duration = 30
+timeout_interval = 5

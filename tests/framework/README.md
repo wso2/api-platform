@@ -2,11 +2,10 @@
 
 One integration/E2E framework for every api-platform suite: declarative multi-component
 topologies, safe parallelism, framework-provisioned infrastructure (containers, databases,
-schema), dynamic port mapping, scoped state, resource cleanup, and a tagged coverage taxonomy.
+schema), dynamic port mapping, scoped state, and resource cleanup.
 
-See [`docs/migration-tasks.md`](docs/migration-tasks.md) for the active legacy-feature migration
-tasks, and [`docs/capability-map.yml`](docs/capability-map.yml) for the
-`@cap`/`@feat` vocabulary.
+See [Scenario lists](#scenario-lists) for how a feature's scenarios map to the tests that
+automate them.
 
 ## Quick start
 
@@ -80,12 +79,12 @@ framework/
   core/runtime/     networks, databases, containers, Compose, readiness
   core/cleanup/     owner-tagged resource registry
   core/util/        HTTP, retry, runner context, and unique-name helpers
-  core/taxonomy/    capability-map lint and coverage-tree renderer
   core/assets/      resolves repository-relative files: workspace first, embedded copy second
   core/suiterun/    the exported suite entry (Main and Run) any project's test binary calls
   snapshots/        empty in git (.gitkeep); the release generates the embedded gateway schemas, current config and pricing file
 suites/
   it/  cloud/  ui/
+scenarios/          one scenario list per feature (TENANT.yaml, ...)
 ```
 
 The cloud suite targets externally hosted APIP services. It does not compile product code,
@@ -101,6 +100,19 @@ their step contracts.
 
 Each package's `doc.go` carries its charter and the invariants it exists to protect. Read those
 before changing one — most encode a failure mode that presents as a passing test.
+
+## Scenario lists
+
+Some product features have a scenario list: `scenarios/<CODE>.yaml` (for example
+`scenarios/TENANT.yaml`), one entry per scenario ID with its title, priority and how each
+layer covers it. `it` is the API level and `ui` the browser. Each layer is `automated`,
+`known-issue` (with the issue link), `exempt` (with the reason) or `planned`, and `refs` name
+the feature file and scenario that automate it. The lists are kept by hand.
+
+A scenario is tagged with every ID it covers (`@TENANT-004`) and its feature with the list's
+code (`@TENANT`), so `-feature-tags=@TENANT-004` runs one ID and `-feature-tags=@TENANT` a
+whole list. A runner whose tags exclude `~@known-issue` still skips an ID's `@known-issue`
+scenario, because the command-line tags are combined with the runner's.
 
 ## Using the framework from another repository
 

@@ -18,7 +18,10 @@
 package service
 
 import (
+	"errors"
+	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
@@ -33,10 +36,12 @@ import (
 // is what gets stored in audit columns
 // (created_by/updated_by/revoked_by/performed_by).
 //
-// The internal UUID never leaves the process: API responses and
-// external/data-plane consumers (e.g. gateway events) must resolve it back to
-// the raw identity via SubForUUID / SubsForUUIDs before it is emitted —
-// falling back to constants.DeletedUser when the UUID has no mapping.
+// The internal UUID never leaves the process. API responses resolve it to the
+// user's display name via ResolveIdentityField(s) / DisplayNamesForUUIDs, falling
+// back to the raw identity when no display name is stored; external/data-plane
+// consumers (e.g. gateway events) resolve it to the raw identity via
+// SubForUUID / SubsForUUIDs. Both fall back to constants.DeletedUser when the
+// UUID has no mapping.
 type IdentityService struct {
 	repo repository.UserIdentityMappingRepository
 }
@@ -60,12 +65,31 @@ func (s *IdentityService) ToInternalUUID(identity string) (string, error) {
 // identity, a fresh standalone UUID is minted so the write never fails; no
 // mapping row is created for it, so it reads back as constants.DeletedUser
 // (see SubForUUID) — it can never be confused with a real user.
+//
+// The request's display-name claim, when present, is stored on (or refreshes)
+// the mapping row for display. It is optional: a token without it maps exactly
+// as before, and a failure to save it is logged, never returned.
 func (s *IdentityService) InternalUserID(r *http.Request) (string, error) {
 	identity, ok := middleware.GetActorIdentityFromRequest(r)
 	if !ok || identity == "" {
 		return utils.GenerateUUID()
 	}
-	return s.ToInternalUUID(identity)
+	displayName, _ := middleware.GetDisplayNameFromRequest(r)
+	return s.ToInternalUUIDWithDisplayName(identity, displayName)
+}
+
+// ToInternalUUIDWithDisplayName is ToInternalUUID that also stores (or
+// refreshes) the user's display name on the mapping row. The name is optional:
+// an empty one maps exactly as ToInternalUUID does, and a failure to save it is
+// logged and not returned. The driver error is left out of the log because it
+// can carry the rejected value.
+func (s *IdentityService) ToInternalUUIDWithDisplayName(identity, displayName string) (string, error) {
+	mapped, err := s.repo.GetOrCreateUUIDWithDisplayName(identity, displayName)
+	if errors.Is(err, repository.ErrDisplayNameNotSaved) {
+		slog.Default().Warn("Failed to save the user's display name; continuing without it", "userUUID", mapped)
+		return mapped, nil
+	}
+	return mapped, err
 }
 
 // DisplayIdentity satisfies pdk.Identity: the identity a response shows for an
@@ -75,13 +99,13 @@ func (s *IdentityService) DisplayIdentity(internalUserID string) (string, error)
 	if internalUserID == "" {
 		return "", nil
 	}
-	return s.SubForUUID(internalUserID)
+	return s.DisplayNameForUUID(internalUserID)
 }
 
 // SubForUUID resolves an internal UUID stored in an audit column back to the
-// raw identity that should be shown to external consumers (API responses,
-// gateway events), or constants.DeletedUser if uuid has no mapping (an
-// anonymous write, or a user whose mapping was removed).
+// raw identity that machine consumers match on (gateway events), or
+// constants.DeletedUser if uuid has no mapping (an anonymous write, or a user
+// whose mapping was removed). API responses use DisplayNameForUUID instead.
 func (s *IdentityService) SubForUUID(uuid string) (string, error) {
 	if uuid == "" {
 		return constants.DeletedUser, nil
@@ -119,10 +143,55 @@ func (s *IdentityService) SubsForUUIDs(uuids []string) (map[string]string, error
 	return result, nil
 }
 
+// DisplayNamesForUUIDs batch-resolves internal UUIDs to what an API response
+// shows for each: the stored display name, else the raw identity (so rows
+// written before display names were captured, or by users whose token never
+// carried the claim, render exactly as before), else constants.DeletedUser
+// when the UUID has no mapping. Every non-empty input UUID is present in the
+// result.
+func (s *IdentityService) DisplayNamesForUUIDs(uuids []string) (map[string]string, error) {
+	identities, err := s.repo.GetIdentitiesByUUIDs(uuids)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]string, len(uuids))
+	for _, id := range uuids {
+		if id == "" {
+			continue
+		}
+		result[id] = displayNameOf(identities[id])
+	}
+	return result, nil
+}
+
+// DisplayNameForUUID is the single-UUID form of DisplayNamesForUUIDs; an empty
+// UUID resolves to constants.DeletedUser, as SubForUUID does.
+func (s *IdentityService) DisplayNameForUUID(uuid string) (string, error) {
+	if uuid == "" {
+		return constants.DeletedUser, nil
+	}
+	names, err := s.DisplayNamesForUUIDs([]string{uuid})
+	if err != nil {
+		return "", err
+	}
+	return names[uuid], nil
+}
+
+func displayNameOf(identity repository.UserIdentity) string {
+	if name := strings.TrimSpace(identity.DisplayName); name != "" {
+		return name
+	}
+	if identity.IdpID != "" {
+		return identity.IdpID
+	}
+	return constants.DeletedUser
+}
+
 // ResolveIdentityField replaces the UUID held in *field (a generated API
 // response's createdBy/updatedBy/revokedBy/performedBy pointer, which holds
-// our internal UUID immediately after a model→API mapper runs) with the raw
-// external identity, in place. No-op if field is nil or points to nil/empty.
+// our internal UUID immediately after a model→API mapper runs) with the user's
+// display name (see DisplayNamesForUUIDs), in place. No-op if field is nil or
+// points to nil/empty.
 //
 // This is the single place a detail response's audit-identity field is
 // unwrapped before being returned to the caller — see ResolveIdentityFields
@@ -131,7 +200,7 @@ func (s *IdentityService) ResolveIdentityField(field **string) error {
 	if field == nil || *field == nil || **field == "" {
 		return nil
 	}
-	resolved, err := s.SubForUUID(**field)
+	resolved, err := s.DisplayNameForUUID(**field)
 	if err != nil {
 		return err
 	}
@@ -151,7 +220,7 @@ func (s *IdentityService) ResolveIdentityFields(fields []**string) error {
 			uuids = append(uuids, **f)
 		}
 	}
-	resolved, err := s.SubsForUUIDs(uuids)
+	resolved, err := s.DisplayNamesForUUIDs(uuids)
 	if err != nil {
 		return err
 	}

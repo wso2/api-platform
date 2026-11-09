@@ -17,7 +17,7 @@
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
@@ -49,13 +49,24 @@ let requests: Recorder;
  * `projectId`), and the console scope for the API's own handle and display
  * name — hence both providers, same as `DeployPage.test.tsx`.
  */
+/** Stands in for the publish page and exposes the navigation state the card passed it. */
+function PublishFlow() {
+  const state = useLocation().state as unknown;
+  return (
+    <>
+      <div>publish flow</div>
+      <output data-testid="flow-state">{JSON.stringify(state)}</output>
+    </>
+  );
+}
+
 function renderPage() {
   return renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
       <Routes>
         <Route element={<ApiPortalPublicationsList />} path={routes.apiPortals()} />
-        {/* Stands in for the per-portal publish flow, so "Go to Publish" is observable. */}
-        <Route element={<div>publish flow</div>} path={routes.apiPortalPublish()} />
+        {/* Stands in for the per-portal publish flow, so the split button's navigation is observable. */}
+        <Route element={<PublishFlow />} path={routes.apiPortalPublish()} />
       </Routes>
     </ApiScopeProvider>,
     {
@@ -157,11 +168,44 @@ describe('ApiPortalPublicationsList', () => {
     ]);
     const { user } = renderPage();
 
-    const link = await screen.findByRole('link', { name: 'Go to Publish' });
-    expect(link).toHaveAttribute('href', expect.stringContaining('acme-portal'));
-    await user.click(link);
+    // The split button's default action is Publish; "Configure & Publish" sits behind its arrow.
+    await user.click(await screen.findByRole('button', { name: 'More publish options' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Configure & Publish' }));
+    await user.click(screen.getByRole('button', { name: 'Configure & Publish' }));
 
     expect(await screen.findByText('publish flow')).toBeInTheDocument();
+    expect(JSON.parse(screen.getByTestId('flow-state').textContent ?? '{}')).toMatchObject({
+      autoPublish: false,
+      documents: 'default',
+      portalName: 'API Portal 1',
+    });
+  });
+
+  it('publishes with every document by default, from the split button\u2019s main action', async () => {
+    servePublications([
+      aPublicationSummary({ apiPortalId: 'acme-portal', apiPortalName: 'API Portal 1' }),
+    ]);
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Publish' }));
+
+    expect(await screen.findByText('publish flow')).toBeInTheDocument();
+    expect(JSON.parse(screen.getByTestId('flow-state').textContent ?? '{}')).toMatchObject({
+      autoPublish: true,
+      documents: 'all',
+      portalName: 'API Portal 1',
+    });
+  });
+
+  it('keeps Publish as the button label after the menu is opened and closed', async () => {
+    servePublications([aPublicationSummary({ apiPortalId: 'acme-portal' })]);
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'More publish options' }));
+    expect(await screen.findAllByRole('menuitem')).toHaveLength(2);
+    await user.keyboard('{Escape}');
+
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
   });
 
   it('names each portal for assistive tech on its otherwise identical button', async () => {
@@ -173,7 +217,7 @@ describe('ApiPortalPublicationsList', () => {
     renderPage();
 
     await screen.findByText('API Portal 1');
-    const buttons = screen.getAllByRole('link', { name: 'Go to Publish' });
+    const buttons = screen.getAllByRole('button', { name: 'Publish' });
     expect(buttons.map((button) => button.getAttribute('aria-describedby'))).toHaveLength(2);
     expect(buttons[0]).toHaveAccessibleDescription('API Portal 1');
     expect(buttons[1]).toHaveAccessibleDescription('API Portal 2');
@@ -282,7 +326,7 @@ describe('ApiPortalPublicationsList', () => {
 
     const { container } = renderPage();
 
-    await screen.findAllByRole('link', { name: 'Go to Publish' });
+    await screen.findAllByRole('button', { name: 'Publish' });
     const logos = container.querySelectorAll('img');
     expect(logos).toHaveLength(2);
     logos.forEach((logo) => expect(logo.getAttribute('src')).toContain('devportal-logo'));

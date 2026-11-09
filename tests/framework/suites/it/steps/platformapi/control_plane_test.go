@@ -27,13 +27,17 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -45,6 +49,7 @@ import (
 	"time"
 
 	"github.com/cucumber/godog"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/actor"
@@ -54,6 +59,7 @@ import (
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/specs"
 )
 
 func TestArtifactPath(t *testing.T) {
@@ -69,6 +75,7 @@ func TestArtifactPath(t *testing.T) {
 		{name: "proxy", kind: "LlmProxy", handle: "proxy-1", want: "/llm-proxies/proxy-1"},
 		{name: "mcp", kind: "Mcp", handle: "mcp-1", want: "/mcp-proxies/mcp-1"},
 		{name: "rest api", kind: "RestApi", handle: "api-1", want: "/rest-apis/api-1"},
+		{name: "graphql api", kind: "GraphQLApi", handle: "gql-1", want: "/graphql-apis/gql-1"},
 		{name: "gateway agent is an agent proxy", kind: "Agent", handle: "agent-1", want: "/agent-proxies/agent-1"},
 		{name: "control-plane kind is not a gateway kind", kind: "AgentProxy", handle: "x", wantErr: true},
 		{name: "unknown kind", kind: "WebSubApi", handle: "x", wantErr: true},
@@ -85,6 +92,23 @@ func TestArtifactPath(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestCreateDeployableRejectsAnUnknownKind(t *testing.T) {
+	err := (&Steps{}).createDeployable(context.Background(), "AgentProxy", "x", "p", "/x")
+	require.ErrorContains(t, err, `unknown deployable kind "AgentProxy"`)
+}
+
+func TestDeployableBase(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	_, ok := deployableBase(ctx, "proxy-1")
+	require.False(t, ok, "a proxy created without a base provider has none")
+	require.NoError(t, tcontext.Set(ctx, keyDeployableBase+"proxy-1", "proxy-1-base"))
+	provider, ok := deployableBase(ctx, "proxy-1")
+	require.True(t, ok)
+	require.Equal(t, "proxy-1-base", provider)
+	_, ok = deployableBase(ctx, "proxy-2")
+	require.False(t, ok, "the base provider belongs to its own proxy")
 }
 
 func TestDeploymentStatusMatches(t *testing.T) {
@@ -214,6 +238,65 @@ func TestActorCredentials(t *testing.T) {
 		_, err := actorCredentials(who)
 		require.ErrorContains(t, err, "unknown control-plane actor", who)
 	}
+}
+
+func TestMultipartFormUploadsFixturesAndSendsTextFields(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	require.NoError(t, tcontext.Set(ctx, "project", "proj-1"))
+	table := formTable(t, [][]string{
+		{"projectId", "${CTX:project}"},
+		{"file", "@spec:petstore-v1.yaml"},
+		{"spec", "@generated-spec:2048"},
+	})
+	body, contentType, err := multipartForm(ctx, table)
+	require.NoError(t, err)
+	_, params, err := mime.ParseMediaType(contentType)
+	require.NoError(t, err)
+	form, err := multipart.NewReader(bytes.NewReader(body), params["boundary"]).ReadForm(1 << 20)
+	require.NoError(t, err)
+	require.Equal(t, []string{"proj-1"}, form.Value["projectId"])
+	want, err := specs.Fixture("petstore-v1.yaml")
+	require.NoError(t, err)
+	require.Equal(t, "petstore-v1.yaml", form.File["file"][0].Filename)
+	require.Equal(t, int64(len(want)), form.File["file"][0].Size)
+	require.Equal(t, int64(2048), form.File["spec"][0].Size)
+}
+
+func TestMultipartFormRejectsBadRowsAndUnknownFixtures(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	for name, rows := range map[string][][]string{
+		"no rows":         nil,
+		"one cell":        {{"file"}},
+		"unknown fixture": {{"file", "@spec:missing.yaml"}},
+		"no byte count":   {{"file", "@generated-spec:big"}},
+	} {
+		_, _, err := multipartForm(ctx, formTable(t, rows))
+		require.Error(t, err, name)
+	}
+}
+
+// formTable builds a step table from rows of cell values.
+func formTable(t *testing.T, rows [][]string) *godog.Table {
+	t.Helper()
+	type cell struct {
+		Value string `json:"value"`
+	}
+	type row struct {
+		Cells []cell `json:"cells"`
+	}
+	var built []row
+	for _, values := range rows {
+		var cells []cell
+		for _, value := range values {
+			cells = append(cells, cell{value})
+		}
+		built = append(built, row{Cells: cells})
+	}
+	raw, err := json.Marshal(map[string]any{"rows": built})
+	require.NoError(t, err)
+	var table godog.Table
+	require.NoError(t, json.Unmarshal(raw, &table))
+	return &table
 }
 
 // trackingContext returns a runner context with a fresh cleanup registry installed.
@@ -552,19 +635,26 @@ func TestInternalArtifactID(t *testing.T) {
 		{"artifactId":"uuid-rest","deploymentId":"dep-rest","kind":"RestApi"},
 		{"artifactId":"uuid-agent","deploymentId":"dep-agent","kind":"Agent"},
 		{"artifactId":"","deploymentId":"dep-blank","kind":"Agent"}]}`)}
-	got, err := internalArtifactID(listing, "dep-agent")
+	got, err := internalArtifactID(listing, internalArtifactKinds["Agent proxy"], "dep-agent")
 	require.NoError(t, err)
 	require.Equal(t, "uuid-agent", got)
+	got, err = internalArtifactID(listing, internalArtifactKinds["REST API"], "dep-rest")
+	require.NoError(t, err)
+	require.Equal(t, "uuid-rest", got)
 
-	_, err = internalArtifactID(listing, "dep-rest")
+	_, err = internalArtifactID(listing, "Agent", "dep-rest")
 	require.ErrorContains(t, err, "want Agent", "a control-plane AgentProxy must be listed in the gateway's vocabulary")
-	_, err = internalArtifactID(listing, "dep-blank")
+	_, err = internalArtifactID(listing, "RestApi", "dep-agent")
+	require.ErrorContains(t, err, "want RestApi")
+	_, err = internalArtifactID(listing, "", "dep-agent")
+	require.ErrorContains(t, err, "want ", "an unknown artifact name never matches a listed kind")
+	_, err = internalArtifactID(listing, "Agent", "dep-blank")
 	require.ErrorContains(t, err, "without an artifact id")
-	_, err = internalArtifactID(listing, "dep-missing")
+	_, err = internalArtifactID(listing, "Agent", "dep-missing")
 	require.ErrorContains(t, err, "does not include")
-	_, err = internalArtifactID(&httpx.Response{StatusCode: http.StatusUnauthorized}, "dep-agent")
+	_, err = internalArtifactID(&httpx.Response{StatusCode: http.StatusUnauthorized}, "Agent", "dep-agent")
 	require.Error(t, err)
-	_, err = internalArtifactID(&httpx.Response{StatusCode: http.StatusOK, Body: []byte(`[`)}, "dep-agent")
+	_, err = internalArtifactID(&httpx.Response{StatusCode: http.StatusOK, Body: []byte(`[`)}, "Agent", "dep-agent")
 	require.Error(t, err)
 }
 
@@ -977,7 +1067,7 @@ func TestCallHeaders(t *testing.T) {
 func TestCallTokenUsesTheCallsOwnBearer(t *testing.T) {
 	s := &Steps{}
 	for _, token := range []string{"", "garbage"} {
-		got, err := s.callToken(context.Background(), "https://unused.invalid", controlPlaneCall{bearer: &token}, actor.Credentials{})
+		got, err := s.callToken(context.Background(), "https://unused.invalid", controlPlaneCall{bearer: &token})
 		require.NoError(t, err)
 		require.Equal(t, token, got, "an own bearer is used as it is, even when empty, without a login")
 	}
@@ -1256,6 +1346,33 @@ func TestTrackMCPToolResultReportsAFailedUndo(t *testing.T) {
 			return nil, errors.New("unexpected call")
 		})
 	require.ErrorContains(t, err, "no cleanup is defined")
+}
+
+func TestDiscardCreateDeletesWithTheCreatorsTokenAndStillFails(t *testing.T) {
+	status := http.StatusNoContent
+	var deletes []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodDelete, r.Method)
+		require.Equal(t, "Bearer org-b", r.Header.Get("Authorization"))
+		deletes = append(deletes, r.URL.Path)
+		w.WriteHeader(status)
+	}))
+	t.Cleanup(server.Close)
+	s := &Steps{client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})}
+	created := func(location string) *httpx.Response {
+		return &httpx.Response{StatusCode: http.StatusCreated, Headers: http.Header{"Location": {location}}}
+	}
+
+	err := s.discardCreate(context.Background(), server.URL, "org-b", "POST /secrets", created(apiBase+"/secrets/s1"))
+	require.ErrorContains(t, err, "cleanup cannot delete")
+	require.NotContains(t, err.Error(), "deleting it")
+	require.Equal(t, []string{apiBase + "/secrets/s1"}, deletes)
+
+	status = http.StatusInternalServerError
+	require.ErrorContains(t, s.discardCreate(context.Background(), server.URL, "org-b", "POST /secrets", created(apiBase+"/secrets/s2")), "deleting it as")
+
+	require.ErrorContains(t, s.discardCreate(context.Background(), server.URL, "org-b", "POST /secrets", created("")), "names no Location")
+	require.Len(t, deletes, 2)
 }
 
 func TestTokenFormSendsTheTableAndDefaultsTheGrant(t *testing.T) {
@@ -1660,7 +1777,7 @@ func TestSignedInControlPlaneRequests(t *testing.T) {
 	t.Run("a plain call signs in as admin and uses the versioned API", func(t *testing.T) {
 		s, _, requests := fakeControlPlane(t, handler)
 		ctx, _ := trackingContext(t)
-		require.NoError(t, s.sendControlPlaneStep(ctx, "get", "/service-accounts", "", "", "", nil))
+		require.NoError(t, s.sendControlPlaneStep(ctx, "get", "/service-accounts", "", "", "", "", nil))
 
 		got := requests()
 		require.Len(t, got, 1)
@@ -1672,11 +1789,33 @@ func TestSignedInControlPlaneRequests(t *testing.T) {
 	t.Run("an Authorization override replaces the sign-in", func(t *testing.T) {
 		s, _, requests := fakeControlPlane(t, handler)
 		ctx, _ := trackingContext(t)
-		require.NoError(t, s.sendControlPlaneStep(ctx, "GET", "/projects", "", "Authorization", "Bearer sa-token", nil))
+		require.NoError(t, s.sendControlPlaneStep(ctx, "GET", "/projects", "", "", "Authorization", "Bearer sa-token", nil))
 
 		got := requests()
 		require.Len(t, got, 1)
 		require.Equal(t, []string{"Bearer sa-token"}, got[0].header.Values("Authorization"))
+	})
+
+	t.Run("a stored token replaces the sign-in", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		ctx, _ := trackingContext(t)
+		require.NoError(t, tcontext.Set(ctx, "userToken", "minted-token"))
+		require.NoError(t, s.sendControlPlaneStep(ctx, "GET", "/rest-apis", "", "userToken", "", "", nil))
+
+		got := requests()
+		require.Len(t, got, 1)
+		require.Equal(t, []string{"Bearer minted-token"}, got[0].header.Values("Authorization"))
+	})
+
+	t.Run("a token and an actor together, or a missing token, are rejected", func(t *testing.T) {
+		s, _, requests := fakeControlPlane(t, handler)
+		ctx, _ := trackingContext(t)
+		require.NoError(t, tcontext.Set(ctx, "userToken", "minted-token"))
+		require.ErrorContains(t,
+			s.sendControlPlaneStep(ctx, "GET", "/rest-apis", "publisher", "userToken", "", "", nil), "give one")
+		require.ErrorContains(t,
+			s.sendControlPlaneStep(ctx, "GET", "/rest-apis", "", "missing", "", "", nil), "unavailable")
+		require.Empty(t, requests())
 	})
 
 	t.Run("create sends the rendered template as JSON", func(t *testing.T) {
@@ -1726,4 +1865,87 @@ func TestSignedInControlPlaneRequests(t *testing.T) {
 		require.Equal(t, apiBase+"/service-accounts", got[0].path)
 		require.Empty(t, got[0].header.Get("Authorization"))
 	})
+}
+
+// loginToken signs claims as the control plane's file-mode login would.
+func loginToken(t *testing.T, claims jwt.MapClaims) string {
+	t.Helper()
+	block, _ := pem.Decode(shared.ControlPlaneCrypto()[controlPlaneSigningKeyFile])
+	require.NotNil(t, block)
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	require.NoError(t, err)
+	signed, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(key)
+	require.NoError(t, err)
+	return signed
+}
+
+// verifiedClaims verifies token against the control plane's public key, as platform-api does.
+func verifiedClaims(t *testing.T, token string) jwt.MapClaims {
+	t.Helper()
+	block, _ := pem.Decode(shared.ControlPlaneCrypto()["keys/jwt_public.pem"])
+	require.NotNil(t, block)
+	public, err := x509.ParsePKIXPublicKey(block.Bytes)
+	require.NoError(t, err)
+	claims := jwt.MapClaims{}
+	_, err = jwt.ParseWithClaims(token, claims, func(*jwt.Token) (any, error) { return public, nil },
+		jwt.WithValidMethods([]string{"RS256"}))
+	require.NoError(t, err)
+	return claims
+}
+
+func TestSignUserTokenReplacesTheActorIdentity(t *testing.T) {
+	expiry := time.Now().Add(time.Hour).Unix()
+	login := loginToken(t, jwt.MapClaims{
+		"sub": "publisher", "username": "publisher", "iss": "platform-api", "exp": expiry,
+		"organization": "org-uuid", "org_handle": "default", "scope": "ap:rest_api:manage", "roles": []string{"ap_publisher"},
+	})
+	key := shared.ControlPlaneCrypto()[controlPlaneSigningKeyFile]
+	const sub = "8b5c3f0e-2c1d-4f6a-9e7b-0a1b2c3d4e5f"
+
+	t.Run("with a name", func(t *testing.T) {
+		token, err := signUserToken(login, map[string]any{"sub": sub, "name": "Ada Lovelace"}, key)
+		require.NoError(t, err)
+		claims := verifiedClaims(t, token)
+		require.Equal(t, sub, claims["sub"])
+		require.Equal(t, "Ada Lovelace", claims["name"])
+		require.NotContains(t, claims, "username", "the actor's username never reaches the minted token")
+		require.Equal(t, "platform-api", claims["iss"])
+		require.Equal(t, "org-uuid", claims["organization"])
+		require.Equal(t, "ap:rest_api:manage", claims["scope"])
+		require.Equal(t, []any{"ap_publisher"}, claims["roles"])
+		require.EqualValues(t, expiry, claims["exp"])
+	})
+
+	t.Run("without a name", func(t *testing.T) {
+		named := loginToken(t, jwt.MapClaims{"sub": "publisher", "name": "Publisher", "iss": "platform-api", "exp": expiry})
+		token, err := signUserToken(named, map[string]any{"sub": sub}, key)
+		require.NoError(t, err)
+		claims := verifiedClaims(t, token)
+		require.Equal(t, sub, claims["sub"])
+		require.NotContains(t, claims, "name", "a name the table omits is absent, not inherited")
+	})
+
+	t.Run("malformed input", func(t *testing.T) {
+		_, err := signUserToken("not-a-jwt", map[string]any{"sub": sub}, key)
+		require.ErrorContains(t, err, "decoding the control-plane login token")
+		_, err = signUserToken(login, map[string]any{"sub": sub}, []byte("not pem"))
+		require.ErrorContains(t, err, "not PEM")
+		_, err = signUserToken(login, map[string]any{"sub": sub}, shared.ControlPlaneCrypto()["keys/jwt_public.pem"])
+		require.ErrorContains(t, err, "parsing the control-plane signing key")
+	})
+}
+
+func TestMintUserTokenValidatesItsInput(t *testing.T) {
+	s, _, requests := fakeControlPlane(t, func(http.ResponseWriter, *http.Request) {})
+	ctx, _ := trackingContext(t)
+	claims := valuesTable([]string{"sub", "8b5c3f0e-2c1d-4f6a-9e7b-0a1b2c3d4e5f"})
+
+	require.ErrorContains(t, s.mintUserToken(ctx, " ", "publisher", claims), "stored as")
+	require.ErrorContains(t, s.mintUserToken(ctx, "token", "publisher", valuesTable([]string{"name", "Ada"})), "sub")
+	require.ErrorContains(t, s.mintUserToken(ctx, "token", "nobody", claims), "unknown control-plane actor")
+	require.ErrorContains(t, s.mintUserToken(ctx, "token", "publisher", claims), "decoding the control-plane login token",
+		"the fake login's opaque token is not a JWT")
+	_, err := tcontext.ResolveString(ctx, "token")
+	require.Error(t, err, "nothing is stored when minting fails")
+	require.Empty(t, requests())
 }

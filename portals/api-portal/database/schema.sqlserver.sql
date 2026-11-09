@@ -814,12 +814,16 @@ CREATE INDEX idx_session_expire ON dbo.sessions(expire);
 -- Portal-scoped: each portal maintains its own view of a user identity so cross-portal reads
 -- are structurally impossible. If the same IdP `sub` is used across two portals, each portal
 -- gets its own row.
+-- display_name is the user's human-readable name from the configured token claim
+-- (auth.claim_mappings.display_name); responses show it as createdBy/updatedBy,
+-- else idp_id. NULL until a token carries it; never used for matching or authorization.
 IF OBJECT_ID(N'dbo.user_idp_references', N'U') IS NULL
 CREATE TABLE dbo.user_idp_references (
     portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
     uuid VARCHAR(40) NOT NULL,
     idp_id VARCHAR(255) NOT NULL,
     created_at DATETIME2(7) DEFAULT SYSUTCDATETIME(),
+    display_name NVARCHAR(255) NULL,
     PRIMARY KEY (portal_id, uuid),
     CONSTRAINT uq_user_idp_references_portal_idp UNIQUE (portal_id, idp_id)
 );

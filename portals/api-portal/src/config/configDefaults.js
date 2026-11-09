@@ -169,6 +169,10 @@ const DEFAULTS = {
             orgHandle: '',
             roles: 'roles',             // claim carrying the user's roles
             groups: 'groups',
+            // Claim carrying the user's human-readable name (OIDC "name"), stored beside
+            // the user's IdP id; responses show it as createdBy/updatedBy. Optional: a
+            // token without it still works, and responses fall back to the IdP id.
+            displayName: 'name',
         },
         // Authorization — what a VERIFIED token may do. Deliberately outside both
         // auth.local and auth.idp: a token carries the same roles claim whether the
@@ -367,6 +371,11 @@ const DEFAULTS = {
             // self-signed subscriber. Development only.
             tlsSkipVerify: false,
         },
+    },
+    // When true, Settings hides the Monetization section (Billing, Meters, Usage & Revenue) and the
+    // plan dialog's Paid plan option. Billing already set up keeps working.
+    monetization: {
+        disabled: false,
     },
     // Billing providers (Stripe, Moesif). The keys are entered in Settings › Billing, not here.
     billing: {

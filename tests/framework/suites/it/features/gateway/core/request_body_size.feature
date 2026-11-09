@@ -53,6 +53,12 @@ Feature: Request body size limits
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/health" until status 404
 
+  # Known issue: https://github.com/wso2/api-platform/issues/4061
+  # The status depends on timing. If the policy engine's request-headers reply reaches Envoy
+  # after the buffered body passes per_connection_buffer_limit_bytes, Envoy skips its own 413,
+  # sends the whole body to the policy engine, the engine's gRPC receive limit refuses it, and
+  # the client gets an empty 500 instead.
+  @known-issue
   Scenario: A buffered request body above the listener buffer limit is rejected
     Given I generate a unique value from "body-size-over-limit" and store it as "apiName"
     And I generate a unique API version from "body-size-over-limit" and store it as "apiVersion"

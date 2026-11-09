@@ -1205,16 +1205,15 @@ paths:
     post:
       tags:
         - API Content
-      summary: Upload API content
+      summary: Add API content
       description: |
-        Uploads the static content package for an API.
+        Adds new content to an API. Existing content is never changed or removed.
 
-        The `content` ZIP must contain at least one of these root directories:
-        - `web/` for API landing-page assets such as markdown, HTML, CSS, JavaScript, and images.
-        - `docs/` for downloadable API documents.
+        If any uploaded file, image slot or link already exists, the whole request is rejected with `409`,
+        and the response lists every clash. Nothing is stored. To change an existing file, delete it and add
+        it again, or replace all content with `PUT`.
 
-        Use `docMetadata` to add external document links that are stored alongside uploaded documents.
-        Use `imageMetadata` to map uploaded images to API image roles such as the API icon.
+        An upload with no content is rejected with `400`. The upload format is described in the request body.
       operationId: createApiContent
       requestBody:
         $ref: "#/components/requestBodies/ContentZipMultipartBody"
@@ -1223,8 +1222,10 @@ paths:
           $ref: "#/components/responses/MessageResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
-          $ref: "#/components/responses/Conflict"
+          $ref: "#/components/responses/ContentConflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1236,21 +1237,26 @@ paths:
         - API Content
       summary: Replace API content
       description: |
-        Replaces or adds static content files for an existing API.
+        Replaces all content of an API with the upload, in one step: documents, links, landing-page files
+        and images (including the thumbnail). Anything not in the upload is removed. The API definition and
+        schema are never changed.
 
-        The upload format is the same as `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
-        Existing files with the same stored `type` and `fileName` are updated; new files are created.
-        Image metadata is updated only when image metadata can be resolved from the upload or request body.
+        An empty ZIP (or one holding only an empty wrapper folder) with no `docMetadata` links removes all
+        content. The upload format is the same as for `POST`.
+
+        Returns `201` when the API had no content and the upload adds some, and `200` otherwise.
       operationId: replaceApiContent
       requestBody:
         $ref: "#/components/requestBodies/ContentZipMultipartBody"
       responses:
+        "200":
+          $ref: "#/components/responses/MessageResponse"
         "201":
           $ref: "#/components/responses/MessageResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "409":
-          $ref: "#/components/responses/Conflict"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -1305,8 +1311,9 @@ paths:
       description: |
         Deletes stored API content.
 
-        Send both `type` and `fileName` to delete one file. Send only `type` to delete all stored content
-        files matching that content category for the API.
+        Send both `type` and `fileName` to delete one file. Send only `type` to delete all content of exactly
+        that type. `type` must be `MARKETING`, `IMAGE` or `DOC_<Category>` and is matched exactly; any other
+        value, including `API_DEFINITION` and `SCHEMA_DEFINITION`, is rejected with `400`.
       operationId: deleteApiContentFile
       parameters:
         - $ref: "#/components/parameters/contentTypeQuery"
@@ -1317,7 +1324,7 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
-          $ref: "#/components/responses/TextMessageResponse"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -2195,9 +2202,10 @@ paths:
     post:
       tags:
         - MCP Server Content
-      summary: Upload MCP server content
+      summary: Add MCP server content
       description: >-
-        Uploads the static content package for an MCP server. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
+        Adds new content to an MCP server; existing content is never changed or removed, and any clash
+        rejects the whole request with `409`. Mirrors `POST /api-portal/api/v0.9/apis/{apiId}/assets`.
       operationId: createMcpServerContent
       requestBody:
         $ref: "#/components/requestBodies/ContentZipMultipartBody"
@@ -2206,8 +2214,10 @@ paths:
           $ref: "#/components/responses/MessageResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
-          $ref: "#/components/responses/Conflict"
+          $ref: "#/components/responses/ContentConflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -2219,17 +2229,22 @@ paths:
         - MCP Server Content
       summary: Replace MCP server content
       description: >-
-        Replaces or adds static content files for an existing MCP server. Mirrors `PUT /api-portal/api/v0.9/apis/{apiId}/assets`.
+        Replaces all content of an MCP server with the upload; anything not in it is removed, and an empty ZIP
+        with no `docMetadata` links removes all content. The tools schema is never changed. Returns `201` when
+        the server had no content and the upload adds some, and `200` otherwise. Mirrors
+        `PUT /api-portal/api/v0.9/apis/{apiId}/assets`.
       operationId: replaceMcpServerContent
       requestBody:
         $ref: "#/components/requestBodies/ContentZipMultipartBody"
       responses:
+        "200":
+          $ref: "#/components/responses/MessageResponse"
         "201":
           $ref: "#/components/responses/MessageResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
-        "409":
-          $ref: "#/components/responses/Conflict"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -2240,15 +2255,28 @@ paths:
       tags:
         - MCP Server Content
       summary: Get an MCP server content file
-      description: Retrieves a single stored MCP server content file. Mirrors `GET /api-portal/api/v0.9/apis/{apiId}/assets`.
+      description: |
+        Retrieves a single stored MCP server content file. Mirrors `GET /api-portal/api/v0.9/apis/{apiId}/assets`.
+
+        Image files (`type=IMAGE`) are publicly readable so that an MCP server's icon renders on the public
+        listing and landing pages without a session. `orgId` says which organization's image is read.
+        All other content types require a session: an anonymous request for a non-image type is rejected.
       operationId: getMcpServerContentFile
-      security:
-        - OAuth2Security:
-            - dp:mcp_server_content:read
-            - dp:mcp_server_content:manage
+      security: []
       parameters:
         - $ref: "#/components/parameters/contentTypeQuery"
         - $ref: "#/components/parameters/contentFileNameQuery"
+        - name: orgId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >-
+            Organization uuid of the image to read. Used only for `type=IMAGE`. In multi-organization
+            mode, an `orgId` that names an existing organization selects it, even when the session
+            belongs to another organization. An unknown `orgId` falls back to the session's
+            organization, then to this instance's configured one. In single-organization mode it is
+            ignored: the session's organization is used, or the configured one when there is no session.
       responses:
         "200":
           $ref: "#/components/responses/ContentAssetResponse"
@@ -2263,7 +2291,7 @@ paths:
         - MCP Server Content
       summary: Delete MCP server content files
       description: >-
-        Deletes stored MCP server content. Mirrors `DELETE /api-portal/api/v0.9/apis/{apiId}/assets`.
+        Deletes stored MCP server content, matching `type` exactly. Mirrors `DELETE /api-portal/api/v0.9/apis/{apiId}/assets`.
       operationId: deleteMcpServerContentFile
       parameters:
         - $ref: "#/components/parameters/contentTypeQuery"
@@ -2274,7 +2302,7 @@ paths:
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
-          $ref: "#/components/responses/TextMessageResponse"
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
       security:
@@ -3292,7 +3320,9 @@ paths:
       summary: Associate an OAuth2 key with an application
       description: >-
         Associates, or re-associates, an existing OAuth2 key with an application in this organization. A key belongs
-        to at most one application; an application may hold any number of keys.
+        to at most one application, and an application holds at most one key per key type — one PRODUCTION and one
+        SANDBOX. Associating a key whose type the application already has is refused with 409; dissociate the
+        existing key first. Re-associating a key to the application it is already on succeeds unchanged.
       operationId: associateOAuth2KeyApplication
       requestBody:
         $ref: "#/components/requestBodies/OAuth2KeyAssociateBody"
@@ -3305,6 +3335,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
         "500":
@@ -3825,10 +3857,11 @@ components:
       required: true
       schema:
         type: string
-        example: document
+        example: DOC_HowTo
       description: >-
-        Stored API content type selector. Common values are `web`, `document`, `image`, and `link`, depending on how the
-        uploaded ZIP content was classified.
+        Stored content type, matched exactly. `MARKETING` for landing-page files, `IMAGE` for images (including the
+        thumbnail), and `DOC_<Category>` for documents and links (for example `DOC_HowTo`, `DOC_Other`, `DOC_LINK`).
+        Reads also accept `API_DEFINITION` and `SCHEMA_DEFINITION`; deletes do not.
     contentFileNameQuery:
       name: fileName
       in: query
@@ -4444,7 +4477,32 @@ components:
               artifact:
                 type: string
                 format: binary
-                description: Full API ZIP artifact containing metadata and definition files.
+                description: >-
+                  Full API ZIP artifact. Its top level holds one metadata file (`metadata.yaml`,
+                  `metadata.yml`, `api.yaml` or `mcp.yaml`) and one definition (`definition.yaml`,
+                  `definition.yml` or `definition.json`), read only from there. Its optional `web/` and `docs/`
+                  content follows the same rules as the content ZIP of `/apis/{apiId}/assets`; any other entry
+                  is rejected with `400`, listing each rejected path.
+              docs:
+                description: >-
+                  Markdown (`.md`) document files to add. Repeat the part for several documents. Each is stored as
+                  a document of category Other; a file with the name of an existing document replaces it. Any other
+                  file is rejected with `400`, naming it, and nothing is saved.
+                oneOf:
+                  - type: string
+                    format: binary
+                  - type: array
+                    items:
+                      type: string
+                      format: binary
+              thumbnail:
+                type: string
+                format: binary
+                description: >-
+                  The API's thumbnail, PNG or JPEG. The type is read from the file's content; the file name
+                  is not used, and the thumbnail is stored as `api-icon.png` or `api-icon.jpg`. It replaces the
+                  current thumbnail. At most one part; a part with no file name (an empty file input) is
+                  ignored. Cannot be sent with `removeThumbnail: true`.
               metadata:
                 type: string
                 description: >-
@@ -4457,7 +4515,11 @@ components:
                   `owners`, `endPoints` (productionURL, sandboxURL), and `subscriptionPlans` (array of `{
                   id }` objects — only `id` is read; the plan must already exist in the organization). `id` becomes
                   the API's stored handle; when the API is created from a YAML artifact instead, the handle is
-                  always taken from `metadata.name`.
+                  always taken from `metadata.name`. On update it also accepts `docsToRemove` (array
+                  of documents to delete: a file name removes it from every category, `{ "fileName", "type" }` only
+                  from that `DOC_<Category>`) and, on create and update, `removeThumbnail` (boolean;
+                  `true` deletes the thumbnail on update and has no effect on create). Sending a `thumbnail` part
+                  together with `removeThumbnail: true` is a `400`.
                 example: >-
                   {"name":"Weather API","version":"v1","description":"Weather forecast
                   API","type":"REST","agentVisibility":"VISIBLE",
@@ -4480,13 +4542,38 @@ components:
               artifact:
                 type: string
                 format: binary
-                description: Full MCP server ZIP artifact containing the metadata and the definition.
+                description: >-
+                  Full MCP server ZIP artifact. Its top level holds one metadata file (`metadata.yaml`,
+                  `metadata.yml`, `api.yaml` or `mcp.yaml`) and one definition (`definition.yaml`,
+                  `definition.yml` or `definition.json`), read only from there. Its optional `web/` and `docs/`
+                  content follows the same rules as the content ZIP of `/mcp-servers/{mcpServerId}/assets`; any
+                  other entry is rejected with `400`, listing each rejected path.
               definition:
                 type: string
                 format: binary
                 description: >-
                   MCP tools schema (YAML or JSON) listing the tools, resources, and prompts the server
                   exposes. Required on create; when supplied on update it replaces the stored schema.
+              docs:
+                description: >-
+                  Markdown (`.md`) document files to add. Repeat the part for several documents. Each is stored as
+                  a document of category Other; a file with the name of an existing document replaces it. Any other
+                  file is rejected with `400`, naming it, and nothing is saved.
+                oneOf:
+                  - type: string
+                    format: binary
+                  - type: array
+                    items:
+                      type: string
+                      format: binary
+              thumbnail:
+                type: string
+                format: binary
+                description: >-
+                  The MCP server's thumbnail, PNG or JPEG. The type is read from the file's content; the file name
+                  is not used, and the thumbnail is stored as `api-icon.png` or `api-icon.jpg`. It replaces the
+                  current thumbnail. At most one part; a part with no file name (an empty file input) is
+                  ignored. Cannot be sent with `removeThumbnail: true`.
               metadata:
                 type: string
                 description: >-
@@ -4497,7 +4584,11 @@ components:
                   `name`, `version`, `description`, `type` (must be `MCP`), `agentVisibility`, `status`,
                   `referenceId`, `id`, `tags`, `labels`, `owners`, `endPoints` (productionURL, sandboxURL),
                   and `subscriptionPlans` (array of `{ id }` objects — only `id` is read; the plan must already
-                  exist in the organization). `id` becomes the MCP server's stored handle.
+                  exist in the organization). `id` becomes the MCP server's stored handle. On update it also
+                  accepts `docsToRemove` (array of documents to delete: a file name removes it from every category,
+                  `{ "fileName", "type" }` only from that `DOC_<Category>`) and, on create and update,
+                  `removeThumbnail` (boolean; `true` deletes the thumbnail on update and has no effect on create).
+                  Sending a `thumbnail` part together with `removeThumbnail: true` is a `400`.
                 example: >-
                   {"name":"Travel Assistant MCP","version":"v1","description":"MCP server for travel
                   planning tools","type":"MCP","agentVisibility":"VISIBLE","status":"PUBLISHED",
@@ -4508,12 +4599,26 @@ components:
       description: |
         API content ZIP upload.
 
-        Expected ZIP structure:
-        - `web/`: optional API landing-page files and images.
-        - `docs/`: optional downloadable documents.
+        Each path in the ZIP gets one outcome, from the first rule that matches:
+        - If the ZIP breaks an extraction limit or holds an unsafe path, the whole upload is rejected.
+        - If the only top-level entry is one folder other than `web/` or `docs/`, the ZIP is read from inside it.
+        - A path with a part starting with `.` (`.gitkeep`, `.git/`, `._A.md`, `.DS_Store`), or under `__MACOSX/`, is
+          ignored.
+        - A path that appears more than once is rejected.
+        - `web/api-content.md` and `web/api-content.hbs` are the landing page.
+        - `web/<name>` ending in `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg` or `.ico` (any letter case) is an image. It
+          fills the slot named by its file name without the extension, unless `imageMetadata` names another;
+          any image named `api-icon` is the thumbnail.
+        - `docs/<name>.md` is a document stored as `DOC_Other`, and `docs/<Category>/<name>.md` (one folder level) as
+          `DOC_<Category>`. The `.md` extension is lowercase.
+        - Anything else is rejected, including an unknown top-level folder that is empty.
 
-        At least one of `web/` or `docs/` must exist at the ZIP root.
-        `docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields.
+        If any path is rejected, the upload is rejected with `400` and nothing is stored; `errors` lists every rejected
+        path, sorted, as `<path>: <reason>`. An upload with no content is accepted by `PUT` (it removes all content)
+        and rejected by `POST`. Links in `docMetadata` count as content.
+
+        `docMetadata` and `imageMetadata` are JSON strings because they are submitted as multipart form fields;
+        text that isn't valid JSON, or of the wrong shape, is rejected with `400`.
       content:
         multipart/form-data:
           schema:
@@ -4527,11 +4632,16 @@ components:
                 description: ZIP upload field named `content`.
               docMetadata:
                 type: string
-                description: Optional JSON string containing API document link metadata.
-                example: "[{\"name\":\"External guide\",\"url\":\"https://example.com/docs/guide\",\"type\":\"LINK\"}]"
+                description: >-
+                  Optional JSON array of document links, grouped by type. Each `type` must be `DOC_<Category>`.
+                  A link is stored as `LINK_<displayName>` under that type.
+                example: "[{\"type\":\"DOC_LINK\",\"links\":[{\"displayName\":\"External guide\",\"url\":\"https://example.com/docs/guide\"}]}]"
               imageMetadata:
                 type: string
-                description: Optional JSON string containing API image metadata.
+                description: >-
+                  Optional JSON object mapping an image slot to an uploaded file name, overriding the slot taken
+                  from the file name. Each named file must be in the upload and fills one slot. Two images whose
+                  names differ only by extension take the same slot, so one of them must be named here.
                 example: "{\"api-icon\":\"icon.png\"}"
     ApplicationMultipartBody:
       required: true
@@ -4836,6 +4946,19 @@ components:
             status: error
             code: CONFLICT
             message: Conflict
+    ContentConflict:
+      description: Some of the uploaded content already exists. Nothing was stored; every clash is listed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            status: error
+            code: CONFLICT
+            message: Conflict
+            errors:
+              - message: "Content already exists: A.md (DOC_HowTo)"
+              - message: "Content already exists: image slot api-icon"
     SubscriptionPlanPutConflict:
       description: >-
         The request conflicts with an existing plan. Code `PLAN_PRICING_LOCKED` when `pricing` is sent for a plan
@@ -5787,11 +5910,10 @@ components:
           description: Human-readable error message.
         errors:
           type: array
-          description: Optional per-field validation errors.
+          description: Optional details, one per problem. `field` names the request field when the problem is about one.
           items:
             type: object
             required:
-              - field
               - message
             properties:
               field:
@@ -8814,7 +8936,7 @@ components:
       type: object
       description: >-
         The application an OAuth2 key is associated with. A key belongs to at most one application; an application
-        may hold any number of keys.
+        holds at most one key per key type — one PRODUCTION and one SANDBOX.
       properties:
         id:
           type: string

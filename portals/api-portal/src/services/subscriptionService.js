@@ -49,9 +49,9 @@ async function safePublish(eventType, payload, opts) {
     }
 }
 
-// The webhook subscriber_id must be the user's IdP subject (idp_id) — the same identity
-// the REST API exposes as `createdBy` — not the portal-internal user UUID stored in
-// created_by. Machine-credential callers carry no user identity (created_by === SYSTEM_ACTOR),
+// The webhook subscriber_id must be the user's IdP subject (idp_id) — the identity
+// platform-api matches on — not the portal-internal user UUID stored in created_by, and
+// not the display name the REST API shows as `createdBy`. Machine-credential callers carry no user identity (created_by === SYSTEM_ACTOR),
 // so pass that through verbatim instead of running it through the reference lookup.
 async function resolveSubscriberId(createdBy) {
     if (!createdBy || createdBy === constants.SYSTEM_ACTOR) return createdBy;

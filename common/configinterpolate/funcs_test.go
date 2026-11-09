@@ -142,7 +142,9 @@ func TestFileFunc(t *testing.T) {
 		_, err := expandLeaf(t, `{{ file "`+p+`" }}`, Options{FileAllowlist: []string{root}, MaxFileBytes: 10})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "exceeds the maximum allowed size")
-		assert.NotContains(t, err.Error(), "10")
+		// The message names the file, and t.TempDir() puts a random number in its path that
+		// can itself contain "10". Only the rest of the message must not leak the limit.
+		assert.NotContains(t, strings.ReplaceAll(err.Error(), p, ""), "10")
 	})
 }
 

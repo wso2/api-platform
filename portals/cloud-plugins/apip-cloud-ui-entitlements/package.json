@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@wso2/oxygen-ui": "0.18.0",
+    "@wso2/oxygen-ui": "0.21.0",
     "react": "19.2.3"
   },
   "devDependencies": {

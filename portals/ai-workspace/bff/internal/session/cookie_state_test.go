@@ -178,7 +178,16 @@ func TestCookieStateRejectsUnusableRecords(t *testing.T) {
 	})
 	t.Run("tampered", func(t *testing.T) {
 		bad := append([]string(nil), parts...)
-		bad[0] = "A" + bad[0][1:]
+		// Flip rather than force the first character: forcing it to a fixed value
+		// (e.g. "A") is a no-op whenever the sealed record's random nonce already
+		// produces that character there (~1/64 of the time), silently testing
+		// nothing. Picking a replacement guaranteed to differ keeps this tamper
+		// deterministic.
+		replacement := byte('A')
+		if bad[0][0] == replacement {
+			replacement = 'B'
+		}
+		bad[0] = string(replacement) + bad[0][1:]
 		if _, ok := c.Decode(bad, sampleAccessToken()); ok {
 			t.Fatal("a tampered record was accepted")
 		}

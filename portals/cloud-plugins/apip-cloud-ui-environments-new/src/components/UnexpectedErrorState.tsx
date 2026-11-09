@@ -24,8 +24,7 @@ import { RotateCcw } from '@wso2/oxygen-ui-icons-react';
  * A browser window with a broken face, drawn with plain `<svg>` and colours
  * resolved from `useTheme()` rather than Oxygen's `ColorSchemeSVG` (that
  * helper only exists from Oxygen 0.13.1; this package is typechecked against
- * 0.5.0 — see `apip-cloud-ui-logs/ComingSoonPanel.tsx` for the same
- * workaround applied to the console's "coming soon" barricade).
+ * 0.5.0).
  */
 const BrokenPageIllustration: FC = () => {
   const theme = useTheme();
