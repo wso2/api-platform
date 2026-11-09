@@ -272,7 +272,8 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 		return apperror.Unauthorized.New().
 			WithLogMessage("user id claim not found in token")
 	}
-	actor, err := h.identity.ToInternalUUID(rawActor)
+	actorName, _ := middleware.GetDisplayNameFromRequest(r)
+	actor, err := h.identity.ToInternalUUIDWithDisplayName(rawActor, actorName)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage("failed to resolve user identity")
@@ -480,7 +481,8 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 		return apperror.Unauthorized.New().
 			WithLogMessage("user id claim not found in token")
 	}
-	actor, err := h.identity.ToInternalUUID(rawActor)
+	actorName, _ := middleware.GetDisplayNameFromRequest(r)
+	actor, err := h.identity.ToInternalUUIDWithDisplayName(rawActor, actorName)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage("failed to resolve user identity")
@@ -516,7 +518,8 @@ func (h *SubscriptionPlanHandler) DeleteSubscriptionPlan(w http.ResponseWriter, 
 		return apperror.Unauthorized.New().
 			WithLogMessage("user id claim not found in token")
 	}
-	actor, err := h.identity.ToInternalUUID(rawActor)
+	actorName, _ := middleware.GetDisplayNameFromRequest(r)
+	actor, err := h.identity.ToInternalUUIDWithDisplayName(rawActor, actorName)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
 			WithLogMessage("failed to resolve user identity")
@@ -546,7 +549,7 @@ func (h *SubscriptionPlanHandler) RegisterRoutes(mux router.Router) {
 // toSubscriptionPlanResponse builds the API response for a plan. updatedBy is only included when detail
 // is true, as list responses omit it. "limits" is kept for older clients (requestLimits).
 func (h *SubscriptionPlanHandler) toSubscriptionPlanResponse(plan *model.SubscriptionPlan, detail bool) (map[string]any, error) {
-	createdBy, err := h.identity.SubForUUID(plan.CreatedBy)
+	createdBy, err := h.identity.DisplayNameForUUID(plan.CreatedBy)
 	if err != nil {
 		return nil, err
 	}
@@ -566,7 +569,7 @@ func (h *SubscriptionPlanHandler) toSubscriptionPlanResponse(plan *model.Subscri
 		"updatedAt":      plan.UpdatedAt,
 	}
 	if detail {
-		updatedBy, err := h.identity.SubForUUID(plan.UpdatedBy)
+		updatedBy, err := h.identity.DisplayNameForUUID(plan.UpdatedBy)
 		if err != nil {
 			return nil, err
 		}

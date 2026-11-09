@@ -47,7 +47,7 @@ In [multi-organization mode](multi-organization.md#webhooks) one portal delivers
 
 The `subscription_plan.*` and `meter.*` events are not sent for a change the Platform API made in the portal (a request with its shared key): the Platform API already has the plan or meter it sent, so it would only get its own change back.
 
-For events that carry a sensitive field, the value is **encrypted with AES-256-GCM** under a key derived from the subscriber's shared secret, and placed directly in `data` under its field name (e.g. `data.key`, `data.token`). It is never included in plaintext. The top-level `encrypted_fields` array always lists which `data` fields are encrypted.
+For events that carry a sensitive field, the value is **encrypted with AES-256-GCM** under a key derived from the subscriber's shared secret, and placed directly in `data` under its field name (e.g. `data.key`, `data.token`). It is never included in plaintext. The top-level `encrypted_fields` array always lists which `data` fields are encrypted. When the subscriber has a secret, the top-level `secret_hash` identifies which secret signed and encrypted the delivery (see [Field encryption](#field-encryption)).
 
 ## Configure a Webhook Subscriber
 
@@ -718,6 +718,8 @@ function verifySignature(secret, rawBody, signatureHeader) {
 ```
 
 ### Field encryption
+
+Every delivery to a subscriber that has a secret carries a top-level `secret_hash`: the lowercase hex SHA3-256 of `api-portal-webhook-secret-hash-v1:` followed by the secret. It is inside the signed body and identifies which secret signed and encrypted the delivery, so a receiver that accepts several secrets (for example during rotation) can select the right one without trying each. It is a one-way identifier — the signing and encryption keys are not derived from it. The field is omitted when the subscriber has no secret.
 
 Events that carry sensitive fields include them directly in `data` under their field name (e.g. `data.key`, `data.token`). The top-level `encrypted_fields` array lists which fields are encrypted — check it before processing `data` so you know which fields need decryption.
 

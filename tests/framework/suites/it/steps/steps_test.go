@@ -393,11 +393,11 @@ func TestJSONFieldIsBool(t *testing.T) {
 	}
 }
 
-// mtlsFeatureFiles lists every feature that exercises mutual TLS: each mtls_*.feature and
-// certificates.feature.
+// mtlsFeatureFiles lists every feature that exercises mutual TLS: each feature in
+// gateway/mtls and certificates.feature.
 func mtlsFeatureFiles(t *testing.T, featureRoot string) []string {
 	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(featureRoot, "features", "mtls_*.feature"))
+	paths, err := filepath.Glob(filepath.Join(featureRoot, "features", "gateway", "mtls", "*.feature"))
 	require.NoError(t, err)
 	require.NotEmpty(t, paths)
 	certificates := filepath.Join(featureRoot, "features", "gateway", "security", "certificates.feature")

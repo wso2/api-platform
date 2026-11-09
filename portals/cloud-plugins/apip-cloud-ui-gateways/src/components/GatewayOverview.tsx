@@ -69,6 +69,13 @@ export type GatewayOverviewProps = {
   /** Revokes the gateway's existing registration tokens, then mints a new one. */
   onReconfigureRegistrationToken: (gatewayId: string) => Promise<string>;
   notify: (message: string, severity?: 'success' | 'info' | 'warning' | 'error') => void;
+  /**
+   * Whether the user may mint registration tokens. Without it the page neither
+   * mints the first token on opening nor offers Reconfigure. Defaults to allowed.
+   */
+  canManageTokens?: boolean;
+  /** Whether the user may edit the gateway; the Edit button is hidden otherwise. Defaults to allowed. */
+  canEdit?: boolean;
 };
 
 const ACCENT = '#f7882f';
@@ -157,6 +164,8 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
   onGenerateRegistrationToken,
   onReconfigureRegistrationToken,
   notify,
+  canManageTokens = true,
+  canEdit = true,
 }) => {
   const [tab, setTab] = useState<'configurations' | 'policies'>('configurations');
   const [installMethod, setInstallMethod] = useState<InstallMethod>('Quick Start');
@@ -186,7 +195,7 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
   // to revoke, so nothing to confirm. One that already has a token keeps the
   // Reconfigure prompt, since only the gateway running on it knows the value.
   useEffect(() => {
-    if (initialRegistrationToken || firstTokenCheckedRef.current) return;
+    if (initialRegistrationToken || !canManageTokens || firstTokenCheckedRef.current) return;
     firstTokenCheckedRef.current = true;
     // No cancellation on cleanup: the ref keeps a remount (StrictMode) from
     // starting a second check, so this one has to be the one that lands.
@@ -204,7 +213,7 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
         setIsRegeneratingToken(false);
       }
     })();
-  }, [gateway.id, initialRegistrationToken, onHasActiveRegistrationToken, onGenerateRegistrationToken, notify]);
+  }, [gateway.id, initialRegistrationToken, canManageTokens, onHasActiveRegistrationToken, onGenerateRegistrationToken, notify]);
 
   const handleReconfigureToken = async () => {
     setIsReconfigureConfirmOpen(false);
@@ -237,7 +246,9 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
     controlPlaneHost,
     registrationToken,
     hasJustRegeneratedToken,
-    isRegeneratingToken,
+    // Reconfigure's button is disabled while this is set; it also covers a user
+    // who may not mint tokens.
+    isRegeneratingToken: isRegeneratingToken || !canManageTokens,
     onRegenerateToken: requestReconfigure,
   };
 
@@ -318,19 +329,21 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
                 {gateway.description || `This is a ${gatewayTypeLabel(gateway.type)}`}
               </Typography>
             </Box>
-            <Button
-              variant="outlined"
-              startIcon={<Edit size={16} />}
-              onClick={() => onEditClick(gateway.id)}
-              sx={{
-                borderRadius: 999,
-                textTransform: 'none',
-                flexShrink: 0,
-                alignSelf: 'flex-start',
-              }}
-            >
-              Edit
-            </Button>
+            {canEdit && (
+              <Button
+                variant="outlined"
+                startIcon={<Edit size={16} />}
+                onClick={() => onEditClick(gateway.id)}
+                sx={{
+                  borderRadius: 999,
+                  textTransform: 'none',
+                  flexShrink: 0,
+                  alignSelf: 'flex-start',
+                }}
+              >
+                Edit
+              </Button>
+            )}
           </Box>
         </CardContent>
       </Card>
@@ -434,7 +447,7 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
                     controlPlaneHost={controlPlaneHost}
                     registrationToken={registrationToken}
                     hasJustRegeneratedToken={hasJustRegeneratedToken}
-                    isRegeneratingToken={isRegeneratingToken}
+                    isRegeneratingToken={isRegeneratingToken || !canManageTokens}
                     onRegenerateToken={requestReconfigure}
                   />
                 ) : isGatewayV12OrAbove(distVersion) ? (

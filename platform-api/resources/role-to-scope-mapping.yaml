@@ -83,6 +83,7 @@ roles:
       - ap:mcp_proxy:manage
       - ap:agent_proxy:manage
       - ap:secret:manage
+      - ap:webhook_secret:manage
       # Creating a service account creates privilege, so manage is admin-only.
       - ap:service_account:manage
       - ap:api_key:read
@@ -139,25 +140,34 @@ roles:
       - ap:llm_provider:read
       - ap:llm_provider:deployment:manage
       - ap:llm_provider:build:manage
+      - ap:llm_provider:api_key:read
       - ap:llm_proxy:read
       - ap:llm_proxy:deployment:manage
       - ap:llm_proxy:build:manage
+      - ap:llm_proxy:api_key:read
       - ap:mcp_proxy:read
       - ap:mcp_proxy:deployment:manage
       - ap:mcp_proxy:build:manage
       - ap:agent_proxy:read
       - ap:agent_proxy:deployment:manage
       - ap:agent_proxy:build:manage
+      - ap:agent_proxy:api_key:read
       - ap:subscription_plan:manage
       - ap:meter:manage
       - ap:application:read
       - ap:application:api_key:read
       - ap:application:association:read
+      - ap:application:association:api_key:read
       - ap:subscription:read
       - ap:secret:read
+      - ap:webhook_secret:read
       - ap:service_account:read
       - ap:api_key:read
       - ap:api_portal:manage
+      # Drafts, REST and GraphQL publications are the one place the spec does
+      # NOT fold the subresource into the parent: ap:api_portal:manage reaches
+      # none of them, so the read is granted on its own.
+      - ap:api_portal:draft:read
       - ap:api_portal:publication:read
       - ap:api_publication:read
       # - ap:websub_api:read   # event-gateway build only
@@ -276,8 +286,8 @@ roles:
       - dp:label:read
 
   # Auditor — read-only across both components. Grants no mutating scope
-  # (the two POSTs it can reach, mcp-proxies/fetch-server-info and
-  # agent-proxies/fetch-agent-card, are reads the spec models as POSTs).
+  # (the one POST it can reach, agent-proxies/fetch-agent-card, is a read the spec models as
+  # a POST).
   - name: ap_viewer
     scopes:
       # Platform API
@@ -316,6 +326,7 @@ roles:
       - ap:agent_proxy:build:read
       - ap:agent_proxy:api_key:read
       - ap:secret:read
+      - ap:webhook_secret:read
       - ap:api_key:read
       - ap:api_portal:draft:read
       - ap:api_portal:publication:read

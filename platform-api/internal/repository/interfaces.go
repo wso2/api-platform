@@ -553,6 +553,29 @@ type SecretRepository interface {
 	Exists(orgID, handle string) (bool, error)
 }
 
+// WebhookSecretRepository persists org-level managed secrets and their
+// rotation versions. Version-changing writes serialize on the webhook_secrets_metadata row.
+type WebhookSecretRepository interface {
+	// Create inserts the secret info and its first version (version 1) atomically.
+	Create(info *model.WebhookSecretMetadata, first *model.WebhookSecret) error
+	GetMetadata(orgID, handle string) (*model.WebhookSecretMetadata, error)
+	ListMetadata(orgID string, limit, offset int) ([]*model.WebhookSecretMetadata, int, error)
+	// ListVersions returns every version of a secret, newest first.
+	ListVersions(secretUUID string) ([]*model.WebhookSecret, error)
+	// AddVersion appends the next version, failing with WebhookSecretVersionLimit
+	// when maxVersions versions already exist.
+	AddVersion(secretUUID string, maxVersions int, w *model.WebhookSecret) error
+	// ListVersionsForOrg returns every version of every secret of the given type in
+	// an organization, newest first.
+	ListVersionsForOrg(orgID, secretType string) ([]*model.WebhookSecret, error)
+	// GetVersionByHash returns the version of an organization's secret of the given type whose
+	// secret_hash equals hash, or nil when there is none.
+	GetVersionByHash(orgID, secretType, hash string) (*model.WebhookSecret, error)
+	// DeleteVersion removes one version; the last remaining version is refused.
+	DeleteVersion(secretUUID string, version int, actor string) error
+	Delete(orgID, handle string) error
+}
+
 // ServiceAccountRepository persists service accounts. Every write that
 // revokes tokens takes the ledger row too, so both land in one transaction.
 type ServiceAccountRepository interface {
@@ -644,6 +667,14 @@ type UserIdentityMappingRepository interface {
 	// a single query (avoids N+1 on list endpoints). UUIDs with no mapping are
 	// absent from the returned map.
 	GetSubsByUUIDs(uuids []string) (map[string]string, error)
+	// GetOrCreateUUIDWithDisplayName is GetOrCreateUUID that also stores the
+	// user's display name, or refreshes it when a non-empty value differs from
+	// the stored one. An empty displayName leaves the row as it is. A failure to
+	// save the name alone returns the valid UUID with ErrDisplayNameNotSaved.
+	GetOrCreateUUIDWithDisplayName(identity, displayName string) (string, error)
+	// GetIdentitiesByUUIDs batch-resolves multiple UUIDs to their idp_id and
+	// display name in a single query. UUIDs with no mapping are absent.
+	GetIdentitiesByUUIDs(uuids []string) (map[string]UserIdentity, error)
 }
 
 // UserOrganizationMappingRepository defines the interface for user<->organization

@@ -52,7 +52,10 @@ type ApiListViewProps = {
 /** Card-row layout for APIs, the list-view counterpart of ApiCardGrid. */
 export function ApiListView({ apis, onOpen, onDelete }: ApiListViewProps) {
   const intl = useIntl();
-  const canDelete = useCan('DeleteRESTAPI');
+  // Each row is deleted through its own kind's endpoint, under that kind's scopes.
+  const canDeleteRest = useCan('DeleteRESTAPI');
+  const canDeleteGraphQL = useCan('DeleteGraphQLAPI');
+  const canDelete = (api: ListableApi) => (api.apiType === 'graphql' ? canDeleteGraphQL : canDeleteRest);
 
   const columns: ListingCardColumn<ListableApi>[] = [
     {
@@ -130,7 +133,7 @@ export function ApiListView({ apis, onOpen, onDelete }: ApiListViewProps) {
                 // description instead of wrapping the time.
                 whiteSpace: 'nowrap',
                 transition: 'opacity 150ms ease',
-                ...(onDelete && canDelete && {
+                ...(onDelete && canDelete(api) && {
                   [hoverMedia(theme)]: {
                     'tr:focus-within &, tr:hover &': { opacity: 0 },
                   },
@@ -139,7 +142,7 @@ export function ApiListView({ apis, onOpen, onDelete }: ApiListViewProps) {
             >
               {updated && <RelativeTime time={relativeTime(updated)} dateTime={updated} />}
             </Box>
-            {onDelete && canDelete && (
+            {onDelete && canDelete(api) && (
               // Pinned to the cell's right edge, not placed by a grid track, so it
               // lands in the same spot whatever the time's width or the screen size.
               <Box

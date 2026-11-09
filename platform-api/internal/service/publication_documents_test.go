@@ -168,10 +168,30 @@ func TestPlaceDocuments(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a hidden name, which the portal skips", func(t *testing.T) {
+		_, err := placeDocuments([]*model.Document{doc("guide", "DOC_HowTo", ".guide.md")})
+		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "file name") {
+			t.Fatalf("want a file name validation error, got %v", err)
+		}
+		_, err = placeDocuments([]*model.Document{doc("guide", "DOC_.Notes", "guide.md")})
+		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "type") {
+			t.Fatalf("want a type validation error, got %v", err)
+		}
+	})
+
+	t.Run("rejects a file name that is not Markdown", func(t *testing.T) {
+		for _, name := range []string{"notes.txt", "notes.MD"} {
+			_, err := placeDocuments([]*model.Document{doc("guide", "DOC_HowTo", name)})
+			if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), "file name") {
+				t.Errorf("%q: want a file name validation error, got %v", name, err)
+			}
+		}
+	})
+
 	t.Run("rejects two documents on the same path ignoring case", func(t *testing.T) {
 		_, err := placeDocuments([]*model.Document{
 			doc("guide", "DOC_HowTo", "Guide.md"),
-			doc("guide-2", "DOC_HOWTO", "guide.MD"),
+			doc("guide-2", "DOC_HOWTO", "GUIDE.md"),
 		})
 		if !apperror.APIPublicationValidationFailed.Is(err) || !strings.Contains(err.Error(), `"guide" and "guide-2"`) {
 			t.Fatalf("want a collision error naming both handles, got %v", err)

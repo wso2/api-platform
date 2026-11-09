@@ -24,6 +24,7 @@
 
 const client = require('../support/client');
 const { uniqueHandle, createApi } = require('../support/fixtures');
+const { createZip } = require('../support/zipBuilder');
 
 // An MCP server's contract is its tools schema (definition) — not an OpenAPI-style API contract.
 const MCP_TOOLS_SCHEMA = [
@@ -205,7 +206,7 @@ describe('MCP servers', () => {
     // from that definition alone, matching how sampleSeeder deploys samples/mcps (api.yaml +
     // definition.yaml) and how the admin UI wizard now uploads it.
     describe('tools schema (definition)', () => {
-        function createWithSchema(schema, idPrefix) {
+        function createWithSchema(schema, idPrefix, fileName = 'definition.yaml') {
             const id = uniqueHandle(idPrefix || 'mcp-schema');
             return client
                 .as('publisher')
@@ -218,7 +219,7 @@ describe('MCP servers', () => {
                     status: 'PUBLISHED',
                     endPoints: { productionURL: 'https://x.invalid', sandboxURL: 'https://x.invalid' },
                 }))
-                .attach('definition', Buffer.from(schema), 'definition.yaml')
+                .attach('definition', Buffer.from(schema), fileName)
                 .then((res) => ({ id, res }));
         }
 
@@ -231,6 +232,19 @@ describe('MCP servers', () => {
                 .get(`/mcp-servers/${id}/assets?type=SCHEMA_DEFINITION&fileName=definition.yaml`);
             expect(asset.status).toBe(200);
             expect(String(asset.text || asset.body)).toContain('name: ping');
+        });
+
+        it('accepts a .yml definition and rejects other file types', async () => {
+            const yml = await createWithSchema(MCP_TOOLS_SCHEMA, 'mcp-schema-yml', 'definition.yml');
+            expect(yml.res.status).toBe(201);
+            const asset = await client.as('publisher')
+                .get(`/mcp-servers/${yml.id}/assets?type=SCHEMA_DEFINITION&fileName=definition.yml`);
+            expect(asset.status).toBe(200);
+
+            const txt = await createWithSchema(MCP_TOOLS_SCHEMA, 'mcp-schema-txt', 'definition.txt');
+            expect(txt.res.status).toBe(400);
+            expect(txt.res.body.errors[0].message)
+                .toBe("Invalid schema definition file type. Expected '.json', '.yaml' or '.yml'");
         });
 
         it('rejects creating an MCP server without a definition', async () => {
@@ -347,6 +361,93 @@ describe('MCP servers', () => {
             const api = await createApi();
             const res = await client.as('publisher').get(`/mcp-servers/${api.id}/api-keys`);
             expect(res.status).toBe(404);
+        });
+    });
+
+    describe('content (assets)', () => {
+        const upload = (id, zip, method = 'post') => {
+            const req = method === 'put'
+                ? client.as('publisher').putMultipart(`/mcp-servers/${id}/assets`)
+                : client.as('publisher').postMultipart(`/mcp-servers/${id}/assets`);
+            return req.attach('content', zip, 'content.zip');
+        };
+        const docs = (...names) => createZip(names.map((name) => ({ name: `docs/${name}`, content: `# ${name}` })));
+        const get = (id, type, fileName) => client.as('publisher').get(`/mcp-servers/${id}/assets?type=${type}&fileName=${fileName}`);
+
+        it('replaces all content with PUT and keeps the tools schema', async () => {
+            const mcp = await createMcpServer();
+            expect((await upload(mcp.id, docs('A.md', 'B.md'), 'put')).status).toBe(201);
+
+            const res = await upload(mcp.id, docs('A.md'), 'put');
+            expect(res.status).toBe(200);
+            expect((await get(mcp.id, 'DOC_Other', 'B.md')).status).toBe(404);
+            expect((await get(mcp.id, 'DOC_Other', 'A.md')).status).toBe(200);
+
+            expect((await upload(mcp.id, createZip([]), 'put')).status).toBe(200);
+            expect((await get(mcp.id, 'DOC_Other', 'A.md')).status).toBe(404);
+            expect((await get(mcp.id, 'SCHEMA_DEFINITION', 'definition.yaml')).status).toBe(200);
+        });
+
+        it('rejects an add that clashes with existing content', async () => {
+            const mcp = await createMcpServer();
+            expect((await upload(mcp.id, docs('A.md'))).status).toBe(201);
+            const res = await upload(mcp.id, docs('A.md'));
+            expect(res.status).toBe(409);
+            expect(res.body.errors.map((e) => e.message)).toEqual(['Content already exists: A.md (DOC_Other)']);
+        });
+
+        it('rejects deleting the tools schema', async () => {
+            const mcp = await createMcpServer();
+            const res = await client.as('publisher').del(`/mcp-servers/${mcp.id}/assets?type=SCHEMA_DEFINITION`);
+            expect(res.status).toBe(400);
+            expect((await get(mcp.id, 'SCHEMA_DEFINITION', 'definition.yaml')).status).toBe(200);
+        });
+    });
+
+    describe('thumbnail in the save request', () => {
+        const PNG_BYTES = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+        const JPEG_BYTES = Buffer.from('ffd8ffe000104a464946', 'hex');
+        const mcpMetadata = (mcp, extra = {}) => JSON.stringify({
+            name: mcp.name, version: mcp.version, type: 'MCP', endPoints: mcp.endPoints, ...extra,
+        });
+        const getImage = (id, fileName) => client.as('publisher')
+            .get(`/mcp-servers/${id}/assets?type=IMAGE&fileName=${fileName}`)
+            .responseType('blob');
+
+        it('creates, replaces and removes the thumbnail', async () => {
+            const id = uniqueHandle('mcp-server');
+            const created = await client.as('publisher').postMultipart('/mcp-servers')
+                .field('metadata', JSON.stringify({
+                    id, name: `Thumbnail MCP ${id}`, version: 'v1.0', type: 'MCP',
+                    endPoints: { productionURL: `https://backend.example.invalid/${id}` },
+                }))
+                .attach('definition', Buffer.from(MCP_TOOLS_SCHEMA), 'definition.yaml')
+                .attach('thumbnail', PNG_BYTES, 'logo.png');
+            expect(created.status).toBe(201);
+            const png = await getImage(id, 'api-icon.png');
+            expect(png.status).toBe(200);
+            expect(Buffer.compare(png.body, PNG_BYTES)).toBe(0);
+
+            const replaced = await client.as('publisher').putMultipart(`/mcp-servers/${id}`)
+                .field('metadata', mcpMetadata(created.body))
+                .attach('thumbnail', JPEG_BYTES, 'logo.jpg');
+            expect(replaced.status).toBe(200);
+            expect((await getImage(id, 'api-icon.jpg')).status).toBe(200);
+            expect((await getImage(id, 'api-icon.png')).status).toBe(404);
+
+            const removed = await client.as('publisher').putMultipart(`/mcp-servers/${id}`)
+                .field('metadata', mcpMetadata(created.body, { removeThumbnail: true }));
+            expect(removed.status).toBe(200);
+            expect((await getImage(id, 'api-icon.jpg')).status).toBe(404);
+        });
+
+        it('rejects a thumbnail that is not PNG or JPEG', async () => {
+            const mcp = await createMcpServer();
+            const res = await client.as('publisher').putMultipart(`/mcp-servers/${mcp.id}`)
+                .field('metadata', mcpMetadata(mcp))
+                .attach('thumbnail', Buffer.from('<svg/>'), 'logo.png');
+            expect(res.status).toBe(400);
+            expect(res.body.errors[0].message).toBe('Thumbnail must be a PNG or JPEG image.');
         });
     });
 });

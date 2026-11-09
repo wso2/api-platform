@@ -27,7 +27,7 @@ module.exports = {
     testTimeout: 20000,
     // The portal-under-test runs SQLite through a single shared connection
     // (see src/db/adapters/sqliteAdapter.js — correct for a single-writer SQLite
-    // file) used by every DAO AND the session store. Because better-sqlite3 is
+    // file) used by every DAO AND the session store. Because node:sqlite is
     // synchronous, that one connection processes every DB op —
     // logins' session writes, fixture CRUD from every spec file, the webhook
     // dispatcher/delivery-worker polling — strictly one at a time regardless of

@@ -225,6 +225,10 @@ func (r oaIdentityRepo) GetOrCreateUUID(identity string) (string, error) {
 	return "internal-" + identity, nil
 }
 
+func (r oaIdentityRepo) GetOrCreateUUIDWithDisplayName(identity, _ string) (string, error) {
+	return r.GetOrCreateUUID(identity)
+}
+
 func (r oaIdentityRepo) GetSubByUUID(uuid string) (string, bool, error) {
 	return strings.TrimPrefix(uuid, "internal-"), true, nil
 }
@@ -233,6 +237,14 @@ func (r oaIdentityRepo) GetSubsByUUIDs(uuids []string) (map[string]string, error
 	out := map[string]string{}
 	for _, u := range uuids {
 		out[u] = strings.TrimPrefix(u, "internal-")
+	}
+	return out, nil
+}
+
+func (r oaIdentityRepo) GetIdentitiesByUUIDs(uuids []string) (map[string]repository.UserIdentity, error) {
+	out := map[string]repository.UserIdentity{}
+	for _, u := range uuids {
+		out[u] = repository.UserIdentity{IdpID: strings.TrimPrefix(u, "internal-")}
 	}
 	return out, nil
 }

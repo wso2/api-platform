@@ -40,16 +40,22 @@ import {
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { Clock3, Plus, Search, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import UnexpectedErrorState from './components/UnexpectedErrorState';
 import type { NotifySeverity } from './hostPort';
+import { NO_PERMISSION_TOOLTIP } from './permissions';
 import type { Environment, EnvironmentPort } from './types';
 
 export type EnvironmentsListProps = {
   port: EnvironmentPort;
   readOnly: boolean;
+  /** Whether the user holds a scope that creates environments; the Create button is disabled otherwise. */
+  canCreate: boolean;
+  /** Whether the user holds a scope that deletes environments; every Delete is disabled otherwise. */
+  canDelete: boolean;
   onCreateClick: () => void;
   notify?: (message: string, severity?: NotifySeverity) => void;
 };
@@ -71,7 +77,14 @@ function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
 }
 
-const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateClick, notify }) => {
+const EnvironmentsList: FC<EnvironmentsListProps> = ({
+  port,
+  readOnly,
+  canCreate,
+  canDelete,
+  onCreateClick,
+  notify,
+}) => {
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Environment | null>(null);
@@ -153,7 +166,16 @@ const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateC
           <PageTitle.Header>Environments</PageTitle.Header>
           <PageTitle.SubHeader>Manage the deployment environments available across your organization.</PageTitle.SubHeader>
         </PageTitle>
-        {!readOnly ? <Button variant="contained" startIcon={<Plus size={20} />} onClick={onCreateClick}>Create</Button> : null}
+        {!readOnly ? (
+          <Tooltip title={canCreate ? '' : NO_PERMISSION_TOOLTIP}>
+            {/* Wrapped: a disabled button fires no events, so the tooltip explaining why would never open. */}
+            <span>
+              <Button variant="contained" startIcon={<Plus size={20} />} disabled={!canCreate} onClick={onCreateClick}>
+                Create
+              </Button>
+            </span>
+          </Tooltip>
+        ) : null}
       </Box>
 
       {readOnly ? <Alert severity="info" sx={{ mb: 3 }}>Environments can be managed only at Organization level.</Alert> : null}
@@ -215,9 +237,19 @@ const EnvironmentsList: FC<EnvironmentsListProps> = ({ port, readOnly, onCreateC
                   </TableCell>
                   {!readOnly ? (
                     <TableCell align="right">
-                      <IconButton size="small" color="error" aria-label={`Delete ${environment.name}`} onClick={() => setDeleteTarget(environment)}>
-                        <Trash2 size={16} />
-                      </IconButton>
+                      <Tooltip title={canDelete ? '' : NO_PERMISSION_TOOLTIP}>
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            aria-label={`Delete ${environment.name}`}
+                            disabled={!canDelete}
+                            onClick={() => setDeleteTarget(environment)}
+                          >
+                            <Trash2 size={16} />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                     </TableCell>
                   ) : null}
                 </TableRow>
