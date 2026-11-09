@@ -499,6 +499,49 @@ describe('PortalPublishPage', () => {
     expect(screen.queryByRole('button', { name: 'Select all' })).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['has no subscription-validation', [{ name: 'jwt-auth', version: 'v1' }], [], true],
+    ['has subscription-validation', [{ name: 'subscription-validation', version: 'v1' }], [], false],
+    [
+      'has subscription-validation on a resource',
+      [],
+      [{ name: 'list', request: { method: 'GET', path: '/loans', policies: [{ name: 'subscription-validation', version: 'v1' }] } }],
+      false,
+    ],
+  ] as const)(
+    'Subscription Plans: the cards show name and description, and the policy note shows only when missing (API %s)',
+    async (_case, policies, operations, warns) => {
+      const gold = aSubscriptionPlan({ description: 'For production traffic.', displayName: 'Gold', id: 'gold' });
+      servePublicationState({
+        draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections('gold') }),
+        plans: [gold],
+      });
+      server.use(
+        resource('/rest-apis/:restApiId', {
+          ...api,
+          operations: operations as unknown as typeof api.operations,
+          policies: [...policies],
+        }),
+      );
+
+      const { user } = renderPage();
+
+      await screen.findByDisplayValue('Loan Management Service');
+      await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
+      const card = await screen.findByRole('checkbox', { name: /Gold/ });
+      expect(card).toHaveTextContent('For production traffic.');
+      if (warns) {
+        const note = screen.getByRole('alert');
+        expect(note).toHaveTextContent(
+          'Attach this policy to Loan Management Service and redeploy it to the gateway, so the plans are enforced:',
+        );
+        expect(note).toHaveTextContent('subscription-validation');
+      } else {
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      }
+    },
+  );
+
   it('is back to no unsaved changes once the plan selection matches the saved draft again, whatever the order', async () => {
     const bronze = aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' });
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });

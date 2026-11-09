@@ -19,13 +19,12 @@
 import { Box, Button } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { useMetersById } from '@/api/resources/meters';
 import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/subscriptionPlans';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
-import { pricingSummary, summaryMeterIds } from '../../orgManage/components/pricingFormat';
-import { getPlanLimitDisplay } from '../utils/subscriptionPlanLimit';
+import { requiredPolicies } from '../../develop/policies/planPolicies';
 import { toggleSelection, type DeletedSelection, type DraftFormValues } from '../utils/publicationForm';
 import { PlanCard } from './PlanCard';
+import { RequiredPoliciesNote } from './RequiredPoliciesNote';
 import { SelectionSummary } from './SelectionSummary';
 
 const messages = defineMessages({
@@ -70,6 +69,13 @@ const messages = defineMessages({
 });
 
 export type SubscriptionPlansTabProps = {
+  /** Draft view: the API's display name, for the note on the policies the selected plans need. */
+  apiName?: string;
+  /**
+   * Draft view: the names of the policies attached to the API. While a plan is selected, any
+   * policy those plans need that is not among them is listed in a note. Absent: no note.
+   */
+  attachedPolicies?: ReadonlySet<string>;
   /** Published view only: plans the listing holds whose subscription plan was deleted. They show struck through and count as published. */
   deletedPlans?: readonly DeletedSelection[];
   disabled?: boolean;
@@ -98,6 +104,8 @@ type DisplayablePlan = SubscriptionPlan & { id: string };
  * last publish, with deleted plans struck through and inactive or edited ones tagged by an outlined chip.
  */
 export function SubscriptionPlansTab({
+  apiName = '',
+  attachedPolicies,
   deletedPlans = [],
   disabled,
   editedPlanIds = [],
@@ -125,9 +133,6 @@ export function SubscriptionPlansTab({
   const shownPlans = (readOnly ? allPlans.filter((plan) => selectedSet.has(plan.id)) : [...activePlans]).sort(
     (a, b) => rank(a) - rank(b),
   );
-  // The unit a per-unit price counts (call or token) comes from its meter.
-  const { meters } = useMetersById(shownPlans.flatMap((plan) => summaryMeterIds(plan.pricing)));
-
   if (plansQuery.isPending) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
@@ -147,6 +152,12 @@ export function SubscriptionPlansTab({
 
   const selectedActiveCount = activePlans.filter((plan) => selectedSet.has(plan.id)).length;
   const allActiveSelected = activePlans.length > 0 && selectedActiveCount === activePlans.length;
+  // What the selected plans need from the API and it lacks. Shown only when something is missing.
+  const selectedPlans = activePlans.filter((plan) => selectedSet.has(plan.id));
+  const missingPolicies =
+    !readOnly && attachedPolicies && selectedPlans.length > 0
+      ? requiredPolicies(selectedPlans).filter((name) => !attachedPolicies.has(name))
+      : [];
 
   const commitSelection = (nextIds: string[]) => {
     onChange?.({ ...values, subscriptionPlanIds: nextIds });
@@ -173,6 +184,8 @@ export function SubscriptionPlansTab({
         )}
       </Box>
 
+      <RequiredPoliciesNote apiName={apiName} missing={missingPolicies} />
+
       <Box
         sx={{
           display: 'grid',
@@ -190,14 +203,14 @@ export function SubscriptionPlansTab({
         ))}
         {shownPlans.map((plan) => (
           <PlanCard
+            description={plan.description}
             disabled={disabled}
             displayName={(readOnly && storedNames?.[plan.id]) || plan.displayName}
             edited={editedSet.has(plan.id)}
+            expiryTime={plan.expiryTime}
             inactive={plan.status !== 'ACTIVE'}
             key={plan.id}
-            limit={getPlanLimitDisplay(plan)}
             onToggle={() => toggle(plan.id)}
-            pricing={plan.pricing ? pricingSummary(intl, plan.pricing, meters) : undefined}
             readOnly={readOnly}
             selected={selectedSet.has(plan.id)}
           />

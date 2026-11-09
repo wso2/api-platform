@@ -2114,6 +2114,55 @@
     "defaultMessage": "v{version}",
     "description": "Version chip on a catalog entry. {version} is backend data; keep the \"v\" prefix if it reads naturally."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.hint": {
+    "defaultMessage": "For the plans this API offers. A plan condition applies only where a policy enforces it. You pick the plans when you publish to the API Portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.loadError": {
+    "defaultMessage": "Unable to load the subscription plans this API offers."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noConditions": {
+    "defaultMessage": "The plans this API offers have no conditions: they are unlimited."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noPlans": {
+    "defaultMessage": "This API offers no subscription plans. Plans you pick when you publish it to an API Portal show here, with the policies they need."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteEnforced": {
+    "defaultMessage": "By {policy}",
+    "description": "{policy} is the name of the policy that enforces the condition."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNoPolicy": {
+    "defaultMessage": "No policy enforces this yet"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNoReader": {
+    "defaultMessage": "No policy reads it yet",
+    "description": "Note on a custom plan condition, which only a policy written to read its ID uses."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotEnforced": {
+    "defaultMessage": "Not enforced. Attach {policy} and redeploy.",
+    "description": "{policy} is the name of the policy that would enforce the condition."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.statusEnforced": {
+    "defaultMessage": "Enforced"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.statusNoPolicy": {
+    "defaultMessage": "No policy yet",
+    "description": "Status of a plan condition that no gateway policy can enforce today."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.statusNotEnforced": {
+    "defaultMessage": "Not enforced"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.summary": {
+    "defaultMessage": "{enforced, number} of {total, number} enforced",
+    "description": "How many of the plan conditions listed below a policy on this API enforces."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.title": {
+    "defaultMessage": "Required by subscription plans",
+    "description": "Heading of the notes on which policies the plans this API offers need."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.validationMissing": {
+    "defaultMessage": "Attach {policy} first. Without it no plan, condition or subscription is checked.",
+    "description": "{policy} is a policy name (subscription-validation); do not translate it."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPage.loadError": {
     "defaultMessage": "Unable to load the API."
   },
@@ -4029,6 +4078,10 @@
     "defaultMessage": "Edited since last publish",
     "description": "Helper text on a published plan card whose plan was changed after it was last published."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.expires": {
+    "defaultMessage": "Expires {date}",
+    "description": "Chip after the name of a plan that has an expiry. {date} is a formatted date."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactive": {
     "defaultMessage": "Inactive",
     "description": "Chip after the name of a published plan whose subscription plan is inactive."
@@ -4036,10 +4089,6 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactivePublishedHint": {
     "defaultMessage": "Plan is inactive. Republish to remove it from the listing.",
     "description": "Tooltip on a published plan card whose plan is inactive."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.unlimitedValue": {
-    "defaultMessage": "Unlimited",
-    "description": "Plan card value when the plan has no configured limit."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.configureAndPublish": {
     "defaultMessage": "Configure & Publish",
@@ -4102,6 +4151,13 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishedSpecificationTab.loading": {
     "defaultMessage": "Loading the published specification"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.RequiredPoliciesNote.attach": {
+    "defaultMessage": "<b>Attach {count, plural, one {this policy} other {these policies}} to {apiName} and redeploy it to the gateway</b>, so the plans are enforced:",
+    "description": "Lead-in to a list of policy names. {apiName} is the API display name, user-supplied. <b> sets the instruction in bold."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.RequiredPoliciesNote.publishAnyway": {
+    "defaultMessage": "You can publish now. Nothing breaks: subscribers can see the plans and subscribe, and the plan conditions apply once the API is deployed with {count, plural, one {this policy} other {these policies}}."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLabel": {
     "defaultMessage": "API definition ({format})",
@@ -4181,21 +4237,6 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.utils.publicationForm.versionRequired": {
     "defaultMessage": "Enter a version."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.noRequestCap": {
-    "defaultMessage": "no request cap"
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitBandwidth": {
-    "defaultMessage": "{unit} / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
-    "description": "Bandwidth limit unit. {unit} is the server-supplied limitCountUnit (e.g. \"MB\"); {amount} and {timeUnit} describe the window."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitRequests": {
-    "defaultMessage": "requests / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
-    "description": "Request-count limit unit. {amount} is how many time units the window spans; {timeUnit} is MINUTE, HOUR, DAY or MONTH."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.utils.subscriptionPlanLimit.unitTokens": {
-    "defaultMessage": "tokens / {amount, plural, one {{timeUnit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {timeUnit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
-    "description": "Token-count limit unit. {amount} and {timeUnit} describe the window."
   },
   "apiControlPlane.pages.appShell.appShellPages.projects.ProjectCreatePage.action.back": {
     "defaultMessage": "Back to projects"

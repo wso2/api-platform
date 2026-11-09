@@ -20,7 +20,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
-import { aRestApi } from '@/test/msw';
+import { aRestApi, collection } from '@/test/msw';
+import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
 import { PolicyPanel } from './PolicyPanel';
 
@@ -28,6 +29,8 @@ const ORG = 'api-platform-demo';
 
 beforeEach(() => {
   resetHttpClient();
+  // The plan notes under the panels: an API published nowhere offers no plans.
+  server.use(collection('/api-publications', []), collection('/subscription-plans', []));
 });
 
 const renderPanel = (readOnly: boolean) => {

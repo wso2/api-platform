@@ -255,6 +255,10 @@ const TYPE_KEYS: Record<ConditionType, string> = {
   'tool-call-count': 'toolCallCount',
 };
 
+/** A condition type's name, as the editor's menu and headers show it ("Request count", "Custom"). */
+export const conditionTypeName = (intl: IntlShape, type: ConditionType): string =>
+  intl.formatMessage(messages.typeName, { type: TYPE_KEYS[type] });
+
 const WHAT: Record<string, string> = {
   'event-count': 'events',
   'request-count': 'requests',
@@ -407,7 +411,7 @@ export function PlanConditionsEditor({
                 >
                   <ListItemIcon>{TYPE_ICONS[type]}</ListItemIcon>
                   <ListItemText
-                    primary={intl.formatMessage(messages.typeName, { type: TYPE_KEYS[type] })}
+                    primary={conditionTypeName(intl, type)}
                     secondary={intl.formatMessage(messages.typeDescription, {
                       type: TYPE_KEYS[type],
                     })}
@@ -505,7 +509,7 @@ function ConditionCard({
 }: ConditionCardProps) {
   const intl = useIntl();
   const id = useId();
-  const name = intl.formatMessage(messages.typeName, { type: TYPE_KEYS[draft.type] });
+  const name = conditionTypeName(intl, draft.type);
   const hasError = check.conditionsWithErrors.has(draft.key);
 
   return (
