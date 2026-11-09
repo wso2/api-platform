@@ -22,7 +22,9 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
   I want the content I select for a publication to be what the API Portal shows
   So that consumers see the documentation I prepared and nothing I took out
 
-  Background:
+  @APIP-046 @type:negative
+  Scenario: Documents, a landing page and a thumbnail are published, removed when unselected, and limited in size
+    # Documents, a landing page and a thumbnail are published to the API Portal
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
     And I generate a unique resource name from "publish-project" and store it as "projectHandle"
@@ -33,13 +35,8 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     And I generate a unique API context from "/publish" and store it as "apiContext"
     And I generate a unique API version from "v" and store it as "apiVersion"
     And I create a secured REST API "${CTX:apiHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:apiContext}" offering plan "${CTX:planHandle}"
-    And I deploy the "RestApi" "${CTX:apiHandle}" to the gateway via the control plane
-    And I send a "GET" request to "${CTX:apiContext}/" until status 401
     And I generate a unique resource name from "publish-portal" and store it as "portalHandle"
     And I register the API Portal "${CTX:portalHandle}" with the control plane
-
-  @APIP-PUBLISHING-028
-  Scenario: Documents, a landing page and a thumbnail are published to the API Portal
     And I generate a unique resource name from "publish-doc" and store it as "docHandle"
     And I create a document "${CTX:docHandle}" of type "HowTo" with content "Step one: call the API." on the "RestApi" "${CTX:apiHandle}" via the control plane
     And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
@@ -61,23 +58,19 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     Then the response status code should be 200
     And the response header "Content-Type" should contain "image"
 
-  @APIP-PUBLISHING-029
-  @type:negative
-  Scenario: Documents that together exceed the content size limit are refused before anything is sent to the API Portal
-    And I generate a unique resource name from "publish-doc" and store it as "docHandle"
-    And I create a document "${CTX:docHandle}" of type "HowTo" with 16384 bytes of incompressible content on the "RestApi" "${CTX:apiHandle}" via the control plane
-    And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
-      | displayName         | ${CTX:apiHandle} |
-      | version             | ${CTX:apiVersion}     |
-      | subscriptionPlanIds | ["${CTX:planHandle}"] |
-      | docIds              | ["${CTX:docHandle}"] |
-    When I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
-    Then the response status code should be 400
-    And the JSON response field "code" should be "PUBLICATION_VALIDATION_FAILED"
-    And the JSON response field "message" should contain "too large"
-    And the API Portal should not list the API "${CTX:apiHandle}"
-
-  Scenario: Unselecting every document, the landing page and the thumbnail removes them from the API Portal
+    # Unselecting every document, the landing page and the thumbnail removes them from the API Portal
+    Given the gateway services are running
+    And I authenticate using basic auth as "admin"
+    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I create a project "${CTX:projectHandle}" on the control plane
+    And I generate a unique resource name from "publish-plan" and store it as "planHandle"
+    And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
+    And I generate a unique resource name from "publish-api" and store it as "apiHandle"
+    And I generate a unique API context from "/publish" and store it as "apiContext"
+    And I generate a unique API version from "v" and store it as "apiVersion"
+    And I create a secured REST API "${CTX:apiHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:apiContext}" offering plan "${CTX:planHandle}"
+    And I generate a unique resource name from "publish-portal" and store it as "portalHandle"
+    And I register the API Portal "${CTX:portalHandle}" with the control plane
     And I generate a unique resource name from "publish-doc" and store it as "docHandle"
     And I create a document "${CTX:docHandle}" of type "HowTo" with content "Step one: call the API." on the "RestApi" "${CTX:apiHandle}" via the control plane
     And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
@@ -102,8 +95,19 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiHandle}/assets?type=IMAGE&fileName=api-icon.png" as "admin"
     Then the response status code should be 404
 
-  @APIP-PUBLISHING-031
-  Scenario: Unselecting one of two documents removes only that document from the API Portal
+    # Unselecting one of two documents removes only that document from the API Portal
+    Given the gateway services are running
+    And I authenticate using basic auth as "admin"
+    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I create a project "${CTX:projectHandle}" on the control plane
+    And I generate a unique resource name from "publish-plan" and store it as "planHandle"
+    And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
+    And I generate a unique resource name from "publish-api" and store it as "apiHandle"
+    And I generate a unique API context from "/publish" and store it as "apiContext"
+    And I generate a unique API version from "v" and store it as "apiVersion"
+    And I create a secured REST API "${CTX:apiHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:apiContext}" offering plan "${CTX:planHandle}"
+    And I generate a unique resource name from "publish-portal" and store it as "portalHandle"
+    And I register the API Portal "${CTX:portalHandle}" with the control plane
     And I generate a unique resource name from "publish-doc" and store it as "docHandle"
     And I generate a unique resource name from "publish-doc-b" and store it as "docHandleB"
     And I create a document "${CTX:docHandle}" of type "HowTo" with content "Step one: call the API." on the "RestApi" "${CTX:apiHandle}" via the control plane
@@ -127,7 +131,19 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiHandle}/assets?type=DOC_Samples&fileName=${CTX:docHandleB}.md" as "admin"
     Then the response status code should be 404
 
-  Scenario: Unselecting the thumbnail removes it from the API Portal
+    # Unselecting the thumbnail removes it from the API Portal
+    Given the gateway services are running
+    And I authenticate using basic auth as "admin"
+    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I create a project "${CTX:projectHandle}" on the control plane
+    And I generate a unique resource name from "publish-plan" and store it as "planHandle"
+    And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
+    And I generate a unique resource name from "publish-api" and store it as "apiHandle"
+    And I generate a unique API context from "/publish" and store it as "apiContext"
+    And I generate a unique API version from "v" and store it as "apiVersion"
+    And I create a secured REST API "${CTX:apiHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:apiContext}" offering plan "${CTX:planHandle}"
+    And I generate a unique resource name from "publish-portal" and store it as "portalHandle"
+    And I register the API Portal "${CTX:portalHandle}" with the control plane
     And I generate a unique resource name from "publish-doc" and store it as "docHandle"
     And I create a document "${CTX:docHandle}" of type "HowTo" with content "Step one: call the API." on the "RestApi" "${CTX:apiHandle}" via the control plane
     And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
@@ -147,3 +163,29 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     Then the response status code should be 200
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiHandle}/assets?type=IMAGE&fileName=api-icon.png" as "admin"
     Then the response status code should be 404
+
+    # Documents that together exceed the content size limit are refused before anything is sent to the API Portal
+    Given the gateway services are running
+    And I authenticate using basic auth as "admin"
+    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I create a project "${CTX:projectHandle}" on the control plane
+    And I generate a unique resource name from "publish-plan" and store it as "planHandle"
+    And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
+    And I generate a unique resource name from "publish-api" and store it as "apiHandle"
+    And I generate a unique API context from "/publish" and store it as "apiContext"
+    And I generate a unique API version from "v" and store it as "apiVersion"
+    And I create a secured REST API "${CTX:apiHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:apiContext}" offering plan "${CTX:planHandle}"
+    And I generate a unique resource name from "publish-portal" and store it as "portalHandle"
+    And I register the API Portal "${CTX:portalHandle}" with the control plane
+    And I generate a unique resource name from "publish-doc" and store it as "docHandle"
+    And I create a document "${CTX:docHandle}" of type "HowTo" with 16384 bytes of incompressible content on the "RestApi" "${CTX:apiHandle}" via the control plane
+    And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle} |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+      | docIds              | ["${CTX:docHandle}"] |
+    When I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 400
+    And the JSON response field "code" should be "PUBLICATION_VALIDATION_FAILED"
+    And the JSON response field "message" should contain "too large"
+    And the API Portal should not list the API "${CTX:apiHandle}"

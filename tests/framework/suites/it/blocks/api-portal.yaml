@@ -56,9 +56,6 @@ blocks:
       - name: rest-api-versions
         features:
           - features/apiportal/core/rest_api_versions.feature
-      - name: resources
-        features:
-          - features/apiportal/core/resources.feature
       - name: mcp-servers
         tags: "~@known-issue"
         features:
@@ -69,9 +66,6 @@ blocks:
       - name: monetization-priced-plans
         features:
           - features/apiportal/monetization/priced_plans.feature
-      - name: monetization-paid-plans-without-billing
-        features:
-          - features/apiportal/monetization/paid_plans_without_billing.feature
       - name: api-types
         features:
           - features/apiportal/core/api_types.feature
@@ -145,9 +139,6 @@ blocks:
       - name: webhook-subscribers
         features:
           - features/apiportal/webhooks/webhook_subscribers.feature
-      - name: application-webhooks
-        features:
-          - features/apiportal/webhooks/application_webhooks.feature
       - name: api-key-webhooks
         features:
           - features/apiportal/webhooks/api_key_webhooks.feature
@@ -157,9 +148,6 @@ blocks:
       - name: webhook-delivery
         features:
           - features/apiportal/webhooks/webhook_delivery.feature
-      - name: webhook-secret-hash
-        features:
-          - features/apiportal/webhooks/webhook_secret_hash.feature
       - name: monetization-events
         features:
           - features/apiportal/monetization/events.feature
@@ -246,15 +234,6 @@ blocks:
       - name: webhooks
         features:
           - features/apiportal/multi-organization/webhooks.feature
-      - name: publishing
-        features:
-          - features/apiportal/multi-organization/publishing.feature
-      - name: portals
-        features:
-          - features/apiportal/multi-organization/portals.feature
-      - name: display-names
-        features:
-          - features/apiportal/multi-organization/display_names.feature
 
   # A second API Portal pinned to another organization (api-portal-other-org): a portal serves
   # only its own organization, and a credential logs in only to its matching portal.

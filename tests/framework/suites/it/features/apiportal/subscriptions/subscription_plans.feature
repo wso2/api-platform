@@ -23,55 +23,280 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
   I want a plan to hold exactly the limits I give it, and to stay while anything uses it
   So that subscribers are never left on a plan that no longer exists
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-187..189, at the API level. Plan
-  # create, update, delete and access are covered by APIP-CORE-049..057. Every refused create or
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level. Plan
+  # create, update, delete and access are covered by this feature's tests. Every refused create or
   # delete is followed by a read that shows what is stored.
 
-  Background:
-    Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
+  @APIP-023 @type:smoke
+  Scenario: An administrator manages plans and their limits
+    # An administrator manages a free plan with limits from creation to deletion
+    Given I generate a unique resource name from "portal-plan" and store it as "planId"
+    And I generate a unique resource name from "portal-calls" and store it as "meterId"
+    And a unique API Portal resource is created at "/meters" as "admin" with values and stored as "meterId":
+      | id           | ${CTX:meterId}                                                                                  |
+      | displayName  | API calls ${CTX:meterId}                                                                        |
+      | type         | REQUEST_COUNT                                                                                   |
+      | filterFields | [{"field":"Status","eventKey":"response.status"},{"field":"Method","eventKey":"request.verb"}] |
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}                                                                                                                      |
+      | displayName | Team ${CTX:planId}                                                                                                                 |
+      | refId       | team-plan-${CTX:planId}                                                                                                            |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":1000,"timeUnit":"HOUR"},{"limitType":"BANDWIDTH","limitCount":-1,"timeUnit":"MONTH"}] |
+    Then the response status code should be 201
+    And the JSON response field "paid" should be false
+    And the JSON response array field "limits" should have 2 items
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "refId" should be "team-plan-${CTX:planId}"
+    And the JSON response array "limits" item with "limitType" equal to "BANDWIDTH" should have "limitCount" equal to "-1"
+    And the JSON response array "limits" item with "limitType" equal to "REQUEST_COUNT" should have "timeUnit" equal to "HOUR"
 
-  @APIP-CORE-187
-  Scenario Outline: A plan limit of <case> is accepted and stored as given
+    When I send an authenticated API Portal "PUT" request to "/subscription-plans" as "admin" with JSON values:
+      | id          | ${CTX:planId}                                                          |
+      | displayName | Team plus ${CTX:planId}                                                |
+      | limits      | [{"limitType":"TOTAL_TOKEN_COUNT","limitCount":50000,"timeUnit":"DAY"}] |
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the JSON response field "displayName" should be "Team plus ${CTX:planId}"
+    And the JSON response array field "limits" should have 1 item
+    And the JSON response field "limits[0].limitType" should be "TOTAL_TOKEN_COUNT"
+
+    When I send an authenticated API Portal "DELETE" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 204
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 404
+
+    # A plan created without an id gets a generated one
+    Given I generate a unique resource name from "portal-plan" and store it as "planId"
+    And I generate a unique resource name from "portal-calls" and store it as "meterId"
+    And a unique API Portal resource is created at "/meters" as "admin" with values and stored as "meterId":
+      | id           | ${CTX:meterId}                                                                                  |
+      | displayName  | API calls ${CTX:meterId}                                                                        |
+      | type         | REQUEST_COUNT                                                                                   |
+      | filterFields | [{"field":"Status","eventKey":"response.status"},{"field":"Method","eventKey":"request.verb"}] |
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "generatedPlanId":
+      | displayName | Generated ${CTX:planId}                                                  |
+      | limits      | [{"limitType":"EVENT_COUNT","limitCount":500,"timeUnit":"MINUTE"}]      |
+    Then the response status code should be 201
+    And the JSON response field "id" should match pattern "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:generatedPlanId}" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Generated ${CTX:planId}"
+
+    # A plan limit of -1, meaning unlimited is accepted and stored as given
+    Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
     Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
       | id          | ${CTX:planId}       |
       | displayName | Limit ${CTX:planId} |
-      | limits      | <limits>            |
+      | limits      | [{"limitType":"BANDWIDTH","limitCount":-1,"timeUnit":"DAY"}]            |
     Then the response status code should be 201
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the response status code should be 200
     And the JSON response array field "limits" should have 1 item
-    And the JSON response array "limits" item with "limitType" equal to "<type>" should have "limitCount" equal to "<count>"
-    And the JSON response array "limits" item with "limitType" equal to "<type>" should have "timeUnit" equal to "<timeUnit>"
+    And the JSON response array "limits" item with "limitType" equal to "BANDWIDTH" should have "limitCount" equal to "-1"
+    And the JSON response array "limits" item with "limitType" equal to "BANDWIDTH" should have "timeUnit" equal to "DAY"
 
-    Examples:
-      | case                  | limits                                                                   | type              | count | timeUnit |
-      | -1, meaning unlimited | [{"limitType":"BANDWIDTH","limitCount":-1,"timeUnit":"DAY"}]            | BANDWIDTH         | -1    | DAY      |
-      | no time window        | [{"limitType":"EVENT_COUNT","limitCount":250}]                          | EVENT_COUNT       | 250   | null     |
-      | 100 per minute        | [{"limitType":"REQUEST_COUNT","limitCount":100,"timeUnit":"MINUTE"}]    | REQUEST_COUNT     | 100   | MINUTE   |
-      | tokens per hour       | [{"limitType":"TOTAL_TOKEN_COUNT","limitCount":9000,"timeUnit":"HOUR"}] | TOTAL_TOKEN_COUNT | 9000  | HOUR     |
-      | requests per day      | [{"limitType":"REQUEST_COUNT","limitCount":5000,"timeUnit":"DAY"}]      | REQUEST_COUNT     | 5000  | DAY      |
-      | bandwidth per month   | [{"limitType":"BANDWIDTH","limitCount":2048,"timeUnit":"MONTH"}]        | BANDWIDTH         | 2048  | MONTH    |
+    # A plan limit of no time window is accepted and stored as given
+    Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}       |
+      | displayName | Limit ${CTX:planId} |
+      | limits      | [{"limitType":"EVENT_COUNT","limitCount":250}]            |
+    Then the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 200
+    And the JSON response array field "limits" should have 1 item
+    And the JSON response array "limits" item with "limitType" equal to "EVENT_COUNT" should have "limitCount" equal to "250"
+    And the JSON response array "limits" item with "limitType" equal to "EVENT_COUNT" should have "timeUnit" equal to "null"
 
-  @APIP-CORE-188 @type:negative
-  Scenario Outline: A plan limit with <problem> is refused and nothing is stored
+    # A plan limit of 100 per minute is accepted and stored as given
+    Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}       |
+      | displayName | Limit ${CTX:planId} |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":100,"timeUnit":"MINUTE"}]            |
+    Then the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 200
+    And the JSON response array field "limits" should have 1 item
+    And the JSON response array "limits" item with "limitType" equal to "REQUEST_COUNT" should have "limitCount" equal to "100"
+    And the JSON response array "limits" item with "limitType" equal to "REQUEST_COUNT" should have "timeUnit" equal to "MINUTE"
+
+    # A plan limit of tokens per hour is accepted and stored as given
+    Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}       |
+      | displayName | Limit ${CTX:planId} |
+      | limits      | [{"limitType":"TOTAL_TOKEN_COUNT","limitCount":9000,"timeUnit":"HOUR"}]            |
+    Then the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 200
+    And the JSON response array field "limits" should have 1 item
+    And the JSON response array "limits" item with "limitType" equal to "TOTAL_TOKEN_COUNT" should have "limitCount" equal to "9000"
+    And the JSON response array "limits" item with "limitType" equal to "TOTAL_TOKEN_COUNT" should have "timeUnit" equal to "HOUR"
+
+    # A plan limit of requests per day is accepted and stored as given
+    Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}       |
+      | displayName | Limit ${CTX:planId} |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":5000,"timeUnit":"DAY"}]            |
+    Then the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 200
+    And the JSON response array field "limits" should have 1 item
+    And the JSON response array "limits" item with "limitType" equal to "REQUEST_COUNT" should have "limitCount" equal to "5000"
+    And the JSON response array "limits" item with "limitType" equal to "REQUEST_COUNT" should have "timeUnit" equal to "DAY"
+
+    # A plan limit of bandwidth per month is accepted and stored as given
+    Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}       |
+      | displayName | Limit ${CTX:planId} |
+      | limits      | [{"limitType":"BANDWIDTH","limitCount":2048,"timeUnit":"MONTH"}]            |
+    Then the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 200
+    And the JSON response array field "limits" should have 1 item
+    And the JSON response array "limits" item with "limitType" equal to "BANDWIDTH" should have "limitCount" equal to "2048"
+    And the JSON response array "limits" item with "limitType" equal to "BANDWIDTH" should have "timeUnit" equal to "MONTH"
+
+  @APIP-023 @type:negative @type:security
+  Scenario: Invalid plans are refused, plans are read-only for other roles, and a plan in use cannot be deleted
+    # A plan whose limit count is zero is refused with the reason and nothing is stored
+    Given I generate a unique resource name from "portal-plan" and store it as "planId"
+    And I generate a unique resource name from "portal-calls" and store it as "meterId"
+    And a unique API Portal resource is created at "/meters" as "admin" with values and stored as "meterId":
+      | id           | ${CTX:meterId}                                                                                  |
+      | displayName  | API calls ${CTX:meterId}                                                                        |
+      | type         | REQUEST_COUNT                                                                                   |
+      | filterFields | [{"field":"Status","eventKey":"response.status"},{"field":"Method","eventKey":"request.verb"}] |
     When I send an authenticated API Portal "POST" request to "/subscription-plans" as "admin" with JSON values:
       | id          | ${CTX:planId}         |
       | displayName | Refused ${CTX:planId} |
-      | limits      | <limits>              |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":0,"timeUnit":"MINUTE"}]              |
     Then the response status code should be 400
-    And the response body should contain "<field>"
+    And the JSON response field "errors[0].message" should be "limitCount must be -1 (unlimited) or a positive number for each limit"
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 404
+
+    # A plan whose time amount is zero is refused with the reason and nothing is stored
+    Given I generate a unique resource name from "portal-plan" and store it as "planId"
+    And I generate a unique resource name from "portal-calls" and store it as "meterId"
+    And a unique API Portal resource is created at "/meters" as "admin" with values and stored as "meterId":
+      | id           | ${CTX:meterId}                                                                                  |
+      | displayName  | API calls ${CTX:meterId}                                                                        |
+      | type         | REQUEST_COUNT                                                                                   |
+      | filterFields | [{"field":"Status","eventKey":"response.status"},{"field":"Method","eventKey":"request.verb"}] |
+    When I send an authenticated API Portal "POST" request to "/subscription-plans" as "admin" with JSON values:
+      | id          | ${CTX:planId}         |
+      | displayName | Refused ${CTX:planId} |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":10,"timeUnit":"MINUTE","timeAmount":0}]              |
+    Then the response status code should be 400
+    And the JSON response field "errors[0].message" should be "timeAmount must be a positive number when provided"
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 404
+
+    # A plan limit with an unknown limit type is refused and nothing is stored
+    Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
+    When I send an authenticated API Portal "POST" request to "/subscription-plans" as "admin" with JSON values:
+      | id          | ${CTX:planId}         |
+      | displayName | Refused ${CTX:planId} |
+      | limits      | [{"limitType":"CPU_TIME","limitCount":10,"timeUnit":"MINUTE"}]              |
+    Then the response status code should be 400
+    And the response body should contain "limitType"
     And the response body should not contain "stack"
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the response status code should be 404
 
-    Examples:
-      | problem               | limits                                                               | field      |
-      | an unknown limit type | [{"limitType":"CPU_TIME","limitCount":10,"timeUnit":"MINUTE"}]      | limitType  |
-      | an unknown time unit  | [{"limitType":"REQUEST_COUNT","limitCount":10,"timeUnit":"WEEK"}]   | timeUnit   |
-      | a count of -2         | [{"limitType":"REQUEST_COUNT","limitCount":-2,"timeUnit":"MINUTE"}] | limitCount |
+    # A plan limit with an unknown time unit is refused and nothing is stored
+    Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
+    When I send an authenticated API Portal "POST" request to "/subscription-plans" as "admin" with JSON values:
+      | id          | ${CTX:planId}         |
+      | displayName | Refused ${CTX:planId} |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":10,"timeUnit":"WEEK"}]              |
+    Then the response status code should be 400
+    And the response body should contain "timeUnit"
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 404
 
-  @APIP-CORE-189 @type:negative
-  Scenario: A free plan with a subscription can't be deleted or taken off its API, and the subscription keeps working
+    # A plan limit with a count of -2 is refused and nothing is stored
+    Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
+    When I send an authenticated API Portal "POST" request to "/subscription-plans" as "admin" with JSON values:
+      | id          | ${CTX:planId}         |
+      | displayName | Refused ${CTX:planId} |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":-2,"timeUnit":"MINUTE"}]              |
+    Then the response status code should be 400
+    And the response body should contain "limitCount"
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 404
+
+    # A publisher can read plans but cannot create, change or delete them
+    Given I generate a unique resource name from "portal-plan" and store it as "planId"
+    And I generate a unique resource name from "portal-calls" and store it as "meterId"
+    And a unique API Portal resource is created at "/meters" as "admin" with values and stored as "meterId":
+      | id           | ${CTX:meterId}                                                                                  |
+      | displayName  | API calls ${CTX:meterId}                                                                        |
+      | type         | REQUEST_COUNT                                                                                   |
+      | filterFields | [{"field":"Status","eventKey":"response.status"},{"field":"Method","eventKey":"request.verb"}] |
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}                                                       |
+      | displayName | Shared ${CTX:planId}                                                |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":100,"timeUnit":"DAY"}]  |
+    And I generate a unique resource name from "portal-denied-plan" and store it as "deniedPlanId"
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "POST" request to "/subscription-plans" as "publisher" with JSON values:
+      | id          | ${CTX:deniedPlanId} |
+      | displayName | Denied plan         |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "PUT" request to "/subscription-plans" as "publisher" with JSON values:
+      | id          | ${CTX:planId} |
+      | displayName | Renamed plan  |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "DELETE" request to "/subscription-plans/${CTX:planId}" as "publisher"
+    Then the response status code should be 403
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Shared ${CTX:planId}"
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:deniedPlanId}" as "admin"
+    Then the response status code should be 404
+
+    # A developer can read plans but cannot create, change or delete them
+    Given I generate a unique resource name from "portal-plan" and store it as "planId"
+    And I generate a unique resource name from "portal-calls" and store it as "meterId"
+    And a unique API Portal resource is created at "/meters" as "admin" with values and stored as "meterId":
+      | id           | ${CTX:meterId}                                                                                  |
+      | displayName  | API calls ${CTX:meterId}                                                                        |
+      | type         | REQUEST_COUNT                                                                                   |
+      | filterFields | [{"field":"Status","eventKey":"response.status"},{"field":"Method","eventKey":"request.verb"}] |
+    Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
+      | id          | ${CTX:planId}                                                       |
+      | displayName | Shared ${CTX:planId}                                                |
+      | limits      | [{"limitType":"REQUEST_COUNT","limitCount":100,"timeUnit":"DAY"}]  |
+    And I generate a unique resource name from "portal-denied-plan" and store it as "deniedPlanId"
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "developer"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "POST" request to "/subscription-plans" as "developer" with JSON values:
+      | id          | ${CTX:deniedPlanId} |
+      | displayName | Denied plan         |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "PUT" request to "/subscription-plans" as "developer" with JSON values:
+      | id          | ${CTX:planId} |
+      | displayName | Renamed plan  |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "DELETE" request to "/subscription-plans/${CTX:planId}" as "developer"
+    Then the response status code should be 403
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Shared ${CTX:planId}"
+    When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:deniedPlanId}" as "admin"
+    Then the response status code should be 404
+
+    # A free plan with a subscription can't be deleted or taken off its API, and the subscription keeps working
+    Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
     Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
       | id          | ${CTX:planId}                                                       |
       | displayName | Free ${CTX:planId}                                                  |

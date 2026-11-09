@@ -22,7 +22,8 @@ Feature: Publishing while the API Portal is unavailable
   I want a publish or deprecate that cannot reach the API Portal to fail without changing anything
   So that I can repeat it once the portal is back
 
-  Background:
+  @APIP-047 @type:negative
+  Scenario: Publishing and deprecating fail and change nothing while the API Portal is down, and succeed once it is back
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
     And I generate a unique resource name from "publish-project" and store it as "projectHandle"
@@ -33,18 +34,14 @@ Feature: Publishing while the API Portal is unavailable
     And I generate a unique API context from "/publish" and store it as "apiContext"
     And I generate a unique API version from "v" and store it as "apiVersion"
     And I create a secured REST API "${CTX:apiHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:apiContext}" offering plan "${CTX:planHandle}"
-    And I deploy the "RestApi" "${CTX:apiHandle}" to the gateway via the control plane
-    And I send a "GET" request to "${CTX:apiContext}/" until status 401
     And I generate a unique resource name from "publish-portal" and store it as "portalHandle"
     And I register the API Portal "${CTX:portalHandle}" with the control plane
-
-  @APIP-PUBLISHING-033
-  @type:negative
-  Scenario: Publishing fails and promotes nothing while the API Portal is down
-    Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+    And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
       | displayName         | ${CTX:apiHandle}      |
       | version             | ${CTX:apiVersion}     |
       | subscriptionPlanIds | ["${CTX:planHandle}"] |
+
+    # Publishing fails and promotes nothing while the API Portal is down
     And I stop the API Portal
     When I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
     Then the response status code should be 503
@@ -54,32 +51,17 @@ Feature: Publishing while the API Portal is unavailable
     When I read the draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
     Then the response status code should be 200
 
-  @APIP-PUBLISHING-034
-  @type:negative
-  Scenario: Deprecating fails and leaves the API published while the API Portal is down
-    Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
-      | displayName         | ${CTX:apiHandle}      |
-      | version             | ${CTX:apiVersion}     |
-      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    # The same publish succeeds once the API Portal is back
+    When I start the API Portal and wait until it is ready
     And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
-    And I stop the API Portal
+    Then the response status code should be 201
+    And the API Portal should list the API "${CTX:apiHandle}" with status "PUBLISHED"
+
+    # Deprecating fails and leaves the API published while the API Portal is down
+    Given I stop the API Portal
     When I deprecate the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
     Then the response status code should be 503
     And the JSON response field "code" should be "PUBLICATION_PORTAL_UNAVAILABLE"
     And the publication of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" should have status "PUBLISHED"
     When I start the API Portal and wait until it is ready
     Then the API Portal should list the API "${CTX:apiHandle}" with status "PUBLISHED"
-
-  @APIP-PUBLISHING-035
-  Scenario: The same publish succeeds once the API Portal is back
-    Given I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
-      | displayName         | ${CTX:apiHandle}      |
-      | version             | ${CTX:apiVersion}     |
-      | subscriptionPlanIds | ["${CTX:planHandle}"] |
-    And I stop the API Portal
-    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
-    And the response status code should be 503
-    When I start the API Portal and wait until it is ready
-    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
-    Then the response status code should be 201
-    And the API Portal should list the API "${CTX:apiHandle}" with status "PUBLISHED"

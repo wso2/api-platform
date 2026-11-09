@@ -23,15 +23,14 @@ Feature: Subscription changes are delivered to webhook subscribers, with the tok
   I want an event for every subscription created, switched, suspended, rotated or ended
   So that gateways honour exactly the subscriptions and tokens the portal holds
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-WEBHOOKS-014..016, at the API level. The
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level. The
   # fixture API offers the Gold and Silver plans. A subscriber without a secret is sent no token; one
   # with a secret is sent it encrypted. A refused change sends no event and changes nothing.
 
-  Background:
+  @APIP-052 @type:negative
+  Scenario: A subscription's life is delivered in turn, and a refused plan change sends nothing
+    # A subscription's whole life is delivered, without its token, to a subscriber that has no secret
     Given a REST API is created in the API Portal and stored as "apiId"
-
-  @APIP-WEBHOOKS-014
-  Scenario: A subscription's whole life is delivered, without its token, to a subscriber that has no secret
     Given I generate a unique resource name from "portal-subscription-subscriber" and store it as "subscriberId"
     And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "subscriberId":
       | id          | ${CTX:subscriberId} |
@@ -68,8 +67,8 @@ Feature: Subscription changes are delivered to webhook subscribers, with the tok
     When I wait for an API Portal webhook event "subscription.deleted" containing "${CTX:subscriptionId}"
     Then the JSON response field "data.subscription_id" should be "${CTX:subscriptionId}"
 
-  @APIP-WEBHOOKS-015 @type:negative
-  Scenario: A refused plan change sends no event and leaves the subscription unchanged
+    # A refused plan change sends no event and leaves the subscription unchanged
+    Given a REST API is created in the API Portal and stored as "apiId"
     Given I generate a unique resource name from "portal-refused-change-subscriber" and store it as "subscriberId"
     And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "subscriberId":
       | id          | ${CTX:subscriberId} |
@@ -86,30 +85,8 @@ Feature: Subscription changes are delivered to webhook subscribers, with the tok
     When I send an authenticated API Portal "GET" request to "/subscriptions/${CTX:subscriptionId}" as "developer"
     Then the JSON response field "subscriptionPlanName" should be "Gold"
 
-  @APIP-WEBHOOKS-016 @type:security
-  Scenario: A subscriber with a secret is sent the rotated token encrypted with it, never in plain text
-    Given I generate a unique resource name from "portal-encrypted-token-subscriber" and store it as "subscriberId"
-    And I generate a unique value from "portal-token-secret" and store it as "secretValue"
-    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "subscriberId":
-      | id          | ${CTX:subscriberId} |
-      | displayName | ${CTX:subscriberId} |
-      | targetUrl   | http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook |
-      | events      | ["subscription.*"] |
-      | secret      | ${CTX:secretValue} |
-    And a developer subscription for API "${CTX:apiId}" using plan "Gold" is created and stored as "subscriptionId"
-    When I send an authenticated API Portal "POST" request to "/subscriptions/${CTX:subscriptionId}/regenerate-token" as "developer"
-    Then the response status code should be 200
-    And I store the JSON response field "subscriptionToken" as "rotatedToken"
-    When I wait for an API Portal webhook event "subscription.token_regenerated" containing "${CTX:subscriptionId}"
-    Then the JSON response array field "encrypted_fields" should have 1 item
-    And the JSON response field "encrypted_fields[0]" should be "token"
-    And the response body should not contain "${CTX:rotatedToken}"
-    And the API Portal webhook encrypted field "data.token" should decrypt to "${CTX:rotatedToken}" using secret "${CTX:secretValue}"
-
-  # APIP-WEBHOOKS-027: a plan change names the plan it left, and resuming a suspended subscription is
-  # delivered as an update back to ACTIVE.
-  @APIP-WEBHOOKS-027
-  Scenario: A resumed subscription is delivered as updated to ACTIVE, and a plan change names the previous plan
+    # A resumed subscription is delivered as updated to ACTIVE, and a plan change names the previous plan
+    Given a REST API is created in the API Portal and stored as "apiId"
     Given I generate a unique resource name from "portal-resume-subscriber" and store it as "subscriberId"
     And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "subscriberId":
       | id          | ${CTX:subscriberId} |

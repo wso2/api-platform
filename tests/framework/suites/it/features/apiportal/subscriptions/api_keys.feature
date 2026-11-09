@@ -23,16 +23,15 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
   I want an API key for an API that I can rotate, link to an application and revoke
   So that a leaked key can be replaced or stopped at once, and keys are never shown again after creation
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-089..092 and 190..196, at the API
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API
   # level. Key listings must never carry the key value. Every refusal is paired with the request
   # that succeeds for the owner. A key belongs to the user who generated it, so the administrator is
   # the second user of the ownership scenario.
 
-  Background:
+  @APIP-026 @type:smoke
+  Scenario: A publisher generates, rotates and revokes API keys, with and without an expiry
+    # A publisher manages an API key from generation to revocation
     Given a REST API is created in the API Portal and stored as "apiId"
-
-  @APIP-CORE-089 @type:smoke
-  Scenario: A publisher manages an API key from generation to revocation
     When a publisher API key for API "${CTX:apiId}" is generated and stored as "keyId"
     Then the response status code should be 201
     And the JSON response should have field "key"
@@ -65,150 +64,60 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
       | keyId | ${CTX:keyId} |
     Then the response status code should be 409
 
-  @APIP-CORE-090
-  Scenario: A developer links an API key to an application and unlinks it
-    Given I generate a unique resource name from "portal-key-app" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
-      | id          | ${CTX:appId}        |
-      | displayName | Key Application     |
-      | description | Holds linked keys   |
-    And a "developer" API key for API "${CTX:apiId}" is generated and stored as "keyId"
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/associate" as "developer" with JSON values:
-      | keyId | ${CTX:keyId} |
-      | appId | ${CTX:appId} |
-    Then the response status code should be 200
-    And the JSON response field "application.id" should be "${CTX:appId}"
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys?appId=${CTX:appId}" as "developer"
-    Then the response status code should be 200
-    And the JSON response array "list" should contain an item with "id" equal to "${CTX:keyId}"
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/dissociate" as "developer" with JSON values:
-      | keyId | ${CTX:keyId} |
-    Then the response status code should be 204
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys?appId=${CTX:appId}" as "developer"
-    Then the response status code should be 200
-    And the JSON response array "list" should not contain an item with "id" equal to "${CTX:keyId}"
-
-  @APIP-CORE-091 @type:negative
-  Scenario: A revoked API key cannot be linked to an application
-    Given I generate a unique resource name from "portal-revoked-key-app" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
-      | id          | ${CTX:appId}          |
-      | displayName | Revoked Key App       |
-      | description | Refuses revoked keys  |
-    And a "developer" API key for API "${CTX:apiId}" is generated and stored as "keyId"
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/revoke" as "developer" with JSON values:
-      | keyId | ${CTX:keyId} |
-    Then the response status code should be 204
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/associate" as "developer" with JSON values:
-      | keyId | ${CTX:keyId} |
-      | appId | ${CTX:appId} |
-    Then the response status code should be 409
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys?appId=${CTX:appId}" as "developer"
-    Then the JSON response array "list" should not contain an item with "id" equal to "${CTX:keyId}"
-
-  @APIP-CORE-092 @type:security
-  Scenario: API key requests that are not allowed or that name nothing are refused
-    Given I generate a unique resource name from "portal-missing-key" and store it as "missingKeyId"
-    When I send an unauthenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys"
-    Then the response status code should be 401
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "publisher"
-    Then the response status code should be 200
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "publisher" with JSON values:
-      | id | Invalid ID! |
-    Then the response status code should be 400
-    And the response body should not contain "stack"
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/regenerate" as "publisher" with JSON values:
-      | keyId | ${CTX:missingKeyId} |
-    Then the response status code should be 404
-    When I send an authenticated API Portal "GET" request to "/api-keys?limit=0" as "publisher"
-    Then the response status code should be 400
-    When I send an authenticated API Portal "GET" request to "/api-keys?limit=100" as "publisher"
-    Then the response status code should be 200
-
-  @APIP-CORE-190 @type:security
-  Scenario: Another user can neither see, rotate, revoke nor link a developer's API key
-    Given I generate a unique resource name from "portal-other-user-app" and store it as "adminAppId"
-    And a unique API Portal resource is created at "/applications" as "admin" with values and stored as "adminAppId":
-      | id          | ${CTX:adminAppId}     |
-      | displayName | Other User App         |
-      | description | Owned by another user  |
-    And a "developer" API key for API "${CTX:apiId}" is generated and stored as "keyId"
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "admin"
-    Then the response status code should be 200
-    And the JSON response array "list" should not contain an item with "id" equal to "${CTX:keyId}"
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/regenerate" as "admin" with JSON values:
-      | keyId | ${CTX:keyId} |
-    Then the response status code should be 404
-    And the JSON response field "key" should not exist
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/revoke" as "admin" with JSON values:
-      | keyId | ${CTX:keyId} |
-    Then the response status code should be 404
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/associate" as "admin" with JSON values:
-      | keyId | ${CTX:keyId}      |
-      | appId | ${CTX:adminAppId} |
-    Then the response status code should be 404
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
-    Then the response status code should be 200
-    And the JSON response array "list" item with "id" equal to "${CTX:keyId}" should have "status" equal to "ACTIVE"
-    And the JSON response array "list" item with "id" equal to "${CTX:keyId}" should have "appId" equal to "null"
-
-  @APIP-CORE-191 @type:security
-  Scenario: API key requests without a session are refused
-    When I send an unauthenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate"
-    Then the response status code should be 401
-    And the JSON response field "key" should not exist
-    When I send an unauthenticated API Portal "GET" request to "/api-keys"
-    Then the response status code should be 401
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
-    Then the JSON response array field "list" should have 0 items
-    When a "developer" API key for API "${CTX:apiId}" is generated and stored as "keyId"
-    Then the response status code should be 201
-    When I send an authenticated API Portal "GET" request to "/api-keys" as "developer"
-    Then the response status code should be 200
-    And the JSON response array "list" should contain an item with "id" equal to "${CTX:keyId}"
-
-  @APIP-CORE-192
-  Scenario Outline: A key with <case> is issued with that expiry
+    # A key with an ISO time with an offset is issued with that expiry
+    Given a REST API is created in the API Portal and stored as "apiId"
     When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON body:
       """
-      {"id": "<id>", "expiresAt": <expiresAt>}
+      {"id": "iso-offset-key", "expiresAt": "2035-01-01T05:30:00+05:30"}
       """
-    And I register API Portal API key "<id>" of API "${CTX:apiId}" owned by "developer" for cleanup
+    And I register API Portal API key "iso-offset-key" of API "${CTX:apiId}" owned by "developer" for cleanup
     Then the response status code should be 201
     And the JSON response should have field "key"
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
-    Then the JSON response array "list" item with "id" equal to "<id>" should have "status" equal to "ACTIVE"
-    And the JSON response array "list" item with "id" equal to "<id>" should have "expiresAt" equal to "<stored>"
+    Then the JSON response array "list" item with "id" equal to "iso-offset-key" should have "status" equal to "ACTIVE"
+    And the JSON response array "list" item with "id" equal to "iso-offset-key" should have "expiresAt" equal to "2035-01-01T00:00:00.000Z"
 
-    Examples:
-      | case                        | id                | expiresAt                   | stored                   |
-      | an ISO time with an offset  | iso-offset-key    | "2035-01-01T05:30:00+05:30" | 2035-01-01T00:00:00.000Z |
-      | an expiry in epoch seconds  | epoch-seconds-key | 2051222400                  | 2035-01-01T00:00:00.000Z |
-      | an expiry in epoch millis   | epoch-millis-key  | 2051222400000               | 2035-01-01T00:00:00.000Z |
-      | the longest id, 128 letters | k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde | "2035-01-01T00:00:00Z" | 2035-01-01T00:00:00.000Z |
-
-  @APIP-CORE-193 @type:negative
-  Scenario Outline: A key whose <problem> is refused and no key is issued
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON values:
-      | id        | <id>        |
-      | expiresAt | <expiresAt> |
-    And I register API Portal API key "<id>" of API "${CTX:apiId}" owned by "developer" for cleanup
-    Then the response status code should be 400
-    And the JSON response field "key" should not exist
-    And the response body should not contain "stack"
+    # A key with an expiry in epoch seconds is issued with that expiry
+    Given a REST API is created in the API Portal and stored as "apiId"
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON body:
+      """
+      {"id": "epoch-seconds-key", "expiresAt": 2051222400}
+      """
+    And I register API Portal API key "epoch-seconds-key" of API "${CTX:apiId}" owned by "developer" for cleanup
+    Then the response status code should be 201
+    And the JSON response should have field "key"
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
-    Then the response status code should be 200
-    And the JSON response array field "list" should have 0 items
+    Then the JSON response array "list" item with "id" equal to "epoch-seconds-key" should have "status" equal to "ACTIVE"
+    And the JSON response array "list" item with "id" equal to "epoch-seconds-key" should have "expiresAt" equal to "2035-01-01T00:00:00.000Z"
 
-    Examples:
-      | problem                         | id          | expiresAt            |
-      | id has a space and capitals     | Bad Id      | 2035-01-01T00:00:00Z |
-      | id is 129 characters            | k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdex | 2035-01-01T00:00:00Z |
-      | expiry has no time zone         | no-zone-key | 2035-01-01T00:00:00  |
-      | expiry is after the year 2100   | late-key    | 2101-01-01T00:00:00Z |
+    # A key with an expiry in epoch millis is issued with that expiry
+    Given a REST API is created in the API Portal and stored as "apiId"
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON body:
+      """
+      {"id": "epoch-millis-key", "expiresAt": 2051222400000}
+      """
+    And I register API Portal API key "epoch-millis-key" of API "${CTX:apiId}" owned by "developer" for cleanup
+    Then the response status code should be 201
+    And the JSON response should have field "key"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
+    Then the JSON response array "list" item with "id" equal to "epoch-millis-key" should have "status" equal to "ACTIVE"
+    And the JSON response array "list" item with "id" equal to "epoch-millis-key" should have "expiresAt" equal to "2035-01-01T00:00:00.000Z"
 
-  @APIP-CORE-195
-  Scenario: A key without an expiry never expires, and both key listings page through their results
+    # A key with the longest id, 128 letters is issued with that expiry
+    Given a REST API is created in the API Portal and stored as "apiId"
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON body:
+      """
+      {"id": "k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde", "expiresAt": "2035-01-01T00:00:00Z"}
+      """
+    And I register API Portal API key "k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde" of API "${CTX:apiId}" owned by "developer" for cleanup
+    Then the response status code should be 201
+    And the JSON response should have field "key"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
+    Then the JSON response array "list" item with "id" equal to "k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde" should have "status" equal to "ACTIVE"
+    And the JSON response array "list" item with "id" equal to "k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde" should have "expiresAt" equal to "2035-01-01T00:00:00.000Z"
+
+    # A key without an expiry never expires, and both key listings page through their results
+    Given a REST API is created in the API Portal and stored as "apiId"
     Given a "developer" API key for API "${CTX:apiId}" is generated and stored as "firstKeyId"
     And a "developer" API key for API "${CTX:apiId}" is generated and stored as "secondKeyId"
     And a "developer" API key for API "${CTX:apiId}" is generated and stored as "thirdKeyId"
@@ -234,3 +143,161 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
     And the JSON response array field "list" should have 1 item
     And the JSON response field "pagination.limit" should be 1
     And the JSON response field "pagination.total" should be greater than 2
+
+  @APIP-026 @type:negative @type:security
+  Scenario: Invalid API keys are refused, and a key is linked to an application until it is revoked
+    # A key whose id has a space and capitals is refused and no key is issued
+    Given a REST API is created in the API Portal and stored as "apiId"
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON values:
+      | id        | Bad Id        |
+      | expiresAt | 2035-01-01T00:00:00Z |
+    And I register API Portal API key "Bad Id" of API "${CTX:apiId}" owned by "developer" for cleanup
+    Then the response status code should be 400
+    And the JSON response field "key" should not exist
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
+    Then the response status code should be 200
+    And the JSON response array field "list" should have 0 items
+
+    # A key whose id is 129 characters is refused and no key is issued
+    Given a REST API is created in the API Portal and stored as "apiId"
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON values:
+      | id        | k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdex        |
+      | expiresAt | 2035-01-01T00:00:00Z |
+    And I register API Portal API key "k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdex" of API "${CTX:apiId}" owned by "developer" for cleanup
+    Then the response status code should be 400
+    And the JSON response field "key" should not exist
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
+    Then the response status code should be 200
+    And the JSON response array field "list" should have 0 items
+
+    # A key whose expiry has no time zone is refused and no key is issued
+    Given a REST API is created in the API Portal and stored as "apiId"
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON values:
+      | id        | no-zone-key        |
+      | expiresAt | 2035-01-01T00:00:00 |
+    And I register API Portal API key "no-zone-key" of API "${CTX:apiId}" owned by "developer" for cleanup
+    Then the response status code should be 400
+    And the JSON response field "key" should not exist
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
+    Then the response status code should be 200
+    And the JSON response array field "list" should have 0 items
+
+    # A key whose expiry is after the year 2100 is refused and no key is issued
+    Given a REST API is created in the API Portal and stored as "apiId"
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON values:
+      | id        | late-key        |
+      | expiresAt | 2101-01-01T00:00:00Z |
+    And I register API Portal API key "late-key" of API "${CTX:apiId}" owned by "developer" for cleanup
+    Then the response status code should be 400
+    And the JSON response field "key" should not exist
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
+    Then the response status code should be 200
+    And the JSON response array field "list" should have 0 items
+
+    # API key requests that are not allowed or that name nothing are refused
+    Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name from "portal-missing-key" and store it as "missingKeyId"
+    When I send an unauthenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys"
+    Then the response status code should be 401
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "publisher" with JSON values:
+      | id | Invalid ID! |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/regenerate" as "publisher" with JSON values:
+      | keyId | ${CTX:missingKeyId} |
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/api-keys?limit=0" as "publisher"
+    Then the response status code should be 400
+    When I send an authenticated API Portal "GET" request to "/api-keys?limit=100" as "publisher"
+    Then the response status code should be 200
+
+    # A developer links an API key to an application and unlinks it
+    Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name from "portal-key-app" and store it as "appId"
+    And a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
+      | id          | ${CTX:appId}        |
+      | displayName | Key Application     |
+      | description | Holds linked keys   |
+    And a "developer" API key for API "${CTX:apiId}" is generated and stored as "keyId"
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/associate" as "developer" with JSON values:
+      | keyId | ${CTX:keyId} |
+      | appId | ${CTX:appId} |
+    Then the response status code should be 200
+    And the JSON response field "application.id" should be "${CTX:appId}"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys?appId=${CTX:appId}" as "developer"
+    Then the response status code should be 200
+    And the JSON response array "list" should contain an item with "id" equal to "${CTX:keyId}"
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/dissociate" as "developer" with JSON values:
+      | keyId | ${CTX:keyId} |
+    Then the response status code should be 204
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys?appId=${CTX:appId}" as "developer"
+    Then the response status code should be 200
+    And the JSON response array "list" should not contain an item with "id" equal to "${CTX:keyId}"
+
+    # A revoked API key cannot be linked to an application
+    Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name from "portal-revoked-key-app" and store it as "appId"
+    And a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
+      | id          | ${CTX:appId}          |
+      | displayName | Revoked Key App       |
+      | description | Refuses revoked keys  |
+    And a "developer" API key for API "${CTX:apiId}" is generated and stored as "keyId"
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/revoke" as "developer" with JSON values:
+      | keyId | ${CTX:keyId} |
+    Then the response status code should be 204
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/associate" as "developer" with JSON values:
+      | keyId | ${CTX:keyId} |
+      | appId | ${CTX:appId} |
+    Then the response status code should be 409
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys?appId=${CTX:appId}" as "developer"
+    Then the JSON response array "list" should not contain an item with "id" equal to "${CTX:keyId}"
+
+  @APIP-027 @type:security
+  Scenario: An API key belongs to its owner and needs a session
+    # Another user can neither see, rotate, revoke nor link a developer's API key
+    Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name from "portal-other-user-app" and store it as "adminAppId"
+    And a unique API Portal resource is created at "/applications" as "admin" with values and stored as "adminAppId":
+      | id          | ${CTX:adminAppId}     |
+      | displayName | Other User App         |
+      | description | Owned by another user  |
+    And a "developer" API key for API "${CTX:apiId}" is generated and stored as "keyId"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "admin"
+    Then the response status code should be 200
+    And the JSON response array "list" should not contain an item with "id" equal to "${CTX:keyId}"
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/regenerate" as "admin" with JSON values:
+      | keyId | ${CTX:keyId} |
+    Then the response status code should be 404
+    And the JSON response field "key" should not exist
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/revoke" as "admin" with JSON values:
+      | keyId | ${CTX:keyId} |
+    Then the response status code should be 404
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/associate" as "admin" with JSON values:
+      | keyId | ${CTX:keyId}      |
+      | appId | ${CTX:adminAppId} |
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
+    Then the response status code should be 200
+    And the JSON response array "list" item with "id" equal to "${CTX:keyId}" should have "status" equal to "ACTIVE"
+    And the JSON response array "list" item with "id" equal to "${CTX:keyId}" should have "appId" equal to "null"
+
+    # API key requests without a session are refused
+    Given a REST API is created in the API Portal and stored as "apiId"
+    When I send an unauthenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate"
+    Then the response status code should be 401
+    And the JSON response field "key" should not exist
+    When I send an unauthenticated API Portal "GET" request to "/api-keys"
+    Then the response status code should be 401
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
+    Then the JSON response array field "list" should have 0 items
+    When a "developer" API key for API "${CTX:apiId}" is generated and stored as "keyId"
+    Then the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/api-keys" as "developer"
+    Then the response status code should be 200
+    And the JSON response array "list" should contain an item with "id" equal to "${CTX:keyId}"

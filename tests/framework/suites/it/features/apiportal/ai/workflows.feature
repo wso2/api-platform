@@ -23,12 +23,14 @@ Feature: API workflows are managed per view and shown to people and agents by th
   I want to author multi-step API workflows in a view, publish or draft them, and hide them from agents
   So that developers and AI agents see exactly the workflows I mean them to
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-076..080, 152..156, 161 and 162. Each
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml). Each
   # scenario uses its own view, so its workflows and its agent routes belong to it alone. The
   # gallery page and the agent routes are anonymous. A draft is shown nowhere; a hidden workflow is
   # shown to people but to no agent.
 
-  Background:
+  @APIP-021 @type:smoke
+  Scenario: A publisher manages an API workflow, its agent visibility, its Arazzo document and its prompt
+    # A publisher manages an API workflow from creation to deletion
     Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
     And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
     And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
@@ -38,9 +40,6 @@ Feature: API workflows are managed per view and shown to people and agents by th
       | id          | ${CTX:viewId}      |
       | displayName | Workflow View      |
       | labels      | ["${CTX:labelId}"] |
-
-  @APIP-CORE-076 @type:smoke
-  Scenario: A publisher manages an API workflow from creation to deletion
     Given I generate a unique resource name from "portal-workflow" and store it as "workflowId"
     And I generate a unique resource name from "portal-hidden-workflow" and store it as "hiddenWorkflowId"
     When a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
@@ -75,8 +74,181 @@ Feature: API workflows are managed per view and shown to people and agents by th
     When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}/api-workflows/${CTX:workflowId}" as "publisher"
     Then the response status code should be 404
 
-  @APIP-CORE-077
-  Scenario: A publisher generates an agent prompt for a workflow, which needs a description
+    # A PUBLISHED workflow that is VISIBLE to agents is in the gallery and to agents
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
+    Given I generate a unique resource name from "portal-shown-workflow" and store it as "workflowId"
+    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
+      | id                    | ${CTX:workflowId}  |
+      | displayName           | ${CTX:workflowId}  |
+      | description           | Shown by its status |
+      | status                | PUBLISHED           |
+      | agentVisibility       | VISIBLE       |
+      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:workflowId}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows.md"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:workflowId}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}.md"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/prompt"
+    Then the response status code should be 200
+
+    # A PUBLISHED workflow that is HIDDEN to agents is in the gallery but to no agent
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
+    Given I generate a unique resource name from "portal-shown-workflow" and store it as "workflowId"
+    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
+      | id                    | ${CTX:workflowId}  |
+      | displayName           | ${CTX:workflowId}  |
+      | description           | Shown by its status |
+      | status                | PUBLISHED           |
+      | agentVisibility       | HIDDEN       |
+      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:workflowId}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows.md"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:workflowId}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}.md"
+    Then the response status code should be 404
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/prompt"
+    Then the response status code should be 404
+
+    # A DRAFT workflow that is VISIBLE to agents is nowhere
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
+    Given I generate a unique resource name from "portal-shown-workflow" and store it as "workflowId"
+    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
+      | id                    | ${CTX:workflowId}  |
+      | displayName           | ${CTX:workflowId}  |
+      | description           | Shown by its status |
+      | status                | DRAFT           |
+      | agentVisibility       | VISIBLE       |
+      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:workflowId}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows.md"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:workflowId}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}.md"
+    Then the response status code should be 404
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/prompt"
+    Then the response status code should be 404
+
+    # An ARAZZO workflow's Arazzo document is served
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
+    Given I generate a unique resource name from "portal-arazzo-workflow" and store it as "workflowId"
+    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
+      | id          | ${CTX:workflowId}  |
+      | displayName | ${CTX:workflowId}  |
+      | description | Has a document     |
+      | status      | PUBLISHED          |
+      | contentType | ARAZZO     |
+      | apiWorkflowDefinition      | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]}          |
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}.md"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/arazzo.json"
+    Then the response status code should be 200
+
+    # An MD workflow's Arazzo document is not found
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
+    Given I generate a unique resource name from "portal-arazzo-workflow" and store it as "workflowId"
+    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
+      | id          | ${CTX:workflowId}  |
+      | displayName | ${CTX:workflowId}  |
+      | description | Has a document     |
+      | status      | PUBLISHED          |
+      | contentType | MD     |
+      | markdownContent      | # Onboarding steps          |
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}.md"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/arazzo.json"
+    Then the response status code should be 404
+
+    # A workflow's content switches from an Arazzo document to Markdown
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
+    Given I generate a unique resource name from "portal-switched-workflow" and store it as "workflowId"
+    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
+      | id                    | ${CTX:workflowId} |
+      | displayName           | Switched Workflow |
+      | description           | Changes its format |
+      | status                | PUBLISHED         |
+      | contentType           | ARAZZO            |
+      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/arazzo.json"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "PUT" request to "/views/${CTX:viewId}/api-workflows/${CTX:workflowId}" as "publisher" with JSON values:
+      | contentType     | MD                         |
+      | markdownContent | # Booking steps for agents |
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}/api-workflows/${CTX:workflowId}" as "publisher"
+    Then the JSON response field "contentType" should be "MD"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}.md"
+    Then the response status code should be 200
+    And the response body should contain "Booking steps for agents"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/arazzo.json"
+    Then the response status code should be 404
+
+    # A publisher generates an agent prompt for a workflow, which needs a description
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
     When I send an authenticated API Portal "POST" request to "/views/${CTX:viewId}/api-workflows/generate-prompt" as "publisher" with JSON values:
       | displayName | Prompt Workflow           |
       | description | Generates a useful prompt |
@@ -88,8 +260,219 @@ Feature: API workflows are managed per view and shown to people and agents by th
       | displayName | Missing Description |
     Then the response status code should be 400
 
-  @APIP-CORE-078 @type:negative
-  Scenario: Workflow requests that repeat an id, name nothing or come from a developer are refused
+    # A view's llms.txt lists only its published workflows that agents may see
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
+    Given I generate a unique resource name from "portal-listed-workflow" and store it as "workflowId"
+    And I generate a unique resource name from "portal-hidden-workflow" and store it as "hiddenWorkflowId"
+    And I generate a unique resource name from "portal-draft-workflow" and store it as "draftWorkflowId"
+    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
+      | id                    | ${CTX:workflowId}           |
+      | displayName           | Listed Workflow             |
+      | description           | Listed ${CTX:workflowId}    |
+      | status                | PUBLISHED                   |
+      | agentVisibility       | VISIBLE                     |
+      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
+    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "hiddenWorkflowId":
+      | id                    | ${CTX:hiddenWorkflowId}        |
+      | displayName           | Hidden Workflow                |
+      | description           | Hidden ${CTX:hiddenWorkflowId} |
+      | status                | PUBLISHED                      |
+      | agentVisibility       | HIDDEN                         |
+      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
+    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "draftWorkflowId":
+      | id                    | ${CTX:draftWorkflowId}       |
+      | displayName           | Draft Workflow               |
+      | description           | Draft ${CTX:draftWorkflowId} |
+      | status                | DRAFT                        |
+      | agentVisibility       | VISIBLE                      |
+      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/llms.txt"
+    Then the response status code should be 200
+    And the response body should contain "## API Workflows"
+    And the response body should contain "Listed ${CTX:workflowId}"
+    And the response body should not contain "Hidden ${CTX:hiddenWorkflowId}"
+    And the response body should not contain "Draft ${CTX:draftWorkflowId}"
+
+  @APIP-021 @type:negative
+  Scenario: Invalid workflow requests are refused and the workflow is unchanged
+    # A workflow created with an id holding a space is refused and stores nothing, while a YAML definition is accepted
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
+    Given I generate a unique resource name from "portal-invalid-workflow" and store it as "workflowId"
+    When I send an authenticated API Portal "POST" request to "/views/${CTX:viewId}/api-workflows" as "publisher" with JSON values:
+      | id                    | bad id ${CTX:workflowId}                  |
+      | displayName           | Invalid Workflow      |
+      | description           | Refused on create     |
+      | status               | PUBLISHED               |
+      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]}          |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}/api-workflows" as "publisher"
+    Then the response body should not contain "Invalid Workflow"
+    When a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
+      | id                    | ${CTX:workflowId}  |
+      | displayName           | Valid Workflow      |
+      | description           | Accepted on create  |
+      | status                | PUBLISHED           |
+      | apiWorkflowDefinition | arazzo: 1.0.0       |
+    Then the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/arazzo.json"
+    Then the response status code should be 200
+    And the response body should contain "arazzo"
+
+    # A workflow created with an unknown content type is refused and stores nothing, while a YAML definition is accepted
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
+    Given I generate a unique resource name from "portal-invalid-workflow" and store it as "workflowId"
+    When I send an authenticated API Portal "POST" request to "/views/${CTX:viewId}/api-workflows" as "publisher" with JSON values:
+      | id                    | ${CTX:workflowId}                  |
+      | displayName           | Invalid Workflow      |
+      | description           | Refused on create     |
+      | contentType               | PDF               |
+      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]}          |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}/api-workflows" as "publisher"
+    Then the response body should not contain "Invalid Workflow"
+    When a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
+      | id                    | ${CTX:workflowId}  |
+      | displayName           | Valid Workflow      |
+      | description           | Accepted on create  |
+      | status                | PUBLISHED           |
+      | apiWorkflowDefinition | arazzo: 1.0.0       |
+    Then the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/arazzo.json"
+    Then the response status code should be 200
+    And the response body should contain "arazzo"
+
+    # A workflow created with an unknown status is refused and stores nothing, while a YAML definition is accepted
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
+    Given I generate a unique resource name from "portal-invalid-workflow" and store it as "workflowId"
+    When I send an authenticated API Portal "POST" request to "/views/${CTX:viewId}/api-workflows" as "publisher" with JSON values:
+      | id                    | ${CTX:workflowId}                  |
+      | displayName           | Invalid Workflow      |
+      | description           | Refused on create     |
+      | status               | ARCHIVED               |
+      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]}          |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}/api-workflows" as "publisher"
+    Then the response body should not contain "Invalid Workflow"
+    When a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
+      | id                    | ${CTX:workflowId}  |
+      | displayName           | Valid Workflow      |
+      | description           | Accepted on create  |
+      | status                | PUBLISHED           |
+      | apiWorkflowDefinition | arazzo: 1.0.0       |
+    Then the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/arazzo.json"
+    Then the response status code should be 200
+    And the response body should contain "arazzo"
+
+    # A workflow created with an unknown agent visibility is refused and stores nothing, while a YAML definition is accepted
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
+    Given I generate a unique resource name from "portal-invalid-workflow" and store it as "workflowId"
+    When I send an authenticated API Portal "POST" request to "/views/${CTX:viewId}/api-workflows" as "publisher" with JSON values:
+      | id                    | ${CTX:workflowId}                  |
+      | displayName           | Invalid Workflow      |
+      | description           | Refused on create     |
+      | agentVisibility               | SECRET               |
+      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]}          |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}/api-workflows" as "publisher"
+    Then the response body should not contain "Invalid Workflow"
+    When a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
+      | id                    | ${CTX:workflowId}  |
+      | displayName           | Valid Workflow      |
+      | description           | Accepted on create  |
+      | status                | PUBLISHED           |
+      | apiWorkflowDefinition | arazzo: 1.0.0       |
+    Then the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/arazzo.json"
+    Then the response status code should be 200
+    And the response body should contain "arazzo"
+
+    # A workflow created with a definition that is not JSON or YAML is refused and stores nothing, while a YAML definition is accepted
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
+    Given I generate a unique resource name from "portal-invalid-workflow" and store it as "workflowId"
+    When I send an authenticated API Portal "POST" request to "/views/${CTX:viewId}/api-workflows" as "publisher" with JSON values:
+      | id                    | ${CTX:workflowId}                  |
+      | displayName           | Invalid Workflow      |
+      | description           | Refused on create     |
+      | status               | PUBLISHED               |
+      | apiWorkflowDefinition | {not: [valid          |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}/api-workflows" as "publisher"
+    Then the response body should not contain "Invalid Workflow"
+    When a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
+      | id                    | ${CTX:workflowId}  |
+      | displayName           | Valid Workflow      |
+      | description           | Accepted on create  |
+      | status                | PUBLISHED           |
+      | apiWorkflowDefinition | arazzo: 1.0.0       |
+    Then the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/arazzo.json"
+    Then the response status code should be 200
+    And the response body should contain "arazzo"
+
+    # Workflow requests that repeat an id, name nothing or come from a developer are refused
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
     Given I generate a unique resource name from "portal-guarded-workflow" and store it as "workflowId"
     And I generate a unique resource name from "portal-missing-view" and store it as "missingViewId"
     And I generate a unique resource name from "portal-missing-workflow" and store it as "missingWorkflowId"
@@ -124,163 +507,16 @@ Feature: API workflows are managed per view and shown to people and agents by th
     When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}/api-workflows/${CTX:developerWorkflowId}" as "publisher"
     Then the response status code should be 404
 
-  @APIP-CORE-079
-  Scenario Outline: A <status> workflow that is <visibility> to agents is <shown>
-    Given I generate a unique resource name from "portal-shown-workflow" and store it as "workflowId"
-    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
-      | id                    | ${CTX:workflowId}  |
-      | displayName           | ${CTX:workflowId}  |
-      | description           | Shown by its status |
-      | status                | <status>           |
-      | agentVisibility       | <visibility>       |
-      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows"
-    Then the response status code should be 200
-    And the response body should <in gallery> "${CTX:workflowId}"
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows.md"
-    Then the response status code should be 200
-    And the response body should <in agent catalog> "${CTX:workflowId}"
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}.md"
-    Then the response status code should be <agent page>
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/prompt"
-    Then the response status code should be <agent page>
-
-    Examples:
-      | status    | visibility | shown                                | in gallery  | in agent catalog | agent page |
-      | PUBLISHED | VISIBLE    | in the gallery and to agents         | contain     | contain          | 200        |
-      | PUBLISHED | HIDDEN     | in the gallery but to no agent       | contain     | not contain      | 404        |
-      | DRAFT     | VISIBLE    | nowhere                              | not contain | not contain      | 404        |
-
-  @APIP-CORE-080
-  Scenario Outline: An <content type> workflow's Arazzo document is <served>
-    Given I generate a unique resource name from "portal-arazzo-workflow" and store it as "workflowId"
-    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
-      | id          | ${CTX:workflowId}  |
-      | displayName | ${CTX:workflowId}  |
-      | description | Has a document     |
-      | status      | PUBLISHED          |
-      | contentType | <content type>     |
-      | <body>      | <content>          |
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}.md"
-    Then the response status code should be 200
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/arazzo.json"
-    Then the response status code should be <arazzo status>
-
-    Examples:
-      | content type | served    | body                  | content                                  | arazzo status |
-      | ARAZZO       | served    | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} | 200           |
-      | MD           | not found | markdownContent       | # Onboarding steps                       | 404           |
-
-  @APIP-CORE-154
-  Scenario: A workflow's content switches from an Arazzo document to Markdown
-    Given I generate a unique resource name from "portal-switched-workflow" and store it as "workflowId"
-    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
-      | id                    | ${CTX:workflowId} |
-      | displayName           | Switched Workflow |
-      | description           | Changes its format |
-      | status                | PUBLISHED         |
-      | contentType           | ARAZZO            |
-      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/arazzo.json"
-    Then the response status code should be 200
-    When I send an authenticated API Portal "PUT" request to "/views/${CTX:viewId}/api-workflows/${CTX:workflowId}" as "publisher" with JSON values:
-      | contentType     | MD                         |
-      | markdownContent | # Booking steps for agents |
-    Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}/api-workflows/${CTX:workflowId}" as "publisher"
-    Then the JSON response field "contentType" should be "MD"
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}.md"
-    Then the response status code should be 200
-    And the response body should contain "Booking steps for agents"
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/arazzo.json"
-    Then the response status code should be 404
-
-  @APIP-CORE-155
-  Scenario: A view's llms.txt lists only its published workflows that agents may see
-    Given I generate a unique resource name from "portal-listed-workflow" and store it as "workflowId"
-    And I generate a unique resource name from "portal-hidden-workflow" and store it as "hiddenWorkflowId"
-    And I generate a unique resource name from "portal-draft-workflow" and store it as "draftWorkflowId"
-    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
-      | id                    | ${CTX:workflowId}           |
-      | displayName           | Listed Workflow             |
-      | description           | Listed ${CTX:workflowId}    |
-      | status                | PUBLISHED                   |
-      | agentVisibility       | VISIBLE                     |
-      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
-    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "hiddenWorkflowId":
-      | id                    | ${CTX:hiddenWorkflowId}        |
-      | displayName           | Hidden Workflow                |
-      | description           | Hidden ${CTX:hiddenWorkflowId} |
-      | status                | PUBLISHED                      |
-      | agentVisibility       | HIDDEN                         |
-      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
-    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "draftWorkflowId":
-      | id                    | ${CTX:draftWorkflowId}       |
-      | displayName           | Draft Workflow               |
-      | description           | Draft ${CTX:draftWorkflowId} |
-      | status                | DRAFT                        |
-      | agentVisibility       | VISIBLE                      |
-      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/llms.txt"
-    Then the response status code should be 200
-    And the response body should contain "## API Workflows"
-    And the response body should contain "Listed ${CTX:workflowId}"
-    And the response body should not contain "Hidden ${CTX:hiddenWorkflowId}"
-    And the response body should not contain "Draft ${CTX:draftWorkflowId}"
-
-  @APIP-CORE-156 @known-issue
-  Scenario: Each workflow entry in a view's llms.txt shows the workflow's name and links to its page
-    # Known issue: the llms.txt template reads "name" and "apiWorkflowId", which the workflow has not,
-    # so every entry renders with an empty name and a link to ".../api-workflows/.md".
-    Given I generate a unique resource name from "portal-linked-workflow" and store it as "workflowId"
-    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
-      | id                    | ${CTX:workflowId}        |
-      | displayName           | Linked ${CTX:workflowId} |
-      | description           | Has a working link       |
-      | status                | PUBLISHED                |
-      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/llms.txt"
-    Then the response status code should be 200
-    And the response body should contain "[Linked ${CTX:workflowId}]("
-    And the response body should contain "/api-workflows/${CTX:workflowId}.md"
-    And the response body should not contain "/api-workflows/.md"
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}.md"
-    Then the response status code should be 200
-
-  @APIP-CORE-161 @type:negative
-  Scenario Outline: A workflow created with <problem> is refused and stores nothing, while a YAML definition is accepted
-    Given I generate a unique resource name from "portal-invalid-workflow" and store it as "workflowId"
-    When I send an authenticated API Portal "POST" request to "/views/${CTX:viewId}/api-workflows" as "publisher" with JSON values:
-      | id                    | <id>                  |
-      | displayName           | Invalid Workflow      |
-      | description           | Refused on create     |
-      | <field>               | <value>               |
-      | apiWorkflowDefinition | <definition>          |
-    Then the response status code should be 400
-    And the response body should not contain "stack"
-    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}/api-workflows" as "publisher"
-    Then the response body should not contain "Invalid Workflow"
-    When a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
-      | id                    | ${CTX:workflowId}  |
-      | displayName           | Valid Workflow      |
-      | description           | Accepted on create  |
-      | status                | PUBLISHED           |
-      | apiWorkflowDefinition | arazzo: 1.0.0       |
-    Then the response status code should be 201
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}/arazzo.json"
-    Then the response status code should be 200
-    And the response body should contain "arazzo"
-
-    Examples:
-      | problem                              | id                     | field           | value     | definition |
-      | an id holding a space                | bad id ${CTX:workflowId} | status          | PUBLISHED | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
-      | an unknown content type              | ${CTX:workflowId}     | contentType     | PDF       | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
-      | an unknown status                    | ${CTX:workflowId}     | status          | ARCHIVED  | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
-      | an unknown agent visibility          | ${CTX:workflowId}     | agentVisibility | SECRET    | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
-      | a definition that is not JSON or YAML | ${CTX:workflowId}     | status          | PUBLISHED | {not: [valid |
-
-  @APIP-CORE-162 @type:negative
-  Scenario: Workflow updates with invalid values, a taken handle or no target are refused, and the workflow is unchanged
+    # Workflow updates with invalid values, a taken handle or no target are refused, and the workflow is unchanged
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
     Given I generate a unique resource name from "portal-updated-workflow" and store it as "workflowId"
     And I generate a unique resource name from "portal-other-workflow" and store it as "otherWorkflowId"
     And I generate a unique resource name from "portal-absent-workflow" and store it as "missingWorkflowId"
@@ -326,3 +562,32 @@ Feature: API workflows are managed per view and shown to people and agents by th
     Then the response status code should be 404
     When I send an authenticated API Portal "DELETE" request to "/views/${CTX:viewId}/api-workflows/${CTX:missingWorkflowId}" as "publisher"
     Then the response status code should be 404
+
+  @APIP-021 @known-issue
+  Scenario: Each workflow entry in a view's llms.txt shows the workflow's name and links to its page
+    # Each workflow entry in a view's llms.txt shows the workflow's name and links to its page
+    Given I generate a unique resource name from "portal-workflow-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-workflow-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId} |
+      | displayName | Workflow Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Workflow View      |
+      | labels      | ["${CTX:labelId}"] |
+    # Known issue: the llms.txt template reads "name" and "apiWorkflowId", which the workflow has not,
+    # so every entry renders with an empty name and a link to ".../api-workflows/.md".
+    Given I generate a unique resource name from "portal-linked-workflow" and store it as "workflowId"
+    And a unique API Portal resource is created at "/views/${CTX:viewId}/api-workflows" as "publisher" with values and stored as "workflowId":
+      | id                    | ${CTX:workflowId}        |
+      | displayName           | Linked ${CTX:workflowId} |
+      | description           | Has a working link       |
+      | status                | PUBLISHED                |
+      | apiWorkflowDefinition | {"arazzo":"1.0.0","info":{"title":"Onboarding","version":"1.0.0"},"sourceDescriptions":[],"workflows":[]} |
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/llms.txt"
+    Then the response status code should be 200
+    And the response body should contain "[Linked ${CTX:workflowId}]("
+    And the response body should contain "/api-workflows/${CTX:workflowId}.md"
+    And the response body should not contain "/api-workflows/.md"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows/${CTX:workflowId}.md"
+    Then the response status code should be 200

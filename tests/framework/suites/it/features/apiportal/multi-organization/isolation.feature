@@ -20,7 +20,10 @@
 Feature: API Portal multi-organization isolation
 
   # The org claims deliberately differ from the handles the organization names derive.
-  Background:
+
+  @APIP-030 @type:security
+  Scenario: Organizations are isolated from each other, in their data, their pages and when publishing
+    # An organization never sees another organization's APIs
     Given I generate a unique resource name from "iso-a" and store it as "isoA"
     And I generate a unique resource name from "iso-b" and store it as "isoB"
     And I mint an API Portal IDP token stored as "tokenA" with claims:
@@ -33,9 +36,6 @@ Feature: API Portal multi-organization isolation
       | org_id   | ${CTX:isoB}          |
       | org_name | Org B ${CTX:isoB}    |
       | roles    | ["ap_admin"]         |
-
-  @APIP-MULTI-ORGANIZATION-015
-  Scenario: An organization never sees another organization's APIs
     Given a unique API Portal REST API is created in portal "api-portal-multi-organization" with token "tokenA" and stored as "api"
     When I send an API Portal "GET" request to "/apis/${CTX:api}" using portal "api-portal-multi-organization" with token "tokenA"
     Then the response status code should be 200
@@ -59,8 +59,19 @@ Feature: API Portal multi-organization isolation
     And the API Portal browser "visitor" should be on page "/api-portal/org-b-${CTX:isoB}/views/default/apis"
     And the response body should not contain "${CTX:api}"
 
-  @APIP-MULTI-ORGANIZATION-016
-  Scenario: The organization APIs accept only the caller's own organization
+    # The organization APIs accept only the caller's own organization
+    Given I generate a unique resource name from "iso-a" and store it as "isoA"
+    And I generate a unique resource name from "iso-b" and store it as "isoB"
+    And I mint an API Portal IDP token stored as "tokenA" with claims:
+      | sub      | ann                  |
+      | org_id   | ${CTX:isoA}          |
+      | org_name | Org A ${CTX:isoA}    |
+      | roles    | ["ap_admin"]         |
+    And I mint an API Portal IDP token stored as "tokenB" with claims:
+      | sub      | ben                  |
+      | org_id   | ${CTX:isoB}          |
+      | org_name | Org B ${CTX:isoB}    |
+      | roles    | ["ap_admin"]         |
     When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "tokenB"
     Then the response status code should be 200
     When I send an API Portal "GET" request to "/organizations/org-a-${CTX:isoA}" using portal "api-portal-multi-organization" with token "tokenA"
@@ -75,38 +86,19 @@ Feature: API Portal multi-organization isolation
       """
     Then the response status code should be 403
 
-  @APIP-MULTI-ORGANIZATION-017
-  Scenario: The MCP registry's write endpoints act only in the caller's own organization
-    Given a unique API Portal MCP server is created in portal "api-portal-multi-organization" with token "tokenA" and stored as "mcp"
-    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "tokenB"
-    Then the response status code should be 200
-    When I send an API Portal "DELETE" request to "/api-portal/registry/org-a-${CTX:isoA}/v0.1/servers/${CTX:mcp}/versions/1.0.0" using portal "api-portal-multi-organization" with token "tokenB"
-    Then the response status code should be 403
-    When I send an API Portal "PATCH" request to "/api-portal/registry/org-a-${CTX:isoA}/v0.1/servers/${CTX:mcp}/status" using portal "api-portal-multi-organization" with token "tokenB" and JSON body:
-      """
-      {"status": "deprecated"}
-      """
-    Then the response status code should be 403
-    When I send an unauthenticated API Portal "GET" request to "/api-portal/registry/org-a-${CTX:isoA}/v0.1/servers" using portal "api-portal-multi-organization"
-    Then the response status code should be 200
-    And the response body should contain "${CTX:mcp}"
-    When I send an API Portal "DELETE" request to "/api-portal/registry/org-a-${CTX:isoA}/v0.1/servers/${CTX:mcp}/versions/1.0.0" using portal "api-portal-multi-organization" with token "tokenA"
-    Then the response status code should be 200
-
-  @APIP-MULTI-ORGANIZATION-018
-  Scenario: A claim is matched on idp_ref_id only, never on a handle
-    Given I mint an API Portal IDP token stored as "tokenHandle" with claims:
-      | sub    | h                     |
-      | org_id | org-a-${CTX:isoA}     |
-      | roles  | ["ap_admin"]          |
-    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "tokenA"
-    Then the response status code should be 200
-    When I send an API Portal "GET" request to "/organizations/org-a-${CTX:isoA}" using portal "api-portal-multi-organization" with token "tokenHandle"
-    Then the response status code should be 403
-    And the API Portal "api-portal-multi-organization" organization with IDP reference "org-a-${CTX:isoA}" should have a handle matching "org-a-${CTX:isoA}-[0-9a-f]{6}"
-
-  @APIP-MULTI-ORGANIZATION-039 @type:security
-  Scenario: An administrator updates their own organization and no other
+    # An administrator updates their own organization and no other
+    Given I generate a unique resource name from "iso-a" and store it as "isoA"
+    And I generate a unique resource name from "iso-b" and store it as "isoB"
+    And I mint an API Portal IDP token stored as "tokenA" with claims:
+      | sub      | ann                  |
+      | org_id   | ${CTX:isoA}          |
+      | org_name | Org A ${CTX:isoA}    |
+      | roles    | ["ap_admin"]         |
+    And I mint an API Portal IDP token stored as "tokenB" with claims:
+      | sub      | ben                  |
+      | org_id   | ${CTX:isoB}          |
+      | org_name | Org B ${CTX:isoB}    |
+      | roles    | ["ap_admin"]         |
     Given I mint an API Portal IDP token stored as "tokenSubscriber" with claims:
       | sub    | sue               |
       | org_id | ${CTX:isoA}       |
@@ -139,3 +131,154 @@ Feature: API Portal multi-organization isolation
     Then the response status code should be 200
     And the JSON response field "displayName" should be "Renamed ${CTX:isoA}"
     And the JSON response field "idpRefId" should be "${CTX:isoA}"
+
+    # The MCP registry's write endpoints act only in the caller's own organization
+    Given I generate a unique resource name from "iso-a" and store it as "isoA"
+    And I generate a unique resource name from "iso-b" and store it as "isoB"
+    And I mint an API Portal IDP token stored as "tokenA" with claims:
+      | sub      | ann                  |
+      | org_id   | ${CTX:isoA}          |
+      | org_name | Org A ${CTX:isoA}    |
+      | roles    | ["ap_admin"]         |
+    And I mint an API Portal IDP token stored as "tokenB" with claims:
+      | sub      | ben                  |
+      | org_id   | ${CTX:isoB}          |
+      | org_name | Org B ${CTX:isoB}    |
+      | roles    | ["ap_admin"]         |
+    Given a unique API Portal MCP server is created in portal "api-portal-multi-organization" with token "tokenA" and stored as "mcp"
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "tokenB"
+    Then the response status code should be 200
+    When I send an API Portal "DELETE" request to "/api-portal/registry/org-a-${CTX:isoA}/v0.1/servers/${CTX:mcp}/versions/1.0.0" using portal "api-portal-multi-organization" with token "tokenB"
+    Then the response status code should be 403
+    When I send an API Portal "PATCH" request to "/api-portal/registry/org-a-${CTX:isoA}/v0.1/servers/${CTX:mcp}/status" using portal "api-portal-multi-organization" with token "tokenB" and JSON body:
+      """
+      {"status": "deprecated"}
+      """
+    Then the response status code should be 403
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/registry/org-a-${CTX:isoA}/v0.1/servers" using portal "api-portal-multi-organization"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:mcp}"
+    When I send an API Portal "DELETE" request to "/api-portal/registry/org-a-${CTX:isoA}/v0.1/servers/${CTX:mcp}/versions/1.0.0" using portal "api-portal-multi-organization" with token "tokenA"
+    Then the response status code should be 200
+
+    # Anyone can browse an existing organization's public pages and an unknown handle is not found
+    Given I generate a unique resource name from "pages" and store it as "pages"
+    And I mint an API Portal IDP token stored as "token" with claims:
+      | sub      | p                  |
+      | org_id   | ${CTX:pages}       |
+      | org_name | Pages ${CTX:pages} |
+      | roles    | ["ap_admin"]       |
+    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
+    And the response status code should be 200
+    And the API Portal browser "visitor" has no IDP session
+    When I browse API Portal page "/api-portal/pages-${CTX:pages}/views/default" using portal "api-portal-multi-organization" as browser "visitor"
+    Then the response status code should be 200
+    And the API Portal browser "visitor" should be on page "/api-portal/pages-${CTX:pages}/views/default"
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/no-such-${CTX:pages}/views/default" using portal "api-portal-multi-organization"
+    Then the response status code should be 404
+    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "no-such-${CTX:pages}"
+
+    # A shared-key call publishes into the configured organization
+    Given I generate a unique resource name from "sk-org" and store it as "skOrg"
+    And I mint an API Portal IDP token stored as "defaultToken" with claims:
+      | sub    | dora         |
+      | org_id | default      |
+      | roles  | ["ap_admin"] |
+    And I mint an API Portal IDP token stored as "skOrgToken" with claims:
+      | sub        | sam                       |
+      | org_id     | ${CTX:skOrg}              |
+      | org_name   | SK Org ${CTX:skOrg}       |
+      | org_handle | sk-${CTX:skOrg}           |
+      | roles      | ["ap_admin"]              |
+    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "skOrgToken"
+    And the response status code should be 200
+    When I publish a unique REST API to API Portal "api-portal-multi-organization" with the shared key and store its id as "api"
+    Then the response status code should be 201
+    When I send an API Portal "GET" request to "/apis/${CTX:api}" using portal "api-portal-multi-organization" with token "defaultToken"
+    Then the response status code should be 200
+    When I send an API Portal "GET" request to "/apis/${CTX:api}" using portal "api-portal-multi-organization" with token "skOrgToken"
+    Then the response status code should be 404
+    When I publish a unique REST API to API Portal "api-portal-multi-organization" with the shared key and header "organization" set to "default" and store its id as "named"
+    Then the response status code should be 201
+    When I send an API Portal "GET" request to "/apis/${CTX:named}" using portal "api-portal-multi-organization" with token "defaultToken"
+    Then the response status code should be 200
+
+    # A shared-key call naming another organization is refused and creates nothing
+    Given I generate a unique resource name from "sk-org" and store it as "skOrg"
+    And I mint an API Portal IDP token stored as "defaultToken" with claims:
+      | sub    | dora         |
+      | org_id | default      |
+      | roles  | ["ap_admin"] |
+    And I mint an API Portal IDP token stored as "skOrgToken" with claims:
+      | sub        | sam                       |
+      | org_id     | ${CTX:skOrg}              |
+      | org_name   | SK Org ${CTX:skOrg}       |
+      | org_handle | sk-${CTX:skOrg}           |
+      | roles      | ["ap_admin"]              |
+    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "skOrgToken"
+    And the response status code should be 200
+    When I publish a unique REST API to API Portal "api-portal-multi-organization" with the shared key and header "organization" set to "sk-${CTX:skOrg}" and store its id as "refused"
+    Then the response status code should be 403
+    When I send an API Portal "GET" request to "/apis/${CTX:refused}" using portal "api-portal-multi-organization" with token "skOrgToken"
+    Then the response status code should be 404
+    When I send an API Portal "GET" request to "/apis/${CTX:refused}" using portal "api-portal-multi-organization" with token "defaultToken"
+    Then the response status code should be 404
+
+    # A shared-key call naming another organization is refused and creates nothing
+    Given I generate a unique resource name from "sk-org" and store it as "skOrg"
+    And I mint an API Portal IDP token stored as "defaultToken" with claims:
+      | sub    | dora         |
+      | org_id | default      |
+      | roles  | ["ap_admin"] |
+    And I mint an API Portal IDP token stored as "skOrgToken" with claims:
+      | sub        | sam                       |
+      | org_id     | ${CTX:skOrg}              |
+      | org_name   | SK Org ${CTX:skOrg}       |
+      | org_handle | sk-${CTX:skOrg}           |
+      | roles      | ["ap_admin"]              |
+    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "skOrgToken"
+    And the response status code should be 200
+    When I publish a unique REST API to API Portal "api-portal-multi-organization" with the shared key and header "organization" set to "${CTX:skOrg}" and store its id as "refused"
+    Then the response status code should be 403
+    When I send an API Portal "GET" request to "/apis/${CTX:refused}" using portal "api-portal-multi-organization" with token "skOrgToken"
+    Then the response status code should be 404
+    When I send an API Portal "GET" request to "/apis/${CTX:refused}" using portal "api-portal-multi-organization" with token "defaultToken"
+    Then the response status code should be 404
+
+    # A shared-key call naming another organization is refused and creates nothing
+    Given I generate a unique resource name from "sk-org" and store it as "skOrg"
+    And I mint an API Portal IDP token stored as "defaultToken" with claims:
+      | sub    | dora         |
+      | org_id | default      |
+      | roles  | ["ap_admin"] |
+    And I mint an API Portal IDP token stored as "skOrgToken" with claims:
+      | sub        | sam                       |
+      | org_id     | ${CTX:skOrg}              |
+      | org_name   | SK Org ${CTX:skOrg}       |
+      | org_handle | sk-${CTX:skOrg}           |
+      | roles      | ["ap_admin"]              |
+    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "skOrgToken"
+    And the response status code should be 200
+    When I publish a unique REST API to API Portal "api-portal-multi-organization" with the shared key and header "organization" set to "no-such-${CTX:skOrg}" and store its id as "refused"
+    Then the response status code should be 403
+    When I send an API Portal "GET" request to "/apis/${CTX:refused}" using portal "api-portal-multi-organization" with token "skOrgToken"
+    Then the response status code should be 404
+    When I send an API Portal "GET" request to "/apis/${CTX:refused}" using portal "api-portal-multi-organization" with token "defaultToken"
+    Then the response status code should be 404
+
+    # A shared-key call with the wrong key is rejected
+    Given I generate a unique resource name from "sk-org" and store it as "skOrg"
+    And I mint an API Portal IDP token stored as "defaultToken" with claims:
+      | sub    | dora         |
+      | org_id | default      |
+      | roles  | ["ap_admin"] |
+    And I mint an API Portal IDP token stored as "skOrgToken" with claims:
+      | sub        | sam                       |
+      | org_id     | ${CTX:skOrg}              |
+      | org_name   | SK Org ${CTX:skOrg}       |
+      | org_handle | sk-${CTX:skOrg}           |
+      | roles      | ["ap_admin"]              |
+    And I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "skOrgToken"
+    And the response status code should be 200
+    When I publish a unique REST API to API Portal "api-portal-multi-organization" with shared key "not-the-key" and store its id as "wrong"
+    Then the response status code should be 401

@@ -23,15 +23,16 @@ Feature: The API Portal's own organization is managed through the API Portal RES
   I want to read and rename the organization the portal serves, and nothing else
   So that the organization cannot be created, removed, re-pointed or reached from another tenant
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-099..103, 198, 199 and 201,
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml)
   # at the API level. The portal serves exactly one organization ("default" in this suite), shared
   # by every runner in the block. An organization update replaces every settable field, so each
   # scenario that changes it first registers the organization's current settings to be written back
   # when it ends, pass or fail. Organizations that do not exist ("foreign-org") are refused before
   # any lookup, by design.
 
-  @APIP-CORE-099
-  Scenario: An administrator updates the organization's name and contacts, and its identity cannot change
+  @APIP-028 @type:negative @type:security
+  Scenario: An administrator updates the organization directly and by YAML, and its identity and access stay protected
+    # An administrator updates the organization's name and contacts, and its identity cannot change
     Given I generate a unique value from "Default organization" and store it as "organizationName"
     And I generate a unique resource name from "portal-org-view" and store it as "viewId"
     And the API Portal organization "default" is restored to its current settings after the scenario
@@ -85,8 +86,16 @@ Feature: The API Portal's own organization is managed through the API Portal RES
     And the JSON response field "idpRefId" should be "default"
     And the JSON response field "businessOwner" should be "Organization Owner"
 
-  @APIP-CORE-100 @type:security
-  Scenario: The organization collection cannot be listed or added to
+    # An organization update without its required fields is refused
+    When I send an authenticated API Portal "PUT" request to "/organizations/default" as "admin" with JSON values:
+      | displayName | Incomplete Organization |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
+    Then the response status code should be 200
+    And the response body should not contain "Incomplete Organization"
+
+    # The organization collection cannot be listed or added to
     When I send an authenticated API Portal "GET" request to "/organizations" as "admin"
     Then the response status code should be 405
     And the JSON response field "code" should be "METHOD_NOT_ALLOWED"
@@ -104,8 +113,7 @@ Feature: The API Portal's own organization is managed through the API Portal RES
     When I send an unauthenticated API Portal "GET" request to "/organizations"
     Then the response status code should be 401
 
-  @APIP-CORE-101 @type:security
-  Scenario: Another organization cannot be read or changed
+    # Another organization cannot be read or changed
     When I send an authenticated API Portal "GET" request to "/organizations/foreign-org" as "admin"
     Then the response status code should be 403
     When I send an authenticated API Portal "PUT" request to "/organizations/foreign-org" as "admin" with JSON values:
@@ -118,36 +126,31 @@ Feature: The API Portal's own organization is managed through the API Portal RES
     And the JSON response field "id" should be "default"
     And the response body should not contain "Hijacked"
 
-  @APIP-CORE-102 @type:security
-  Scenario Outline: A <role> can read the organization but not change it
-    When I send an authenticated API Portal "GET" request to "/organizations/default" as "<role>"
+    # A publisher can read the organization but not change it
+    When I send an authenticated API Portal "GET" request to "/organizations/default" as "publisher"
     Then the response status code should be 200
     And the JSON response field "id" should be "default"
-    When I send an authenticated API Portal "PUT" request to "/organizations/default" as "<role>" with JSON values:
+    When I send an authenticated API Portal "PUT" request to "/organizations/default" as "publisher" with JSON values:
       | id          | default            |
       | idpRefId    | default            |
-      | displayName | Changed by <role>  |
+      | displayName | Changed by publisher  |
     Then the response status code should be 403
     When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
-    Then the response body should not contain "Changed by <role>"
+    Then the response body should not contain "Changed by publisher"
 
-    Examples:
-      | role      |
-      | publisher |
-      | developer |
-
-  @APIP-CORE-103 @type:negative
-  Scenario: An organization update without its required fields is refused
-    When I send an authenticated API Portal "PUT" request to "/organizations/default" as "admin" with JSON values:
-      | displayName | Incomplete Organization |
-    Then the response status code should be 400
-    And the response body should not contain "stack"
-    When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
+    # A developer can read the organization but not change it
+    When I send an authenticated API Portal "GET" request to "/organizations/default" as "developer"
     Then the response status code should be 200
-    And the response body should not contain "Incomplete Organization"
+    And the JSON response field "id" should be "default"
+    When I send an authenticated API Portal "PUT" request to "/organizations/default" as "developer" with JSON values:
+      | id          | default            |
+      | idpRefId    | default            |
+      | displayName | Changed by developer  |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
+    Then the response body should not contain "Changed by developer"
 
-  @APIP-CORE-198
-  Scenario: An Organization YAML file updates the organization and upserts its labels by id and views by id
+    # An Organization YAML file updates the organization and upserts its labels by id and views by id
     Given I generate a unique value from "Manifest organization" and store it as "organizationName"
     And I generate a unique resource name from "portal-manifest-label" and store it as "existingLabel"
     And I generate a unique resource name from "portal-manifest-new-label" and store it as "newLabel"
@@ -195,15 +198,14 @@ Feature: The API Portal's own organization is managed through the API Portal RES
     And the response body should contain "${CTX:existingLabel}"
     And the response body should contain "${CTX:newLabel}"
 
-  @APIP-CORE-199 @type:negative
-  Scenario Outline: An Organization YAML file with <problem> is refused and changes nothing
+    # An Organization YAML file with another kind is refused and changes nothing
     Given I generate a unique value from "Refused organization" and store it as "organizationName"
     And the API Portal organization "default" is restored to its current settings after the scenario
     When I send an authenticated API Portal "PUT" multipart request to "/organizations/default" as "admin" with file field "organization" from "resources/templates/api-portal-organization.yaml" with values:
-      | kind        | <kind>                  |
-      | name        | <handle>                |
+      | kind        | Application                  |
+      | name        | default                |
       | displayName | ${CTX:organizationName} |
-      | spec        | <spec>                  |
+      | spec        | {"displayName": "${CTX:organizationName}", "idpRefId": "default", "cpRefId": "default"}                  |
     Then the response status code should be 400
     And the response body should not contain "stack"
     When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
@@ -211,31 +213,131 @@ Feature: The API Portal's own organization is managed through the API Portal RES
     And the JSON response field "id" should be "default"
     And the response body should not contain "${CTX:organizationName}"
 
-    Examples:
-      | problem                 | kind         | handle      | spec                                                                                                  |
-      | another kind            | Application  | default     | {"displayName": "${CTX:organizationName}", "idpRefId": "default", "cpRefId": "default"}               |
-      | another handle          | Organization | renamed-org | {"displayName": "${CTX:organizationName}", "idpRefId": "default", "cpRefId": "default"}               |
-      | another IDP reference   | Organization | default     | {"displayName": "${CTX:organizationName}", "idpRefId": "foreign-idp", "cpRefId": "default"}           |
-      | no display name         | Organization | default     | {"idpRefId": "default", "cpRefId": "default", "businessOwner": "${CTX:organizationName}"}             |
-      | a spec that is no map   | Organization | default     | "${CTX:organizationName}"                                                                             |
-      | a label without an id   | Organization | default     | {"displayName": "${CTX:organizationName}", "idpRefId": "default", "labels": [{"displayName": "L"}]}   |
-      | labels that are no list | Organization | default     | {"displayName": "${CTX:organizationName}", "idpRefId": "default", "labels": "label"}                  |
-      | a view without an id    | Organization | default     | {"displayName": "${CTX:organizationName}", "idpRefId": "default", "views": [{"displayName": "V"}]}    |
+    # An Organization YAML file with another handle is refused and changes nothing
+    Given I generate a unique value from "Refused organization" and store it as "organizationName"
+    And the API Portal organization "default" is restored to its current settings after the scenario
+    When I send an authenticated API Portal "PUT" multipart request to "/organizations/default" as "admin" with file field "organization" from "resources/templates/api-portal-organization.yaml" with values:
+      | kind        | Organization                  |
+      | name        | renamed-org                |
+      | displayName | ${CTX:organizationName} |
+      | spec        | {"displayName": "${CTX:organizationName}", "idpRefId": "default", "cpRefId": "default"}                  |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "id" should be "default"
+    And the response body should not contain "${CTX:organizationName}"
 
-  @APIP-CORE-201 @type:security
-  Scenario Outline: A <role> cannot update the organization with a YAML file
+    # An Organization YAML file with another IDP reference is refused and changes nothing
+    Given I generate a unique value from "Refused organization" and store it as "organizationName"
+    And the API Portal organization "default" is restored to its current settings after the scenario
+    When I send an authenticated API Portal "PUT" multipart request to "/organizations/default" as "admin" with file field "organization" from "resources/templates/api-portal-organization.yaml" with values:
+      | kind        | Organization                  |
+      | name        | default                |
+      | displayName | ${CTX:organizationName} |
+      | spec        | {"displayName": "${CTX:organizationName}", "idpRefId": "foreign-idp", "cpRefId": "default"}                  |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "id" should be "default"
+    And the response body should not contain "${CTX:organizationName}"
+
+    # An Organization YAML file with no display name is refused and changes nothing
+    Given I generate a unique value from "Refused organization" and store it as "organizationName"
+    And the API Portal organization "default" is restored to its current settings after the scenario
+    When I send an authenticated API Portal "PUT" multipart request to "/organizations/default" as "admin" with file field "organization" from "resources/templates/api-portal-organization.yaml" with values:
+      | kind        | Organization                  |
+      | name        | default                |
+      | displayName | ${CTX:organizationName} |
+      | spec        | {"idpRefId": "default", "cpRefId": "default", "businessOwner": "${CTX:organizationName}"}                  |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "id" should be "default"
+    And the response body should not contain "${CTX:organizationName}"
+
+    # An Organization YAML file with a spec that is no map is refused and changes nothing
+    Given I generate a unique value from "Refused organization" and store it as "organizationName"
+    And the API Portal organization "default" is restored to its current settings after the scenario
+    When I send an authenticated API Portal "PUT" multipart request to "/organizations/default" as "admin" with file field "organization" from "resources/templates/api-portal-organization.yaml" with values:
+      | kind        | Organization                  |
+      | name        | default                |
+      | displayName | ${CTX:organizationName} |
+      | spec        | "${CTX:organizationName}"                  |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "id" should be "default"
+    And the response body should not contain "${CTX:organizationName}"
+
+    # An Organization YAML file with a label without an id is refused and changes nothing
+    Given I generate a unique value from "Refused organization" and store it as "organizationName"
+    And the API Portal organization "default" is restored to its current settings after the scenario
+    When I send an authenticated API Portal "PUT" multipart request to "/organizations/default" as "admin" with file field "organization" from "resources/templates/api-portal-organization.yaml" with values:
+      | kind        | Organization                  |
+      | name        | default                |
+      | displayName | ${CTX:organizationName} |
+      | spec        | {"displayName": "${CTX:organizationName}", "idpRefId": "default", "labels": [{"displayName": "L"}]}                  |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "id" should be "default"
+    And the response body should not contain "${CTX:organizationName}"
+
+    # An Organization YAML file with labels that are no list is refused and changes nothing
+    Given I generate a unique value from "Refused organization" and store it as "organizationName"
+    And the API Portal organization "default" is restored to its current settings after the scenario
+    When I send an authenticated API Portal "PUT" multipart request to "/organizations/default" as "admin" with file field "organization" from "resources/templates/api-portal-organization.yaml" with values:
+      | kind        | Organization                  |
+      | name        | default                |
+      | displayName | ${CTX:organizationName} |
+      | spec        | {"displayName": "${CTX:organizationName}", "idpRefId": "default", "labels": "label"}                  |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "id" should be "default"
+    And the response body should not contain "${CTX:organizationName}"
+
+    # An Organization YAML file with a view without an id is refused and changes nothing
+    Given I generate a unique value from "Refused organization" and store it as "organizationName"
+    And the API Portal organization "default" is restored to its current settings after the scenario
+    When I send an authenticated API Portal "PUT" multipart request to "/organizations/default" as "admin" with file field "organization" from "resources/templates/api-portal-organization.yaml" with values:
+      | kind        | Organization                  |
+      | name        | default                |
+      | displayName | ${CTX:organizationName} |
+      | spec        | {"displayName": "${CTX:organizationName}", "idpRefId": "default", "views": [{"displayName": "V"}]}                  |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
+    Then the response status code should be 200
+    And the JSON response field "id" should be "default"
+    And the response body should not contain "${CTX:organizationName}"
+
+    # A publisher cannot update the organization with a YAML file
     Given the API Portal organization "default" is restored to its current settings after the scenario
-    When I send an authenticated API Portal "PUT" multipart request to "/organizations/default" as "<role>" with file field "organization" from "resources/templates/api-portal-organization.yaml" with values:
+    When I send an authenticated API Portal "PUT" multipart request to "/organizations/default" as "publisher" with file field "organization" from "resources/templates/api-portal-organization.yaml" with values:
       | name          | default           |
-      | displayName   | Changed by <role> |
+      | displayName   | Changed by publisher |
       | spec.idpRefId | default           |
       | spec.cpRefId  | default           |
     Then the response status code should be 403
     When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
     Then the response status code should be 200
-    And the response body should not contain "Changed by <role>"
+    And the response body should not contain "Changed by publisher"
 
-    Examples:
-      | role      |
-      | publisher |
-      | developer |
+    # A developer cannot update the organization with a YAML file
+    Given the API Portal organization "default" is restored to its current settings after the scenario
+    When I send an authenticated API Portal "PUT" multipart request to "/organizations/default" as "developer" with file field "organization" from "resources/templates/api-portal-organization.yaml" with values:
+      | name          | default           |
+      | displayName   | Changed by developer |
+      | spec.idpRefId | default           |
+      | spec.cpRefId  | default           |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
+    Then the response status code should be 200
+    And the response body should not contain "Changed by developer"

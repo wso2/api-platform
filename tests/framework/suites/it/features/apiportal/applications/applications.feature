@@ -22,14 +22,37 @@ Feature: Developers own the applications they create in the API Portal
   I want to create, rename and delete applications that only I can see
   So that the credentials I group in them stay mine and are named the way I expect
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-163..169, at the API level.
-  # The application events are asserted by APIP-WEBHOOKS-009,
-  # and deleting an application that holds credentials by APIP-WEBHOOKS-024 and
-  # APIP-DEVPORTAL-WEBHOOK-002. The suite has one developer, so the administrator, who holds every
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
+  # The application events are asserted by webhooks/api_key_webhooks.feature,
+  # and deleting an application that holds credentials by applications/application_deletion.feature and
+  # subscriptions/subscription_gateway.feature. The suite has one developer, so the administrator, who holds every
   # application scope, plays the second user: applications are owned by their creator, not by role.
 
-  @APIP-CORE-163
-  Scenario: A developer creates an application without a handle, and every later call uses the handle derived from its name
+  @APIP-014 @type:boundary @type:negative @type:security
+  Scenario: A developer manages applications within their limits and sees only their own
+    # A developer manages an application from creation to deletion
+    Given I generate a unique resource name from "portal-app" and store it as "appId"
+    And a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
+      | id          | ${CTX:appId}           |
+      | displayName | Orders Application     |
+      | description | Calls the orders APIs  |
+    When I send an authenticated API Portal "GET" request to "/applications/${CTX:appId}" as "developer"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Orders Application"
+    When I send an authenticated API Portal "GET" request to "/applications" as "developer"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:appId}"
+    When I send an authenticated API Portal "PUT" request to "/applications/${CTX:appId}" as "developer" with JSON values:
+      | displayName | Renamed Orders Application |
+      | description | Renamed                    |
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Renamed Orders Application"
+    When I send an authenticated API Portal "DELETE" request to "/applications/${CTX:appId}" as "developer"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/applications/${CTX:appId}" as "developer"
+    Then the response status code should be 404
+
+    # A developer creates an application without a handle, and every later call uses the handle derived from its name
     Given I generate a unique resource name from "portal-app" and store it as "appSuffix"
     When a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
       | displayName | Orders_App Name ${CTX:appSuffix} |
@@ -62,26 +85,44 @@ Feature: Developers own the applications they create in the API Portal
     When I send an authenticated API Portal "GET" request to "/applications" as "developer"
     Then the JSON response array "list" should not contain an item with "id" equal to "${CTX:appId}"
 
-  @APIP-CORE-164 @type:boundary
-  Scenario Outline: An application with <case> is accepted and stored as sent
+    # An application with a 100-character name is accepted and stored as sent
     Given I generate a unique resource name from "portal-app-boundary" and store it as "appId"
     When a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
       | id          | ${CTX:appId}    |
-      | displayName | <displayName>   |
-      | description | <description>   |
+      | displayName | Orders application xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   |
+      | description | Longest allowed name   |
     Then the response status code should be 201
     When I send an authenticated API Portal "GET" request to "/applications/${CTX:appId}" as "developer"
     Then the response status code should be 200
-    And the JSON response field "displayName" should be "<displayName>"
-    And the JSON response field "description" should be "<description>"
+    And the JSON response field "displayName" should be "Orders application xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    And the JSON response field "description" should be "Longest allowed name"
 
-    Examples:
-      | case                              | displayName                                                                                          | description                                                                                                                                                                                                                                                      |
-      | a 100-character name              | Orders application xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | Longest allowed name                                                                                                                                                                                                                                             |
-      | a 256-character description       | Orders application                                                                                   | Calls the orders APIs xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx |
+    # An application with a 256-character description is accepted and stored as sent
+    Given I generate a unique resource name from "portal-app-boundary" and store it as "appId"
+    When a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
+      | id          | ${CTX:appId}    |
+      | displayName | Orders application   |
+      | description | Calls the orders APIs xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   |
+    Then the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/applications/${CTX:appId}" as "developer"
+    Then the response status code should be 200
+    And the JSON response field "displayName" should be "Orders application"
+    And the JSON response field "description" should be "Calls the orders APIs xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
-  @APIP-CORE-165 @type:negative
-  Scenario: An application without a name, or with a handle already in use, is refused and the first one is unchanged
+    # An application without its required fields is refused and stores nothing
+    Given I generate a unique resource name from "portal-app-invalid" and store it as "appId"
+    When I send an authenticated API Portal "POST" request to "/applications" as "developer" with JSON values:
+      | id | ${CTX:appId} |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/applications/${CTX:appId}" as "developer"
+    Then the response status code should be 404
+    And a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
+      | id          | ${CTX:appId}          |
+      | displayName | Orders Application    |
+      | description | Calls the orders APIs |
+
+    # An application without a name, or with a handle already in use, is refused and the first one is unchanged
     Given I generate a unique resource name from "portal-app-taken" and store it as "appId"
     And I generate a unique resource name from "portal-app-unnamed" and store it as "unnamedAppId"
     And I generate a unique resource name from "portal-app-name" and store it as "nameSuffix"
@@ -119,8 +160,7 @@ Feature: Developers own the applications they create in the API Portal
     When I send an authenticated API Portal "GET" request to "/applications/${CTX:namedAppId}" as "developer"
     Then the JSON response field "description" should be "First of the name"
 
-  @APIP-CORE-167
-  Scenario: An application lists the API keys linked to it, and only those
+    # An application lists the API keys linked to it, and only those
     Given a REST API is created in the API Portal and stored as "apiId"
     And I generate a unique resource name from "portal-app-keys" and store it as "appId"
     And a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
@@ -149,8 +189,7 @@ Feature: Developers own the applications they create in the API Portal
     And the JSON response array "list" should not contain an item with "id" equal to "${CTX:unlinkedKeyId}"
     And the JSON response array "list" item with "id" equal to "${CTX:firstKeyId}" should not have field "key"
 
-  @APIP-CORE-169 @type:security
-  Scenario: Another user can neither see nor change a developer's application
+    # Another user can neither see nor change a developer's application
     Given I generate a unique resource name from "portal-app-owned" and store it as "appId"
     And a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
       | id          | ${CTX:appId}          |

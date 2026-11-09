@@ -23,22 +23,22 @@ Feature: API Portal role authorization
   So that administrators run the portal, developers manage their own applications, and a narrow
   role only reads
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-AUTH-ROLE-001..005, at the API level, in
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level, in
   # the api-portal-auth-role block (authorization.mode = role). The token's scope claim is ignored;
   # the portal expands the token's roles through its own mapping, where ap_admin grants every
   # operation, ap_subscriber manages applications, keys and subscriptions and reads the rest, and
   # dp_narrow_it only reads. Every refusal is paired with the same operation succeeding for a role
   # that grants it.
 
-  @APIP-AUTH-ROLE-001
-  Scenario: Role authorization mode is active
+  @APIP-033 @type:security
+  Scenario: Operations are authorized by portal role grants
+    # Role authorization mode is active
     When I send an authenticated API Portal "GET" request to "/key-managers" as "admin"
     Then the response status code should be 200
     When I send an authenticated API Portal "GET" request to "/key-managers" as "narrow"
     Then the response status code should be 403
 
-  @APIP-AUTH-ROLE-002
-  Scenario: An admin operation is authorized by portal role grants
+    # An admin operation is authorized by portal role grants
     Given I generate a unique resource name from "portal-role-admin-label" and store it as "labelId"
     When I send an authenticated API Portal "POST" request to "/labels" as "admin" with JSON values:
       | id          | ${CTX:labelId}     |
@@ -46,13 +46,11 @@ Feature: API Portal role authorization
     Then the response status code should be 201
     And I register API Portal resource "${CTX:labelId}" at "/labels" for cleanup
 
-  @APIP-AUTH-ROLE-003 @type:security
-  Scenario: An unauthenticated caller is rejected
+    # An unauthenticated caller is rejected
     When I send an unauthenticated API Portal "GET" request to "/organizations/default"
     Then the response status code should be 401
 
-  @APIP-AUTH-ROLE-004 @type:security
-  Scenario: A narrow actor is restricted by portal role grants
+    # A narrow actor is restricted by portal role grants
     When I send an authenticated API Portal "GET" request to "/apis" as "narrow"
     Then the response status code should be 200
     And I generate a unique resource name from "portal-role-narrow-app" and store it as "appId"
@@ -62,8 +60,7 @@ Feature: API Portal role authorization
       | description | role                  |
     Then the response status code should be 403
 
-  @APIP-AUTH-ROLE-005 @type:security
-  Scenario: A developer manages their own application but cannot change the organization's labels
+    # A developer manages their own application but cannot change the organization's labels
     Given I generate a unique resource name from "portal-role-developer-app" and store it as "appId"
     And I generate a unique resource name from "portal-role-developer-label" and store it as "labelId"
     When a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":

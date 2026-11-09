@@ -22,15 +22,16 @@ Feature: A view's LLM instructions and AI discovery shape what agents read
   I want to name and describe each view for AI agents, preview the result and switch discovery per view
   So that agents read an accurate llms.txt, and a view I keep from agents exposes nothing to them
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-139..141. LLM instructions are a
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml). LLM instructions are a
   # view's settings page data: they are read and written with an administrator's portal session and
   # its CSRF token at /api-portal/{org}/views/{view}/llms-config, and previewed at
   # /api-portal/{org}/views/{view}/llms.txt/preview. Every scenario uses its own views, so no other
   # runner's view changes. Every page hidden from agents is paired with the same page in a view that
   # still serves it.
 
-  @APIP-CORE-139
-  Scenario: LLM instructions name and describe a view in its llms.txt, and empty fields fall back
+  @APIP-013 @type:security
+  Scenario: LLM instructions are previewed and shown in llms.txt, and AI discovery can be turned off per view
+    # LLM instructions name and describe a view in its llms.txt, and empty fields fall back
     Given I generate a unique resource name from "portal-llm-view" and store it as "viewId"
     And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
       | id          | ${CTX:viewId} |
@@ -67,8 +68,7 @@ Feature: A view's LLM instructions and AI discovery shape what agents read
     And the response body should contain "API Portal"
     And the response body should contain "Empower your development with our APIs"
 
-  @APIP-CORE-140 @type:security
-  Scenario: The llms.txt preview renders draft instructions without saving them, for administrators only
+    # The llms.txt preview renders draft instructions without saving them, for administrators only
     Given I generate a unique resource name from "portal-preview-view" and store it as "viewId"
     And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
       | id          | ${CTX:viewId} |
@@ -100,8 +100,7 @@ Feature: A view's LLM instructions and AI discovery shape what agents read
     Then the response status code should be 200
     And the response body should not contain "Developer Draft"
 
-  @APIP-CORE-141
-  Scenario: Turning AI discovery off for one view hides it from agents while other views keep serving them
+    # Turning AI discovery off for one view hides it from agents while other views keep serving them
     Given I generate a unique resource name from "portal-ai-label" and store it as "labelId"
     And I generate a unique resource name from "portal-ai-off-view" and store it as "viewId"
     And I generate a unique resource name from "portal-ai-on-view" and store it as "otherViewId"

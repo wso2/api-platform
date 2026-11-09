@@ -24,24 +24,28 @@ Feature: API Portal hardening: headers, error bodies, upload limits and outbound
   limit, and the try-it proxy to call only an API's registered public endpoints
   So that the portal neither advertises what to attack nor becomes a way into the internal network
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-001 and 211..214, at the API level.
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
   # Each route's status is asserted first, so a broken route cannot pass a header or body check by
   # returning nothing. Every refusal is paired with the same request succeeding.
 
-  @APIP-CORE-001 @type:security
-  Scenario Outline: The <route kind> route does not expose the X-Powered-By header
-    When I send an unauthenticated API Portal "GET" request to "<path>"
-    Then the response status code should be <status>
+  @APIP-035 @type:security
+  Scenario: Responses name no internals, and uploads are limited without naming the limit
+    # The health route does not expose the X-Powered-By header
+    When I send an unauthenticated API Portal "GET" request to "/health"
+    Then the response status code should be 200
     And the response header "X-Powered-By" should not exist
 
-    Examples:
-      | route kind | path                                   | status |
-      | health     | /health                                | 200    |
-      | API        | /organizations/default                 | 401    |
-      | HTML page  | /api-portal/default/views/default/apis | 200    |
+    # The API route does not expose the X-Powered-By header
+    When I send an unauthenticated API Portal "GET" request to "/organizations/default"
+    Then the response status code should be 401
+    And the response header "X-Powered-By" should not exist
 
-  @APIP-CORE-212 @type:security
-  Scenario: A refused request is answered with a generic error that names no internals
+    # The HTML page route does not expose the X-Powered-By header
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/apis"
+    Then the response status code should be 200
+    And the response header "X-Powered-By" should not exist
+
+    # A refused request is answered with a generic error that names no internals
     Given I generate a unique resource name from "portal-error-label" and store it as "labelId"
     When I send an authenticated API Portal "POST" request to "/labels" as "admin" with JSON values:
       | displayName | Label without an id |
@@ -59,9 +63,7 @@ Feature: API Portal hardening: headers, error bodies, upload limits and outbound
     Then the response status code should be 201
     And I register API Portal resource "${CTX:labelId}" at "/labels" for cleanup
 
-  # Artifact uploads past the limit are APIP-CORE-109; this covers the other three upload kinds.
-  @APIP-CORE-213 @type:security
-  Scenario: A definition, content archive or theme just over the upload limit is refused without naming the limit, and one just under it is accepted
+    # A definition, content archive or theme just over the upload limit is refused without naming the limit, and one just under it is accepted
     Given I generate a unique resource name from "portal-upload-limit" and store it as "apiId"
     When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "rest oversized" with values:
       | id   | ${CTX:apiId} |
@@ -92,11 +94,12 @@ Feature: API Portal hardening: headers, error bodies, upload limits and outbound
     When I upload API Portal theme "near-limit" for view "${CTX:viewId}" as "admin"
     Then the response status code should be 200
 
-  # A request without browser fetch metadata is refused as cross-site, and a registered public
-  # endpoint is called (its .invalid name never resolves, so the call fails upstream with 502):
-  # together they show the route works and that only the address decides the refusal.
-  @APIP-CORE-214 @type:security
-  Scenario Outline: The try-it proxy refuses <target kind> and calls the API's registered public endpoint
+  @APIP-035 @type:security
+  Scenario: The try-it proxy refuses internal addresses and calls the API's registered public endpoint
+    # The try-it proxy refuses the metadata address registered as its endpoint and calls the API's registered public endpoint
+    # A request without browser fetch metadata is refused as cross-site, and a registered public
+    # endpoint is called (its .invalid name never resolves, so the call fails upstream with 502):
+    # together they show the route works and that only the address decides the refusal.
     Given I generate a unique resource name from "portal-tryout" and store it as "apiId"
     When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
       | id                   | ${CTX:apiId}                  |
@@ -109,14 +112,52 @@ Feature: API Portal hardening: headers, error bodies, upload limits and outbound
     When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/https://backend.example.invalid/ping" with header "Sec-Fetch-Site" set to "same-origin"
     Then the response status code should be 502
     And the JSON response field "error" should be "bad_gateway"
-    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/<target>" with header "Sec-Fetch-Site" set to "same-origin"
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/http://169.254.169.254/latest/meta-data/" with header "Sec-Fetch-Site" set to "same-origin"
     Then the response status code should be 422
     And the JSON response field "error" should be "invalid_request"
     And the JSON response field "message" should be "The requested target could not be called."
-    And the response body should not contain "<host>"
+    And the response body should not contain "169.254.169.254"
 
-    Examples:
-      | target kind                                       | target                                         | host            |
-      | the metadata address registered as its endpoint   | http://169.254.169.254/latest/meta-data/       | 169.254.169.254 |
-      | a loopback address                                | http://127.0.0.1:9243/api-portal/health        | 127.0.0.1       |
-      | an internal host name it never registered         | https://platform-api:9243/health               | platform-api    |
+    # The try-it proxy refuses a loopback address and calls the API's registered public endpoint
+    # A request without browser fetch metadata is refused as cross-site, and a registered public
+    # endpoint is called (its .invalid name never resolves, so the call fails upstream with 502):
+    # together they show the route works and that only the address decides the refusal.
+    Given I generate a unique resource name from "portal-tryout" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id                   | ${CTX:apiId}                  |
+      | name                 | ${CTX:apiId}                  |
+      | endPoints.sandboxURL | http://169.254.169.254/latest |
+    Then the response status code should be 201
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/https://backend.example.invalid/ping"
+    Then the response status code should be 403
+    And the JSON response field "message" should be "Request origin is not allowed."
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/https://backend.example.invalid/ping" with header "Sec-Fetch-Site" set to "same-origin"
+    Then the response status code should be 502
+    And the JSON response field "error" should be "bad_gateway"
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/http://127.0.0.1:9243/api-portal/health" with header "Sec-Fetch-Site" set to "same-origin"
+    Then the response status code should be 422
+    And the JSON response field "error" should be "invalid_request"
+    And the JSON response field "message" should be "The requested target could not be called."
+    And the response body should not contain "127.0.0.1"
+
+    # The try-it proxy refuses an internal host name it never registered and calls the API's registered public endpoint
+    # A request without browser fetch metadata is refused as cross-site, and a registered public
+    # endpoint is called (its .invalid name never resolves, so the call fails upstream with 502):
+    # together they show the route works and that only the address decides the refusal.
+    Given I generate a unique resource name from "portal-tryout" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id                   | ${CTX:apiId}                  |
+      | name                 | ${CTX:apiId}                  |
+      | endPoints.sandboxURL | http://169.254.169.254/latest |
+    Then the response status code should be 201
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/https://backend.example.invalid/ping"
+    Then the response status code should be 403
+    And the JSON response field "message" should be "Request origin is not allowed."
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/https://backend.example.invalid/ping" with header "Sec-Fetch-Site" set to "same-origin"
+    Then the response status code should be 502
+    And the JSON response field "error" should be "bad_gateway"
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/https://platform-api:9243/health" with header "Sec-Fetch-Site" set to "same-origin"
+    Then the response status code should be 422
+    And the JSON response field "error" should be "invalid_request"
+    And the JSON response field "message" should be "The requested target could not be called."
+    And the response body should not contain "platform-api"

@@ -22,13 +22,15 @@ Feature: Buying a flat rate plan in the API Portal
   I want to pay for a plan through checkout and stop paying when I unsubscribe
   So that I get the plan I paid for, and the portal follows what Stripe says about my payments
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-BILLING-007..012 and 016..019, at the
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the
   # API level. The paid plan is published from the control plane with billing set up in this
   # runner's own portal; Stripe and Moesif are the testbench services, reset before every scenario.
   # The api-portal-billing block has no gateway: the gateway's handling of a paid subscription is
   # covered by management-portal/monetization/paid_subscription_access.feature.
 
-  Background:
+  @APIP-042
+  Scenario: A developer buys a flat rate plan, and the subscription's billing status follows Stripe
+    # A developer pays for a flat rate plan and is subscribed once Stripe confirms the payment
     Given I send a "POST" request to the "stripe" service at "/test/reset"
     And I send a "POST" request to the "moesif" service at "/test/reset"
     And I authenticate using basic auth as "admin"
@@ -55,9 +57,6 @@ Feature: Buying a flat rate plan in the API Portal
     And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
     And the response status code should be 201
     And I register API Portal resource "${CTX:planHandle}" at "/subscription-plans" for cleanup
-
-  @APIP-BILLING-007
-  Scenario: A developer pays for a flat rate plan and is subscribed once Stripe confirms the payment
     # Publishing the paid plan created it in Moesif, which created its price in Stripe.
     When I send a "GET" request to the "moesif" service at "/test/state"
     Then the JSON response array field "plans" should have 1 item
@@ -124,15 +123,7 @@ Feature: Buying a flat rate plan in the API Portal
     Then the response status code should be 409
     And the JSON response field "code" should be "BILLING_SUBSCRIPTIONS_ACTIVE"
 
-  @APIP-BILLING-008
-  Scenario: The subscription's billing status follows Stripe as payments fail and are paid
-    Given I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
-      """
-      {"artifactId":"${CTX:apiHandle}","subscriptionPlanId":"${CTX:planHandle}"}
-      """
-    And the response status code should be 201
-    And I store the JSON response field "id" as "checkoutId"
-    And the checkout "${CTX:checkoutId}" is paid in Stripe by "developer" and the subscription is stored as "subscriptionId"
+    # The subscription's billing status follows Stripe as payments fail and are paid
 
     # A renewal fails: Stripe retries it, and the subscription is past due.
     When I send a "POST" request to the "stripe" service at "/test/subscriptions/${CTX:checkoutId}" with body:
@@ -177,8 +168,35 @@ Feature: Buying a flat rate plan in the API Portal
     And the JSON response field "billingStatus" should be "CANCELLED"
     And the JSON response field "status" should be "PAYMENT_PENDING"
 
-  @APIP-BILLING-009
-  Scenario: Unsubscribing from a flat rate plan ends it at the end of the period already paid for
+  @APIP-042
+  Scenario: A paid subscription ends at the end of its period, or at once with no refund
+    # Unsubscribing from a flat rate plan ends it at the end of the period already paid for
+    Given I send a "POST" request to the "stripe" service at "/test/reset"
+    And I send a "POST" request to the "moesif" service at "/test/reset"
+    And I authenticate using basic auth as "admin"
+    And I generate a unique value from "paid-checkout-project" and store it as "projectHandle"
+    And I create a project "${CTX:projectHandle}" on the control plane
+    And I generate a unique resource name from "paid-checkout-plan" and store it as "planHandle"
+    And I send a "POST" request to the control plane at "/subscription-plans" with body:
+      """
+      {"id":"${CTX:planHandle}","displayName":"Paid ${CTX:planHandle}","status":"ACTIVE","limits":[{"limitType":"REQUEST_COUNT","timeUnit":"HOUR","limitCount":10000}],"pricing":{"pricingType":"FLAT_RATE","currency":"USD","billingPeriod":"MONTH","flatAmount":"29"}}
+      """
+    And the response status code should be 201
+    And I generate a unique resource name from "paid-checkout-api" and store it as "apiHandle"
+    And I generate a unique API context from "/paid-checkout" and store it as "apiContext"
+    And I generate a unique API version from "v" and store it as "apiVersion"
+    And I create a secured REST API "${CTX:apiHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:apiContext}" offering plan "${CTX:planHandle}"
+    And I generate a unique resource name from "paid-checkout-portal" and store it as "portalHandle"
+    And I register the API Portal "${CTX:portalHandle}" with the control plane
+    And I set up billing in the API Portal
+    And the response status code should be 201
+    And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    And the response status code should be 201
+    And I register API Portal resource "${CTX:planHandle}" at "/subscription-plans" for cleanup
     Given I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
       """
       {"artifactId":"${CTX:apiHandle}","subscriptionPlanId":"${CTX:planHandle}"}
@@ -208,8 +226,7 @@ Feature: Buying a flat rate plan in the API Portal
     When I send an authenticated API Portal "GET" request to "/subscriptions/${CTX:subscriptionId}" as "developer"
     Then the response status code should be 404
 
-  @APIP-BILLING-010
-  Scenario: Ending a flat rate subscription now cancels it in Stripe at once, with no refund
+    # Ending a flat rate subscription now cancels it in Stripe at once, with no refund
     Given I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
       """
       {"artifactId":"${CTX:apiHandle}","subscriptionPlanId":"${CTX:planHandle}"}
@@ -228,29 +245,35 @@ Feature: Buying a flat rate plan in the API Portal
     When I send an authenticated API Portal "DELETE" request to "/billing-configuration" as "admin"
     Then the response status code should be 204
 
-  @APIP-BILLING-011
-  Scenario: A checkout the developer leaves unpaid ends without a subscription
-    Given I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
+  @APIP-042 @type:negative
+  Scenario: Stripe's events are accepted only when they are signed and recent, and repeating one changes nothing
+    # Stripe's events are accepted only when they are signed and recent, and repeating one changes nothing
+    Given I send a "POST" request to the "stripe" service at "/test/reset"
+    And I send a "POST" request to the "moesif" service at "/test/reset"
+    And I authenticate using basic auth as "admin"
+    And I generate a unique value from "paid-checkout-project" and store it as "projectHandle"
+    And I create a project "${CTX:projectHandle}" on the control plane
+    And I generate a unique resource name from "paid-checkout-plan" and store it as "planHandle"
+    And I send a "POST" request to the control plane at "/subscription-plans" with body:
       """
-      {"artifactId":"${CTX:apiHandle}","subscriptionPlanId":"${CTX:planHandle}"}
+      {"id":"${CTX:planHandle}","displayName":"Paid ${CTX:planHandle}","status":"ACTIVE","limits":[{"limitType":"REQUEST_COUNT","timeUnit":"HOUR","limitCount":10000}],"pricing":{"pricingType":"FLAT_RATE","currency":"USD","billingPeriod":"MONTH","flatAmount":"29"}}
       """
     And the response status code should be 201
-    And I store the JSON response field "id" as "checkoutId"
-    When I send a "POST" request to the "stripe" service at "/test/checkout-sessions/${CTX:checkoutId}/expire"
-    Then the response status should be 200
-    And the JSON response field "deliveries[0].status" should be 200
-    When I send an authenticated API Portal "GET" request to "/checkout-sessions/${CTX:checkoutId}" as "developer"
-    Then the response status code should be 404
-    # A new checkout can start.
-    When I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
-      """
-      {"artifactId":"${CTX:apiHandle}","subscriptionPlanId":"${CTX:planHandle}"}
-      """
-    Then the response status code should be 201
-    And the JSON response field "id" should not equal "${CTX:checkoutId}"
-
-  @APIP-BILLING-012 @type:negative
-  Scenario: Stripe's events are accepted only when they are signed and recent, and repeating one changes nothing
+    And I generate a unique resource name from "paid-checkout-api" and store it as "apiHandle"
+    And I generate a unique API context from "/paid-checkout" and store it as "apiContext"
+    And I generate a unique API version from "v" and store it as "apiVersion"
+    And I create a secured REST API "${CTX:apiHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:apiContext}" offering plan "${CTX:planHandle}"
+    And I generate a unique resource name from "paid-checkout-portal" and store it as "portalHandle"
+    And I register the API Portal "${CTX:portalHandle}" with the control plane
+    And I set up billing in the API Portal
+    And the response status code should be 201
+    And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    And the response status code should be 201
+    And I register API Portal resource "${CTX:planHandle}" at "/subscription-plans" for cleanup
     Given I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
       """
       {"artifactId":"${CTX:apiHandle}","subscriptionPlanId":"${CTX:planHandle}"}
@@ -281,30 +304,35 @@ Feature: Buying a flat rate plan in the API Portal
     When I send an unauthenticated API Portal "POST" request to "/api-portal/billing/stripe/webhooks/00000000-0000-4000-8000-000000000000"
     Then the response status code should be 404
 
-  @APIP-BILLING-016 @type:negative
-  Scenario Outline: A checkout <problem> is refused, and nothing is started in Stripe
-    When I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON values:
-      | artifactId         | <api>  |
-      | subscriptionPlanId | <plan> |
-    Then the response status code should be <status>
-    And the response body should contain "<message>"
-    When I send a "GET" request to the "stripe" service at "/test/state"
-    Then the JSON response array field "checkoutSessions" should have 0 items
-    # The same API and plan, named as they are, start a checkout.
-    When I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON values:
-      | artifactId         | ${CTX:apiHandle}  |
-      | subscriptionPlanId | ${CTX:planHandle} |
-    Then the response status code should be 201
-    And the JSON response field "status" should be "OPEN"
-
-    Examples:
-      | problem                         | api                             | plan                            | status | message                                   |
-      | that names no plan              | ${CTX:apiHandle}                |                                 | 400    | artifactId and subscriptionPlanId are required |
-      | for a plan the API doesn't offer | ${CTX:apiHandle}                | ${UNIQUE:unoffered-plan}        | 400    | Subscription plan not found for this API |
-      | for an API that doesn't exist   | ${UNIQUE:missing-api}           | ${CTX:planHandle}               | 404    | API not found                             |
-
-  @APIP-BILLING-017 @type:negative
-  Scenario: A free plan is subscribed to directly, not bought through checkout
+  @APIP-042 @type:negative
+  Scenario: Free plans, unpaid and invalid checkouts start nothing, and a paid plan changes only through checkout
+    # A free plan is subscribed to directly, not bought through checkout
+    Given I send a "POST" request to the "stripe" service at "/test/reset"
+    And I send a "POST" request to the "moesif" service at "/test/reset"
+    And I authenticate using basic auth as "admin"
+    And I generate a unique value from "paid-checkout-project" and store it as "projectHandle"
+    And I create a project "${CTX:projectHandle}" on the control plane
+    And I generate a unique resource name from "paid-checkout-plan" and store it as "planHandle"
+    And I send a "POST" request to the control plane at "/subscription-plans" with body:
+      """
+      {"id":"${CTX:planHandle}","displayName":"Paid ${CTX:planHandle}","status":"ACTIVE","limits":[{"limitType":"REQUEST_COUNT","timeUnit":"HOUR","limitCount":10000}],"pricing":{"pricingType":"FLAT_RATE","currency":"USD","billingPeriod":"MONTH","flatAmount":"29"}}
+      """
+    And the response status code should be 201
+    And I generate a unique resource name from "paid-checkout-api" and store it as "apiHandle"
+    And I generate a unique API context from "/paid-checkout" and store it as "apiContext"
+    And I generate a unique API version from "v" and store it as "apiVersion"
+    And I create a secured REST API "${CTX:apiHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:apiContext}" offering plan "${CTX:planHandle}"
+    And I generate a unique resource name from "paid-checkout-portal" and store it as "portalHandle"
+    And I register the API Portal "${CTX:portalHandle}" with the control plane
+    And I set up billing in the API Portal
+    And the response status code should be 201
+    And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    And the response status code should be 201
+    And I register API Portal resource "${CTX:planHandle}" at "/subscription-plans" for cleanup
     # This block's portal does not create its default plans, and its role mapping is the
     # product's, so the administrator creates the free plan and the API that offers it.
     Given I generate a unique resource name from "free-plan" and store it as "freePlanId"
@@ -331,8 +359,60 @@ Feature: Buying a flat rate plan in the API Portal
     Then the response status code should be 201
     And the JSON response field "subscriptionPlanName" should be "${CTX:freePlanId}"
 
-  @APIP-BILLING-018 @type:negative
-  Scenario: A paid subscription's plan can't be changed or suspended here, and its usage is read only for known periods
+    # A checkout that names no plan is refused, and nothing is started in Stripe
+    When I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON values:
+      | artifactId         | ${CTX:apiHandle}  |
+      | subscriptionPlanId |  |
+    Then the response status code should be 400
+    And the response body should contain "artifactId and subscriptionPlanId are required"
+    When I send a "GET" request to the "stripe" service at "/test/state"
+    Then the JSON response array field "checkoutSessions" should have 0 items
+
+    # A checkout for a plan the API doesn't offer is refused, and nothing is started in Stripe
+    When I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON values:
+      | artifactId         | ${CTX:apiHandle}  |
+      | subscriptionPlanId | ${UNIQUE:unoffered-plan} |
+    Then the response status code should be 400
+    And the response body should contain "Subscription plan not found for this API"
+    When I send a "GET" request to the "stripe" service at "/test/state"
+    Then the JSON response array field "checkoutSessions" should have 0 items
+
+    # A checkout for an API that doesn't exist is refused, and nothing is started in Stripe
+    When I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON values:
+      | artifactId         | ${UNIQUE:missing-api}  |
+      | subscriptionPlanId | ${CTX:planHandle} |
+    Then the response status code should be 404
+    And the response body should contain "API not found"
+    When I send a "GET" request to the "stripe" service at "/test/state"
+    Then the JSON response array field "checkoutSessions" should have 0 items
+    # The same API and plan, named as they are, start a checkout.
+    When I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON values:
+      | artifactId         | ${CTX:apiHandle}  |
+      | subscriptionPlanId | ${CTX:planHandle} |
+    Then the response status code should be 201
+    And the JSON response field "status" should be "OPEN"
+
+    # A checkout the developer leaves unpaid ends without a subscription
+    Given I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
+      """
+      {"artifactId":"${CTX:apiHandle}","subscriptionPlanId":"${CTX:planHandle}"}
+      """
+    And the response status code should be 201
+    And I store the JSON response field "id" as "checkoutId"
+    When I send a "POST" request to the "stripe" service at "/test/checkout-sessions/${CTX:checkoutId}/expire"
+    Then the response status should be 200
+    And the JSON response field "deliveries[0].status" should be 200
+    When I send an authenticated API Portal "GET" request to "/checkout-sessions/${CTX:checkoutId}" as "developer"
+    Then the response status code should be 404
+    # A new checkout can start.
+    When I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON body:
+      """
+      {"artifactId":"${CTX:apiHandle}","subscriptionPlanId":"${CTX:planHandle}"}
+      """
+    Then the response status code should be 201
+    And the JSON response field "id" should not equal "${CTX:checkoutId}"
+
+    # A paid subscription's plan can't be changed or suspended here, and its usage is read only for known periods
     Given I send an authenticated API Portal "POST" request to "/checkout-sessions" as "developer" with JSON values:
       | artifactId         | ${CTX:apiHandle}  |
       | subscriptionPlanId | ${CTX:planHandle} |
@@ -367,8 +447,35 @@ Feature: Buying a flat rate plan in the API Portal
     Then the response status code should be 200
     And the JSON response field "usageAvailable" should be true
 
-  @APIP-BILLING-019
+  @APIP-043
   Scenario: A subscriber pages through their own invoices and opens their billing page, and only an administrator reads the revenue reports
+    # A subscriber pages through their own invoices and opens their billing page, and only an administrator reads the revenue reports
+    Given I send a "POST" request to the "stripe" service at "/test/reset"
+    And I send a "POST" request to the "moesif" service at "/test/reset"
+    And I authenticate using basic auth as "admin"
+    And I generate a unique value from "paid-checkout-project" and store it as "projectHandle"
+    And I create a project "${CTX:projectHandle}" on the control plane
+    And I generate a unique resource name from "paid-checkout-plan" and store it as "planHandle"
+    And I send a "POST" request to the control plane at "/subscription-plans" with body:
+      """
+      {"id":"${CTX:planHandle}","displayName":"Paid ${CTX:planHandle}","status":"ACTIVE","limits":[{"limitType":"REQUEST_COUNT","timeUnit":"HOUR","limitCount":10000}],"pricing":{"pricingType":"FLAT_RATE","currency":"USD","billingPeriod":"MONTH","flatAmount":"29"}}
+      """
+    And the response status code should be 201
+    And I generate a unique resource name from "paid-checkout-api" and store it as "apiHandle"
+    And I generate a unique API context from "/paid-checkout" and store it as "apiContext"
+    And I generate a unique API version from "v" and store it as "apiVersion"
+    And I create a secured REST API "${CTX:apiHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:apiContext}" offering plan "${CTX:planHandle}"
+    And I generate a unique resource name from "paid-checkout-portal" and store it as "portalHandle"
+    And I register the API Portal "${CTX:portalHandle}" with the control plane
+    And I set up billing in the API Portal
+    And the response status code should be 201
+    And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
+    And I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
+    And the response status code should be 201
+    And I register API Portal resource "${CTX:planHandle}" at "/subscription-plans" for cleanup
     # Nobody has bought a plan yet: there is no billing page to open.
     When I send an authenticated API Portal "POST" request to "/billing/billing-portal-sessions" as "developer" with JSON body:
       """

@@ -23,15 +23,14 @@ Feature: Credentials issued in the API Portal authorize gateway invocation via w
   through the signed webhook to platform-api
   So that a consumer using developer-portal-issued credentials can invoke the API end to end
 
-  Background:
+  @APIP-053 @lifecycle @smoke
+  Scenario: API keys and subscriptions issued in the API Portal reach the gateway through their whole lifecycle
+    # A developer-portal API key and subscription propagate to the gateway and authorize a call
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
     And a webhook subscriber targeting the control plane is registered in the API Portal
     And I generate a unique resource name from "devportal-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
-
-  @APIP-DEVPORTAL-WEBHOOK-007 @smoke
-  Scenario: A developer-portal API key and subscription propagate to the gateway and authorize a call
     Given I generate a unique resource name from "devportal-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
     And I generate a unique resource name from "devportal-api" and store it as "apiHandle"
@@ -53,8 +52,7 @@ Feature: Credentials issued in the API Portal authorize gateway invocation via w
     And I send a "GET" request to "${CTX:apiContext}/"
     Then the response status code should be 401
 
-  @APIP-DEVPORTAL-WEBHOOK-008 @lifecycle
-  Scenario: Developer-portal credential-lifecycle changes propagate to platform-api and the gateway
+    # Developer-portal credential-lifecycle changes propagate to platform-api and the gateway
     Given I generate a unique resource name from "devportal-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
     And I generate a unique resource name from "devportal-plan2" and store it as "plan2Handle"
@@ -115,11 +113,7 @@ Feature: Credentials issued in the API Portal authorize gateway invocation via w
     When the subscription "${CTX:subscriptionId}" is removed in the API Portal
     Then I send a "GET" request to "${CTX:apiContext}/" until status 403
 
-  # Scenario APIPORTAL (scenarios/APIPORTAL.yaml) APIP-DEVPORTAL-WEBHOOK-001: deprecating an API in the
-  # API Portal changes only how the portal lists it; the credentials already issued keep working at
-  # the gateway. The portal-side listing and badge are covered by APIP-CORE-120.
-  @APIP-DEVPORTAL-WEBHOOK-001
-  Scenario: A deprecated API keeps serving its existing subscription and API key at the gateway
+    # A deprecated API keeps serving its existing subscription and API key at the gateway
     Given I generate a unique resource name from "devportal-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
     And I generate a unique resource name from "devportal-api" and store it as "apiHandle"
@@ -159,11 +153,14 @@ Feature: Credentials issued in the API Portal authorize gateway invocation via w
     And I send a "GET" request to "${CTX:apiContext}/"
     Then the response status code should be 401
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) APIP-DEVPORTAL-WEBHOOK-010..013: platform-api's receiver
-  # for API Portal events (/api/internal/v0.9/webhook/events). Each refusal is paired with the same
-  # event, correctly signed, being processed, and with a read showing the refused one changed nothing.
-  @APIP-DEVPORTAL-WEBHOOK-010 @type:security
-  Scenario: The control plane processes only API Portal events signed with its secret within the replay window
+  @APIP-053 @type:negative @type:security
+  Scenario: The control plane processes only signed, recent, known API Portal events, and each one once
+    # The control plane processes only API Portal events signed with its secret within the replay window
+    Given the gateway services are running
+    And I authenticate using basic auth as "admin"
+    And a webhook subscriber targeting the control plane is registered in the API Portal
+    And I generate a unique value from "devportal-project" and store it as "projectHandle"
+    And I create a project "${CTX:projectHandle}" on the control plane
     Given I generate a unique resource name from "receiver-signed-meter" and store it as "signedMeter"
     And I generate a unique resource name from "receiver-unsigned-meter" and store it as "unsignedMeter"
     And I generate a unique resource name from "receiver-forged-meter" and store it as "forgedMeter"
@@ -208,8 +205,7 @@ Feature: Credentials issued in the API Portal authorize gateway invocation via w
     When I send a "GET" request to the control plane at "/meters/${CTX:staleMeter}"
     Then the response status code should be 404
 
-  @APIP-DEVPORTAL-WEBHOOK-011 @type:negative
-  Scenario: An API Portal event of an unknown type or for an unknown organization is refused and changes nothing
+    # An API Portal event of an unknown type or for an unknown organization is refused and changes nothing
     # The receiver answers every failed delivery alike; the real reason appears only in its log.
     Given I generate a unique resource name from "receiver-known-meter" and store it as "knownMeter"
     And I generate a unique resource name from "receiver-untyped-meter" and store it as "untypedMeter"
@@ -239,8 +235,7 @@ Feature: Credentials issued in the API Portal authorize gateway invocation via w
     When I send a "GET" request to the control plane at "/meters/${CTX:foreignMeter}"
     Then the response status code should be 404
 
-  @APIP-DEVPORTAL-WEBHOOK-012
-  Scenario: The same API Portal event delivered twice is processed once
+    # The same API Portal event delivered twice is processed once
     Given I generate a unique resource name from "receiver-replayed-meter" and store it as "meterId"
     And the control plane meter "${CTX:meterId}" is registered for cleanup
     When the API Portal sends the "meter.created" event to the control plane signed with data:

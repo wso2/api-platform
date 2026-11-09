@@ -22,34 +22,67 @@ Feature: The API Portal answers health checks and unknown paths predictably
   I want health checks to answer without a session and unknown paths to be refused cleanly
   So that probes see a live portal and nothing outside the portal is ever served by it
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-126..127, at the HTTP level:
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the HTTP level:
   # requests are sent to the portal host exactly as written ("root path"), with no session and no
   # Management API prefix. Every not-found answer is paired with a page of the configured organization that loads.
 
-  @APIP-CORE-126 @type:smoke
-  Scenario Outline: The health check at <path> answers without a session
-    When I send an unauthenticated API Portal "GET" request to the root path "<path>"
+  @APIP-008 @type:negative @type:smoke
+  Scenario: The portal's roots redirect to a view, health checks answer, and unknown paths are not found
+    # The portal root redirects to a view of the configured organization
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal"
+    Then the response status code should be 302
+    And the response header "Location" should contain "/api-portal/default/views/"
+
+    # The organization root redirects to a view of the configured organization
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default"
+    Then the response status code should be 302
+    And the response header "Location" should contain "/api-portal/default/views/"
+
+    # The organization root with a slash redirects to a view of the configured organization
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/"
+    Then the response status code should be 302
+    And the response header "Location" should contain "/api-portal/default/views/"
+
+    # The portal root redirects to the configured organization
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal"
+    Then the response status code should be 302
+    And the response header "Location" should contain "/api-portal/default/views/default"
+
+    # The health check at /health answers without a session
+    When I send an unauthenticated API Portal "GET" request to the root path "/health"
     Then the response status code should be 200
     And the response header "Content-Type" should contain "application/json"
     And the JSON response field "status" should be "ok"
 
-    Examples:
-      | path               |
-      | /health            |
-      | /api-portal/health |
+    # The health check at /api-portal/health answers without a session
+    When I send an unauthenticated API Portal "GET" request to the root path "/api-portal/health"
+    Then the response status code should be 200
+    And the response header "Content-Type" should contain "application/json"
+    And the JSON response field "status" should be "ok"
 
-  @APIP-CORE-127 @type:negative
-  Scenario Outline: A path <where> is not found, while the default view loads
+    # A path outside the portal prefix is not found, while the default view loads
     When I send an unauthenticated API Portal "GET" request to the root path "/api-portal/default/views/default"
     Then the response status code should be 200
-    When I send an unauthenticated API Portal "GET" request to the root path "<path>"
+    When I send an unauthenticated API Portal "GET" request to the root path "/not-the-portal/apis"
     Then the response status code should be 404
-    And the response header "Content-Type" should contain "<content type>"
-    And the response body should contain "<marker>"
-    And the response body should not contain "<absent>"
+    And the response header "Content-Type" should contain "text/plain"
+    And the response body should contain "Not Found"
+    And the response body should not contain "<html"
 
-    Examples:
-      | where                         | path                                        | content type | marker         | absent |
-      | outside the portal prefix     | /not-the-portal/apis                        | text/plain   | Not Found      | <html  |
-      | that the portal does not have | /api-portal/default/no-such-page            | text/html    | Page not found | stack  |
-      | in a view that does not exist | /api-portal/default/views/no-such-view/apis | text/html    | Page not found | stack  |
+    # A path that the portal does not have is not found, while the default view loads
+    When I send an unauthenticated API Portal "GET" request to the root path "/api-portal/default/views/default"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal "GET" request to the root path "/api-portal/default/no-such-page"
+    Then the response status code should be 404
+    And the response header "Content-Type" should contain "text/html"
+    And the response body should contain "Page not found"
+    And the response body should not contain "stack"
+
+    # A path in a view that does not exist is not found, while the default view loads
+    When I send an unauthenticated API Portal "GET" request to the root path "/api-portal/default/views/default"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal "GET" request to the root path "/api-portal/default/views/no-such-view/apis"
+    Then the response status code should be 404
+    And the response header "Content-Type" should contain "text/html"
+    And the response body should contain "Page not found"
+    And the response body should not contain "stack"

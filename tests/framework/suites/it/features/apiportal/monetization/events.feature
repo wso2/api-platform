@@ -23,11 +23,13 @@ Feature: The API Portal reports its meters and priced plans to webhook subscribe
   I want every meter and plan the portal creates, changes or deletes to be delivered to me
   So that the gateway always enforces the plans the portal is selling
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-WEBHOOKS-021..023, at the API level. The
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level. The
   # subscriber points at this scenario's partition of the testbench webhook sink. A refused create
   # publishes nothing, which is checked after a valid create has been delivered.
 
-  Background:
+  @APIP-052 @type:negative
+  Scenario: A meter's and a priced plan's lives are reported with their definitions, and refused ones are not
+    # A meter's whole life is reported with its definition
     Given I generate a unique resource name from "monetization-events-subscriber" and store it as "subscriberId"
     And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "subscriberId":
       | id          | ${CTX:subscriberId}                  |
@@ -36,9 +38,6 @@ Feature: The API Portal reports its meters and priced plans to webhook subscribe
       | events      | ["meter.*","subscription_plan.*"]     |
     And I generate a unique resource name from "event-calls" and store it as "meterId"
     And I generate a unique resource name from "event-plan" and store it as "planId"
-
-  @APIP-WEBHOOKS-021
-  Scenario: A meter's whole life is reported with its definition
     Given a unique API Portal resource is created at "/meters" as "admin" with values and stored as "meterId":
       | id           | ${CTX:meterId}                                     |
       | displayName  | Event calls ${CTX:meterId}                              |
@@ -66,8 +65,15 @@ Feature: The API Portal reports its meters and priced plans to webhook subscribe
     Then the JSON response field "data.handle" should be "${CTX:meterId}"
     And the JSON response field "data.display_name" should not exist
 
-  @APIP-WEBHOOKS-022
-  Scenario: A priced plan is reported with its price in the control plane's terms, through its life
+    # A priced plan is reported with its price in the control plane's terms, through its life
+    Given I generate a unique resource name from "monetization-events-subscriber" and store it as "subscriberId"
+    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "subscriberId":
+      | id          | ${CTX:subscriberId}                  |
+      | displayName | Monetization Subscriber               |
+      | targetUrl   | http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook |
+      | events      | ["meter.*","subscription_plan.*"]     |
+    And I generate a unique resource name from "event-calls" and store it as "meterId"
+    And I generate a unique resource name from "event-plan" and store it as "planId"
     Given a unique API Portal resource is created at "/meters" as "admin" with values and stored as "meterId":
       | id           | ${CTX:meterId}                                     |
       | displayName  | Event calls ${CTX:meterId}                              |
@@ -103,8 +109,15 @@ Feature: The API Portal reports its meters and priced plans to webhook subscribe
     When I wait for an API Portal webhook event "subscription_plan.deleted" containing "${CTX:planId}"
     Then the JSON response field "data.handle" should be "${CTX:planId}"
 
-  @APIP-WEBHOOKS-023 @type:negative
-  Scenario: A refused meter is not reported, while a valid one is
+    # A refused meter is not reported, while a valid one is
+    Given I generate a unique resource name from "monetization-events-subscriber" and store it as "subscriberId"
+    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "subscriberId":
+      | id          | ${CTX:subscriberId}                  |
+      | displayName | Monetization Subscriber               |
+      | targetUrl   | http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook |
+      | events      | ["meter.*","subscription_plan.*"]     |
+    And I generate a unique resource name from "event-calls" and store it as "meterId"
+    And I generate a unique resource name from "event-plan" and store it as "planId"
     Given I generate a unique resource name from "refused-event-meter" and store it as "refusedMeterId"
     When I send an authenticated API Portal "POST" request to "/meters" as "admin" with JSON values:
       | id          | ${CTX:refusedMeterId} |

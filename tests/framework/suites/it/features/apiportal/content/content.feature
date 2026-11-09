@@ -23,18 +23,17 @@ Feature: An API's content is uploaded and served through the API Portal REST API
   I want to upload an API's landing-page content and images, replace them and remove them
   So that developers see the API the way I describe it, and only I can change it
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-081..083 and 129..132, at the API
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API
   # level, plus the public pages that render the content. Every content archive has one wrapper folder
   # holding web/ (landing page and images, first level only) and docs/<Section>/ (documents; a document
   # directly under docs/ is in section Other). The default fixture holds a marketing page
   # (api-content.hbs) and an image (api-icon.png). Images are public; other content needs a signed-in
   # caller. Every refused change is followed by a read showing the content is unchanged.
 
-  Background:
+  @APIP-009 @type:smoke
+  Scenario: A publisher uploads, replaces and removes content for an API and an MCP server
+    # A publisher uploads an API's content, replaces its image and removes it
     Given a REST API is created in the API Portal and stored as "apiId"
-
-  @APIP-CORE-081 @type:smoke
-  Scenario: A publisher uploads an API's content, replaces its image and removes it
     When I upload default API Portal content for API "${CTX:apiId}" as "publisher"
     Then the response status code should be 201
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=api-content.hbs" as "publisher"
@@ -57,53 +56,8 @@ Feature: An API's content is uploaded and served through the API Portal REST API
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=api-content.hbs" as "publisher"
     Then the response status code should be 200
 
-  @APIP-CORE-082 @type:security
-  Scenario: Only a publisher can change an API's content, and only its images are public
-    Given I upload default API Portal content for API "${CTX:apiId}" as "publisher"
-    And I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png" as "publisher"
-    And I store the API Portal response body as "originalImage"
-    When I upload default API Portal content for API "${CTX:apiId}" as "developer"
-    Then the response status code should be 403
-    When I PUT API Portal content "alternate" for API "${CTX:apiId}" as "developer"
-    Then the response status code should be 403
-    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png" as "developer"
-    Then the response status code should be 403
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png" as "developer"
-    Then the response status code should be 200
-    And the API Portal response body should equal stored "originalImage"
-
-    When I send an unauthenticated API Portal public "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png"
-    Then the response status code should be 200
-    And the response header "Content-Type" should contain "image"
-    When I send an unauthenticated API Portal public "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png&orgId=00000000-0000-0000-0000-000000000000"
-    Then the response status code should be 200
-    When I send an unauthenticated API Portal public "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=api-content.hbs"
-    Then the response status code should be 401
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=api-content.hbs" as "developer"
-    Then the response status code should be 200
-
-  @APIP-CORE-083 @type:negative
-  Scenario: Content requests that name nothing, or repeat an upload, are refused
-    Given I generate a unique resource name from "portal-missing-content-api" and store it as "missingApiId"
-    And I upload default API Portal content for API "${CTX:apiId}" as "publisher"
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=missing.png" as "publisher"
-    Then the response status code should be 404
-    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=missing.png" as "publisher"
-    Then the response status code should be 404
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:missingApiId}/assets?type=IMAGE&fileName=api-icon.png" as "publisher"
-    Then the response status code should be 404
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?fileName=api-icon.png" as "publisher"
-    Then the response status code should be 400
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE" as "publisher"
-    Then the response status code should be 400
-    When I POST API Portal content "default" for API "${CTX:apiId}" as "publisher"
-    Then the response status code should be 409
-    And the response body should not contain "constraint"
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png" as "publisher"
-    Then the response status code should be 200
-
-  @APIP-CORE-129
-  Scenario: An API's content gives it a landing page, an icon and documents in their sections
+    # An API's content gives it a landing page, an icon and documents in their sections
+    Given a REST API is created in the API Portal and stored as "apiId"
     When I upload API Portal content "with-docs" for API "${CTX:apiId}" as "publisher"
     Then the response status code should be 201
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}"
@@ -131,30 +85,8 @@ Feature: An API's content is uploaded and served through the API Portal REST API
     And the response body should contain "aov-api-avatar"
     And the response body should contain "API Portal content"
 
-  @APIP-CORE-130 @type:negative
-  Scenario: A content upload holding files the portal does not serve is refused and stores nothing
-    When I upload API Portal content "no-content-dirs" for API "${CTX:apiId}" as "publisher"
-    Then the response status code should be 400
-    And the response body should contain "unknown top-level entry"
-    And the response body should not contain "/tmp/"
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=readme.txt" as "publisher"
-    Then the response status code should be 404
-
-    When I upload API Portal content "skips" for API "${CTX:apiId}" as "publisher"
-    Then the response status code should be 400
-    And the response body should contain "web/ holds only"
-    And the response body should not contain "/tmp/"
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=api-content.hbs" as "publisher"
-    Then the response status code should be 404
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png" as "publisher"
-    Then the response status code should be 404
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=deep.md" as "publisher"
-    Then the response status code should be 404
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=run.sh" as "publisher"
-    Then the response status code should be 404
-
-  @APIP-CORE-131
-  Scenario: A second upload through PUT replaces everything the API held
+    # A second upload through PUT replaces everything the API held
+    Given a REST API is created in the API Portal and stored as "apiId"
     Given I upload default API Portal content for API "${CTX:apiId}" as "publisher"
     And the response status code should be 201
     When I PUT API Portal content "replace-and-add" for API "${CTX:apiId}" as "publisher"
@@ -168,8 +100,8 @@ Feature: An API's content is uploaded and served through the API Portal REST API
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=api-content.hbs" as "publisher"
     Then the response status code should be 404
 
-  @APIP-CORE-132
-  Scenario: An MCP server's content is uploaded, shown on its page and removed
+    # An MCP server's content is uploaded, shown on its page and removed
+    Given a REST API is created in the API Portal and stored as "apiId"
     Given a unique API Portal MCP server with label "default" is created and stored as "mcpId"
     When I POST API Portal content "default" for MCP server "${CTX:mcpId}" as "publisher"
     Then the response status code should be 201
@@ -195,4 +127,73 @@ Feature: An API's content is uploaded and served through the API Portal REST API
     When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}/assets?type=IMAGE&fileName=api-icon.png" as "publisher"
     Then the response status code should be 404
     When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}/assets?type=MARKETING&fileName=api-content.hbs" as "publisher"
+    Then the response status code should be 200
+
+  @APIP-009 @type:negative @type:security
+  Scenario: Unsafe or repeated content is refused, and only a publisher can change content
+    # A content upload holding files the portal does not serve is refused and stores nothing
+    Given a REST API is created in the API Portal and stored as "apiId"
+    When I upload API Portal content "no-content-dirs" for API "${CTX:apiId}" as "publisher"
+    Then the response status code should be 400
+    And the response body should contain "unknown top-level entry"
+    And the response body should not contain "/tmp/"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=readme.txt" as "publisher"
+    Then the response status code should be 404
+
+    When I upload API Portal content "skips" for API "${CTX:apiId}" as "publisher"
+    Then the response status code should be 400
+    And the response body should contain "web/ holds only"
+    And the response body should not contain "/tmp/"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=api-content.hbs" as "publisher"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png" as "publisher"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=deep.md" as "publisher"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=run.sh" as "publisher"
+    Then the response status code should be 404
+
+    # Content requests that name nothing, or repeat an upload, are refused
+    Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name from "portal-missing-content-api" and store it as "missingApiId"
+    And I upload default API Portal content for API "${CTX:apiId}" as "publisher"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=missing.png" as "publisher"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=missing.png" as "publisher"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:missingApiId}/assets?type=IMAGE&fileName=api-icon.png" as "publisher"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?fileName=api-icon.png" as "publisher"
+    Then the response status code should be 400
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE" as "publisher"
+    Then the response status code should be 400
+    When I POST API Portal content "default" for API "${CTX:apiId}" as "publisher"
+    Then the response status code should be 409
+    And the response body should not contain "constraint"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png" as "publisher"
+    Then the response status code should be 200
+
+    # Only a publisher can change an API's content, and only its images are public
+    Given a REST API is created in the API Portal and stored as "apiId"
+    Given I upload default API Portal content for API "${CTX:apiId}" as "publisher"
+    And I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png" as "publisher"
+    And I store the API Portal response body as "originalImage"
+    When I upload default API Portal content for API "${CTX:apiId}" as "developer"
+    Then the response status code should be 403
+    When I PUT API Portal content "alternate" for API "${CTX:apiId}" as "developer"
+    Then the response status code should be 403
+    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png" as "developer"
+    Then the response status code should be 403
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png" as "developer"
+    Then the response status code should be 200
+    And the API Portal response body should equal stored "originalImage"
+
+    When I send an unauthenticated API Portal public "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png"
+    Then the response status code should be 200
+    And the response header "Content-Type" should contain "image"
+    When I send an unauthenticated API Portal public "GET" request to "/apis/${CTX:apiId}/assets?type=IMAGE&fileName=api-icon.png&orgId=00000000-0000-0000-0000-000000000000"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=api-content.hbs"
+    Then the response status code should be 401
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=api-content.hbs" as "developer"
     Then the response status code should be 200

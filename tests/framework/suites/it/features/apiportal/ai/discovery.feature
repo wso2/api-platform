@@ -23,21 +23,53 @@ Feature: AI agents discover a view's APIs, MCP servers and specifications withou
   I want each view to publish an llms.txt index, Markdown catalogues and raw specifications
   So that AI agents can find and call the APIs I make visible to them, and never the ones I hide
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-093..098 and 157..158.
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml).
   # Every scenario after the first uses its own labelled view, so what it publishes, and turning AI
   # discovery off, never affects another runner's view. Every hidden entry is paired with a visible
   # one in the same index.
 
-  @APIP-CORE-093
-  Scenario: The portal-wide llms.txt is the public entry point for the configured organization
+  @APIP-022
+  Scenario: AI agents discover the catalogue through llms.txt, Markdown, specifications and robots.txt
+    # The portal-wide llms.txt is the public entry point for the configured organization
     When I send an unauthenticated API Portal public "GET" request to "/llms.txt"
     Then the response status code should be 200
     And the response body should contain "AI Agent Entry Point"
     And the response body should contain "/default/views/"
     And the response body should not contain "{orgName}"
 
-  @APIP-CORE-094
-  Scenario: A view lists its visible APIs and MCP servers to agents, and leaves out hidden ones
+    # A view's llms.txt has a section only for the kinds of API it shows
+    Given I generate a unique resource name from "portal-discovery-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-discovery-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId}  |
+      | displayName | Discovery Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Discovery View     |
+      | labels      | ["${CTX:labelId}"] |
+    And I generate a unique resource name from "portal-discovery-rest" and store it as "restApiId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "rest" with values:
+      | id     | ${CTX:restApiId}       |
+      | name   | ${CTX:restApiId}       |
+      | type   | REST             |
+      | labels | ["${CTX:labelId}"] |
+    And the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/llms.txt"
+    Then the response status code should be 200
+    And the response body should contain "## APIs"
+    And the response body should not contain "## GraphQL APIs"
+    When I generate a unique resource name from "portal-discovery-graphql" and store it as "graphqlApiId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "graphql" with values:
+      | id     | ${CTX:graphqlApiId}       |
+      | name   | ${CTX:graphqlApiId}       |
+      | type   | GRAPHQL             |
+      | labels | ["${CTX:labelId}"] |
+    And the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/llms.txt"
+    Then the response body should contain "## GraphQL APIs"
+    And the response body should contain "${CTX:graphqlApiId}"
+
+    # A view lists its visible APIs and MCP servers to agents, and leaves out hidden ones
     Given I generate a unique resource name from "portal-discovery-label" and store it as "labelId"
     And I generate a unique resource name from "portal-discovery-view" and store it as "viewId"
     And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
@@ -106,41 +138,7 @@ Feature: AI agents discover a view's APIs, MCP servers and specifications withou
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:restApiId}.md"
     Then the response status code should be 200
 
-  @APIP-CORE-095
-  Scenario: A view's llms.txt has a section only for the kinds of API it shows
-    Given I generate a unique resource name from "portal-discovery-label" and store it as "labelId"
-    And I generate a unique resource name from "portal-discovery-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
-      | id          | ${CTX:labelId}  |
-      | displayName | Discovery Label |
-    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
-      | id          | ${CTX:viewId}      |
-      | displayName | Discovery View     |
-      | labels      | ["${CTX:labelId}"] |
-    And I generate a unique resource name from "portal-discovery-rest" and store it as "restApiId"
-    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "rest" with values:
-      | id     | ${CTX:restApiId}       |
-      | name   | ${CTX:restApiId}       |
-      | type   | REST             |
-      | labels | ["${CTX:labelId}"] |
-    And the response status code should be 201
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/llms.txt"
-    Then the response status code should be 200
-    And the response body should contain "## APIs"
-    And the response body should not contain "## GraphQL APIs"
-    When I generate a unique resource name from "portal-discovery-graphql" and store it as "graphqlApiId"
-    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "graphql" with values:
-      | id     | ${CTX:graphqlApiId}       |
-      | name   | ${CTX:graphqlApiId}       |
-      | type   | GRAPHQL             |
-      | labels | ["${CTX:labelId}"] |
-    And the response status code should be 201
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/llms.txt"
-    Then the response body should contain "## GraphQL APIs"
-    And the response body should contain "${CTX:graphqlApiId}"
-
-  @APIP-CORE-096
-  Scenario Outline: A <kind> API's specification is served raw in its own format only
+    # A REST API's specification is served raw in its own format only
     Given I generate a unique resource name from "portal-discovery-label" and store it as "labelId"
     And I generate a unique resource name from "portal-discovery-view" and store it as "viewId"
     And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
@@ -151,27 +149,106 @@ Feature: AI agents discover a view's APIs, MCP servers and specifications withou
       | displayName | Discovery View     |
       | labels      | ["${CTX:labelId}"] |
     And I generate a unique resource name from "portal-spec-api" and store it as "apiId"
-    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "<definition>" with values:
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "rest" with values:
       | id     | ${CTX:apiId}       |
       | name   | ${CTX:apiId}       |
-      | type   | <type>             |
+      | type   | REST             |
       | labels | ["${CTX:labelId}"] |
     And the response status code should be 201
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.<format>"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.json"
     Then the response status code should be 200
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.<other format>"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.graphql"
     Then the response status code should be 404
 
-    Examples:
-      | kind      | type    | definition | format  | other format |
-      | REST      | REST    | rest       | json    | graphql      |
-      | WebSocket | WS      | websocket  | json    | xml          |
-      | WebSub    | WEBSUB  | websub     | json    | graphql      |
-      | GraphQL   | GRAPHQL | graphql    | graphql | json         |
-      | SOAP      | SOAP    | soap       | xml     | json         |
+    # A WebSocket API's specification is served raw in its own format only
+    Given I generate a unique resource name from "portal-discovery-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-discovery-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId}  |
+      | displayName | Discovery Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Discovery View     |
+      | labels      | ["${CTX:labelId}"] |
+    And I generate a unique resource name from "portal-spec-api" and store it as "apiId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "websocket" with values:
+      | id     | ${CTX:apiId}       |
+      | name   | ${CTX:apiId}       |
+      | type   | WS             |
+      | labels | ["${CTX:labelId}"] |
+    And the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.json"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.xml"
+    Then the response status code should be 404
 
-  @APIP-CORE-097
-  Scenario: An MCP server's tools are served as its specification
+    # A WebSub API's specification is served raw in its own format only
+    Given I generate a unique resource name from "portal-discovery-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-discovery-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId}  |
+      | displayName | Discovery Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Discovery View     |
+      | labels      | ["${CTX:labelId}"] |
+    And I generate a unique resource name from "portal-spec-api" and store it as "apiId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "websub" with values:
+      | id     | ${CTX:apiId}       |
+      | name   | ${CTX:apiId}       |
+      | type   | WEBSUB             |
+      | labels | ["${CTX:labelId}"] |
+    And the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.json"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.graphql"
+    Then the response status code should be 404
+
+    # A GraphQL API's specification is served raw in its own format only
+    Given I generate a unique resource name from "portal-discovery-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-discovery-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId}  |
+      | displayName | Discovery Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Discovery View     |
+      | labels      | ["${CTX:labelId}"] |
+    And I generate a unique resource name from "portal-spec-api" and store it as "apiId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "graphql" with values:
+      | id     | ${CTX:apiId}       |
+      | name   | ${CTX:apiId}       |
+      | type   | GRAPHQL             |
+      | labels | ["${CTX:labelId}"] |
+    And the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.graphql"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.json"
+    Then the response status code should be 404
+
+    # A SOAP API's specification is served raw in its own format only
+    Given I generate a unique resource name from "portal-discovery-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-discovery-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId}  |
+      | displayName | Discovery Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Discovery View     |
+      | labels      | ["${CTX:labelId}"] |
+    And I generate a unique resource name from "portal-spec-api" and store it as "apiId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "soap" with values:
+      | id     | ${CTX:apiId}       |
+      | name   | ${CTX:apiId}       |
+      | type   | SOAP             |
+      | labels | ["${CTX:labelId}"] |
+    And the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.xml"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.json"
+    Then the response status code should be 404
+
+    # An MCP server's tools are served as its specification
     Given I generate a unique resource name from "portal-discovery-label" and store it as "labelId"
     And I generate a unique resource name from "portal-discovery-view" and store it as "viewId"
     And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
@@ -186,34 +263,7 @@ Feature: AI agents discover a view's APIs, MCP servers and specifications withou
     Then the response status code should be 200
     And the response body should contain "ping"
 
-  @APIP-CORE-098
-  Scenario: A view with AI discovery turned off serves no llms.txt
-    Given I generate a unique resource name from "portal-discovery-label" and store it as "labelId"
-    And I generate a unique resource name from "portal-discovery-view" and store it as "viewId"
-    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
-      | id          | ${CTX:labelId}  |
-      | displayName | Discovery Label |
-    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
-      | id          | ${CTX:viewId}      |
-      | displayName | Discovery View     |
-      | labels      | ["${CTX:labelId}"] |
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/llms.txt"
-    Then the response status code should be 200
-    When I verify API Portal view "${CTX:viewId}" returns not found when AI discovery is disabled as "publisher"
-    Then the response status code should be 404
-
-  @APIP-CORE-157
-  Scenario: robots.txt lets crawlers in and points AI agents to a view's llms.txt
-    When I send an unauthenticated API Portal "GET" request to the root path "/robots.txt"
-    Then the response status code should be 200
-    And the response header "Content-Type" should contain "text/plain"
-    And the response body should contain "User-agent: *"
-    And the response body should contain "Allow: /"
-    And the response body should contain "/api-portal/default/views/"
-    And the response body should contain "llms.txt"
-
-  @APIP-CORE-158
-  Scenario: The API page that Try with AI points to names the API, its specification and how to get credentials
+    # The API page that Try with AI points to names the API, its specification and how to get credentials
     Given I generate a unique resource name from "portal-discovery-label" and store it as "labelId"
     And I generate a unique resource name from "portal-discovery-view" and store it as "viewId"
     And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
@@ -246,4 +296,28 @@ Feature: AI agents discover a view's APIs, MCP servers and specifications withou
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.json"
     Then the response status code should be 200
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:hiddenApiId}.md"
+    Then the response status code should be 404
+
+    # robots.txt lets crawlers in and points AI agents to a view's llms.txt
+    When I send an unauthenticated API Portal "GET" request to the root path "/robots.txt"
+    Then the response status code should be 200
+    And the response header "Content-Type" should contain "text/plain"
+    And the response body should contain "User-agent: *"
+    And the response body should contain "Allow: /"
+    And the response body should contain "/api-portal/default/views/"
+    And the response body should contain "llms.txt"
+
+    # A view with AI discovery turned off serves no llms.txt
+    Given I generate a unique resource name from "portal-discovery-label" and store it as "labelId"
+    And I generate a unique resource name from "portal-discovery-view" and store it as "viewId"
+    And a unique API Portal resource is created at "/labels" as "admin" with values and stored as "labelId":
+      | id          | ${CTX:labelId}  |
+      | displayName | Discovery Label |
+    And a unique API Portal resource is created at "/views" as "admin" with values and stored as "viewId":
+      | id          | ${CTX:viewId}      |
+      | displayName | Discovery View     |
+      | labels      | ["${CTX:labelId}"] |
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/llms.txt"
+    Then the response status code should be 200
+    When I verify API Portal view "${CTX:viewId}" returns not found when AI discovery is disabled as "publisher"
     Then the response status code should be 404

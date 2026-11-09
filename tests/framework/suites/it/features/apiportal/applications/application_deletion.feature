@@ -23,14 +23,15 @@ Feature: Deleting an application unlinks its credentials without revoking them
   I want deleting an application to remove only the application
   So that the API keys, subscriptions and OAuth2 clients I grouped in it keep working
 
-  # Scenario APIPORTAL (scenarios/APIPORTAL.yaml) APIP-WEBHOOKS-024, at the API level.
-  # The gateway side is APIP-DEVPORTAL-WEBHOOK-002. It runs
+  # Scenario APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
+  # The gateway side is in subscriptions/subscription_gateway.feature. It runs
   # in the api-portal-webhooks block because webhook subscribers are organization-wide. The key
   # manager points at this scenario's partition of the testbench OAuth2 mock, whose fixed client is
   # "test-client" / "test-secret" — a mock credential, never a real one.
 
-  @APIP-WEBHOOKS-024
+  @APIP-014
   Scenario: Deleting an application unlinks its API keys, which stay active, and leaves its subscription and key manager alone
+    # Deleting an application unlinks its API keys, which stay active, and leaves its subscription and key manager alone
     Given a REST API is created in the API Portal and stored as "apiId"
     And I generate a unique resource name from "portal-deleted-app-subscriber" and store it as "subscriberId"
     And I generate a unique resource name from "portal-deleted-app-km" and store it as "kmId"

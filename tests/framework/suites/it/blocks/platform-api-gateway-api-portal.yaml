@@ -61,19 +61,12 @@ blocks:
         features:
           - features/apiportal/publishing/publication_failures.feature
       - name: publication-content
-        # Excludes the scenarios for content that stays on the portal after it is unselected.
         features:
           - features/apiportal/publishing/publication_content.feature
         tags: "~@known-issue"
       - name: devportal-webhook
         features:
           - features/apiportal/webhooks/devportal_webhook.feature
-      - name: devportal-monetization-webhook
-        features:
-          - features/apiportal/webhooks/monetization_webhook.feature
-      - name: application-gateway
-        features:
-          - features/apiportal/applications/application_gateway.feature
       - name: subscription-gateway
         features:
           - features/apiportal/subscriptions/subscription_gateway.feature

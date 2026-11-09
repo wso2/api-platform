@@ -23,14 +23,15 @@ Feature: MCP servers are managed through the API Portal REST API and its MCP reg
   I want to publish MCP servers with their tools, through the portal's API or its MCP registry
   So that developers and AI agents find each server, and nothing else is mistaken for one
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-CORE-032..042, 142..151, 159 and 160, at the API level. MCP
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level. MCP
   # servers are rendered from resources/templates/api-portal-api.yaml with type MCP and sent to
   # /mcp-servers; the "mcp" definition holds a single "ping" tool. REST APIs and MCP servers live in
   # separate collections, so each handle resolves only in its own. Registry servers are named
   # "<namespace>/<name>", and the name after the slash is the server's handle in the portal.
 
-  @APIP-CORE-032 @type:smoke
-  Scenario: A publisher manages an MCP server from creation to deletion
+  @APIP-017 @type:smoke
+  Scenario: A publisher manages an MCP server, which carries the AI Ready badge while agents may see it
+    # A publisher manages an MCP server from creation to deletion
     Given I generate a unique resource name from "portal-mcp" and store it as "mcpId"
     When I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
       | id   | ${CTX:mcpId} |
@@ -69,267 +70,7 @@ Feature: MCP servers are managed through the API Portal REST API and its MCP reg
     When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher" until status 404
     Then the response status code should be 404
 
-  @APIP-CORE-033 @type:negative
-  Scenario Outline: Creating an MCP server with <problem> is refused and stores nothing
-    Given I generate a unique resource name from "portal-invalid-mcp" and store it as "mcpId"
-    When I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "<definition>" with values:
-      | id   | ${CTX:mcpId} |
-      | name | ${CTX:mcpId} |
-      | type | <type>       |
-    Then the response status code should be 400
-    And the response body should not contain "stack"
-    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
-    Then the response status code should be 404
-    When I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
-      | id   | ${CTX:mcpId} |
-      | name | ${CTX:mcpId} |
-      | type | MCP |
-    Then the response status code should be 201
-
-    Examples:
-      | problem         | definition | type |
-      | no type         | mcp        | null |
-      | the REST type   | mcp        | REST |
-      | no definition   | none       | MCP  |
-
-  @APIP-CORE-034 @type:negative
-  Scenario Outline: Updating an MCP server with <problem> is refused and it stays an MCP server
-    Given I generate a unique resource name from "portal-retyped-mcp" and store it as "mcpId"
-    And I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
-      | id   | ${CTX:mcpId} |
-      | name | ${CTX:mcpId} |
-      | type | MCP |
-    And the response status code should be 201
-    When I update the API Portal API "${CTX:mcpId}" from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
-      | id   | ${CTX:mcpId}         |
-      | name | ${CTX:mcpId}-changed |
-      | type | <type>               |
-    Then the response status code should be 400
-    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
-    Then the JSON response field "type" should be "Mcp"
-    And the JSON response field "name" should be "${CTX:mcpId}"
-
-    Examples:
-      | problem         | type |
-      | no type         | null |
-      | the REST type   | REST |
-
-  @APIP-CORE-035 @type:negative
-  Scenario: An MCP server sent to the REST API collection is refused
-    Given I generate a unique resource name from "portal-mcp-as-api" and store it as "mcpId"
-    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
-      | id   | ${CTX:mcpId} |
-      | name | ${CTX:mcpId} |
-      | type | MCP          |
-    Then the response status code should be 400
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:mcpId}" as "publisher"
-    Then the response status code should be 404
-
-  @APIP-CORE-036 @type:security
-  Scenario: REST API and MCP server handles never resolve through each other's endpoints
-    Given a REST API is created in the API Portal and stored as "apiId"
-    And I generate a unique resource name from "portal-isolated-mcp" and store it as "mcpId"
-    And I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
-      | id   | ${CTX:mcpId} |
-      | name | ${CTX:mcpId} |
-      | type | MCP |
-    And the response status code should be 201
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
-    Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
-    Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:apiId}" as "publisher"
-    Then the response status code should be 404
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:mcpId}" as "publisher"
-    Then the response status code should be 404
-    When I send an authenticated API Portal "GET" request to "/mcp-servers?name=${CTX:apiId}" as "publisher"
-    Then the response body should not contain "${CTX:apiId}"
-    When I send an authenticated API Portal "GET" request to "/apis?name=${CTX:mcpId}" as "publisher"
-    Then the response body should not contain "${CTX:mcpId}"
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "publisher"
-    Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:mcpId}/api-keys" as "publisher"
-    Then the response status code should be 404
-    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}/api-keys" as "publisher"
-    Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:apiId}/api-keys" as "publisher"
-    Then the response status code should be 404
-
-  @APIP-CORE-037 @type:security
-  Scenario: MCP server requests that repeat an id, name nothing or are not allowed are refused
-    Given I generate a unique resource name from "portal-guarded-mcp" and store it as "mcpId"
-    And I generate a unique resource name from "portal-missing-mcp" and store it as "missingMcpId"
-    And I generate a unique resource name from "portal-developer-mcp" and store it as "developerMcpId"
-    And I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
-      | id   | ${CTX:mcpId} |
-      | name | ${CTX:mcpId} |
-      | type | MCP |
-    And the response status code should be 201
-    When I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
-      | id   | ${CTX:mcpId} |
-      | name | ${CTX:mcpId}-second |
-      | type | MCP |
-    Then the response status code should be 409
-    And the response body should not contain "constraint"
-    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
-    Then the JSON response field "name" should be "${CTX:mcpId}"
-    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:missingMcpId}" as "publisher"
-    Then the response status code should be 404
-    When I update the API Portal API "${CTX:missingMcpId}" from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
-      | id   | ${CTX:missingMcpId} |
-      | name | ${CTX:missingMcpId} |
-      | type | MCP                 |
-    Then the response status code should be 404
-    When I send an authenticated API Portal "DELETE" request to "/mcp-servers/${CTX:missingMcpId}" as "publisher"
-    Then the response status code should be 404
-    When I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "developer" with definition "mcp" with values:
-      | id   | ${CTX:developerMcpId} |
-      | name | ${CTX:developerMcpId} |
-      | type | MCP                   |
-    Then the response status code should be 403
-    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:developerMcpId}" as "publisher"
-    Then the response status code should be 404
-    When I send an unauthenticated API Portal "GET" request to "/mcp-servers"
-    Then the response status code should be 401
-    When I send an authenticated API Portal "GET" request to "/mcp-servers" as "developer"
-    Then the response status code should be 200
-
-  @APIP-CORE-038
-  Scenario: A publisher publishes an MCP server version through the registry, which lists it under both paths
-    Given I generate a unique resource name from "portal-registry" and store it as "serverName"
-    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
-      | name        | example.com/${CTX:serverName} |
-      | description | Plans trips                   |
-      | version     | 1.0.0                         |
-    Then the response status code should be 201
-    And I register API Portal resource "${CTX:serverName}" at "/mcp-servers" for cleanup
-    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
-      | name        | example.com/${CTX:serverName} |
-      | description | Plans trips anywhere          |
-      | version     | 1.0.0                         |
-    Then the response status code should be 200
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
-    Then the response status code should be 200
-    And the response body should contain "example.com/${CTX:serverName}"
-    And the response header "Access-Control-Allow-Origin" should be "*"
-    And the response header "Access-Control-Allow-Methods" should contain "GET"
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/registry/v0.1/servers?search=${CTX:serverName}"
-    Then the response status code should be 200
-    And the response body should contain "example.com/${CTX:serverName}"
-    And the response header "Access-Control-Allow-Origin" should be "*"
-    And the response header "Access-Control-Allow-Methods" should contain "GET"
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions"
-    Then the response status code should be 200
-    And the response body should contain "1.0.0"
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
-    Then the response status code should be 200
-    And the response body should contain "Plans trips anywhere"
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/9.9.9"
-    Then the response status code should be 404
-
-  @APIP-CORE-039 @type:security
-  Scenario: A developer cannot publish to the MCP registry
-    Given I generate a unique resource name from "portal-registry-denied" and store it as "serverName"
-    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "developer" with JSON values:
-      | name        | example.com/${CTX:serverName} |
-      | description | Not allowed                   |
-      | version     | 1.0.0                         |
-    Then the response status code should be 403
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions"
-    Then the response status code should be 404
-
-  @APIP-CORE-040 @type:negative
-  Scenario Outline: A registry server whose <problem> is refused and not listed
-    Given I generate a unique resource name from "portal-registry-invalid" and store it as "serverName"
-    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
-      | name        | <name>        |
-      | description | Plans trips   |
-      | version     | <version>     |
-    Then the response status code should be 400
-    And the response body should not contain "stack"
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
-    Then the response status code should be 200
-    And the response body should not contain "${CTX:serverName}"
-
-    Examples:
-      | problem                           | name                          | version |
-      | name has no namespace             | ${CTX:serverName}             | 1.0.0   |
-      | version is latest                 | example.com/${CTX:serverName} | latest  |
-      | version is a caret range          | example.com/${CTX:serverName} | ^1.0.0  |
-      | version is a wildcard             | example.com/${CTX:serverName} | 1.x     |
-
-  @APIP-CORE-041
-  Scenario: A registry version's status changes only to a new allowed value, and deleting it is soft
-    Given I generate a unique resource name from "portal-registry-status" and store it as "serverName"
-    And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
-      | name        | example.com/${CTX:serverName} |
-      | description | Plans trips                   |
-      | version     | 1.0.0                         |
-    And the response status code should be 201
-    And I register API Portal resource "${CTX:serverName}" at "/mcp-servers" for cleanup
-    When I send an authenticated API Portal "PUT" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0" as "publisher" with JSON values:
-      | name        | example.com/${CTX:serverName} |
-      | description | Plans trips                   |
-      | version     | 2.0.0                         |
-    Then the response status code should be 400
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
-    Then the response status code should be 200
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/2.0.0"
-    Then the response status code should be 404
-    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0/status" as "publisher" with JSON values:
-      | status | deprecated |
-    Then the response status code should be 200
-    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0/status" as "publisher" with JSON values:
-      | status | deprecated |
-    Then the response status code should be 400
-    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0/status" as "publisher" with JSON values:
-      | status | retired |
-    Then the response status code should be 400
-    When I send an authenticated API Portal "DELETE" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0" as "publisher"
-    Then the response status code should be 200
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
-    Then the response status code should be 404
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0?include_deleted=true"
-    Then the response status code should be 200
-
-  @APIP-CORE-042 @type:negative
-  Scenario: The registry refuses a cursor it did not issue and an organization it does not serve
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?limit=5"
-    Then the response status code should be 200
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?cursor=not-a-cursor"
-    Then the response status code should be 400
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/foreign-org/v0.1/servers"
-    Then the response status code should be 404
-
-  @APIP-CORE-142 @type:negative
-  Scenario: An MCP server with a subscription cannot be deleted until the subscription is removed
-    Given I generate a unique resource name from "portal-subscribed-mcp" and store it as "mcpId"
-    And I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
-      | id                | ${CTX:mcpId}       |
-      | name              | ${CTX:mcpId}       |
-      | type              | MCP                |
-      | subscriptionPlans | [{"id": "Gold"}]   |
-    And the response status code should be 201
-    When a developer subscription for API "${CTX:mcpId}" using plan "Gold" is created and stored as "subscriptionId"
-    Then the response status code should be 201
-    And the JSON response should have field "subscriptionToken"
-    And the JSON response field "subscriptionPlanName" should be "Gold"
-    When I send an authenticated API Portal "DELETE" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
-    Then the response status code should be 409
-    And the response body should contain "API has subscriptions."
-    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
-    Then the response status code should be 200
-    When I send an authenticated API Portal "DELETE" request to "/subscriptions/${CTX:subscriptionId}" as "developer"
-    Then the response status code should be 200
-    When I send an authenticated API Portal "DELETE" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
-    Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher" until status 404
-    Then the response status code should be 404
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/${CTX:mcpId}/versions/v1.0"
-    Then the response status code should be 404
-
-  @APIP-CORE-143
-  Scenario: An MCP server carries the AI Ready badge only while agents may see it
+    # An MCP server carries the AI Ready badge only while agents may see it
     Given I generate a unique resource name from "portal-ai-ready-label" and store it as "labelId"
     And I generate a unique resource name from "portal-ai-ready-view" and store it as "viewId"
     And I generate a unique resource name from "portal-ai-hidden-label" and store it as "hiddenLabelId"
@@ -386,8 +127,194 @@ Feature: MCP servers are managed through the API Portal REST API and its MCP reg
     Then the response status code should be 200
     And the response body should not contain "${CTX:hiddenMcpId}"
 
-  @APIP-CORE-144
+  @APIP-017 @type:negative @type:security
+  Scenario: Invalid MCP servers are refused, handles never cross with REST APIs, and one in use cannot be deleted
+    # Creating an MCP server with no type is refused and stores nothing
+    Given I generate a unique resource name from "portal-invalid-mcp" and store it as "mcpId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id   | ${CTX:mcpId} |
+      | name | ${CTX:mcpId} |
+      | type | null       |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
+    Then the response status code should be 404
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id   | ${CTX:mcpId} |
+      | name | ${CTX:mcpId} |
+      | type | MCP |
+    Then the response status code should be 201
+
+    # Creating an MCP server with the REST type is refused and stores nothing
+    Given I generate a unique resource name from "portal-invalid-mcp" and store it as "mcpId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id   | ${CTX:mcpId} |
+      | name | ${CTX:mcpId} |
+      | type | REST       |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
+    Then the response status code should be 404
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id   | ${CTX:mcpId} |
+      | name | ${CTX:mcpId} |
+      | type | MCP |
+    Then the response status code should be 201
+
+    # Creating an MCP server with no definition is refused and stores nothing
+    Given I generate a unique resource name from "portal-invalid-mcp" and store it as "mcpId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "none" with values:
+      | id   | ${CTX:mcpId} |
+      | name | ${CTX:mcpId} |
+      | type | MCP       |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
+    Then the response status code should be 404
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id   | ${CTX:mcpId} |
+      | name | ${CTX:mcpId} |
+      | type | MCP |
+    Then the response status code should be 201
+
+    # Updating an MCP server with no type is refused and it stays an MCP server
+    Given I generate a unique resource name from "portal-retyped-mcp" and store it as "mcpId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id   | ${CTX:mcpId} |
+      | name | ${CTX:mcpId} |
+      | type | MCP |
+    And the response status code should be 201
+    When I update the API Portal API "${CTX:mcpId}" from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id   | ${CTX:mcpId}         |
+      | name | ${CTX:mcpId}-changed |
+      | type | null               |
+    Then the response status code should be 400
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
+    Then the JSON response field "type" should be "Mcp"
+    And the JSON response field "name" should be "${CTX:mcpId}"
+
+    # Updating an MCP server with the REST type is refused and it stays an MCP server
+    Given I generate a unique resource name from "portal-retyped-mcp" and store it as "mcpId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id   | ${CTX:mcpId} |
+      | name | ${CTX:mcpId} |
+      | type | MCP |
+    And the response status code should be 201
+    When I update the API Portal API "${CTX:mcpId}" from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id   | ${CTX:mcpId}         |
+      | name | ${CTX:mcpId}-changed |
+      | type | REST               |
+    Then the response status code should be 400
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
+    Then the JSON response field "type" should be "Mcp"
+    And the JSON response field "name" should be "${CTX:mcpId}"
+
+    # An MCP server sent to the REST API collection is refused
+    Given I generate a unique resource name from "portal-mcp-as-api" and store it as "mcpId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:mcpId} |
+      | name | ${CTX:mcpId} |
+      | type | MCP          |
+    Then the response status code should be 400
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:mcpId}" as "publisher"
+    Then the response status code should be 404
+
+    # REST API and MCP server handles never resolve through each other's endpoints
+    Given a REST API is created in the API Portal and stored as "apiId"
+    And I generate a unique resource name from "portal-isolated-mcp" and store it as "mcpId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id   | ${CTX:mcpId} |
+      | name | ${CTX:mcpId} |
+      | type | MCP |
+    And the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:apiId}" as "publisher"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:mcpId}" as "publisher"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/mcp-servers?name=${CTX:apiId}" as "publisher"
+    Then the response body should not contain "${CTX:apiId}"
+    When I send an authenticated API Portal "GET" request to "/apis?name=${CTX:mcpId}" as "publisher"
+    Then the response body should not contain "${CTX:mcpId}"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:mcpId}/api-keys" as "publisher"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}/api-keys" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:apiId}/api-keys" as "publisher"
+    Then the response status code should be 404
+
+    # MCP server requests that repeat an id, name nothing or are not allowed are refused
+    Given I generate a unique resource name from "portal-guarded-mcp" and store it as "mcpId"
+    And I generate a unique resource name from "portal-missing-mcp" and store it as "missingMcpId"
+    And I generate a unique resource name from "portal-developer-mcp" and store it as "developerMcpId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id   | ${CTX:mcpId} |
+      | name | ${CTX:mcpId} |
+      | type | MCP |
+    And the response status code should be 201
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id   | ${CTX:mcpId} |
+      | name | ${CTX:mcpId}-second |
+      | type | MCP |
+    Then the response status code should be 409
+    And the response body should not contain "constraint"
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
+    Then the JSON response field "name" should be "${CTX:mcpId}"
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:missingMcpId}" as "publisher"
+    Then the response status code should be 404
+    When I update the API Portal API "${CTX:missingMcpId}" from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id   | ${CTX:missingMcpId} |
+      | name | ${CTX:missingMcpId} |
+      | type | MCP                 |
+    Then the response status code should be 404
+    When I send an authenticated API Portal "DELETE" request to "/mcp-servers/${CTX:missingMcpId}" as "publisher"
+    Then the response status code should be 404
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "developer" with definition "mcp" with values:
+      | id   | ${CTX:developerMcpId} |
+      | name | ${CTX:developerMcpId} |
+      | type | MCP                   |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:developerMcpId}" as "publisher"
+    Then the response status code should be 404
+    When I send an unauthenticated API Portal "GET" request to "/mcp-servers"
+    Then the response status code should be 401
+    When I send an authenticated API Portal "GET" request to "/mcp-servers" as "developer"
+    Then the response status code should be 200
+
+    # An MCP server with a subscription cannot be deleted until the subscription is removed
+    Given I generate a unique resource name from "portal-subscribed-mcp" and store it as "mcpId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id                | ${CTX:mcpId}       |
+      | name              | ${CTX:mcpId}       |
+      | type              | MCP                |
+      | subscriptionPlans | [{"id": "Gold"}]   |
+    And the response status code should be 201
+    When a developer subscription for API "${CTX:mcpId}" using plan "Gold" is created and stored as "subscriptionId"
+    Then the response status code should be 201
+    And the JSON response should have field "subscriptionToken"
+    And the JSON response field "subscriptionPlanName" should be "Gold"
+    When I send an authenticated API Portal "DELETE" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
+    Then the response status code should be 409
+    And the response body should contain "API has subscriptions."
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "DELETE" request to "/subscriptions/${CTX:subscriptionId}" as "developer"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "DELETE" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/mcp-servers/${CTX:mcpId}" as "publisher" until status 404
+    Then the response status code should be 404
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/${CTX:mcpId}/versions/v1.0"
+    Then the response status code should be 404
+
+  @APIP-018
   Scenario: An MCP server key is listed, regenerated, linked to an application and revoked for good
+    # An MCP server key is listed, regenerated, linked to an application and revoked for good
     # Keys and applications belong to the user who created them, so one administrator owns both here;
     # another user's application is not found.
     Given I generate a unique resource name from "portal-keyed-mcp" and store it as "mcpId"
@@ -455,52 +382,41 @@ Feature: MCP servers are managed through the API Portal REST API and its MCP reg
     When I send an authenticated API Portal "DELETE" request to "/mcp-servers/${CTX:mcpId}" as "publisher"
     Then the response status code should be 200
 
-  @APIP-CORE-145 @type:negative
-  Scenario Outline: A registry publish with <problem> is refused with an error and nothing is listed
-    Given I generate a unique resource name from "portal-registry-refused" and store it as "serverName"
-    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON body:
-      """
-      <body>
-      """
-    Then the response status code should be 400
-    And the JSON response should have field "error"
-    And the response body should not contain "stack"
+  @APIP-019 @type:negative
+  Scenario: MCP server versions are published through the registry, change status and are soft-deleted
+    # A publisher publishes an MCP server version through the registry, which lists it under both paths
+    Given I generate a unique resource name from "portal-registry" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | example.com/${CTX:serverName} |
+      | description | Plans trips                   |
+      | version     | 1.0.0                         |
+    Then the response status code should be 201
+    And I register API Portal resource "${CTX:serverName}" at "/mcp-servers" for cleanup
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | example.com/${CTX:serverName} |
+      | description | Plans trips anywhere          |
+      | version     | 1.0.0                         |
+    Then the response status code should be 200
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
     Then the response status code should be 200
-    And the response body should not contain "${CTX:serverName}"
-
-    Examples:
-      | problem                       | body |
-      | a body that is not an object  | ["example.com/${CTX:serverName}","1.0.0"] |
-      | no name                       | {"description":"Plans trips","version":"1.0.0"} |
-      | a name that is not a string   | {"name":42,"description":"Plans trips","version":"1.0.0"} |
-      | a name of 2 characters        | {"name":"a/","description":"Plans trips","version":"1.0.0"} |
-      | a name of 201 characters      | {"name":"example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","description":"Plans trips","version":"1.0.0"} |
-      | no description                | {"name":"example.com/${CTX:serverName}","version":"1.0.0"} |
-      | a description that is a number | {"name":"example.com/${CTX:serverName}","description":7,"version":"1.0.0"} |
-      | no version                    | {"name":"example.com/${CTX:serverName}","description":"Plans trips"} |
-      | a tilde version range         | {"name":"example.com/${CTX:serverName}","description":"Plans trips","version":"~1.0.0"} |
-      | a minimum version range       | {"name":"example.com/${CTX:serverName}","description":"Plans trips","version":">=1.0.0"} |
-      | a star version                | {"name":"example.com/${CTX:serverName}","description":"Plans trips","version":"*"} |
-
-  @APIP-CORE-146 @type:boundary
-  Scenario Outline: A registry server name of <length> characters, the <bound> allowed, is accepted
-    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
-      | name        | <name>      |
-      | description | Plans trips |
-      | version     | 1.0.0       |
-    Then the response status code should be 201
-    And I register API Portal resource "<handle>" at "/mcp-servers" for cleanup
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/<encoded>/versions/1.0.0"
+    And the response body should contain "example.com/${CTX:serverName}"
+    And the response header "Access-Control-Allow-Origin" should be "*"
+    And the response header "Access-Control-Allow-Methods" should contain "GET"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/registry/v0.1/servers?search=${CTX:serverName}"
     Then the response status code should be 200
+    And the response body should contain "example.com/${CTX:serverName}"
+    And the response header "Access-Control-Allow-Origin" should be "*"
+    And the response header "Access-Control-Allow-Methods" should contain "GET"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions"
+    Then the response status code should be 200
+    And the response body should contain "1.0.0"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
+    Then the response status code should be 200
+    And the response body should contain "Plans trips anywhere"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/9.9.9"
+    Then the response status code should be 404
 
-    Examples:
-      | length | bound    | name                  | handle  | encoded                  |
-      | 3      | shortest | a/b                   | b       | a%2Fb                    |
-      | 200    | longest  | example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | example.com%2Faaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
-
-  @APIP-CORE-147
-  Scenario: Capabilities published to the registry become the MCP server's tools, and an update without them keeps them
+    # Capabilities published to the registry become the MCP server's tools, and an update without them keeps them
     Given I generate a unique resource name from "portal-registry-tools" and store it as "serverName"
     When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
       | name        | example.com/${CTX:serverName} |
@@ -538,134 +454,7 @@ Feature: MCP servers are managed through the API Portal REST API and its MCP reg
     Then the response body should contain "name: book_hotel"
     And the response body should not contain "plan_trip"
 
-  @APIP-CORE-148
-  Scenario: A server-level status change applies to the registry server's version and can be undone
-    Given I generate a unique resource name from "portal-registry-server-status" and store it as "serverName"
-    And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
-      | name        | example.com/${CTX:serverName} |
-      | description | Plans trips                   |
-      | version     | 1.0.0                         |
-    And the response status code should be 201
-    And I register API Portal resource "${CTX:serverName}" at "/mcp-servers" for cleanup
-    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/status" as "publisher" with JSON values:
-      | status | deprecated |
-    Then the response status code should be 200
-    And the JSON response field "updatedCount" should be 1
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
-    Then the response body should contain "deprecated"
-    And the response body should not contain "active"
-    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/status" as "publisher" with JSON values:
-      | status | unknown |
-    Then the response status code should be 400
-    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/status" as "publisher" with JSON values:
-      | status | active |
-    Then the response status code should be 200
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
-    Then the response body should contain "active"
-    And the response body should not contain "deprecated"
-
-  @APIP-CORE-149
-  Scenario: The registry listing pages with a cursor, caps its limit and searches in any letter case
-    Given I generate a unique resource name from "portal-registry-page" and store it as "prefix"
-    And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
-      | name        | example.com/${CTX:prefix}-Planner-1 |
-      | description | Plans trips                         |
-      | version     | 1.0.0                               |
-    And the response status code should be 201
-    And I register API Portal resource "${CTX:prefix}-Planner-1" at "/mcp-servers" for cleanup
-    And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
-      | name        | example.com/${CTX:prefix}-Planner-2 |
-      | description | Plans trips                         |
-      | version     | 1.0.0                               |
-    And the response status code should be 201
-    And I register API Portal resource "${CTX:prefix}-Planner-2" at "/mcp-servers" for cleanup
-    And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
-      | name        | example.com/${CTX:prefix}-Planner-3 |
-      | description | Plans trips                         |
-      | version     | 1.0.0                               |
-    And the response status code should be 201
-    And I register API Portal resource "${CTX:prefix}-Planner-3" at "/mcp-servers" for cleanup
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:prefix}-PLANNER&limit=2"
-    Then the response status code should be 200
-    And the JSON response array field "servers" should have 2 items
-    And the JSON response should have field "metadata.nextCursor"
-    And I store the JSON response field "metadata.nextCursor" as "nextCursor"
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:prefix}-PLANNER&limit=2&cursor=${CTX:nextCursor}"
-    Then the response status code should be 200
-    And the JSON response array field "servers" should have 1 item
-    And the JSON response field "metadata.nextCursor" should not exist
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:prefix}-planner"
-    Then the JSON response array field "servers" should have 3 items
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:prefix}&limit=100"
-    Then the response status code should be 200
-    And the JSON response array field "servers" should have 3 items
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:prefix}&limit=101"
-    Then the response status code should be 200
-    And the JSON response array field "servers" should have 3 items
-
-  @APIP-CORE-150 @type:security
-  Scenario: A developer cannot change, delete or set the status of a registry server, while anyone can still read it
-    Given I generate a unique resource name from "portal-registry-guarded" and store it as "serverName"
-    And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
-      | name        | example.com/${CTX:serverName} |
-      | description | Plans trips                   |
-      | version     | 1.0.0                         |
-    And the response status code should be 201
-    And I register API Portal resource "${CTX:serverName}" at "/mcp-servers" for cleanup
-    When I send an authenticated API Portal "PUT" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0" as "developer" with JSON values:
-      | name        | example.com/${CTX:serverName} |
-      | description | Changed by a developer        |
-      | version     | 1.0.0                         |
-    Then the response status code should be 403
-    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0/status" as "developer" with JSON values:
-      | status | deprecated |
-    Then the response status code should be 403
-    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/status" as "developer" with JSON values:
-      | status | deprecated |
-    Then the response status code should be 403
-    When I send an authenticated API Portal "DELETE" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0" as "developer"
-    Then the response status code should be 403
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
-    Then the response status code should be 200
-    And the response body should contain "Plans trips"
-    And the response body should not contain "Changed by a developer"
-    And the response body should not contain "deprecated"
-    When I send an authenticated API Portal "PUT" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0" as "publisher" with JSON values:
-      | name        | example.com/${CTX:serverName} |
-      | description | Changed by the publisher      |
-      | version     | 1.0.0                         |
-    Then the response status code should be 200
-
-  @APIP-CORE-159 @known-issue
-  Scenario: A second version of a registry server is published, listed beside the first and follows server-level status changes
-    # Known issue: the portal handle is derived from the server name and must be unique, so publishing
-    # a second version of the same server fails with 409 "Server version already exists".
-    Given I generate a unique resource name from "portal-registry-versions" and store it as "serverName"
-    And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
-      | name        | example.com/${CTX:serverName} |
-      | description | Plans trips                   |
-      | version     | 1.0.0                         |
-    And the response status code should be 201
-    And I register API Portal resource "${CTX:serverName}" at "/mcp-servers" for cleanup
-    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
-      | name        | example.com/${CTX:serverName} |
-      | description | Plans trips faster            |
-      | version     | 1.1.0                         |
-    Then the response status code should be 201
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions"
-    Then the response status code should be 200
-    And the JSON response array field "servers" should have 2 items
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
-    Then the response body should contain "Plans trips"
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.1.0"
-    Then the response body should contain "Plans trips faster"
-    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/status" as "publisher" with JSON values:
-      | status | deprecated |
-    Then the response status code should be 200
-    And the JSON response field "updatedCount" should be 2
-
-  @APIP-CORE-160 @type:negative
-  Scenario: Registry changes reach only a version that exists, and an update with capabilities replaces the tools
+    # Registry changes reach only a version that exists, and an update with capabilities replaces the tools
     Given I generate a unique resource name from "portal-registry-update" and store it as "serverName"
     And I generate a unique resource name from "portal-registry-missing" and store it as "missingName"
     And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
@@ -712,3 +501,393 @@ Feature: MCP servers are managed through the API Portal REST API and its MCP reg
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
     Then the response body should contain "Plans trips again"
     And the response body should contain "book_hotel"
+
+    # A registry version's status changes only to a new allowed value, and deleting it is soft
+    Given I generate a unique resource name from "portal-registry-status" and store it as "serverName"
+    And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | example.com/${CTX:serverName} |
+      | description | Plans trips                   |
+      | version     | 1.0.0                         |
+    And the response status code should be 201
+    And I register API Portal resource "${CTX:serverName}" at "/mcp-servers" for cleanup
+    When I send an authenticated API Portal "PUT" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0" as "publisher" with JSON values:
+      | name        | example.com/${CTX:serverName} |
+      | description | Plans trips                   |
+      | version     | 2.0.0                         |
+    Then the response status code should be 400
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/2.0.0"
+    Then the response status code should be 404
+    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0/status" as "publisher" with JSON values:
+      | status | deprecated |
+    Then the response status code should be 200
+    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0/status" as "publisher" with JSON values:
+      | status | deprecated |
+    Then the response status code should be 400
+    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0/status" as "publisher" with JSON values:
+      | status | retired |
+    Then the response status code should be 400
+    When I send an authenticated API Portal "DELETE" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0" as "publisher"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
+    Then the response status code should be 404
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0?include_deleted=true"
+    Then the response status code should be 200
+
+    # A server-level status change applies to the registry server's version and can be undone
+    Given I generate a unique resource name from "portal-registry-server-status" and store it as "serverName"
+    And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | example.com/${CTX:serverName} |
+      | description | Plans trips                   |
+      | version     | 1.0.0                         |
+    And the response status code should be 201
+    And I register API Portal resource "${CTX:serverName}" at "/mcp-servers" for cleanup
+    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/status" as "publisher" with JSON values:
+      | status | deprecated |
+    Then the response status code should be 200
+    And the JSON response field "updatedCount" should be 1
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
+    Then the response body should contain "deprecated"
+    And the response body should not contain "active"
+    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/status" as "publisher" with JSON values:
+      | status | unknown |
+    Then the response status code should be 400
+    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/status" as "publisher" with JSON values:
+      | status | active |
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
+    Then the response body should contain "active"
+    And the response body should not contain "deprecated"
+
+  @APIP-019 @type:boundary @type:negative
+  Scenario: Invalid registry publishes are refused and nothing is listed, within the allowed name lengths
+    # A registry server whose name has no namespace is refused and not listed
+    Given I generate a unique resource name from "portal-registry-invalid" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | ${CTX:serverName}        |
+      | description | Plans trips   |
+      | version     | 1.0.0     |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry server whose version is latest is refused and not listed
+    Given I generate a unique resource name from "portal-registry-invalid" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | example.com/${CTX:serverName}        |
+      | description | Plans trips   |
+      | version     | latest     |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry server whose version is a caret range is refused and not listed
+    Given I generate a unique resource name from "portal-registry-invalid" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | example.com/${CTX:serverName}        |
+      | description | Plans trips   |
+      | version     | ^1.0.0     |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry server whose version is a wildcard is refused and not listed
+    Given I generate a unique resource name from "portal-registry-invalid" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | example.com/${CTX:serverName}        |
+      | description | Plans trips   |
+      | version     | 1.x     |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry publish with a body that is not an object is refused with an error and nothing is listed
+    Given I generate a unique resource name from "portal-registry-refused" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON body:
+      """
+      ["example.com/${CTX:serverName}","1.0.0"]
+      """
+    Then the response status code should be 400
+    And the JSON response should have field "error"
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry publish with no name is refused with an error and nothing is listed
+    Given I generate a unique resource name from "portal-registry-refused" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON body:
+      """
+      {"description":"Plans trips","version":"1.0.0"}
+      """
+    Then the response status code should be 400
+    And the JSON response should have field "error"
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry publish with a name that is not a string is refused with an error and nothing is listed
+    Given I generate a unique resource name from "portal-registry-refused" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON body:
+      """
+      {"name":42,"description":"Plans trips","version":"1.0.0"}
+      """
+    Then the response status code should be 400
+    And the JSON response should have field "error"
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry publish with a name of 2 characters is refused with an error and nothing is listed
+    Given I generate a unique resource name from "portal-registry-refused" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON body:
+      """
+      {"name":"a/","description":"Plans trips","version":"1.0.0"}
+      """
+    Then the response status code should be 400
+    And the JSON response should have field "error"
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry publish with a name of 201 characters is refused with an error and nothing is listed
+    Given I generate a unique resource name from "portal-registry-refused" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON body:
+      """
+      {"name":"example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","description":"Plans trips","version":"1.0.0"}
+      """
+    Then the response status code should be 400
+    And the JSON response should have field "error"
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry publish with no description is refused with an error and nothing is listed
+    Given I generate a unique resource name from "portal-registry-refused" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON body:
+      """
+      {"name":"example.com/${CTX:serverName}","version":"1.0.0"}
+      """
+    Then the response status code should be 400
+    And the JSON response should have field "error"
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry publish with a description that is a number is refused with an error and nothing is listed
+    Given I generate a unique resource name from "portal-registry-refused" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON body:
+      """
+      {"name":"example.com/${CTX:serverName}","description":7,"version":"1.0.0"}
+      """
+    Then the response status code should be 400
+    And the JSON response should have field "error"
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry publish with no version is refused with an error and nothing is listed
+    Given I generate a unique resource name from "portal-registry-refused" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON body:
+      """
+      {"name":"example.com/${CTX:serverName}","description":"Plans trips"}
+      """
+    Then the response status code should be 400
+    And the JSON response should have field "error"
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry publish with a tilde version range is refused with an error and nothing is listed
+    Given I generate a unique resource name from "portal-registry-refused" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON body:
+      """
+      {"name":"example.com/${CTX:serverName}","description":"Plans trips","version":"~1.0.0"}
+      """
+    Then the response status code should be 400
+    And the JSON response should have field "error"
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry publish with a minimum version range is refused with an error and nothing is listed
+    Given I generate a unique resource name from "portal-registry-refused" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON body:
+      """
+      {"name":"example.com/${CTX:serverName}","description":"Plans trips","version":">=1.0.0"}
+      """
+    Then the response status code should be 400
+    And the JSON response should have field "error"
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry publish with a star version is refused with an error and nothing is listed
+    Given I generate a unique resource name from "portal-registry-refused" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON body:
+      """
+      {"name":"example.com/${CTX:serverName}","description":"Plans trips","version":"*"}
+      """
+    Then the response status code should be 400
+    And the JSON response should have field "error"
+    And the response body should not contain "stack"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:serverName}"
+    Then the response status code should be 200
+    And the response body should not contain "${CTX:serverName}"
+
+    # A registry server name of 3 characters, the shortest allowed, is accepted
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | a/b      |
+      | description | Plans trips |
+      | version     | 1.0.0       |
+    Then the response status code should be 201
+    And I register API Portal resource "b" at "/mcp-servers" for cleanup
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/a%2Fb/versions/1.0.0"
+    Then the response status code should be 200
+
+    # A registry server name of 200 characters, the longest allowed, is accepted
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa      |
+      | description | Plans trips |
+      | version     | 1.0.0       |
+    Then the response status code should be 201
+    And I register API Portal resource "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" at "/mcp-servers" for cleanup
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2Faaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/versions/1.0.0"
+    Then the response status code should be 200
+
+  @APIP-020 @type:negative @type:security
+  Scenario: The registry listing pages and searches under both paths, and only publishers can change it
+    # The registry listing pages with a cursor, caps its limit and searches in any letter case
+    Given I generate a unique resource name from "portal-registry-page" and store it as "prefix"
+    And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | example.com/${CTX:prefix}-Planner-1 |
+      | description | Plans trips                         |
+      | version     | 1.0.0                               |
+    And the response status code should be 201
+    And I register API Portal resource "${CTX:prefix}-Planner-1" at "/mcp-servers" for cleanup
+    And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | example.com/${CTX:prefix}-Planner-2 |
+      | description | Plans trips                         |
+      | version     | 1.0.0                               |
+    And the response status code should be 201
+    And I register API Portal resource "${CTX:prefix}-Planner-2" at "/mcp-servers" for cleanup
+    And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | example.com/${CTX:prefix}-Planner-3 |
+      | description | Plans trips                         |
+      | version     | 1.0.0                               |
+    And the response status code should be 201
+    And I register API Portal resource "${CTX:prefix}-Planner-3" at "/mcp-servers" for cleanup
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:prefix}-PLANNER&limit=2"
+    Then the response status code should be 200
+    And the JSON response array field "servers" should have 2 items
+    And the JSON response should have field "metadata.nextCursor"
+    And I store the JSON response field "metadata.nextCursor" as "nextCursor"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:prefix}-PLANNER&limit=2&cursor=${CTX:nextCursor}"
+    Then the response status code should be 200
+    And the JSON response array field "servers" should have 1 item
+    And the JSON response field "metadata.nextCursor" should not exist
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:prefix}-planner"
+    Then the JSON response array field "servers" should have 3 items
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:prefix}&limit=100"
+    Then the response status code should be 200
+    And the JSON response array field "servers" should have 3 items
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:prefix}&limit=101"
+    Then the response status code should be 200
+    And the JSON response array field "servers" should have 3 items
+
+    # The registry refuses a cursor it did not issue and an organization it does not serve
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?limit=5"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?cursor=not-a-cursor"
+    Then the response status code should be 400
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/foreign-org/v0.1/servers"
+    Then the response status code should be 404
+
+    # A developer cannot publish to the MCP registry
+    Given I generate a unique resource name from "portal-registry-denied" and store it as "serverName"
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "developer" with JSON values:
+      | name        | example.com/${CTX:serverName} |
+      | description | Not allowed                   |
+      | version     | 1.0.0                         |
+    Then the response status code should be 403
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions"
+    Then the response status code should be 404
+
+    # A developer cannot change, delete or set the status of a registry server, while anyone can still read it
+    Given I generate a unique resource name from "portal-registry-guarded" and store it as "serverName"
+    And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | example.com/${CTX:serverName} |
+      | description | Plans trips                   |
+      | version     | 1.0.0                         |
+    And the response status code should be 201
+    And I register API Portal resource "${CTX:serverName}" at "/mcp-servers" for cleanup
+    When I send an authenticated API Portal "PUT" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0" as "developer" with JSON values:
+      | name        | example.com/${CTX:serverName} |
+      | description | Changed by a developer        |
+      | version     | 1.0.0                         |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0/status" as "developer" with JSON values:
+      | status | deprecated |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/status" as "developer" with JSON values:
+      | status | deprecated |
+    Then the response status code should be 403
+    When I send an authenticated API Portal "DELETE" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0" as "developer"
+    Then the response status code should be 403
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
+    Then the response status code should be 200
+    And the response body should contain "Plans trips"
+    And the response body should not contain "Changed by a developer"
+    And the response body should not contain "deprecated"
+    When I send an authenticated API Portal "PUT" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0" as "publisher" with JSON values:
+      | name        | example.com/${CTX:serverName} |
+      | description | Changed by the publisher      |
+      | version     | 1.0.0                         |
+    Then the response status code should be 200
+
+  @APIP-020 @known-issue
+  Scenario: A second version of a registry server is published, listed beside the first and follows server-level status changes
+    # A second version of a registry server is published, listed beside the first and follows server-level status changes
+    # Known issue: the portal handle is derived from the server name and must be unique, so publishing
+    # a second version of the same server fails with 409 "Server version already exists".
+    Given I generate a unique resource name from "portal-registry-versions" and store it as "serverName"
+    And I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | example.com/${CTX:serverName} |
+      | description | Plans trips                   |
+      | version     | 1.0.0                         |
+    And the response status code should be 201
+    And I register API Portal resource "${CTX:serverName}" at "/mcp-servers" for cleanup
+    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
+      | name        | example.com/${CTX:serverName} |
+      | description | Plans trips faster            |
+      | version     | 1.1.0                         |
+    Then the response status code should be 201
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions"
+    Then the response status code should be 200
+    And the JSON response array field "servers" should have 2 items
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.0.0"
+    Then the response body should contain "Plans trips"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/versions/1.1.0"
+    Then the response body should contain "Plans trips faster"
+    When I send an authenticated API Portal "PATCH" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:serverName}/status" as "publisher" with JSON values:
+      | status | deprecated |
+    Then the response status code should be 200
+    And the JSON response field "updatedCount" should be 2

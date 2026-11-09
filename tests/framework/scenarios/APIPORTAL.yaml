@@ -8,76 +8,14 @@
 #   planned      not automated in this layer yet
 # Refs are feature paths relative to tests/framework plus the exact scenario name.
 #
-# IDs are block-based: APIP-<BLOCK>-NNN, where <BLOCK> is the suite block the scenario runs in
-# (CORE for api-portal-core), numbered in it-suite.yaml runner order, then feature file order,
-# then scenario order. A Scenario Outline has one ID for all of its examples.
-# APIP-PUBLISHING-NNN is the platform-api-gateway-api-portal block, whose scenarios publish to
-# the portal through the control plane.
+# IDs are APIP-NNN, one per product flow. An ID has one IT scenario, except where its steps need
+# different blocks or a @known-issue scenario must stand alone; every scenario then carries the
+# same ID.
 code: APIPORTAL
 title: API Portal
 scenarios:
-  - id: APIP-CORE-001
-    title: "The <route kind> route does not expose the X-Powered-By header"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/security.feature
-          scenario: "The <route kind> route does not expose the X-Powered-By header"
-  - id: APIP-CORE-002
-    title: "A user signs in, uses the session and signs out"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth.feature
-          scenario: "A user signs in, uses the session and signs out"
-  - id: APIP-CORE-003
-    title: "A login with an incorrect password opens no session"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth.feature
-          scenario: "A login with an incorrect password opens no session"
-  - id: APIP-CORE-004
-    title: "A login for a user that does not exist opens no session"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth.feature
-          scenario: "A login for a user that does not exist opens no session"
-  - id: APIP-CORE-005
-    title: "A login without a password is refused with a reason and opens no session"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth.feature
-          scenario: "A login without a password is refused with a reason and opens no session"
-  - id: APIP-CORE-006
-    title: "A caller without a session or token is refused"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth.feature
-          scenario: "A caller without a session or token is refused"
-  - id: APIP-CORE-007
-    title: "A publisher manages a REST API from creation to deletion"
+  - id: APIP-001
+    title: "REST API lifecycle"
     priority: P0
     ui:
       status: planned
@@ -85,9 +23,9 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "A publisher manages a REST API from creation to deletion"
-  - id: APIP-CORE-008
-    title: "Creating a REST API with <problem> is refused and stores nothing"
+          scenario: "A publisher lists, edits, deprecates and deletes a REST API, and every portal surface follows"
+  - id: APIP-002
+    title: "REST API labels and offered plans"
     priority: P1
     ui:
       status: planned
@@ -95,69 +33,9 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "Creating a REST API with <problem> is refused and stores nothing"
-  - id: APIP-CORE-009
-    title: "Updating a REST API with <problem> is refused and the API keeps its type"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "Updating a REST API with <problem> is refused and the API keeps its type"
-  - id: APIP-CORE-010
-    title: "An API's labels follow every update"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "An API's labels follow every update"
-  - id: APIP-CORE-011
-    title: "A second API with an existing id is refused"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "A second API with an existing id is refused"
-  - id: APIP-CORE-012
-    title: "Requests for an API that does not exist return not found"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "Requests for an API that does not exist return not found"
-  - id: APIP-CORE-013
-    title: "An API with a subscription cannot be deleted until the subscription ends"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "An API with a subscription cannot be deleted until the subscription ends"
-  - id: APIP-CORE-014
-    title: "An API with an active key cannot be deleted until the key is revoked"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "An API with an active key cannot be deleted until the key is revoked"
-  - id: APIP-CORE-015
-    title: "Anonymous callers cannot list or create REST APIs"
+          scenario: "An API's labels and offered plans follow every update"
+  - id: APIP-003
+    title: "REST API refusals"
     priority: P0
     ui:
       status: planned
@@ -165,463 +43,11 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "Anonymous callers cannot list or create REST APIs"
-  - id: APIP-CORE-016
-    title: "A developer can read REST APIs but cannot create, update or delete them"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
+          scenario: "Invalid, duplicate and unknown REST API requests are refused and store nothing"
         - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "A developer can read REST APIs but cannot create, update or delete them"
-  - id: APIP-CORE-017
-    title: "A REST API with an invalid <field> is refused and stores nothing"
-    priority: P2
-    # An unknown label in the metadata is not covered: labelDao.createApiMapping's handling of
-    # an unknown label handle needs the owner's decision first.
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "A REST API with an invalid <field> is refused and stores nothing"
-  - id: APIP-CORE-018
-    title: "Every version of a display name is reported, in version order"
-    priority: P1
-    ui:
-      status: exempt
-      reason: The scenario tests the Platform API /rest-apis/versions endpoint, which has no API Portal page.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_api_versions.feature
-          scenario: "Every version of a display name is reported, in version order"
-  - id: APIP-CORE-019
-    title: "An unrelated API in the same project is not reported as a version"
-    priority: P2
-    ui:
-      status: exempt
-      reason: The scenario tests the Platform API /rest-apis/versions endpoint, which has no API Portal page.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_api_versions.feature
-          scenario: "An unrelated API in the same project is not reported as a version"
-  - id: APIP-CORE-020
-    title: "Each version reports the handle of the project it lives in"
-    priority: P2
-    ui:
-      status: exempt
-      reason: The scenario tests the Platform API /rest-apis/versions endpoint, which has no API Portal page.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_api_versions.feature
-          scenario: "Each version reports the handle of the project it lives in"
-  - id: APIP-CORE-021
-    title: "An unused display name is an empty result, not a 404"
-    priority: P2
-    ui:
-      status: exempt
-      reason: The scenario tests the Platform API /rest-apis/versions endpoint, which has no API Portal page.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_api_versions.feature
-          scenario: "An unused display name is an empty result, not a 404"
-  - id: APIP-CORE-022
-    title: "A missing displayName parameter is rejected rather than listing everything"
-    priority: P2
-    ui:
-      status: exempt
-      reason: The scenario tests the Platform API /rest-apis/versions endpoint, which has no API Portal page.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_api_versions.feature
-          scenario: "A missing displayName parameter is rejected rather than listing everything"
-  - id: APIP-CORE-023
-    title: "What the list reports as taken is exactly what create refuses"
-    priority: P2
-    ui:
-      status: exempt
-      reason: The scenario tests the Platform API /rest-apis/versions endpoint, which has no API Portal page.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_api_versions.feature
-          scenario: "What the list reports as taken is exactly what create refuses"
-  - id: APIP-CORE-024
-    title: "A developer manages an application from creation to deletion"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/resources.feature
-          scenario: "A developer manages an application from creation to deletion"
-  - id: APIP-CORE-025
-    title: "An application without its required fields is refused and stores nothing"
-    priority: P2
-    # Not covered: a duplicate application id and another developer's application. The suite
-    # has one developer actor.
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/resources.feature
-          scenario: "An application without its required fields is refused and stores nothing"
-  - id: APIP-CORE-026
-    title: "An administrator manages a label from creation to deletion"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/resources.feature
-          scenario: "An administrator manages a label from creation to deletion"
-  - id: APIP-CORE-027
-    title: "An administrator creates views with and without labels"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/resources.feature
-          scenario: "An administrator creates views with and without labels"
-  - id: APIP-CORE-028
-    title: "A developer can read labels and views but cannot create them"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/resources.feature
-          scenario: "A developer can read labels and views but cannot create them"
-  - id: APIP-CORE-029
-    title: "An administrator manages a key manager from creation to deletion"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/resources.feature
-          scenario: "An administrator manages a key manager from creation to deletion"
-  - id: APIP-CORE-030
-    title: "A developer gets a token through an application's key-manager mapping, and only with the right secret"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/resources.feature
-          scenario: "A developer gets a token through an application's key-manager mapping, and only with the right secret"
-  - id: APIP-CORE-031
-    title: "A developer cannot register a key manager"
-    priority: P1
-    # Not covered: a key manager whose token endpoint is a private or metadata address (SSRF).
-    # The portal's validation of tokenEndpoint needs the feature owner's decision first.
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/resources.feature
-          scenario: "A developer cannot register a key manager"
-  - id: APIP-CORE-032
-    title: "A publisher manages an MCP server from creation to deletion"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "A publisher manages an MCP server from creation to deletion"
-  - id: APIP-CORE-033
-    title: "Creating an MCP server with <problem> is refused and stores nothing"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "Creating an MCP server with <problem> is refused and stores nothing"
-  - id: APIP-CORE-034
-    title: "Updating an MCP server with <problem> is refused and it stays an MCP server"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "Updating an MCP server with <problem> is refused and it stays an MCP server"
-  - id: APIP-CORE-035
-    title: "An MCP server sent to the REST API collection is refused"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "An MCP server sent to the REST API collection is refused"
-  - id: APIP-CORE-036
-    title: "REST API and MCP server handles never resolve through each other's endpoints"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "REST API and MCP server handles never resolve through each other's endpoints"
-  - id: APIP-CORE-037
-    title: "MCP server requests that repeat an id, name nothing or are not allowed are refused"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "MCP server requests that repeat an id, name nothing or are not allowed are refused"
-  - id: APIP-CORE-038
-    title: "A publisher publishes an MCP server version through the registry, which lists it under both paths"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "A publisher publishes an MCP server version through the registry, which lists it under both paths"
-  - id: APIP-CORE-039
-    title: "A developer cannot publish to the MCP registry"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "A developer cannot publish to the MCP registry"
-  - id: APIP-CORE-040
-    title: "A registry server whose <problem> is refused and not listed"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "A registry server whose <problem> is refused and not listed"
-  - id: APIP-CORE-041
-    title: "A registry version's status changes only to a new allowed value, and deleting it is soft"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "A registry version's status changes only to a new allowed value, and deleting it is soft"
-  - id: APIP-CORE-042
-    title: "The registry refuses a cursor it did not issue and an organization it does not serve"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "The registry refuses a cursor it did not issue and an organization it does not serve"
-  - id: APIP-CORE-043
-    title: "An administrator defines a meter, finds it, replaces it and removes it"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/meters.feature
-          scenario: "An administrator defines a meter, finds it, replaces it and removes it"
-  - id: APIP-CORE-044
-    title: "A meter named in words gets an id from its name, and a second one with that name gets another id"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/meters.feature
-          scenario: "A meter named in words gets an id from its name, and a second one with that name gets another id"
-  - id: APIP-CORE-045
-    title: "A token meter counts the tokens under its type key"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/meters.feature
-          scenario: "A token meter counts the tokens under its type key"
-  - id: APIP-CORE-046
-    title: "A meter that <problem> is refused with the reason and nothing is stored"
-    priority: P1
-    # Not covered: refusing a read-only planCount, which needs a typed number in the request.
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/meters.feature
-          scenario: "A meter that <problem> is refused with the reason and nothing is stored"
-  - id: APIP-CORE-047
-    title: "A meter a plan prices is locked until the plan is deleted"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/meters.feature
-          scenario: "A meter a plan prices is locked until the plan is deleted"
-  - id: APIP-CORE-048
-    title: "Only administrators can see and define meters"
-    priority: P1
-    # Not covered: refusing a read-only planCount, which needs a typed number in the request.
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/meters.feature
-          scenario: "Only administrators can see and define meters"
-  - id: APIP-CORE-049
-    title: "An administrator manages a free plan with limits from creation to deletion"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/priced_plans.feature
-          scenario: "An administrator manages a free plan with limits from creation to deletion"
-  - id: APIP-CORE-050
-    title: "A plan created without an id gets a generated one"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/priced_plans.feature
-          scenario: "A plan created without an id gets a generated one"
-  - id: APIP-CORE-051
-    title: "A plan whose <problem> is refused with the reason and nothing is stored"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/priced_plans.feature
-          scenario: "A plan whose <problem> is refused with the reason and nothing is stored"
-  - id: APIP-CORE-052
-    title: "A <role> can read plans but cannot create, change or delete them"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/priced_plans.feature
-          scenario: "A <role> can read plans but cannot create, change or delete them"
-  - id: APIP-CORE-053
-    title: "A flat-rate plan is priced once, and renaming it keeps its price"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/priced_plans.feature
-          scenario: "A flat-rate plan is priced once, and renaming it keeps its price"
-  - id: APIP-CORE-054
-    title: "A usage-based plan prices reads per unit and writes in graduated tiers"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/priced_plans.feature
-          scenario: "A usage-based plan prices reads per unit and writes in graduated tiers"
-  - id: APIP-CORE-055
-    title: "A free plan has no price, its price can't be set later, and a price is never set or removed on its own"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/priced_plans.feature
-          scenario: "A free plan has no price, its price can't be set later, and a price is never set or removed on its own"
-  - id: APIP-CORE-056
-    title: "A paid plan an API offers can't be deleted"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/priced_plans.feature
-          scenario: "A paid plan an API offers can't be deleted"
-  - id: APIP-CORE-057
-    title: "A price that can't be billed is refused with the reason, and no plan is created"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/priced_plans.feature
-          scenario: "A price that can't be billed is refused with the reason, and no plan is created"
-  - id: APIP-CORE-058
-    title: "Without billing, a paid plan is offered on an API but can't be subscribed to or bought"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/paid_plans_without_billing.feature
-          scenario: "Without billing, a paid plan is offered on an API but can't be subscribed to or bought"
-  - id: APIP-CORE-059
-    title: "A paid plan taken off an API with no subscriptions is simply removed"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/paid_plans_without_billing.feature
-          scenario: "A paid plan taken off an API with no subscriptions is simply removed"
-  - id: APIP-CORE-060
-    title: "A publisher manages a <kind> API from creation to deletion"
+          scenario: "A REST API in use cannot be deleted, and only a publisher can change one"
+  - id: APIP-004
+    title: "GraphQL, WebSocket, WebSub and SOAP APIs"
     priority: P1
     ui:
       status: planned
@@ -629,143 +55,22 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/core/api_types.feature
-          scenario: "A publisher manages a <kind> API from creation to deletion"
-  - id: APIP-CORE-061
-    title: "A GraphQL API's schema is stored as its definition"
-    priority: P2
-    # Not covered: a schema replaced by an update. The suite has one GraphQL SDL fixture.
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/api_types.feature
-          scenario: "A GraphQL API's schema is stored as its definition"
-  - id: APIP-CORE-062
-    title: "A <kind> API without a definition is refused and stores nothing"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/api_types.feature
-          scenario: "A <kind> API without a definition is refused and stores nothing"
-  - id: APIP-CORE-063
-    title: "A GraphQL API cannot be changed into a REST API"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/api_types.feature
-          scenario: "A GraphQL API cannot be changed into a REST API"
-  - id: APIP-CORE-064
-    title: "A developer manages a subscription from subscribing to unsubscribing"
+          scenario: "GraphQL, WebSocket, WebSub and SOAP APIs are managed with their own definitions and refused without one"
+  - id: APIP-005
+    title: "APIs from artifact ZIPs"
     priority: P0
     ui:
-      status: planned
+      status: exempt
+      reason: Artifact ZIP upload is a GitOps REST capability; the portal UI offers no artifact upload. Pending the feature owner's approval.
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/subscriptions/subscriptions.feature
-          scenario: "A developer manages a subscription from subscribing to unsubscribing"
-  - id: APIP-CORE-065
-    title: "A subscription to a plan or API that is not offered is refused"
-    priority: P1
-    # Not covered: another user's subscription. Its cleanup would need a second role-specific deleter.
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/subscriptions.feature
-          scenario: "A subscription to a plan or API that is not offered is refused"
-  - id: APIP-CORE-066
-    title: "An invalid change to a subscription is refused and the subscription is unchanged"
-    priority: P1
-    # Not covered: another user's subscription. Its cleanup would need a second role-specific deleter.
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/subscriptions.feature
-          scenario: "An invalid change to a subscription is refused and the subscription is unchanged"
-  - id: APIP-CORE-067
-    title: "An administrator relabels and renames a view, and cannot rename it onto another view"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/views_labels_advanced.feature
-          scenario: "An administrator relabels and renames a view, and cannot rename it onto another view"
-  - id: APIP-CORE-068
-    title: "A view's API listing holds only the APIs that carry its label"
-    priority: P1
-    # Finding: GET /apis without a view lists only APIs that some view shows, so an unlabelled API is absent.
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/views_labels_advanced.feature
-          scenario: "A view's API listing holds only the APIs that carry its label"
-  - id: APIP-CORE-069
-    title: "A duplicate view, a view with an unknown label and a developer's change are refused"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/views_labels_advanced.feature
-          scenario: "A duplicate view, a view with an unknown label and a developer's change are refused"
-  - id: APIP-CORE-070
-    title: "A view that still has API workflows cannot be deleted until they are removed"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/views_labels_advanced.feature
-          scenario: "A view that still has API workflows cannot be deleted until they are removed"
-  - id: APIP-CORE-071
-    title: "The <root> redirects to a view of the configured organization"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/views_pages.feature
-          scenario: "The <root> redirects to a view of the configured organization"
-  - id: APIP-CORE-072
-    title: "A view is addressed by its handle, never by its display name"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/views_pages.feature
-          scenario: "A view is addressed by its handle, never by its display name"
-  - id: APIP-CORE-073
-    title: "An administrator deletes a view, and deleting it again is not found"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/views_pages.feature
-          scenario: "An administrator deletes a view, and deleting it again is not found"
-  - id: APIP-CORE-074
-    title: "An API's page, Markdown and specification are served only by a view that holds its label"
+        - feature: suites/it/features/apiportal/core/artifact_upload.feature
+          scenario: "An artifact ZIP creates and updates an API, keeps its identity and applies its labels"
+        - feature: suites/it/features/apiportal/core/artifact_upload.feature
+          scenario: "Unsafe artifacts are refused, and only a publisher can upload to an API that exists"
+  - id: APIP-006
+    title: "Catalogue listing and view scoping"
     priority: P0
     ui:
       status: planned
@@ -773,399 +78,9 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/content/views_pages.feature
-          scenario: "An API's page, Markdown and specification are served only by a view that holds its label"
-  - id: APIP-CORE-075
-    title: "An MCP server's page is served only by a view that holds its label"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/views_pages.feature
-          scenario: "An MCP server's page is served only by a view that holds its label"
-  - id: APIP-CORE-076
-    title: "A publisher manages an API workflow from creation to deletion"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/workflows.feature
-          scenario: "A publisher manages an API workflow from creation to deletion"
-  - id: APIP-CORE-077
-    title: "A publisher generates an agent prompt for a workflow, which needs a description"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/workflows.feature
-          scenario: "A publisher generates an agent prompt for a workflow, which needs a description"
-  - id: APIP-CORE-078
-    title: "Workflow requests that repeat an id, name nothing or come from a developer are refused"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/workflows.feature
-          scenario: "Workflow requests that repeat an id, name nothing or come from a developer are refused"
-  - id: APIP-CORE-079
-    title: "A <status> workflow that is <visibility> to agents is <shown>"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/workflows.feature
-          scenario: "A <status> workflow that is <visibility> to agents is <shown>"
-  - id: APIP-CORE-080
-    title: "An <content type> workflow's Arazzo document is <served>"
-    priority: P2
-    # Not asserted (product finding): the view llms.txt renders workflow entries without their name or link.
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/workflows.feature
-          scenario: "An <content type> workflow's Arazzo document is <served>"
-  - id: APIP-CORE-081
-    title: "A publisher uploads an API's content, replaces its image and removes it"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/content.feature
-          scenario: "A publisher uploads an API's content, replaces its image and removes it"
-  - id: APIP-CORE-082
-    title: "Only a publisher can change an API's content, and only its images are public"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/content.feature
-          scenario: "Only a publisher can change an API's content, and only its images are public"
-  - id: APIP-CORE-083
-    title: "Content requests that name nothing, or repeat an upload, are refused"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/content.feature
-          scenario: "Content requests that name nothing, or repeat an upload, are refused"
-  - id: APIP-CORE-084
-    title: "An administrator applies a theme, exports it, replaces it and resets it"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/organization_content.feature
-          scenario: "An administrator applies a theme, exports it, replaces it and resets it"
-  - id: APIP-CORE-085
-    title: "A favicon theme serves its icon"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/organization_content.feature
-          scenario: "A favicon theme serves its icon"
-  - id: APIP-CORE-086
-    title: "Themed images are public, and only an administrator can change a theme"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/organization_content.feature
-          scenario: "Themed images are public, and only an administrator can change a theme"
-  - id: APIP-CORE-087
-    title: "Theme requests without theme files, for an unknown view, or without asset details are refused"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/organization_content.feature
-          scenario: "Theme requests without theme files, for an unknown view, or without asset details are refused"
-  - id: APIP-CORE-088
-    title: "Exporting a view with no theme of its own returns the default theme"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/organization_content.feature
-          scenario: "Exporting a view with no theme of its own returns the default theme"
-  - id: APIP-CORE-089
-    title: "A publisher manages an API key from generation to revocation"
-    priority: P0
-    # Not covered: generating a key with a displayName and expiresAt (the fixture step sets only the id).
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/api_keys.feature
-          scenario: "A publisher manages an API key from generation to revocation"
-  - id: APIP-CORE-090
-    title: "A developer links an API key to an application and unlinks it"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/api_keys.feature
-          scenario: "A developer links an API key to an application and unlinks it"
-  - id: APIP-CORE-091
-    title: "A revoked API key cannot be linked to an application"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/api_keys.feature
-          scenario: "A revoked API key cannot be linked to an application"
-  - id: APIP-CORE-092
-    title: "API key requests that are not allowed or that name nothing are refused"
-    priority: P1
-    # Not covered: the status filter on /api-keys and /apis/{id}/api-keys. The OpenAPI spec does not
-    # declare a status parameter, so the validator refuses every value before the handler runs.
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/api_keys.feature
-          scenario: "API key requests that are not allowed or that name nothing are refused"
-  - id: APIP-CORE-093
-    title: "The portal-wide llms.txt is the public entry point for the configured organization"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/discovery.feature
-          scenario: "The portal-wide llms.txt is the public entry point for the configured organization"
-  - id: APIP-CORE-094
-    title: "A view lists its visible APIs and MCP servers to agents, and leaves out hidden ones"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/discovery.feature
-          scenario: "A view lists its visible APIs and MCP servers to agents, and leaves out hidden ones"
-  - id: APIP-CORE-095
-    title: "A view's llms.txt has a section only for the kinds of API it shows"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/discovery.feature
-          scenario: "A view's llms.txt has a section only for the kinds of API it shows"
-  - id: APIP-CORE-096
-    title: "A <kind> API's specification is served raw in its own format only"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/discovery.feature
-          scenario: "A <kind> API's specification is served raw in its own format only"
-  - id: APIP-CORE-097
-    title: "An MCP server's tools are served as its specification"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/discovery.feature
-          scenario: "An MCP server's tools are served as its specification"
-  - id: APIP-CORE-098
-    title: "A view with AI discovery turned off serves no llms.txt"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/discovery.feature
-          scenario: "A view with AI discovery turned off serves no llms.txt"
-  - id: APIP-CORE-099
-    title: "An administrator updates the organization's name and contacts, and its identity cannot change"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/organizations/organizations.feature
-          scenario: "An administrator updates the organization's name and contacts, and its identity cannot change"
-  - id: APIP-CORE-100
-    title: "The organization collection cannot be listed or added to"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/organizations/organizations.feature
-          scenario: "The organization collection cannot be listed or added to"
-  - id: APIP-CORE-101
-    title: "Another organization cannot be read or changed"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/organizations/organizations.feature
-          scenario: "Another organization cannot be read or changed"
-  - id: APIP-CORE-102
-    title: "A <role> can read the organization but not change it"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/organizations/organizations.feature
-          scenario: "A <role> can read the organization but not change it"
-  - id: APIP-CORE-103
-    title: "An organization update without its required fields is refused"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/organizations/organizations.feature
-          scenario: "An organization update without its required fields is refused"
-  - id: APIP-CORE-104
-    title: "The <route> of another organization is not exposed, while the configured organization's is"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/organizations/organization_isolation.feature
-          scenario: "The <route> of another organization is not exposed, while the configured organization's is"
-  - id: APIP-CORE-105
-    title: "The portal root redirects to the configured organization"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/organizations/organization_isolation.feature
-          scenario: "The portal root redirects to the configured organization"
-  - id: APIP-CORE-106
-    title: "An organization header of <header> never moves an authenticated caller to another organization"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/organizations/organization_isolation.feature
-          scenario: "An organization header of <header> never moves an authenticated caller to another organization"
-  - id: APIP-CORE-107
-    title: "A publisher creates an API from an artifact ZIP and updates it from another"
-    priority: P1
-    ui:
-      status: exempt
-      reason: Artifact ZIP upload is a GitOps REST capability; the portal UI offers no artifact upload. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/artifact_upload.feature
-          scenario: "A publisher creates an API from an artifact ZIP and updates it from another"
-  - id: APIP-CORE-108
-    title: "Updating an API from an artifact keeps its identity"
-    priority: P1
-    ui:
-      status: exempt
-      reason: Artifact ZIP upload is a GitOps REST capability; the portal UI offers no artifact upload. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/artifact_upload.feature
-          scenario: "Updating an API from an artifact keeps its identity"
-  - id: APIP-CORE-109
-    title: "An artifact <problem> is refused and stores nothing"
-    priority: P0
-    ui:
-      status: exempt
-      reason: Artifact ZIP upload is a GitOps REST capability; the portal UI offers no artifact upload. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/artifact_upload.feature
-          scenario: "An artifact <problem> is refused and stores nothing"
-  - id: APIP-CORE-110
-    title: "An artifact's labels are kept unless the artifact sets them"
-    priority: P2
-    ui:
-      status: exempt
-      reason: Artifact ZIP upload is a GitOps REST capability; the portal UI offers no artifact upload. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/artifact_upload.feature
-          scenario: "An artifact's labels are kept unless the artifact sets them"
-  - id: APIP-CORE-111
-    title: "An artifact created with an empty label list has no labels"
-    priority: P2
-    ui:
-      status: exempt
-      reason: Artifact ZIP upload is a GitOps REST capability; the portal UI offers no artifact upload. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/artifact_upload.feature
-          scenario: "An artifact created with an empty label list has no labels"
-  - id: APIP-CORE-112
-    title: "Only a publisher can upload artifacts, and only to an API that exists"
-    priority: P1
-    ui:
-      status: exempt
-      reason: Artifact ZIP upload is a GitOps REST capability; the portal UI offers no artifact upload. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/artifact_upload.feature
-          scenario: "Only a publisher can upload artifacts, and only to an API that exists"
-  - id: APIP-CORE-113
-    title: "An updated API's page and specification show its new endpoints"
+          scenario: "A view lists and serves only the APIs and MCP servers that carry its label"
+  - id: APIP-007
+    title: "Catalogue search"
     priority: P1
     ui:
       status: planned
@@ -1173,184 +88,31 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "An updated API's page and specification show its new endpoints"
-  - id: APIP-CORE-114
-    title: "A deleted API is gone from its page, its Markdown and the agent listings"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "A deleted API is gone from its page, its Markdown and the agent listings"
-  - id: APIP-CORE-115
-    title: "The API listing pages through its results"
-    priority: P2
-    ui:
-      status: exempt
-      reason: The listing's limit, offset and query-parameter validation belong to the Management API; the portal UI pages client-side. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "The API listing pages through its results"
-  - id: APIP-CORE-116
-    title: "An API listing with <parameter> is refused"
-    priority: P2
-    ui:
-      status: exempt
-      reason: The listing's limit, offset and query-parameter validation belong to the Management API; the portal UI pages client-side. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "An API listing with <parameter> is refused"
-  - id: APIP-CORE-117
-    title: "A second API with the same name and version is refused"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "A second API with the same name and version is refused"
-  - id: APIP-CORE-118
-    title: "A REST API without a name is refused and stores nothing"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "A REST API without a name is refused and stores nothing"
-  - id: APIP-CORE-120
-    title: "A deprecated API stays listed and subscribed, and can be published again"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "A deprecated API stays listed and subscribed, and can be published again"
-  - id: APIP-CORE-121
-    title: "An API's owners and tags are stored, shown and found by search"
-    priority: P3
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "An API's owners and tags are stored, shown and found by search"
-  - id: APIP-CORE-122
-    title: "The plans an API offers follow every update"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "The plans an API offers follow every update"
-  - id: APIP-CORE-123
-    title: "Catalogue search matches an API's description, tags and definition by whole word"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "Catalogue search matches an API's description, tags and definition by whole word"
-  - id: APIP-CORE-124
-    title: "A search that matches nothing is empty, and clearing the search lists the catalogue again"
-    priority: P3
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/rest_apis.feature
-          scenario: "A search that matches nothing is empty, and clearing the search lists the catalogue again"
-  - id: APIP-CORE-125
-    title: "Every API type is listed under APIs with its own badge, and MCP servers only under MCP Servers"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/api_types.feature
-          scenario: "Every API type is listed under APIs with its own badge, and MCP servers only under MCP Servers"
-  - id: APIP-CORE-126
-    title: "The health check at <path> answers without a session"
-    priority: P2
-    ui:
-      status: exempt
-      reason: Health checks and paths outside the portal are probed over HTTP, not through the portal UI. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/core/routing.feature
-          scenario: "The health check at <path> answers without a session"
-  - id: APIP-CORE-127
-    title: "A path <where> is not found, while the default view loads"
-    priority: P2
+          scenario: "Catalogue search matches whole words in an API's metadata and definition"
+  - id: APIP-008
+    title: "Routing, health checks and unknown paths"
+    priority: P0
     ui:
       status: planned
     it:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/core/routing.feature
-          scenario: "A path <where> is not found, while the default view loads"
-  - id: APIP-CORE-129
-    title: "An API's content gives it a landing page, an icon and documents in their sections"
-    priority: P1
+          scenario: "The portal's roots redirect to a view, health checks answer, and unknown paths are not found"
+  - id: APIP-009
+    title: "API content: upload, merge, replace, delete, docs and access"
+    priority: P0
     ui:
       status: planned
     it:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/content/content.feature
-          scenario: "An API's content gives it a landing page, an icon and documents in their sections"
-  - id: APIP-CORE-130
-    title: "A content upload holding files the portal does not serve is refused and stores nothing"
-    priority: P2
-    ui:
-      status: exempt
-      reason: Content archives are uploaded through the Management API or a GitOps pipeline; the Settings content upload is covered by the APIPUI journeys. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
+          scenario: "A publisher uploads, replaces and removes content for an API and an MCP server"
         - feature: suites/it/features/apiportal/content/content.feature
-          scenario: "A content upload holding files the portal does not serve is refused and stores nothing"
-  - id: APIP-CORE-131
-    title: "A second upload through PUT replaces everything the API held"
-    priority: P2
-    ui:
-      status: exempt
-      reason: Content archives are uploaded through the Management API or a GitOps pipeline; the Settings content upload is covered by the APIPUI journeys. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/content.feature
-          scenario: "A second upload through PUT replaces everything the API held"
-  - id: APIP-CORE-132
-    title: "An MCP server's content is uploaded, shown on its page and removed"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/content.feature
-          scenario: "An MCP server's content is uploaded, shown on its page and removed"
-  - id: APIP-CORE-133
-    title: "Deleting a label takes it off every API and view that carried it"
+          scenario: "Unsafe or repeated content is refused, and only a publisher can change content"
+  - id: APIP-010
+    title: "Views: lifecycle, handles, deletion rules and access"
     priority: P1
     ui:
       status: planned
@@ -1358,60 +120,34 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/content/views_labels_advanced.feature
-          scenario: "Deleting a label takes it off every API and view that carried it"
-  - id: APIP-CORE-134
-    title: "A label <problem> is refused and stores nothing"
-    priority: P2
+          scenario: "An administrator manages a view's labels and handle, within its deletion and access rules"
+        - feature: suites/it/features/apiportal/content/views_labels_advanced.feature
+          scenario: "A view whose handle is invalid is refused and stores nothing"
+      # @known-issue scenario above: "A view whose handle is invalid is refused and stores nothing" ("to be filed — view handles are stored as sent: uppercase, space and slash handles are accepted with 201")
+  - id: APIP-011
+    title: "Labels: lifecycle, effect on APIs and validation"
+    priority: P1
     ui:
       status: planned
     it:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/content/views_labels_advanced.feature
-          scenario: "A label <problem> is refused and stores nothing"
-  - id: APIP-CORE-135
-    title: "A view whose handle is <problem> is refused and stores nothing"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: known-issue
-      issue: "to be filed — view handles are stored as sent: uppercase, space and slash handles are accepted with 201"
-      refs:
-        - feature: suites/it/features/apiportal/content/views_labels_advanced.feature
-          scenario: "A view whose handle is <problem> is refused and stores nothing"
-  - id: APIP-CORE-136
-    title: "A theme applies only to the view it was uploaded for"
-    priority: P2
+          scenario: "An administrator manages a label, and deleting it takes it off every API and view"
+  - id: APIP-012
+    title: "Themes: apply, export, reset, per view, validation and access"
+    priority: P0
     ui:
       status: planned
     it:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/content/organization_content.feature
-          scenario: "A theme applies only to the view it was uploaded for"
-  - id: APIP-CORE-137
-    title: "A theme <problem> is refused and the view keeps its current theme"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
+          scenario: "An administrator applies, exports and resets a theme on one view"
         - feature: suites/it/features/apiportal/content/organization_content.feature
-          scenario: "A theme <problem> is refused and the view keeps its current theme"
-  - id: APIP-CORE-138
-    title: "A theme's script files are never stored or served"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/content/organization_content.feature
-          scenario: "A theme's script files are never stored or served"
-  - id: APIP-CORE-139
-    title: "LLM instructions name and describe a view in its llms.txt, and empty fields fall back"
+          scenario: "Invalid themes are refused, scripts are dropped, and only an administrator can change a theme"
+  - id: APIP-013
+    title: "LLM instructions and per-view AI discovery"
     priority: P1
     ui:
       status: planned
@@ -1419,29 +155,51 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/content/llm_instructions.feature
-          scenario: "LLM instructions name and describe a view in its llms.txt, and empty fields fall back"
-  - id: APIP-CORE-140
-    title: "The llms.txt preview renders draft instructions without saving them, for administrators only"
-    priority: P3
+          scenario: "LLM instructions are previewed and shown in llms.txt, and AI discovery can be turned off per view"
+  - id: APIP-014
+    title: "Applications: lifecycle, limits, ownership and deletion side effects"
+    priority: P0
     ui:
       status: planned
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/content/llm_instructions.feature
-          scenario: "The llms.txt preview renders draft instructions without saving them, for administrators only"
-  - id: APIP-CORE-141
-    title: "Turning AI discovery off for one view hides it from agents while other views keep serving them"
+        - feature: suites/it/features/apiportal/applications/applications.feature
+          scenario: "A developer manages applications within their limits and sees only their own"
+        - feature: suites/it/features/apiportal/applications/application_deletion.feature
+          scenario: "Deleting an application unlinks its API keys, which stay active, and leaves its subscription and key manager alone"
+  - id: APIP-015
+    title: "Key managers: lifecycle, discovery, SSRF, validation, access and enablement"
+    priority: P0
+    ui:
+      status: planned
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/applications/key_managers.feature
+          scenario: "An administrator manages a key manager, reads its discovery metadata and controls its token issuance"
+        - feature: suites/it/features/apiportal/applications/key_managers.feature
+          scenario: "Invalid key managers and internal addresses are refused, and a developer cannot register one"
+        - feature: suites/it/features/apiportal/applications/key_managers.feature
+          scenario: "A disabled key manager issues no token through an application's client mapping"
+        - feature: suites/it/features/apiportal/applications/key_managers.feature
+          scenario: "A deleted key manager issues no more tokens to the applications mapped to it"
+      # @known-issue scenario above: "A disabled key manager issues no token through an application's client mapping" ("to be filed — token generation through an application client mapping ignores a disabled key manager")
+      # @known-issue scenario above: "A deleted key manager issues no more tokens to the applications mapped to it" ("to be filed — deleting a key manager still referenced by an application client mapping answers 500, and the mapping keeps issuing tokens")
+  - id: APIP-016
+    title: "OAuth2 keys and tokens, through to the gateway"
     priority: P1
     ui:
       status: planned
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/content/llm_instructions.feature
-          scenario: "Turning AI discovery off for one view hides it from agents while other views keep serving them"
-  - id: APIP-CORE-142
-    title: "An MCP server with a subscription cannot be deleted until the subscription is removed"
+        - feature: suites/it/features/apiportal/applications/oauth2_keys.feature
+          scenario: "An application maps production and sandbox clients and gets tokens through them"
+        - feature: suites/it/features/apiportal/applications/oauth2_keys.feature
+          scenario: "An OAuth2 key is imported, linked and removed by its owner only"
+  - id: APIP-017
+    title: "MCP servers: lifecycle, validation, isolation and agent routes"
     priority: P0
     ui:
       status: planned
@@ -1449,19 +207,11 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "An MCP server with a subscription cannot be deleted until the subscription is removed"
-  - id: APIP-CORE-143
-    title: "An MCP server carries the AI Ready badge only while agents may see it"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
+          scenario: "A publisher manages an MCP server, which carries the AI Ready badge while agents may see it"
         - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "An MCP server carries the AI Ready badge only while agents may see it"
-  - id: APIP-CORE-144
-    title: "An MCP server key is listed, regenerated, linked to an application and revoked for good"
+          scenario: "Invalid MCP servers are refused, handles never cross with REST APIs, and one in use cannot be deleted"
+  - id: APIP-018
+    title: "MCP server keys, subscriptions and gateway calls"
     priority: P0
     ui:
       status: planned
@@ -1470,8 +220,8 @@ scenarios:
       refs:
         - feature: suites/it/features/apiportal/ai/mcp_servers.feature
           scenario: "An MCP server key is listed, regenerated, linked to an application and revoked for good"
-  - id: APIP-CORE-145
-    title: "A registry publish with <problem> is refused with an error and nothing is listed"
+  - id: APIP-019
+    title: "MCP registry: publish, versions, status and soft delete"
     priority: P1
     ui:
       status: planned
@@ -1479,49 +229,11 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "A registry publish with <problem> is refused with an error and nothing is listed"
-  - id: APIP-CORE-146
-    title: "A registry server name of <length> characters, the <bound> allowed, is accepted"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
+          scenario: "MCP server versions are published through the registry, change status and are soft-deleted"
         - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "A registry server name of <length> characters, the <bound> allowed, is accepted"
-  - id: APIP-CORE-147
-    title: "Capabilities published to the registry become the MCP server's tools, and an update without them keeps them"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "Capabilities published to the registry become the MCP server's tools, and an update without them keeps them"
-  - id: APIP-CORE-148
-    title: "A server-level status change applies to the registry server's version and can be undone"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "A server-level status change applies to the registry server's version and can be undone"
-  - id: APIP-CORE-149
-    title: "The registry listing pages with a cursor, caps its limit and searches in any letter case"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "The registry listing pages with a cursor, caps its limit and searches in any letter case"
-  - id: APIP-CORE-150
-    title: "A developer cannot change, delete or set the status of a registry server, while anyone can still read it"
+          scenario: "Invalid registry publishes are refused and nothing is listed, within the allowed name lengths"
+  - id: APIP-020
+    title: "MCP registry: listing contract, mounts and access"
     priority: P0
     ui:
       status: planned
@@ -1529,81 +241,12 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "A developer cannot change, delete or set the status of a registry server, while anyone can still read it"
-  - id: APIP-CORE-154
-    title: "A workflow's content switches from an Arazzo document to Markdown"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/workflows.feature
-          scenario: "A workflow's content switches from an Arazzo document to Markdown"
-  - id: APIP-CORE-155
-    title: "A view's llms.txt lists only its published workflows that agents may see"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/workflows.feature
-          scenario: "A view's llms.txt lists only its published workflows that agents may see"
-  - id: APIP-CORE-156
-    title: "Each workflow entry in a view's llms.txt shows the workflow's name and links to its page"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: known-issue
-      issue: "to be filed — the llms.txt template reads name and apiWorkflowId, which the workflow DTO lacks, so each entry has an empty name and a broken link"
-      refs:
-        - feature: suites/it/features/apiportal/ai/workflows.feature
-          scenario: "Each workflow entry in a view's llms.txt shows the workflow's name and links to its page"
-  - id: APIP-CORE-157
-    title: "robots.txt lets crawlers in and points AI agents to a view's llms.txt"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/discovery.feature
-          scenario: "robots.txt lets crawlers in and points AI agents to a view's llms.txt"
-  - id: APIP-CORE-158
-    title: "The API page that Try with AI points to names the API, its specification and how to get credentials"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/discovery.feature
-          scenario: "The API page that Try with AI points to names the API, its specification and how to get credentials"
-  - id: APIP-CORE-159
-    title: "A second version of a registry server is published, listed beside the first and follows server-level status changes"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: known-issue
-      issue: "to be filed — the portal handle derived from the registry server name is unique, so publishing a second version fails with 409 Server version already exists"
-      refs:
+          scenario: "The registry listing pages and searches under both paths, and only publishers can change it"
         - feature: suites/it/features/apiportal/ai/mcp_servers.feature
           scenario: "A second version of a registry server is published, listed beside the first and follows server-level status changes"
-  - id: APIP-CORE-160
-    title: "Registry changes reach only a version that exists, and an update with capabilities replaces the tools"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/ai/mcp_servers.feature
-          scenario: "Registry changes reach only a version that exists, and an update with capabilities replaces the tools"
-  - id: APIP-CORE-161
-    title: "A workflow created with <problem> is refused and stores nothing, while a YAML definition is accepted"
+      # @known-issue scenario above: "A second version of a registry server is published, listed beside the first and follows server-level status changes" ("to be filed — the portal handle derived from the registry server name is unique, so publishing a second version fails with 409 Server version already exists")
+  - id: APIP-021
+    title: "API workflows: lifecycle, visibility, Arazzo, prompts and llms.txt"
     priority: P1
     ui:
       status: planned
@@ -1611,251 +254,24 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/ai/workflows.feature
-          scenario: "A workflow created with <problem> is refused and stores nothing, while a YAML definition is accepted"
-  - id: APIP-CORE-162
-    title: "Workflow updates with invalid values, a taken handle or no target are refused, and the workflow is unchanged"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
+          scenario: "A publisher manages an API workflow, its agent visibility, its Arazzo document and its prompt"
         - feature: suites/it/features/apiportal/ai/workflows.feature
-          scenario: "Workflow updates with invalid values, a taken handle or no target are refused, and the workflow is unchanged"
-  - id: APIP-CORE-163
-    title: "A developer creates an application without a handle, and every later call uses the handle derived from its name"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/applications.feature
-          scenario: "A developer creates an application without a handle, and every later call uses the handle derived from its name"
-  - id: APIP-CORE-164
-    title: "An application with <case> is accepted and stored as sent"
+          scenario: "Invalid workflow requests are refused and the workflow is unchanged"
+        - feature: suites/it/features/apiportal/ai/workflows.feature
+          scenario: "Each workflow entry in a view's llms.txt shows the workflow's name and links to its page"
+      # @known-issue scenario above: "Each workflow entry in a view's llms.txt shows the workflow's name and links to its page" ("to be filed — the llms.txt template reads name and apiWorkflowId, which the workflow DTO lacks, so each entry has an empty name and a broken link")
+  - id: APIP-022
+    title: "AI agent discovery: llms.txt, Markdown and specification routes"
     priority: P1
     ui:
       status: planned
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/applications/applications.feature
-          scenario: "An application with <case> is accepted and stored as sent"
-  - id: APIP-CORE-165
-    title: "An application without a name, or with a handle already in use, is refused and the first one is unchanged"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/applications.feature
-          scenario: "An application without a name, or with a handle already in use, is refused and the first one is unchanged"
-  - id: APIP-CORE-167
-    title: "An application lists the API keys linked to it, and only those"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/applications.feature
-          scenario: "An application lists the API keys linked to it, and only those"
-  - id: APIP-CORE-169
-    title: "Another user can neither see nor change a developer's application"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/applications.feature
-          scenario: "Another user can neither see nor change a developer's application"
-  - id: APIP-CORE-170
-    title: "A key manager registered without an id gets one, and its provisioning credential is never returned"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/key_managers.feature
-          scenario: "A key manager registered without an id gets one, and its provisioning credential is never returned"
-  - id: APIP-CORE-171
-    title: "A key manager with a taken id, no token endpoint or an invalid id is refused, and an unknown one cannot be updated"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/key_managers.feature
-          scenario: "A key manager with a taken id, no token endpoint or an invalid id is refused, and an unknown one cannot be updated"
-  - id: APIP-CORE-172
-    title: "Discovery reads nothing from a URL without a discovery document, and metadata describes each enabled key manager"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/key_managers.feature
-          scenario: "Discovery reads nothing from a URL without a discovery document, and metadata describes each enabled key manager"
-  - id: APIP-CORE-173
-    title: "A disabled key manager is hidden and issues no token through its keys, until it is enabled again"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/key_managers.feature
-          scenario: "A disabled key manager is hidden and issues no token through its keys, until it is enabled again"
-  - id: APIP-CORE-174
-    title: "A disabled key manager issues no token through an application's client mapping"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: known-issue
-      issue: "to be filed — token generation through an application client mapping ignores a disabled key manager"
-      refs:
-        - feature: suites/it/features/apiportal/applications/key_managers.feature
-          scenario: "A disabled key manager issues no token through an application's client mapping"
-  - id: APIP-CORE-175
-    title: "A deleted key manager issues no more tokens to the applications mapped to it"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: known-issue
-      issue: "to be filed — deleting a key manager still referenced by an application client mapping answers 500, and the mapping keeps issuing tokens"
-      refs:
-        - feature: suites/it/features/apiportal/applications/key_managers.feature
-          scenario: "A deleted key manager issues no more tokens to the applications mapped to it"
-  - id: APIP-CORE-176
-    title: "A key manager or discovery URL at <target> is refused and nothing is stored"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/key_managers.feature
-          scenario: "A key manager or discovery URL at <target> is refused and nothing is stored"
-  - id: APIP-CORE-178
-    title: "A token is issued with the scopes the key manager granted"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/oauth2_keys.feature
-          scenario: "A token is issued with the scopes the key manager granted"
-  - id: APIP-CORE-179
-    title: "An application holds a production and a sandbox client, and each issues tokens"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/oauth2_keys.feature
-          scenario: "An application holds a production and a sandbox client, and each issues tokens"
-  - id: APIP-CORE-180
-    title: "An OAuth2 key imported for an existing client never shows a secret, is its owner's only, and is removed with its record"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/oauth2_keys.feature
-          scenario: "An OAuth2 key imported for an existing client never shows a secret, is its owner's only, and is removed with its record"
-  - id: APIP-CORE-181
-    title: "Revoking an application's client mapping removes it from the application and from token issuance"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/oauth2_keys.feature
-          scenario: "Revoking an application's client mapping removes it from the application and from token issuance"
-  - id: APIP-CORE-182
-    title: "An OAuth2 key is linked to its owner's application and unlinked, and cannot be linked to another user's"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/oauth2_keys.feature
-          scenario: "An OAuth2 key is linked to its owner's application and unlinked, and cannot be linked to another user's"
-  - id: APIP-CORE-183
-    title: "A subscription without a plan or to an API without plans is refused, and a plan change without a plan changes nothing"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/subscriptions.feature
-          scenario: "A subscription without a plan or to an API without plans is refused, and a plan change without a plan changes nothing"
-  - id: APIP-CORE-184
-    title: "Subscriptions are listed per API, and an unknown API is not found"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/subscriptions.feature
-          scenario: "Subscriptions are listed per API, and an unknown API is not found"
-  - id: APIP-CORE-185
-    title: "Another user can neither see nor change a developer's subscription"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/subscriptions.feature
-          scenario: "Another user can neither see nor change a developer's subscription"
-  - id: APIP-CORE-186
-    title: "A publisher without the subscription manage scope cannot rotate a subscription token"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/subscriptions.feature
-          scenario: "A publisher without the subscription manage scope cannot rotate a subscription token"
-  - id: APIP-CORE-187
-    title: "A plan limit of <case> is accepted and stored as given"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/subscription_plans.feature
-          scenario: "A plan limit of <case> is accepted and stored as given"
-  - id: APIP-CORE-188
-    title: "A plan limit with <problem> is refused and nothing is stored"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/subscription_plans.feature
-          scenario: "A plan limit with <problem> is refused and nothing is stored"
-  - id: APIP-CORE-189
-    title: "A free plan with a subscription can't be deleted or taken off its API, and the subscription keeps working"
+        - feature: suites/it/features/apiportal/ai/discovery.feature
+          scenario: "AI agents discover the catalogue through llms.txt, Markdown, specifications and robots.txt"
+  - id: APIP-023
+    title: "Subscription plans: lifecycle, limits, access and control-plane sync"
     priority: P0
     ui:
       status: planned
@@ -1863,9 +279,33 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/subscriptions/subscription_plans.feature
-          scenario: "A free plan with a subscription can't be deleted or taken off its API, and the subscription keeps working"
-  - id: APIP-CORE-190
-    title: "Another user can neither see, rotate, revoke nor link a developer's API key"
+          scenario: "An administrator manages plans and their limits"
+        - feature: suites/it/features/apiportal/subscriptions/subscription_plans.feature
+          scenario: "Invalid plans are refused, plans are read-only for other roles, and a plan in use cannot be deleted"
+  - id: APIP-024
+    title: "Subscription lifecycle and its effect at the gateway"
+    priority: P0
+    ui:
+      status: planned
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/subscriptions/subscriptions.feature
+          scenario: "A developer subscribes, changes plan and unsubscribes, and invalid changes leave the subscription as it was"
+        - feature: suites/it/features/apiportal/subscriptions/subscription_gateway.feature
+          scenario: "The gateway accepts a subscription only with the right credentials, and follows its suspension and removal"
+  - id: APIP-025
+    title: "Subscription rules and ownership"
+    priority: P0
+    ui:
+      status: planned
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/subscriptions/subscriptions.feature
+          scenario: "Subscriptions follow the plans an API offers and belong to their owner"
+  - id: APIP-026
+    title: "API keys: lifecycle, expiry, validation and association"
     priority: P0
     ui:
       status: planned
@@ -1873,9 +313,11 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/subscriptions/api_keys.feature
-          scenario: "Another user can neither see, rotate, revoke nor link a developer's API key"
-  - id: APIP-CORE-191
-    title: "API key requests without a session are refused"
+          scenario: "A publisher generates, rotates and revokes API keys, with and without an expiry"
+        - feature: suites/it/features/apiportal/subscriptions/api_keys.feature
+          scenario: "Invalid API keys are refused, and a key is linked to an application until it is revoked"
+  - id: APIP-027
+    title: "API keys: ownership, anonymous access and gateway propagation"
     priority: P0
     ui:
       status: planned
@@ -1883,748 +325,107 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/subscriptions/api_keys.feature
-          scenario: "API key requests without a session are refused"
-  - id: APIP-CORE-192
-    title: "A key with <case> is issued with that expiry"
-    priority: P1
+          scenario: "An API key belongs to its owner and needs a session"
+        - feature: suites/it/features/apiportal/subscriptions/subscription_gateway.feature
+          scenario: "API keys keep working at the gateway against other users and after their application is deleted"
+  - id: APIP-028
+    title: "Organization settings"
+    priority: P0
     ui:
       status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/api_keys.feature
-          scenario: "A key with <case> is issued with that expiry"
-  - id: APIP-CORE-193
-    title: "A key whose <problem> is refused and no key is issued"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/api_keys.feature
-          scenario: "A key whose <problem> is refused and no key is issued"
-  - id: APIP-CORE-195
-    title: "A key without an expiry never expires, and both key listings page through their results"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/api_keys.feature
-          scenario: "A key without an expiry never expires, and both key listings page through their results"
-  - id: APIP-CORE-198
-    title: "An Organization YAML file updates the organization and upserts its labels by id and views by id"
-    priority: P1
-    ui:
-      status: exempt
-      reason: The Organization YAML file is a GitOps REST capability; the settings page sends JSON. Pending the feature owner's approval.
     it:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/organizations/organizations.feature
-          scenario: "An Organization YAML file updates the organization and upserts its labels by id and views by id"
-  - id: APIP-CORE-199
-    title: "An Organization YAML file with <problem> is refused and changes nothing"
-    priority: P1
-    ui:
-      status: exempt
-      reason: The Organization YAML file is a GitOps REST capability; the settings page sends JSON. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/organizations/organizations.feature
-          scenario: "An Organization YAML file with <problem> is refused and changes nothing"
-  - id: APIP-CORE-201
-    title: "A <role> cannot update the organization with a YAML file"
-    priority: P0
-    ui:
-      status: exempt
-      reason: The Organization YAML file is a GitOps REST capability; the settings page sends JSON. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/organizations/organizations.feature
-          scenario: "A <role> cannot update the organization with a YAML file"
-  - id: APIP-CORE-202
-    title: "A session write with <token> CSRF token is refused and stores nothing"
-    priority: P0
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth.feature
-          scenario: "A session write with <token> CSRF token is refused and stores nothing"
-  - id: APIP-CORE-204
-    title: "The session cookie is HttpOnly, Secure and scoped to the portal, and is replaced at sign-in"
-    priority: P0
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth.feature
-          scenario: "The session cookie is HttpOnly, Secure and scoped to the portal, and is replaced at sign-in"
-  - id: APIP-CORE-206
-    title: "A bearer token <problem> is refused with the generic credential failure"
-    priority: P0
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth.feature
-          scenario: "A bearer token <problem> is refused with the generic credential failure"
-  - id: APIP-CORE-208
-    title: "An anonymous visitor browses the catalogue but is sent to sign in for the <page> page"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth.feature
-          scenario: "An anonymous visitor browses the catalogue but is sent to sign in for the <page> page"
-  - id: APIP-CORE-209
-    title: "A developer opens their applications but is refused the settings page, which an administrator opens"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth.feature
-          scenario: "A developer opens their applications but is refused the settings page, which an administrator opens"
-  - id: APIP-CORE-210
-    title: "An anonymous visitor to the settings page is sent to the default view's sign-in"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth.feature
-          scenario: "An anonymous visitor to the settings page is sent to the default view's sign-in"
-  - id: APIP-CORE-212
-    title: "A refused request is answered with a generic error that names no internals"
-    priority: P1
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/security.feature
-          scenario: "A refused request is answered with a generic error that names no internals"
-  - id: APIP-CORE-213
-    title: "A definition, content archive or theme just over the upload limit is refused without naming the limit, and one just under it is accepted"
-    priority: P1
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/security.feature
-          scenario: "A definition, content archive or theme just over the upload limit is refused without naming the limit, and one just under it is accepted"
-  - id: APIP-CORE-214
-    title: "The try-it proxy refuses <target kind> and calls the API's registered public endpoint"
-    priority: P0
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/security.feature
-          scenario: "The try-it proxy refuses <target kind> and calls the API's registered public endpoint"
-  - id: APIP-CORE-215
-    title: "An application lists the production and sandbox clients mapped to it"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: known-issue
-      issue: "to be filed — GET /applications/{id} never returns the appKeyMappings its schema declares; applicationDao.get reads the row without its key mappings"
-      refs:
-        - feature: suites/it/features/apiportal/applications/oauth2_keys.feature
-          scenario: "An application lists the production and sandbox clients mapped to it"
-  - id: APIP-WEBHOOKS-001
-    title: "An administrator manages a webhook subscriber from creation to deletion"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/webhook_subscribers.feature
-          scenario: "An administrator manages a webhook subscriber from creation to deletion"
-  - id: APIP-WEBHOOKS-002
-    title: "Subscribers created without an id each get their own, and no secret"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/webhook_subscribers.feature
-          scenario: "Subscribers created without an id each get their own, and no secret"
-  - id: APIP-WEBHOOKS-003
-    title: "A subscriber <problem> is refused and stores nothing"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/webhook_subscribers.feature
-          scenario: "A subscriber <problem> is refused and stores nothing"
-  - id: APIP-WEBHOOKS-004
-    title: "A second subscriber with an existing id is refused"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/webhook_subscribers.feature
-          scenario: "A second subscriber with an existing id is refused"
-  - id: APIP-WEBHOOKS-005
-    title: "Only an administrator can see or register webhook subscribers"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/webhook_subscribers.feature
-          scenario: "Only an administrator can see or register webhook subscribers"
-  - id: APIP-WEBHOOKS-006
-    title: "A subscriber with an exact event name receives only that event"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/webhook_subscribers.feature
-          scenario: "A subscriber with an exact event name receives only that event"
-  - id: APIP-WEBHOOKS-009
-    title: "An application's whole life is delivered to a subscriber"
-    priority: P1
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/application_webhooks.feature
-          scenario: "An application's whole life is delivered to a subscriber"
-  - id: APIP-WEBHOOKS-010
-    title: "A subscriber is not sent application events it did not ask for"
-    priority: P2
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/application_webhooks.feature
-          scenario: "A subscriber is not sent application events it did not ask for"
-  - id: APIP-WEBHOOKS-011
-    title: "An API key's life is delivered, without the key, to a subscriber that has no secret"
-    priority: P1
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/api_key_webhooks.feature
-          scenario: "An API key's life is delivered, without the key, to a subscriber that has no secret"
-  - id: APIP-WEBHOOKS-012
-    title: "Linking an API key to an application, and unlinking it, are delivered"
-    priority: P2
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/api_key_webhooks.feature
-          scenario: "Linking an API key to an application, and unlinking it, are delivered"
-  - id: APIP-WEBHOOKS-013
-    title: "A subscriber with a secret is sent the key encrypted with it, never in plain text"
-    priority: P0
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/api_key_webhooks.feature
-          scenario: "A subscriber with a secret is sent the key encrypted with it, never in plain text"
-  - id: APIP-WEBHOOKS-014
-    title: "A subscription's whole life is delivered, without its token, to a subscriber that has no secret"
-    priority: P1
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/subscription_webhooks.feature
-          scenario: "A subscription's whole life is delivered, without its token, to a subscriber that has no secret"
-  - id: APIP-WEBHOOKS-015
-    title: "A refused plan change sends no event and leaves the subscription unchanged"
-    priority: P2
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/subscription_webhooks.feature
-          scenario: "A refused plan change sends no event and leaves the subscription unchanged"
-  - id: APIP-WEBHOOKS-016
-    title: "A subscriber with a secret is sent the rotated token encrypted with it, never in plain text"
-    priority: P0
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/subscription_webhooks.feature
-          scenario: "A subscriber with a secret is sent the rotated token encrypted with it, never in plain text"
-  - id: APIP-WEBHOOKS-017
-    title: "A disabled subscriber is sent nothing while an enabled one is sent the event"
-    priority: P2
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/webhook_delivery.feature
-          scenario: "A disabled subscriber is sent nothing while an enabled one is sent the event"
-  - id: APIP-WEBHOOKS-018
-    title: "A delivery the target refuses is recorded as failed, with the status it returned"
-    priority: P2
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/webhook_delivery.feature
-          scenario: "A delivery the target refuses is recorded as failed, with the status it returned"
-  - id: APIP-WEBHOOKS-019
-    title: "An event every subscriber accepts is recorded as delivered, and only some roles may read it"
-    priority: P2
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/webhook_delivery.feature
-          scenario: "An event every subscriber accepts is recorded as delivered, and only some roles may read it"
-  - id: APIP-WEBHOOKS-020
-    title: "A subscriber's secret signs the exact payload it is sent"
-    priority: P0
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/webhook_delivery.feature
-          scenario: "A subscriber's secret signs the exact payload it is sent"
-  - id: APIP-WEBHOOKS-021
-    title: "A meter's whole life is reported with its definition"
-    priority: P1
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/events.feature
-          scenario: "A meter's whole life is reported with its definition"
-  - id: APIP-WEBHOOKS-022
-    title: "A priced plan is reported with its price in the control plane's terms, through its life"
-    priority: P1
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/events.feature
-          scenario: "A priced plan is reported with its price in the control plane's terms, through its life"
-  - id: APIP-WEBHOOKS-023
-    title: "A refused meter is not reported, while a valid one is"
-    priority: P2
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/events.feature
-          scenario: "A refused meter is not reported, while a valid one is"
-  - id: APIP-WEBHOOKS-024
-    title: "Deleting an application unlinks its API keys, which stay active, and leaves its subscription and key manager alone"
-    priority: P0
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/application_deletion.feature
-          scenario: "Deleting an application unlinks its API keys, which stay active, and leaves its subscription and key manager alone"
-  - id: APIP-WEBHOOKS-025
-    title: "An event carries the organization's control plane reference ID as org.ref_id, and follows its change"
-    priority: P1
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
+          scenario: "An administrator updates the organization directly and by YAML, and its identity and access stay protected"
         - feature: suites/it/features/apiportal/organizations/organization_webhooks.feature
           scenario: "An event carries the organization's control plane reference ID as org.ref_id, and follows its change"
-  - id: APIP-WEBHOOKS-026
-    title: "Every delivery repeats its event in its headers and carries the event envelope"
-    priority: P0
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/webhook_delivery.feature
-          scenario: "Every delivery repeats its event in its headers and carries the event envelope"
-  - id: APIP-WEBHOOKS-027
-    title: "A resumed subscription is delivered as updated to ACTIVE, and a plan change names the previous plan"
-    priority: P1
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/subscription_webhooks.feature
-          scenario: "A resumed subscription is delivered as updated to ACTIVE, and a plan change names the previous plan"
-  - id: APIP-DEVPORTAL-WEBHOOK-001
-    title: "A deprecated API keeps serving its existing subscription and API key at the gateway"
-    priority: P1
-    ui:
-      status: exempt
-      reason: Calling the API through the gateway is not a browser action; the IT scenario covers it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/devportal_webhook.feature
-          scenario: "A deprecated API keeps serving its existing subscription and API key at the gateway"
-  - id: APIP-DEVPORTAL-WEBHOOK-002
-    title: "An API key linked to a deleted application keeps authorizing calls at the gateway"
-    priority: P0
-    ui:
-      status: exempt
-      reason: Calling the API through the gateway is not a browser action; the IT scenario covers it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/applications/application_gateway.feature
-          scenario: "An API key linked to a deleted application keeps authorizing calls at the gateway"
-  - id: APIP-DEVPORTAL-WEBHOOK-004
-    title: "The gateway takes the subscription token only from Subscription-Key, and only together with the API key"
-    priority: P0
-    ui:
-      status: exempt
-      reason: Calling the API through the gateway is not a browser action; the IT scenario covers it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/subscription_gateway.feature
-          scenario: "The gateway takes the subscription token only from Subscription-Key, and only together with the API key"
-  - id: APIP-DEVPORTAL-WEBHOOK-005
-    title: "A suspended or ended subscription is refused at the gateway, and subscribing again gives a new token"
-    priority: P0
-    ui:
-      status: exempt
-      reason: Calling the API through the gateway is not a browser action; the IT scenario covers it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/subscription_gateway.feature
-          scenario: "A suspended or ended subscription is refused at the gateway, and subscribing again gives a new token"
-  - id: APIP-DEVPORTAL-WEBHOOK-006
-    title: "Another user's attempts to rotate or revoke an API key leave it working at the gateway"
-    priority: P0
-    ui:
-      status: exempt
-      reason: Calling the API through the gateway is not a browser action; the IT scenario covers it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/subscriptions/subscription_gateway.feature
-          scenario: "Another user's attempts to rotate or revoke an API key leave it working at the gateway"
-  - id: APIP-DEVPORTAL-WEBHOOK-007
-    title: "A developer-portal API key and subscription propagate to the gateway and authorize a call"
+  - id: APIP-029
+    title: "Single-organization isolation"
     priority: P0
     ui:
       status: planned
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/webhooks/devportal_webhook.feature
-          scenario: "A developer-portal API key and subscription propagate to the gateway and authorize a call"
-  - id: APIP-DEVPORTAL-WEBHOOK-008
-    title: "Developer-portal credential-lifecycle changes propagate to platform-api and the gateway"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/devportal_webhook.feature
-          scenario: "Developer-portal credential-lifecycle changes propagate to platform-api and the gateway"
-  - id: APIP-DEVPORTAL-WEBHOOK-009
-    title: "A meter and a usage-priced plan made in the API Portal appear in the control plane, and leave with them"
-    priority: P1
-    ui:
-      status: exempt
-      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/monetization_webhook.feature
-          scenario: "A meter and a usage-priced plan made in the API Portal appear in the control plane, and leave with them"
-  - id: APIP-DEVPORTAL-WEBHOOK-010
-    title: "The control plane processes only API Portal events signed with its secret within the replay window"
-    priority: P0
-    ui:
-      status: exempt
-      reason: The control plane's event receiver is server-to-server; no UI sends it events. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/devportal_webhook.feature
-          scenario: "The control plane processes only API Portal events signed with its secret within the replay window"
-  - id: APIP-DEVPORTAL-WEBHOOK-011
-    title: "An API Portal event of an unknown type or for an unknown organization is refused and changes nothing"
-    priority: P1
-    ui:
-      status: exempt
-      reason: The control plane's event receiver is server-to-server; no UI sends it events. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/devportal_webhook.feature
-          scenario: "An API Portal event of an unknown type or for an unknown organization is refused and changes nothing"
-  - id: APIP-DEVPORTAL-WEBHOOK-012
-    title: "The same API Portal event delivered twice is processed once"
-    priority: P1
-    ui:
-      status: exempt
-      reason: The control plane's event receiver is server-to-server; no UI sends it events. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/devportal_webhook.feature
-          scenario: "The same API Portal event delivered twice is processed once"
-  - id: APIP-FOREIGN-ORG-001
-    title: "A portal serves its configured organization"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
+        - feature: suites/it/features/apiportal/organizations/organization_isolation.feature
+          scenario: "Another organization's routes are not exposed and an organization header never moves a caller"
         - feature: suites/it/features/apiportal/organizations/foreign_org_login.feature
-          scenario: "A portal serves its configured organization"
-  - id: APIP-FOREIGN-ORG-002
-    title: "A portal does not serve the platform API organization"
+          scenario: "A portal serves only its own organization and treats a foreign credential as a wrong password"
+  - id: APIP-030
+    title: "Multi-organization deployments"
     priority: P0
     ui:
       status: planned
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/organizations/foreign_org_login.feature
-          scenario: "A portal does not serve the platform API organization"
-  - id: APIP-FOREIGN-ORG-003
-    title: "A valid credential logs in to its matching organization portal"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/organizations/foreign_org_login.feature
-          scenario: "A valid credential logs in to its matching organization portal"
-  - id: APIP-FOREIGN-ORG-004
-    title: "A valid credential for another organization is rejected"
+        - feature: suites/it/features/apiportal/multi-organization/claims.feature
+          scenario: "Organization claims map callers to organizations and provision a new one exactly once"
+        - feature: suites/it/features/apiportal/multi-organization/isolation.feature
+          scenario: "Organizations are isolated from each other, in their data, their pages and when publishing"
+  - id: APIP-031
+    title: "Local login, session and CSRF"
     priority: P0
     ui:
       status: planned
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/organizations/foreign_org_login.feature
-          scenario: "A valid credential for another organization is rejected"
-  - id: APIP-FOREIGN-ORG-005
-    title: "An organization mismatch is reported as a credential failure"
+        - feature: suites/it/features/apiportal/security/auth.feature
+          scenario: "A user signs in with a protected session, and failed logins and forged writes open nothing"
+  - id: APIP-032
+    title: "Bearer tokens on the Management API"
     priority: P0
     ui:
       status: planned
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/organizations/foreign_org_login.feature
-          scenario: "An organization mismatch is reported as a credential failure"
-  - id: APIP-FOREIGN-ORG-006
-    title: "A rejected login does not establish a usable session"
+        - feature: suites/it/features/apiportal/security/auth.feature
+          scenario: "Bearer tokens that are missing or forged are refused with the generic credential failure"
+  - id: APIP-033
+    title: "Authorization: scope mode, role mode, page access and grants"
     priority: P0
     ui:
       status: planned
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/organizations/foreign_org_login.feature
-          scenario: "A rejected login does not establish a usable session"
-  - id: APIP-AUTH-SCOPE-001
-    title: "An admin operation is authorized by token scopes"
-    priority: P0
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
+        - feature: suites/it/features/apiportal/security/auth.feature
+          scenario: "Pages follow sign-in and the administrator role"
         - feature: suites/it/features/apiportal/security/auth_scope.feature
-          scenario: "An admin operation is authorized by token scopes"
-  - id: APIP-AUTH-SCOPE-002
-    title: "An unauthenticated caller is rejected"
-    priority: P0
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth_scope.feature
-          scenario: "An unauthenticated caller is rejected"
-  - id: APIP-AUTH-SCOPE-003
-    title: "A narrow actor is authorized by token scopes"
-    priority: P0
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth_scope.feature
-          scenario: "A narrow actor is authorized by token scopes"
-  - id: APIP-AUTH-SCOPE-004
-    title: "A token without an operation's scope is refused with a generic message, and a token with it succeeds"
-    priority: P0
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth_scope.feature
-          scenario: "A token without an operation's scope is refused with a generic message, and a token with it succeeds"
-  - id: APIP-AUTH-ROLE-001
-    title: "Role authorization mode is active"
-    priority: P0
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
+          scenario: "Operations are authorized by token scopes"
         - feature: suites/it/features/apiportal/security/auth_role.feature
-          scenario: "Role authorization mode is active"
-  - id: APIP-AUTH-ROLE-002
-    title: "An admin operation is authorized by portal role grants"
-    priority: P0
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth_role.feature
-          scenario: "An admin operation is authorized by portal role grants"
-  - id: APIP-AUTH-ROLE-003
-    title: "An unauthenticated caller is rejected"
-    priority: P0
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth_role.feature
-          scenario: "An unauthenticated caller is rejected"
-  - id: APIP-AUTH-ROLE-004
-    title: "A narrow actor is restricted by portal role grants"
-    priority: P0
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth_role.feature
-          scenario: "A narrow actor is restricted by portal role grants"
-  - id: APIP-AUTH-ROLE-005
-    title: "A developer manages their own application but cannot change the organization's labels"
-    priority: P0
-    ui:
-      status: exempt
-      reason: A Management API or HTTP-level control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/security/auth_role.feature
-          scenario: "A developer manages their own application but cannot change the organization's labels"
-  - id: APIP-GRANT-TABLE-001
-    title: "Shared IT roles have identical grants on both component sides"
-    priority: P1
-    ui:
-      status: exempt
-      reason: Compares the staged role-to-scope mapping files; there is no UI.
-    it:
-      status: automated
-      refs:
+          scenario: "Operations are authorized by portal role grants"
         - feature: suites/it/features/apiportal/security/grant_table_parity.feature
-          scenario: "Shared IT roles have identical grants on both component sides"
-  - id: APIP-GRANT-TABLE-002
-    title: "The deliberate narrow-role grant difference remains enforced"
-    priority: P1
+          scenario: "Shared roles have identical grants on both components, apart from the deliberate narrow-role difference"
+  - id: APIP-034
+    title: "IdP (OIDC) login"
+    priority: P0
     ui:
-      status: exempt
-      reason: Compares the staged role-to-scope mapping files; there is no UI.
+      status: planned
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/security/grant_table_parity.feature
-          scenario: "The deliberate narrow-role grant difference remains enforced"
-  - id: APIP-BILLING-001
-    title: "Setting up billing connects Moesif to Stripe and registers both event endpoints"
+        - feature: suites/it/features/apiportal/multi-organization/login.feature
+          scenario: "Users sign in through the IDP, explicitly and silently, into their own organization"
+        - feature: suites/it/features/apiportal/multi-organization/login.feature
+          scenario: "A user's display name comes from their token and is kept when a later token has none"
+  - id: APIP-035
+    title: "Hardening: headers, error bodies, upload limits, SSRF and secrets at rest"
+    priority: P0
+    ui:
+      status: planned
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/security/security.feature
+          scenario: "Responses name no internals, and uploads are limited without naming the limit"
+        - feature: suites/it/features/apiportal/security/security.feature
+          scenario: "The try-it proxy refuses internal addresses and calls the API's registered public endpoint"
+  - id: APIP-039
+    title: "Billing setup with Stripe and Moesif"
     priority: P0
     ui:
       status: planned
@@ -2632,184 +433,53 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/monetization/billing_setup.feature
-          scenario: "Setting up billing connects Moesif to Stripe and registers both event endpoints"
-  - id: APIP-BILLING-002
-    title: "A Stripe key Stripe refuses is reported against it, and nothing is set up"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
+          scenario: "An administrator sets up billing, moves its event endpoint and removes it"
         - feature: suites/it/features/apiportal/monetization/billing_setup.feature
-          scenario: "A Stripe key Stripe refuses is reported against it, and nothing is set up"
-  - id: APIP-BILLING-003
-    title: "A Moesif that can't be reached is reported as unavailable"
-    priority: P1
-    ui:
-      status: exempt
-      reason: A provider failure injected through the testbench; there is no browser control.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/billing_setup.feature
-          scenario: "A Moesif that can't be reached is reported as unavailable"
-  - id: APIP-BILLING-004
-    title: "A step that fails undoes the steps before it"
-    priority: P1
-    ui:
-      status: exempt
-      reason: A provider failure injected through the testbench; there is no browser control.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/billing_setup.feature
-          scenario: "A step that fails undoes the steps before it"
-  - id: APIP-BILLING-005
-    title: "Keys that are not what billing needs are refused before any provider is called"
+          scenario: "Billing refuses bad keys, undoes failed steps and is only for administrators"
+  - id: APIP-040
+    title: "Meters"
     priority: P1
     ui:
       status: planned
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/monetization/billing_setup.feature
-          scenario: "Keys that are not what billing needs are refused before any provider is called"
-  - id: APIP-BILLING-006
-    title: "The portal's event endpoint moves to another address, keeping its signing secret"
+        - feature: suites/it/features/apiportal/monetization/meters.feature
+          scenario: "An administrator defines request and token meters, which get ids from their names"
+        - feature: suites/it/features/apiportal/monetization/meters.feature
+          scenario: "Invalid meters are refused, a priced meter is locked, and only administrators can define meters"
+  - id: APIP-041
+    title: "Priced plans"
     priority: P1
     ui:
       status: planned
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/monetization/billing_setup.feature
-          scenario: "The portal's event endpoint moves to another address, keeping its signing secret"
-  - id: APIP-BILLING-007
-    title: "A developer pays for a flat rate plan and is subscribed once Stripe confirms the payment"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/paid_checkout.feature
-          scenario: "A developer pays for a flat rate plan and is subscribed once Stripe confirms the payment"
-  - id: APIP-BILLING-008
-    title: "The subscription's billing status follows Stripe as payments fail and are paid"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/paid_checkout.feature
-          scenario: "The subscription's billing status follows Stripe as payments fail and are paid"
-  - id: APIP-BILLING-009
-    title: "Unsubscribing from a flat rate plan ends it at the end of the period already paid for"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/paid_checkout.feature
-          scenario: "Unsubscribing from a flat rate plan ends it at the end of the period already paid for"
-  - id: APIP-BILLING-010
-    title: "Ending a flat rate subscription now cancels it in Stripe at once, with no refund"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/paid_checkout.feature
-          scenario: "Ending a flat rate subscription now cancels it in Stripe at once, with no refund"
-  - id: APIP-BILLING-011
-    title: "A checkout the developer leaves unpaid ends without a subscription"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/paid_checkout.feature
-          scenario: "A checkout the developer leaves unpaid ends without a subscription"
-  - id: APIP-BILLING-012
-    title: "Stripe's events are accepted only when they are signed and recent, and repeating one changes nothing"
-    priority: P0
-    ui:
-      status: exempt
-      reason: Stripe delivers its events to the portal; there is no browser control.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/paid_checkout.feature
-          scenario: "Stripe's events are accepted only when they are signed and recent, and repeating one changes nothing"
-  - id: APIP-BILLING-013
-    title: "Usage Moesif counts is shown to the developer and billed by Stripe when they unsubscribe"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/usage_billing.feature
-          scenario: "Usage Moesif counts is shown to the developer and billed by Stripe when they unsubscribe"
-  - id: APIP-BILLING-014
-    title: "A plan Moesif can't create is not put on sale, and nothing made for it is left in Moesif"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
+        - feature: suites/it/features/apiportal/monetization/priced_plans.feature
+          scenario: "Flat and usage prices are set once, and prices that can't be billed are refused"
+        - feature: suites/it/features/apiportal/monetization/priced_plans.feature
+          scenario: "Without billing, a paid plan is offered on an API but can't be subscribed to or bought"
         - feature: suites/it/features/apiportal/monetization/usage_billing.feature
           scenario: "A plan Moesif can't create is not put on sale, and nothing made for it is left in Moesif"
-  - id: APIP-BILLING-015
-    title: "A <role> can't read, set up, move or remove billing"
+  - id: APIP-042
+    title: "Paid checkout and the paid subscription lifecycle"
     priority: P0
     ui:
-      status: exempt
-      reason: A Management API authorization control with no browser control to exercise it. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/billing_setup.feature
-          scenario: "A <role> can't read, set up, move or remove billing"
-  - id: APIP-BILLING-016
-    title: "A checkout <problem> is refused, and nothing is started in Stripe"
-    priority: P1
-    ui:
-      status: exempt
-      reason: Management API request validation; the UI offers only valid API and plan choices. Pending the feature owner's approval.
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/monetization/paid_checkout.feature
-          scenario: "A checkout <problem> is refused, and nothing is started in Stripe"
-  - id: APIP-BILLING-017
-    title: "A free plan is subscribed to directly, not bought through checkout"
-    priority: P1
-    ui:
       status: planned
     it:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/monetization/paid_checkout.feature
-          scenario: "A free plan is subscribed to directly, not bought through checkout"
-  - id: APIP-BILLING-018
-    title: "A paid subscription's plan can't be changed or suspended here, and its usage is read only for known periods"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
+          scenario: "A developer buys a flat rate plan, and the subscription's billing status follows Stripe"
         - feature: suites/it/features/apiportal/monetization/paid_checkout.feature
-          scenario: "A paid subscription's plan can't be changed or suspended here, and its usage is read only for known periods"
-  - id: APIP-BILLING-019
-    title: "A subscriber pages through their own invoices and opens their billing page, and only an administrator reads the revenue reports"
+          scenario: "A paid subscription ends at the end of its period, or at once with no refund"
+        - feature: suites/it/features/apiportal/monetization/paid_checkout.feature
+          scenario: "Stripe's events are accepted only when they are signed and recent, and repeating one changes nothing"
+        - feature: suites/it/features/apiportal/monetization/paid_checkout.feature
+          scenario: "Free plans, unpaid and invalid checkouts start nothing, and a paid plan changes only through checkout"
+  - id: APIP-043
+    title: "Usage, invoices and revenue reports"
     priority: P1
     ui:
       status: planned
@@ -2818,8 +488,10 @@ scenarios:
       refs:
         - feature: suites/it/features/apiportal/monetization/paid_checkout.feature
           scenario: "A subscriber pages through their own invoices and opens their billing page, and only an administrator reads the revenue reports"
-  - id: APIP-PUBLISHING-001
-    title: "A deployed REST API is published to the API Portal through the control plane"
+        - feature: suites/it/features/apiportal/monetization/usage_billing.feature
+          scenario: "Usage Moesif counts is shown to the developer and billed by Stripe when they unsubscribe"
+  - id: APIP-044
+    title: "Publishing lifecycle from the control plane"
     priority: P0
     ui:
       status: planned
@@ -2827,189 +499,11 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "A deployed REST API is published to the API Portal through the control plane"
-  - id: APIP-PUBLISHING-002
-    title: "Publishing creates the selected plans the API Portal does not have yet"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
+          scenario: "A REST API is published, republished, deprecated and unpublished through the control plane"
         - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "Publishing creates the selected plans the API Portal does not have yet"
-  - id: APIP-PUBLISHING-003
-    title: "Republishing an edited draft replaces the listing in the API Portal"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "Republishing an edited draft replaces the listing in the API Portal"
-  - id: APIP-PUBLISHING-004
-    title: "Deprecating a published API changes only its status"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "Deprecating a published API changes only its status"
-  - id: APIP-PUBLISHING-005
-    title: "Deprecating an already deprecated API is refused"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "Deprecating an already deprecated API is refused"
-  - id: APIP-PUBLISHING-006
-    title: "Unpublishing removes the listing from the API Portal and keeps a draft"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "Unpublishing removes the listing from the API Portal and keeps a draft"
-  - id: APIP-PUBLISHING-007
-    title: "Unpublishing keeps the draft that was saved after publishing"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "Unpublishing keeps the draft that was saved after publishing"
-  - id: APIP-PUBLISHING-008
-    title: "Unpublishing an already unpublished API is refused"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "Unpublishing an already unpublished API is refused"
-  - id: APIP-PUBLISHING-009
-    title: "An API that was never published cannot be deprecated or unpublished"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "An API that was never published cannot be deprecated or unpublished"
-  - id: APIP-PUBLISHING-010
-    title: "A draft without a definition cannot be published"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "A draft without a definition cannot be published"
-  - id: APIP-PUBLISHING-011
-    title: "A draft with an invalid definition cannot be published"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "A draft with an invalid definition cannot be published"
-  - id: APIP-PUBLISHING-012
-    title: "An API that was never deployed to a gateway can be published"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "An API that was never deployed to a gateway can be published"
-  - id: APIP-PUBLISHING-013
-    title: "Publishing an API with a usage-priced plan brings the meter and the priced plan to the API Portal"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_monetization.feature
-          scenario: "Publishing an API with a usage-priced plan brings the meter and the priced plan to the API Portal"
-  - id: APIP-PUBLISHING-014
-    title: "A plan the API Portal already sells at another price blocks the publish"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_monetization.feature
-          scenario: "A plan the API Portal already sells at another price blocks the publish"
-  - id: APIP-PUBLISHING-015
-    title: "A meter the API Portal defines differently blocks the publish"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_monetization.feature
-          scenario: "A meter the API Portal defines differently blocks the publish"
-  - id: APIP-PUBLISHING-016
-    title: "Publishing brings a new limit to a plan the API Portal already sells at the same price"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_monetization.feature
-          scenario: "Publishing brings a new limit to a plan the API Portal already sells at the same price"
-  - id: APIP-PUBLISHING-017
-    title: "Publishing without a saved draft is refused"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "Publishing without a saved draft is refused"
-  - id: APIP-PUBLISHING-018
-    title: "A draft cannot select a subscription plan that is not active"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "A draft cannot select a subscription plan that is not active"
-  - id: APIP-PUBLISHING-019
-    title: "A plan deactivated after the draft was saved blocks the publish"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "A plan deactivated after the draft was saved blocks the publish"
-  - id: APIP-PUBLISHING-020
-    title: "Unpublishing is refused while the API Portal still has subscriptions to the API"
+          scenario: "A published API is served by its pages and labelled views, and leaves them when unpublished"
+  - id: APIP-045
+    title: "Publishing refusals and state conflicts"
     priority: P0
     ui:
       status: planned
@@ -3017,79 +511,11 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "Unpublishing is refused while the API Portal still has subscriptions to the API"
-  - id: APIP-PUBLISHING-021
-    title: "Unpublishing is refused while the API Portal still has API keys for the API"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
+          scenario: "Invalid publishes and repeated state changes are refused and leave the API Portal unchanged"
         - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "Unpublishing is refused while the API Portal still has API keys for the API"
-  - id: APIP-PUBLISHING-022
-    title: "Unpublishing succeeds once the subscriptions and API keys are removed"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "Unpublishing succeeds once the subscriptions and API keys are removed"
-  - id: APIP-PUBLISHING-023
-    title: "A wrong shared key is reported as an unavailable portal, not as a conflict"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "A wrong shared key is reported as an unavailable portal, not as a conflict"
-  - id: APIP-PUBLISHING-024
-    title: "Publishing works once the shared key is rotated to the one the portal accepts"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "Publishing works once the shared key is rotated to the one the portal accepts"
-  - id: APIP-PUBLISHING-025
-    title: "A user without the publish scope cannot publish"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "A user without the publish scope cannot publish"
-  - id: APIP-PUBLISHING-026
-    title: "A user without the draft scope cannot save a draft"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "A user without the draft scope cannot save a draft"
-  - id: APIP-PUBLISHING-027
-    title: "Publishing an API or to a portal that does not exist is refused"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "Publishing an API or to a portal that does not exist is refused"
-  - id: APIP-PUBLISHING-028
-    title: "Documents, a landing page and a thumbnail are published to the API Portal"
+          scenario: "Unpublishing is refused while subscriptions or API keys exist, and succeeds once they are removed"
+  - id: APIP-046
+    title: "Published documents, landing page and thumbnail"
     priority: P1
     ui:
       status: planned
@@ -3097,119 +523,33 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/publishing/publication_content.feature
-          scenario: "Documents, a landing page and a thumbnail are published to the API Portal"
-  - id: APIP-PUBLISHING-029
-    title: "Documents that together exceed the content size limit are refused before anything is sent to the API Portal"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_content.feature
-          scenario: "Documents that together exceed the content size limit are refused before anything is sent to the API Portal"
-  - id: APIP-PUBLISHING-031
-    title: "Unselecting one of two documents removes only that document from the API Portal"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_content.feature
-          scenario: "Unselecting one of two documents removes only that document from the API Portal"
-  - id: APIP-PUBLISHING-033
-    title: "Publishing fails and promotes nothing while the API Portal is down"
+          scenario: "Documents, a landing page and a thumbnail are published, removed when unselected, and limited in size"
+  - id: APIP-047
+    title: "Portal availability and the shared key"
     priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_outage.feature
-          scenario: "Publishing fails and promotes nothing while the API Portal is down"
-  - id: APIP-PUBLISHING-034
-    title: "Deprecating fails and leaves the API published while the API Portal is down"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_outage.feature
-          scenario: "Deprecating fails and leaves the API published while the API Portal is down"
-  - id: APIP-PUBLISHING-035
-    title: "The same publish succeeds once the API Portal is back"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_outage.feature
-          scenario: "The same publish succeeds once the API Portal is back"
-  - id: APIP-PUBLISHING-036
-    title: "A published API's page, specification and Markdown are served by the API Portal"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "A published API's page, specification and Markdown are served by the API Portal"
-  - id: APIP-PUBLISHING-037
-    title: "Unpublishing removes the API's page, Markdown and agent listings from the API Portal"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "Unpublishing removes the API's page, Markdown and agent listings from the API Portal"
-  - id: APIP-PUBLISHING-038
-    title: "Republishing keeps the API Portal's subscriptions and shows the new description"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "Republishing keeps the API Portal's subscriptions and shows the new description"
-  - id: APIP-PUBLISHING-039
-    title: "Deprecating keeps the plan on offer and the existing subscription in the API Portal"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "Deprecating keeps the plan on offer and the existing subscription in the API Portal"
-  - id: APIP-PUBLISHING-040
-    title: "An API published with a label appears only in the views of that label"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "An API published with a label appears only in the views of that label"
-  - id: APIP-PUBLISHING-041
-    title: "A draft with a label the API Portal does not have is refused, and publishes once the label exists"
-    priority: P1
     ui:
       status: planned
     it:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "A draft with a label the API Portal does not have is refused, and publishes once the label exists"
-  - id: APIP-PUBLISHING-042
-    title: "A plan in use cannot be renamed, re-limited or deleted in the control plane, and the API Portal keeps its copy"
+          scenario: "A wrong shared key is reported as an unavailable portal, and only the control plane's key is accepted"
+        - feature: suites/it/features/apiportal/publishing/publication_outage.feature
+          scenario: "Publishing and deprecating fail and change nothing while the API Portal is down, and succeed once it is back"
+  - id: APIP-048
+    title: "Plans and meters during publishing"
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/publishing/publication_monetization.feature
+          scenario: "Priced plans, meters and new limits reach the API Portal on publish, and portal-made ones reach the control plane"
+        - feature: suites/it/features/apiportal/publishing/publication_monetization.feature
+          scenario: "Conflicting prices and meters block the publish, and control-plane plan changes follow their rules"
+  - id: APIP-049
+    title: "GraphQL APIs and MCP proxies"
     priority: P1
     ui:
       status: planned
@@ -3217,89 +557,62 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "A plan in use cannot be renamed, re-limited or deleted in the control plane, and the API Portal keeps its copy"
-  - id: APIP-PUBLISHING-043
-    title: "A plan change made while it is unused reaches the API Portal on the next publish"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
+          scenario: "A GraphQL API is published, deprecated and unpublished, only through its own type and definition"
         - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "A plan change made while it is unused reaches the API Portal on the next publish"
-  - id: APIP-PUBLISHING-044
-    title: "The API Portal refuses a <method> to <path> from a caller without the control plane's shared key"
+          scenario: "An MCP proxy is published, republished, deprecated and unpublished, only through its own type and definition"
+  - id: APIP-050
+    title: "Webhook subscribers"
     priority: P0
     ui:
       status: planned
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "The API Portal refuses a <method> to <path> from a caller without the control plane's shared key"
-  - id: APIP-MULTI-ORGANIZATION-001
-    title: "The configured organization is served as always"
+        - feature: suites/it/features/apiportal/webhooks/webhook_subscribers.feature
+          scenario: "An administrator manages webhook subscribers, and only enabled ones are sent events"
+        - feature: suites/it/features/apiportal/webhooks/webhook_subscribers.feature
+          scenario: "Invalid subscribers are refused, and only an administrator can see or register one"
+  - id: APIP-051
+    title: "Webhook delivery contract"
+    priority: P0
+    ui:
+      status: exempt
+      reason: Event delivery is server-to-server; the portal UI shows no events or deliveries. Pending the feature owner's approval.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/webhooks/webhook_delivery.feature
+          scenario: "Deliveries are signed, name their secret and never carry credentials in plain text"
+        - feature: suites/it/features/apiportal/webhooks/webhook_delivery.feature
+          scenario: "Every delivery's outcome is recorded, and only some roles may read it"
+  - id: APIP-052
+    title: "Events per resource"
     priority: P1
     ui:
       status: planned
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "The configured organization is served as always"
-  - id: APIP-MULTI-ORGANIZATION-002
-    title: "A claim differing only in case or trailing spaces does not match an organization"
+        - feature: suites/it/features/apiportal/monetization/events.feature
+          scenario: "A meter's and a priced plan's lives are reported with their definitions, and refused ones are not"
+        - feature: suites/it/features/apiportal/webhooks/api_key_webhooks.feature
+          scenario: "Application and API key events reach only the subscribers that asked for them"
+        - feature: suites/it/features/apiportal/webhooks/subscription_webhooks.feature
+          scenario: "A subscription's life is delivered in turn, and a refused plan change sends nothing"
+  - id: APIP-053
+    title: "Propagation to the control plane and the gateway"
     priority: P0
     ui:
       status: planned
     it:
       status: automated
       refs:
-        - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "A claim differing only in case or trailing spaces does not match an organization"
-  - id: APIP-MULTI-ORGANIZATION-003
-    title: "An unknown organization is provisioned from the claim and named from the org-name claim"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "An unknown organization is provisioned from the claim and named from the org-name claim"
-  - id: APIP-MULTI-ORGANIZATION-004
-    title: "The org-handle claim becomes the provisioned organization's handle as it is"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "The org-handle claim becomes the provisioned organization's handle as it is"
-  - id: APIP-MULTI-ORGANIZATION-005
-    title: "A token issued to another application is rejected"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "A token issued to another application is rejected"
-  - id: APIP-MULTI-ORGANIZATION-006
-    title: "A credential with no organization claim falls back to the configured organization"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "A credential with no organization claim falls back to the configured organization"
-  - id: APIP-MULTI-ORGANIZATION-007
-    title: "An org-handle claim is not taken for the organization claim"
+        - feature: suites/it/features/apiportal/webhooks/devportal_webhook.feature
+          scenario: "API keys and subscriptions issued in the API Portal reach the gateway through their whole lifecycle"
+        - feature: suites/it/features/apiportal/webhooks/devportal_webhook.feature
+          scenario: "The control plane processes only signed, recent, known API Portal events, and each one once"
+  - id: APIP-054
+    title: "Per-organization token issuers"
     priority: P0
     ui:
       status: planned
@@ -3307,219 +620,9 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "An org-handle claim is not taken for the organization claim"
-  - id: APIP-MULTI-ORGANIZATION-008
-    title: "A single-entry list claim is that organization, and one naming two is refused"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "A single-entry list claim is that organization, and one naming two is refused"
-  - id: APIP-MULTI-ORGANIZATION-009
-    title: "Concurrent first use of a new organization provisions it exactly once"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "Concurrent first use of a new organization provisions it exactly once"
-  - id: APIP-MULTI-ORGANIZATION-010
-    title: "A token from an organization's own issuer is verified with that organization's keys"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "A token from an organization's own issuer is verified with that organization's keys"
-  - id: APIP-MULTI-ORGANIZATION-011
-    title: "The template organization claim, not the organization claim, must name the issuer's organization"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "The template organization claim, not the organization claim, must name the issuer's organization"
-  - id: APIP-MULTI-ORGANIZATION-012
-    title: "A per-organization token without the organization claim is rejected, not admitted to the configured organization"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "A per-organization token without the organization claim is rejected, not admitted to the configured organization"
-  - id: APIP-MULTI-ORGANIZATION-013
-    title: "A token whose issuer names an organization whose keys didn't sign it is rejected"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "A token whose issuer names an organization whose keys didn't sign it is rejected"
-  - id: APIP-MULTI-ORGANIZATION-014
-    title: "A token from an issuer that fits neither the configured issuer nor the template is rejected"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "A token from an issuer that fits neither the configured issuer nor the template is rejected"
-  - id: APIP-MULTI-ORGANIZATION-015
-    title: "An organization never sees another organization's APIs"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/isolation.feature
-          scenario: "An organization never sees another organization's APIs"
-  - id: APIP-MULTI-ORGANIZATION-016
-    title: "The organization APIs accept only the caller's own organization"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/isolation.feature
-          scenario: "The organization APIs accept only the caller's own organization"
-  - id: APIP-MULTI-ORGANIZATION-017
-    title: "The MCP registry's write endpoints act only in the caller's own organization"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/isolation.feature
-          scenario: "The MCP registry's write endpoints act only in the caller's own organization"
-  - id: APIP-MULTI-ORGANIZATION-018
-    title: "A claim is matched on idp_ref_id only, never on a handle"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/isolation.feature
-          scenario: "A claim is matched on idp_ref_id only, never on a handle"
-  - id: APIP-MULTI-ORGANIZATION-019
-    title: "Anyone can browse an existing organization's public pages and an unknown handle is not found"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/login.feature
-          scenario: "Anyone can browse an existing organization's public pages and an unknown handle is not found"
-  - id: APIP-MULTI-ORGANIZATION-020
-    title: "A new organization's user signs in from the configured organization's page and lands in their own"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/login.feature
-          scenario: "A new organization's user signs in from the configured organization's page and lands in their own"
-  - id: APIP-MULTI-ORGANIZATION-021
-    title: "An administrator sees Settings only on their own organization's pages"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/login.feature
-          scenario: "An administrator sees Settings only on their own organization's pages"
-  - id: APIP-MULTI-ORGANIZATION-022
-    title: "Another organization's login page sends its hint and an explicit org parameter overrides it"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/login.feature
-          scenario: "Another organization's login page sends its hint and an explicit org parameter overrides it"
-  - id: APIP-MULTI-ORGANIZATION-023
-    title: "A login with no organization claim is recorded as the configured organization"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/login.feature
-          scenario: "A login with no organization claim is recorded as the configured organization"
-  - id: APIP-MULTI-ORGANIZATION-024
-    title: "A login whose organization claim names two organizations is refused and provisions nothing"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/login.feature
-          scenario: "A login whose organization claim names two organizations is refused and provisions nothing"
-  - id: APIP-MULTI-ORGANIZATION-025
-    title: "Silent sign-in asks the IDP only for the organization being browsed"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/login.feature
-          scenario: "Silent sign-in asks the IDP only for the organization being browsed"
-  - id: APIP-MULTI-ORGANIZATION-026
-    title: "Silent sign-in signs the visitor in on their own organization's page, in place"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/login.feature
-          scenario: "Silent sign-in signs the visitor in on their own organization's page, in place"
-  - id: APIP-MULTI-ORGANIZATION-027
-    title: "Silent sign-in from the configured organization's page signs in whoever the IDP knows without moving them"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/login.feature
-          scenario: "Silent sign-in from the configured organization's page signs in whoever the IDP knows without moving them"
-  - id: APIP-MULTI-ORGANIZATION-028
-    title: "An explicit login after a failed silent attempt still lands in the user's own organization"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/login.feature
-          scenario: "An explicit login after a failed silent attempt still lands in the user's own organization"
-  - id: APIP-MULTI-ORGANIZATION-029
-    title: "Each organization's subscribers receive exactly that organization's events, once"
+          scenario: "Per-organization issuers are verified with that organization's own keys and claims"
+  - id: APIP-055
+    title: "Per-organization webhooks and portal_id scoping"
     priority: P1
     ui:
       status: planned
@@ -3527,124 +630,4 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/apiportal/multi-organization/webhooks.feature
-          scenario: "Each organization's subscribers receive exactly that organization's events, once"
-  - id: APIP-MULTI-ORGANIZATION-030
-    title: "A shared-key call publishes into the configured organization"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/publishing.feature
-          scenario: "A shared-key call publishes into the configured organization"
-  - id: APIP-MULTI-ORGANIZATION-031
-    title: "A shared-key call naming another organization is refused and creates nothing"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/publishing.feature
-          scenario: "A shared-key call naming another organization is refused and creates nothing"
-  - id: APIP-MULTI-ORGANIZATION-032
-    title: "A shared-key call with the wrong key is rejected"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/publishing.feature
-          scenario: "A shared-key call with the wrong key is rejected"
-  - id: APIP-MULTI-ORGANIZATION-033
-    title: "Another portal's organization with the same IDP reference is neither used nor in the way"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/portals.feature
-          scenario: "Another portal's organization with the same IDP reference is neither used nor in the way"
-  - id: APIP-MULTI-ORGANIZATION-034
-    title: "Events and deliveries under a portal_id no portal serves are left alone"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/portals.feature
-          scenario: "Events and deliveries under a portal_id no portal serves are left alone"
-  - id: APIP-MULTI-ORGANIZATION-035
-    title: "A user whose token carries a name is shown by that name"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/display_names.feature
-          scenario: "A user whose token carries a name is shown by that name"
-  - id: APIP-MULTI-ORGANIZATION-036
-    title: "A user whose token carries no name is shown by their subject"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/display_names.feature
-          scenario: "A user whose token carries no name is shown by their subject"
-  - id: APIP-MULTI-ORGANIZATION-037
-    title: "A later token without a name keeps the stored name"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/display_names.feature
-          scenario: "A later token without a name keeps the stored name"
-  - id: APIP-MULTI-ORGANIZATION-038
-    title: "A name changed without re-signing the token is rejected and never stored"
-    priority: P2
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/display_names.feature
-          scenario: "A name changed without re-signing the token is rejected and never stored"
-  - id: APIP-MULTI-ORGANIZATION-039
-    title: "An administrator updates their own organization and no other"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/isolation.feature
-          scenario: "An administrator updates their own organization and no other"
-  - id: APIP-MULTI-ORGANIZATION-040
-    title: "A later token with new organization names leaves the provisioned names unchanged"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/claims.feature
-          scenario: "A later token with new organization names leaves the provisioned names unchanged"
-  - id: APIP-MULTI-ORGANIZATION-041
-    title: "After sign-in a user returns to a page of their own organization and otherwise lands on its default view"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/multi-organization/login.feature
-          scenario: "After sign-in a user returns to a page of their own organization and otherwise lands on its default view"
+          scenario: "Webhooks and rows stay within their organization and portal_id"

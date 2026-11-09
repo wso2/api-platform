@@ -22,8 +22,9 @@ Feature: API Portal multi-organization organization claims
   # The portal serves every organization under its portal_id and provisions the
   # organization an unknown org claim names.
 
-  @APIP-MULTI-ORGANIZATION-001
-  Scenario: The configured organization is served as always
+  @APIP-030
+  Scenario: Organization claims map callers to organizations and provision a new one exactly once
+    # The configured organization is served as always
     Given I mint an API Portal IDP token stored as "token" with claims:
       | sub    | alice        |
       | org_id | default      |
@@ -32,24 +33,60 @@ Feature: API Portal multi-organization organization claims
     Then the response status code should be 200
     And the JSON response field "id" should be "default"
 
-  @APIP-MULTI-ORGANIZATION-002
-  Scenario Outline: A claim differing only in case or trailing spaces does not match an organization
+    # A claim differing only in case or trailing spaces does not match an organization
     # SQL Server's default collation would match these to "default" in the query itself.
     Given I mint an API Portal IDP token stored as "token" with claims:
       | sub    | c            |
-      | org_id | <claim>      |
+      | org_id | DEFAULT      |
       | roles  | ["ap_admin"] |
     When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
     Then the response status code should be 403
 
-    Examples:
-      | claim      |
-      | DEFAULT    |
-      | Default    |
-      | "default " |
+    # A claim differing only in case or trailing spaces does not match an organization
+    # SQL Server's default collation would match these to "default" in the query itself.
+    Given I mint an API Portal IDP token stored as "token" with claims:
+      | sub    | c            |
+      | org_id | Default      |
+      | roles  | ["ap_admin"] |
+    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 403
 
-  @APIP-MULTI-ORGANIZATION-003
-  Scenario: An unknown organization is provisioned from the claim and named from the org-name claim
+    # A claim differing only in case or trailing spaces does not match an organization
+    # SQL Server's default collation would match these to "default" in the query itself.
+    Given I mint an API Portal IDP token stored as "token" with claims:
+      | sub    | c            |
+      | org_id | "default "      |
+      | roles  | ["ap_admin"] |
+    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 403
+
+    # A token issued to another application is rejected
+    Given I mint an API Portal IDP token stored as "token" with claims:
+      | sub    | aud            |
+      | org_id | default        |
+      | aud    | some-other-app |
+      | roles  | ["ap_admin"]   |
+    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 401
+
+    # A credential with no organization claim falls back to the configured organization
+    Given I mint an API Portal IDP token stored as "token" with claims:
+      | sub   | nora         |
+      | roles | ["ap_admin"] |
+    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 200
+
+    # An org-handle claim is not taken for the organization claim
+    Given I generate a unique resource name from "byhandle" and store it as "byhandle"
+    And I mint an API Portal IDP token stored as "token" with claims:
+      | sub        | hal              |
+      | org_handle | ${CTX:byhandle}  |
+      | roles      | ["ap_admin"]     |
+    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 200
+    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:byhandle}"
+
+    # An unknown organization is provisioned from the claim and named from the org-name claim
     Given I generate a unique resource name from "globex" and store it as "globex"
     And I mint an API Portal IDP token stored as "token" with claims:
       | sub      | gina                 |
@@ -72,8 +109,7 @@ Feature: API Portal multi-organization organization claims
     Then the response status code should be 200
     And the JSON response field "idpRefId" should be "${CTX:globex}"
 
-  @APIP-MULTI-ORGANIZATION-004
-  Scenario: The org-handle claim becomes the provisioned organization's handle as it is
+    # The org-handle claim becomes the provisioned organization's handle as it is
     Given I generate a unique resource name from "handled" and store it as "handled"
     And I mint an API Portal IDP token stored as "token" with claims:
       | sub        | hana                      |
@@ -85,37 +121,7 @@ Feature: API Portal multi-organization organization claims
     Then the response status code should be 200
     And the API Portal "api-portal-multi-organization" organization with IDP reference "${CTX:handled}" should have handle "hnd-${CTX:handled}" and display name "Handled Org ${CTX:handled}"
 
-  @APIP-MULTI-ORGANIZATION-005
-  Scenario: A token issued to another application is rejected
-    Given I mint an API Portal IDP token stored as "token" with claims:
-      | sub    | aud            |
-      | org_id | default        |
-      | aud    | some-other-app |
-      | roles  | ["ap_admin"]   |
-    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
-    Then the response status code should be 401
-
-  @APIP-MULTI-ORGANIZATION-006
-  Scenario: A credential with no organization claim falls back to the configured organization
-    Given I mint an API Portal IDP token stored as "token" with claims:
-      | sub   | nora         |
-      | roles | ["ap_admin"] |
-    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
-    Then the response status code should be 200
-
-  @APIP-MULTI-ORGANIZATION-007
-  Scenario: An org-handle claim is not taken for the organization claim
-    Given I generate a unique resource name from "byhandle" and store it as "byhandle"
-    And I mint an API Portal IDP token stored as "token" with claims:
-      | sub        | hal              |
-      | org_handle | ${CTX:byhandle}  |
-      | roles      | ["ap_admin"]     |
-    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
-    Then the response status code should be 200
-    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:byhandle}"
-
-  @APIP-MULTI-ORGANIZATION-008
-  Scenario: A single-entry list claim is that organization, and one naming two is refused
+    # A single-entry list claim is that organization, and one naming two is refused
     Given I generate a unique resource name from "listed" and store it as "listed"
     And I mint an API Portal IDP token stored as "plain" with claims:
       | sub    | l1             |
@@ -136,8 +142,7 @@ Feature: API Portal multi-organization organization claims
     When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "double"
     Then the response status code should be 403
 
-  @APIP-MULTI-ORGANIZATION-009
-  Scenario: Concurrent first use of a new organization provisions it exactly once
+    # Concurrent first use of a new organization provisions it exactly once
     Given I generate a unique resource name from "race" and store it as "race"
     And I mint an API Portal IDP token stored as "token" with claims:
       | sub      | racer             |
@@ -147,87 +152,7 @@ Feature: API Portal multi-organization organization claims
     Then 10 concurrent API Portal "GET" requests to "/apis" using portal "api-portal-multi-organization" with token "token" should all return status 200
     And the API Portal "api-portal-multi-organization" should have 1 organization with IDP reference "${CTX:race}"
 
-  # Per-organization issuers: the testbench signs a token issued as ".../o/<org>/oauth2/token"
-  # with that organization's own key, served at ".../o/<org>/oauth2/jwks".
-
-  @APIP-MULTI-ORGANIZATION-010
-  Scenario: A token from an organization's own issuer is verified with that organization's keys
-    Given I generate a unique resource name from "suborg" and store it as "suborg"
-    And I mint an API Portal IDP token stored as "token" with claims:
-      | sub        | s1                                                   |
-      | org_id     | ${CTX:suborg}                                        |
-      | org_name   | Suborg ${CTX:suborg}                                 |
-      | org_handle | ${CTX:suborg}                                        |
-      | iss        | https://testbench:3015/o/${CTX:suborg}/oauth2/token  |
-      | roles      | ["ap_admin"]                                         |
-    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
-    Then the response status code should be 200
-    And the API Portal "api-portal-multi-organization" should have 1 organizations with IDP reference "${CTX:suborg}"
-
-  @APIP-MULTI-ORGANIZATION-011
-  Scenario: The template organization claim, not the organization claim, must name the issuer's organization
-    # org_id names the issuer's organization, but org_handle, the binding claim, doesn't.
-    Given I generate a unique resource name from "unbound" and store it as "unbound"
-    And I mint an API Portal IDP token stored as "token" with claims:
-      | sub        | s2                                                    |
-      | org_id     | ${CTX:unbound}                                        |
-      | org_handle | elsewhere-${CTX:unbound}                              |
-      | iss        | https://testbench:3015/o/${CTX:unbound}/oauth2/token  |
-      | roles      | ["ap_admin"]                                          |
-    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
-    Then the response status code should be 401
-    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:unbound}"
-
-  @APIP-MULTI-ORGANIZATION-012
-  Scenario: A per-organization token without the organization claim is rejected, not admitted to the configured organization
-    # Bound through org_handle, but no org_id: one organization's issuer must not vouch
-    # for a credential that would fall back to the configured organization.
-    Given I generate a unique resource name from "noclaim" and store it as "noclaim"
-    And I mint an API Portal IDP token stored as "token" with claims:
-      | sub        | s3                                                    |
-      | org_handle | ${CTX:noclaim}                                        |
-      | iss        | https://testbench:3015/o/${CTX:noclaim}/oauth2/token  |
-      | roles      | ["ap_admin"]                                          |
-    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
-    Then the response status code should be 401
-
-  @APIP-MULTI-ORGANIZATION-013
-  Scenario: A token whose issuer names an organization whose keys didn't sign it is rejected
-    # Signed by "signer"'s key, but claiming to be issued by, and for, "forged": the portal
-    # fetches "forged"'s keys, which don't verify it.
-    Given I generate a unique resource name from "signer" and store it as "signer"
-    And I generate a unique resource name from "forged" and store it as "forged"
-    And I mint an API Portal IDP token stored as "token" with claims:
-      | sub        | s4                                                   |
-      | org_id     | ${CTX:forged}                                        |
-      | org_handle | ${CTX:forged}                                        |
-      | iss        | https://testbench:3015/o/${CTX:signer}/oauth2/token  |
-      | roles      | ["ap_admin"]                                         |
-    And I replace claim "iss" of API Portal token "token" with "https://testbench:3015/o/${CTX:forged}/oauth2/token"
-    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
-    Then the response status code should be 401
-    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:forged}"
-
-  @APIP-MULTI-ORGANIZATION-014
-  Scenario Outline: A token from an issuer that fits neither the configured issuer nor the template is rejected
-    Given I generate a unique resource name from "stray" and store it as "stray"
-    And I mint an API Portal IDP token stored as "token" with claims:
-      | sub        | s5             |
-      | org_id     | ${CTX:stray}   |
-      | org_handle | ${CTX:stray}   |
-      | iss        | <issuer>       |
-      | roles      | ["ap_admin"]   |
-    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
-    Then the response status code should be 401
-    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:stray}"
-
-    Examples:
-      | issuer                                                    |
-      | https://testbench:3015/t/${CTX:stray}/oauth2/token        |
-      | https://testbench:3015/o/${CTX:stray}.x/oauth2/token      |
-
-  @APIP-MULTI-ORGANIZATION-040
-  Scenario: A later token with new organization names leaves the provisioned names unchanged
+    # A later token with new organization names leaves the provisioned names unchanged
     Given I generate a unique resource name from "renamed" and store it as "renamed"
     And I mint an API Portal IDP token stored as "first" with claims:
       | sub        | r1                    |
@@ -253,3 +178,108 @@ Feature: API Portal multi-organization organization claims
     And the JSON response field "displayName" should be "First ${CTX:renamed}"
     When I send an API Portal "GET" request to "/organizations/second-${CTX:renamed}" using portal "api-portal-multi-organization" with token "later"
     Then the response status code should be 403
+
+    # A claim is matched on idp_ref_id only, never on a handle
+    Given I generate a unique resource name from "iso-a" and store it as "isoA"
+    And I generate a unique resource name from "iso-b" and store it as "isoB"
+    And I mint an API Portal IDP token stored as "tokenA" with claims:
+      | sub      | ann                  |
+      | org_id   | ${CTX:isoA}          |
+      | org_name | Org A ${CTX:isoA}    |
+      | roles    | ["ap_admin"]         |
+    And I mint an API Portal IDP token stored as "tokenB" with claims:
+      | sub      | ben                  |
+      | org_id   | ${CTX:isoB}          |
+      | org_name | Org B ${CTX:isoB}    |
+      | roles    | ["ap_admin"]         |
+    Given I mint an API Portal IDP token stored as "tokenHandle" with claims:
+      | sub    | h                     |
+      | org_id | org-a-${CTX:isoA}     |
+      | roles  | ["ap_admin"]          |
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "tokenA"
+    Then the response status code should be 200
+    When I send an API Portal "GET" request to "/organizations/org-a-${CTX:isoA}" using portal "api-portal-multi-organization" with token "tokenHandle"
+    Then the response status code should be 403
+    And the API Portal "api-portal-multi-organization" organization with IDP reference "org-a-${CTX:isoA}" should have a handle matching "org-a-${CTX:isoA}-[0-9a-f]{6}"
+
+  @APIP-054
+  Scenario: Per-organization issuers are verified with that organization's own keys and claims
+    # A token from an organization's own issuer is verified with that organization's keys
+    # Per-organization issuers: the testbench signs a token issued as ".../o/<org>/oauth2/token"
+    # with that organization's own key, served at ".../o/<org>/oauth2/jwks".
+    Given I generate a unique resource name from "suborg" and store it as "suborg"
+    And I mint an API Portal IDP token stored as "token" with claims:
+      | sub        | s1                                                   |
+      | org_id     | ${CTX:suborg}                                        |
+      | org_name   | Suborg ${CTX:suborg}                                 |
+      | org_handle | ${CTX:suborg}                                        |
+      | iss        | https://testbench:3015/o/${CTX:suborg}/oauth2/token  |
+      | roles      | ["ap_admin"]                                         |
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 200
+    And the API Portal "api-portal-multi-organization" should have 1 organizations with IDP reference "${CTX:suborg}"
+
+    # The template organization claim, not the organization claim, must name the issuer's organization
+    # org_id names the issuer's organization, but org_handle, the binding claim, doesn't.
+    Given I generate a unique resource name from "unbound" and store it as "unbound"
+    And I mint an API Portal IDP token stored as "token" with claims:
+      | sub        | s2                                                    |
+      | org_id     | ${CTX:unbound}                                        |
+      | org_handle | elsewhere-${CTX:unbound}                              |
+      | iss        | https://testbench:3015/o/${CTX:unbound}/oauth2/token  |
+      | roles      | ["ap_admin"]                                          |
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 401
+    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:unbound}"
+
+    # A per-organization token without the organization claim is rejected, not admitted to the configured organization
+    # Bound through org_handle, but no org_id: one organization's issuer must not vouch
+    # for a credential that would fall back to the configured organization.
+    Given I generate a unique resource name from "noclaim" and store it as "noclaim"
+    And I mint an API Portal IDP token stored as "token" with claims:
+      | sub        | s3                                                    |
+      | org_handle | ${CTX:noclaim}                                        |
+      | iss        | https://testbench:3015/o/${CTX:noclaim}/oauth2/token  |
+      | roles      | ["ap_admin"]                                          |
+    When I send an API Portal "GET" request to "/organizations/default" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 401
+
+    # A token whose issuer names an organization whose keys didn't sign it is rejected
+    # Signed by "signer"'s key, but claiming to be issued by, and for, "forged": the portal
+    # fetches "forged"'s keys, which don't verify it.
+    Given I generate a unique resource name from "signer" and store it as "signer"
+    And I generate a unique resource name from "forged" and store it as "forged"
+    And I mint an API Portal IDP token stored as "token" with claims:
+      | sub        | s4                                                   |
+      | org_id     | ${CTX:forged}                                        |
+      | org_handle | ${CTX:forged}                                        |
+      | iss        | https://testbench:3015/o/${CTX:signer}/oauth2/token  |
+      | roles      | ["ap_admin"]                                         |
+    And I replace claim "iss" of API Portal token "token" with "https://testbench:3015/o/${CTX:forged}/oauth2/token"
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 401
+    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:forged}"
+
+    # A token from an issuer that fits neither the configured issuer nor the template is rejected
+    Given I generate a unique resource name from "stray" and store it as "stray"
+    And I mint an API Portal IDP token stored as "token" with claims:
+      | sub        | s5             |
+      | org_id     | ${CTX:stray}   |
+      | org_handle | ${CTX:stray}   |
+      | iss        | https://testbench:3015/t/${CTX:stray}/oauth2/token       |
+      | roles      | ["ap_admin"]   |
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 401
+    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:stray}"
+
+    # A token from an issuer that fits neither the configured issuer nor the template is rejected
+    Given I generate a unique resource name from "stray" and store it as "stray"
+    And I mint an API Portal IDP token stored as "token" with claims:
+      | sub        | s5             |
+      | org_id     | ${CTX:stray}   |
+      | org_handle | ${CTX:stray}   |
+      | iss        | https://testbench:3015/o/${CTX:stray}.x/oauth2/token       |
+      | roles      | ["ap_admin"]   |
+    When I send an API Portal "GET" request to "/apis" using portal "api-portal-multi-organization" with token "token"
+    Then the response status code should be 401
+    And the API Portal "api-portal-multi-organization" should have 0 organizations with IDP reference "${CTX:stray}"

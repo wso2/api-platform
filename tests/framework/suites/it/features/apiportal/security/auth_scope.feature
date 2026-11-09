@@ -22,14 +22,15 @@ Feature: API Portal scope authorization
   I want each Management API operation allowed only to a token carrying its scope
   So that a caller can do exactly what its token was granted, and nothing more
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml), IDs APIP-AUTH-SCOPE-001..004, at the API level, in
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level, in
   # the api-portal-auth-scope block (authorization.mode = scope). Tokens are issued by platform-api,
   # whose role-to-scope mapping gives the narrow actor read scopes plus dp:application:create, and no
   # label scope. Every refusal is paired with the same operation succeeding for an actor that holds
   # the scope.
 
-  @APIP-AUTH-SCOPE-001
-  Scenario: An admin operation is authorized by token scopes
+  @APIP-033 @type:security
+  Scenario: Operations are authorized by token scopes
+    # An admin operation is authorized by token scopes
     Given I generate a unique resource name from "portal-scope-admin-label" and store it as "labelId"
     When I send an authenticated API Portal "POST" request to "/labels" as "admin" with JSON values:
       | id          | ${CTX:labelId}      |
@@ -37,13 +38,11 @@ Feature: API Portal scope authorization
     Then the response status code should be 201
     And I register API Portal resource "${CTX:labelId}" at "/labels" for cleanup
 
-  @APIP-AUTH-SCOPE-002 @type:security
-  Scenario: An unauthenticated caller is rejected
+    # An unauthenticated caller is rejected
     When I send an unauthenticated API Portal "GET" request to "/organizations/default"
     Then the response status code should be 401
 
-  @APIP-AUTH-SCOPE-003
-  Scenario: A narrow actor is authorized by token scopes
+    # A narrow actor is authorized by token scopes
     When I send an authenticated API Portal "GET" request to "/apis" as "narrow"
     Then the response status code should be 200
     And I generate a unique resource name from "portal-scope-narrow-app" and store it as "appId"
@@ -54,8 +53,7 @@ Feature: API Portal scope authorization
     Then the response status code should be 201
     And I register API Portal resource "${CTX:appId}" at "/applications" for cleanup
 
-  @APIP-AUTH-SCOPE-004 @type:security
-  Scenario: A token without an operation's scope is refused with a generic message, and a token with it succeeds
+    # A token without an operation's scope is refused with a generic message, and a token with it succeeds
     Given I generate a unique resource name from "portal-scope-missing-label" and store it as "labelId"
     When I send an authenticated API Portal "POST" request to "/labels" as "narrow" with JSON values:
       | id          | ${CTX:labelId}      |
