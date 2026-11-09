@@ -68,21 +68,29 @@ func NewSubscriptionPlanRepo(db *database.DB) SubscriptionPlanRepository {
 }
 
 // schema returns which plan tables and columns exist. Once the conditions table and the description
-// column are found, the result is kept; until then it is checked again, so a failed check or an
-// upgrade made while running is picked up without a restart.
-func (r *SubscriptionPlanRepo) schema() planSchema {
+// column are found, the result is kept; until then it is checked again, so an upgrade made while
+// running is picked up without a restart. A check that fails returns its error rather than reading
+// as a missing table, so a plan is never written to the legacy table by mistake.
+func (r *SubscriptionPlanRepo) schema() (planSchema, error) {
 	r.schemaMu.Lock()
 	defer r.schemaMu.Unlock()
 	if r.schemaUpdated {
-		return r.planSchema
+		return r.planSchema, nil
 	}
-	r.planSchema = planSchema{
-		conditions:   r.db.HasTable("subscription_plan_conditions"),
-		legacyLimits: r.db.HasTable("subscription_plan_limits"),
-		description:  r.db.HasColumn("subscription_plans", "description"),
+	var found planSchema
+	var err error
+	if found.conditions, err = r.db.HasTable("subscription_plan_conditions"); err != nil {
+		return planSchema{}, err
 	}
-	r.schemaUpdated = r.planSchema.conditions && r.planSchema.description
-	return r.planSchema
+	if found.legacyLimits, err = r.db.HasTable("subscription_plan_limits"); err != nil {
+		return planSchema{}, err
+	}
+	if found.description, err = r.db.HasColumn("subscription_plans", "description"); err != nil {
+		return planSchema{}, err
+	}
+	r.planSchema = found
+	r.schemaUpdated = found.conditions && found.description
+	return found, nil
 }
 
 // checkDescription refuses a description the database can't store yet, unless the plan allows
@@ -96,15 +104,19 @@ func checkDescription(schema planSchema, plan *model.SubscriptionPlan) error {
 
 // planSelectColumns reads a plan's own columns; loadConditions reads its conditions. The description
 // reads as NULL when the column doesn't exist yet.
-func (r *SubscriptionPlanRepo) planSelectColumns() string {
+func (r *SubscriptionPlanRepo) planSelectColumns() (string, error) {
+	schema, err := r.schema()
+	if err != nil {
+		return "", err
+	}
 	description := "NULL"
-	if r.schema().description {
+	if schema.description {
 		description = "p.description"
 	}
 	return `
 		p.uuid, p.handle, p.display_name, ` + description + `, p.expiry_time,
 		p.organization_uuid, p.status, p.created_by, p.updated_by, p.created_at, p.updated_at
-	FROM subscription_plans p`
+	FROM subscription_plans p`, nil
 }
 
 // Create inserts a new subscription plan together with its conditions.
@@ -127,7 +139,10 @@ func (r *SubscriptionPlanRepo) CreateWithPricing(plan *model.SubscriptionPlan, p
 	}
 	plan.UpdatedAt = now
 	// Read before the transaction: on SQLite, with one connection, the check would wait for it.
-	schema := r.schema()
+	schema, err := r.schema()
+	if err != nil {
+		return err
+	}
 	if err := checkDescription(schema, plan); err != nil {
 		return err
 	}
@@ -266,7 +281,11 @@ func scanPlan(scanner rowScanner) (*model.SubscriptionPlan, error) {
 
 // getPlan reads one plan with its conditions.
 func (r *SubscriptionPlanRepo) getPlan(where string, args ...any) (*model.SubscriptionPlan, error) {
-	plan, err := scanPlan(r.db.QueryRow(r.db.Rebind(`SELECT `+r.planSelectColumns()+` WHERE `+where), args...))
+	columns, err := r.planSelectColumns()
+	if err != nil {
+		return nil, err
+	}
+	plan, err := scanPlan(r.db.QueryRow(r.db.Rebind(`SELECT `+columns+` WHERE `+where), args...))
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +312,10 @@ func (r *SubscriptionPlanRepo) loadConditions(plans []*model.SubscriptionPlan) e
 		byUUID[p.UUID] = p
 	}
 
-	schema := r.schema()
+	schema, err := r.schema()
+	if err != nil {
+		return err
+	}
 	if schema.conditions {
 		rows, err := r.db.Query(r.db.Rebind(`
 			SELECT subscription_plan_uuid, condition_id, condition_type, params
@@ -464,7 +486,11 @@ func (r *SubscriptionPlanRepo) GetByHandles(handles []string, orgUUID string) (m
 		args = append(args, h)
 	}
 	args = append(args, orgUUID)
-	query := `SELECT ` + r.planSelectColumns() + `
+	columns, err := r.planSelectColumns()
+	if err != nil {
+		return nil, err
+	}
+	query := `SELECT ` + columns + `
 		WHERE p.handle IN (` + strings.Join(placeholders, ",") + `) AND p.organization_uuid = ?`
 	rows, err := r.db.Query(r.db.Rebind(query), args...)
 	if err != nil {
@@ -542,7 +568,11 @@ func planListClause(search, status string) (string, []any) {
 // optionally filtered by a case-insensitive match on the plan name or handle and by status
 // ("" for any).
 func (r *SubscriptionPlanRepo) ListByOrganization(orgUUID string, opts ListOptions, status string) ([]*model.SubscriptionPlan, error) {
-	query := `SELECT ` + r.planSelectColumns() + `
+	columns, err := r.planSelectColumns()
+	if err != nil {
+		return nil, err
+	}
+	query := `SELECT ` + columns + `
 		WHERE p.organization_uuid = ?`
 	args := []any{orgUUID}
 	if filterClause, filterArgs := planListClause(opts.Search, status); filterClause != "" {
@@ -599,7 +629,10 @@ func (r *SubscriptionPlanRepo) Update(plan *model.SubscriptionPlan) error {
 	}
 	plan.UpdatedAt = time.Now().UTC()
 	// Read before the transaction: on SQLite, with one connection, the check would wait for it.
-	schema := r.schema()
+	schema, err := r.schema()
+	if err != nil {
+		return err
+	}
 	if err := checkDescription(schema, plan); err != nil {
 		return err
 	}

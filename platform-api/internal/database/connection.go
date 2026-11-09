@@ -325,25 +325,38 @@ func (db *DB) addMissingSQLiteColumns() error {
 	return nil
 }
 
-// HasTable reports whether the table exists. Server databases are set up by the operator, so a table
-// may be missing until its upgrade script runs. table must be a fixed name, never user input.
-func (db *DB) HasTable(table string) bool {
-	rows, err := db.Query("SELECT 1 FROM " + table + " WHERE 1 = 0")
-	if err != nil {
-		return false
+// HasTable reports whether the table exists, read from the database catalog. An error means the
+// check itself failed, not that the table is missing. table must be a fixed name, never user input.
+func (db *DB) HasTable(table string) (bool, error) {
+	query := `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`
+	switch {
+	case isPostgresDriver(db.driver):
+		query = `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?`
+	case isSQLServerDriver(db.driver):
+		query = `SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = SCHEMA_NAME() AND TABLE_NAME = ?`
 	}
-	rows.Close()
-	return true
+	var n int
+	if err := db.QueryRow(db.Rebind(query), table).Scan(&n); err != nil {
+		return false, fmt.Errorf("failed to check for table %s: %w", table, err)
+	}
+	return n > 0, nil
 }
 
-// HasColumn reports whether the column exists. table and column must be fixed names, never user input.
-func (db *DB) HasColumn(table, column string) bool {
-	rows, err := db.Query("SELECT " + column + " FROM " + table + " WHERE 1 = 0")
-	if err != nil {
-		return false
+// HasColumn reports whether the column exists, read from the database catalog. An error means the
+// check itself failed. table and column must be fixed names, never user input.
+func (db *DB) HasColumn(table, column string) (bool, error) {
+	query := `SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`
+	switch {
+	case isPostgresDriver(db.driver):
+		query = `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`
+	case isSQLServerDriver(db.driver):
+		query = `SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = SCHEMA_NAME() AND TABLE_NAME = ? AND COLUMN_NAME = ?`
 	}
-	rows.Close()
-	return true
+	var n int
+	if err := db.QueryRow(db.Rebind(query), table, column).Scan(&n); err != nil {
+		return false, fmt.Errorf("failed to check for column %s.%s: %w", table, column, err)
+	}
+	return n > 0, nil
 }
 
 // InitSchemaSQL applies the given SQL DDL string against the database using the

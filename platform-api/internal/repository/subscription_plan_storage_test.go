@@ -161,6 +161,19 @@ func TestSubscriptionPlanRepo_SchemaCheckedUntilUpgraded(t *testing.T) {
 	}
 }
 
+// A schema check that fails is returned, not read as a database without the conditions table, so a
+// save never falls back to the legacy table by mistake.
+func TestSubscriptionPlanRepo_FailedSchemaCheckRefusesTheSave(t *testing.T) {
+	db := newPlanTestDB(t)
+	repo := NewSubscriptionPlanRepo(db)
+	db.Close()
+	requests := model.NewRequestCountCondition([]model.ConditionWindow{{Count: 5, TimeAmount: 1, TimeUnit: "MINUTE"}}, true)
+	wantErrContaining(t, "Create", repo.Create(newPlan("gold", requests)), "failed to check for table subscription_plan_conditions")
+	wantErrContaining(t, "Update", repo.Update(newPlan("gold", requests)), "failed to check for table subscription_plan_conditions")
+	_, err := repo.GetByID("p-1", "org-1")
+	wantErrContaining(t, "GetByID", err, "failed to check for table subscription_plan_conditions")
+}
+
 // An update refuses a description the database can't store yet, and a configuration that can't be
 // read or a missing table fails the usage read and the delete.
 func TestSubscriptionPlanRepo_UsageAndUpdateFailures(t *testing.T) {
