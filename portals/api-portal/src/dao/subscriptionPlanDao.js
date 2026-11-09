@@ -114,8 +114,8 @@ const loadLegacyLimits = async (plans, exec) => {
   if (ids.length === 0) return;
   const rows = await exec.query(
     `SELECT plan_uuid, limit_type, time_unit, time_amount, limit_count FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE}
-     WHERE limit_type IN ('REQUEST_COUNT', 'EVENT_COUNT') AND plan_uuid IN (${inPlaceholders(ids.length)})`,
-    ids
+     WHERE limit_type IN ('REQUEST_COUNT', 'EVENT_COUNT') AND plan_uuid IN (${inPlaceholders(ids.length)}) AND portal_id = ?`,
+    [...ids, getPortalId()]
   );
   const grouped = groupBy(rows, 'plan_uuid');
   for (const plan of plans) {
@@ -166,7 +166,7 @@ const saveLegacyLimits = async (planId, conditions, schema, exec) => {
     throw new CustomError(503, 'Service Unavailable',
       'The database has no subscription_plan_conditions table; run this release\'s database schema script to store this plan\'s conditions.');
   }
-  await exec.execute(`DELETE FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid = ?`, [planId]);
+  await exec.execute(`DELETE FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid = ? AND portal_id = ?`, [planId, getPortalId()]);
   for (const l of planConditions.requestLimitsFromConditions(conditions)) {
     await exec.execute(
       `INSERT INTO ${SUBSCRIPTION_PLAN_LIMITS_TABLE} (uuid, portal_id, plan_uuid, limit_type, time_unit, time_amount, limit_count)
@@ -214,7 +214,7 @@ const savePlanDetails = async (planId, plan, isNew, t) => {
     );
   }
   if (schema.legacyLimits) {
-    await exec.execute(`DELETE FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid = ?`, [planId]);
+    await exec.execute(`DELETE FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid = ? AND portal_id = ?`, [planId, getPortalId()]);
   }
 };
 
