@@ -702,9 +702,6 @@ func mcpSpecVersionsFromRequest(req *api.MCPProxy) []string {
 	return model.FoldSpecVersions(versions, singleVersion)
 }
 
-// upstreamSpecVersionsFromRequest takes the revisions the caller says the upstream reported,
-// stored as given: narrowing them to what this platform serves would make the record a claim
-// about us rather than about the server.
 // subscriptionPlansFromRequest returns the plan handles to store, already trimmed by
 // validateSubscriptionPlanHandles.
 func subscriptionPlansFromRequest(req *api.MCPProxy) []string {
@@ -714,6 +711,9 @@ func subscriptionPlansFromRequest(req *api.MCPProxy) []string {
 	return *req.SubscriptionPlans
 }
 
+// upstreamSpecVersionsFromRequest takes the revisions the caller says the upstream reported,
+// stored as given: narrowing them to what this platform serves would make the record a claim
+// about us rather than about the server.
 func upstreamSpecVersionsFromRequest(req *api.MCPProxy) []string {
 	if req.UpstreamMcpSpecVersions == nil {
 		return nil

@@ -39,10 +39,6 @@ const (
 // customConditionIDPattern is the ID format of a custom condition.
 var customConditionIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}$`)
 
-// windowMinutes tells windows of the same length apart (60 MINUTE equals 1 HOUR). Months compare only
-// with months.
-var windowMinutes = map[string]int{"MINUTE": 1, "HOUR": 60, "DAY": 24 * 60}
-
 // normalizeConditions validates a plan's conditions and returns them with defaults filled in and the JSON
 // written one way, so equal conditions are stored as equal bytes.
 func normalizeConditions(conditions []model.SubscriptionPlanCondition) ([]model.SubscriptionPlanCondition, error) {
@@ -136,10 +132,7 @@ func normalizeLimitParams(field, conditionType string, raw json.RawMessage) (jso
 		if !constants.ValidThrottleLimitUnits[w.TimeUnit] {
 			return nil, apperror.ValidationFailed.New(limitField + ": timeUnit must be one of MINUTE, HOUR, DAY or MONTH")
 		}
-		window := fmt.Sprintf("M%d", w.TimeAmount)
-		if minutes, ok := windowMinutes[w.TimeUnit]; ok {
-			window = fmt.Sprintf("m%d", minutes*w.TimeAmount)
-		}
+		window := model.WindowKey(w.TimeAmount, w.TimeUnit)
 		if seenWindows[window] {
 			return nil, apperror.ValidationFailed.New(fmt.Sprintf(
 				"%s: the condition already has a limit over %d %s; each limit needs a window of its own length", limitField, w.TimeAmount, w.TimeUnit))

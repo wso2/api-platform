@@ -149,7 +149,7 @@ func limitsToRequestCondition(limits []SubscriptionPlanLimitRequest) (*model.Sub
 		if i > 0 && normalizeAndValidateLimit(&limits[i]) != "" {
 			continue
 		}
-		key := windowKey(limits[i].TimeAmount, limits[i].TimeUnit)
+		key := model.WindowKey(limits[i].TimeAmount, limits[i].TimeUnit)
 		if seen[key] || len(windows) == 10 {
 			continue
 		}
@@ -161,19 +161,6 @@ func limitsToRequestCondition(limits []SubscriptionPlanLimitRequest) (*model.Sub
 	stopOnQuotaReach := limits[0].StopOnQuotaReach == nil || *limits[0].StopOnQuotaReach
 	c := model.NewRequestCountCondition(windows, stopOnQuotaReach)
 	return &c, ""
-}
-
-// windowKey names a window by its length, so 60 MINUTE and 1 HOUR match. Months match only months.
-func windowKey(amount int, unit string) string {
-	switch unit {
-	case "MINUTE":
-		return fmt.Sprintf("m%d", amount)
-	case "HOUR":
-		return fmt.Sprintf("m%d", amount*60)
-	case "DAY":
-		return fmt.Sprintf("m%d", amount*24*60)
-	}
-	return fmt.Sprintf("M%d", amount)
 }
 
 // decodeConditions reads the "conditions" field. null or a non-array is refused.

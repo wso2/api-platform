@@ -108,3 +108,12 @@ func TestSubscriptionPlanUsage_InUse(t *testing.T) {
 		}
 	}
 }
+
+func TestWindowKey(t *testing.T) {
+	if WindowKey(60, "MINUTE") != WindowKey(1, "HOUR") || WindowKey(24, "HOUR") != WindowKey(1, "DAY") {
+		t.Error("windows of the same length should match")
+	}
+	if WindowKey(1, "MONTH") == WindowKey(30, "DAY") || WindowKey(1, "MONTH") != "M1" {
+		t.Errorf("months should match only months, got %q", WindowKey(1, "MONTH"))
+	}
+}

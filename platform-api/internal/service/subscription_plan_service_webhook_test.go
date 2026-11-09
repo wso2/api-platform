@@ -133,6 +133,23 @@ func TestUpsertPlanFromWebhook_UnchangedPlanIsNotWritten(t *testing.T) {
 	}
 }
 
+// The name is stored trimmed, so a portal name with edge spaces is the same name, not a change.
+func TestUpsertPlanFromWebhook_NameWithEdgeSpacesIsNotAChange(t *testing.T) {
+	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{
+		"gold": {UUID: "u1", Handle: "gold", Name: "Gold", Conditions: []model.SubscriptionPlanCondition{
+			model.NewRequestCountCondition([]model.ConditionWindow{{Count: 5000, TimeAmount: 1, TimeUnit: "MINUTE"}}, false)},
+			Status: model.SubscriptionPlanStatusInactive},
+	}}
+	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
+
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "  Gold ", "", nil, win(5000, "MINUTE"), nil, planEventT0); err != nil {
+		t.Fatalf("UpsertPlanFromWebhook: %v", err)
+	}
+	if repo.updates != 0 {
+		t.Fatalf("updates = %d, want none for the same name with edge spaces", repo.updates)
+	}
+}
+
 func TestUpsertPlanFromWebhook_UpdatesChangedFieldsOnly(t *testing.T) {
 	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{
 		"gold": {UUID: "u1", Handle: "gold", Name: "Gold", Conditions: []model.SubscriptionPlanCondition{

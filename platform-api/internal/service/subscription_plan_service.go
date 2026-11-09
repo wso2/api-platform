@@ -441,6 +441,8 @@ func planEditInUseMessage(name string) string {
 // Portals that predate conditions send only request limits (requestWindows); those change only the
 // request-count condition (portalConditions). Meters used by the prices must already exist here.
 func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name, description string, conditions *[]model.SubscriptionPlanCondition, requestWindows []model.ConditionWindow, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error) {
+	// Stored trimmed, so compare trimmed: a name with edge spaces would otherwise update on every event.
+	name = strings.TrimSpace(name)
 	// A portal on SQLite may hold a longer description than the column; keep the plan in sync.
 	description = truncateRunes(strings.TrimSpace(description), model.MaxSubscriptionPlanDescriptionChars)
 	if pricing != nil {

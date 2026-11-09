@@ -73,7 +73,7 @@ func requestWindows(limits []subscriptionPlanLimit) []model.ConditionWindow {
 		if amount < 1 {
 			amount = 1
 		}
-		key := windowKey(amount, unit)
+		key := model.WindowKey(amount, unit)
 		// A plan holds at most ten windows; older portals sent more, so the rest are left out.
 		if seen[key] || len(windows) == 10 {
 			continue
@@ -82,19 +82,6 @@ func requestWindows(limits []subscriptionPlanLimit) []model.ConditionWindow {
 		windows = append(windows, model.ConditionWindow{Count: l.LimitCount, TimeAmount: amount, TimeUnit: unit})
 	}
 	return windows
-}
-
-// windowKey names a window by its length, so 60 MINUTE and 1 HOUR match. Months match only months.
-func windowKey(amount int, unit string) string {
-	switch unit {
-	case "MINUTE":
-		return fmt.Sprintf("m%d", amount)
-	case "HOUR":
-		return fmt.Sprintf("m%d", amount*60)
-	case "DAY":
-		return fmt.Sprintf("m%d", amount*24*60)
-	}
-	return fmt.Sprintf("M%d", amount)
 }
 
 func (d *subscriptionPlanData) validateHandle() error {

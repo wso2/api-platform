@@ -17,7 +17,10 @@
 
 package model
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // Condition types. A plan has at most one condition of each built-in type.
 const (
@@ -135,4 +138,17 @@ func (p *SubscriptionPlan) SetLegacyLimit() {
 		p.ThrottleLimitCount = &count
 		p.ThrottleLimitUnit = picked.TimeUnit
 	}
+}
+
+// WindowKey names a window by its length, so 60 MINUTE and 1 HOUR match. Months match only months.
+func WindowKey(amount int, unit string) string {
+	switch unit {
+	case "MINUTE":
+		return fmt.Sprintf("m%d", amount)
+	case "HOUR":
+		return fmt.Sprintf("m%d", amount*60)
+	case "DAY":
+		return fmt.Sprintf("m%d", amount*24*60)
+	}
+	return fmt.Sprintf("M%d", amount)
 }

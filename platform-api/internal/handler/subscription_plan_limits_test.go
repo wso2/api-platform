@@ -51,15 +51,6 @@ func TestLimitsToRequestCondition_AsEarlierReleases(t *testing.T) {
 	}
 }
 
-func TestWindowKey(t *testing.T) {
-	if windowKey(60, "MINUTE") != windowKey(1, "HOUR") || windowKey(24, "HOUR") != windowKey(1, "DAY") {
-		t.Error("windows of the same length should match")
-	}
-	if windowKey(1, "MONTH") == windowKey(30, "DAY") || windowKey(1, "MONTH") != "M1" {
-		t.Errorf("months should match only months, got %q", windowKey(1, "MONTH"))
-	}
-}
-
 // A plan with no request-count condition, or one that can't be read, has no old-style limits.
 func TestRequestLimits_NoReadableRequestCondition(t *testing.T) {
 	for name, plan := range map[string]*model.SubscriptionPlan{
