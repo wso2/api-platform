@@ -12,6 +12,9 @@
 import type {
   CreateManagedPortalInput,
   ManagedPortal,
+  ManagedPortalChange,
+  ManagedPortalChangeError,
+  ManagedPortalChangeOp,
   ManagedPortalStatus,
   OrgEnvironment,
   PortalPort,
@@ -154,6 +157,8 @@ type WirePortal = {
   loginEnvironment?: string;
   selfSignup?: boolean;
   status?: string;
+  change?: { op?: string; loginEnvironment?: string; selfSignup?: boolean };
+  lastChangeError?: { op?: string; loginEnvironment?: string; selfSignup?: boolean; message?: string; at?: string };
   updatedAt?: string;
 };
 type WirePortalList = { count?: number; list?: WirePortal[] };
@@ -167,6 +172,36 @@ type WirePortalList = { count?: number; list?: WirePortal[] };
 function normalizeStatus(raw?: string): ManagedPortalStatus | undefined {
   if (raw === 'pending' || raw === 'active' || raw === 'failed' || raw === 'deleting') return raw;
   return undefined;
+}
+
+/** An unknown change kind from a newer backend reads as no change: the row says "Updating" generically. */
+function normalizeChangeOp(raw?: string): ManagedPortalChangeOp | undefined {
+  if (raw === 'loginEnvironment' || raw === 'selfSignup' || raw === 'rotateKey') return raw;
+  return undefined;
+}
+
+function changeFromWire(w: WirePortal['change']): ManagedPortalChange | undefined {
+  const op = normalizeChangeOp(w?.op);
+  if (!op) return undefined;
+  return { op, loginEnvironment: w?.loginEnvironment, selfSignup: w?.selfSignup };
+}
+
+/** Message for a failed change the backend sent without one. */
+export const CHANGE_FAILED_FALLBACK_MESSAGE = 'The last change to this portal did not complete. Try it again.';
+
+/**
+ * Any lastChangeError means the last change failed, so it is kept even when
+ * its kind is unknown to this UI or its message is empty.
+ */
+function changeErrorFromWire(w: WirePortal['lastChangeError']): ManagedPortalChangeError | undefined {
+  if (!w) return undefined;
+  return {
+    op: normalizeChangeOp(w.op),
+    loginEnvironment: w.loginEnvironment,
+    selfSignup: w.selfSignup,
+    message: w.message?.trim() || CHANGE_FAILED_FALLBACK_MESSAGE,
+    at: w.at,
+  };
 }
 
 // `name` is the value loginEnvironment expects; other response fields are ignored.
@@ -187,6 +222,8 @@ function fromWire(w: WirePortal): ManagedPortal {
     loginEnvironment: w.loginEnvironment,
     selfSignup: w.selfSignup,
     status: normalizeStatus(w.status),
+    change: changeFromWire(w.change),
+    lastChangeError: changeErrorFromWire(w.lastChangeError),
     updatedAt: w.updatedAt,
   };
 }
