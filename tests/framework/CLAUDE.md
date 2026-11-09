@@ -558,8 +558,8 @@ duplicating it.
 
 ### Feature level
 
-- Search the feature's scenario list under `scenarios/on-prem/` or `scenarios/cloud/` and the existing `.feature` files
-  for the behaviour under test.
+- Search the feature's scenario list under `scenarios/on-prem/` or `scenarios/cloud/` and the
+  existing `.feature` files for the behaviour under test.
 - Add scenarios to the existing feature file when it already owns the behavior.
 - Extend a `Scenario Outline` with another example when only the inputs differ.
 - Create a new feature file only when no existing feature represents the

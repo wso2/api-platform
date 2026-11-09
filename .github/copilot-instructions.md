@@ -35,14 +35,17 @@ code, whether you changed gateway components or only test files.
    go test ./suites/it -count=1 -v -timeout=60m -blocks <block>/sqlite -feature-tags "@<feature-tag>"
    ```
 
-3. **Adding a feature to the suite.** Follow `.agents/skills/write-framework-tests/SKILL.md`, which walks through writing a test end to end. Start from the feature's scenario list in
-   `tests/framework/scenarios/on-prem/` (see "Scenario Lists" in `tests/framework/CLAUDE.md`). The blocks live in `tests/framework/suites/it/blocks/`, one
-   file per combination of products the tests check. In the file that matches your feature, add
-   your runner to an existing block that fits it: one whose settings and isolation your feature
-   can run with. Most features fit the file's generic block, such as `gateway-core`. A new block
-   (when no block fits: the feature needs a product setting the other runners must not see, or
-   must run alone) or a new block file is the last resort.
-   Follow "Integration Suite Blocks" in `tests/framework/CLAUDE.md`.
+3. **Adding a feature to the suite.** `.agents/skills/write-framework-tests/SKILL.md` walks
+   through writing a test end to end. In short:
+   - Start from the feature's entry in its scenario list under `tests/framework/scenarios/on-prem/`.
+   - The blocks live in `tests/framework/suites/it/blocks/`, one file per combination of products
+     the tests check. In the file that matches your feature, add your runner to an existing block
+     that fits it: one whose settings and isolation your feature can run with. Most features fit
+     the file's generic block, such as `gateway-core`.
+   - A new block (when no block fits: the feature needs a product setting the other runners must
+     not see, or must run alone) or a new block file is the last resort.
+
+   The rules are in "Scenario Lists" and "Integration Suite Blocks" in `tests/framework/CLAUDE.md`.
 
 4. **Restore `gateway/build-manifest.yaml` before committing.** A source build rewrites it with the
    newest policy versions:
