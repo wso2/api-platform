@@ -215,7 +215,6 @@ const loadAPIContent = async (req, res, next) => {
             }
         }
 
-        const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         const templateContent = {
             devMode: true,
             apiContent: '',
@@ -229,7 +228,7 @@ const loadAPIContent = async (req, res, next) => {
             // (app.js), so this download link has to carry the prefix like every other
             // server-generated URL.
             schemaUrl: `${constants.ROUTE.BASE_PATH}${constants.ROUTE.MOCK}/${apiHandle}/definition.yml`,
-            showApiKeysNav: await resolveShowApiKeysNav(null, null, apiType, metaData, definitionResponse.swagger ?? null),
+            showApiKeysNav: await resolveShowApiKeysNav(null, null, apiType, metaData),
             showSubscriptionsNav: (metaData.subscriptionPlans || []).length > 0,
         }
         const landingPage = isMCP ? 'pages/mcp-landing' : 'pages/api-landing';
@@ -605,7 +604,11 @@ const loadDocument = async (req, res, next) => {
         const layoutPath = config.designMode.pathToLayout;
         const metaData = loadAPIMetaDataFromFile(apiHandle);
         const isSpecPage = req.originalUrl.includes(constants.FILE_NAME.API_SPECIFICATION_PATH);
-        const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
+        // Only the specification page needs the definition; Markdown documents take the
+        // type from the sample metadata, so an unreadable definition cannot fail them.
+        const definitionResponse = isSpecPage
+            ? await getAPIDefinition(orgName, viewName, apiHandle)
+            : { apiType: metaData.type };
         let templateContent = {
             isAPIDefinition: false,
             isWebSocketTryout: false,
@@ -649,10 +652,7 @@ const loadDocument = async (req, res, next) => {
         templateContent.currentDocType = docType || null;
         templateContent.apiName = metaData.name || '';
         const metaForNav = { refId: metaData.refId };
-        // Pass the definition so the API Keys nav is computed the same way as every
-        // other API-scoped page — without it the check always returns false and the
-        // API Keys item is hidden on the documentation page.
-        templateContent.showApiKeysNav = await resolveShowApiKeysNav(null, null, definitionResponse.apiType, metaForNav, definitionResponse.swagger ?? null);
+        templateContent.showApiKeysNav = await resolveShowApiKeysNav(null, null, definitionResponse.apiType, metaForNav);
         const html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
         res.send(html);
         return;
