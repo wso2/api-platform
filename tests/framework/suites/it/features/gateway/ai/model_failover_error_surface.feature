@@ -189,3 +189,86 @@ Feature: What the client sees when a chain cannot serve the request
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+
+  Scenario: However the primary fails, a healthy fallback means the client never sees a 5xx
+    # The property the whole feature exists for, asserted as its own subject rather than as a
+    # side effect of scenarios testing something else.
+    #
+    # Two failure modes, because they reach the guarantee by different routes and only one of
+    # them involves this policy at all. An error status is graded by the policy; an attempt
+    # cut off at perTryTimeout is a local reply Envoy never calls the policy for, so the
+    # rescue there is Envoy's retry policy alone. A guarantee that holds for the path the
+    # policy drives says nothing about the path it never sees.
+    #
+    # They sit on two APIs rather than one because an operation cannot name its own upstream,
+    # and the two modes need different ones: a status the echo returns outright, and a delay
+    # only the fault injector can produce. A refused connection is the third mode and is
+    # deliberately elsewhere - it is the subject of the RestApi parity scenario, which turns
+    # on refusal being retriable on both API kinds.
+    Given I generate a unique resource name from "no5xx-graded" and store it as "gradedName"
+    And I generate a unique API version from "no5xx-graded" and store it as "gradedVersion"
+    And I generate a unique API context from "/no5xx-graded" and store it as "gradedContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                     | ${CTX:gradedName}                                                                                                                                                      |
+      | spec.displayName         | ${CTX:gradedName}                                                                                                                                                      |
+      | spec.version             | ${CTX:gradedVersion}                                                                                                                                                   |
+      | spec.context             | ${CTX:gradedContext}/$version                                                                                                                                          |
+      | spec.upstreamDefinitions | [{"name":"primary","upstreams":[{"url":"http://testbench:3002"}]},{"name":"alive","basePath":"/no5xx-graded-alive","upstreams":[{"url":"http://testbench:3000"}]}]     |
+      | spec.upstream.main.ref   | primary                                                                                                                                                                |
+      | spec.operations          | [{"method":"POST","path":"/status/503","policies":[{"name":"model-failover","version":"v0","params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
+    Then the response should be successful
+
+    # The primary answers with an error status. The policy grades it, and the retry lands on
+    # the fallback.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:gradedContext}/${CTX:gradedVersion}/status/503" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/no5xx-graded-alive"
+
+    # Every step of the script delays, so the readiness poll below can consume as many as it
+    # needs without changing what the next request meets.
+    Given I generate a unique resource name from "no5xx-cutoff-script" and store it as "scriptId"
+    When I send a "PUT" request to the "fault-injection" service at "/test/scripts/${CTX:scriptId}" with body:
+      """
+      {"forwardPort": 3000, "steps": [
+        {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000},
+        {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000},
+        {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000},
+        {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000}
+      ]}
+      """
+    Then the response should be successful
+    And I resolve the "fault-injection" service path at "/${CTX:scriptId}" and store it as "cutoffPath"
+
+    Given I generate a unique resource name from "no5xx-cutoff" and store it as "cutoffName"
+    And I generate a unique API version from "no5xx-cutoff" and store it as "cutoffVersion"
+    And I generate a unique API context from "/no5xx-cutoff" and store it as "cutoffContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                     | ${CTX:cutoffName}                                                                                                                                                      |
+      | spec.displayName         | ${CTX:cutoffName}                                                                                                                                                      |
+      | spec.version             | ${CTX:cutoffVersion}                                                                                                                                                   |
+      | spec.context             | ${CTX:cutoffContext}/$version                                                                                                                                          |
+      | spec.upstreamDefinitions | [{"name":"primary","basePath":"${CTX:cutoffPath}","upstreams":[{"url":"http://testbench:3026"}]},{"name":"alive","basePath":"/no5xx-cutoff-alive","upstreams":[{"url":"http://testbench:3000"}]}] |
+      | spec.upstream.main.ref   | primary                                                                                                                                                                |
+      | spec.operations          | [{"method":"POST","path":"/chat/completions","policies":[{"name":"model-failover","version":"v0","params":{"suspendDuration":0,"perTryTimeout":1,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
+    Then the response should be successful
+
+    # The primary hangs five seconds against a one-second per-try bound. No response ever
+    # reaches the policy, so nothing here is graded; the client is still served, and still
+    # never sees a 5xx.
+    When I send a "POST" request to "${CTX:cutoffContext}/${CTX:cutoffVersion}/chat/completions" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/no5xx-cutoff-alive"
+
+    When I delete the API "${CTX:gradedName}"
+    Then the response should be successful
+    When I delete the API "${CTX:cutoffName}"
+    Then the response should be successful
