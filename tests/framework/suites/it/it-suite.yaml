@@ -475,6 +475,9 @@ blocks:
       - name: model-failover-layered
         features:
           - features/gateway/ai/model_failover_routing_layered.feature
+      - name: model-failover-chain
+        features:
+          - features/gateway/ai/model_failover_chain.feature
       - name: upstream-url-validation
         tags: "gateway-version>=1.2.0"
         features:
