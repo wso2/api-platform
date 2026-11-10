@@ -71,6 +71,33 @@ export type AuthState = {
     password: string,
     returnTo?: string
   ) => Promise<boolean>;
+  /**
+   * Whether the session can move between organizations: the deployment sets
+   * `authOrganizationsUrl` and `authSwitchOrganizationUrls`.
+   */
+  canSwitchOrganization: boolean;
+  /**
+   * The organizations the session can move into, once loaded. Undefined when
+   * the deployment does not switch organizations.
+   */
+  organizations?: AuthOrg[];
+  /**
+   * Puts the session in the organization with this handle, moving it there
+   * when the deployment switches organizations. Resolves true once it is;
+   * rejects with an `OrganizationSwitchError` when it can't be.
+   */
   exchangeOrgToken: (orgHandle: string) => Promise<boolean>;
   logout: () => void;
 };
+
+/**
+ * Why the session could not move into an organization. `forbidden`: the user
+ * is not a member, or may not use this console there. `unavailable`: the
+ * switch did not complete, and may on a later attempt.
+ */
+export class OrganizationSwitchError extends Error {
+  constructor(readonly reason: 'forbidden' | 'unavailable') {
+    super(`Organization switch failed: ${reason}`);
+    this.name = 'OrganizationSwitchError';
+  }
+}

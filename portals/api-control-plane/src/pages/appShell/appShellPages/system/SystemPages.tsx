@@ -147,8 +147,12 @@ export function OrganizationRedirectPage() {
 
 function OrganizationRedirect() {
   const intl = useIntl();
+  const { user } = useAuth();
   const organizationsQuery = useOrganizations();
-  const organization = organizationsQuery.data?.list?.[0];
+  const organizations = organizationsQuery.data?.list;
+  // The session's own organization first: opening another one moves the session.
+  const organization =
+    organizations?.find((item) => item.id === user?.org?.handle) ?? organizations?.[0];
   const settled = organizationsQuery.isPending || Boolean(organization);
   const [attempt, setAttempt] = useState(0);
   const { refetch } = organizationsQuery;

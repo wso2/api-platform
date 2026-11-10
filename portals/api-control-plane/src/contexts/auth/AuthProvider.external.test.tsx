@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { http, HttpResponse, type JsonBodyType } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
@@ -650,6 +650,159 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
       const button = await renderGatedButton({ isSignedIn: true, user: { sub: 'u' } });
 
       expect(button).toBeEnabled();
+    });
+  });
+
+  describe('switching organizations', () => {
+    const SWITCH_CONFIG = {
+      ...SDK_CONFIG,
+      authOrganizationsUrl: '/api-platform/idp/users/me/ous',
+      authSwitchOrganizationUrls: '/auth/switch-organization, /api-platform/auth/switch-organization',
+    };
+    const ORG_A = { id: 'ou-a', handle: 'org-a', name: 'Org A' };
+    const ORG_B = { id: 'ou-b', handle: 'org-b', name: 'Org B' };
+    const sessionIn = (org: typeof ORG_A) => ({
+      isSignedIn: true,
+      user: { sub: 'u', ouId: org.id, ouName: org.name, ouHandle: org.handle },
+      scope: 'openid',
+    });
+
+    /** Shows the session's organization and list, and switches on request. */
+    async function renderSwitching(config: Record<string, string> = SWITCH_CONFIG) {
+      const { AuthProvider, useAuth } = await loadAuth(config);
+      function Probe() {
+        const auth = useAuth();
+        const [outcome, setOutcome] = useState('');
+        const switchTo = (handle: string) =>
+          auth.exchangeOrgToken(handle).then(
+            () => setOutcome('switched'),
+            (error: { reason?: string }) => setOutcome(`failed:${error.reason}`),
+          );
+        return (
+          <div>
+            <span data-testid="status">{auth.status}</span>
+            <span data-testid="org">{auth.user?.org?.handle ?? ''}</span>
+            <span data-testid="can-switch">{String(auth.canSwitchOrganization)}</span>
+            <span data-testid="orgs">{auth.organizations?.map((org) => org.name).join(',') ?? 'none'}</span>
+            <span data-testid="outcome">{outcome}</span>
+            {['org-a', 'org-b', 'org-c'].map((handle) => (
+              <button key={handle} onClick={() => void switchTo(handle)}>{`to ${handle}`}</button>
+            ))}
+          </div>
+        );
+      }
+      render(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>,
+      );
+      await waitForStatus('authenticated');
+    }
+
+    const PARENT_SWITCH = '/auth/switch-organization';
+    const OWN_SWITCH = '/api-platform/auth/switch-organization';
+
+    /**
+     * Each switch is recorded as `<path> <organization id>`, and must name the
+     * unit as the ThunderID SDK's `ouSwitch` does: in the query and the body.
+     * The console's own session moves to org B on a switch that names ou-b.
+     */
+    function serveSwitchableSession(switchStatus = 200) {
+      let current = ORG_A;
+      const switches: string[] = [];
+      const switchAt = (path: string) =>
+        http.post(path, async ({ request }) => {
+          const fromQuery = new URL(request.url).searchParams.get('ouId');
+          const { ouId } = (await request.json()) as { ouId?: string };
+          switches.push(fromQuery === ouId ? `${path} ${ouId}` : `${path} mismatch`);
+          if (switchStatus === 200 && path === OWN_SWITCH && ouId === ORG_B.id) current = ORG_B;
+          return switchStatus === 200
+            ? new HttpResponse(null, { status: 200 })
+            : HttpResponse.json({ error: 'access_denied' }, { status: switchStatus });
+        });
+      server.use(
+        http.get(SWITCH_CONFIG.authSessionUrl, () => HttpResponse.json(sessionIn(current))),
+        http.get(SWITCH_CONFIG.authOrganizationsUrl, () =>
+          HttpResponse.json({ totalResults: 2, organizationUnits: [ORG_A, ORG_B] }),
+        ),
+        switchAt(PARENT_SWITCH),
+        switchAt(OWN_SWITCH),
+      );
+      return switches;
+    }
+
+    it('lists the organizations the session can move into', async () => {
+      serveSwitchableSession();
+      await renderSwitching();
+
+      expect(screen.getByTestId('can-switch')).toHaveTextContent('true');
+      await waitFor(() => expect(screen.getByTestId('orgs')).toHaveTextContent('Org A,Org B'));
+    });
+
+    it("moves each session in order by the organization's id, then reads the session again", async () => {
+      const switches = serveSwitchableSession();
+      await renderSwitching();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('switched'));
+      expect(switches).toEqual([`${PARENT_SWITCH} ou-b`, `${OWN_SWITCH} ou-b`]);
+      expect(screen.getByTestId('org')).toHaveTextContent('org-b');
+    });
+
+    it('does not switch when the session is already in the organization', async () => {
+      const switches = serveSwitchableSession();
+      await renderSwitching();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-a' }));
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('switched'));
+      expect(switches).toEqual([]);
+    });
+
+    it('refuses an organization the user is not a member of, without asking the gateway', async () => {
+      const switches = serveSwitchableSession();
+      await renderSwitching();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-c' }));
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('failed:forbidden'));
+      expect(switches).toEqual([]);
+    });
+
+    it.each([
+      [403, 'forbidden'],
+      [503, 'unavailable'],
+    ])('reports a %i from a switch as %s, stops there and keeps the session', async (status, reason) => {
+      const switches = serveSwitchableSession(status);
+      await renderSwitching();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent(`failed:${reason}`));
+      expect(switches).toEqual([`${PARENT_SWITCH} ou-b`]);
+      expect(screen.getByTestId('status')).toHaveTextContent('authenticated');
+      expect(screen.getByTestId('org')).toHaveTextContent('org-a');
+    });
+
+    it('stays off, and never calls the switch endpoints, unless both URLs are set', async () => {
+      const switches = serveSwitchableSession();
+      const lists = vi.fn();
+      server.events.on('request:start', ({ request }) => {
+        if (request.url.includes(SWITCH_CONFIG.authOrganizationsUrl)) lists();
+      });
+      onTestFinished(() => {
+        server.events.removeAllListeners();
+      });
+      await renderSwitching({ ...SDK_CONFIG, authOrganizationsUrl: SWITCH_CONFIG.authOrganizationsUrl });
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('switched'));
+      expect(screen.getByTestId('can-switch')).toHaveTextContent('false');
+      expect(screen.getByTestId('orgs')).toHaveTextContent('none');
+      expect(switches).toEqual([]);
+      expect(lists).not.toHaveBeenCalled();
     });
   });
 });
