@@ -487,6 +487,9 @@ blocks:
       - name: model-failover-request-integrity
         features:
           - features/gateway/ai/model_failover_request_integrity.feature
+      - name: model-failover-other-kinds
+        features:
+          - features/gateway/ai/model_failover_other_kinds.feature
       - name: upstream-url-validation
         tags: "gateway-version>=1.2.0"
         features:
@@ -854,6 +857,9 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/observability/mcp_analytics.feature
+      - name: model-failover-inert
+        features:
+          - features/gateway/ai/model_failover_inert.feature
 
   - name: backend-timeout
     parallel: 2
