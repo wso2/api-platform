@@ -484,6 +484,9 @@ blocks:
       - name: model-failover-per-provider
         features:
           - features/gateway/ai/model_failover_per_provider.feature
+      - name: model-failover-request-integrity
+        features:
+          - features/gateway/ai/model_failover_request_integrity.feature
       - name: upstream-url-validation
         tags: "gateway-version>=1.2.0"
         features:
