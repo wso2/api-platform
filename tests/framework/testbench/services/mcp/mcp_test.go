@@ -108,6 +108,7 @@ func connect(t *testing.T) *mcpsdk.ClientSession {
 	return session
 }
 
+// TestInitializeAdvertisesResourcesAndPrompts checks that initialize announces the resources and prompts capabilities beside tools, so a client knows it may list and read them.
 func TestInitializeAdvertisesResourcesAndPrompts(t *testing.T) {
 	caps := connect(t).InitializeResult().Capabilities
 	require.NotNil(t, caps.Resources, "resources capability")
@@ -115,6 +116,7 @@ func TestInitializeAdvertisesResourcesAndPrompts(t *testing.T) {
 	require.NotNil(t, caps.Tools, "tools capability")
 }
 
+// TestResourcesListServesBothFixedResources checks that resources/list returns both fixed resources with the exact fields a test can assert on.
 func TestResourcesListServesBothFixedResources(t *testing.T) {
 	result, err := connect(t).ListResources(context.Background(), nil)
 	require.NoError(t, err)
@@ -135,6 +137,7 @@ func TestResourcesListServesBothFixedResources(t *testing.T) {
 	require.Equal(t, "changelog", changelog.Name)
 }
 
+// TestResourceReadReturnsTheFixedText checks that resources/read returns each fixed resource's own text, under its own URI, as plain text.
 func TestResourceReadReturnsTheFixedText(t *testing.T) {
 	session := connect(t)
 	for uri, want := range map[string]string{
@@ -150,11 +153,13 @@ func TestResourceReadReturnsTheFixedText(t *testing.T) {
 	}
 }
 
+// TestResourceReadOfAnUnknownURIFails checks that a URI the service does not serve is refused, so a test can still exercise a failing read.
 func TestResourceReadOfAnUnknownURIFails(t *testing.T) {
 	_, err := connect(t).ReadResource(context.Background(), &mcpsdk.ReadResourceParams{URI: "file:///docs/missing.txt"})
 	require.Error(t, err)
 }
 
+// TestPromptsListServesBothPrompts checks that prompts/list returns both fixed prompts with their titles, descriptions and optional arguments.
 func TestPromptsListServesBothPrompts(t *testing.T) {
 	result, err := connect(t).ListPrompts(context.Background(), nil)
 	require.NoError(t, err)
@@ -174,6 +179,7 @@ func TestPromptsListServesBothPrompts(t *testing.T) {
 	require.NotNil(t, byName["summary"])
 }
 
+// TestGreetingPromptGreetsTheNamedPersonOrWorld checks that the greeting prompt uses the name argument, and World when it is omitted.
 func TestGreetingPromptGreetsTheNamedPersonOrWorld(t *testing.T) {
 	session := connect(t)
 	for args, want := range map[string]string{
@@ -191,6 +197,7 @@ func TestGreetingPromptGreetsTheNamedPersonOrWorld(t *testing.T) {
 	}
 }
 
+// TestSummaryPromptQuotesTheText checks that the summary prompt puts the supplied text into its message.
 func TestSummaryPromptQuotesTheText(t *testing.T) {
 	result, err := connect(t).GetPrompt(context.Background(), &mcpsdk.GetPromptParams{
 		Name: "summary", Arguments: map[string]string{"text": "a long story"},
@@ -199,6 +206,7 @@ func TestSummaryPromptQuotesTheText(t *testing.T) {
 	require.Equal(t, "Summarize this text: a long story", promptText(t, result))
 }
 
+// TestGetOfAnUnknownPromptFails checks that a prompt name the service does not serve is refused.
 func TestGetOfAnUnknownPromptFails(t *testing.T) {
 	_, err := connect(t).GetPrompt(context.Background(), &mcpsdk.GetPromptParams{Name: "missing"})
 	require.Error(t, err)
