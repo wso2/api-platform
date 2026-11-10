@@ -472,6 +472,9 @@ blocks:
       - name: model-failover-per-attempt
         features:
           - features/gateway/ai/model_failover_per_attempt.feature
+      - name: model-failover-layered
+        features:
+          - features/gateway/ai/model_failover_routing_layered.feature
       - name: upstream-url-validation
         tags: "gateway-version>=1.2.0"
         features:
