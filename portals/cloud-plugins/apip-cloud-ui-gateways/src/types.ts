@@ -184,8 +184,20 @@ export type EditableField = {
   type: ConfigFieldType;
   label?: string;
   description?: string;
+  /** Heading of the form section this setting is shown under. */
+  group?: string;
   /** Permitted values, present when `type` is `enum`. */
   values?: string[];
+  /**
+   * Display text for enum values, keyed by value; a value without one shows as
+   * itself. Display only: a write always takes the value.
+   */
+  labels?: Record<string, string>;
+  /**
+   * What a `string` holds: `toml` is a multi-line block (a text area),
+   * `header-value` one HTTP header value (a single-line input).
+   */
+  format?: 'toml' | 'header-value';
   /**
    * Inclusive bounds. STRINGS for every type — `Number('50m')` is `NaN`. For
    * `string`, `max` is a length in characters and `min` is absent.

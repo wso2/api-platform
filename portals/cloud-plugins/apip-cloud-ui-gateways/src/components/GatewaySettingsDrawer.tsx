@@ -46,7 +46,7 @@ import type {
   GatewayConfiguration,
 } from '../types';
 import ConfigStatusBar from './ConfigStatusBar';
-import SettingField from './SettingField';
+import SettingField, { isTomlBlock } from './SettingField';
 import TomlField from './TomlField';
 
 export type GatewaySettingsDrawerProps = {
@@ -305,10 +305,14 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
 
   if (!gateway) return null;
 
-  // `string` carries its own warnings and character budget, so it is
-  // partitioned out of the flat list and rendered by `TomlField`.
-  const listed = config?.editable.filter((field) => field.type !== 'string') ?? [];
-  const freeText = config?.editable.filter((field) => field.type === 'string') ?? [];
+  // The platform lists a group's fields together and in the order to show
+  // them, so each run of one group is a section under its heading.
+  const sections: { group?: string; fields: EditableField[] }[] = [];
+  for (const field of config?.editable ?? []) {
+    const last = sections[sections.length - 1];
+    if (last && last.group === field.group) last.fields.push(field);
+    else sections.push({ group: field.group, fields: [field] });
+  }
   const currentValue = (field: EditableField): unknown =>
     config ? shownValue(field, config.values, drafts) : undefined;
 
@@ -401,26 +405,32 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
             </Alert>
           ) : null}
 
-          {listed.map((field) => (
-            <SettingField
-              key={field.path}
-              field={field}
-              value={currentValue(field)}
-              error={errors[field.path]}
-              readOnly={saving || !canWrite}
-              onChange={(value) => setDraft(field.path, value)}
-            />
-          ))}
-
-          {freeText.map((field) => (
-            <TomlField
-              key={field.path}
-              field={field}
-              value={currentValue(field)}
-              error={errors[field.path]}
-              readOnly={saving || !canWrite}
-              onChange={(value) => setDraft(field.path, value)}
-            />
+          {sections.map((section, index) => (
+            <Box key={`${section.group ?? ''}-${index}`} sx={{ pt: 2 }}>
+              {section.group ? (
+                <Typography
+                  component="h3"
+                  variant="subtitle2"
+                  sx={{ color: 'text.secondary', pb: 0.5 }}
+                >
+                  {section.group}
+                </Typography>
+              ) : null}
+              {section.fields.map((field) => {
+                // A TOML block carries its own warnings and character budget.
+                const Field = isTomlBlock(field) ? TomlField : SettingField;
+                return (
+                  <Field
+                    key={field.path}
+                    field={field}
+                    value={currentValue(field)}
+                    error={errors[field.path]}
+                    readOnly={saving || !canWrite}
+                    onChange={(value) => setDraft(field.path, value)}
+                  />
+                );
+              })}
+            </Box>
           ))}
         </Box>
 

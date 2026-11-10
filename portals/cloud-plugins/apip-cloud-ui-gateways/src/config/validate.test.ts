@@ -97,6 +97,20 @@ const CONFIG_TOML: EditableField = {
   type: 'string',
 };
 
+const UPSTREAM_TLS: EditableField = {
+  labels: { TLS1_2: 'TLS 1.2', TLS1_3: 'TLS 1.3' },
+  path: 'gateway.config.router.upstream.tls.minimum_protocol_version',
+  type: 'enum',
+  values: ['TLS1_2', 'TLS1_3'],
+};
+
+const SERVER_HEADER: EditableField = {
+  format: 'header-value',
+  max: '64',
+  path: 'gateway.config.router.http_listener.server_header_value',
+  type: 'string',
+};
+
 describe('validateFieldValue', () => {
   it('passes an untouched field', () => {
     expect(validateFieldValue(ROUTE_TIMEOUT, undefined)).toBeNull();
@@ -106,6 +120,30 @@ describe('validateFieldValue', () => {
     expect(validateFieldValue(LOG_LEVEL, 'debug')).toBeNull();
     expect(validateFieldValue(LOG_LEVEL, 'trace')).toBe(
       'Must be one of debug, info, warn, error'
+    );
+  });
+
+  it('names enum options by their labels, and takes only the value', () => {
+    expect(validateFieldValue(UPSTREAM_TLS, 'TLS1_3')).toBeNull();
+    expect(validateFieldValue(UPSTREAM_TLS, 'TLS 1.3')).toBe(
+      'Must be one of TLS 1.2, TLS 1.3'
+    );
+  });
+
+  it('holds a header value to printable ASCII with no surrounding space', () => {
+    expect(validateFieldValue(SERVER_HEADER, 'WSO2 API Platform')).toBeNull();
+    expect(validateFieldValue(SERVER_HEADER, '')).toBeNull();
+    expect(validateFieldValue(SERVER_HEADER, 'Acmé')).toBe(
+      'Must be printable ASCII'
+    );
+    expect(validateFieldValue(SERVER_HEADER, 'acme\tgateway')).toBe(
+      'Must be printable ASCII'
+    );
+    expect(validateFieldValue(SERVER_HEADER, ' acme')).toBe(
+      'Must not start or end with a space'
+    );
+    expect(validateFieldValue(SERVER_HEADER, 'acme ')).toBe(
+      'Must not start or end with a space'
     );
   });
 

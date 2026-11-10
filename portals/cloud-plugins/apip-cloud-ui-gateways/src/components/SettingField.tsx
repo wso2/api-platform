@@ -58,10 +58,18 @@ export type SettingFieldProps = {
  * for something that only matters while typing, and the message that arrives
  * when a value is actually out of range states them anyway.
  *
- * `string` is not handled here: its one field today is a multi-line TOML block
- * whose copy is an operational warning rather than a description, so it keeps
- * persistent text and its own component (`TomlField`).
+ * A `toml` string is not handled here: its copy is an operational warning
+ * rather than a description, so it keeps persistent text and its own component
+ * (`TomlField`). Every other string is one line.
  */
+
+/**
+ * Whether a field is a TOML block, which `TomlField` renders. A string with no
+ * `format` is one too: it is how a platform that predates `format` sends
+ * gateway.config_toml.
+ */
+export const isTomlBlock = (field: EditableField): boolean =>
+  field.type === 'string' && (field.format ?? 'toml') === 'toml';
 
 /** What to put in a text input for a value that may not be a string yet. */
 const inputText = (value: unknown): string =>
@@ -100,7 +108,7 @@ const SettingField: FC<SettingFieldProps> = ({
           >
             {(field.values ?? []).map((option) => (
               <MenuItem key={option} value={option}>
-                {option}
+                {field.labels?.[option] ?? option}
               </MenuItem>
             ))}
           </Select>
@@ -155,6 +163,8 @@ const SettingField: FC<SettingFieldProps> = ({
       // rejected. That is the accepted cost of a quieter form.
       case 'duration':
       case 'quantity':
+      case 'string':
+        if (isTomlBlock(field)) return null;
         return (
           <TextField
             disabled={readOnly}
