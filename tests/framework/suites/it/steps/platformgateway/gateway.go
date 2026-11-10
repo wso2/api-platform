@@ -1184,6 +1184,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 	sc.Step(`^I wait for the analytics collector to settle$`, g.waitForAnalyticsToSettle)
 	sc.Step(`^I wait for an analytics event for path "([^"]*)" with response status (\d+)$`, g.waitForAnalyticsEvent)
 	sc.Step(`^the analytics collector should have received at least (\d+) events?$`, g.analyticsEventCountAtLeast)
+	sc.Step(`^the analytics collector should have no event for path "([^"]*)"$`, g.analyticsNoEventForPath)
 	sc.Step(`^the analytics collector should have received (\d+) events?$`, g.analyticsEventCountExactly)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have request method "([^"]*)"$`,
 		g.analyticsRequestMethod)
@@ -1670,6 +1671,10 @@ var serviceEndpoints = map[string]struct {
 	"mcp-scripted": {component: "testbench", endpoint: "mcp-scripted"},
 	// The Stripe and Moesif services the API Portal bills through; their /test endpoints act
 	// as the customer and as the provider.
+	// The gateway's own data-plane listener, as another container in the block reaches it.
+	// A route whose upstream is this gateway lets a scenario observe what a second API
+	// recorded, which is the only evidence left when the caller itself has gone away.
+	"gateway-router": {component: "platform-gateway", endpoint: "http"},
 	// The scripted fault injector an upstream sits behind: a scenario stores a sequence of
 	// statuses and delays, then points a route at it. Block-partitioned, so the address a
 	// route must name is resolved rather than written into a feature.
@@ -2452,6 +2457,21 @@ func (g *Gateway) waitForAnalyticsEvent(ctx context.Context, path string, status
 // finds for it. Filtering by the path a scenario already knows it requested is what makes this
 // robust: the events array's arrival order at the collector doesn't necessarily match request
 // chronology, so picking "the last element" can return an unrelated event.
+// analyticsNoEventForPath asserts that nothing was recorded for a path. The negative
+// companion to analyticsEventForPath, for a claim whose only evidence is an absence: a
+// request the gateway never made leaves no event behind, and there is no response to read
+// because the caller that would have read it has gone.
+func (g *Gateway) analyticsNoEventForPath(ctx context.Context, path string) error {
+	event, err := g.analyticsEventForPath(ctx, path)
+	if err != nil {
+		// No event for the path is exactly the expected outcome.
+		return nil
+	}
+	resolved, _ := stepscommon.Expand(ctx, path)
+	return fmt.Errorf("expected no analytics event for path %q, but one was recorded with status %d",
+		resolved, event.Response.Status)
+}
+
 func (g *Gateway) analyticsEventForPath(ctx context.Context, path string) (*analyticsEvent, error) {
 	resolved, err := stepscommon.Expand(ctx, path)
 	if err != nil {

@@ -502,6 +502,9 @@ blocks:
       - name: model-failover-streaming
         features:
           - features/gateway/ai/model_failover_streaming.feature
+      - name: model-failover-abandoned-caller
+        features:
+          - features/gateway/ai/model_failover_abandoned_caller.feature
       - name: upstream-url-validation
         tags: "gateway-version>=1.2.0"
         features:

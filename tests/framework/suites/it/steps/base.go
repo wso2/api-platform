@@ -24,6 +24,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"net/textproto"
@@ -226,6 +227,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the response body should contain "([^"]*)"$`, b.responseContains)
 	sc.Step(`^the response body should not contain "([^"]*)"$`, b.responseNotContains)
 	sc.Step(`^the response body should (have|not have) been cut off$`, b.responseCutOff)
+	sc.Step(`^the request should have been abandoned$`, b.requestAbandoned)
 	sc.Step(`^the response body should match pattern "([^"]*)"$`, b.responseMatchesPattern)
 	sc.Step(`^the response should contain Prometheus metrics$`, b.responseContainsPrometheusMetrics)
 	sc.Step(`^the response should contain metric "([^"]*)"$`, b.responseContainsMetric)
@@ -301,6 +303,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		b.sendCutOffTolerantRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the response body is cut off with body:$`,
 		b.sendUntilCutOff)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" and give up after (\d+)ms$`, b.sendAndGiveUp)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with a JSON body of (\d+) bytes$`, b.sendSizedJSONBody)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, b.sendUntilStatus)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) or (\d+)$`, b.sendUntilStatusOneOf)
@@ -2021,6 +2024,56 @@ func (b *Base) sendUntilCutOff(ctx context.Context, method, path string, body *g
 		},
 		func(r *httpx.Response) bool { return r != nil && r.BodyTruncated },
 		fmt.Sprintf("waiting for %s %s to answer with a cut-off body", strings.ToUpper(method), url))
+}
+
+// abandonedKey records, per scenario, whether the last give-up request was abandoned.
+const abandonedKey = "requestAbandoned"
+
+// sendAndGiveUp issues a request and walks away after the given number of milliseconds,
+// recording whether the caller left before a response arrived. A scenario about what the
+// gateway does once its caller has gone cannot read a response, because by construction there
+// is none; this step establishes that the caller really did leave, so the evidence gathered
+// afterwards is about an abandoned request rather than a completed one.
+func (b *Base) sendAndGiveUp(ctx context.Context, method, path string, afterMs int) error {
+	if afterMs <= 0 {
+		return fmt.Errorf("the give-up delay must be positive, got %dms", afterMs)
+	}
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURL(resolved)
+	if err != nil {
+		return err
+	}
+	headers := b.scenarioHeaders(ctx)
+
+	deadline, cancel := context.WithTimeout(ctx, time.Duration(afterMs)*time.Millisecond)
+	defer cancel()
+	_, sendErr := b.funnel.Send(deadline, httpx.Request{
+		Method: strings.ToUpper(method), URL: url, Headers: headers,
+		Host: b.requestHost(ctx),
+	})
+	// The deadline is the caller leaving, so only a deadline counts as abandonment: any
+	// other error is a real failure and must not be read as the scenario's premise holding.
+	abandoned := sendErr != nil && errors.Is(deadline.Err(), context.DeadlineExceeded)
+	if sendErr != nil && !abandoned {
+		return fmt.Errorf("giving up on %s %s after %dms: %w", strings.ToUpper(method), url, afterMs, sendErr)
+	}
+	tcontext.Remove(ctx, abandonedKey)
+	return tcontext.Set(ctx, abandonedKey, abandoned)
+}
+
+// requestAbandoned asserts that the last give-up request really did leave before an answer.
+func (b *Base) requestAbandoned(ctx context.Context) error {
+	v, ok := tcontext.Get(ctx, abandonedKey)
+	if !ok {
+		return fmt.Errorf("no give-up request has been sent in this scenario")
+	}
+	if abandoned, _ := v.(bool); !abandoned {
+		return fmt.Errorf("expected the caller to give up before an answer, but the request completed")
+	}
+	return nil
 }
 
 // responseCutOff asserts whether the published response's body ended before the upstream
