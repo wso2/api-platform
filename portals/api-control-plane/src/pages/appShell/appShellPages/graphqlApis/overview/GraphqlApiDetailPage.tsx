@@ -22,6 +22,7 @@ import { useParams } from 'react-router-dom';
 
 import { AppPage } from '@/components/AppPage';
 import { GRAPHQL_API_TYPE } from '@/api/resources/apiPublications';
+import { useCloudDeployments } from '@/api/resources/cloudDeployments';
 import type { Gateway } from '@/api/resources/gateways';
 import { useGraphQLApi, useGraphQLApiSdl } from '@/api/resources/graphqlApis';
 import { useGraphQLApiGateways } from '@/api/resources/graphqlApis/apiGateways';
@@ -35,7 +36,6 @@ import { ApiOverviewHeader } from '../../apis/overview/ApiOverviewHeader';
 import { deployedGateways as deployedGatewaysOf } from '../../test/utils/deployedGateways';
 import { GraphqlOverviewTab } from './GraphqlOverviewTab';
 import { GraphqlProgressBanner } from './GraphqlProgressBanner';
-import { useCloudDeployments } from '../../apis/overview/useCloudDeployments';
 
 const messages = defineMessages({
   notFound: {
