@@ -68,10 +68,54 @@ Feature: APIP cloud managed gateway configuration
     And I find an active APIP gateway
     And the active APIP gateway's configuration should be readable
     When I write each of these gateway configuration values separately:
-      | path                                      | value  | message               |
-      | gateway.config.router.access_logs.enabled | yes    | must be true or false |
-      | gateway.config.router.access_logs.enabled | "true" | must be true or false |
-      | gateway.config.router.access_logs.enabled | 1      | must be true or false |
+      | path                                                                           | value   | message               |
+      | gateway.config.router.access_logs.enabled                                      | yes     | must be true or false |
+      | gateway.config.router.access_logs.enabled                                      | "true"  | must be true or false |
+      | gateway.config.router.access_logs.enabled                                      | 1       | must be true or false |
+      | gateway.config.mcp.append_resource_path_to_backend                             | "false" | must be true or false |
+      | gateway.config.policy_configurations.ratelimit_v1.headers.include_x_rate_limit | yes     | must be true or false |
+      | gateway.config.policy_configurations.ratelimit_v1.headers.include_ietf         | 0       | must be true or false |
+      | gateway.config.policy_configurations.ratelimit_v1.headers.include_retry_after  | "true"  | must be true or false |
+    Then every one of those writes should have been refused as invalid
+
+  @TC_APIP_GWCFG_024 @ID_APIP_GATEWAY_CONFIG_016
+  Scenario: An enum with display labels refuses a label in place of its value
+    Given I obtain an APIP cloud console token
+    And I find an active APIP gateway
+    And the active APIP gateway's configuration should be readable
+    When I write each of these gateway configuration values separately:
+      | path                                                             | value       | message                                               |
+      | gateway.config.router.http_listener.server_header_transformation | REPLACE     | must be one of Overwrite, Add if absent, Pass through |
+      | gateway.config.router.http_listener.server_header_transformation | "Overwrite" | must be one of Overwrite, Add if absent, Pass through |
+      | gateway.config.router.upstream.tls.minimum_protocol_version      | TLS1_1      | must be one of TLS 1.2, TLS 1.3                       |
+      | gateway.config.router.upstream.tls.minimum_protocol_version      | "TLS 1.3"   | must be one of TLS 1.2, TLS 1.3                       |
+    Then every one of those writes should have been refused as invalid
+
+  @TC_APIP_GWCFG_025 @ID_APIP_GATEWAY_CONFIG_017
+  Scenario: An integer setting refuses a value outside its bounds or not whole
+    Given I obtain an APIP cloud console token
+    And I find an active APIP gateway
+    And the active APIP gateway's configuration should be readable
+    When I write each of these gateway configuration values separately:
+      | path                                             | value | message                   |
+      | gateway.config.api_key.api_keys_per_user_per_api | 0     | must be between 1 and 100 |
+      | gateway.config.api_key.api_keys_per_user_per_api | 101   | must be between 1 and 100 |
+      | gateway.config.api_key.api_keys_per_user_per_api | 2.5   | must be a whole number    |
+      | gateway.config.api_key.api_keys_per_user_per_api | "10"  | must be a whole number    |
+    Then every one of those writes should have been refused as invalid
+
+  @TC_APIP_GWCFG_026 @ID_APIP_GATEWAY_CONFIG_018
+  Scenario: The server header value refuses what a header cannot carry unchanged
+    Given I obtain an APIP cloud console token
+    And I find an active APIP gateway
+    And the active APIP gateway's configuration should be readable
+    When I write each of these gateway configuration values separately:
+      | path                                                    | value        | message                             |
+      | gateway.config.router.http_listener.server_header_value | ""           | must be between 1 and 64 characters |
+      | gateway.config.router.http_listener.server_header_value | "Acm\u00e9"  | must be printable ASCII             |
+      | gateway.config.router.http_listener.server_header_value | "acme\tedge" | must be printable ASCII             |
+      | gateway.config.router.http_listener.server_header_value | " acme"      | must not start or end with a space  |
+      | gateway.config.router.http_listener.server_header_value | 42           | must be a string                    |
     Then every one of those writes should have been refused as invalid
 
   @TC_APIP_GWCFG_012 @ID_APIP_GATEWAY_CONFIG_011
