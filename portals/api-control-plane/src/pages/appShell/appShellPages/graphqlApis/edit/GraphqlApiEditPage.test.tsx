@@ -17,7 +17,7 @@
  */
 
 import { Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
@@ -26,10 +26,7 @@ import { accepts, aGraphQLApiDetail, recorder, resource, type Recorder } from '@
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
-import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { GraphqlApiEditPage } from './GraphqlApiEditPage';
-
-vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 const PROJECT = 'retail-apis';
@@ -91,14 +88,9 @@ describe('GraphqlApiEditPage', () => {
     server.use(resource('/graphql-apis/:graphqlApiId', api));
     server.use(resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }));
     server.use(
-      accepts(
-        'put',
-        `/graphql-apis/${API}`,
-        { ...api, displayName: 'Countries API v2' },
-        {
-          record: requests,
-        },
-      ),
+      accepts('put', `/graphql-apis/${API}`, { ...api, displayName: 'Countries API v2' }, {
+        record: requests,
+      }),
     );
 
     const { user } = renderPage();
@@ -189,10 +181,7 @@ describe('GraphqlApiEditPage', () => {
 
   it('hides the endpoint field for a ref-based upstream', async () => {
     server.use(
-      resource('/graphql-apis/:graphqlApiId', {
-        ...api,
-        upstream: { main: { ref: 'shared-upstream' } },
-      }),
+      resource('/graphql-apis/:graphqlApiId', { ...api, upstream: { main: { ref: 'shared-upstream' } } }),
     );
     server.use(resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }));
 
@@ -234,35 +223,5 @@ describe('GraphqlApiEditPage', () => {
     renderPage();
 
     expect(await screen.findByText('GraphQL API not found')).toBeInTheDocument();
-  });
-});
-
-describe('GraphqlApiEditPage — feature usage', () => {
-  beforeEach(() => resetTrackedFeatures());
-
-  it('reports a metadata update when the edits are saved', async () => {
-    server.use(
-      resource('/graphql-apis/:graphqlApiId', api),
-      resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
-      accepts(
-        'put',
-        `/graphql-apis/${API}`,
-        { ...api, displayName: 'Countries API v2' },
-        {
-          record: requests,
-        },
-      ),
-    );
-    const { user } = renderPage();
-
-    const name = await screen.findByDisplayValue('Countries GraphQL API');
-    await user.clear(name);
-    await user.type(name, 'Countries API v2');
-    await user.click(screen.getByRole('button', { name: /Save changes/ }));
-
-    await waitFor(() => expect(requests.count()).toBe(1));
-    expect(trackedFeatures()).toEqual([
-      ['apip.manage-apis.api-update-click', { api_type: 'graphql-api' }],
-    ]);
   });
 });

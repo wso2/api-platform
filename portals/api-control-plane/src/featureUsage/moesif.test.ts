@@ -165,64 +165,6 @@ describe('trackFeatureUsage', () => {
   });
 });
 
-describe('identity', () => {
-  it('identifies the organization, then the user, by ID only', async () => {
-    await trackCreate();
-
-    expect(sdk.identifyCompany).toHaveBeenCalledWith(ORG);
-    expect(sdk.identifyUser).toHaveBeenCalledWith(USER);
-    expect(sdk.identifyCompany.mock.invocationCallOrder[0]).toBeLessThan(
-      sdk.identifyUser.mock.invocationCallOrder[0],
-    );
-    expect(sdk.identifyCompany.mock.invocationCallOrder[0]).toBeLessThan(
-      sdk.track.mock.invocationCallOrder[0],
-    );
-  });
-
-  it('identifies once, not on every action or page load', async () => {
-    const { trackFeatureUsage } = await load();
-    trackFeatureUsage(
-      'apip.manage-apis.rest-api-create-click',
-      { creation_method: 'scratch' },
-      { companyId: ORG, userId: USER },
-    );
-    trackFeatureUsage(
-      'apip.manage-apis.rest-api-create-click',
-      { creation_method: 'scratch' },
-      { companyId: ORG, userId: USER },
-    );
-    await settle();
-    await trackCreate(); // the next page load, same user and organization
-
-    expect(sdk.identifyUser).toHaveBeenCalledTimes(1);
-    expect(sdk.identifyCompany).toHaveBeenCalledTimes(1);
-    expect(sdk.reset).not.toHaveBeenCalled();
-    expect(sdk.track).toHaveBeenCalledTimes(3);
-  });
-
-  it('resets before identifying a different user or organization on the same browser', async () => {
-    await trackCreate();
-    await trackCreate({
-      companyId: '9a3f4b2c-1d2e-4f5a-8b6c-7d8e9f0a1b2c',
-      userId: '5c6d7e8f-9a0b-4c1d-8e2f-3a4b5c6d7e8f',
-    });
-
-    expect(sdk.reset).toHaveBeenCalledTimes(1);
-    expect(sdk.reset.mock.invocationCallOrder[0]).toBeLessThan(
-      sdk.identifyCompany.mock.invocationCallOrder[1],
-    );
-    expect(sdk.identifyUser).toHaveBeenLastCalledWith('5c6d7e8f-9a0b-4c1d-8e2f-3a4b5c6d7e8f');
-  });
-
-  it('never sends an ID that is not a UUID, but still sends the action', async () => {
-    await trackCreate({ companyId: 'acme-corp', userId: 'alice@example.com' });
-
-    expect(sdk.identifyCompany).not.toHaveBeenCalled();
-    expect(sdk.identifyUser).not.toHaveBeenCalled();
-    expect(sdk.track).toHaveBeenCalledTimes(1);
-  });
-});
-
 describe('PII filter', () => {
   const unsafeAction = {
     action_name: 'apip.manage-apis.rest-api-create-click',

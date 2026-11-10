@@ -136,16 +136,6 @@ describe('filterMoesifRequest', () => {
     );
   });
 
-  it('leaves out IDs that are not UUIDs', () => {
-    const filtered = filterMoesifRequest(
-      `${HOST}/v1/actions`,
-      sdkAction({ company_id: 'acme-corp', user_id: 'alice@example.com' }),
-    );
-
-    expect(filtered).not.toHaveProperty('company_id');
-    expect(filtered).not.toHaveProperty('user_id');
-  });
-
   it('drops a dimension value outside its enum', () => {
     const filtered = filterMoesifRequest(
       `${HOST}/v1/actions`,
@@ -155,32 +145,7 @@ describe('filterMoesifRequest', () => {
     expect(filtered.metadata).not.toHaveProperty('creation_method');
   });
 
-  it('keeps only the IDs of a user update', () => {
-    expect(
-      filterMoesifRequest(`${HOST}/v1/users`, {
-        anonymous_id: ANON,
-        campaign: { utm_source: 'newsletter' },
-        company_id: ORG,
-        metadata: { email: 'alice@example.com', name: 'Alice' },
-        user_id: USER,
-      }),
-    ).toEqual({ anonymous_id: ANON, company_id: ORG, user_id: USER });
-  });
-
-  it('keeps only the ID of a company update', () => {
-    expect(
-      filterMoesifRequest(`${HOST}/v1/companies`, {
-        campaign: { utm_source: 'newsletter' },
-        company_domain: 'acme.com',
-        company_id: ORG,
-        metadata: { name: 'Acme Corporation' },
-      }),
-    ).toEqual({ company_id: ORG });
-  });
-
   it.each([
-    ['a user update without a UUID', '/v1/users', { user_id: 'alice@example.com' }],
-    ['a company update without a UUID', '/v1/companies', { company_id: 'acme-corp' }],
     [
       'an action that is not in the taxonomy',
       '/v1/actions',

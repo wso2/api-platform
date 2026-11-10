@@ -58,11 +58,8 @@ export function makeTestQueryClient(): QueryClient {
 export type RenderWithProvidersOptions = Omit<RenderOptions, 'wrapper'> & {
   /** Initial router entry (default `/`). */
   route?: string;
-  /**
-   * All router entries (overrides `route` when provided). A location object
-   * (`{ pathname, state }`) starts a page as if a link had navigated to it.
-   */
-  routerEntries?: ComponentProps<typeof MemoryRouter>['initialEntries'];
+  /** All router entries (overrides `route` when provided). */
+  routerEntries?: string[];
   /** Injected auth state (default: authenticated via `makeAuthState()`). */
   authState?: AuthState;
   /** Injected console scope. Omit for tests that don't read `useConsoleScope`. */

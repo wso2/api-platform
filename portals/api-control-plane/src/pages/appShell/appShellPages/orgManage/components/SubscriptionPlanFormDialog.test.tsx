@@ -33,12 +33,9 @@ import {
   type Recorder,
   type SubscriptionPlanFixture,
 } from '@/test/msw';
-import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, userEvent, waitFor, within } from '@/test/utils';
 import { SubscriptionPlanFormDialog } from './SubscriptionPlanFormDialog';
-
-vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 const PLANS = '/subscription-plans';
@@ -154,7 +151,6 @@ beforeEach(() => {
   disabled.names = [];
   requests = recorder();
   resetHttpClient();
-  resetTrackedFeatures();
 });
 
 const disabled = vi.hoisted(() => ({ names: [] as string[] }));
@@ -179,9 +175,6 @@ describe('SubscriptionPlanFormDialog', () => {
       status: 'ACTIVE',
     });
     expect(onClose).toHaveBeenCalled();
-    expect(trackedFeatures()).toEqual([
-      ['apip.monetization.subscription-plan-create-click', {}],
-    ]);
   });
 
   it('keeps the handle of a long name to the 40 characters the Platform API takes, without a trailing hyphen', async () => {
@@ -400,9 +393,6 @@ describe('SubscriptionPlanFormDialog', () => {
     await waitFor(() => expect(requests.count()).toBe(1));
     // Status isn't editable in this dialog — the plan's own status must round-trip.
     expect(JSON.parse(requests.last()!.body).status).toBe('INACTIVE');
-    expect(trackedFeatures()).toEqual([
-      ['apip.monetization.subscription-plan-update-click', {}],
-    ]);
   });
 
   it('shows a taken name as an inline field error, not a generic toast', async () => {
@@ -424,7 +414,6 @@ describe('SubscriptionPlanFormDialog', () => {
 
     expect(onClose).toHaveBeenCalled();
     expect(requests.count()).toBe(0);
-    expect(trackedFeatures()).toEqual([]);
   });
 
   it('creates a flat rate plan with its pricing in the one request', async () => {

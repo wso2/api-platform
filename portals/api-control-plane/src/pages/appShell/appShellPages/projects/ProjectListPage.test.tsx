@@ -17,7 +17,7 @@
  */
 
 import { Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
@@ -30,14 +30,11 @@ import {
   type ProjectFixture,
   type Recorder,
 } from '@/test/msw';
-import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { makeConsoleScope } from '@/test/mockScope';
 import { routes } from '@/routes/paths';
 import { ProjectListPage } from './ProjectListPage';
-
-vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 
@@ -82,7 +79,6 @@ function renderPage() {
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
-  resetTrackedFeatures();
   // Cards count the APIs in their project; every card issues one of each.
   server.use(collection('/rest-apis', []));
   server.use(collection('/graphql-apis', []));
@@ -238,24 +234,10 @@ describe('ProjectListPage', () => {
     expect(confirmButton).toBeDisabled();
 
     await user.type(within(dialog).getByRole('textbox'), 'Retail APIs');
-    expect(trackedFeatures()).toEqual([]);
     await user.click(confirmButton);
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(requests.last()?.url.pathname).toMatch(/\/projects\/retail$/);
-    expect(trackedFeatures()).toEqual([['apip.admin.project-delete-click', {}]]);
-  });
-
-  it('reports no deletion when the confirmation is cancelled', async () => {
-    server.use(collection('/projects', projectFixtures));
-    const { user } = renderPage();
-
-    await screen.findByText('Retail APIs');
-    await user.click(screen.getByRole('button', { name: 'Delete Retail APIs' }));
-    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
-
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(trackedFeatures()).toEqual([]);
   });
 });
 

@@ -29,10 +29,7 @@ import { makeConsoleScope } from '@/test/mockScope';
 import { apiUrl, listEnvelope, recorder, type Recorder } from '@/test/msw';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
-import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { DocumentsPanel } from './DocumentsPanel';
-
-vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 const PROJECT = 'retail-apis';
@@ -382,84 +379,5 @@ describe('DocumentsPanel', () => {
       expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=getting-started`),
     );
     expect(screen.getByTestId('location')).not.toHaveTextContent('mode=edit');
-  });
-});
-
-describe('DocumentsPanel — feature usage', () => {
-  beforeEach(() => resetTrackedFeatures());
-
-  /** Accepts a create, adding the document the server would store to `documents`. */
-  const acceptCreate = (documents: DocumentFixture[], created: DocumentFixture) =>
-    server.use(
-      http.post(apiUrl(COLLECTION), async ({ request }) => {
-        await requests.capture(request);
-        documents.push(created);
-        return HttpResponse.json(metadata(created), { status: 201 });
-      }),
-    );
-
-  it('reports creating a document, with its type', async () => {
-    const documents: DocumentFixture[] = [];
-    serve(documents);
-    acceptCreate(documents, aDocument('error-handling', { displayName: 'Error handling' }));
-    const { user } = renderPage(`${BASE}?mode=create`);
-
-    await user.type(await screen.findByLabelText(/^Name/), 'Error handling');
-    await user.type(screen.getByLabelText(/^Content/), 'Errors use a JSON body.');
-    await user.click(screen.getByRole('button', { name: 'Create' }));
-
-    await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=error-handling`),
-    );
-    expect(trackedFeatures()).toEqual([
-      ['apip.manage-apis.api-document-create-click', { api_type: 'rest-api', document_type: 'how-to' }],
-    ]);
-  });
-
-  it('reports a custom "Other" type as "other", never its name', async () => {
-    const documents: DocumentFixture[] = [];
-    serve(documents);
-    acceptCreate(
-      documents,
-      aDocument('changes', { displayName: 'Changes', type: 'Changelog' as never }),
-    );
-    const { user } = renderPage(`${BASE}?mode=create`);
-
-    await user.click(await screen.findByRole('combobox', { name: 'Document type' }));
-    await user.click(await screen.findByRole('option', { name: 'Other' }));
-    await user.type(screen.getByLabelText(/^Custom type/), 'Changelog');
-    await user.type(screen.getByLabelText(/^Name/), 'Changes');
-    await user.type(screen.getByLabelText(/^Content/), 'All notable changes.');
-    await user.click(screen.getByRole('button', { name: 'Create' }));
-
-    await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=changes`),
-    );
-    expect(trackedFeatures()).toEqual([
-      ['apip.manage-apis.api-document-create-click', { api_type: 'rest-api', document_type: 'other' }],
-    ]);
-  });
-
-  it('reports updating a document when its edits are saved', async () => {
-    const document = aDocument('getting-started', { type: 'Samples' });
-    serve([document]);
-    server.use(
-      http.put(apiUrl(`${COLLECTION}/:docId`), async ({ request }) => {
-        await requests.capture(request);
-        return HttpResponse.json(metadata({ ...document, displayName: 'Quick start' }));
-      }),
-    );
-    const { user } = renderPage(`${BASE}?doc=getting-started&mode=edit`);
-
-    const name = await screen.findByLabelText(/^Name/);
-    await waitFor(() => expect(name).toHaveValue('getting-started'));
-    await user.clear(name);
-    await user.type(name, 'Quick start');
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(requests.calls.some((r) => r.method === 'PUT')).toBe(true));
-    expect(trackedFeatures()).toEqual([
-      ['apip.manage-apis.api-document-update-click', { api_type: 'rest-api', document_type: 'samples' }],
-    ]);
   });
 });

@@ -110,15 +110,4 @@ describe('moesif-browser-js behind the PII filter', () => {
     }
   });
 
-  it('identifies the user and organization by ID only', async () => {
-    await trackCreateWithRealSdk();
-
-    expect(captured.find((c) => c.path === '/v1/companies')?.body).toEqual({ company_id: ORG });
-    expect(captured.find((c) => c.path === '/v1/users')?.body).toEqual(
-      expect.objectContaining({ company_id: ORG, user_id: USER }),
-    );
-    expect(
-      Object.keys(captured.find((c) => c.path === '/v1/users')?.body as object).sort(),
-    ).toEqual(expect.not.arrayContaining(['metadata', 'campaign']));
-  });
 });

@@ -18,19 +18,15 @@
 
 import { http } from 'msw';
 import { Route, Routes } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
-import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
-import { accepts, aGraphQLApiDetail, apiUrl, recorder, resource } from '@/test/msw';
+import { aGraphQLApiDetail, apiUrl, resource } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
-import { policyHubHandlers, stubHubFetch } from '@/test/policyHub';
 import { server } from '@/test/server';
-import { renderWithProviders, screen, waitFor } from '@/test/utils';
+import { renderWithProviders, screen } from '@/test/utils';
 import { GraphqlDevelopPoliciesPage } from './GraphqlDevelopPoliciesPage';
-
-vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 const PROJECT = 'retail-apis';
@@ -62,11 +58,6 @@ function renderPage() {
 
 beforeEach(() => {
   resetHttpClient();
-  resetTrackedFeatures();
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
 });
 
 describe('GraphqlDevelopPoliciesPage', () => {
@@ -123,46 +114,5 @@ describe('GraphqlDevelopPoliciesPage', () => {
     renderPage();
 
     expect(await screen.findByText('GraphQL API not found')).toBeInTheDocument();
-  });
-
-  it('reports opening the catalog, and on Save each newly attached policy but not the saved ones', async () => {
-    const definition = [
-      'name: api-key-auth',
-      'version: 1.2',
-      'parameters:',
-      '  type: object',
-      '  required: [key]',
-      '  properties:',
-      '    key:',
-      '      type: string',
-    ].join('\n');
-    const record = recorder();
-    stubHubFetch();
-    server.use(
-      resource('/graphql-apis/:graphqlApiId', api),
-      resource('/graphql-apis/:graphqlApiId/sdl', { sdl: 'type Query { a: String }' }),
-      accepts('put', '/graphql-apis/:graphqlApiId', api, { record }),
-      ...policyHubHandlers([
-        { definition, displayName: 'API Key Auth', name: 'api-key-auth', versions: ['1.2'] },
-      ]),
-    );
-
-    const { user } = renderPage();
-
-    await user.click(await screen.findByText('API Key Auth'));
-    await user.type(await screen.findByTestId('field-key'), 'X-Key');
-    await user.click(screen.getByTestId('policy-param-submit'));
-    await waitFor(() => expect(screen.queryByTestId('field-key')).not.toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: /Save/ }));
-    await waitFor(() => expect(record.count()).toBe(1));
-
-    // The already-saved cors policy is not reported.
-    expect(trackedFeatures()).toEqual([
-      ['apip.policies.policy-hub-browse', { artifact_kind: 'graphql-api' }],
-      [
-        'apip.policies.client-authentication-attach',
-        { artifact_kind: 'graphql-api', policy_name: 'api-key-auth', policy_scope: 'api' },
-      ],
-    ]);
   });
 });

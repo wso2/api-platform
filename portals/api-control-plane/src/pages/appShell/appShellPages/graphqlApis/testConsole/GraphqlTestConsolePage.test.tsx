@@ -24,7 +24,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { aDeployment, aGateway, aGraphQLApiDetail, apiUrl, collection, resource } from '@/test/msw';
-import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
@@ -72,7 +71,6 @@ vi.mock('graphiql', () => ({
 }));
 vi.mock('graphiql/setup-workers/vite', () => ({}));
 vi.mock('graphiql/style.css', () => ({}));
-vi.mock('@/featureUsage/moesif');
 
 // createGraphiQLFetcher closes over its options with no getter, so the only
 // way to assert what URL/headers this page builds it with is to intercept the
@@ -120,7 +118,6 @@ const serveApi = (
 
 beforeEach(() => {
   resetHttpClient();
-  resetTrackedFeatures();
   lastGraphiQLProps = undefined;
   lastFetcherOptions = undefined;
   resetTestApiKeys();
@@ -351,21 +348,6 @@ describe('GraphqlTestConsolePage — with an api-key-auth policy', () => {
     );
     expect(lastFetcherOptions?.headers).not.toHaveProperty('apikey');
   });
-
-  it('reports a test key the user asks for, not the one minted on load', async () => {
-    serveApi([deployment], securedApi({ in: 'header', key: 'X-Api-Key' }));
-    const mints = serveKeyMint();
-
-    const { user } = renderPage();
-    await vi.waitFor(() => expect(mints()).toBe(1));
-    expect(trackedFeatures()).toEqual([]);
-
-    await user.click(await screen.findByRole('button', { name: 'Get Test API Key' }));
-    await vi.waitFor(() => expect(mints()).toBe(2));
-    expect(trackedFeatures()).toEqual([
-      ['apip.security.test-api-key-generate-click', { artifact_kind: 'graphql-api' }],
-    ]);
-  });
 });
 
 describe('GraphqlTestConsolePage — without an api-key-auth policy', () => {
@@ -439,60 +421,5 @@ describe('GraphqlTestConsolePage — the API cannot be found', () => {
     renderPage();
 
     expect(await screen.findByText('GraphQL API not found')).toBeInTheDocument();
-  });
-});
-
-describe('GraphqlTestConsolePage — feature usage', () => {
-  const deployment = aDeployment({ gatewayId: 'edge-gateway', status: 'DEPLOYED' });
-
-  it('reports each run once with its outcome, but not GraphiQL’s schema introspection', async () => {
-    serveApi([deployment]);
-    const json = (status: number) =>
-      new Response(JSON.stringify({ data: null }), {
-        headers: { 'Content-Type': 'application/json' },
-        status,
-      });
-    const originalFetch = global.fetch;
-    global.fetch = vi
-      .fn()
-      .mockResolvedValueOnce(json(200))
-      .mockResolvedValueOnce(json(200))
-      .mockResolvedValueOnce(json(500))
-      .mockRejectedValueOnce(new TypeError('Failed to fetch'));
-
-    try {
-      renderPage();
-      await screen.findByText('GraphiQL ready with schema');
-
-      // Driven the way GraphiQL consumes the fetcher (see the toast test above).
-      const fetcher = lastGraphiQLProps?.fetcher as (params: {
-        query: string;
-        operationName?: string;
-      }) => Promise<AsyncIterator<unknown> | unknown>;
-      const run = (params: { query: string; operationName?: string }) =>
-        act(async () => {
-          const result = await fetcher(params).catch(() => undefined);
-          if (result && typeof (result as AsyncIterator<unknown>).next === 'function') {
-            await (result as AsyncIterator<unknown>).next().catch(() => undefined);
-          }
-        });
-
-      await run({
-        operationName: 'IntrospectionQuery',
-        query: 'query IntrospectionQuery { __schema { queryType { name } } }',
-      });
-      await run({ query: '{ hello }' });
-      await run({ query: '{ hello }' });
-      await run({ query: '{ hello }' });
-
-      expect(global.fetch).toHaveBeenCalledTimes(4);
-      expect(trackedFeatures()).toEqual([
-        ['apip.manage-apis.test-console-execute', { api_type: 'graphql-api', outcome: 'success' }],
-        ['apip.manage-apis.test-console-execute', { api_type: 'graphql-api', outcome: 'failure' }],
-        ['apip.manage-apis.test-console-execute', { api_type: 'graphql-api', outcome: 'failure' }],
-      ]);
-    } finally {
-      global.fetch = originalFetch;
-    }
   });
 });

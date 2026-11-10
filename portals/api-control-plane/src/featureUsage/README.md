@@ -304,23 +304,13 @@ runtime. So an API name, a URL or a typed value can't reach Moesif. If a feature
 genuinely needs another kind of value, check it against the data rules first,
 then change `FeatureSpec`, `featureMetadata` and the filter together.
 
-### 4. Test it
+### 4. Testing
 
-For one control, use the helper in `src/test/featureUsage.ts`: add
-`vi.mock('@/featureUsage/moesif');` to the test file, call
-`resetTrackedFeatures()` in `beforeEach`, drive the real UI to the commit, and
-assert `expect(trackedFeatures()).toEqual([[code, dimensions]])`. Also check
-that Cancel reports nothing.
-
-For a multi-step funnel through the SDK, copy
-`ApiCreationWizard.featureUsage.test.tsx`:
-
-- mock `moesif-browser-js` with a fake that **includes `_executeRequest`**.
-  Without it, the PII filter can't install and tracking stays off;
-- turn tracking on with
-  `Object.assign(runtimeConfig, { featureUsageTrackingEnabled: true, moesifPublishableKey: 'key' })`;
-- drive the real UI (don't stub the steps you are measuring), and assert the
-  `sdk.track` calls in order, with their dimensions.
+The console's unit tests cover the tracking module itself (`src/featureUsage`:
+the registry, the PII filter, the SDK wrapper and a contract test against the
+real SDK). Page unit tests don't assert tracking: which events a page reports
+belongs in the browser-driven UI suite (`tests/framework/suites/ui`), which is
+a separate effort.
 
 ### URLs are covered for you
 
@@ -335,7 +325,6 @@ known to be static and masks the rest as `:id`.
 - [ ] Each action fires once, at the moment in the table above.
 - [ ] Every dimension value comes from the UI's own enum, never from user input
       or server data.
-- [ ] A funnel test drives the real screens and asserts the actions in order.
 - [ ] No code or enum value that already shipped was renamed.
 
 ---
@@ -446,16 +435,15 @@ cloud plugins report them too.
 
 ## Files
 
-| File                       | Role                                                                          |
-| -------------------------- | ----------------------------------------------------------------------------- |
-| `index.ts`                 | The public surface: `useTrackFeature`, `API_PLATFORM_FEATURES` and the types  |
-| `taxonomy.ts`              | The registry of trackable features, and `featureMetadata`                     |
-| `policies.ts`              | `trackPolicyAttachment`: a policy name to its capability feature              |
-| `useTrackFeature.ts`       | The hook UI code calls; attaches the user and organization                    |
-| `moesif.ts`                | Loads and initialises the SDK lazily, installs the filter, identifies, tracks |
-| `piiFilter.ts`             | The allowlist every outgoing request is rebuilt from                          |
-| `moesif-browser-js.d.ts`   | Types for the parts of the SDK used here                                      |
-| `*.test.ts`                | Unit tests, plus `moesif.sdk.test.ts`, the contract test against the real SDK |
-| `src/test/featureUsage.ts` | Test helper: `trackedFeatures()`, `resetTrackedFeatures()`                    |
-| `src/config/runtime.ts`    | `featureUsageTrackingEnabled`, `moesifPublishableKey`                         |
-| `bff/internal/config`      | The BFF's `[feature_usage]` section and its runtime-config output             |
+| File                     | Role                                                                          |
+| ------------------------ | ----------------------------------------------------------------------------- |
+| `index.ts`               | The public surface: `useTrackFeature`, `API_PLATFORM_FEATURES` and the types  |
+| `taxonomy.ts`            | The registry of trackable features, and `featureMetadata`                     |
+| `policies.ts`            | `trackPolicyAttachment`: a policy name to its capability feature              |
+| `useTrackFeature.ts`     | The hook UI code calls; attaches the user and organization                    |
+| `moesif.ts`              | Loads and initialises the SDK lazily, installs the filter, identifies, tracks |
+| `piiFilter.ts`           | The allowlist every outgoing request is rebuilt from                          |
+| `moesif-browser-js.d.ts` | Types for the parts of the SDK used here                                      |
+| `*.test.ts`              | Unit tests, plus `moesif.sdk.test.ts`, the contract test against the real SDK |
+| `src/config/runtime.ts`  | `featureUsageTrackingEnabled`, `moesifPublishableKey`                         |
+| `bff/internal/config`    | The BFF's `[feature_usage]` section and its runtime-config output             |

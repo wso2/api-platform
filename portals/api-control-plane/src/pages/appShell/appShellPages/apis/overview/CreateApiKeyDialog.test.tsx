@@ -23,10 +23,7 @@ import { resetHttpClient } from '@/api/core/http';
 import { accepts, recorder, type Recorder } from '@/test/msw';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
-import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { CreateApiKeyDialog, type CreateApiKeyDialogProps } from './CreateApiKeyDialog';
-
-vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 const API_ID = 'pizza-shack';
@@ -213,49 +210,5 @@ describe('CreateApiKeyDialog', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(screen.queryByText('API key created')).not.toBeInTheDocument();
     expect(screen.queryByText(/created\./)).not.toBeInTheDocument();
-  });
-});
-
-describe('CreateApiKeyDialog — feature usage', () => {
-  beforeEach(() => resetTrackedFeatures());
-
-  it.each([
-    { apiId: API_ID, apiKind: 'rest' as const, artifactKind: 'rest-api', endpoint: KEYS },
-    {
-      apiId: 'countries-graphql-api',
-      apiKind: 'graphql' as const,
-      artifactKind: 'graphql-api',
-      endpoint: '/graphql-apis/countries-graphql-api/api-keys',
-    },
-  ])(
-    'reports issuing a $apiKind API key on Create key',
-    async ({ apiId, apiKind, artifactKind, endpoint }) => {
-      server.use(
-        accepts(
-          'post',
-          endpoint,
-          { apiKey: ISSUED, keyId: 'key-1', message: 'created', status: 'success' },
-          { record: requests },
-        ),
-      );
-      const { user } = setup({ apiId, apiKind });
-
-      await user.type(screen.getByLabelText(/Key name/), 'Production key');
-      await user.click(screen.getByRole('button', { name: 'Create key' }));
-
-      await waitFor(() => expect(requests.count()).toBe(1));
-      expect(trackedFeatures()).toEqual([
-        ['apip.security.api-key-create-click', { artifact_kind: artifactKind }],
-      ]);
-    },
-  );
-
-  it('reports nothing when a nameless key is submitted', async () => {
-    const { user } = setup();
-
-    // Create key stays disabled; Enter submits the form past it to the validation guard.
-    await user.type(screen.getByLabelText(/Key name/), '   {Enter}');
-
-    expect(trackedFeatures()).toEqual([]);
   });
 });

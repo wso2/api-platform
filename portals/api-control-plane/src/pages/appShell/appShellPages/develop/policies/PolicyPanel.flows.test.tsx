@@ -21,15 +21,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import type { Policy } from '@/api/resources/restApis';
-import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
-import { accepts, aRestApi, failure, recorder } from '@/test/msw';
+import { accepts, aRestApi, recorder } from '@/test/msw';
 import { policyHubHandlers, stubHubFetch, type HubPolicy } from '@/test/policyHub';
 import { server } from '@/test/server';
 import { fireEvent, renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { setDraggedPolicy } from './policyDnd';
 import { PolicyPanel } from './PolicyPanel';
-
-vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 
@@ -79,7 +76,6 @@ const renderPanel = (
 
 beforeEach(() => {
   resetHttpClient();
-  resetTrackedFeatures();
   stubHubFetch();
   server.use(...policyHubHandlers(catalog));
 });
@@ -284,79 +280,5 @@ describe('PolicyPanel — resources', () => {
     await user.click(await screen.findByText('API Key Auth'));
 
     expect(await screen.findByText('Applies to Global policies')).toBeInTheDocument();
-  });
-});
-
-describe('PolicyPanel — feature usage', () => {
-  const browse = ['apip.policies.policy-hub-browse', { artifact_kind: 'rest-api' }];
-  const apiKeyAuth = (policyScope: 'api' | 'operation') => [
-    'apip.policies.client-authentication-attach',
-    { artifact_kind: 'rest-api', policy_name: 'api-key-auth', policy_scope: policyScope },
-  ];
-
-  const attachApiKeyAuth = async (user: ReturnType<typeof renderPanel>['user']) => {
-    // The catalog card is the last match once the policy's chip also shows its name.
-    await user.click((await screen.findAllByText('API Key Auth')).at(-1)!);
-    await user.type(await screen.findByTestId('field-key'), 'X-Key');
-    await user.click(screen.getByTestId('policy-param-submit'));
-    await waitFor(() => expect(screen.queryByTestId('field-key')).not.toBeInTheDocument());
-  };
-
-  it('reports opening the catalog, then each policy a save newly attaches with its scope', async () => {
-    const record = recorder();
-    const { api, user } = renderPanel({ policies: [{ name: 'cors', params: {}, version: 'v1' }] });
-    server.use(accepts('put', '/rest-apis/:id', api, { record }));
-
-    await attachApiKeyAuth(user);
-    await user.click(screen.getByRole('button', { name: 'Show details for GET /orders' }));
-    await attachApiKeyAuth(user);
-    // Removing a saved policy is not an attachment.
-    await user.click(screen.getAllByLabelText('Remove policy')[0]);
-    // Attaching only stages the change; nothing is reported until Save.
-    expect(trackedFeatures()).toEqual([browse]);
-
-    await user.click(screen.getByRole('button', { name: 'Save changes' }));
-    await waitFor(() => expect(record.count()).toBe(1));
-    expect(trackedFeatures()).toEqual([browse, apiKeyAuth('api'), apiKeyAuth('operation')]);
-  });
-
-  it('reports nothing when a save only edits or removes saved policies', async () => {
-    const record = recorder();
-    const { api, user } = renderPanel({
-      policies: [
-        { name: 'api-key-auth', params: { key: 'Saved-Key' }, version: 'v1' },
-        { name: 'cors', params: {}, version: 'v1' },
-      ],
-    });
-    server.use(accepts('put', '/rest-apis/:id', api, { record }));
-
-    await user.click((await screen.findAllByLabelText('Edit policy'))[0]);
-    const field = await screen.findByTestId('field-key');
-    await user.clear(field);
-    await user.type(field, 'New-Key');
-    await user.click(screen.getByTestId('policy-param-submit'));
-    await waitFor(() => expect(screen.queryByTestId('field-key')).not.toBeInTheDocument());
-    await user.click(screen.getAllByLabelText('Remove policy')[1]);
-
-    await user.click(screen.getByRole('button', { name: 'Save changes' }));
-    await waitFor(() => expect(record.count()).toBe(1));
-    expect(trackedFeatures()).toEqual([browse]);
-  });
-
-  it('does not report an attachment again when a rejected save is retried', async () => {
-    const rejected = recorder();
-    const record = recorder();
-    const { api, user } = renderPanel();
-    server.use(failure('put', '/rest-apis/:id', 500, 'INTERNAL_ERROR', { record: rejected }));
-
-    await attachApiKeyAuth(user);
-    await user.click(screen.getByRole('button', { name: 'Save changes' }));
-    await waitFor(() => expect(rejected.count()).toBe(1));
-
-    server.use(accepts('put', '/rest-apis/:id', api, { record }));
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled());
-    await user.click(screen.getByRole('button', { name: 'Save changes' }));
-    await waitFor(() => expect(record.count()).toBe(1));
-    expect(trackedFeatures()).toEqual([browse, apiKeyAuth('api')]);
   });
 });

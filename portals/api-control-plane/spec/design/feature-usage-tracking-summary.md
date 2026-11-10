@@ -243,27 +243,25 @@ the secret operations and the subscription operations.
 | Configuration      | `src/config/runtime.ts`; BFF `internal/config` (`[feature_usage]`, runtime-config output, startup validation); `configs/config.toml`                                                                                                                                |
 | User ID            | `src/contexts/auth` and BFF `internal/session`: the session user carries `id` (`sub`); shared fixture `testdata/claim-mapping-cases.json`                                                                                                                           |
 | Instrumented pages | API creation wizard and its entry points; API list, edit, overview (endpoint, keys, thumbnail); definition, documents and policies; test console (REST, GraphQL, cURL); deploy; portal publishing; gateways; projects, service accounts, meters, subscription plans |
-| Test helper        | `src/test/featureUsage.ts`                                                                                                                                                                                                                                          |
 | Dependency         | `moesif-browser-js` 1.10.2 (Apache-2.0), pinned                                                                                                                                                                                                                     |
 
 ### 5.2 Tests, and why none of them sends usage data
+
+Only the tracking module is unit-tested here. Which events each page reports
+will be checked by the browser-driven UI suite (`tests/framework/suites/ui`),
+as a separate effort.
 
 | Kind              | Files                                                                                                                                                                                | What they check                                                                                                                                                             |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Module unit tests | `featureUsage/taxonomy.test.ts`, `moesif.test.ts`, `piiFilter.test.ts`, `config/runtime.test.ts`, `apis/create/entryPoint.test.ts`, `develop/policies/newlyAttachedPolicies.test.ts` | code conventions, policy mapping, metadata building, the enable switch, identify, URL masking and the allowlist, runtime-config parsing, entry-point state, the policy diff |
 | SDK contract test | `featureUsage/moesif.sdk.test.ts`                                                                                                                                                    | the real SDK behind the filter: what reaches the network has no handles, query strings or names                                                                             |
-| Funnel test       | `apis/create/ApiCreationWizard.featureUsage.test.tsx`                                                                                                                                | the wizard's steps, in order, through a fake SDK                                                                                                                            |
-| Call-site tests   | the other page tests listed in the PR (for example `apis/components/ApiThumbnailManager.test.tsx`)                                                                                   | that each control reports the right code and dimensions on commit, and nothing on Cancel                                                                                    |
 
 No test sends anything to Moesif:
 
 - **Off by default.** Tracking is off unless the runtime config enables it, and
   no test environment sets the flag or a real key.
-- **Call-site tests.** They replace the tracking function itself with a mock
-  (`vi.mock('@/featureUsage/moesif')`), so a tracked click only records a call
-  in memory; the SDK is never loaded.
-- **Module and funnel tests.** The tests that switch tracking on mock
-  `moesif-browser-js` entirely.
+- **Module tests.** The tests that switch tracking on mock `moesif-browser-js`
+  entirely.
 - **The contract test.** It is the only one using the real SDK, with a fake key.
   Its requests are intercepted in-process by MSW.
 - **MSW backstop.** The test server fails any request it doesn't expect

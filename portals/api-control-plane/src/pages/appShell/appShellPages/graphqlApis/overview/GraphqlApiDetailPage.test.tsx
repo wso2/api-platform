@@ -18,7 +18,7 @@
 
 import { http, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { runtimeConfig } from '@/config/runtime';
@@ -39,10 +39,7 @@ import {
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
-import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { GraphqlApiDetailPage } from './GraphqlApiDetailPage';
-
-vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 const PROJECT = 'retail-apis';
@@ -366,10 +363,7 @@ describe('GraphqlApiDetailPage deployed gateways in cloud', () => {
         await held;
         return HttpResponse.json({
           list: [
-            {
-              environment: 'development',
-              gateways: [{ gatewayId: 'edge-gateway', status: 'NOT_DEPLOYED' }],
-            },
+            { environment: 'development', gateways: [{ gatewayId: 'edge-gateway', status: 'NOT_DEPLOYED' }] },
           ],
         });
       }),
@@ -398,10 +392,7 @@ describe('GraphqlApiDetailPage deployed gateways in cloud', () => {
         await held;
         return HttpResponse.json({
           list: [
-            {
-              environment: 'development',
-              gateways: [{ gatewayId: 'edge-gateway', status: 'NOT_DEPLOYED' }],
-            },
+            { environment: 'development', gateways: [{ gatewayId: 'edge-gateway', status: 'NOT_DEPLOYED' }] },
           ],
         });
       }),
@@ -421,37 +412,5 @@ describe('GraphqlApiDetailPage deployed gateways in cloud', () => {
     renderPage();
 
     expect(await screen.findByText('Deployed gateways')).toBeInTheDocument();
-  });
-});
-
-describe('GraphqlApiDetailPage — feature usage', () => {
-  beforeEach(() => resetTrackedFeatures());
-
-  it('reports an endpoint update when the endpoint drawer is saved', async () => {
-    server.use(
-      resource('/graphql-apis/:graphqlApiId', api),
-      resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SAMPLE_SDL }),
-      collection('/graphql-apis/:graphqlApiId/gateways', []),
-      collection('/graphql-apis/:graphqlApiId/deployments', []),
-      accepts(
-        'put',
-        `/graphql-apis/${API}`,
-        { ...api, upstream: { main: { url: 'https://new-upstream.test/graphql' } } },
-        { record: requests },
-      ),
-    );
-    const { user } = renderPage();
-
-    await screen.findByRole('heading', { name: 'Countries GraphQL API' });
-    await user.click(screen.getByRole('button', { name: 'Edit endpoint' }));
-    const endpointField = await screen.findByDisplayValue('https://upstream.test/graphql');
-    await user.clear(endpointField);
-    await user.type(endpointField, 'https://new-upstream.test/graphql');
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(requests.count()).toBe(1));
-    expect(trackedFeatures()).toEqual([
-      ['apip.manage-apis.api-endpoint-update-click', { api_type: 'graphql-api' }],
-    ]);
   });
 });

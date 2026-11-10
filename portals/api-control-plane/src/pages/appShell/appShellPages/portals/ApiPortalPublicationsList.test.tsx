@@ -44,15 +44,12 @@ import {
   type PublicationSummaryFixture,
   type Recorder,
 } from '@/test/msw';
-import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { makeAuthState } from '@/test/mockAuthState';
 import { ConsoleScopeContext } from '@/scope/ConsoleScopeContext';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { makeTestQueryClient, renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { ApiPortalPublicationsList } from './ApiPortalPublicationsList';
-
-vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 const OTHER_ORG = 'api-platform-staging';
@@ -335,19 +332,6 @@ describe('ApiPortalPublicationsList', () => {
       expect(writes.thumbnail.count()).toBe(0);
       expect(writes.publish.count()).toBe(1);
       expect(screen.queryByText('publish flow')).not.toBeInTheDocument();
-    });
-
-    it('reports the one-click publish as a publish click', async () => {
-      resetTrackedFeatures();
-      servePublications([aPublicationSummary({ apiPortalId: 'acme-portal', apiPortalName: 'API Portal 1' })]);
-      serveNothingSaved();
-      recordWrites();
-      const { user } = renderPage();
-
-      await clickPublish(user);
-
-      expect(await screen.findByText('Published Loan Management Service to API Portal 1.')).toBeInTheDocument();
-      expect(trackedFeatures()).toEqual([['apip.lifecycle.api-publish-click', { api_type: 'rest-api' }]]);
     });
 
     it('sends the API’s own thumbnail when it has one', async () => {

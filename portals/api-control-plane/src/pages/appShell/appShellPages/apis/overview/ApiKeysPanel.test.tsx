@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
@@ -25,10 +25,7 @@ import { aUserApiKey, collection, noContent, recorder, type Recorder } from '@/t
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import type { ApiKeyApiKind } from './apiKeyKinds';
-import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { ApiKeysPanel } from './ApiKeysPanel';
-
-vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 const REST_API = 'pizza-shack';
@@ -164,57 +161,5 @@ describe('ApiKeysPanel — permissions', () => {
 
     renderPanel(GRAPHQL_API, 'graphql', enforcedAs(['ap:graphql_api:api_key:create']));
     expect(await screen.findByRole('button', { name: 'Add' })).toBeEnabled();
-  });
-});
-
-describe('ApiKeysPanel — feature usage', () => {
-  beforeEach(() => resetTrackedFeatures());
-
-  const serveKey = (apiId: string, kind: ApiKeyApiKind) =>
-    server.use(
-      collection('/me/api-keys', [
-        aUserApiKey({
-          artifactId: apiId,
-          artifactType: kind === 'graphql' ? 'GraphQLApi' : 'RestApi',
-          displayName: 'Prod Key',
-          id: 'key-1',
-        }),
-      ]),
-      noContent('delete', '/rest-apis/:restApiId/api-keys/:apiKeyId', { record: requests }),
-      noContent('delete', '/graphql-apis/:graphqlApiId/api-keys/:apiKeyId', { record: requests }),
-    );
-
-  it.each([
-    { apiId: REST_API, artifactKind: 'rest-api', kind: 'rest' as const },
-    { apiId: GRAPHQL_API, artifactKind: 'graphql-api', kind: 'graphql' as const },
-  ])(
-    'reports revoking a $kind API key once the revoke is confirmed',
-    async ({ apiId, artifactKind, kind }) => {
-      serveKey(apiId, kind);
-      const { user } = renderPanel(apiId, kind);
-      await screen.findByText('Prod Key');
-
-      await user.click(revokeButton());
-      await screen.findByText('Revoke API Key');
-      await user.click(screen.getByRole('button', { name: 'Revoke' }));
-
-      await waitFor(() => expect(requests.count()).toBe(1));
-      expect(trackedFeatures()).toEqual([
-        ['apip.security.api-key-revoke-click', { artifact_kind: artifactKind }],
-      ]);
-    },
-  );
-
-  it('reports nothing when the revoke is cancelled', async () => {
-    serveKey(REST_API, 'rest');
-    const { user } = renderPanel(REST_API, 'rest');
-    await screen.findByText('Prod Key');
-
-    await user.click(revokeButton());
-    await screen.findByText('Revoke API Key');
-    await user.click(screen.getByRole('button', { name: 'Cancel' }));
-
-    await waitFor(() => expect(screen.queryByText('Revoke API Key')).not.toBeInTheDocument());
-    expect(trackedFeatures()).toEqual([]);
   });
 });

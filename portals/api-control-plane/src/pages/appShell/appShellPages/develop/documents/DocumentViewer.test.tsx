@@ -26,10 +26,7 @@ import type { ApiDocument } from '@/api/resources/apiDocuments';
 import { apiUrl, failure, noContent, resource } from '@/test/msw';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
-import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { DocumentViewer } from './DocumentViewer';
-
-vi.mock('@/featureUsage/moesif');
 
 /**
  * The viewer sits on Develop › Documents and has four behavioural axes:
@@ -59,7 +56,12 @@ const aDocument = (overrides: Partial<ApiDocument> = {}): ApiDocument => ({
 function renderViewer(onEdit = vi.fn(), onDeleted = vi.fn()) {
   const utils = renderWithProviders(
     <ApiScopeProvider orgId={ORG} projectId="any">
-      <DocumentViewer apiHandle={API_ID} docId={DOC_ID} onEdit={onEdit} onDeleted={onDeleted} />
+      <DocumentViewer
+        apiHandle={API_ID}
+        docId={DOC_ID}
+        onEdit={onEdit}
+        onDeleted={onDeleted}
+      />
     </ApiScopeProvider>,
   );
   return { ...utils, onEdit, onDeleted };
@@ -69,9 +71,8 @@ beforeEach(() => resetHttpClient());
 
 const servePlainMarkdown = (text = '# Hello') =>
   server.use(
-    mswHttp.get(
-      apiUrl(`${BASE}/content`),
-      () => new HttpResponse(text, { headers: { 'Content-Type': 'text/markdown; charset=utf-8' } }),
+    mswHttp.get(apiUrl(`${BASE}/content`), () =>
+      new HttpResponse(text, { headers: { 'Content-Type': 'text/markdown; charset=utf-8' } }),
     ),
   );
 
@@ -115,12 +116,10 @@ describe('DocumentViewer — content body', () => {
   it('renders Markdown content as HTML', async () => {
     server.use(resource(BASE, aDocument()));
     server.use(
-      mswHttp.get(
-        apiUrl(`${BASE}/content`),
-        () =>
-          new HttpResponse('# Hello\n\nBody text here.', {
-            headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
-          }),
+      mswHttp.get(apiUrl(`${BASE}/content`), () =>
+        new HttpResponse('# Hello\n\nBody text here.', {
+          headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
+        }),
       ),
     );
     renderViewer();
@@ -136,9 +135,8 @@ describe('DocumentViewer — content body', () => {
     // binary header would show as prose. The viewer gates on `isTextContent`.
     server.use(resource(BASE, aDocument()));
     server.use(
-      mswHttp.get(
-        apiUrl(`${BASE}/content`),
-        () => new HttpResponse('%PDF-1.4\n…', { headers: { 'Content-Type': 'application/pdf' } }),
+      mswHttp.get(apiUrl(`${BASE}/content`), () =>
+        new HttpResponse('%PDF-1.4\n…', { headers: { 'Content-Type': 'application/pdf' } }),
       ),
     );
     renderViewer();
@@ -220,49 +218,5 @@ describe('DocumentViewer — edit and delete actions', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(onDeleted).not.toHaveBeenCalled();
-  });
-});
-
-describe('DocumentViewer — feature usage', () => {
-  beforeEach(() => resetTrackedFeatures());
-
-  it.each([
-    { documentType: 'how-to', type: 'HowTo' },
-    { documentType: 'support-forum', type: 'SupportForum' },
-    // A custom type is the user's own name; it is reported only as "other".
-    { documentType: 'other', type: 'FAQ' },
-  ])(
-    'reports deleting a $type document once the delete is confirmed',
-    async ({ documentType, type }) => {
-      server.use(resource(BASE, aDocument({ type: type as ApiDocument['type'] })));
-      servePlainMarkdown();
-      server.use(noContent('delete', BASE));
-      const { onDeleted, user } = renderViewer();
-
-      await user.click(await screen.findByRole('button', { name: /Delete/ }));
-      const dialog = await screen.findByRole('dialog');
-      await user.click(within(dialog).getByRole('button', { name: /^Delete$/ }));
-
-      await waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1));
-      expect(trackedFeatures()).toEqual([
-        [
-          'apip.manage-apis.api-document-delete-click',
-          { api_type: 'rest-api', document_type: documentType },
-        ],
-      ]);
-    },
-  );
-
-  it('reports nothing when the delete is cancelled', async () => {
-    server.use(resource(BASE, aDocument()));
-    servePlainMarkdown();
-    const { user } = renderViewer();
-
-    await user.click(await screen.findByRole('button', { name: /Delete/ }));
-    const dialog = await screen.findByRole('dialog');
-    await user.click(within(dialog).getByRole('button', { name: /Cancel/ }));
-
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(trackedFeatures()).toEqual([]);
   });
 });

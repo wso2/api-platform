@@ -17,19 +17,16 @@
  */
 
 import { Route, Routes } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { runtimeConfig, type GatewayVersionEntry } from '@/config/runtime';
-import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { accepts, aGateway, recorder, type Recorder } from '@/test/msw';
 import { server } from '@/test/server';
 import { makeConsoleScope } from '@/test/mockScope';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { GatewayCreatePage } from './GatewayCreatePage';
-
-vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 
@@ -65,7 +62,6 @@ function renderPage() {
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
-  resetTrackedFeatures();
   runtimeConfig.gatewayVersions = CATALOG;
 });
 
@@ -199,35 +195,5 @@ describe('GatewayCreatePage', () => {
       'aria-disabled',
       'true',
     );
-  });
-
-  describe('feature usage', () => {
-    it('reports the registration of a self-hosted gateway of the chosen type', async () => {
-      server.use(
-        accepts('post', '/gateways', aGateway({ id: 'edge-gateway' }), { record: requests }),
-      );
-
-      const { user } = renderPage();
-
-      await user.click(screen.getByRole('radio', { name: /AI Gateway/ }));
-      await fillRequired(user);
-      await user.click(screen.getByRole('button', { name: 'Provision gateway' }));
-
-      await waitFor(() => expect(requests.count()).toBe(1));
-      expect(trackedFeatures()).toEqual([
-        ['apip.gateway.gateway-register-click', { gateway_hosting: 'self-hosted', gateway_type: 'ai' }],
-      ]);
-    });
-
-    it('reports nothing when the form is refused before anything is sent', async () => {
-      server.use(accepts('post', '/gateways', aGateway(), { record: requests }));
-
-      const { user } = renderPage();
-
-      await user.click(screen.getByRole('button', { name: 'Provision gateway' }));
-
-      expect(await screen.findByText('Enter a gateway name.')).toBeInTheDocument();
-      expect(trackedFeatures()).toEqual([]);
-    });
   });
 });

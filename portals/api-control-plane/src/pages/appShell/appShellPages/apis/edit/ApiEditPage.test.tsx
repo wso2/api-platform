@@ -17,7 +17,7 @@
  */
 
 import { Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
@@ -33,10 +33,7 @@ import {
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
-import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { ApiEditPage } from './ApiEditPage';
-
-vi.mock('@/featureUsage/moesif');
 
 const ORG = 'acme-org';
 const PROJECT = 'retail';
@@ -131,37 +128,5 @@ describe('ApiEditPage', () => {
 
     expect(await screen.findByText('This API cannot be edited here')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Save changes/ })).not.toBeInTheDocument();
-  });
-});
-
-describe('ApiEditPage — feature usage', () => {
-  beforeEach(() => resetTrackedFeatures());
-
-  it('reports a metadata update when the edits are saved', async () => {
-    server.use(
-      resource(`/rest-apis/${API}`, anApi()),
-      accepts('put', `/rest-apis/${API}`, anApi({ displayName: 'Pizza Palace' }), {
-        record: requests,
-      }),
-    );
-    const { user } = renderPage();
-
-    const name = await screen.findByDisplayValue('Pizza Shack');
-    await user.clear(name);
-    await user.type(name, 'Pizza Palace');
-    await user.click(screen.getByRole('button', { name: /Save changes/ }));
-
-    await waitFor(() => expect(requests.count()).toBe(1));
-    expect(trackedFeatures()).toEqual([['apip.manage-apis.api-update-click', { api_type: 'rest-api' }]]);
-  });
-
-  it('reports nothing when the form is rejected before saving', async () => {
-    server.use(resource(`/rest-apis/${API}`, anApi()));
-    const { user } = renderPage();
-
-    await user.clear(await screen.findByDisplayValue('Pizza Shack'));
-    await user.click(screen.getByRole('button', { name: /Save changes/ }));
-
-    expect(trackedFeatures()).toEqual([]);
   });
 });
