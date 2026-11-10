@@ -1104,7 +1104,7 @@ func TestOrganizationRestorePayloadKeepsOnlyStoredSettings(t *testing.T) {
 func TestMultipartFileBodyCarriesOneNamedFilePart(t *testing.T) {
 	body, contentType, err := multipartFileBody("organization", "organization.yaml", "kind: Organization\n")
 	require.NoError(t, err)
-	request := httptest.NewRequest(http.MethodPut, "/organizations/default", bytes.NewReader(body))
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPut, "/organizations/default", bytes.NewReader(body))
 	request.Header.Set("Content-Type", contentType)
 	require.NoError(t, request.ParseMultipartForm(1<<20))
 	files := request.MultipartForm.File["organization"]

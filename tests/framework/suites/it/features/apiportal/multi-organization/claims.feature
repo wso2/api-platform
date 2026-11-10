@@ -183,16 +183,12 @@ Feature: API Portal multi-organization organization claims
 
     # A claim is matched on idp_ref_id only, never on a handle
     Given I generate a unique resource name from "iso-a" and store it as "isoA"
-    And I generate a unique resource name from "iso-b" and store it as "isoB"
+    And the API Portal "api-portal-multi-organization" organization with IDP reference "${CTX:isoA}" is removed after the scenario
+    And the API Portal "api-portal-multi-organization" organization with IDP reference "org-a-${CTX:isoA}" is removed after the scenario
     And I mint an API Portal IDP token stored as "tokenA" with claims:
       | sub      | ann                  |
       | org_id   | ${CTX:isoA}          |
       | org_name | Org A ${CTX:isoA}    |
-      | roles    | ["ap_admin"]         |
-    And I mint an API Portal IDP token stored as "tokenB" with claims:
-      | sub      | ben                  |
-      | org_id   | ${CTX:isoB}          |
-      | org_name | Org B ${CTX:isoB}    |
       | roles    | ["ap_admin"]         |
     Given I mint an API Portal IDP token stored as "tokenHandle" with claims:
       | sub    | h                     |

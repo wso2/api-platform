@@ -400,7 +400,7 @@ scenarios:
         - feature: suites/it/features/apiportal/security/auth_role.feature
           scenario: "Operations are authorized by portal role grants"
         - feature: suites/it/features/apiportal/security/grant_table_parity.feature
-          scenario: "Shared roles have identical grants on both components, apart from the deliberate narrow-role difference"
+          scenario: "The portal grants every shared role what platform-api grants it, apart from the deliberate narrow-role difference"
   - id: APIP-034
     title: "IdP (OIDC) login"
     priority: P0
@@ -611,7 +611,7 @@ scenarios:
         - feature: suites/it/features/apiportal/webhooks/devportal_webhook.feature
           scenario: "API keys and subscriptions issued in the API Portal reach the gateway through their whole lifecycle"
         - feature: suites/it/features/apiportal/webhooks/devportal_webhook.feature
-          scenario: "The control plane processes only signed, recent, known API Portal events, and each one once"
+          scenario: "The control plane processes only signed, recent, known API Portal events, and a redelivered event changes nothing"
   - id: APIP-054
     title: "Per-organization token issuers"
     priority: P0

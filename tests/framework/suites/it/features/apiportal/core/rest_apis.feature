@@ -455,51 +455,65 @@ Feature: REST APIs are managed through the API Portal REST API
 
     # A REST API with an invalid status is refused and stores nothing
     Given I generate a unique resource name from "portal-rest-bad-field" and store it as "apiId"
-    And I generate a unique resource name from "portal-missing-plan" and store it as "missingPlanId"
     When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
-      | id      | ${CTX:apiId} |
-      | name    | ${CTX:apiId} |
-      | status | BOGUS      |
+      | id     | ${CTX:apiId} |
+      | name   | ${CTX:apiId} |
+      | status | BOGUS        |
     Then the response status code should be 400
     And the response body should not contain "stack"
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 404
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+    Then the response status code should be 201
 
     # A REST API with an invalid agentVisibility is refused and stores nothing
     Given I generate a unique resource name from "portal-rest-bad-field" and store it as "apiId"
-    And I generate a unique resource name from "portal-missing-plan" and store it as "missingPlanId"
     When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
-      | id      | ${CTX:apiId} |
-      | name    | ${CTX:apiId} |
-      | agentVisibility | BOGUS      |
+      | id              | ${CTX:apiId} |
+      | name            | ${CTX:apiId} |
+      | agentVisibility | BOGUS        |
     Then the response status code should be 400
     And the response body should not contain "stack"
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 404
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+    Then the response status code should be 201
 
-    # A REST API with an invalid subscriptionPlans is refused and stores nothing
+    # A REST API offering a plan that does not exist is refused and stores nothing
     Given I generate a unique resource name from "portal-rest-bad-field" and store it as "apiId"
     And I generate a unique resource name from "portal-missing-plan" and store it as "missingPlanId"
     When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
-      | id      | ${CTX:apiId} |
-      | name    | ${CTX:apiId} |
-      | subscriptionPlans | [{"id": "${CTX:missingPlanId}"}]      |
+      | id                | ${CTX:apiId}                     |
+      | name              | ${CTX:apiId}                     |
+      | subscriptionPlans | [{"id": "${CTX:missingPlanId}"}] |
     Then the response status code should be 404
     And the response body should not contain "stack"
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 404
-
-    # A REST API with an invalid labels is refused and stores nothing
-    Given I generate a unique resource name from "portal-rest-bad-field" and store it as "apiId"
-    And I generate a unique resource name from "portal-missing-plan" and store it as "missingPlanId"
     When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
-      | id      | ${CTX:apiId} |
-      | name    | ${CTX:apiId} |
-      | labels | ["${CTX:missingPlanId}"]      |
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+    Then the response status code should be 201
+
+    # A REST API with a label that does not exist is refused and stores nothing
+    Given I generate a unique resource name from "portal-rest-bad-field" and store it as "apiId"
+    And I generate a unique resource name from "portal-missing-label" and store it as "missingLabelId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id     | ${CTX:apiId}              |
+      | name   | ${CTX:apiId}              |
+      | labels | ["${CTX:missingLabelId}"] |
     Then the response status code should be 404
     And the response body should not contain "stack"
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 404
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+    Then the response status code should be 201
 
     # Updating a REST API with no type is refused and the API keeps its type
     Given I generate a unique resource name from "portal-rest-retype" and store it as "apiId"
