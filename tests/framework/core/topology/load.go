@@ -217,8 +217,9 @@ func LoadFile(path string, registry *components.Registry) (*Resolved, error) {
 
 // readBlockFile reads the blocks of one blockFiles entry, relative to the suite directory.
 func readBlockFile(dir, name string) ([]Block, error) {
-	if strings.TrimSpace(name) == "" || filepath.IsAbs(name) {
-		return nil, fmt.Errorf("blockFiles entry %q must be a path relative to the suite file", name)
+	// IsLocal refuses an empty path, an absolute one and one that leaves the suite directory.
+	if !filepath.IsLocal(name) {
+		return nil, fmt.Errorf("blockFiles entry %q must be a path inside the suite file's directory", name)
 	}
 	path := filepath.Join(dir, name)
 	raw, err := os.ReadFile(path)

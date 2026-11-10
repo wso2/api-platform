@@ -271,6 +271,15 @@ func TestCheckSuiteYAMLsFollowsBlockFiles(t *testing.T) {
 		require.Contains(t, issues[0], "parse suite YAML")
 		require.Contains(t, issues[0], filepath.Join("blocks", "bad.yaml"))
 	})
+
+	for _, entry := range []string{"/etc/blocks.yaml", "../blocks.yaml", "\"\""} {
+		t.Run("a block file path outside the suite directory is reported: "+entry, func(t *testing.T) {
+			path := writeSuite(t, []string{entry}, nil)
+			issues := checkSuiteYAMLs(path)
+			require.Len(t, issues, 1)
+			require.Contains(t, issues[0], "must be a path inside the suite file's directory")
+		})
+	}
 }
 
 func TestCheckCleanupRegistrationRequiresRegistrationOrDelegation(t *testing.T) {

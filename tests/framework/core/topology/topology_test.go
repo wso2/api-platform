@@ -979,11 +979,13 @@ blockFiles:
 		require.ErrorContains(t, err, "field defaults not found")
 	})
 
-	t.Run("an absolute block file path is rejected", func(t *testing.T) {
-		path := writeSuite(t, head+"blockFiles: [/etc/blocks.yaml]\n", nil)
-		_, err := LoadFile(path, testRegistry(t))
-		require.ErrorContains(t, err, "must be a path relative to the suite file")
-	})
+	for _, entry := range []string{"/etc/blocks.yaml", "../blocks.yaml", "blocks/../../blocks.yaml", "\"\""} {
+		t.Run("a block file path outside the suite directory is rejected: "+entry, func(t *testing.T) {
+			path := writeSuite(t, head+"blockFiles: ["+entry+"]\n", nil)
+			_, err := LoadFile(path, testRegistry(t))
+			require.ErrorContains(t, err, "must be a path inside the suite file's directory")
+		})
+	}
 
 	t.Run("Load without a file location refuses block files", func(t *testing.T) {
 		_, err := load(t, head+"blockFiles: [blocks/one.yaml]\n")

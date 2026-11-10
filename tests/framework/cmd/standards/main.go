@@ -280,6 +280,12 @@ func checkSuiteYAMLs(paths string) []string {
 		issues = append(issues, fileIssues...)
 		// A suite's blockFiles are relative to it and hold more of its blocks.
 		for _, name := range blockFiles {
+			// As the suite loader does, refuse an empty path, an absolute one and one that
+			// leaves the suite directory.
+			if !filepath.IsLocal(name) {
+				issues = append(issues, fmt.Sprintf("%s: blockFiles entry %q must be a path inside the suite file's directory", path, name))
+				continue
+			}
 			_, blockIssues := checkSuiteYAML(filepath.Join(filepath.Dir(path), name))
 			issues = append(issues, blockIssues...)
 		}
