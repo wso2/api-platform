@@ -34,7 +34,7 @@ import {
   RefreshCw,
   TriangleAlert,
 } from '@wso2/oxygen-ui-icons-react';
-import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 const messages = defineMessages({
   saveDraft: {
@@ -61,6 +61,26 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.moreActions',
     defaultMessage: 'More publish actions',
   },
+  publishing: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.publishing',
+    defaultMessage: 'Publishing\u2026',
+    description: 'Label of the Publish button while the publish is in progress.',
+  },
+  republishing: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.republishing',
+    defaultMessage: 'Republishing\u2026',
+    description: 'Label of the Republish button while the republish is in progress.',
+  },
+  unpublishing: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublishing',
+    defaultMessage: 'Unpublishing\u2026',
+    description: 'Label of the Unpublish button while the unpublish is in progress.',
+  },
+  deprecating: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecating',
+    defaultMessage: 'Deprecating\u2026',
+    description: 'Label of the Deprecate button while the deprecation is in progress.',
+  },
 });
 
 export type PublishActionsBarProps = {
@@ -73,8 +93,6 @@ export type PublishActionsBarProps = {
   deprecating: boolean;
   onDeprecate: () => void;
   onPublish: () => void;
-  /** Holds Publish back (not Save Draft), e.g. while the documents it should carry are still loading. */
-  publishDisabled?: boolean;
   onSaveDraft: () => void;
   onUnpublish: () => void;
   publishing: boolean;
@@ -93,13 +111,48 @@ const ACTION_ICON = {
   unpublish: <CircleX size={ICON_SIZE} />,
 } as const;
 
-/** Every label the main button can show. */
+/** Every label the main button can show, idle or running. */
 const ACTION_LABELS = [
   messages.publish,
   messages.republish,
   messages.deprecate,
   messages.unpublish,
+  messages.publishing,
+  messages.republishing,
+  messages.deprecating,
+  messages.unpublishing,
 ];
+
+/** What a running action's button says. */
+const RUNNING_LABEL = {
+  deprecate: messages.deprecating,
+  publish: messages.publishing,
+  republish: messages.republishing,
+  unpublish: messages.unpublishing,
+} as const;
+
+/** The label shown for an action, and kept as wide as the widest of `labels`, so the button never resizes. */
+function ActionLabel({
+  current,
+  labels,
+}: {
+  current: MessageDescriptor;
+  labels: MessageDescriptor[];
+}) {
+  return (
+    <Box component="span" sx={{ display: 'inline-grid', textAlign: 'center' }}>
+      {labels.map((label) => (
+        <Box
+          component="span"
+          key={label.id}
+          sx={{ gridArea: '1 / 1', visibility: label === current ? 'visible' : 'hidden' }}
+        >
+          <FormattedMessage {...label} />
+        </Box>
+      ))}
+    </Box>
+  );
+}
 
 const ACTION_COLOR = { publish: 'primary', unpublish: 'error', deprecate: 'warning' } as const;
 
@@ -119,7 +172,6 @@ export function PublishActionsBar({
   isPublished,
   onDeprecate,
   onPublish,
-  publishDisabled = false,
   onSaveDraft,
   onUnpublish,
   publishing,
@@ -139,6 +191,11 @@ export function PublishActionsBar({
     setArmedAction('publish');
   }
   const busy = savingDraft || publishing || unpublishing || deprecating;
+  const running: Record<PrimaryAction, boolean> = {
+    publish: publishing,
+    unpublish: unpublishing,
+    deprecate: deprecating,
+  };
 
   const available: Record<PrimaryAction, boolean> = {
     publish: true,
@@ -159,6 +216,8 @@ export function PublishActionsBar({
   const isRepublish = (action: PrimaryAction) => action === 'publish' && canDeprecate;
   const actionLabel = (action: PrimaryAction) =>
     isRepublish(action) ? messages.republish : messages[action];
+  const runningLabel = (action: PrimaryAction) =>
+    RUNNING_LABEL[isRepublish(action) ? 'republish' : action];
   const actionIcon = (action: PrimaryAction) =>
     ACTION_ICON[isRepublish(action) ? 'republish' : action];
 
@@ -170,25 +229,19 @@ export function PublishActionsBar({
 
       <ButtonGroup color={ACTION_COLOR[effectiveAction]} disabled={busy} variant="contained">
         <Button
-          disabled={effectiveAction === 'publish' && publishDisabled}
+          loading={running[effectiveAction]}
+          loadingPosition="start"
           onClick={run[effectiveAction]}
           startIcon={actionIcon(effectiveAction)}
         >
-          {/* Every label shares one cell and only the current one shows, so the button is always as wide as the longest. */}
-          <Box component="span" sx={{ display: 'inline-grid', textAlign: 'center' }}>
-            {ACTION_LABELS.map((label) => (
-              <Box
-                component="span"
-                key={label.id}
-                sx={{
-                  gridArea: '1 / 1',
-                  visibility: label === actionLabel(effectiveAction) ? 'visible' : 'hidden',
-                }}
-              >
-                <FormattedMessage {...label} />
-              </Box>
-            ))}
-          </Box>
+          <ActionLabel
+            current={
+              running[effectiveAction]
+                ? runningLabel(effectiveAction)
+                : actionLabel(effectiveAction)
+            }
+            labels={ACTION_LABELS}
+          />
         </Button>
         <Button
           aria-label={intl.formatMessage(messages.moreActions)}
@@ -226,6 +279,14 @@ export function PublishActionsBar({
   );
 }
 
+/** Every label the published version's main button can show, idle or running. */
+const PUBLISHED_ACTION_LABELS = [
+  messages.unpublish,
+  messages.deprecate,
+  messages.unpublishing,
+  messages.deprecating,
+];
+
 export type PublishedActionsBarProps = {
   /** Whether the live listing is in the published state — what enables Deprecate. */
   canDeprecate: boolean;
@@ -257,26 +318,21 @@ export function PublishedActionsBar({
   // Deprecate is unavailable once the listing is deprecated, so fall back to Unpublish.
   const action = armed === 'deprecate' && canDeprecate ? 'deprecate' : 'unpublish';
   const other = action === 'unpublish' ? 'deprecate' : 'unpublish';
+  const running = action === 'unpublish' ? unpublishing : deprecating;
 
   return (
     <Stack direction="row" sx={{ alignItems: 'stretch', justifyContent: 'flex-end' }}>
       <ButtonGroup color={ACTION_COLOR[action]} disabled={busy} variant="contained">
         <Button
+          loading={running}
+          loadingPosition="start"
           onClick={action === 'unpublish' ? onUnpublish : onDeprecate}
           startIcon={ACTION_ICON[action]}
         >
-          {/* Both labels share one cell, so the button is always as wide as the longer. */}
-          <Box component="span" sx={{ display: 'inline-grid', textAlign: 'center' }}>
-            {(['unpublish', 'deprecate'] as const).map((label) => (
-              <Box
-                component="span"
-                key={label}
-                sx={{ gridArea: '1 / 1', visibility: label === action ? 'visible' : 'hidden' }}
-              >
-                <FormattedMessage {...messages[label]} />
-              </Box>
-            ))}
-          </Box>
+          <ActionLabel
+            current={running ? RUNNING_LABEL[action] : messages[action]}
+            labels={PUBLISHED_ACTION_LABELS}
+          />
         </Button>
         <Button
           aria-label={intl.formatMessage(messages.moreActions)}
