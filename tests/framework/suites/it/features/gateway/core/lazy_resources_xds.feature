@@ -226,7 +226,18 @@ Feature: Lazy resources xDS synchronization
     And the lazy resources should contain template "${CTX:resourceName9_1}" of type "LlmProviderTemplate"
     And the lazy resources should contain resource "${CTX:resourceName9_1}" of type "ProviderTemplateMapping"
     And the lazy resources should have at least 2 resources with id "${CTX:resourceName9_1}"
+    # The provider did not overwrite the template that shares its name. The polling form is used
+    # because it reads the LlmProviderTemplate entry by type; the provider's mapping has the same id.
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:resourceName9_1}" has display name "Collision Test Template"
+
+    # Deleting the provider removes its mapping and leaves the template.
     When I delete the LLM provider "${CTX:resourceName9_1}"
     Then the response status code should be 200
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:resourceName9_1}" of type "ProviderTemplateMapping" is absent
+    Then the lazy resources should contain template "${CTX:resourceName9_1}" of type "LlmProviderTemplate"
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:resourceName9_1}" has display name "Collision Test Template"
+
     When I delete the LLM provider template "${CTX:resourceName9_1}"
     Then the response status code should be 200
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:resourceName9_1}" of type "LlmProviderTemplate" is absent
+    Then the lazy resources should not contain template "${CTX:resourceName9_1}"

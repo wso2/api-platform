@@ -21,6 +21,15 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Both are empty for every API kind released before Agent, so existing policies are
 unaffected.
+- `FaultCode.PROVIDER_STREAM_FAILED` (`960002`) — a provider ending a streamed
+  response with a failure after it began, such as an error event or exception frame.
+  Shared by every policy that translates a provider stream.
+- `FaultCode.NO_MODEL_AVAILABLE` (`960003`) — a model-routing policy with no model
+  left to send the request to.
+- `FaultCode.INVALID_REQUEST_HEADER` (`960004`) — a request header a policy needed and
+  could not use: missing, malformed, or contradicting the body.
+- `FaultCode.INVALID_REQUEST_URI` (`960005`) — a request path or query string a policy
+  needed and could not use.
 
 ---
 

@@ -17,19 +17,29 @@
  */
 
 import type { ReactNode } from 'react';
-import { Avatar, Box, Divider, IconButton, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
-import { BoxIcon, Settings } from '@wso2/oxygen-ui-icons-react';
+import {
+  Avatar,
+  AvatarGroup,
+  Box,
+  Divider,
+  RelativeTime,
+  Stack,
+  Tooltip,
+  Typography,
+} from '@wso2/oxygen-ui';
+import { BoxIcon, Users } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import { useNavigate } from 'react-router-dom';
 
 import type { Project } from '@/api/resources/projects';
-import { routes } from '@/routes/paths';
+import { TruncatedText } from '@/components/common/TruncatedText';
+import { SecondaryText } from '@/components/common/SecondaryText';
+import { PageTitleAvatar } from '@/components/common/PageTitleAvatar';
 import { relativeTime } from '@/utils/relativeTime';
 
 const messages = defineMessages({
   created: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.created',
-    defaultMessage: '<muted>Created</muted> {date}',
+    defaultMessage: 'Created',
   },
   descriptionFallback: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.descriptionFallback',
@@ -43,10 +53,6 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.owner',
     defaultMessage: '<muted>Owned by</muted> {owner}',
   },
-  settings: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.settings',
-    defaultMessage: 'Project settings',
-  },
   unknown: {
     id: 'apiControlPlane.pages.appShell.appShellPages.projects.components.ProjectMetadata.unknown',
     defaultMessage: 'Unknown',
@@ -54,13 +60,11 @@ const messages = defineMessages({
 });
 
 type ProjectMetadataProps = {
-  orgHandle: string;
   project: Project;
 };
 
-export function ProjectMetadata({ orgHandle, project }: ProjectMetadataProps) {
+export function ProjectMetadata({ project }: ProjectMetadataProps) {
   const intl = useIntl();
-  const navigate = useNavigate();
   const memberName = project.updatedBy;
   const memberCount = memberName ? 1 : 0;
   const owner = project.createdBy || intl.formatMessage(messages.unknown);
@@ -68,9 +72,9 @@ export function ProjectMetadata({ orgHandle, project }: ProjectMetadataProps) {
     ? relativeTime(project.createdAt)
     : intl.formatMessage(messages.unknown);
   const muted = (chunks: ReactNode) => (
-    <Box component="span" sx={{ opacity: 0.7 }}>
+    <SecondaryText component="span" variant="inherit">
       {chunks}
-    </Box>
+    </SecondaryText>
   );
 
   return (
@@ -82,64 +86,54 @@ export function ProjectMetadata({ orgHandle, project }: ProjectMetadataProps) {
         spacing={2}
         marginTop={2}
       >
-        <Stack alignItems="flex-start" direction="row" spacing={2.5} sx={{ minWidth: 0 }}>
-          <Avatar
-            sx={{
-              bgcolor: 'primary.main',
-              color: 'primary.contrastText',
-              height: 64,
-              width: 64,
-            }}
-            variant="rounded"
-          >
+        <Stack alignItems="flex-start" direction="row" spacing={2.5} sx={{ minWidth: 0, flex: 1 }}>
+          <PageTitleAvatar>
             <BoxIcon size={28} />
-          </Avatar>
-          <Stack spacing={1.5} sx={{ minWidth: 0 }}>
+          </PageTitleAvatar>
+          <Stack spacing={1.5} sx={{ minWidth: 0, flex: 1 }}>
             <Box sx={{ minWidth: 0 }}>
-              <Typography noWrap sx={{ fontWeight: 800 }} variant="h2">
-                {project.displayName}
+              <Typography sx={{ fontWeight: 800 }} variant="h2">
+                <TruncatedText text={project.displayName} maxCharacters={100} />
               </Typography>
-              <Typography color="text.secondary" variant="body1">
-                {project.description || <FormattedMessage {...messages.descriptionFallback} />}
-              </Typography>
+              <SecondaryText>
+                <TruncatedText
+                  text={project.description || intl.formatMessage(messages.descriptionFallback)}
+                  maxLines={2}
+                />
+              </SecondaryText>
             </Box>
 
             <Stack
               alignItems="center"
               direction="row"
-              divider={<Divider flexItem orientation="vertical" />}
+              divider={<Divider orientation="vertical" sx={{ height: 20, alignSelf: 'center' }} />}
               flexWrap="wrap"
               spacing={2}
             >
               <Typography color="text.secondary" variant="body2">
                 <FormattedMessage {...messages.owner} values={{ muted, owner }} />
               </Typography>
-              <Typography color="text.secondary" variant="body2">
-                <FormattedMessage {...messages.created} values={{ date: created, muted }} />
-              </Typography>
+              <RelativeTime
+                action={muted(<FormattedMessage {...messages.created} />)}
+                time={created}
+                dateTime={project.createdAt || undefined}
+                hideIcon
+              />
               <Stack alignItems="center" direction="row" spacing={1}>
                 {memberName && (
                   <Tooltip title={memberName}>
-                    <Stack direction="row" sx={{ '& > * + *': { ml: -1 } }}>
-                      <Avatar
-                        sx={{
-                          bgcolor: 'primary.main',
-                          color: 'primary.contrastText',
-                          height: 28,
-                          width: 28,
-                        }}
-                      >
+                    <AvatarGroup
+                      sx={{
+                        '& .MuiAvatar-root': { height: 28, width: 28 },
+                      }}
+                    >
+                      <Avatar color="primary" variant="light">
                         {memberName.charAt(0).toUpperCase()}
                       </Avatar>
-                      <Avatar
-                        aria-hidden="true"
-                        sx={{
-                          bgcolor: 'action.hover',
-                          height: 28,
-                          width: 28,
-                        }}
-                      />
-                    </Stack>
+                      <Avatar aria-hidden="true">
+                        <Users size={18} strokeWidth={1} />
+                      </Avatar>
+                    </AvatarGroup>
                   </Tooltip>
                 )}
                 <Typography color="text.secondary" variant="body2">
@@ -153,15 +147,6 @@ export function ProjectMetadata({ orgHandle, project }: ProjectMetadataProps) {
           </Stack>
         </Stack>
 
-        <Tooltip title={intl.formatMessage(messages.settings)}>
-          <IconButton
-            aria-label={intl.formatMessage(messages.settings)}
-            onClick={() => navigate(routes.projectSettings(orgHandle, project.id))}
-            sx={{ flexShrink: 0 }}
-          >
-            <Settings size={20} />
-          </IconButton>
-        </Tooltip>
       </Stack>
     </Box>
   );

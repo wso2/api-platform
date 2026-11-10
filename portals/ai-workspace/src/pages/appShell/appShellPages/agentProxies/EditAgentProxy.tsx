@@ -41,6 +41,7 @@ import {
   getProjectSlug,
 } from '../../../../utils/projectRouting';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 
 const MAX_NAME_LENGTH = 128;
@@ -92,6 +93,10 @@ function EditAgentProxyForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const isReadOnlyAgentProxy = Boolean(agentProxy?.readOnly);
+  // The organization-wide read-only verdict, distinct from the artifact-level
+  // `readOnly` above: while it holds, the control plane refuses every update,
+  // so the form is shown but may not be submitted.
+  const { readOnly: isReadOnlyOrg, readOnlyMessage } = useResourceLimits();
 
   useEffect(() => {
     if (!agentProxy) return;
@@ -225,6 +230,9 @@ function EditAgentProxyForm() {
 
         <Box sx={{ mb: 4 }}>
           <Stack spacing={3}>
+            {isReadOnlyOrg ? (
+              <Alert severity="info">{readOnlyMessage}</Alert>
+            ) : null}
             {isReadOnlyAgentProxy ? (
               <Alert severity="info">
                 This agent proxy was created from a gateway. The name and
@@ -321,7 +329,7 @@ function EditAgentProxyForm() {
           <Button
             variant="contained"
             onClick={handleSubmit}
-            disabled={isSubmitting || !isFormValid()}
+            disabled={isSubmitting || isReadOnlyOrg || !isFormValid()}
           >
             {isSubmitting ? 'Updating...' : 'Update'}
           </Button>

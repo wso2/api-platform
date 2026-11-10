@@ -30,19 +30,28 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
+	"strings"
 	"testing"
 
-	"github.com/cucumber/godog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/core/runtime"
+	"github.com/wso2/api-platform/tests/framework/core/topology"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
+
+func TestNewPortalClientIsBuiltOnce(t *testing.T) {
+	require.Same(t, newPortalClient(), newPortalClient())
+}
 
 func TestTopLevelJSONArrayLength(t *testing.T) {
 	tests := []struct {
@@ -143,59 +152,37 @@ func TestDecryptWebhookField(t *testing.T) {
 	require.Equal(t, plaintext, decrypted)
 }
 
-// claimsTable builds a two-column table from name/value pairs.
-func claimsTable(t *testing.T, pairs ...string) *godog.Table {
-	t.Helper()
-	type cell struct {
-		Value string `json:"value"`
-	}
-	type row struct {
-		Cells []cell `json:"cells"`
-	}
-	var rows []row
-	for i := 0; i+1 < len(pairs); i += 2 {
-		rows = append(rows, row{Cells: []cell{{pairs[i]}, {pairs[i+1]}}})
-	}
-	raw, err := json.Marshal(map[string]any{"rows": rows})
-	require.NoError(t, err)
-	var table godog.Table
-	require.NoError(t, json.Unmarshal(raw, &table))
-	return &table
-}
+func TestWithReplacedClaimKeepsHeaderAndSignature(t *testing.T) {
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"u","name":"Ada"}`))
+	token := "header." + payload + ".signature"
 
-func TestClaimsFromTableDecodesListsMapsAndQuotedStrings(t *testing.T) {
-	claims, err := claimsFromTable(context.Background(), claimsTable(t,
-		"sub", "ivy",
-		"org_id", `["acme"]`,
-		"org_map", `{"acme": {"id": "1"}}`,
-		"padded", `"default "`,
-		"org_name", "Acme Corp",
-	))
+	forged, err := withReplacedClaim(token, "name", "Mallory")
 	require.NoError(t, err)
-	require.Equal(t, "ivy", claims["sub"])
-	require.Equal(t, []any{"acme"}, claims["org_id"])
-	require.Equal(t, map[string]any{"acme": map[string]any{"id": "1"}}, claims["org_map"])
-	require.Equal(t, "default ", claims["padded"], "a quoted value keeps the space Gherkin would trim")
-	require.Equal(t, "Acme Corp", claims["org_name"])
-}
+	parts := strings.Split(forged, ".")
+	require.Len(t, parts, 3)
+	require.Equal(t, "header", parts[0])
+	require.Equal(t, "signature", parts[2])
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	require.NoError(t, err)
+	var claims map[string]any
+	require.NoError(t, json.Unmarshal(raw, &claims))
+	require.Equal(t, map[string]any{"sub": "u", "name": "Mallory"}, claims)
 
-func TestClaimsFromTableRejectsMalformedTables(t *testing.T) {
-	cases := map[string]*godog.Table{
-		"nil table":    nil,
-		"missing sub":  claimsTable(t, "org_id", "acme"),
-		"empty sub":    claimsTable(t, "sub", ""),
-		"empty name":   claimsTable(t, "sub", "u", " ", "value"),
-		"duplicate":    claimsTable(t, "sub", "u", "sub", "v"),
-		"invalid JSON": claimsTable(t, "sub", "u", "roles", "[unclosed"),
-		"wrong columns": func() *godog.Table {
-			table := claimsTable(t, "sub", "u")
-			table.Rows[0].Cells = table.Rows[0].Cells[:1]
-			return table
-		}(),
-	}
-	for name, table := range cases {
+	added, err := withReplacedClaim(token, "iss", "https://other")
+	require.NoError(t, err)
+	raw, err = base64.RawURLEncoding.DecodeString(strings.Split(added, ".")[1])
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &claims))
+	require.Equal(t, "https://other", claims["iss"], "a claim the token lacks is added")
+
+	for name, malformed := range map[string]string{
+		"not a JWS":       "only.two",
+		"bad base64":      "h.!!!.s",
+		"payload not map": "h." + base64.RawURLEncoding.EncodeToString([]byte(`[1]`)) + ".s",
+		"null payload":    "h." + base64.RawURLEncoding.EncodeToString([]byte(`null`)) + ".s",
+	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := claimsFromTable(context.Background(), table)
+			_, err := withReplacedClaim(malformed, "name", "x")
 			require.Error(t, err)
 		})
 	}
@@ -294,4 +281,260 @@ func TestTheIdentityProviderClientVerifiesTheProviderCertificate(t *testing.T) {
 	defer other.Close()
 	_, err = client.Do(context.Background(), httpx.Request{URL: other.URL}, 0, 0)
 	require.Error(t, err, "a certificate other than the provider's must not be trusted")
+}
+
+func TestAPIOffersPlan(t *testing.T) {
+	body := []byte(`{"id":"api-1","status":"PUBLISHED","subscriptionPlans":[{"id":"gold"},{"id":"silver"}]}`)
+
+	require.NoError(t, apiOffersPlan(body, "api-1", "silver"))
+	require.ErrorContains(t, apiOffersPlan(body, "api-1", "bronze"), "without plan")
+	require.ErrorContains(t, apiOffersPlan(body, "api-2", "gold"), "returned")
+	require.NoError(t, apiOffersPlan([]byte(`{"id":"api-1","status":"DEPRECATED","subscriptionPlans":[{"id":"gold"}]}`),
+		"api-1", "gold"))
+	require.ErrorContains(t, apiOffersPlan([]byte(`not json`), "api-1", "gold"), "decoding")
+}
+
+func TestAPIHasField(t *testing.T) {
+	body := []byte(`{"id":"api-1","status":"DEPRECATED","name":"Renamed","type":"GRAPHQL"}`)
+
+	require.NoError(t, apiHasField(body, "api-1", "status", "DEPRECATED"))
+	require.NoError(t, apiHasField(body, "api-1", "name", "Renamed"))
+	require.NoError(t, apiHasField(body, "api-1", "type", "GRAPHQL"))
+	require.ErrorContains(t, apiHasField(body, "api-1", "status", "PUBLISHED"), `with status "DEPRECATED"`)
+	require.ErrorContains(t, apiHasField(body, "api-1", "title", "x"), "want")
+	require.ErrorContains(t, apiHasField([]byte(`not json`), "api-1", "status", "x"), "decoding")
+}
+
+func TestFetchListedAPIRejectsAnUnknownListing(t *testing.T) {
+	_, _, err := (&Steps{}).fetchListedAPI(context.Background(), "LLM provider", "api-1")
+	require.ErrorContains(t, err, "unsupported API Portal listing")
+	require.Equal(t, "/apis/", listingCollections["API"])
+	require.Equal(t, "/mcp-servers/", listingCollections["MCP server"])
+}
+
+func TestTrackPublishedPlanRemovesThePlanFromThePortalAtCleanup(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	reg := cleanup.NewRegistry(slog.Default())
+	require.NoError(t, cleanup.Install(ctx, reg))
+	s := &Steps{}
+
+	require.NoError(t, s.trackPublishedPlan(ctx, "gold"))
+	require.NoError(t, s.trackPublishedPlan(ctx, "silver"))
+
+	var ids []string
+	for _, res := range reg.Pending() {
+		require.Equal(t, portalSubscriptionPlanKind.Name, res.Kind.Name)
+		ids = append(ids, res.ID)
+	}
+	require.ElementsMatch(t, []string{"gold", "silver"}, ids)
+
+	require.Error(t, s.trackPublishedPlan(context.Background(), "gold"), "without a cleanup registry nothing can be tracked")
+}
+
+func TestPortalProberTrustsOnlyThePortalCertificateAndFollowsRedirects(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/signin", http.StatusFound) })
+	mux.HandleFunc("/signin", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	serve := func(pair *shared.KeyPairPEM) *httptest.Server {
+		cert, err := tls.X509KeyPair(pair.CertPEM, pair.PrivateKeyPEM)
+		require.NoError(t, err)
+		server := httptest.NewUnstartedServer(mux)
+		server.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
+		server.StartTLS()
+		t.Cleanup(server.Close)
+		return server
+	}
+	prober := newPortalProber()
+
+	portal := serve(shared.APIPortalTLS())
+	status, err := prober.Probe(context.Background(), portal.URL+"/")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, status, "the redirect to the sign-in page is followed")
+
+	stranger, err := shared.SelfSignedCert(shared.APIPortalHost, []string{shared.APIPortalHost})
+	require.NoError(t, err)
+	_, err = prober.Probe(context.Background(), serve(stranger).URL+"/")
+	require.Error(t, err, "a certificate that is not the portal's is refused even when it carries the portal's name")
+
+	portal.Close()
+	status, err = prober.Probe(context.Background(), portal.URL+"/")
+	require.Error(t, err)
+	require.Zero(t, status)
+}
+
+func TestPortalResourceKindGivesEachCollectionItsOwnDeleter(t *testing.T) {
+	require.Equal(t, portalSubscriptionPlanKind, portalResourceKind("/subscription-plans"))
+	require.Equal(t, portalMeterKind, portalResourceKind("/meters"))
+	require.Equal(t, portalWebhookKind, portalResourceKind("/webhook-subscribers"))
+	require.Equal(t, "api-portal-resource", portalResourceKind("/apis").Name)
+	// An API goes before the plans it offers, and a plan before the meters it prices.
+	require.Less(t, portalResourceKind("/apis").Order, portalSubscriptionPlanKind.Order)
+	require.Less(t, portalSubscriptionPlanKind.Order, portalMeterKind.Order)
+}
+
+// billingFakes returns steps whose topology holds fakes of the testbench Stripe service, the API
+// Portal and the control plane's sign-in. Paying checkout "cs-1" delivers one event, which the
+// portal answers with deliveryStatus; reading the checkout finds it completed with subscription
+// "sub-1", as the portal reports once it has confirmed the payment with Stripe.
+func billingFakes(t *testing.T, deliveryStatus int) *Steps {
+	t.Helper()
+	serveTLS := func(certPEM, keyPEM []byte, handler http.HandlerFunc) *httptest.Server {
+		cert, err := tls.X509KeyPair(certPEM, keyPEM)
+		require.NoError(t, err)
+		server := httptest.NewUnstartedServer(handler)
+		server.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
+		server.StartTLS()
+		t.Cleanup(server.Close)
+		return server
+	}
+	writeJSON := func(w http.ResponseWriter, body any) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(body)
+	}
+
+	stripe := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/billing/test/checkout-sessions/cs-1/complete" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, map[string]any{"deliveries": []map[string]any{{
+			"url":    "https://api-portal.6f1c2b9e-net:9543/api-portal/billing/stripe/webhooks/org-1",
+			"status": deliveryStatus,
+		}}})
+	}))
+	t.Cleanup(stripe.Close)
+	portalPair := shared.APIPortalTLS()
+	portal := serveTLS(portalPair.CertPEM, portalPair.PrivateKeyPEM, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != apiPrefix+"/checkout-sessions/cs-1" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, map[string]any{"status": "COMPLETED", "subscriptionId": "sub-1"})
+	})
+	crypto := shared.ControlPlaneCrypto()
+	controlPlane := serveTLS(crypto["certs/cert.pem"], crypto["certs/key.pem"], func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/portal/v0.9/auth/login" {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, map[string]any{"token": "token"})
+	})
+
+	set := components.NewSet()
+	add := func(name string, endpoint components.Endpoint, server *httptest.Server) {
+		address, err := url.Parse(server.URL)
+		require.NoError(t, err)
+		port, err := strconv.Atoi(address.Port())
+		require.NoError(t, err)
+		definition := &components.Definition{Name: name, Alias: name, Endpoints: []components.Endpoint{endpoint}}
+		inst, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{endpoint.Port: port})
+		require.NoError(t, err)
+		require.NoError(t, set.Add(inst))
+	}
+	add("testbench", components.Endpoint{Name: "stripe", Port: 3022, Scheme: "http"}, stripe)
+	add(portalService, components.Endpoint{Name: "https", Port: 9543, Scheme: "https"}, portal)
+	add("platform-api", components.Endpoint{Name: "https", Port: 9243, Scheme: "https"}, controlPlane)
+
+	return &Steps{
+		topo:   &runtime.Topology{Block: &topology.ResolvedBlock{Name: "billing"}, Instances: set},
+		client: newPortalClient(),
+	}
+}
+
+func TestCreateApplicationWithTokenRemovesItWithTheSameToken(t *testing.T) {
+	type call struct{ method, path, auth, contentType string }
+	var calls []call
+	created := http.StatusCreated
+	pair := shared.APIPortalTLS()
+	cert, err := tls.X509KeyPair(pair.CertPEM, pair.PrivateKeyPEM)
+	require.NoError(t, err)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, call{r.Method, r.URL.Path, r.Header.Get("Authorization"), r.Header.Get("Content-Type")})
+		if r.Method == http.MethodPost {
+			w.WriteHeader(created)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	server.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	address, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(address.Port())
+	require.NoError(t, err)
+	definition := &components.Definition{Name: portalService, Alias: portalService,
+		Endpoints: []components.Endpoint{{Name: "https", Port: 9543, Scheme: "https"}}}
+	inst, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{9543: port})
+	require.NoError(t, err)
+	set := components.NewSet()
+	require.NoError(t, set.Add(inst))
+	s := &Steps{topo: &runtime.Topology{Block: &topology.ResolvedBlock{Name: "apps"}, Instances: set}, client: newPortalClient()}
+
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	reg := cleanup.NewRegistry(slog.Default())
+	require.NoError(t, cleanup.Install(ctx, reg))
+	require.NoError(t, tcontext.Set(ctx, "token", "user-token"))
+
+	require.NoError(t, s.createApplicationWithToken(ctx, portalService, "token", "appId"))
+	id, err := tcontext.ResolveString(ctx, "appId")
+	require.NoError(t, err)
+	require.Equal(t, []call{{http.MethodPost, apiPrefix + "/applications", "Bearer user-token", "application/json"}}, calls)
+	require.Len(t, reg.Pending(), 1)
+
+	require.NoError(t, reg.Sweep(ctx))
+	require.Len(t, calls, 2)
+	require.Equal(t, call{http.MethodDelete, apiPrefix + "/applications/" + id, "Bearer user-token", ""}, calls[1],
+		"an application is removed by the user who created it")
+
+	created = http.StatusForbidden
+	require.ErrorContains(t, s.createApplicationWithToken(ctx, portalService, "token", "other"), "403")
+	require.Empty(t, reg.Pending(), "a refused create registers nothing")
+	require.ErrorContains(t, s.createApplicationWithToken(ctx, portalService, "missing", "other"), "unavailable")
+}
+
+func TestPayCheckoutEndsTheSubscriptionAtCleanupEvenWhenStripesEventIsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		status  int
+		wantErr string
+	}{
+		{name: "every event is accepted", status: http.StatusOK},
+		{name: "an event is refused", status: http.StatusNotFound,
+			wantErr: "was not accepted by https://api-portal.6f1c2b9e-net:9543/api-portal/billing/stripe/webhooks/org-1: status 404"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := billingFakes(t, tc.status)
+			ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+			reg := cleanup.NewRegistry(slog.Default())
+			require.NoError(t, cleanup.Install(ctx, reg))
+
+			err := s.payCheckout(ctx, "cs-1", "developer", "subscriptionId")
+
+			pending := reg.Pending()
+			require.Len(t, pending, 1, "the subscription is ended when the scenario ends")
+			require.Equal(t, paidSubscriptionKind("developer").Name, pending[0].Kind.Name)
+			require.Equal(t, "sub-1", pending[0].ID)
+			stored, ok := tcontext.Get(ctx, "subscriptionId")
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				require.False(t, ok, "a refused event fails the step before the subscription is stored")
+				return
+			}
+			require.NoError(t, err)
+			require.True(t, ok)
+			require.Equal(t, "sub-1", stored)
+		})
+	}
+}
+
+func TestPayCheckoutNeedsACleanupRegistry(t *testing.T) {
+	s := billingFakes(t, http.StatusOK)
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+
+	err := s.payCheckout(ctx, "cs-1", "developer", "subscriptionId")
+
+	require.Error(t, err, "a subscription that cannot be ended at cleanup fails the step")
+	_, ok := tcontext.Get(ctx, "subscriptionId")
+	require.False(t, ok)
 }

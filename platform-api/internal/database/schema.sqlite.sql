@@ -237,10 +237,6 @@ CREATE TABLE IF NOT EXISTS api_publication_contents (
 );
 
 -- Documents table for storing API-related documents (e.g. OpenAPI spec definitions).
--- Positioned here, ahead of its original location further down this file, so
--- api_publication_doc_mappings below (which references it) doesn't create
--- before its FK target exists, matching the ordering required by the other
--- dialects (Postgres/SQL Server validate that at CREATE TABLE time).
 CREATE TABLE IF NOT EXISTS api_documents (
     uuid              VARCHAR(40)  PRIMARY KEY,
     artifact_uuid     VARCHAR(40)  NOT NULL,
@@ -265,42 +261,44 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_api_documents_artifact_handle ON api_docume
 
 -- =====================================================================
 -- api_publication_doc_mappings: the documents selected for a publication row.
+-- doc_uuid is a pointer, not a foreign key, so deleting a document leaves the
+-- selection intact. doc_handle and display_name are copies taken at
+-- the last save or publish. A selection whose pointer matches no api_documents
+-- row is reported as deleted.
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS api_publication_doc_mappings (
     organization_uuid VARCHAR(40)  NOT NULL,
     publication_uuid  VARCHAR(40)  NOT NULL,        -- the api_publications row this belongs to, draft or live
     doc_uuid          VARCHAR(40)  NOT NULL,
+    doc_handle        VARCHAR(40)  NOT NULL,
+    display_name      VARCHAR(255) NOT NULL,
     created_by        VARCHAR(200) NOT NULL,
     created_at        DATETIME     DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_uuid, publication_uuid, doc_uuid),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (publication_uuid, organization_uuid)
-        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE,
-    -- api_documents has no UNIQUE(organization_uuid, uuid) — single-column FK,
-    -- org match checked in the service layer, same exception as subscription_plans.
-    -- CASCADE: documents are authored outside this feature. Deleting one there
-    -- withdraws it from the selection here rather than blocking the deletion.
-    FOREIGN KEY (doc_uuid) REFERENCES api_documents(uuid) ON DELETE CASCADE
+        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE
 );
 
 -- =====================================================================
 -- api_publication_plan_mappings: the subscription plans selected for a
--- publication row. subscription_plans has no UNIQUE(organization_uuid, uuid),
--- so the plan reference is single-column and the organization match is checked
--- in the service layer.
+-- publication row. subscription_plan_uuid is a pointer, not a foreign key, so
+-- deleting a plan leaves the selection intact. plan_handle and display_name are
+-- copies taken at the last save or publish. A selection whose pointer matches
+-- no subscription_plans row is reported as deleted.
 -- =====================================================================
 CREATE TABLE IF NOT EXISTS api_publication_plan_mappings (
     organization_uuid      VARCHAR(40)  NOT NULL,
     publication_uuid       VARCHAR(40)  NOT NULL,   -- the api_publications row this belongs to, draft or live
     subscription_plan_uuid VARCHAR(40)  NOT NULL,
+    plan_handle            VARCHAR(40)  NOT NULL,
+    display_name           VARCHAR(255) NOT NULL,
     created_by             VARCHAR(200) NOT NULL,
     created_at             DATETIME     DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (organization_uuid, publication_uuid, subscription_plan_uuid),
     FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
     FOREIGN KEY (publication_uuid, organization_uuid)
-        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE,
-    FOREIGN KEY (subscription_plan_uuid)
-        REFERENCES subscription_plans(uuid) ON DELETE RESTRICT
+        REFERENCES api_publications(uuid, organization_uuid) ON DELETE CASCADE
 );
 
 -- API Publication indexes
@@ -811,6 +809,42 @@ CREATE TABLE IF NOT EXISTS secret_scopes (
 
 CREATE INDEX IF NOT EXISTS idx_secret_scopes_scope ON secret_scopes(scope, scope_value);
 
+-- Org-level managed secret metadata (e.g. per API portal webhook secret).
+-- The secret values themselves live in webhook_secrets, one row per rotation version.
+CREATE TABLE IF NOT EXISTS webhook_secrets_metadata (
+    uuid              VARCHAR(40)   PRIMARY KEY,
+    organization_uuid VARCHAR(40)   NOT NULL,
+    handle            VARCHAR(40)   NOT NULL,
+    name              VARCHAR(255)  NOT NULL,
+    type              VARCHAR(20)   NOT NULL DEFAULT 'PORTAL',
+    last_version      INTEGER       NOT NULL DEFAULT 0,
+    data_version      VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200),
+    created_at        DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    updated_by        VARCHAR(200),
+    updated_at        DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_uuid, handle),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+
+-- Versioned, encrypted webhook secret values. Rows are immutable once written
+-- (rotation inserts a new version), so there are no updated_* columns.
+CREATE TABLE IF NOT EXISTS webhook_secrets (
+    uuid              VARCHAR(40)   PRIMARY KEY,
+    secret_uuid  VARCHAR(40)   NOT NULL,
+    secret_version    INTEGER       NOT NULL,
+    secret_enc        BLOB          NOT NULL,
+    secret_hash       VARCHAR(255)  NOT NULL,
+    masked_secret     VARCHAR(255)  NOT NULL,
+    data_version      VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200),
+    created_at        DATETIME      DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (secret_uuid, secret_version),
+    FOREIGN KEY (secret_uuid) REFERENCES webhook_secrets_metadata(uuid) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhook_secrets_secret_hash ON webhook_secrets(secret_hash);
+
 -- Pre-computed secret handle references per deployed artifact per gateway.
 -- Populated at deploy time (status→DEPLOYED) and cleared at undeploy time.
 -- Eliminates the 6-table JOIN + application-level regex on every GW secret sync.
@@ -834,11 +868,16 @@ CREATE INDEX IF NOT EXISTS idx_asr_org_gateway
     ON artifact_secret_refs(organization_uuid, gateway_id);
 
 -- Maps our internal user UUID to the IdP actor identity. Audit columns store the
--- UUID; responses/events resolve it back to idp_id. No FK; no empty-idp_id rows.
+-- UUID; events resolve it back to idp_id, responses to display_name (else idp_id).
+-- No FK; no empty-idp_id rows.
+-- display_name is the user's human-readable name, taken from the configured token
+-- claim (auth.claim_mappings.display_name) for display only; NULL until a token
+-- carries it, and never used for matching or authorization.
 CREATE TABLE IF NOT EXISTS user_idp_references (
-    uuid       VARCHAR(40)  PRIMARY KEY,
-    idp_id     VARCHAR(255) NOT NULL,
-    created_at DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    uuid         VARCHAR(40)  PRIMARY KEY,
+    idp_id       VARCHAR(255) NOT NULL,
+    created_at   DATETIME     DEFAULT CURRENT_TIMESTAMP,
+    display_name VARCHAR(255),
     UNIQUE(idp_id)
 );
 
@@ -851,3 +890,119 @@ CREATE TABLE IF NOT EXISTS user_organization_mappings (
     FOREIGN KEY (user_uuid) REFERENCES user_idp_references(uuid) ON DELETE CASCADE,
     FOREIGN KEY (org_uuid)  REFERENCES organizations(uuid)       ON DELETE CASCADE
 );
+
+-- Meters (monetization): what a paid plan charges for. A meter made in the Management Portal is
+-- kept here and sent to an API Portal when a plan that charges for it is published there. A meter
+-- made in an API Portal is a copy, kept current by that portal's meter.* webhook events.
+--   - type REQUEST_COUNT counts API requests; type TOKENS adds up a number from the events of AI
+--     API requests, read at type_key (NULL for REQUEST_COUNT).
+--   - filter_fields lists the properties the meter's prices may filter on, each a name and the
+--     event field it reads (a JSON array of {field, event_key}; [] for none). A meter has no
+--     filters of its own: each price gives its own.
+--   - source_updated_at is when the meter last changed where it was made: the time of the request
+--     for a meter made here, the event's occurred_at for a copy. An older, late event is ignored.
+CREATE TABLE IF NOT EXISTS meters (
+    uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    handle VARCHAR(40) NOT NULL,
+    display_name VARCHAR(255) NOT NULL,
+    description VARCHAR(1023),
+    type VARCHAR(20) NOT NULL,
+    type_key VARCHAR(255),
+    filter_fields BLOB NOT NULL,
+    source_updated_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE,
+    UNIQUE(organization_uuid, handle)
+);
+
+-- Pricing of paid subscription plans (monetization); a plan without a row is free. A plan created
+-- through this REST API (the Management Portal) or in an API Portal (its subscription_plan.created
+-- webhook event) is stored with its pricing, in the same transaction, and the pricing never
+-- changes.
+-- prices is a JSON array, in order, that holds what the plan charges:
+--   - a flat rate plan: one entry, {pricing_model: FLAT, amount}, the amount charged every billing
+--     period;
+--   - a usage based plan: 1 to 20 usage prices. Each names its meter by handle, its filters
+--     ([{field, operator, values}], none to count every request of the meter) and one pricing
+--     model: PER_UNIT, VOLUME or GRADUATED.
+-- Amounts are decimal strings.
+-- created_at is when the pricing was set: the time of the request for a plan created through this
+-- REST API, the event's occurred_at for a plan created in an API Portal.
+CREATE TABLE IF NOT EXISTS subscription_plan_pricing (
+    subscription_plan_uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    currency VARCHAR(3) NOT NULL,
+    billing_period VARCHAR(20) NOT NULL,
+    prices BLOB NOT NULL,
+    created_at DATETIME NOT NULL,
+    FOREIGN KEY (subscription_plan_uuid) REFERENCES subscription_plans(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_plan_pricing_org ON subscription_plan_pricing(organization_uuid);
+
+-- Billing state of a paid subscription (monetization), from the API Portal, which sends it with
+-- subscription.created and every subscription.billing_updated event. A free subscription has no
+-- row. billing_updated_at is the occurred_at of the event last applied, so a late event is
+-- ignored.
+CREATE TABLE IF NOT EXISTS subscription_billing (
+    subscription_uuid VARCHAR(40) PRIMARY KEY,
+    organization_uuid VARCHAR(40) NOT NULL,
+    billing_status VARCHAR(20) NOT NULL,
+    billing_customer_id VARCHAR(255) NOT NULL,
+    billing_subscription_id VARCHAR(255) NOT NULL,
+    billing_updated_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (subscription_uuid) REFERENCES subscriptions(uuid) ON DELETE CASCADE,
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_subscription_billing_org ON subscription_billing(organization_uuid);
+
+-- Service accounts: non-human identities that exchange a client ID and secret
+-- for a short-lived platform JWT. client_id is globally unique because the
+-- token endpoint receives no organization. Roles are expanded at each exchange.
+CREATE TABLE IF NOT EXISTS service_accounts (
+    uuid                   VARCHAR(40)   PRIMARY KEY,
+    organization_uuid      VARCHAR(40)   NOT NULL,
+    handle                 VARCHAR(40)   NOT NULL,
+    name                   VARCHAR(255)  NOT NULL,
+    version                VARCHAR(30)   NOT NULL DEFAULT 'v1.0',
+    description            VARCHAR(1023) NOT NULL,
+    client_id              VARCHAR(255)  NOT NULL,
+    client_secret_hash     VARCHAR(255)  NOT NULL,
+    masked_secret          VARCHAR(8)    NOT NULL,
+    roles                  VARCHAR(1023) NOT NULL,
+    status                 VARCHAR(20)   NOT NULL DEFAULT 'active',
+    token_version          INTEGER       NOT NULL DEFAULT 1,
+    last_used_at           DATETIME,
+    last_used_ip           VARCHAR(45),
+    secret_regenerated_at  DATETIME,
+    secret_regenerated_by  VARCHAR(200),
+    data_version           VARCHAR(20)   NOT NULL DEFAULT '1.0',
+    created_by             VARCHAR(200),
+    created_at             DATETIME   DEFAULT CURRENT_TIMESTAMP,
+    updated_by             VARCHAR(200),
+    updated_at             DATETIME   DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(organization_uuid, handle),
+    UNIQUE(client_id),
+    FOREIGN KEY (organization_uuid) REFERENCES organizations(uuid) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_accounts_org    ON service_accounts(organization_uuid);
+
+-- Revocation watermarks for service-account tokens: one row per account, not
+-- per token. Every revoke bumps service_accounts.token_version, and a token
+-- carrying a version below min_token_version is rejected.
+-- DELIBERATE: no FOREIGN KEY to service_accounts or organizations. The row must
+-- outlive a hard delete of either, or a token minted just before the delete
+-- would pass on any replica that loaded its cache afterwards. Pruned by expires_at.
+CREATE TABLE IF NOT EXISTS service_account_revocations (
+    account_uuid       VARCHAR(40)  PRIMARY KEY,
+    organization_uuid  VARCHAR(40)  NOT NULL,
+    min_token_version  INTEGER       NOT NULL,
+    expires_at         DATETIME  NOT NULL,
+    revoked_by         VARCHAR(200),
+    revoked_at         DATETIME  DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_account_revocations_expires_at ON service_account_revocations(expires_at);

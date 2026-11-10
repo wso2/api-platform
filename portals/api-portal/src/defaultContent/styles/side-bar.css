@@ -177,7 +177,8 @@
 .nav-link.has-active-submenu .sidebar-chevron,
 #apis.has-active-submenu .sidebar-chevron,
 #mcps.has-active-submenu .sidebar-chevron,
-#keys.has-active-submenu .sidebar-chevron {
+#keys.has-active-submenu .sidebar-chevron,
+#billing.has-active-submenu .sidebar-chevron {
     transform: rotate(90deg);
 }
 
@@ -199,7 +200,8 @@
 /* Parent item when submenu is open */
 #apis.has-active-submenu,
 #mcps.has-active-submenu,
-#keys.has-active-submenu {
+#keys.has-active-submenu,
+#billing.has-active-submenu {
     background: var(--overlay);
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;

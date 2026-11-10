@@ -493,7 +493,7 @@ func (v *LLMValidator) validateProviderSpec(spec *api.LLMProviderConfigData) []V
 	}
 
 	if spec.Context != nil {
-		errors = append(errors, validateNotReservedHealthPath("spec.context", strings.TrimSpace(*spec.Context))...)
+		errors = append(errors, validateNotReservedGatewayPath("spec.context", strings.TrimSpace(*spec.Context))...)
 	}
 
 	// Validate upstream definitions (name/url/connect timeout), then the upstream itself (which
@@ -787,7 +787,7 @@ func (v *LLMValidator) validateProxyData(spec *api.LLMProxyConfigData) []Validat
 	}
 
 	if spec.Context != nil {
-		errors = append(errors, validateNotReservedHealthPath("spec.context", strings.TrimSpace(*spec.Context))...)
+		errors = append(errors, validateNotReservedGatewayPath("spec.context", strings.TrimSpace(*spec.Context))...)
 	}
 
 	// Normalise whichever provider shape arrived before validating anything

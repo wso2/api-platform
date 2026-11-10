@@ -574,7 +574,7 @@ func TestUpdateGoMod_DuplicateReplaceDirective(t *testing.T) {
 	// Create go.mod that already has a replace directive
 	goModContent := `module github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine
 
-go 1.23
+go 1.26.10
 
 replace github.com/example/policies/ratelimit => ./policies/ratelimit/v1.0.0
 `
@@ -715,4 +715,31 @@ func TestUpdateGoMod_RemotePolicy_ExhaustsRetriesOnPersistentFailure(t *testing.
 	assert.Contains(t, err.Error(), "go get failed")
 	assert.Contains(t, err.Error(), "after 3 attempts")
 	assert.Equal(t, goGetMaxAttempts, *callCount)
+}
+
+func TestGeneratePythonArtifacts_KeepsPolicyVersionsInSeparateModules(t *testing.T) {
+	srcDir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(srcDir, "..", "python-executor"), 0o755))
+	var policies []*types.DiscoveredPolicy
+	for _, version := range []string{"v1.0.0", "v2.0.0"} {
+		dir := filepath.Join(t.TempDir(), "py-policy")
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "policy.py"), []byte("VERSION = '"+version+"'\n"), 0o644))
+		policies = append(policies, &types.DiscoveredPolicy{
+			Name: "py-policy", Version: version, Runtime: "python", PythonSourceDir: dir, Path: dir,
+		})
+	}
+	out := t.TempDir()
+
+	require.NoError(t, GeneratePythonArtifacts(srcDir, policies, out))
+
+	for version, module := range map[string]string{"v1.0.0": "py_policy_v1", "v2.0.0": "py_policy_v2"} {
+		data, err := os.ReadFile(filepath.Join(out, "python-executor", "policies", module, "policy.py"))
+		require.NoError(t, err)
+		assert.Contains(t, string(data), version)
+	}
+	registry, err := os.ReadFile(filepath.Join(out, "python-executor", "python_policy_registry.py"))
+	require.NoError(t, err)
+	assert.Contains(t, string(registry), `"py-policy:v1": "policies.py_policy_v1.policy"`)
+	assert.Contains(t, string(registry), `"py-policy:v2": "policies.py_policy_v2.policy"`)
 }

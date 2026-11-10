@@ -336,20 +336,25 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	s.serveProxy(s.proxy, w, r)
 }
 
-// handleMoesifProxy (<base>/proxy/moesif/*) — same session cookie injection as
-// handleProxy, but against the optional Moesif analytics upstream.
+// handleMoesifProxy (<base>/proxy/{cloud,moesif}/*) — same session cookie
+// injection as handleProxy, but against the optional Moesif analytics upstream.
+// hop is the prefix this registration answers on, which is what the proxy built
+// for it strips before forwarding.
 //
 // Answers 503 rather than 404 when moesif_url is unset: the route exists, the
 // upstream behind it does not, and a deployment that has simply not configured
 // analytics is a different thing from a bad path. Insights degrades on this
 // without breaking the rest of the console.
-func (s *Server) handleMoesifProxy(w http.ResponseWriter, r *http.Request) {
-	if s.moesifProxy == nil {
-		writeErrorJSON(w, http.StatusServiceUnavailable, "MOESIF_NOT_CONFIGURED",
-			"Moesif analytics upstream is not configured (set control_plane.moesif_url)")
-		return
+func (s *Server) handleMoesifProxy(hop string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		rp := s.moesifProxies[hop]
+		if rp == nil {
+			writeErrorJSON(w, http.StatusServiceUnavailable, "MOESIF_NOT_CONFIGURED",
+				"Moesif analytics upstream is not configured (set control_plane.moesif_url)")
+			return
+		}
+		s.serveProxy(rp, w, r)
 	}
-	s.serveProxy(s.moesifProxy, w, r)
 }
 
 func (s *Server) handleBillingProxy(w http.ResponseWriter, r *http.Request) {

@@ -17,7 +17,9 @@
  */
 
 import type { Gateway } from '@/api/resources/gateways';
+import type { GatewayVersionEntry } from '@/config/runtime';
 import type { GatewayFunctionality } from './gatewayDisplay';
+import { findVersionEntry } from './gatewayVersions';
 
 /**
  * The shell commands shown in a gateway's "Get Started" panel.
@@ -28,8 +30,8 @@ import type { GatewayFunctionality } from './gatewayDisplay';
  * unit-testable against the gateway shapes the spec allows; embedded in JSX
  * they would only ever be checked by eye.
  *
- * Every value that varies: the distribution name, the version, the control
- * plane host, the token, is an argument. Nothing here reads config or state.
+ * Every value that varies: the release catalog, the control plane host, the
+ * token, is an argument. Nothing here reads config or state.
  */
 
 /** Placeholder standing in for a token the user has not generated yet. */
@@ -48,13 +50,15 @@ const RELEASE_BASE = 'https://github.com/wso2/api-platform/releases/download';
 /** OCI registry holding the gateway Helm chart. */
 const HELM_CHART_REF = 'oci://ghcr.io/wso2/api-platform/helm-charts/gateway';
 
-/** Version assumed when a gateway predates the `version` field. */
-const FALLBACK_VERSION = '1.0';
+/** Fallback release tag when no gateway version is available. */
+const FALLBACK_RELEASE_TAG = 'v1.0.0';
+
+/** Env file the setup script writes and `docker compose` reads (gateway 1.2+). */
+const SETUP_SCRIPT_ENV_FILE = 'api-platform.env';
 
 /**
- * Which distribution serves this gateway's traffic. The three functionality
- * types ship as three separate archives and three separate release tracks, so
- * the download URL follows the type rather than being one artifact for all.
+ * Archive name each functionality type ships under:
+ * `wso2apip-<name>-<version>.zip`, unpacking into a folder of the same name.
  */
 const DISTRIBUTION: Record<GatewayFunctionality, string> = {
   ai: 'ai-gateway',
@@ -62,33 +66,89 @@ const DISTRIBUTION: Record<GatewayFunctionality, string> = {
   regular: 'api-gateway',
 };
 
+/** The distribution name a functionality type ships under, e.g. `api-gateway`. */
+export const distributionName = (type: GatewayFunctionality): string => DISTRIBUTION[type];
+
+/**
+ * GitHub release path each type is tagged under:
+ * `releases/download/<path>/<tag>/`. The regular gateway's releases are tagged
+ * `gateway/v…`, not after its archive name.
+ */
+const RELEASE_PATH: Record<GatewayFunctionality, string> = {
+  ai: 'ai-gateway',
+  event: 'event-gateway',
+  regular: 'gateway',
+};
+
+/** How a release is brought up based on its version. */
+export type GatewaySetupFlow = 'envFile' | 'setupScript';
+
 /** Everything the command builders need about the gateway being set up. */
 export type GatewaySetupTarget = {
   /** Control plane host the agent registers against. */
   controlPlaneHost: string;
   /** Archive/directory name, without the `.zip` suffix. */
   distribution: string;
-  /** Release tag segment, e.g. `v1.0`. */
+  flow: GatewaySetupFlow;
+  /** Release path and tag, e.g. `gateway/v1.2.0`. */
   releaseTag: string;
-  /** The gateway's own release version, e.g. `1.0`. */
+  /** Full release version, e.g. `1.2.0` — also the Helm chart version. */
   version: string;
 };
 
 /**
- * Resolves a gateway plus the deployment's control plane host into the values
- * every command below is built from.
+ * Whether a release uses the setup-script flow (1.2 and later). A version that
+ * does not parse as `major.minor` is treated as current, as is a date-versioned
+ * release (e.g. `2026.09.24`).
  */
-export const setupTarget = (gateway: Gateway, controlPlaneHost: string): GatewaySetupTarget => {
-  const version = gateway.version?.trim() || FALLBACK_VERSION;
-  const family = DISTRIBUTION[gateway.functionalityType ?? 'regular'];
+export const usesSetupScript = (version: string): boolean => {
+  const [major, minor] = version.split('.').map((part) => Number.parseInt(part, 10));
+  if (Number.isNaN(major) || Number.isNaN(minor)) return true;
+  return major > 1 || (major === 1 && minor >= 2);
+};
+
+/**
+ * A release's full version. Releases are published as `major.minor.patch`, so
+ * a bare `major.minor` (how the server stores a version until the gateway
+ * reports its own) resolves to that minor's first release rather than a tag
+ * and archive that do not exist.
+ */
+const releaseVersion = (version: string): string =>
+  /^\d+\.\d+$/.test(version) ? `${version}.0` : version;
+
+/**
+ * Resolves a gateway, the deployment's release catalog and its control plane
+ * host into the values every command below is built from.
+ *
+ * A gateway whose version the catalog does not list (a release since removed
+ * from config) keeps its own version rather than borrowing another release.
+ */
+export const setupTarget = (
+  gateway: Gateway,
+  controlPlaneHost: string,
+  catalog: readonly GatewayVersionEntry[],
+): GatewaySetupTarget => {
+  const type = gateway.functionalityType ?? 'regular';
+  const reported = gateway.version?.trim() || undefined;
+  const entry = findVersionEntry(catalog, type, reported);
+
+  const knownVersion = entry?.version ?? reported;
+  const tag = entry?.latestVersion ?? (knownVersion ? `v${releaseVersion(knownVersion)}` : FALLBACK_RELEASE_TAG);
+  const version = tag.replace(/^v/, '');
+  const distVersion = entry?.distVersion ?? version;
 
   return {
     controlPlaneHost,
-    distribution: `wso2apip-${family}-${version}`,
-    releaseTag: `${family}/v${version}`,
+    distribution: `wso2apip-${DISTRIBUTION[type]}-${distVersion}`,
+    flow: usesSetupScript(version) ? 'setupScript' : 'envFile',
+    releaseTag: `${RELEASE_PATH[type]}/${tag}`,
     version,
   };
 };
+
+/** Adds the default HTTPS port to a bare control plane hostname. */
+const controlPlaneAddress = (host: string): string =>
+  /:\d+$/.test(host) || host.includes('/') ? host : `${host}:${CONTROL_PLANE_PORT}`;
 
 /** Fetches and unpacks the release archive. */
 export const downloadCommand = (target: GatewaySetupTarget): string =>
@@ -96,25 +156,49 @@ export const downloadCommand = (target: GatewaySetupTarget): string =>
   `unzip ${target.distribution}.zip`;
 
 /**
+ * Runs the setup script to generate certificates, keys, and `api-platform.env`.
+ *
+ * Run from the download folder, like every other step: the script enters its
+ * own distribution, so the shell is not left somewhere the later steps'
+ * paths do not expect.
+ */
+export const setupScriptCommand = (target: GatewaySetupTarget): string =>
+  `./${target.distribution}/scripts/setup.sh`;
+
+/**
  * Writes the registration token and control plane host into the env file the
  * gateway reads at start-up.
  *
- * A heredoc rather than two `echo` lines so the whole file is one paste, and
- * the token never lands in the user's shell history as a bare argument.
+ * A heredoc rather than separate `echo` lines so the whole file is one paste,
+ * and the token never lands in the user's shell history as a bare argument.
+ * The setup-script flow appends to the `api-platform.env` that `setup.sh`
+ * wrote; the older flow writes a fresh `configs/keys.env`. Both run from the
+ * download folder.
  */
 export const configureCommand = (target: GatewaySetupTarget, token: string): string =>
-  `cat > ${target.distribution}/configs/keys.env << 'ENVFILE'\n` +
-  `GATEWAY_CONTROLPLANE_HOST=${target.controlPlaneHost}\n` +
-  `GATEWAY_CONTROLPLANE_PORT=${CONTROL_PLANE_PORT}\n` +
-  `GATEWAY_REGISTRATION_TOKEN=${token}\n` +
-  `ENVFILE`;
+  target.flow === 'setupScript'
+    ? `cat >> ${target.distribution}/${SETUP_SCRIPT_ENV_FILE} << 'ENVFILE'\n` +
+      `APIP_GW_CONTROLLER_CONTROLPLANE_HOST=${controlPlaneAddress(target.controlPlaneHost)}\n` +
+      `APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN=${token}\n` +
+      `ENVFILE`
+    : `cat > ${target.distribution}/configs/keys.env << 'ENVFILE'\n` +
+      `GATEWAY_CONTROLPLANE_HOST=${target.controlPlaneHost}\n` +
+      `GATEWAY_CONTROLPLANE_PORT=${CONTROL_PLANE_PORT}\n` +
+      `GATEWAY_REGISTRATION_TOKEN=${token}\n` +
+      `ENVFILE`;
 
 /** Enters the unpacked distribution. */
 export const enterDirectoryCommand = (target: GatewaySetupTarget): string =>
   `cd ${target.distribution}`;
 
-/** Brings the gateway up with the env file written in the configure step. */
-export const startCommand = (): string => 'docker compose --env-file configs/keys.env up';
+/**
+ * Brings the gateway up with the env file written in the configure step. Run
+ * from inside the distribution, after `enterDirectoryCommand`.
+ */
+export const startCommand = (target: GatewaySetupTarget): string =>
+  target.flow === 'setupScript'
+    ? 'docker compose up'
+    : 'docker compose --env-file configs/keys.env up';
 
 /** Confirms the container runtime a virtual-machine install depends on. */
 export const runtimeCheckCommand = (): string => 'docker --version\ndocker compose version';

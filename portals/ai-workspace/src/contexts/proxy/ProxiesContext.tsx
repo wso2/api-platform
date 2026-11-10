@@ -21,6 +21,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useCallback,
 } from 'react';
@@ -41,6 +42,7 @@ import {
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../paths';
 import { logger } from '../../utils/logger';
+import { fetchAllPages } from '../../utils/pagination';
 import {
   trackLLMProxyCreate,
   trackLLMProxyUpdate,
@@ -104,8 +106,13 @@ export function ProxiesProvider({ children }: ProxiesProviderProps) {
   const organizationId = currentOrganization?.uuid ?? '';
   const projectId = currentProject?.id ?? '';
 
+  // Switching projects leaves the previous fetch in flight; only the most
+  // recent request is allowed to write its result.
+  const proxiesRequestRef = useRef(0);
+
   // Fetch all proxies
   const fetchProxies = useCallback(async () => {
+    const requestId = (proxiesRequestRef.current += 1);
     if (!organizationId || !projectId) {
       setProxiesResponse(EMPTY_PROXIES_RESPONSE);
       setIsLoading(false);
@@ -115,19 +122,24 @@ export function ProxiesProvider({ children }: ProxiesProviderProps) {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await proxyApis.getProxies(
-        organizationId,
-        projectId,
-        apimBaseUrl
+      // The collection endpoint defaults to limit=20 when unpaged, and this
+      // list has no pager of its own — walk every page so projects with more
+      // than 20 proxies aren't silently truncated.
+      const response = await fetchAllPages<Proxy>((limit, offset) =>
+        proxyApis.getProxies(organizationId, projectId, apimBaseUrl, limit, offset)
       );
+      if (proxiesRequestRef.current !== requestId) return;
       setProxiesResponse(response as ProxiesResponse);
     } catch (err) {
+      if (proxiesRequestRef.current !== requestId) return;
       logger.error('Failed to fetch proxies:', err);
       setError(
         err instanceof Error ? err : new Error('Failed to fetch proxies')
       );
     } finally {
-      setIsLoading(false);
+      if (proxiesRequestRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [organizationId, projectId, apimBaseUrl]);
 

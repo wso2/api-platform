@@ -32,6 +32,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -53,6 +54,14 @@ const (
 // setupPlanHandlerTestEnv builds the plan handler over a real SQLite database
 // carrying the production schema, with one organization seeded.
 func setupPlanHandlerTestEnv(t *testing.T) http.Handler {
+	t.Helper()
+	h, _ := setupPlanHandlerTestEnvWithDB(t)
+	return h
+}
+
+// setupPlanHandlerTestEnvWithDB is setupPlanHandlerTestEnv that also returns the
+// database, for tests that seed what uses a plan.
+func setupPlanHandlerTestEnvWithDB(t *testing.T) (http.Handler, *database.DB) {
 	t.Helper()
 
 	sqlDB, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "plan-handler-test.db")+"?_foreign_keys=on")
@@ -86,7 +95,7 @@ func setupPlanHandlerTestEnv(t *testing.T) http.Handler {
 
 	mux := http.NewServeMux()
 	NewSubscriptionPlanHandler(planService, identityService, slog.Default()).RegisterRoutes(mux)
-	return middleware.NewTestContextMiddleware(mux)
+	return middleware.NewTestContextMiddleware(mux), db
 }
 
 func planRequest(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
@@ -248,7 +257,7 @@ func TestPlanHandler_UpdateRejectsBadBody(t *testing.T) {
 
 	tests := map[string]string{
 		"malformed json": `{"displayName":`,
-		"oversized body": `{"displayName":"` + strings.Repeat("x", maxPlanUpdateBodyBytes) + `"}`,
+		"oversized body": `{"displayName":"` + strings.Repeat("x", maxPlanBodyBytes) + `"}`,
 	}
 	for name, body := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -256,5 +265,91 @@ func TestPlanHandler_UpdateRejectsBadBody(t *testing.T) {
 				t.Fatalf("status %d, want 400, body %.200s", rec.Code, rec.Body.String())
 			}
 		})
+	}
+}
+
+// A plan id is at most 40 characters, the width the database and the API Portal keep. A longer one
+// is refused with a 400 that says so, before anything is written.
+func TestPlanHandler_CreateRefusesAnIdOverFortyCharacters(t *testing.T) {
+	h := setupPlanHandlerTestEnv(t)
+	long := strings.Repeat("g", 41)
+	rec := planRequest(t, h, http.MethodPost, planITPath, `{"id":"`+long+`","displayName":"Gold"}`)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "id must be at most 40 characters") {
+		t.Fatalf("status %d, body %s; want 400 naming the limit", rec.Code, rec.Body.String())
+	}
+	if rec := planRequest(t, h, http.MethodGet, planITPath+"/"+long, ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("the refused plan exists: status %d", rec.Code)
+	}
+	// Forty characters, multibyte ones included, are accepted.
+	if rec := planRequest(t, h, http.MethodPost, planITPath, `{"id":"`+strings.Repeat("é", 40)+`","displayName":"Gold"}`); rec.Code != http.StatusCreated {
+		t.Fatalf("a 40-character id: status %d, body %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestPlanHandler_UpdateLocksNameAndLimitWhileInUse: while a subscription uses a plan, a
+// PUT that changes its name or limit is refused, and one that changes only its status
+// goes through, even though the Management Portal sends every field on each save.
+func TestPlanHandler_UpdateLocksNameAndLimitWhileInUse(t *testing.T) {
+	h, db := setupPlanHandlerTestEnvWithDB(t)
+
+	const limits = `"limits":[{"limitType":"REQUEST_COUNT","limitCount":1000,"timeUnit":"MINUTE","timeAmount":1}]`
+	rec := planRequest(t, h, http.MethodPost, planITPath, `{"id":"gold","displayName":"Gold",`+limits+`}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	var planUUID string
+	if err := db.QueryRow(`SELECT uuid FROM subscription_plans WHERE handle = 'gold'`).Scan(&planUUID); err != nil {
+		t.Fatalf("read plan uuid: %v", err)
+	}
+
+	// Unused: the name and limit can change.
+	rec = planRequest(t, h, http.MethodPut, planITPath+"/gold", `{"id":"gold","displayName":"Gold",`+
+		`"limits":[{"limitType":"REQUEST_COUNT","limitCount":500,"timeUnit":"MINUTE","timeAmount":1}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unused plan update: status %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	// A single plan's read says whether it is in use, and by what.
+	usage := decodePlan(t, planRequest(t, h, http.MethodGet, planITPath+"/gold", ""))["usage"]
+	if want := map[string]any{"inUse": false, "restApis": float64(0), "drafts": float64(0), "publications": float64(0),
+		"subscriptions": float64(0)}; !reflect.DeepEqual(usage, want) {
+		t.Fatalf("unused plan usage = %v, want %v", usage, want)
+	}
+
+	if _, err := db.Exec(`INSERT INTO artifacts (uuid, type, organization_uuid) VALUES ('api-1', 'RestApi', ?)`, planITOrgID); err != nil {
+		t.Fatalf("seed artifact: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO subscriptions (uuid, artifact_uuid, subscriber_id, subscription_token,
+		subscription_token_hash, subscription_plan_uuid, organization_uuid) VALUES ('sub-1', 'api-1', 'dev', 'tok', 'hash', ?, ?)`,
+		planUUID, planITOrgID); err != nil {
+		t.Fatalf("seed subscription: %v", err)
+	}
+
+	usage = decodePlan(t, planRequest(t, h, http.MethodGet, planITPath+"/gold", ""))["usage"]
+	if used, _ := usage.(map[string]any); used["inUse"] != true || used["subscriptions"] != float64(1) {
+		t.Fatalf("used plan usage = %v, want in use by 1 subscription", usage)
+	}
+
+	const current = `"limits":[{"limitType":"REQUEST_COUNT","limitCount":500,"timeUnit":"MINUTE","timeAmount":1}]`
+	refused := []struct{ name, body string }{
+		{"rename", `{"id":"gold","displayName":"Gold Plus",` + current + `}`},
+		{"new limit", `{"id":"gold","displayName":"Gold",` + limits + `}`},
+		{"limit removed", `{"id":"gold","displayName":"Gold","limits":[]}`},
+	}
+	for _, tc := range refused {
+		rec := planRequest(t, h, http.MethodPut, planITPath+"/gold", tc.body)
+		if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "SUBSCRIPTION_PLAN_IN_USE") ||
+			!strings.Contains(rec.Body.String(), "To change its name or limit, create a new plan.") {
+			t.Errorf("%s: status %d, body %s", tc.name, rec.Code, rec.Body.String())
+		}
+	}
+
+	rec = planRequest(t, h, http.MethodPut, planITPath+"/gold", `{"id":"gold","displayName":"Gold","status":"INACTIVE",`+current+`}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status-only update: status %d, body %s", rec.Code, rec.Body.String())
+	}
+	stored := decodePlan(t, planRequest(t, h, http.MethodGet, planITPath+"/gold", ""))
+	if stored["displayName"] != "Gold" || stored["status"] != "INACTIVE" {
+		t.Fatalf("stored plan = %v", stored)
 	}
 }

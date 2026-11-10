@@ -24,7 +24,6 @@ import {
   Button,
   Card,
   CardContent,
-  ColorSchemeImage,
   Divider,
   FormLabel,
   IconButton,
@@ -56,12 +55,13 @@ import { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from
 import { defineMessages, FormattedMessage, type MessageDescriptor, useIntl } from 'react-intl';
 import { Navigate, useLocation } from 'react-router-dom';
 
-import { useBrandLogo } from '@/branding/BrandLogoProvider';
+import { BrandLockup } from '@/branding/BrandLockup';
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
 import { useAuth } from '../../contexts/auth/AuthProvider';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { hairline } from '../../theme/receipes';
+import { ServerErrorPage } from '../appShell/appShellPages/system/SystemPages';
 
 const messages = defineMessages({
   brandLockup: {
@@ -205,7 +205,7 @@ const messages = defineMessages({
   },
 });
 
-const BRAND_LOGO_HEIGHT = 56;
+const BRAND_LOGO_HEIGHT = 44;
 
 type LoginLocationState = {
   confirmationKey?: string;
@@ -287,7 +287,6 @@ const featureIconSx = (theme: Theme) =>
 
 export function LoginPage() {
   const auth = useAuth();
-  const brandLogo = useBrandLogo();
   const intl = useIntl();
 
   useDocumentTitle(intl.formatMessage(messages.title));
@@ -297,7 +296,9 @@ export function LoginPage() {
   const from = state.returnToUrl || state.from?.pathname || '/';
   const isInvitation = Boolean(state.confirmationOrg && state.confirmationKey);
   const isBrowserSupported = isSupportedBrowser();
-  const isOidcMode = runtimeConfig.authMode === 'oidc';
+  // Redirect sign-in (oidc, or a gateway/proxy in external mode) hands over to
+  // the sign-in endpoint; form sign-in (basic) shows the credential fields.
+  const isRedirectLogin = runtimeConfig.authContract.loginStyle === 'redirect';
   const autoRedirectStarted = useRef(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -316,10 +317,19 @@ export function LoginPage() {
     !isBrowserSupported || (isInvitation && state.displayOrgName) || oidcError || auth.error,
   );
 
-  const shouldAutoRedirect = !auth.isAuthenticated && isOidcMode && !isInvitation && !oidcError;
+  // Not before the session check has answered, nor while the session endpoint
+  // is down: sign-in is behind the same server.
+  const isUnavailable = auth.status === 'unavailable';
+  const shouldAutoRedirect =
+    !auth.isAuthenticated &&
+    !auth.isLoading &&
+    isRedirectLogin &&
+    !isInvitation &&
+    !oidcError &&
+    !isUnavailable;
 
-  // Redirect to the IdP in OIDC mode unless showing an invitation or OIDC
-  // error. Use an effect because auth.login() navigates and mutates a ref.
+  // Redirect to the sign-in endpoint unless showing an invitation or a
+  // sign-in error. Use an effect because auth.login() navigates and mutates a ref.
   useEffect(() => {
     if (!shouldAutoRedirect || autoRedirectStarted.current) return;
     autoRedirectStarted.current = true;
@@ -328,11 +338,13 @@ export function LoginPage() {
 
   if (auth.isAuthenticated) return <Navigate to={from} replace />;
 
+  if (isUnavailable) return <ServerErrorPage />;
+
   // Hand-over to the identity provider is already under way, so the sign-in card
   // below would only appear for the instant before the browser leaves — which reads
   // as the console asking for credentials it is not going to take. Show that
   // something is happening instead, as the AI Workspace does.
-  if (shouldAutoRedirect) {
+  if (shouldAutoRedirect || (isRedirectLogin && auth.isLoading)) {
     return <LoadingState fullScreen label={intl.formatMessage(messages.redirecting)} />;
   }
 
@@ -389,15 +401,7 @@ export function LoginPage() {
         }}
       >
         <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-          <ColorSchemeImage
-            alt={intl.formatMessage({
-              id: 'appShell.header.title',
-              defaultMessage: 'API Platform',
-            })}
-            height={BRAND_LOGO_HEIGHT}
-            src={brandLogo}
-            width="auto"
-          />
+          <BrandLockup height={BRAND_LOGO_HEIGHT} />
         </Stack>
 
         <Stack spacing={2.5} sx={{ maxWidth: 620 }}>
@@ -513,7 +517,7 @@ export function LoginPage() {
                 </Stack>
               )}
 
-              {isOidcMode ? (
+              {isRedirectLogin ? (
                 <Button
                   endIcon={<ArrowRight size={18} />}
                   fullWidth

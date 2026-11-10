@@ -20,7 +20,7 @@
 # Builds the event-gateway binary with debug symbols and runs it under Delve.
 
 # Stage 1: Builder Base — compile the event-gateway-builder tool
-FROM --platform=$BUILDPLATFORM golang:1.26.2-bookworm AS builder-base
+FROM --platform=$BUILDPLATFORM golang:1.26.10-bookworm AS builder-base
 ARG BUILDARCH
 ARG VERSION=unknown
 ARG GIT_COMMIT=unknown
@@ -107,7 +107,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -gcflags "all=-N -l"
 
 # Stage 3: Debug runtime image — includes Delve and the unoptimised binary
-FROM golang:1.26.2-bookworm
+FROM golang:1.26.10-bookworm
 
 ARG VERSION=unknown
 

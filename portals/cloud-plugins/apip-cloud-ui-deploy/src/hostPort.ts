@@ -39,6 +39,30 @@ export type ApiFetch = <T = unknown>(
   body?: unknown
 ) => Promise<T | undefined>;
 
+/**
+ * One gateway release, keyed by `type`; the first entry of a type is its latest.
+ * Hand-mirrors the host's `GatewayVersionEntry` (`config/runtime.ts`).
+ */
+export type GatewayVersionEntry = {
+  type: 'ai' | 'regular' | 'event';
+  version: string;
+  /** Release tag, e.g. `v1.2.0`. Defaults to `v${version}` when omitted. */
+  latestVersion?: string;
+  /** Zip/folder version when it differs from `version`. */
+  distVersion?: string;
+  channel: 'STS' | 'LTS';
+};
+
+/**
+ * The signed-in user's permissions, as the host answers them. `canAny` takes an
+ * operation's accepted-scope list — the spec's any-of list, `:manage` scopes
+ * included — and says whether the user may be offered it. Mirrors the host's
+ * `PermissionsPort`. Not a security boundary: platform-api decides.
+ */
+export type PermissionsPort = {
+  canAny: (scopes: readonly string[]) => boolean;
+};
+
 export type CloudHostPort = {
   orgHandle: string;
   projectHandle?: string;
@@ -47,4 +71,15 @@ export type CloudHostPort = {
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
   apiFetch: ApiFetch;
+  /** Gateway releases from the host's config; the first `regular` entry is the latest. */
+  gatewayVersions?: GatewayVersionEntry[];
+  /** `host:port` a self-hosted gateway's controller dials; falls back to this page's own host. */
+  gatewayControlPlaneHost?: string;
+  /**
+   * Optional: a host whose Port carries no permission check omits it and
+   * nothing is gated — every control stays enabled exactly as before, and
+   * platform-api still refuses what the user may not do. See `permissionsOf`
+   * in `permissions.ts`.
+   */
+  permissions?: PermissionsPort;
 };

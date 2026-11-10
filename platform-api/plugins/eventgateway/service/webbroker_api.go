@@ -80,6 +80,7 @@ func (s *WebBrokerAPIService) toWebBrokerAPI(m *model.WebBrokerAPI) (*api.WebBro
 	if resp == nil {
 		return nil, nil
 	}
+	resp.ProjectId = projectHandleFor(s.projectRepo, m.ProjectUUID)
 	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
 		return nil, err
 	}
@@ -104,17 +105,16 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 	handle := utils.ValueOrEmpty(req.Id)
 
 	// Validate project exists
+	projectUUID := req.ProjectId
 	if s.projectRepo != nil {
-		project, err := s.projectRepo.GetProjectByUUID(req.ProjectId)
+		project, err := resolveProjectRef(s.projectRepo, req.ProjectId, orgUUID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate project: %w", err)
 		}
 		if project == nil {
 			return nil, apperror.ProjectRefNotFound.New()
 		}
-		if project.OrganizationID != orgUUID {
-			return nil, apperror.ProjectRefNotFound.New()
-		}
+		projectUUID = project.ID
 	}
 
 	// Check if already exists
@@ -147,7 +147,7 @@ func (s *WebBrokerAPIService) Create(orgUUID, createdBy string, req *api.WebBrok
 	m := &model.WebBrokerAPI{
 		Handle:           handle,
 		OrganizationUUID: orgUUID,
-		ProjectUUID:      req.ProjectId,
+		ProjectUUID:      projectUUID,
 		Name:             req.DisplayName,
 		Description:      utils.ValueOrEmpty(req.Description),
 		CreatedBy:        createdBy,
@@ -200,6 +200,15 @@ func (s *WebBrokerAPIService) Get(orgUUID, handle string) (*api.WebBrokerAPI, er
 
 // List retrieves WebBroker APIs for an organization filtered by project
 func (s *WebBrokerAPIService) List(orgUUID, projectUUID string, limit, offset int) (*api.WebBrokerAPIListResponse, error) {
+	if projectUUID != "" && s.projectRepo != nil {
+		project, err := resolveProjectRef(s.projectRepo, projectUUID, orgUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve project: %w", err)
+		}
+		if project != nil {
+			projectUUID = project.ID
+		}
+	}
 	apis, err := s.repo.List(orgUUID, projectUUID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list WebBroker APIs: %w", err)
@@ -231,6 +240,7 @@ func (s *WebBrokerAPIService) List(orgUUID, projectUUID string, limit, offset in
 		if item == nil {
 			continue
 		}
+		item.ProjectId = utils.StringPtrIfNotEmpty(projectHandleFor(s.projectRepo, a.ProjectUUID))
 		resp.List = append(resp.List, *item)
 		createdByFields = append(createdByFields, &resp.List[len(resp.List)-1].CreatedBy)
 	}

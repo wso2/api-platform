@@ -130,6 +130,10 @@ const messages = defineMessages({
     id: 'api.create.generalForm.description.label',
     defaultMessage: 'Description',
   },
+  descriptionPlaceholder: {
+    id: 'api.create.generalForm.description.placeholder',
+    defaultMessage: 'Ex: Manages customer orders and their fulfilment status.',
+  },
   nameErrorRequired: {
     id: 'api.create.generalForm.name.error.required',
     defaultMessage: 'Enter a name.',
@@ -199,7 +203,7 @@ const messages = defineMessages({
   },
   targetUrlErrorRequired: {
     id: 'api.create.generalForm.targetUrl.error.required',
-    defaultMessage: 'Enter a target URL.',
+    defaultMessage: 'Enter an endpoint.',
   },
   targetUrlHelper: {
     id: 'api.create.generalForm.targetUrl.helper',
@@ -207,7 +211,7 @@ const messages = defineMessages({
   },
   targetUrlLabel: {
     id: 'api.create.generalForm.targetUrl.label',
-    defaultMessage: 'Target URL',
+    defaultMessage: 'Endpoint',
   },
   versionErrorPattern: {
     id: 'api.create.generalForm.version.error.pattern',
@@ -630,6 +634,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
   const versionLabel = intl.formatMessage(messages.versionLabel);
   const contextLabel = intl.formatMessage(messages.contextLabel);
   const descriptionLabel = intl.formatMessage(messages.descriptionLabel);
+  const descriptionPlaceholder = intl.formatMessage(messages.descriptionPlaceholder);
   const targetUrlLabel = intl.formatMessage(profile.endpointLabel);
 
   return (
@@ -763,6 +768,7 @@ export const GeneralCreateApiForm = (props: GeneralCreateApiFormProps) => {
               multiline
               name="description"
               onChange={(event) => setField('description', event.target.value)}
+              placeholder={descriptionPlaceholder}
               rows={3}
               sx={{ mt: 0.75 }}
               value={formState.description ?? ''}

@@ -17,7 +17,10 @@
 
 package policyengine
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // SubscriptionData represents a single subscription entry for xDS transmission.
 type SubscriptionData struct {
@@ -51,6 +54,24 @@ type SubscriptionData struct {
 
 	// BillingSubscriptionId is the billing subscription identifier
 	BillingSubscriptionId *string `json:"billingSubscriptionId,omitempty" yaml:"billingSubscriptionId,omitempty"`
+
+	// SubscriptionId identifies the subscription; limit policies key their counters by it.
+	SubscriptionId string `json:"subscriptionId,omitempty" yaml:"subscriptionId,omitempty"`
+
+	// PlanId identifies the subscription plan.
+	PlanId string `json:"planId,omitempty" yaml:"planId,omitempty"`
+
+	// Conditions are the plan's conditions, which limit policies enforce. A plan saved before
+	// conditions carries its throttle limit as a request-count condition.
+	Conditions []SubscriptionCondition `json:"conditions,omitempty" yaml:"conditions,omitempty"`
+}
+
+// SubscriptionCondition is one condition of a subscription plan. Params is the condition's JSON
+// object, which the enforcing policy decodes.
+type SubscriptionCondition struct {
+	ID     string          `json:"id" yaml:"id"`
+	Type   string          `json:"type" yaml:"type"`
+	Params json.RawMessage `json:"params,omitempty" yaml:"params,omitempty"`
 }
 
 // SubscriptionStateResource represents the complete state of subscriptions

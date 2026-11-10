@@ -29,9 +29,11 @@ import (
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
+	"gopkg.in/yaml.v3"
 )
 
 // APIService handles business logic for API operations
@@ -249,8 +251,15 @@ func (s *APIService) GetAPIByHandle(handle, orgId string) (*api.RESTAPI, error) 
 
 // HandleExistsCheck returns a function that checks if an API handle exists in the organization.
 // This is designed to be used with utils.GenerateHandle for handle generation with collision detection.
+//
+// A generated handle competes for the same namespace as a user-supplied one, so a
+// reserved candidate counts as taken and generation moves on to a suffixed one.
+// Deriving a handle from a display name is not a way around reservedAPIHandles.
 func (s *APIService) HandleExistsCheck(orgUUID string) func(string) bool {
 	return func(handle string) bool {
+		if reservedAPIHandles[strings.ToLower(handle)] {
+			return true
+		}
 		exists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(handle, orgUUID)
 		if err != nil {
 			// On error, assume it exists to be safe (will trigger retry)
@@ -329,6 +338,67 @@ func (s *APIService) GetAPIsByOrganization(orgUUID string, projectHandle string,
 		return nil, 0, err
 	}
 	return apis, total, nil
+}
+
+// GetAPIVersions returns every version of the REST API with the given displayName in the
+// organization. VersionsAvailable is true when the displayName is already in use. The lookup
+// is org-wide because (displayName, version) uniqueness is enforced org-wide.
+func (s *APIService) GetAPIVersions(orgUUID, displayName string) (*api.RESTAPIVersionListResponse, error) {
+	apiModels, err := s.apiRepo.GetAPIVersionsByDisplayName(orgUUID, displayName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get api versions: %w", err)
+	}
+
+	versions := make([]api.RESTAPIVersion, 0, len(apiModels))
+	for _, apiModel := range apiModels {
+		if apiModel == nil {
+			continue
+		}
+		version, err := s.modelToRESTAPIVersion(apiModel)
+		if err != nil {
+			return nil, err
+		}
+		versions = append(versions, *version)
+	}
+
+	return &api.RESTAPIVersionListResponse{
+		DisplayName:       displayName,
+		VersionsAvailable: len(versions) > 0,
+		Count:             len(versions),
+		List:              versions,
+	}, nil
+}
+
+// modelToRESTAPIVersion maps an API model to the lean per-version shape, omitting
+// operations/policies/upstream and resolving the project handle used by other endpoints.
+func (s *APIService) modelToRESTAPIVersion(apiModel *model.API) (*api.RESTAPIVersion, error) {
+	project, err := s.projectRepo.GetProjectByUUID(apiModel.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	projectHandle := apiModel.ProjectID
+	if project != nil {
+		projectHandle = project.Handle
+	}
+
+	version := &api.RESTAPIVersion{
+		Id:        apiModel.Handle,
+		Version:   apiModel.Version,
+		ProjectId: projectHandle,
+	}
+	if apiModel.LifeCycleStatus != "" {
+		status := apiModel.LifeCycleStatus
+		version.LifeCycleStatus = &status
+	}
+	if apiModel.Configuration.Context != nil && *apiModel.Configuration.Context != "" {
+		context := *apiModel.Configuration.Context
+		version.Context = &context
+	}
+	if !apiModel.CreatedAt.IsZero() {
+		createdAt := apiModel.CreatedAt
+		version.CreatedAt = &createdAt
+	}
+	return version, nil
 }
 
 // UpdateAPI updates an existing API
@@ -585,6 +655,77 @@ func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string, limit, offset 
 	return response, nil
 }
 
+// APIInvokeTarget is where the Test console's request for a REST API goes on one
+// gateway: what that gateway serves, not what the API's definition says now.
+type APIInvokeTarget struct {
+	// Context is the API's context in the deployment the gateway runs. An API whose
+	// context changed since is still served at the deployed one until it is redeployed.
+	Context string
+	// Vhost is the deployment's main vhost, which the gateway matches against the
+	// request's Host. Empty when the deployment uses the gateway's default vhost.
+	Vhost string
+	// Endpoints are the gateway's endpoints.
+	Endpoints []string
+}
+
+// GetAPIInvokeTarget returns where a test request for the REST API apiHandle goes
+// on gatewayHandle: the gateway's endpoints and the context and main vhost of the
+// API's deployment on it. The API must belong to orgID. A gateway the API is only
+// associated with is refused, or a caller could aim a test request at any
+// associated gateway.
+func (s *APIService) GetAPIInvokeTarget(apiHandle, gatewayHandle, orgID string) (*APIInvokeTarget, error) {
+	apiUUID, err := s.getAPIUUIDByHandle(apiHandle, orgID)
+	if err != nil {
+		return nil, err
+	}
+	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if apiModel == nil || apiModel.OrganizationID != orgID {
+		return nil, apperror.RESTAPINotFound.New()
+	}
+
+	gateways, err := s.apiRepo.GetAPIGatewaysWithDetails(apiUUID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	for _, gw := range gateways {
+		if gw == nil || gw.Handle != gatewayHandle {
+			continue
+		}
+		if !gw.IsDeployed {
+			break
+		}
+		deployed, err := s.deploymentRepo.GetCurrentByGateway(apiUUID, gw.ID, orgID)
+		if err != nil {
+			return nil, err
+		}
+		if deployed == nil {
+			break
+		}
+		var artifact dto.APIDeploymentYAML
+		if err := yaml.Unmarshal(deployed.Content, &artifact); err != nil {
+			return nil, fmt.Errorf("failed to read deployment %s of REST API %s: %w", deployed.DeploymentID, apiUUID, err)
+		}
+		target := &APIInvokeTarget{Context: artifact.Spec.Context, Endpoints: gw.Endpoints}
+		if target.Context == "" && apiModel.Configuration.Context != nil {
+			target.Context = *apiModel.Configuration.Context
+		}
+		// The gateway serves the context with $version replaced by the deployed version.
+		version := artifact.Spec.Version
+		if version == "" {
+			version = apiModel.Version
+		}
+		target.Context = strings.ReplaceAll(target.Context, "$version", version)
+		if v := artifact.Spec.Vhosts; v != nil && v.Main != nil && *v.Main != constants.VhostGatewayDefault {
+			target.Vhost = *v.Main
+		}
+		return target, nil
+	}
+	return nil, apperror.RESTAPIInvokeGatewayNotDeployed.New()
+}
+
 // AddGatewaysToAPI associates multiple gateways with an API
 func (s *APIService) AddGatewaysToAPI(apiUUID string, gatewayIds []string, orgUUID, createdBy string) (*api.RESTAPIGatewayListResponse, error) {
 	apiModel, err := s.apiRepo.GetAPIByUUID(apiUUID, orgUUID)
@@ -668,6 +809,11 @@ func (s *APIService) GetAPIGateways(apiUUID, orgUUID string) (*api.RESTAPIGatewa
 	return response, nil
 }
 
+// reservedAPIHandles are handles that would be shadowed by a literal route under /rest-apis.
+var reservedAPIHandles = map[string]bool{
+	"versions": true,
+}
+
 // Validation methods
 
 // validateCreateAPIRequest checks the validity of the create API request
@@ -676,6 +822,11 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 		// Validate user-provided handle
 		if err := utils.ValidateHandle(*req.Id); err != nil {
 			return err
+		}
+		// GET /rest-apis/versions outranks GET /rest-apis/{restApiId}, so an API with this
+		// handle would be unreachable on GET.
+		if reservedAPIHandles[strings.ToLower(*req.Id)] {
+			return apperror.ValidationFailed.New("The id is reserved and cannot be used.")
 		}
 		// Check if handle already exists in the organization
 		handleExists, err := s.apiRepo.CheckAPIExistsByHandleInOrganization(*req.Id, orgUUID)

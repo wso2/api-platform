@@ -62,6 +62,7 @@ import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
 import { withUpstreamValuePrefix } from '../../../../utils/providerTemplateFields';
 import { FormattedMessage } from 'react-intl';
 import { reorderItem } from '../../../../Components/GuardrailPill';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
 const VERSION_PATTERN = /^v\d+\.\d+$/;
 
@@ -127,7 +128,14 @@ function TemplateBasedFormFieldsContainer({
         setOpenapiSpec(inlineSpec);
       } else if (specUrl) {
         fetch(specUrl)
-          .then((res) => res.text())
+          .then((res) => {
+            // An error page (e.g. a 404 for a spec not yet published) must not
+            // be stored as the provider's OpenAPI spec.
+            if (!res.ok) {
+              throw new Error(`HTTP ${res.status} fetching ${specUrl}`);
+            }
+            return res.text();
+          })
           .then((text) => {
             setOpenapiSpec(text);
           })
@@ -224,6 +232,12 @@ export default function ServiceProviderNew() {
     }
   }, [isProjectLevel, hasPermission, currentOrganization, navigate, setCurrentProject]);
 
+  // When the organization is read-only, that — not the user's role — is why
+  // creation is unavailable, and saying "contact your admin" would send them
+  // after the wrong fix. Empty while the organization may write, so the
+  // permission wording stands.
+  const { readOnlyMessage } = useResourceLimits();
+
   if (!hasPermission(SCOPES.LLM_PROVIDER_CREATE)) {
     return (
       <PageContent fullWidth>
@@ -235,12 +249,14 @@ export default function ServiceProviderNew() {
             />
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderNew.switch.to.the.admin.role.to.add.new.service.providers"
-              defaultMessage={
-                'Switch to the admin role to add new service providers.'
-              }
-            />
+            {readOnlyMessage || (
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.serviceProvider.ServiceProviderNew.switch.to.the.admin.role.to.add.new.service.providers"
+                defaultMessage={
+                  'Switch to the admin role to add new service providers.'
+                }
+              />
+            )}
           </Typography>
           {/* <Button component={RouterLink} to={providersPath}>
             Back to list

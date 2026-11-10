@@ -1,0 +1,39 @@
+openapi: 3.0.3
+info:
+  title: Petstore
+  version: 1.0.0
+  description: Pets and the store's inventory.
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      summary: List pets
+      responses:
+        '200':
+          description: The pets.
+    post:
+      operationId: createPet
+      summary: Add a pet
+      responses:
+        '201':
+          description: The pet was added.
+  /pets/{petId}:
+    get:
+      operationId: getPet
+      summary: Get a pet
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The pet.
+  /store/inventory:
+    get:
+      operationId: getInventory
+      summary: Get the inventory
+      responses:
+        '200':
+          description: The inventory.

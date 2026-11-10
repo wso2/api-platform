@@ -56,6 +56,8 @@ const Handlebars = require('handlebars');
 const { registerHelpers } = require('../../../helpers/handlebarsHelpers');
 
 registerHelpers();
+const priceFile = path.join(__dirname, '..', '..', 'partials', 'plan-price.hbs');
+Handlebars.registerPartial('plan-price', fs.existsSync(priceFile) ? fs.readFileSync(priceFile, 'utf8') : '');
 const render = Handlebars.compile(fs.readFileSync(path.join(__dirname, 'partials', 'api-subscription-plans.hbs'), 'utf8'));
 
 const PLANS = [
@@ -70,7 +72,7 @@ function sub(id, plan, status = 'ACTIVE') {
 function html(subscriptions, isAuthenticated = true) {
     return render({
         isAuthenticated, orgId: 'org-1', basePath: '/b', apiMetadata: { id: 'api-1' },
-        subscriptionPlans: PLANS, subscriptions,
+        subscriptionPlans: PLANS, subscriptions, access: { subscribe: true, checkout: true },
     });
 }
 

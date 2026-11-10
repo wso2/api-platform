@@ -302,3 +302,27 @@ export function checkPermission(userScopes: string[], scope: string): boolean {
 
   return false;
 }
+
+/**
+ * Scope actions that a read-only organization keeps.
+ *
+ * `read`, because a read-only organization still sees everything it owns, and
+ * `delete`, because removing what is already there is how an organization gets
+ * back under a plan's limits — taking that away would trap a user with a
+ * workspace they can neither extend nor tidy up. Every other action — `create`,
+ * `update`, `manage`, `publish`, `unpublish`, `undeploy`, `restore` — adds to
+ * or changes the workspace, and is what read-only exists to stop.
+ */
+const READ_ONLY_PERMITTED_ACTIONS = new Set(['read', 'delete']);
+
+/**
+ * Whether a read-only organization must be refused this scope.
+ *
+ * Applied in one place, `useAppAuth`, which is what disables every control
+ * already gated on such a scope without each of them having to ask about
+ * read-only itself.
+ */
+export function isScopeBlockedByReadOnly(scope: string): boolean {
+  const action = scope.split(':').pop() ?? '';
+  return !READ_ONLY_PERMITTED_ACTIONS.has(action);
+}

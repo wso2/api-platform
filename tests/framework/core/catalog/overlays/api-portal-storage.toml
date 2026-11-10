@@ -3,10 +3,6 @@
 [api_portal.server]
 port = '{{ env "APIP_AP_SERVER_PORT" "9543" }}'
 
-# The test client reaches the portal through the mapped HTTP endpoint.
-[api_portal.server.https]
-enabled = false
-
 [api_portal.logging]
 console_only = true
 

@@ -169,6 +169,10 @@ const DEFAULTS = {
             orgHandle: '',
             roles: 'roles',             // claim carrying the user's roles
             groups: 'groups',
+            // Claim carrying the user's human-readable name (OIDC "name"), stored beside
+            // the user's IdP id; responses show it as createdBy/updatedBy. Optional: a
+            // token without it still works, and responses fall back to the IdP id.
+            displayName: 'name',
         },
         // Authorization — what a VERIFIED token may do. Deliberately outside both
         // auth.local and auth.idp: a token carries the same roles claim whether the
@@ -366,6 +370,47 @@ const DEFAULTS = {
             // Skips certificate verification for webhook delivery only, e.g. to a
             // self-signed subscriber. Development only.
             tlsSkipVerify: false,
+        },
+    },
+    // When true, Settings hides the Monetization section (Billing, Meters, Usage & Revenue) and the
+    // plan dialog's Paid plan option. Billing already set up keeps working.
+    monetization: {
+        disabled: false,
+    },
+    // Billing providers (Stripe, Moesif). The keys are entered in Settings › Billing, not here.
+    billing: {
+        stripe: {
+            baseUrl: 'https://api.stripe.com',
+            // Every request and every webhook endpoint the portal creates is pinned to this
+            // version, so the shape of Stripe's objects and events does not change under it.
+            apiVersion: '2024-06-20',
+            // How old, in seconds, the signature of a Stripe event sent to the portal may be. An
+            // older event is refused, so a processed one cannot be sent again later.
+            webhookSignatureToleranceSec: 300,
+        },
+        moesif: {
+            baseUrl: 'https://api.moesif.com',
+            // Moesif's own endpoint for Stripe events, registered in Stripe alongside the portal's.
+            stripeWebhookUrl: 'https://api.moesif.net/v1/partners/stripe',
+            // How many plan prices this portal instance creates in Moesif at the same time, when a
+            // paid plan is offered on an API. Lower it if Moesif refuses calls as too many (it
+            // allows 500 management calls a minute).
+            maxParallelPrices: 4,
+            // Moesif keys set for the whole portal instead of in billing setup. Both or neither;
+            // not allowed in multi-organization mode.
+            collectorApplicationId: '',
+            managementKey: '',
+        },
+        // Limits for calls to Stripe and Moesif.
+        client: {
+            timeoutMs: 15000,
+            maxRequestBytes: 1048576,   // 1 MiB
+            maxResponseBytes: 5242880,  // 5 MiB
+            // Whether Stripe and Moesif may be reached on a private or loopback address. OFF by
+            // default, as both are public services; a deployment that reaches them through a
+            // stand-in on its own network opts in. Link-local and cloud-metadata addresses stay
+            // blocked either way.
+            allowPrivateEndpoints: false,
         },
     },
     // Upload and archive-extraction limits.

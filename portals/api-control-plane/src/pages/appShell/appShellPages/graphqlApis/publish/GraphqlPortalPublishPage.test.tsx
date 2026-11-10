@@ -16,14 +16,16 @@
  * under the License.
  */
 
+import { http as mswHttp, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { routes } from '@/routes/paths';
 import {
   accepts,
+  apiUrl,
   aGateway,
   aGraphQLApiDetail,
   aPublication,
@@ -34,9 +36,10 @@ import {
   recorder,
   resource,
 } from '@/test/msw';
+import { mockDataGridLayout } from '@/test/dataGridLayout';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
-import { renderWithProviders, screen, waitFor } from '@/test/utils';
+import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { GraphqlPortalPublishPage } from './GraphqlPortalPublishPage';
 
 // Monaco does not run in jsdom; the editor is a textarea holding the same text.
@@ -100,9 +103,16 @@ function renderPage() {
   );
 }
 
-/** Nothing saved for this portal yet: the page opens on the API's own details and SDL. */
+const DOCS_PATH = `/apis/graphql-api/${API}/docs`;
+
+/**
+ * Nothing saved for this portal yet: the page opens on the API's own details and SDL. The API has no
+ * documents unless a test serves some.
+ */
 function serveFreshApi() {
   server.use(
+    collection(DOCS_PATH, []),
+    mswHttp.get(apiUrl(`/apis/graphql-api/${API}/thumbnail`), () => new HttpResponse(null, { status: 204 })),
     resource('/graphql-apis/:graphqlApiId', api),
     resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SDL }),
     collection(`/graphql-apis/${API}/gateways`, [deployedGateway]),
@@ -113,6 +123,8 @@ function serveFreshApi() {
     failure('get', `${BASE}/publication/definition`, 404, 'PUBLICATION_NOT_FOUND'),
   );
 }
+
+beforeAll(mockDataGridLayout);
 
 beforeEach(() => {
   resetHttpClient();
@@ -201,5 +213,30 @@ describe('GraphqlPortalPublishPage', () => {
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({
       subscriptionPlanIds: ['gold'],
     });
+  });
+
+  it('selects no document of a fresh GraphQL API, and saves the one picked with the draft', async () => {
+    serveFreshApi();
+    const draftRequests = recorder();
+    server.use(
+      collection(DOCS_PATH, [{ contentType: 'text/markdown', displayName: 'Schema guide', id: 'schema-guide', type: 'HowTo' }]),
+      mswHttp.get(
+        apiUrl(`${DOCS_PATH}/:docId/content`),
+        () => new HttpResponse('Body', { headers: { 'Content-Type': 'text/markdown' } }),
+      ),
+      accepts('put', `${BASE}/draft`, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', `${BASE}/draft/definition`, undefined),
+    );
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Countries GraphQL API');
+    await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+    const row = (await screen.findByText('Schema guide')).closest('[role="row"]') as HTMLElement;
+    expect(within(row).getByRole('checkbox')).not.toBeChecked();
+    await user.click(within(row).getByRole('checkbox'));
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['schema-guide'] });
   });
 });

@@ -17,6 +17,7 @@
  */
 
 import {
+  alpha,
   Autocomplete,
   Avatar,
   Box,
@@ -36,8 +37,8 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Boxes, ChevronDown, Info, List, SquarePen, X } from '@wso2/oxygen-ui-icons-react';
-import { useState, type MouseEvent } from 'react';
+import { Boxes, Camera, ChevronDown, Info, List, RefreshCw, SquarePen, X } from '@wso2/oxygen-ui-icons-react';
+import { useRef, useState, type ChangeEvent, type MouseEvent } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import { apiInitials } from '../../apis/utils/restApiDisplay';
@@ -93,6 +94,15 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.agentVisibilityTitle',
     defaultMessage: 'Make this API discoverable by AI agents',
   },
+  changeThumbnail: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.changeThumbnail',
+    defaultMessage: 'Change thumbnail',
+  },
+  reloadThumbnail: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.reloadThumbnail',
+    defaultMessage: 'Use the API\u2019s default thumbnail',
+    description: 'Icon button replacing the thumbnail on this page with the API\u2019s own current one.',
+  },
   agentVisibilityDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.agentVisibilityDescription',
     defaultMessage: 'Let agents in the API Portal discover and invoke this API on behalf of users.',
@@ -104,6 +114,8 @@ const THUMBNAIL_WIDTH = 72;
 const THUMBNAIL_MIN_HEIGHT = 64;
 const THUMBNAIL_FONT_SIZE = 28;
 const THUMBNAIL_ICON_SIZE = 24;
+/** The overlay's icons, sized as the API Overview's thumbnail icons at the same width. */
+const THUMBNAIL_ACTION_ICON_SIZE = 18;
 
 export type ApiDetailsTabProps = {
   disabled?: boolean;
@@ -112,8 +124,16 @@ export type ApiDetailsTabProps = {
   readOnly?: boolean;
   onBlurField?: (field: DraftFormField) => void;
   onChange?: (values: DraftFormValues) => void;
+  /** Called with the image picked as the new thumbnail; without it the thumbnail is read-only. */
+  onThumbnailPick?: (file: File) => void;
+  /** Replaces the thumbnail with the API's own; the reload icon shows only when this is set. */
+  onThumbnailReload?: () => void;
   /** URLs the Production URL can be picked from; any other URL can still be typed. */
   productionUrlOptions?: GatewayUrlOption[];
+  /** Disables the reload icon while the API's thumbnail is still being read. */
+  thumbnailReloadDisabled?: boolean;
+  /** The thumbnail to show; the API name's monogram stands in without one. */
+  thumbnailUrl?: string;
   values: DraftFormValues;
 };
 
@@ -284,43 +304,129 @@ function UrlField({
   );
 }
 
-/**
- * Placeholder for the API's portal thumbnail, drawn like the API Overview's
- * avatar. It is not editable, uploaded or saved.
- */
-function ThumbnailPlaceholder({ displayName }: { displayName: string }) {
+type ThumbnailProps = {
+  disabled?: boolean;
+  displayName: string;
+  onPick?: (file: File) => void;
+  onReload?: () => void;
+  reloadDisabled?: boolean;
+  url?: string;
+};
+
+/** The API's portal thumbnail, drawn like the API Overview's avatar; the name's monogram stands in without an image. With `onPick`, hover or focus offers a picker. */
+function Thumbnail({ disabled, displayName, onPick, onReload, reloadDisabled, url }: ThumbnailProps) {
+  const intl = useIntl();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const editable = Boolean(onPick) && !disabled;
+
+  const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    // Cleared so choosing the same file again still fires a change.
+    event.target.value = '';
+    if (file) onPick?.(file);
+  };
+
   return (
-    <Avatar
+    <Box
       sx={{
-        bgcolor: 'primary.light',
-        color: 'primary.contrastText',
-        alignSelf: 'stretch',
-        fontSize: THUMBNAIL_FONT_SIZE,
         // Fills the row's height, label to input, less the reserved error line under the input.
-        height: 'auto',
+        alignSelf: 'stretch',
+        display: 'flex',
         mb: ERROR_LINE_HEIGHT,
         minHeight: THUMBNAIL_MIN_HEIGHT,
+        position: 'relative',
         width: THUMBNAIL_WIDTH,
+        '&:hover .thumbnail-overlay, &:focus-within .thumbnail-overlay': { opacity: 1 },
       }}
-      variant="rounded"
     >
-      {apiInitials(displayName) || <Boxes size={THUMBNAIL_ICON_SIZE} />}
-    </Avatar>
+      <Avatar
+        alt={displayName}
+        imgProps={{ style: { objectFit: 'contain' } }}
+        src={url}
+        sx={{
+          bgcolor: url ? 'background.paper' : 'primary.light',
+          color: 'primary.contrastText',
+          fontSize: THUMBNAIL_FONT_SIZE,
+          height: 'auto',
+          width: '100%',
+        }}
+        variant="rounded"
+      >
+        {apiInitials(displayName) || <Boxes size={THUMBNAIL_ICON_SIZE} />}
+      </Avatar>
+      {editable && (
+        <>
+          <Box
+            className="thumbnail-overlay"
+            sx={(theme) => ({
+              alignItems: 'center',
+              bgcolor: alpha(theme.palette.common.black, 0.5),
+              borderRadius: 1,
+              display: 'flex',
+              gap: 0.5,
+              inset: 0,
+              justifyContent: 'center',
+              opacity: 0,
+              position: 'absolute',
+              transition: 'opacity 150ms ease',
+            })}
+          >
+            <Tooltip title={intl.formatMessage(messages.changeThumbnail)}>
+              <IconButton
+                aria-label={intl.formatMessage(messages.changeThumbnail)}
+                onClick={() => inputRef.current?.click()}
+                size="small"
+                sx={{ color: 'common.white' }}
+              >
+                <Camera size={THUMBNAIL_ACTION_ICON_SIZE} />
+              </IconButton>
+            </Tooltip>
+            {onReload && (
+              <Tooltip title={intl.formatMessage(messages.reloadThumbnail)}>
+                {/* Span wrapper lets the Tooltip anchor on a disabled button. */}
+                <span>
+                  <IconButton
+                    aria-label={intl.formatMessage(messages.reloadThumbnail)}
+                    disabled={reloadDisabled}
+                    onClick={onReload}
+                    size="small"
+                    sx={{ color: 'common.white' }}
+                  >
+                    <RefreshCw size={THUMBNAIL_ACTION_ICON_SIZE} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            )}
+          </Box>
+          <Box
+            accept="image/png,image/jpeg"
+            component="input"
+            onChange={handleFile}
+            ref={inputRef}
+            sx={{ display: 'none' }}
+            type="file"
+          />
+        </>
+      )}
+    </Box>
   );
 }
 
 /**
- * "API Details": thumbnail placeholder, name, version, description, the two
- * endpoint URLs and agent visibility in a single card. The document picker is
- * left out of this release.
+ * "API Details": thumbnail, name, version, description, the two endpoint URLs
+ * and agent visibility in a single card.
  */
 export function ApiDetailsTab({
   disabled,
   errors = {},
   onBlurField,
   onChange,
+  onThumbnailPick,
+  onThumbnailReload,
   productionUrlOptions = [],
   readOnly,
+  thumbnailReloadDisabled,
+  thumbnailUrl,
   values,
 }: ApiDetailsTabProps) {
   const intl = useIntl();
@@ -346,7 +452,14 @@ export function ApiDetailsTab({
       <Form.Stack spacing={1}>
         <Grid container spacing={2}>
           <Grid size={{ md: 'auto', xs: 12 }} sx={{ display: 'flex' }}>
-            <ThumbnailPlaceholder displayName={values.displayName} />
+            <Thumbnail
+              disabled={disabled}
+              displayName={values.displayName}
+              onPick={readOnly ? undefined : onThumbnailPick}
+              onReload={onThumbnailReload}
+              reloadDisabled={thumbnailReloadDisabled}
+              url={thumbnailUrl}
+            />
           </Grid>
           <Grid size={{ md: 'grow', xs: 12 }}>
             <DetailField {...fieldProps('displayName', 'publicationDisplayName', messages.nameLabel)} required />

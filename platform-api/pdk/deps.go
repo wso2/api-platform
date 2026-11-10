@@ -38,14 +38,16 @@ import (
 // adapter code. The assignment itself is the compile-time contract check: if a
 // signature drifts, the server stops building.
 type Deps struct {
-	Gateways      Gateways
-	Projects      Projects
-	APIPortals    APIPortals
-	Deployments   Deployments
-	Organizations Organizations
-	Identity      Identity
+	Gateways       Gateways
+	Projects       Projects
+	APIs           APIs
+	APIPortals     APIPortals
+	WebhookSecrets WebhookSecrets
+	Deployments    Deployments
+	Organizations  Organizations
+	Identity       Identity
 	// add more capability groups as external plugins need them
-	// (APIs, Subscriptions, Applications, LLM, MCP, …)
+	// (Subscriptions, Applications, LLM, MCP, …)
 
 	Config *config.Server
 	Logger *slog.Logger
@@ -68,12 +70,23 @@ type Gateways interface {
 
 	// DeleteGateway removes a gateway within an organization (Delete).
 	DeleteGateway(gatewayID, orgID, deletedBy string) error
+
+	// RotateToken issues a new registration token for a gateway, returning the
+	// plain token once; only its hash is stored. A gateway holds at most two
+	// active tokens.
+	RotateToken(gatewayID, orgID, createdBy string) (*api.TokenRotationResponse, error)
+
+	// ListTokens returns a page of a gateway's active tokens (no token values).
+	ListTokens(gatewayID, orgID string, limit, offset int) (*api.GatewayTokenListResponse, error)
+
+	// RevokeToken revokes one of a gateway's tokens.
+	RevokeToken(gatewayID, tokenID, orgID, revokedBy string) error
 }
 
 // Projects exposes create/read/delete access to the platform's projects, scoped
-// by organization. Every method mirrors an existing ProjectService method verbatim
-// and takes the organization id explicitly — handlers MUST pass the org resolved
-// from the request context, never one from request input (GO-AUTH-005).
+// by organization. Every method is a ProjectService method, or a thin wrapper over
+// one, and takes the organization id explicitly — handlers MUST pass the org
+// resolved from the request context, never one from request input (GO-AUTH-005).
 type Projects interface {
 	// CreateProject creates a project in an organization (Create).
 	CreateProject(req *api.CreateProjectRequest, organizationID, actor string) (*api.Project, error)
@@ -84,6 +97,36 @@ type Projects interface {
 
 	// DeleteProject removes a project within an organization (Delete).
 	DeleteProject(handle, orgID, actor string) error
+
+	// ListProjects returns one page of an organization's projects, newest first, with the total (Read).
+	ListProjects(organizationID string, limit, offset int) ([]api.Project, int, error)
+
+	// CheckProjectDeletion reports whether DeleteProject would delete the project (Read):
+	// nil when it would, otherwise the refusal it would return. An unknown project is
+	// ProjectNotFound.
+	CheckProjectDeletion(handle, orgID string) error
+}
+
+// APIs exposes read-only lookups over the platform's REST APIs, scoped by
+// organization. Every method mirrors an existing APIService method verbatim and
+// takes the organization id explicitly — callers MUST pass the org resolved from
+// the request context, never one from request input (GO-AUTH-005). The parameter
+// order differs per method, inherited from those services; normalizing it would
+// cost the no-adapter assignment.
+type APIs interface {
+	// GetAPIVersions returns every REST API sharing displayName in an organization
+	// (Read). Org-wide, since (displayName, version) uniqueness is, so versions of
+	// one API may sit in different projects.
+	GetAPIVersions(orgUUID, displayName string) (*api.RESTAPIVersionListResponse, error)
+
+	// GetAPIByHandle returns a single REST API by its handle within an
+	// organization (Read).
+	GetAPIByHandle(handle, orgId string) (*api.RESTAPI, error)
+
+	// GetArtifactUUID resolves the internal artifact UUID for a REST API handle
+	// (Read). Every REST API route addresses an API by handle, so this is the only
+	// way a plugin reaches its UUID.
+	GetArtifactUUID(handle, orgUUID string) (string, error)
 }
 
 // Identity resolves the user behind a request in the form the platform keeps
@@ -93,6 +136,11 @@ type Identity interface {
 	// InternalUserID returns the internal user id for the request's
 	// authenticated user.
 	InternalUserID(r *http.Request) (string, error)
+	// DisplayIdentity returns what the platform's own responses show for an
+	// internal user id read back from a created_by / updated_by column — the
+	// user's display name, else their IdP id — so a plugin returning platform
+	// records reports the same user. An empty id is returned as is.
+	DisplayIdentity(internalUserID string) (string, error)
 }
 
 // APIPortals exposes CRUD on API Portal records, scoped by organization.
@@ -126,6 +174,24 @@ type APIPortals interface {
 	// core can decrypt it, so plugins that call the portal after Create (once its
 	// pod is up) get the header here instead of keeping the plaintext key.
 	AuthHeaderForPortal(ctx context.Context, handle, orgID string) (string, error)
+}
+
+// WebhookSecrets exposes the managed webhook secret of an API Portal, scoped by
+// organization. It runs the same service as the /webhook-secrets REST endpoints,
+// so versions, the retention limit and receiver verification behave identically.
+type WebhookSecrets interface {
+	// IssuePortalSecret issues a new version of the portal's webhook secret and
+	// returns its plaintext, creating the secret on first use. At the version
+	// limit it fails with a conflict (WEBHOOK_SECRET_VERSION_LIMIT) and deletes
+	// nothing: whether the oldest version is still needed is not known here, so
+	// an operator frees a slot through the /webhook-secrets endpoints. A frozen
+	// (read-only) organization is refused. The plaintext is not retrievable
+	// afterwards.
+	IssuePortalSecret(ctx context.Context, orgID, portalHandle string) (string, error)
+	// DeletePortalSecret removes the portal's webhook secret and all its versions.
+	// A secret that does not exist is not an error; a frozen (read-only)
+	// organization is refused.
+	DeletePortalSecret(ctx context.Context, orgID, portalHandle string) error
 }
 
 // Organizations exposes read-only lookups over the platform's organizations.
@@ -216,4 +282,10 @@ type Deployments interface {
 	// its gateway, serving the artifact it already holds rather than rendering or
 	// building anything new (Update). The deployment must not already be DEPLOYED.
 	RestoreDeploymentByHandle(handle, kind, deploymentID, gatewayHandle, orgID, actor string) (*api.DeploymentResponse, error)
+
+	// GetArtifactProjectByHandle returns the handle of the project the artifact belongs
+	// to, or an empty handle when it belongs to none: an LLM provider never does, and an
+	// MCP proxy may not. A plugin that scopes deployments by project checks it before
+	// acting, so an artifact is never deployed through another project's pipeline.
+	GetArtifactProjectByHandle(handle, kind, orgID string) (string, error)
 }

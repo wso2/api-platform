@@ -48,7 +48,7 @@ const KNOWN_HASH = crypto.createHash('sha256').update(KNOWN_RAW, 'utf8').digest(
 
 // A config carrying only what the unrelated startup checks demand, plus role-mode
 // authorization backed by the shipped mapping so the platform-api-system role
-// resolves to its five dp:*:manage scopes.
+// resolves to its six dp:*:manage scopes.
 const BASE_CONFIG = `
 [api_portal.security]
 encryption_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -238,6 +238,7 @@ test('synthesiseSharedKeyPrincipal returns a fixed shape carrying the platform-a
         'dp:api_content:manage',
         'dp:mcp_server:manage',
         'dp:mcp_server_content:manage',
+        'dp:meter:manage',
         'dp:subscription_plan:manage',
         'dp:webhook_subscriber:manage',
     ]);
@@ -297,6 +298,7 @@ test('tryAuthenticate verifies against the configured hash and returns the full 
         'dp:api_content:manage',
         'dp:mcp_server:manage',
         'dp:mcp_server_content:manage',
+        'dp:meter:manage',
         'dp:subscription_plan:manage',
         'dp:webhook_subscriber:manage',
     ]);

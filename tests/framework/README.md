@@ -2,11 +2,10 @@
 
 One integration/E2E framework for every api-platform suite: declarative multi-component
 topologies, safe parallelism, framework-provisioned infrastructure (containers, databases,
-schema), dynamic port mapping, scoped state, resource cleanup, and a tagged coverage taxonomy.
+schema), dynamic port mapping, scoped state, and resource cleanup.
 
-See [`docs/migration-tasks.md`](docs/migration-tasks.md) for the active legacy-feature migration
-tasks, and [`docs/capability-map.yml`](docs/capability-map.yml) for the
-`@cap`/`@feat` vocabulary.
+See [Scenario lists](#scenario-lists) for how a feature's scenarios map to the tests that
+automate them.
 
 ## Quick start
 
@@ -80,12 +79,12 @@ framework/
   core/runtime/     networks, databases, containers, Compose, readiness
   core/cleanup/     owner-tagged resource registry
   core/util/        HTTP, retry, runner context, and unique-name helpers
-  core/taxonomy/    capability-map lint and coverage-tree renderer
   core/assets/      resolves repository-relative files: workspace first, embedded copy second
   core/suiterun/    the exported suite entry (Main and Run) any project's test binary calls
   snapshots/        empty in git (.gitkeep); the release generates the embedded gateway schemas, current config and pricing file
 suites/
   it/  cloud/  ui/
+scenarios/          one scenario list per feature (TENANT.yaml, ...)
 ```
 
 The cloud suite targets externally hosted APIP services. It does not compile product code,
@@ -102,12 +101,65 @@ their step contracts.
 Each package's `doc.go` carries its charter and the invariants it exists to protect. Read those
 before changing one — most encode a failure mode that presents as a passing test.
 
+## Scenario lists
+
+Some product features have a scenario list: `scenarios/<CODE>.yaml` (for example
+`scenarios/TENANT.yaml`), one entry per scenario ID with its title, priority and how each
+layer covers it. `it` is the API level and `ui` the browser. Each layer is `automated`,
+`known-issue` (with the issue link), `exempt` (with the reason) or `planned`, and `refs` name
+the feature file and scenario that automate it. The lists are kept by hand.
+
+A scenario is tagged with every ID it covers (`@TENANT-004`) and its feature with the list's
+code (`@TENANT`), so `-feature-tags=@TENANT-004` runs one ID and `-feature-tags=@TENANT` a
+whole list. A runner whose tags exclude `~@known-issue` still skips an ID's `@known-issue`
+scenario, because the command-line tags are combined with the runner's.
+
 ## Using the framework from another repository
 
 The framework is a Go module, `github.com/wso2/api-platform/tests/framework`, released with the
-tag `tests/framework/vX.Y.Z` by the `Tests Framework Release` workflow. A project that owns its
-features, step definitions and resource templates imports it and runs without an api-platform
-checkout:
+tag `tests/framework/vX.Y.Z` by the `Tests Framework Release` workflow, which has a required
+`mode` input.
+
+`release` cuts a real release (tag, embedded-snapshots commit, and a
+`ghcr.io/wso2/api-platform/testbench:X.Y.Z` image): the `version` input is optional, and left
+empty the workflow auto-increments the patch of the highest existing release. Give it an explicit
+version to start a new minor/major; major versions above 1 are rejected because the module path
+has no `/v2` suffix. It does not select an older line: the release is always cut from the `main`
+commit it was dispatched from (the tag points at a snapshot commit on top of it), so this
+workflow cannot publish a backport.
+
+`rebuild-testbench` republishes the testbench image of the latest release with the testbench code
+on `main`, without a new version: the `version` input is ignored, and the
+build uses that release's tagged tree, replacing only `testbench/`, `core/util/testpki/`, `go.mod`
+and `go.sum` with the ones on `main`. No tag is created or moved, so `go get` still resolves the
+same framework version; the rebuild overwrites `:X.Y.Z` and re-pushes only the floating tags
+that release already owns. It fails when the `main` testbench no longer compiles or passes its
+tests against the released `core/`.
+
+The testbench image also gets whichever floating tags that release is the newest of: `:latest`
+only when it's the highest release overall, the bare `:MAJOR` only when it's the highest within
+that major, and `:MAJOR.MINOR` only when it's the highest patch within that minor line. So a
+version below the highest existing release never moves `:latest` or `:MAJOR` backward, and gets
+its `:MAJOR.MINOR` only if it's the newest patch of that line, while an out-of-order patch inside a
+line gets no floating tag at all.
+
+A consumer picks a reference with plain `go get`, no special syntax needed:
+
+```sh
+go get github.com/wso2/api-platform/tests/framework@latest      # the newest release overall
+go get github.com/wso2/api-platform/tests/framework@v0.4        # the newest 0.4.x release
+go get github.com/wso2/api-platform/tests/framework@v0.4.2      # pinned exactly
+```
+
+`go.mod` always records one exact resolved version — a `v0.4` query is only ever evaluated at the
+moment `go get` runs, never re-floated by a later `go build`; re-run `go get` to pick up a newer
+patch. `@latest` resolves to the single highest tag in the repository, which is always the
+highest minor and patch within the highest major, by ordinary semver precedence — until a `v2+`
+release, when Go's module path convention requires moving to a `/v2`-suffixed import path and
+`@latest` against the old path stops tracking it; not a concern while this module stays at `v0`/`v1`.
+
+A project that owns its features, step definitions and resource templates imports the module and
+runs without an api-platform checkout:
 
 ```go
 func TestMain(m *testing.M) { suiterun.Main(m, options()) }
@@ -263,58 +315,6 @@ defaults:
 The selector uses the same strict Gateway-version syntax as runner tags. Incompatible matrix
 variants are reported as skipped before their topology boots. Explicitly selecting an incompatible
 variant, such as `-blocks gateway-core/sqlserver -gateway-version 1.1.0`, is a configuration error.
-
-### Policy error compatibility
-
-The `policy-compat` blocks prove that changing a policy in gateway-controllers leaves the error
-response a client receives unchanged — status, contract headers and body — on every supported
-Gateway version. Each scenario drives one policy into its main rejection and checks the response
-with `the response should match the expected error response "<id>"`, against
-`suites/it/resources/expected-error-responses/<id>.json`. One file serves every Gateway version.
-If a version's response genuinely differs, record that version's own file as
-`expected-error-responses/<gateway version>/<id>.json`; it wins for that version. The source build's
-version is the one in `gateway/VERSION`.
-
-The policies under test come from `../gateway-controllers/policies`, a gateway-controllers
-checkout next to this repository: in gateway-controllers' CI that is the pull request. The
-expected responses were recorded from the policies as they were before the change being checked.
-
-On a released Gateway, only the policies that release ships are built (`releasedPoliciesOnly`
-on the block's `platform-gateway`): those are the ones its users would upgrade. The rest of the
-checkout can need what the release's gateway-builder lacks — a newer Go, a newer shared module.
-
-| Runner | Gateway versions | Covers |
-|---|---|---|
-| `policy-errors-from-1-1-0` | 1.1.0 and later | policies every supported release ships |
-| `policy-errors-from-1-2-0` | 1.2.0 and later | policies, and a streamed rejection, first shipped in 1.2.0 |
-| `policy-errors-latest` | the current source build | unreleased policies, the Python guardrails, Agent APIs |
-| `policy-errors-semantic-cache` | 1.1.0 and later | semantic-cache, in its own block with Redis |
-
-Run them alone, for one Gateway version (`-gateway-version` omitted means the source build):
-
-```bash
-cd tests/framework
-B=policy-compat/sqlite,policy-compat-semantic-ai/sqlite
-go test ./suites/it -count=1 -timeout=60m -v -args -blocks=$B -gateway-version=1.2.0
-```
-
-`-blocks` selects only these blocks; the `/sqlite` suffix picks one variant of each block's
-database matrix (drop it to run every database). To run one runner, add
-`-run 'TestIntegrationSuite/policy-compat/sqlite/policy-errors-from-1-2-0'` before `-args`.
-
-**Recording.** Check out the policies from before the change as `../gateway-controllers`, then
-run with `IT_RECORD_EXPECTED_ERRORS=1` on the source build, which runs every scenario. Then run
-the other Gateway versions without it: a difference there is either a real incompatibility or a
-version that genuinely answers differently. For the latter, copy the shared file into
-`<gateway version>/` and record again on that version, which then writes the override. A missing
-expected response fails rather than recording itself. Responses are stored with UUIDs,
-timestamps, hex IDs and the runner's generated names masked, and JSON bodies are compared
-structurally.
-
-**An intended difference** is recorded rather than left failing: run with
-`IT_ACCEPT_ERROR_CHANGES=1` and each differing response is written beside its expected response
-as `<id>.accepted.json`. A response then passes if it matches either file, and the accepted file
-is reviewed like any other change.
 
 ### Docker environment
 

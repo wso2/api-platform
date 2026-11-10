@@ -57,6 +57,7 @@ import AgentProxiesCreateForm, {
   AGENT_TRANSPORT_OPTIONS,
 } from './AgentProxiesCreateForm';
 import { isValidHttpUrl } from '../../../../utils/providerTemplateFields';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
 /**
  * The sample agent behind "Try with Sample Agent". This is the agent's base
@@ -348,6 +349,12 @@ export default function AgentProxiesNew(): React.JSX.Element {
     Boolean(targetValidationError) ||
     selectedTransports.length === 0;
 
+  // When the organization is read-only, that — not the user's role — is why
+  // creation is unavailable, and saying "contact your admin" would send them
+  // after the wrong fix. Empty while the organization may write, so the
+  // permission wording stands.
+  const { readOnlyMessage } = useResourceLimits();
+
   if (!canCreateAgentProxy) {
     return (
       <PageContent fullWidth>
@@ -359,12 +366,14 @@ export default function AgentProxiesNew(): React.JSX.Element {
             />
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.creation.unavailable.description"
-              defaultMessage={
-                'You do not have permission to create Agent Proxies. Please contact your admin.'
-              }
-            />
+            {readOnlyMessage || (
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.agentProxies.Main.creation.unavailable.description"
+                defaultMessage={
+                  'You do not have permission to create Agent Proxies. Please contact your admin.'
+                }
+              />
+            )}
           </Typography>
         </Stack>
       </PageContent>

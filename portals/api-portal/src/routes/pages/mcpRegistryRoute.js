@@ -20,6 +20,7 @@ const router = express.Router({ mergeParams: true });
 const mcpRegistryService = require('../../services/mcpRegistryService');
 const { enforceSecurity } = require('../../middlewares/ensureAuthenticated');
 const { orgGuardMiddleware } = require('../../middlewares/orgGuard');
+const { requireCsrfForMutatingApi } = require('../../middlewares/csrfProtection');
 const constants = require('../../utils/constants');
 
 router.use((req, res, next) => {
@@ -63,11 +64,12 @@ router.get('/v0.1/servers/:serverName/versions/:version', mcpRegistryService.get
 // it has determined which operation this request actually performs. A caller with only
 // dp:mcp_server:create must not be able to update an existing server via this coarse gate alone,
 // and vice versa for dp:mcp_server:update against creating a new one.
+// requireCsrfForMutatingApi is a no-op for Bearer/mTLS/shared-key callers
 const MCP_PUBLISH_SCOPES = [...constants.SCOPES.MCP_CREATE, ...constants.SCOPES.MCP_UPDATE];
-router.post('/v0.1/publish', enforceSecurity(MCP_PUBLISH_SCOPES), mcpRegistryService.publishServer);
-router.put('/v0.1/servers/:serverName/versions/:version', enforceSecurity(constants.SCOPES.MCP_UPDATE), mcpRegistryService.updateVersion);
-router.delete('/v0.1/servers/:serverName/versions/:version', enforceSecurity(constants.SCOPES.MCP_DELETE), mcpRegistryService.deleteVersion);
-router.patch('/v0.1/servers/:serverName/versions/:version/status', enforceSecurity(constants.SCOPES.MCP_UPDATE), mcpRegistryService.updateVersionStatus);
-router.patch('/v0.1/servers/:serverName/status', enforceSecurity(constants.SCOPES.MCP_UPDATE), mcpRegistryService.updateAllVersionsStatus);
+router.post('/v0.1/publish', requireCsrfForMutatingApi, enforceSecurity(MCP_PUBLISH_SCOPES), mcpRegistryService.publishServer);
+router.put('/v0.1/servers/:serverName/versions/:version', requireCsrfForMutatingApi, enforceSecurity(constants.SCOPES.MCP_UPDATE), mcpRegistryService.updateVersion);
+router.delete('/v0.1/servers/:serverName/versions/:version', requireCsrfForMutatingApi, enforceSecurity(constants.SCOPES.MCP_DELETE), mcpRegistryService.deleteVersion);
+router.patch('/v0.1/servers/:serverName/versions/:version/status', requireCsrfForMutatingApi, enforceSecurity(constants.SCOPES.MCP_UPDATE), mcpRegistryService.updateVersionStatus);
+router.patch('/v0.1/servers/:serverName/status', requireCsrfForMutatingApi, enforceSecurity(constants.SCOPES.MCP_UPDATE), mcpRegistryService.updateAllVersionsStatus);
 
 module.exports = router;

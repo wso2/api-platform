@@ -1,6 +1,6 @@
 module api-control-plane-bff
 
-go 1.26.5
+go 1.26.10
 
 require (
 	github.com/go-viper/mapstructure/v2 v2.4.0
@@ -22,3 +22,5 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	golang.org/x/sys v0.32.0 // indirect
 )
+
+replace github.com/wso2/api-platform/httpkit => ../../../httpkit

@@ -60,7 +60,7 @@ type AgentDeploymentService struct {
 func NewAgentDeploymentService(agentRepo repository.AgentProxyRepository, deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository, artifactRepo repository.ArtifactRepository,
 	apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService,
-	definitions ArtifactDefinitions, cfg *config.Server, slogger *slog.Logger) *AgentDeploymentService {
+	definitions ArtifactDefinitions, identity *IdentityService, cfg *config.Server, slogger *slog.Logger) *AgentDeploymentService {
 	return &AgentDeploymentService{
 		agentRepo:            agentRepo,
 		deploymentRepo:       deploymentRepo,
@@ -68,7 +68,7 @@ func NewAgentDeploymentService(agentRepo repository.AgentProxyRepository, deploy
 		apiKeyRepo:           apiKeyRepo,
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
-		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, cfg, slogger),
+		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, identity, cfg, slogger),
 		slogger:              slogger,
 	}
 }

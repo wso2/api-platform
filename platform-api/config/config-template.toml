@@ -56,7 +56,9 @@
 [platform_api]
 
 # Resource paths loaded at startup. Defaults match the published container
-# image — override only for a custom layout.
+# image — override only for a custom layout. An overridden openapi_spec_path must
+# be the spec of the same release as the binary: authorization denies any route
+# the spec does not declare.
 db_schema_path                = "./internal/database/schema.sql"
 openapi_spec_path             = "./resources/openapi.yaml"
 llm_template_definitions_path = "./resources/default-llm-provider-templates"
@@ -69,12 +71,44 @@ openapi_spec_max_fetch_bytes = 5242880
 # (server info, tools/prompts/resources listing). <= 0 uses the built-in 10 MiB default.
 mcp_response_max_fetch_bytes = 10485760
 
+# Byte cap on the content ZIP (documents, thumbnail, landing page) pushed to an API Portal on
+# publish; a larger one is rejected before any portal call. <= 0 uses the built-in 10 MiB
+# default. Each concurrent publish holds the loaded documents (up to 50 MiB) plus two copies
+# of the archive in memory until the push ends, about 70 MiB at the default; size pod memory
+# for the publishes you expect at once.
+publication_archive_max_bytes = 10485760
+
 [platform_api.logging]
 # Level is matched case-insensitively; lowercase is canonical.
 level = "info"   # debug | info | warn | error
 
 # Log encoding. Use "json" when shipping logs to an aggregator.
 format = "text"   # text | json
+
+# Health check behaviour (/health and /ready). Every key is optional; the values shown are
+# the defaults.
+[platform_api.health]
+# Clients allowed to call the health endpoints. The default, "*", allows every client.
+# To restrict access, list IP addresses or CIDR ranges, comma-separated, for example
+# "127.0.0.1,::1,10.0.0.0/8"; any other client then gets 403. Keep the addresses your
+# probes and load balancers call from.
+allowed_clients = '{{ env "APIP_CP_HEALTH_ALLOWED_CLIENTS" "*" }}'
+# cache_ttl = "3s"    # how long an evaluated health result is reused
+
+# The database check decides from the outcomes of the platform's own database operations
+# and pings the database itself, at most once per idle_period, only while they are too few to decide from.
+# During startup_wait the cause is logged at WARN; a rejected login, a PostgreSQL database that
+# does not exist or an untrusted server certificate ends startup at once instead of waiting.
+# SQL Server reports a missing database the same way as one still recovering, so startup waits.
+[platform_api.health.database]
+# check_timeout   = '{{ env "APIP_CP_HEALTH_DATABASE_CHECK_TIMEOUT" "2s" }}'     # deadline for one run of the check and its ping; keep below the probe timeout
+# startup_wait    = '{{ env "APIP_CP_HEALTH_DATABASE_STARTUP_WAIT" "5m" }}'      # how long startup waits for the database before exiting
+# failure_window  = '{{ env "APIP_CP_HEALTH_DATABASE_FAILURE_WINDOW" "30s" }}'   # how far back operation outcomes are counted (at most 1h)
+# failure_ratio   = '{{ env "APIP_CP_HEALTH_DATABASE_FAILURE_RATIO" "0.5" }}'    # share of failed operations that reports the database down
+# min_attempts    = '{{ env "APIP_CP_HEALTH_DATABASE_MIN_ATTEMPTS" "5" }}'       # operations needed in the window before the ratio decides
+# idle_period     = '{{ env "APIP_CP_HEALTH_DATABASE_IDLE_PERIOD" "10s" }}'      # with too few operations to decide, the check pings once per period
+# pool_saturation = '{{ env "APIP_CP_HEALTH_DATABASE_POOL_SATURATION" "0.9" }}'  # share of the pool in use, with callers waiting, that counts as saturated
+# pool_wait_limit = '{{ env "APIP_CP_HEALTH_DATABASE_POOL_WAIT_LIMIT" "5s" }}'   # how long the pool may stay saturated before the database is reported down
 
 # ---------------------------------------------------------------------------
 # Security
@@ -183,6 +217,10 @@ user_id       = "sub"             # claim used as the user's unique ID
 username      = "username"
 email         = "email"
 scope         = "scope"           # space-separated scope string
+# Claim carrying the user's human-readable name (OIDC "name"). Stored beside the
+# user's IdP id; responses show it as createdBy/updatedBy. Optional: a token without
+# it still works, and responses fall back to the IdP id.
+display_name  = "name"
 # Claim carrying the user's roles. Read in role authorization mode, and it is the
 # claim the file-mode login endpoint signs the user's roles into. Default suits
 # Asgardeo/Entra ID; Keycloak nests it: "realm_access.roles". A dotted path works
@@ -278,6 +316,75 @@ token_ttl = "1h"
 #
 # This is a supported trust-boundary configuration for internal tokens.
 skip_validation = false
+
+# Service accounts — non-human identities that swap a client ID and secret for a
+# short-lived platform JWT at POST /api/v0.9/service-accounts/token.
+#
+# Client secrets look like apsa_<64 hex chars>. Add the pattern
+# apsa_[0-9a-f]{64} to your secret scanner (GitHub secret scanning,
+# GitGuardian, trufflehog) so a leaked secret is caught.
+#
+# An account holds one or more roles from the role-to-scope mapping. Its
+# token carries one authorization claim, chosen by auth.authorization.mode: in
+# "scope" mode the client must send scope=<space-separated scopes>, all granted
+# by its roles, and the token carries exactly those; in "role" mode scope is
+# ignored and the token carries the roles.
+[platform_api.auth.service_account]
+# Off by default. Set to true to add the service-account endpoints; on Postgres
+# and SQL Server, apply the service_accounts and service_account_revocations
+# tables from the schema file first. Turning it off again refuses every
+# service-account token; accounts are kept and work again when turned back on.
+# Needs auth.authorization.role_to_scope_mapping: an account's roles come from it.
+enabled = false
+# Lifetime of a service-account token.
+token_ttl = "15m"
+# Written to every service-account token's aud and required back on it.
+audience = "platform-api"
+
+[platform_api.auth.service_account.revocation]
+# How often each replica reloads revocations (plus up to half again as jitter).
+poll_interval = "5s"
+
+# Signing keys, set up like the gateway's [signing]. The public keys are published
+# at GET /.well-known/jwks (the server root, not /api/v0.9), so a gateway or any
+# other verifier checks a token by its kid.
+#
+# With no keys, service-account tokens are signed with auth.jwt, which needs
+# auth.jwt.private_key_file; without one, token issue is disabled. Own keys are
+# recommended for production: only they can be changed without breaking every
+# live token at once.
+#
+# Each key is a PEM private key file; the public key is derived from it. Exactly
+# one key is marked active and signs. Every listed key verifies and is published.
+# The kid defaults to the RFC 7638 thumbprint.
+#
+# The key type picks the signing algorithm, and `algorithm` may override it:
+#   RSA (PKCS #1 or PKCS #8)     RS256 (default), PS256
+#   EC P-256 (SEC 1 or PKCS #8)   ES256
+#   EC P-384 (SEC 1 or PKCS #8)   ES384
+# Other curves and key types are refused. An SA token must use exactly its key's
+# algorithm. With no keys, tokens use auth.jwt's key and RS256.
+#
+# Rotation, each step a config change and a rolling restart: (1) add the new key
+# without `active`; (2) after at least jwks_cache_max_age, move `active = true`
+# to it; (3) after token_ttl plus jwks_cache_max_age, remove the old key. Moving
+# to a key of another algorithm takes the same steps, but every verifier that
+# reads the JWKS must support the new algorithm before step 2.
+[platform_api.auth.service_account.signing]
+# Cache-Control max-age of the JWKS, 0 to 24h. Also the shortest wait between
+# rotation steps.
+jwks_cache_max_age = "5m"
+# Required with keys. Must differ from auth.jwt.issuer and every auth.idp.issuer.
+# issuer = "platform-api-sa"
+
+# [[platform_api.auth.service_account.signing.keys]]
+# path = "/etc/platform-api/keys/sa_signing.pem"
+# active = true
+#
+# [[platform_api.auth.service_account.signing.keys]]
+# path = "/etc/platform-api/keys/sa_signing_old.pem"
+# # kid = "..."        optional override of the thumbprint
+# # algorithm = "..."  optional override of the algorithm the key type implies
 
 # ---------------------------------------------------------------------------
 # Server listeners (HTTP + HTTPS)
@@ -386,15 +493,33 @@ timeout_interval = 20   # seconds between timeout check sweeps
 timeout_duration = 60   # seconds before a stuck deployment is timed out
 
 # ---------------------------------------------------------------------------
+# Organizations — how a new organization is set up
+# ---------------------------------------------------------------------------
+[platform_api.organizations]
+create_default_project = true   # create a "default" project with every new organization
+
+# ---------------------------------------------------------------------------
 # API Portal publication — limits on the calls made to an API Portal
 # ---------------------------------------------------------------------------
 # Values are durations, e.g. "5s". Network errors and 5xx are retried, 4xx are not.
 # The plan list, all its pages together, gets the time of one call. Startup refuses an
 # overall_timeout below the worst case of a publish; keep it a few seconds below the
 # console's own request timeout, which cannot be checked here.
+#
+# With monetization (paid plans sold through an API Portal with billing set up), the listing push
+# also creates the API's new paid plans with the portal's billing provider before it answers, which
+# can take tens of seconds (about 20 s for a plan with 20 usage prices), and a retry must not start
+# a second one while the first is still running. For such portals, raise the listing timeout and
+# turn retries off (listing_request_timeout, the listing push, defaults to request_timeout), for
+# example:
+#   listing_request_timeout = "85s"
+#   max_retries             = 0
+#   overall_timeout         = "110s"   # >= 3 x request_timeout + listing_request_timeout
+#                                      # + content_request_timeout, and below
+#                                      # server.timeouts.write (120s by default)
 [platform_api.api_portal_publication]
-request_timeout         = "5s"    # one attempt of any call except the listing push
-listing_request_timeout = "15s"   # one attempt of the listing push (>= request_timeout)
+request_timeout         = "5s"    # one attempt of any call except the content push
+content_request_timeout = "10s"   # one attempt of the content push (>= request_timeout)
 max_retries             = 1       # retries after the first attempt (0 = no retries)
 retry_backoff           = "1s"    # wait between attempts of the same call
 overall_timeout         = "65s"   # deadline for all portal calls of one publish, unpublish or deprecate
@@ -509,6 +634,43 @@ max_entries  = 512     # LRU cap on cached Agent proxies (0 = cache nothing)
 max_bytes    = 33554432 # 32 MiB total cached card bytes (0 = cache nothing)
 
 # ---------------------------------------------------------------------------
+# Gateway relay — the Test console's requests to a deployed REST API
+# ---------------------------------------------------------------------------
+# POST /gateway-relay/invoke sends the console's test request to a gateway the
+# REST API is deployed to and returns the gateway's response as data. The caller names the REST API and the gateway,
+# never a URL; the target is that gateway's endpoint plus the context of the API's
+# deployment there, sent with the deployment's main vhost as Host when it has one.
+[platform_api.gateway_relay]
+request_timeout    = "30s"     # from the test request's arrival to the end of the gateway call: reading the request and finding the target take from it; must stay below server.timeouts.write
+max_request_bytes  = 2097152   # 2 MiB decoded request body (the JSON request may be up to twice that: base64, escaping)
+max_response_bytes = 8388608   # 8 MiB; a longer gateway response is truncated and flagged, not failed
+max_concurrent     = 32        # relayed calls in flight at once, per replica
+max_pending        = 64        # calls that may wait for a slot before new ones get 503 (as does one still waiting at request_timeout)
+ca_file            = ""        # PEM bundle to trust for gateway certificates
+tls_skip_verify    = false     # development only; exclusive with ca_file
+
+# Where the relay may connect. A gateway's endpoint is tenant-settable data, so
+# this list is how a deployment says what a gateway address may look like.
+#
+#   1. Nothing is reachable unless an allow_hosts entry matches; an empty list
+#      refuses every target.
+#   2. Always refused, whatever the list says: link-local (the 169.254.169.254
+#      metadata endpoint), the unspecified address, multicast and broadcast,
+#      and the IPv6 ranges that route onward to IPv4 (6to4 2002::/16, NAT64
+#      64:ff9b::/96). Checked against every resolved address at dial time.
+#
+# Private, loopback and ClusterIP addresses are dialable when listed, because
+# that is where gateways live. Entries are "[scheme://]host[:port]"; scheme and
+# port constrain only when written, and "*" in the host matches any run of
+# characters ("*.gw.example.com" matches a.gw.example.com, not gw.example.com):
+#
+#   allow_hosts = ["https://*.gw.svc.cluster.local:9443", "https://gw.api.example.com"]
+#
+# Read below from APIP_CP_GATEWAY_RELAY_ALLOW_HOSTS, comma-separated.
+[platform_api.gateway_relay.egress]
+allow_hosts = '{{ env "APIP_CP_GATEWAY_RELAY_ALLOW_HOSTS" "https://localhost:8443" }}'
+
+# ---------------------------------------------------------------------------
 # EventHub — multi-replica HA event delivery
 # ---------------------------------------------------------------------------
 # Values are durations, e.g. "3s", "10m", "1h". All must be positive.
@@ -533,6 +695,10 @@ secret = ""
 signature_tolerance = "5m"                       # max age of a signed request (replay protection)
 max_body_size       = 1048576                    # request body cap in bytes (1 MiB)
 signature_header    = "X-Api-Portal-Signature"     # header carrying the "t=...,v1=..." signature
+# false (default): a delivery without secret_hash is rejected before any signature check.
+# true: accept it (portal older than the field), verified against each of the organization's
+# portal secrets, then the shared secret. Enable only while such a portal is still in use.
+legacy_shared_secret = false
 
 # ---------------------------------------------------------------------------
 # Read-only (maintenance) mode — TEMPORARY, v1 → v2 migration (TEMP-READ-ONLY-MODE)
@@ -556,3 +722,30 @@ signature_header    = "X-Api-Portal-Signature"     # header carrying the "t=...,
 [platform_api.read_only]
 enabled                = false
 writable_organizations = []
+
+# -----------------------------------------------------------------------------
+# MCP server: /api/v0.9/mcp lets an MCP client (an AI agent) manage APIs,
+# projects and gateways for the signed-in user. Off by default. Not the same as
+# MCP proxies, which put a customer's MCP server behind a gateway.
+#
+# /mcp signs in like every other route. When auth.authorization is enabled, each
+# tool checks the scopes of the REST routes it stands for. In read-only mode a
+# frozen organization gets 503 on every /mcp call, reads included (/mcp is all
+# POST).
+#
+# In idp mode, mcp_server.auth.audience is required, and so is public_url: how
+# clients reach the Platform API, for login discovery. If auth.idp.audience is
+# set, it must list the MCP audience too, so REST routes then also accept
+# tokens meant for /mcp.
+#
+# Startup fails if a plugin overrides a route one of the tools uses. A reverse
+# proxy on the same host must connect on a non-loopback address or send a
+# loopback Host header, or /mcp answers 403 "invalid Host header".
+# -----------------------------------------------------------------------------
+[platform_api.mcp_server]
+enabled           = false
+max_request_bytes = 1048576
+public_url        = ""
+
+[platform_api.mcp_server.auth]
+audience = ""

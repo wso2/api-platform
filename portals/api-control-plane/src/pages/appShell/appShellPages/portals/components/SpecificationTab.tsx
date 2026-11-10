@@ -16,11 +16,23 @@
  * under the License.
  */
 
-import { lazy, Suspense } from 'react';
-import { Alert, Box, Stack, ToggleButton, ToggleButtonGroup } from '@wso2/oxygen-ui';
+import { lazy, Suspense, useDeferredValue, useMemo } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  Grid,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  Typography,
+} from '@wso2/oxygen-ui';
+import { Info, RefreshCw } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { LoadingState } from '@/components/StateViews';
+import SwaggerSpecViewer from '@/components/SwaggerSpecViewer';
 import { parseSpecText, serializeSpec, type SpecFormat } from '../../apis/create/utils/specText';
 import type { DefinitionFormat } from '../utils/storedDefinition';
 
@@ -34,7 +46,20 @@ const CodeEditor = lazy(() =>
   import('@/components/CodeEditor/CodeEditor').then((module) => ({ default: module.CodeEditor })),
 );
 
+/** Each pane's height once the two stack on a narrow screen; side by side they fill the available height. */
+const PANE_HEIGHT_XS = 480;
+
 const messages = defineMessages({
+  resourcesTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.resourcesTitle',
+    defaultMessage: 'Resources',
+    description: "Heading of the pane listing the definition's operations, beside the editor.",
+  },
+  resourcesEmpty: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.resourcesEmpty',
+    defaultMessage: 'No resources to show. Fix the definition on the left to see them here.',
+    description: "Shown in the resources pane when the definition can't be read or has no paths.",
+  },
   editorLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLabel',
     defaultMessage: 'API definition ({format})',
@@ -55,6 +80,18 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.formatLabel',
     defaultMessage: 'Source format',
     description: 'Accessible name for the YAML / JSON toggle buttons.',
+  },
+  loadApiDefinition: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.loadApiDefinition',
+    defaultMessage: 'Load the API\u2019s specification',
+    description:
+      'Button replacing the specification on this page with the API\u2019s own current one. Shown only when the two differ.',
+  },
+  apiDefinitionChanged: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.apiDefinitionChanged',
+    defaultMessage: 'Differs from the API\u2019s specification.',
+    description:
+      'Tooltip of the info icon beside the button that loads the API\u2019s own specification.',
   },
 });
 
@@ -79,6 +116,8 @@ export type SpecificationTabProps = {
   onChange?: (text: string) => void;
   /** A JSON/YAML switch; never called for a GraphQL SDL, which has no other format. */
   onFormatChange?: (format: SpecFormat) => void;
+  /** Loads the API's own specification; the toolbar button and its info icon show only when this is set. */
+  onLoadApiDefinition?: () => void;
   /** The parser's own complaint, when the current buffer doesn't read in its format. */
   parseError?: string;
   /** Shows the definition without letting it be edited, for a version that can't be changed. */
@@ -100,11 +139,25 @@ export function SpecificationTab({
   format,
   onChange,
   onFormatChange,
+  onLoadApiDefinition,
   parseError,
   readOnly,
   text,
 }: SpecificationTabProps) {
   const intl = useIntl();
+
+  // The resources pane follows the buffer, a beat behind typing so the viewer isn't rebuilt per keystroke.
+  const deferredText = useDeferredValue(text);
+  const spec = useMemo(() => {
+    if (format === 'graphql') return undefined;
+    const parsed = parseSpecText(deferredText, format);
+    if (parsed.status !== 'parsed') return undefined;
+    const paths = parsed.spec.paths;
+    return paths && typeof paths === 'object' && Object.keys(paths).length > 0
+      ? parsed.spec
+      : undefined;
+  }, [deferredText, format]);
+  const showResources = format !== 'graphql';
 
   const switchFormat = (next: SpecFormat) => {
     if (next === format || disabled || format === 'graphql') return;
@@ -116,57 +169,138 @@ export function SpecificationTab({
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* A GraphQL SDL has a single serialization, so there is nothing to switch between. */}
-      {format !== 'graphql' && (
-        <Stack
-          alignItems="center"
-          direction="row"
-          spacing={1}
+    <Grid container sx={{ height: { md: '100%', xs: 'auto' }, overflow: { md: 'hidden' } }}>
+      <Grid
+        size={{ md: showResources ? 6 : 12, xs: 12 }}
+        sx={{ height: { md: '100%', xs: PANE_HEIGHT_XS }, minHeight: 0, minWidth: 0 }}
+      >
+        <Box
           sx={{
-            borderBottom: 1,
-            borderColor: 'divider',
-            flexShrink: 0,
-            justifyContent: 'flex-end',
-            px: 2,
-            py: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            height: '100%',
+            minHeight: 0,
+            minWidth: 0,
+            overflow: 'hidden',
           }}
         >
-          <ToggleButtonGroup
-            aria-label={intl.formatMessage(messages.formatLabel)}
-            color="primary"
-            disabled={disabled}
-            exclusive
-            onChange={(_event, next: SpecFormat | null) => {
-              if (next !== null) switchFormat(next);
-            }}
-            size="small"
-            value={format}
-          >
-            <ToggleButton value="yaml">{FORMAT_LABELS.yaml}</ToggleButton>
-            <ToggleButton value="json">{FORMAT_LABELS.json}</ToggleButton>
-          </ToggleButtonGroup>
-        </Stack>
+          {(format !== 'graphql' || onLoadApiDefinition) && (
+            <Stack
+              alignItems="center"
+              direction="row"
+              spacing={1}
+              sx={{
+                borderBottom: 1,
+                borderColor: 'divider',
+                flexShrink: 0,
+                px: 2,
+                py: 1,
+              }}
+              useFlexGap
+            >
+              {onLoadApiDefinition && (
+                <>
+                  <Button
+                    disabled={disabled}
+                    onClick={onLoadApiDefinition}
+                    size="small"
+                    startIcon={<RefreshCw size={16} />}
+                    variant="outlined"
+                  >
+                    <FormattedMessage {...messages.loadApiDefinition} />
+                  </Button>
+                  <Tooltip title={intl.formatMessage(messages.apiDefinitionChanged)}>
+                    <Box sx={{ color: 'text.secondary', display: 'flex' }} tabIndex={0}>
+                      <Info size={16} />
+                    </Box>
+                  </Tooltip>
+                </>
+              )}
+              {/* A GraphQL SDL has a single serialization, so there is nothing to switch between. */}
+              {format !== 'graphql' && (
+                <ToggleButtonGroup
+                  aria-label={intl.formatMessage(messages.formatLabel)}
+                  color="primary"
+                  disabled={disabled}
+                  exclusive
+                  onChange={(_event, next: SpecFormat | null) => {
+                    if (next !== null) switchFormat(next);
+                  }}
+                  size="small"
+                  sx={{ ml: 'auto' }}
+                  value={format}
+                >
+                  <ToggleButton value="yaml">{FORMAT_LABELS.yaml}</ToggleButton>
+                  <ToggleButton value="json">{FORMAT_LABELS.json}</ToggleButton>
+                </ToggleButtonGroup>
+              )}
+            </Stack>
+          )}
+          {parseError && (
+            <Alert severity="error" sx={{ borderRadius: 0, flexShrink: 0 }}>
+              <FormattedMessage
+                {...messages.malformed}
+                values={{ detail: parseError, format: FORMAT_LABELS[format] }}
+              />
+            </Alert>
+          )}
+          <Box sx={{ flex: 1, minHeight: 0 }}>
+            <Suspense
+              fallback={<LoadingState label={intl.formatMessage(messages.editorLoading)} />}
+            >
+              <CodeEditor
+                ariaLabel={intl.formatMessage(messages.editorLabel, {
+                  format: FORMAT_LABELS[format],
+                })}
+                language={format}
+                onChange={onChange}
+                readOnly={disabled || readOnly}
+                value={text}
+              />
+            </Suspense>
+          </Box>
+        </Box>
+      </Grid>
+      {showResources && (
+        <Grid
+          size={{ md: 6, xs: 12 }}
+          sx={{
+            borderColor: 'divider',
+            borderLeft: { md: 1 },
+            borderTop: { md: 0, xs: 1 },
+            display: 'flex',
+            flexDirection: 'column',
+            height: { md: '100%', xs: PANE_HEIGHT_XS },
+            minHeight: 0,
+            minWidth: 0,
+            '& .swagger-ui': { bgcolor: 'transparent' },
+          }}
+        >
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', flexShrink: 0, px: 2, py: 1.5 }}>
+            <Typography sx={{ fontWeight: 600 }} variant="subtitle1">
+              <FormattedMessage {...messages.resourcesTitle} />
+            </Typography>
+          </Box>
+          <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 2, py: 1 }}>
+            {spec ? (
+              <SwaggerSpecViewer
+                disableTryOutBtn
+                displayRequestDuration={false}
+                enableResourceSearch
+                hideAuthorizeButton
+                hideInfoSection
+                hideServers
+                hideTagHeaders
+                spec={spec}
+              />
+            ) : (
+              <Typography color="text.secondary" sx={{ py: 2 }} variant="body2">
+                <FormattedMessage {...messages.resourcesEmpty} />
+              </Typography>
+            )}
+          </Box>
+        </Grid>
       )}
-      {parseError && (
-        <Alert severity="error" sx={{ borderRadius: 0, flexShrink: 0 }}>
-          <FormattedMessage
-            {...messages.malformed}
-            values={{ detail: parseError, format: FORMAT_LABELS[format] }}
-          />
-        </Alert>
-      )}
-      <Box sx={{ flex: 1, minHeight: 0 }}>
-        <Suspense fallback={<LoadingState label={intl.formatMessage(messages.editorLoading)} />}>
-          <CodeEditor
-            ariaLabel={intl.formatMessage(messages.editorLabel, { format: FORMAT_LABELS[format] })}
-            language={format}
-            onChange={onChange}
-            readOnly={disabled || readOnly}
-            value={text}
-          />
-        </Suspense>
-      </Box>
-    </Box>
+    </Grid>
   );
 }

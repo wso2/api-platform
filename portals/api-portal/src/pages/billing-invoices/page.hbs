@@ -1,0 +1,81 @@
+<!--
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ -->
+{{#pageHead}}
+  <link rel="stylesheet" href="{{basePath}}/technical-styles/subscriptions-page.css">
+  <link rel="stylesheet" href="{{basePath}}/technical-styles/usage-page.css">
+  <link rel="stylesheet" href="{{basePath}}/technical-styles/billing-page.css">
+{{/pageHead}}
+{{#pageScripts}}
+  <script src="{{basePath}}/technical-scripts/billing-invoices.js" defer></script>
+{{/pageScripts}}
+<div class="page-container usage-page billing-page" id="billingInvoicesPage">
+  <div class="usage-header">
+    <div class="usage-header-text">
+      <h1 class="page-title">Invoices</h1>
+      <p class="page-desc">Invoices of your paid subscriptions.</p>
+    </div>
+  </div>
+  <div class="billing-toolbar">
+    {{#if @root.access.manageBilling}}
+    <button type="button" class="billing-manage-btn" id="billingManage" hidden>
+      <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i> Manage payment methods
+    </button>
+    {{/if}}
+    <label class="usage-filter billing-period">Period
+      <select id="billingInvoicePeriod" class="form-select">
+        <option value="LAST_3_MONTHS">Last 3 months</option>
+        <option value="LAST_6_MONTHS">Last 6 months</option>
+        <option value="LAST_12_MONTHS" selected>Last 12 months</option>
+        <option value="ALL">All time</option>
+      </select>
+    </label>
+  </div>
+  <p class="billing-error" id="billingManageError" role="alert" hidden></p>
+  <div id="billingInvoicesLoading" class="usage-loader" role="status">
+    <span class="usage-spinner" aria-hidden="true"></span>
+    <span class="visually-hidden">Loading invoices</span>
+  </div>
+  <div id="billingInvoicesResults" class="billing-results" hidden>
+  <p class="usage-notice" id="billingInvoicesUnavailable" role="status" hidden>Invoices could not be loaded right now. Try again later.</p>
+  <div class="dp-empty" id="billingNoInvoices" hidden>
+    <span class="dp-empty-icon"><i class="bi bi-receipt"></i></span>
+    <h2 class="dp-empty-title">No invoices</h2>
+    <p class="dp-empty-desc">Invoices of your paid subscriptions appear here.</p>
+  </div>
+  <div class="sub-scroll table-responsive" id="billingInvoicesTable" hidden>
+    <div class="sub-tablewrap">
+      <table class="sub-table">
+        <thead>
+          <tr>
+            <th>Invoice</th>
+            <th>Date</th>
+            <th>Subscription</th>
+            <th class="billing-num">Amount</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="billingInvoices"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="billing-more">
+    <button type="button" class="billing-manage-btn" id="billingInvoicesMore" hidden>Load more</button>
+  </div>
+  </div>
+</div>

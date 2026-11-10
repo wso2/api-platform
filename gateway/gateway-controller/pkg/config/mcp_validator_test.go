@@ -488,6 +488,9 @@ func TestMCPValidator_ValidateContextAndVhost(t *testing.T) {
 		{name: "Empty context no vhost", context: stringPtr(""), vhost: nil, wantError: true, errField: "spec.vhost"},
 		{name: "Context under reserved health namespace", context: stringPtr(constants.GatewayHealthPathPrefix + "/ready"), vhost: nil, wantError: true, errField: "spec.context"},
 		{name: "Dot-segment context resolving into reserved health namespace", context: stringPtr("/foo/.." + constants.GatewayHealthPathPrefix + "/ready"), vhost: nil, wantError: true, errField: "spec.context"},
+		{name: "Context at the reserved gateway JWKS endpoint", context: stringPtr(constants.GatewayJWKSPath), vhost: nil, wantError: true, errField: "spec.context"},
+		{name: "Dot-segment context resolving to the gateway JWKS endpoint", context: stringPtr("/foo/.." + constants.GatewayJWKSPath), vhost: nil, wantError: true, errField: "spec.context"},
+		{name: "Context under the JWKS path is unaffected", context: stringPtr(constants.GatewayJWKSPath + "/keys"), vhost: nil, wantError: false},
 	}
 
 	for _, tt := range tests {
@@ -528,6 +531,34 @@ func TestMCPValidator_ValidateContextAndVhost(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// With the JWKS endpoint disabled an MCP proxy may take its path as a context.
+// Not parallel: the reservation is a package-level switch.
+func TestMCPValidator_JWKSContextFreeWhenEndpointDisabled(t *testing.T) {
+	SetGatewayJWKSPathReserved(false)
+	t.Cleanup(func() { SetGatewayJWKSPathReserved(true) })
+
+	url := "http://backend:8080"
+	specVersion := constants.SPEC_VERSION_2025_JUNE
+	config := &api.MCPProxyConfiguration{
+		ApiVersion: api.MCPProxyConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       "Mcp",
+		Metadata:   api.Metadata{Name: "test"},
+		Spec: api.MCPProxyConfigData{
+			DisplayName: "Test",
+			Version:     "v1.0",
+			Context:     stringPtr(constants.GatewayJWKSPath),
+			SpecVersion: &specVersion,
+			Upstream:    api.MCPProxyConfigData_Upstream{Url: &url},
+		},
+	}
+
+	for _, e := range NewMCPValidator().Validate(config) {
+		if e.Field == "spec.context" {
+			t.Errorf("unexpected context error with the JWKS endpoint disabled: %v", e)
+		}
 	}
 }
 

@@ -16,16 +16,19 @@
  * under the License.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import { http as mswHttp, HttpResponse } from 'msw';
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { orgScope } from '@/api/core/queryKeys';
+import { apiDocumentQueries } from '@/api/resources/apiDocuments/apiDocuments.queries';
+import type { ApiDocumentListResponse } from '@/api/resources/apiDocuments/apiDocuments.endpoints';
 import { apiGatewayQueries } from '@/api/resources/restApis/apiGateways/apiGateways.queries';
 import type { RestApiGatewayListResponse } from '@/api/resources/restApis/apiGateways/apiGateways.endpoints';
+import { restApiQueries } from '@/api/resources/restApis/restApis.queries';
 import { routes } from '@/routes/paths';
 import {
   accepts,
@@ -38,12 +41,14 @@ import {
   collection,
   failure,
   noContent,
+  publicationSelections,
   recorder,
   resource,
   type PublicationDraftDetailsFixture,
   type PublicationFixture,
   type Recorder,
 } from '@/test/msw';
+import { mockDataGridLayout } from '@/test/dataGridLayout';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { makeTestQueryClient, renderWithProviders, screen, waitFor, within } from '@/test/utils';
@@ -108,6 +113,36 @@ function renderPage(queryClient?: QueryClient) {
   );
 }
 
+
+/** Opens the page the way the portal card does: through a navigation carrying state. */
+function renderFromCard(state: Record<string, unknown>) {
+  return renderWithProviders(
+    <ApiScopeProvider orgId={ORG}>
+      <Routes>
+        <Route
+          element={<Navigate replace state={state} to={routes.apiPortalPublish(ORG, PROJECT, API, PORTAL)} />}
+          path="/launch"
+        />
+        <Route element={<PortalPublishPage />} path={routes.apiPortalPublish()} />
+        <Route element={<div>portals listing</div>} path={routes.apiPortals()} />
+      </Routes>
+    </ApiScopeProvider>,
+    {
+      route: '/launch',
+      scope: makeConsoleScope({
+        component: api,
+        params: { apiHandler: API, orgHandle: ORG, projectHandler: PROJECT },
+      }),
+    },
+  );
+}
+
+const TWO_DOCS = [
+  { contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' },
+  { contentType: 'text/markdown', displayName: 'Common questions', id: 'faq', type: 'FAQ' },
+];
+const THREE_DOCS = [...TWO_DOCS, { contentType: 'text/markdown', displayName: 'Release notes', id: 'notes', type: 'Other' }];
+
 const DRAFT_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/draft`;
 const DRAFT_DEFINITION_PATH = `${DRAFT_PATH}/definition`;
 const PUBLICATION_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/publication`;
@@ -115,7 +150,13 @@ const PUBLICATION_DEFINITION_PATH = `${PUBLICATION_PATH}/definition`;
 const PUBLISH_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/publish`;
 const UNPUBLISH_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/unpublish`;
 const DEPRECATE_PATH = `/api-portals/${PORTAL}/apis/rest-api/${API}/deprecate`;
+const DOCS_PATH = `/apis/rest-api/${API}/docs`;
+const API_THUMBNAIL_PATH = `/apis/rest-api/${API}/thumbnail`;
+const DRAFT_THUMBNAIL_PATH = `${DRAFT_PATH}/thumbnail`;
+const PUBLICATION_THUMBNAIL_PATH = `${PUBLICATION_PATH}/thumbnail`;
 const API_OPENAPI_PATH = `/rest-apis/${API}/openapi`;
+const DRAFT_LANDING_PATH = `${DRAFT_PATH}/landing-page`;
+const PUBLICATION_LANDING_PATH = `${PUBLICATION_PATH}/landing-page`;
 const GATEWAYS_PATH = `/rest-apis/${API}/gateways`;
 
 /** A gateway the API is deployed to, as the API's gateway list returns it. */
@@ -134,22 +175,29 @@ function definitionTierRecorders() {
   };
 }
 
-/** The reads the page makes before it can render the form; `plans` is the org's catalog. */
+/**
+ * The reads the page makes before it can render the form; `plans` is the org's catalog. The API has no
+ * documents unless a test serves some.
+ */
 function servePublicationState({
   draft,
   publication,
   definitionRecorders = definitionTierRecorders(),
   gateways = [],
   plans = [],
+  apiThumbnail = apiWithoutThumbnail(),
 }: {
   draft?: PublicationDraftDetailsFixture;
   publication?: PublicationFixture;
   definitionRecorders?: ReturnType<typeof definitionTierRecorders>;
   gateways?: ReturnType<typeof deployedGateway>[];
   plans?: ReturnType<typeof aSubscriptionPlan>[];
+  apiThumbnail?: ReturnType<typeof apiWithoutThumbnail>;
 } = {}) {
   server.use(
+    apiThumbnail,
     collection('/subscription-plans', plans),
+    collection(DOCS_PATH, []),
     resource('/rest-apis/:restApiId', api),
     collection(GATEWAYS_PATH, gateways),
     draft ? resource(DRAFT_PATH, draft) : failure('get', DRAFT_PATH, 404, 'DRAFT_NOT_FOUND'),
@@ -170,6 +218,32 @@ function servePublicationState({
   return definitionRecorders;
 }
 
+/** An image as the thumbnail endpoints serve it. */
+const pngResponse = () => new HttpResponse(new Uint8Array([0x89, 0x50]), { headers: { 'Content-Type': 'image/png' } });
+
+/** An image of `size` bytes, so tests that name each blob by its size can tell which one is shown. */
+const imageOfSize = (path: string, size: number, reads = recorder()) =>
+  mswHttp.get(apiUrl(path), async ({ request }) => {
+    await reads.capture(request);
+    return new HttpResponse('x'.repeat(size), { headers: { 'Content-Type': 'image/png' } });
+  });
+
+/** Names each blob by its size. */
+const urlBySize = () => {
+  URL.createObjectURL = vi.fn((blob: Blob) => `blob:test/${blob.size}`);
+};
+
+/** Serves a thumbnail at `path`, and counts the reads. */
+const thumbnailAt = (path: string, reads: Recorder) =>
+  mswHttp.get(apiUrl(path), async ({ request }) => {
+    await reads.capture(request);
+    return pngResponse();
+  });
+
+/** The API has no thumbnail of its own: the endpoint answers 204. */
+const apiWithoutThumbnail = () =>
+  mswHttp.get(apiUrl(API_THUMBNAIL_PATH), () => new HttpResponse(null, { status: 204 }));
+
 /** A stored definition served as text in the given serialization, as the backend returns it. */
 const definitionText = (path: string, text: string, contentType: string) =>
   mswHttp.get(
@@ -180,14 +254,45 @@ const definitionText = (path: string, text: string, contentType: string) =>
 const YAML_DEFINITION =
   'openapi: 3.0.3\ninfo:\n  title: Loan Management Service\n  version: 1.0.0\npaths: {}\n';
 
+beforeAll(mockDataGridLayout);
+
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+  URL.createObjectURL = vi.fn(() => 'blob:test/thumbnail');
+  URL.revokeObjectURL = vi.fn();
 });
 
 const API_NAME = 'Loan Management Service';
 
+type ThumbnailSaveAnswer = { code: string; status: number } | 'network' | undefined;
+
+/**
+ * Answers each thumbnail save: the nth save gets the nth answer (the last one repeats), a failure
+ * to reject with or `undefined` to succeed.
+ */
+function answerThumbnailSaves(...answers: ThumbnailSaveAnswer[]) {
+  let saves = 0;
+  server.use(
+    mswHttp.put(apiUrl(DRAFT_THUMBNAIL_PATH), () => {
+      const answer = answers[Math.min(saves, answers.length - 1)];
+      saves += 1;
+      if (answer === 'network') return HttpResponse.error();
+      if (!answer) return new HttpResponse(null, { status: 204 });
+      return HttpResponse.json(
+        { code: answer.code, message: 'The request could not be completed.', status: 'error' } as never,
+        { status: answer.status },
+      );
+    }),
+  );
+  return { saves: () => saves };
+}
+
 /** Save Draft is off until something changes; a trailing space does, and is trimmed away on save. */
+/** The select checkbox in the Documentation table's row for a document, found by the name shown in it. */
+const documentBox = (name: string) =>
+  within(screen.getByText(name).closest('[role="row"]') as HTMLElement).getByRole('checkbox');
+
 const makeEdit = (user: ReturnType<typeof renderPage>['user']) =>
   user.type(screen.getByRole('textbox', { name: /^Name/ }), ' ');
 
@@ -327,25 +432,63 @@ describe('PortalPublishPage', () => {
     expect(await screen.findByText('Enter a full URL, for example https://api.example.com.')).toBeInTheDocument();
   });
 
-  it('disables Documentation and Landing Page for this alpha', async () => {
+  it('enables every tab', async () => {
     servePublicationState();
 
     renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
-    expect(screen.getByRole('tab', { name: 'Documentation' })).toBeDisabled();
-    expect(screen.getByRole('tab', { name: 'Landing Page' })).toBeDisabled();
-    expect(screen.getByRole('tab', { name: 'API Details' })).toBeEnabled();
-    expect(screen.getByRole('tab', { name: 'Specification' })).toBeEnabled();
-    expect(screen.getByRole('tab', { name: 'Subscription Plans' })).toBeEnabled();
+    for (const name of ['API Details', 'Specification', 'Subscription Plans', 'Documentation', 'Landing Page']) {
+      expect(screen.getByRole('tab', { name })).toBeEnabled();
+    }
+  });
+
+  it('Documentation tab saves the selection as part of the draft, and reads it back from the publication in the published view', async () => {
+    servePublicationState({
+      draft: aPublicationDraftDetails({ documents: publicationSelections() }),
+      publication: aPublication({ documents: publicationSelections({ displayName: 'Getting started', id: 'guide' }) }),
+    });
+    server.use(
+      collection(DOCS_PATH, [
+        { contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' },
+        { contentType: 'text/markdown', displayName: 'Common questions', id: 'faq', type: 'FAQ' },
+      ]),
+      mswHttp.get(
+        apiUrl(`${DOCS_PATH}/:docId/content`),
+        () => new HttpResponse('Body', { headers: { 'Content-Type': 'text/markdown' } }),
+      ),
+    );
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await showDraft(user);
+    await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+    await screen.findByText('Common questions');
+    await user.click(documentBox('Common questions'));
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['faq'] });
+
+    await user.click(screen.getByRole('button', { name: 'Published' }));
+
+    expect(await screen.findByText('Getting started')).toBeInTheDocument();
+    expect(screen.queryByText('Common questions')).not.toBeInTheDocument();
+    expect(documentBox('Getting started')).toBeChecked();
   });
 
   it('Subscription Plans tab saves the selection as part of the draft, and reads it back from the publication in the published view', async () => {
     const bronze = aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' });
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
     servePublicationState({
-      draft: aPublicationDraftDetails({ subscriptionPlanIds: [] }),
-      publication: aPublication({ subscriptionPlanIds: ['bronze'] }),
+      draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections() }),
+      publication: aPublication({ subscriptionPlans: publicationSelections({ displayName: 'Bronze', id: 'bronze' }) }),
     });
     server.use(collection('/subscription-plans', [bronze, gold]));
     const draftRequests = recorder();
@@ -379,7 +522,7 @@ describe('PortalPublishPage', () => {
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
     const silver = aSubscriptionPlan({ displayName: 'Silver', id: 'silver' });
     servePublicationState({
-      draft: aPublicationDraftDetails({ subscriptionPlanIds: ['bronze', 'gold'] }),
+      draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections('bronze', 'gold') }),
       plans: [bronze, gold, silver],
     });
 
@@ -405,13 +548,12 @@ describe('PortalPublishPage', () => {
     expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
   });
 
-  it('offers an inactive plan only while it is selected, and blocks Save Draft and Publish until an inactive selected plan is cleared', async () => {
+  it('leaves an inactive plan out of the draft, with no chip or warning, and saves and publishes without it', async () => {
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold', status: 'ACTIVE' });
     const retired = aSubscriptionPlan({ displayName: 'Retired', id: 'retired', status: 'INACTIVE' });
-    const unused = aSubscriptionPlan({ displayName: 'Unused', id: 'unused', status: 'INACTIVE' });
     servePublicationState({
-      draft: aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'retired'] }),
-      plans: [gold, retired, unused],
+      draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections('gold', 'retired') }),
+      plans: [gold, retired],
     });
     const draftRequests = recorder();
     const publishRequests = recorder();
@@ -427,29 +569,24 @@ describe('PortalPublishPage', () => {
     await makeEdit(user);
     await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
 
-    // Nothing selected is dropped behind the user's back; an unselected inactive plan isn't offered.
-    const retiredCard = await screen.findByRole('checkbox', { name: /Retired/ });
-    expect(retiredCard).toHaveAttribute('aria-checked', 'true');
-    expect(screen.queryByRole('checkbox', { name: /Unused/ })).not.toBeInTheDocument();
-    expect(screen.getByText('1 inactive plan selected')).toBeInTheDocument();
+    await screen.findByRole('checkbox', { name: /Gold/ });
+    expect(screen.queryByRole('checkbox', { name: /Retired/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/inactive/i)).not.toBeInTheDocument();
 
-    // Both actions stop at the plans, without a request.
-    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
-    expect(await screen.findByText('Clear inactive plans to save or publish: "Retired".')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Publish' }));
-    expect(draftRequests.count()).toBe(0);
-    expect(publishRequests.count()).toBe(0);
-
-    await user.click(retiredCard);
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
     await waitFor(() => expect(draftRequests.count()).toBe(1));
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ subscriptionPlanIds: ['gold'] });
+    expect(screen.queryByText(/Clear inactive plans/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+    await waitFor(() => expect(publishRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ subscriptionPlanIds: ['gold'] });
   });
 
-  it('drops a selected plan that no longer exists, says so, and does not send it', async () => {
+  it('drops a selected plan that no longer exists, without a warning, and does not send it', async () => {
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
     servePublicationState({
-      draft: aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'deleted'] }),
+      draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections('gold', 'deleted') }),
       plans: [gold],
     });
     const draftRequests = recorder();
@@ -461,24 +598,363 @@ describe('PortalPublishPage', () => {
     const { user } = renderPage();
 
     await screen.findByDisplayValue('Loan Management Service');
-    expect(
-      await screen.findByText('A selected subscription plan no longer exists and was removed from the selection.'),
-    ).toBeInTheDocument();
-
     // It was never an edit of the user's, so nothing is left to save until they make one.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled());
     expect(screen.queryByText('Unsaved changes', { exact: false })).not.toBeInTheDocument();
     await makeEdit(user);
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
     await waitFor(() => expect(draftRequests.count()).toBe(1));
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ subscriptionPlanIds: ['gold'] });
+    expect(screen.queryByText('A selected subscription plan no longer exists', { exact: false })).not.toBeInTheDocument();
   });
 
-  it('lists the saved inactive plan first, then the saved selection, then the other plans, and keeps that order when a plan is selected', async () => {
+  it('keeps a selected plan it cannot check because the plan list was cut short', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections('plan-0', 'beyond') }) });
+    server.use(
+      mswHttp.get(apiUrl('/subscription-plans'), ({ request }) => {
+        const offset = Number(new URL(request.url).searchParams.get('offset') ?? 0);
+        const list = Array.from({ length: 100 }, (_, i) =>
+          aSubscriptionPlan({ displayName: `Plan ${offset + i}`, id: `plan-${offset + i}`, status: 'ACTIVE' }),
+        );
+        return HttpResponse.json({ count: list.length, list, pagination: { limit: 100, offset, total: 6000 } });
+      }),
+    );
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    // Past the 50 pages read, so the list cannot say whether it was deleted.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ subscriptionPlanIds: ['plan-0', 'beyond'] });
+  });
+
+  it('leaves a deleted plan out of the draft and saves without it, with nothing to clear first', async () => {
+    const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
+    servePublicationState({
+      draft: aPublicationDraftDetails({
+        subscriptionPlans: [
+          { displayName: 'Gold', id: 'gold', sourceStatus: 'UNCHANGED' },
+          { displayName: 'Platinum', id: 'old', sourceStatus: 'DELETED' },
+        ],
+      }),
+      plans: [gold],
+    });
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await makeEdit(user);
+    await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
+    await screen.findByRole('checkbox', { name: /Gold/ });
+    expect(screen.queryByText('Platinum')).not.toBeInTheDocument();
+    expect(screen.queryByText(/deleted/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ subscriptionPlanIds: ['gold'] });
+    expect(screen.queryByText(/Clear deleted plans/)).not.toBeInTheDocument();
+  });
+
+  it('leaves a deleted document out of the draft and saves without it, with nothing to clear first', async () => {
+    servePublicationState({
+      draft: aPublicationDraftDetails({
+        documents: [
+          { displayName: 'Getting started', id: 'guide', sourceStatus: 'UNCHANGED' },
+          { displayName: 'Old guide', id: 'gone', sourceStatus: 'DELETED' },
+        ],
+      }),
+    });
+    server.use(
+      collection(DOCS_PATH, [{ contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' }]),
+    );
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await makeEdit(user);
+    await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+    await screen.findByText('Getting started');
+    expect(documentBox('Getting started')).toBeChecked();
+    expect(screen.queryByText('Old guide')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['guide'] });
+    expect(screen.queryByText(/Clear deleted documents/)).not.toBeInTheDocument();
+  });
+
+  it('drops a selected document that no longer exists, without a warning, and does not send it', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ documents: publicationSelections('guide', 'deleted') }) });
+    server.use(
+      collection(DOCS_PATH, [{ contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' }]),
+    );
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    // It was never an edit of the user's, so nothing is left to save until they make one.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled());
+    expect(screen.queryByText('Unsaved changes', { exact: false })).not.toBeInTheDocument();
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['guide'] });
+    expect(screen.queryByText('A selected document no longer exists', { exact: false })).not.toBeInTheDocument();
+  });
+
+  it('keeps a selected document it cannot check because the document list was cut short', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ documents: publicationSelections('doc-0', 'beyond') }) });
+    server.use(
+      mswHttp.get(apiUrl(DOCS_PATH), ({ request }) => {
+        const offset = Number(new URL(request.url).searchParams.get('offset') ?? 0);
+        const list = Array.from({ length: 100 }, (_, i) => ({
+          contentType: 'text/markdown',
+          displayName: `Doc ${offset + i}`,
+          id: `doc-${offset + i}`,
+          type: 'HowTo',
+        }));
+        return HttpResponse.json({ count: list.length, list, pagination: { limit: 100, offset, total: 6000 } });
+      }),
+    );
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    // Past the 50 pages read, so the list cannot say whether it was deleted.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(
+      screen.queryByText('A selected document no longer exists and was removed from the selection.'),
+    ).not.toBeInTheDocument();
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['doc-0', 'beyond'] });
+  });
+
+  it('keeps a selected document that an older cached document list predates, once the list is read again', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ documents: publicationSelections('guide', 'added') }) });
+    server.use(
+      collection(DOCS_PATH, [
+        { contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' },
+        { contentType: 'text/markdown', displayName: 'Added elsewhere', id: 'added', type: 'HowTo' },
+      ]),
+    );
+    const draftRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+    const queryClient = makeTestQueryClient();
+    queryClient.setQueryData(
+      apiDocumentQueries.listAll(orgScope(ORG)!, 'rest-api', API).queryKey,
+      {
+        count: 1,
+        list: [{ contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' }],
+        pagination: { limit: 1, offset: 0, total: 1 },
+      } as ApiDocumentListResponse,
+      { updatedAt: 0 },
+    );
+
+    const { user } = renderPage(queryClient);
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+    expect(await screen.findByText('Added elsewhere')).toBeInTheDocument();
+
+    expect(
+      screen.queryByText('A selected document no longer exists and was removed from the selection.'),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'API Details' }));
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['guide', 'added'] });
+  });
+
+  it("sends the draft's selected documents with every save, so saving other fields keeps them", async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ documents: publicationSelections('guide') }) });
+    const draftRequests = recorder();
+    server.use(
+      collection(DOCS_PATH, [{ contentType: 'text/markdown', displayName: 'Getting started', id: 'guide', type: 'HowTo' }]),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue(API_NAME);
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(draftRequests.count()).toBe(1));
+    expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({ docIds: ['guide'] });
+  });
+
+  it("shows the draft's thumbnail over the publication's and the API's own", async () => {
+    urlBySize();
+    servePublicationState({
+      draft: aPublicationDraftDetails({ hasThumbnail: true }),
+      publication: aPublication({ hasThumbnail: true }),
+      apiThumbnail: imageOfSize(API_THUMBNAIL_PATH, 7),
+    });
+    server.use(imageOfSize(DRAFT_THUMBNAIL_PATH, 5), imageOfSize(PUBLICATION_THUMBNAIL_PATH, 3));
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await showDraft(user);
+    expect(await screen.findByRole('img', { name: 'Loan Management Service' })).toHaveAttribute('src', 'blob:test/5');
+  });
+
+  it("falls back to the publication's thumbnail, then to the API's own", async () => {
+    const publicationReads = recorder();
+    servePublicationState({ publication: aPublication({ hasThumbnail: true }) });
+    server.use(thumbnailAt(PUBLICATION_THUMBNAIL_PATH, publicationReads));
+
+    const first = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await showDraft(first.user);
+    expect(await screen.findByRole('img', { name: 'Loan Management Service' })).toBeInTheDocument();
+    expect(publicationReads.count()).toBe(1);
+    first.unmount();
+
+    resetHttpClient();
+    const apiReads = recorder();
+    servePublicationState({ apiThumbnail: thumbnailAt(API_THUMBNAIL_PATH, apiReads) });
+    renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    expect(await screen.findByRole('img', { name: 'Loan Management Service' })).toBeInTheDocument();
+    expect(apiReads.count()).toBe(1);
+  });
+
+  it('shows the published thumbnail read-only in the published view', async () => {
+    servePublicationState({
+      publication: aPublication({ hasThumbnail: true }),
+    });
+    server.use(thumbnailAt(PUBLICATION_THUMBNAIL_PATH, recorder()));
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    expect(await screen.findByRole('img', { name: 'Loan Management Service' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change thumbnail' })).not.toBeInTheDocument();
+
+    await showDraft(user);
+    expect(screen.getByRole('button', { name: 'Change thumbnail' })).toBeInTheDocument();
+  });
+
+  it('counts a picked thumbnail as an unsaved change, and refuses one that is too large', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    const { container, user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+
+    const tooLarge = new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'big.png', { type: 'image/png' });
+    await user.upload(input, tooLarge);
+    expect(await screen.findByText('The image must be 2 MB or smaller.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+
+    await user.upload(input, new File(['png'], 'logo.png', { type: 'image/png' }));
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled();
+    expect(screen.getByRole('img', { name: 'Loan Management Service' })).toHaveAttribute('src', 'blob:test/thumbnail');
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+  });
+
+  it('drops a thumbnail the server refuses, so the next save does not send it again', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+    const thumbnail = answerThumbnailSaves({ code: 'PAYLOAD_TOO_LARGE', status: 413 });
+
+    const { container, user } = renderPage();
+
+    await screen.findByDisplayValue(API_NAME);
+    await user.upload(
+      container.querySelector<HTMLInputElement>('input[type="file"]')!,
+      new File(['png'], 'logo.png', { type: 'image/png' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(thumbnail.saves()).toBe(1));
+    await waitFor(() => expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument());
+
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    expect(await screen.findByText('Draft saved.')).toBeInTheDocument();
+    expect(thumbnail.saves()).toBe(1);
+  });
+
+  it.each([
+    ['a server error', { code: 'INTERNAL_ERROR', status: 500 }],
+    ['a network failure', 'network'],
+    ['a draft that is gone', { code: 'DRAFT_NOT_FOUND', status: 404 }],
+  ] as [string, ThumbnailSaveAnswer][])('keeps a picked thumbnail when its save fails with %s, so the next save sends it again', async (_name, failure) => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+    );
+    const thumbnail = answerThumbnailSaves(failure, undefined);
+
+    const { container, user } = renderPage();
+
+    await screen.findByDisplayValue(API_NAME);
+    await user.upload(
+      container.querySelector<HTMLInputElement>('input[type="file"]')!,
+      new File(['png'], 'logo.png', { type: 'image/png' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(thumbnail.saves()).toBe(1));
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: API_NAME })).toHaveAttribute('src', 'blob:test/thumbnail');
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    expect(await screen.findByText('Draft saved.')).toBeInTheDocument();
+    expect(thumbnail.saves()).toBe(2);
+  });
+
+  it('lists the saved selection first, then the other active plans, and keeps that order when a plan is selected', async () => {
     const bronze = aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' });
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
     const retired = aSubscriptionPlan({ displayName: 'Retired', id: 'retired', status: 'INACTIVE' });
     servePublicationState({
-      draft: aPublicationDraftDetails({ subscriptionPlanIds: ['gold', 'retired'] }),
+      draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections('gold', 'retired') }),
       plans: [bronze, gold, retired],
     });
 
@@ -486,9 +962,9 @@ describe('PortalPublishPage', () => {
 
     await screen.findByDisplayValue('Loan Management Service');
     await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
-    await screen.findByRole('checkbox', { name: /Retired/ });
+    await screen.findByRole('checkbox', { name: /Gold/ });
 
-    const names = ['Retired', 'Gold', 'Bronze'];
+    const names = ['Gold', 'Bronze'];
     const order = () =>
       screen.getAllByRole('checkbox').map((card) => names.find((name) => card.textContent?.startsWith(name)));
     expect(order()).toEqual(names);
@@ -498,34 +974,12 @@ describe('PortalPublishPage', () => {
     expect(order()).toEqual(names);
   });
 
-  it('names every inactive plan in the Save Draft warning, in one fixed sentence', async () => {
-    const retired = aSubscriptionPlan({ displayName: 'Retired', id: 'retired', status: 'INACTIVE' });
-    const legacy = aSubscriptionPlan({ displayName: 'Legacy', id: 'legacy', status: 'INACTIVE' });
-    servePublicationState({
-      draft: aPublicationDraftDetails({ subscriptionPlanIds: ['retired', 'legacy'] }),
-      plans: [retired, legacy],
-    });
-    const draftRequests = recorder();
-    server.use(accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }));
-
-    const { user } = renderPage();
-
-    await screen.findByDisplayValue('Loan Management Service');
-    await makeEdit(user);
-    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
-
-    expect(
-      await screen.findByText('Clear inactive plans to save or publish: "Retired", "Legacy".'),
-    ).toBeInTheDocument();
-    expect(draftRequests.count()).toBe(0);
-  });
-
-  it('shows exactly the plans the live listing holds in the published view, an inactive one badged', async () => {
+  it('shows exactly the plans the live listing holds in the published view, an inactive one tagged', async () => {
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold', status: 'ACTIVE' });
     const silver = aSubscriptionPlan({ displayName: 'Silver', id: 'silver', status: 'ACTIVE' });
     const retired = aSubscriptionPlan({ displayName: 'Retired', id: 'retired', status: 'INACTIVE' });
     servePublicationState({
-      publication: aPublication({ subscriptionPlanIds: ['gold', 'retired'] }),
+      publication: aPublication({ subscriptionPlans: publicationSelections({ displayName: 'Gold', id: 'gold' }, { displayName: 'Retired', id: 'retired' }) }),
       plans: [gold, silver, retired],
     });
 
@@ -586,7 +1040,7 @@ describe('PortalPublishPage', () => {
     });
   });
 
-  it('does not query publication/definition or the API’s own spec once a draft definition is found', async () => {
+  it('does not query publication/definition once a draft definition is found, and reads the API’s own spec only to compare', async () => {
     const definitionRecorders = servePublicationState({ draft: aPublicationDraftDetails() });
     server.use(
       resource(
@@ -602,8 +1056,8 @@ describe('PortalPublishPage', () => {
 
     await screen.findByDisplayValue('Loan Management Service');
     await waitFor(() => expect(definitionRecorders.draftDefinition.count()).toBe(1));
+    await waitFor(() => expect(definitionRecorders.openApi.count()).toBe(1));
     expect(definitionRecorders.publicationDefinition.count()).toBe(0);
-    expect(definitionRecorders.openApi.count()).toBe(0);
   });
 
   it.each([
@@ -672,6 +1126,8 @@ describe('PortalPublishPage', () => {
 
     const { user } = renderPage();
     await screen.findByDisplayValue('Loan Management Service');
+    // A switch alone is not a change to save, so something else is edited too.
+    await makeEdit(user);
     await user.click(screen.getByRole('tab', { name: 'Specification' }));
     await user.click(await screen.findByRole('button', { name: 'JSON' }));
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
@@ -1190,7 +1646,9 @@ describe('PortalPublishPage', () => {
     server.use(
       accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
       accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
-      failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED'),
+      failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED', {
+        errors: [{ field: 'definition', message: 'A definition is required to publish this API' }],
+      }),
     );
 
     const { user } = renderPage();
@@ -1206,6 +1664,69 @@ describe('PortalPublishPage', () => {
     expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled();
     expect(screen.queryByText('Published to acme-portal.')).not.toBeInTheDocument();
   });
+
+  it('sends the user to the Specification tab from any tab when the server names the definition', async () => {
+    servePublicationState();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED', {
+        errors: [{ field: 'definition', message: 'A definition is required to publish this API' }],
+      }),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Landing Page' }));
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Specification' })).toHaveAttribute('aria-selected', 'true'),
+    );
+  });
+
+  it('stays on the current tab when the server names a field that is not the definition', async () => {
+    servePublicationState();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED', {
+        errors: [{ field: 'thumbnail', message: 'thumbnail must be a PNG or JPEG image' }],
+      }),
+    );
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Landing Page' }));
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
+    expect(screen.getByRole('tab', { name: 'Landing Page' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it.each(['API Details', 'Subscription Plans', 'Documentation'])(
+    'stays on the %s tab when Publish fails validation without naming a field',
+    async (tabName) => {
+      servePublicationState();
+      server.use(
+        collection(DOCS_PATH, []),
+        accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+        accepts('put', DRAFT_DEFINITION_PATH, undefined),
+        failure('post', PUBLISH_PATH, 400, 'PUBLICATION_VALIDATION_FAILED'),
+      );
+
+      const { user } = renderPage();
+
+      await screen.findByDisplayValue('Loan Management Service');
+      await user.click(screen.getByRole('tab', { name: tabName }));
+      await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
+      expect(screen.getByRole('tab', { name: tabName })).toHaveAttribute('aria-selected', 'true');
+    },
+  );
 
   it('does not switch tabs when Publish fails for a reason unrelated to the definition', async () => {
     servePublicationState();
@@ -1452,6 +1973,234 @@ describe('PortalPublishPage — published specification', () => {
   });
 });
 
+describe('PortalPublishPage — the API\u2019s own specification', () => {
+  const LOAD = 'Load the API\u2019s specification';
+  const savedSpec = { openapi: '3.0.3', info: { title: 'Loans', version: '1.0.0' }, paths: {} };
+  const SAME_AS_YAML = 'openapi: 3.0.3\ninfo:\n  title: Loans\n  version: 1.0.0\npaths: {}\n';
+  // A content change without paths, which would bring in the Swagger UI viewer.
+  const CHANGED = 'openapi: 3.0.3\ninfo:\n  title: Loans\n  version: 1.0.0\n  description: Now with repayments.\npaths: {}\n';
+
+  /** Serves the API's own spec, and returns the recorder of its reads. */
+  function serveApiSpec(content: string) {
+    const reads = recorder();
+    server.use(resource(API_OPENAPI_PATH, { content }, { record: reads }));
+    return reads;
+  }
+
+  async function openSpecification(user: ReturnType<typeof renderPage>['user']) {
+    await user.click(await screen.findByRole('tab', { name: 'Specification' }));
+  }
+
+  /** Lets the API's own spec read land, so a missing button means it was compared, not still loading. */
+  const settle = async (reads: Recorder) => {
+    await waitFor(() => expect(reads.count()).toBe(1));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  };
+
+  it('offers the API\u2019s changed specification for a publication, and loads it as an unsaved change in the format shown', async () => {
+    servePublicationState({ publication: aPublication() });
+    server.use(resource(PUBLICATION_DEFINITION_PATH, savedSpec));
+    serveApiSpec(CHANGED);
+
+    const { user } = renderPage();
+    await showDraft(user);
+    await openSpecification(user);
+
+    await user.click(await screen.findByRole('button', { name: LOAD }));
+
+    // The API's own is YAML; the page was showing JSON, and stays in it.
+    expect(await screen.findByRole('textbox', { name: 'API definition (JSON)' })).toHaveValue(
+      JSON.stringify({ ...savedSpec, info: { ...savedSpec.info, description: 'Now with repayments.' } }, null, 2),
+    );
+    expect(screen.queryByRole('button', { name: LOAD })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Published' }));
+    const published = (await screen.findByRole('textbox', { name: 'API definition (JSON)' })) as HTMLTextAreaElement;
+    expect(published.value).not.toContain('Now with repayments.');
+  });
+
+  it('offers it for a draft whose specification differs', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(resource(DRAFT_DEFINITION_PATH, savedSpec));
+    serveApiSpec(CHANGED);
+
+    const { user } = renderPage();
+    await openSpecification(user);
+
+    expect(await screen.findByRole('button', { name: LOAD })).toBeInTheDocument();
+  });
+
+  it('offers it for a draft whose stored specification cannot be read', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(definitionText(DRAFT_DEFINITION_PATH, 'openapi: [unclosed', 'application/yaml'));
+    serveApiSpec(CHANGED);
+
+    const { user } = renderPage();
+    await openSpecification(user);
+
+    expect(await screen.findByRole('button', { name: LOAD })).toBeInTheDocument();
+  });
+
+  it('offers nothing when the API\u2019s specification differs only in how it is written', async () => {
+    servePublicationState({ publication: aPublication() });
+    server.use(resource(PUBLICATION_DEFINITION_PATH, savedSpec));
+    const reads = serveApiSpec(SAME_AS_YAML);
+
+    const { user } = renderPage();
+    await showDraft(user);
+    await openSpecification(user);
+    await settle(reads);
+
+    expect(screen.queryByRole('button', { name: LOAD })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [404, 'REST_API_SPEC_NOT_FOUND'],
+    [500, 'INTERNAL_ERROR'],
+  ])('opens normally, offering nothing, when the API\u2019s specification answers %i', async (status, code) => {
+    servePublicationState({ publication: aPublication() });
+    server.use(resource(PUBLICATION_DEFINITION_PATH, savedSpec));
+    const reads = recorder();
+    server.use(failure('get', API_OPENAPI_PATH, status, code, { record: reads }));
+
+    const { user } = renderPage();
+    await showDraft(user);
+    await openSpecification(user);
+    await settle(reads);
+
+    expect(screen.getByRole('textbox', { name: 'API definition (JSON)' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: LOAD })).not.toBeInTheDocument();
+    expect(screen.queryByText('Unable to load the publish details.')).not.toBeInTheDocument();
+  });
+
+  // 500 is retried, so this is the page while reading again; 403 is not, so this is after the read failed.
+  it.each([
+    [500, 'INTERNAL_ERROR'],
+    [403, 'FORBIDDEN'],
+  ])('offers nothing from an older cached specification when reading the API’s again answers %i', async (status, code) => {
+    servePublicationState({ publication: aPublication() });
+    server.use(resource(PUBLICATION_DEFINITION_PATH, savedSpec));
+    const reads = recorder();
+    server.use(failure('get', API_OPENAPI_PATH, status, code, { record: reads }));
+    const queryClient = makeTestQueryClient();
+    queryClient.setQueryData(restApiQueries.openApi(orgScope(ORG)!, API).queryKey, { content: CHANGED }, { updatedAt: 0 });
+
+    const { user } = renderPage(queryClient);
+    await showDraft(user);
+    await openSpecification(user);
+    await settle(reads);
+
+    expect(screen.queryByRole('button', { name: LOAD })).not.toBeInTheDocument();
+  });
+
+  it('offers it as soon as a draft is saved with a specification that differs', async () => {
+    servePublicationState();
+    const definitionRequests = recorder();
+    server.use(
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails({ updatedAt: new Date().toISOString() })),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined, { record: definitionRequests }),
+    );
+    const reads = serveApiSpec(SAME_AS_YAML);
+
+    const { user } = renderPage();
+    await openSpecification(user);
+    await settle(reads);
+    expect(screen.queryByRole('button', { name: LOAD })).not.toBeInTheDocument();
+
+    await user.type(screen.getByRole('textbox', { name: 'API definition (YAML)' }), 'x-note: edited');
+    // An edit alone changes nothing; the comparison moves only when the draft is saved.
+    expect(screen.queryByRole('button', { name: LOAD })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(definitionRequests.count()).toBe(1));
+    expect(await screen.findByRole('button', { name: LOAD })).toBeInTheDocument();
+  });
+
+  it('offers nothing on a first publish, which already shows the API\u2019s own specification', async () => {
+    servePublicationState();
+    const reads = serveApiSpec(CHANGED);
+
+    const { user } = renderPage();
+    await openSpecification(user);
+    await settle(reads);
+
+    expect(screen.getByRole('textbox', { name: 'API definition (YAML)' })).toHaveValue(CHANGED);
+    expect(screen.queryByRole('button', { name: LOAD })).not.toBeInTheDocument();
+  });
+});
+
+describe('PortalPublishPage — the API\u2019s own thumbnail', () => {
+  const RELOAD = 'Use the API\u2019s default thumbnail';
+
+  beforeEach(urlBySize);
+
+  /** The publication's thumbnail is three bytes; the API's own, when it has one, seven. */
+  function servePublishedThumbnail(apiThumbnail = imageOfSize(API_THUMBNAIL_PATH, 7)) {
+    servePublicationState({ apiThumbnail, publication: aPublication({ hasThumbnail: true }) });
+    server.use(imageOfSize(PUBLICATION_THUMBNAIL_PATH, 3));
+  }
+
+  async function openDraftDetails() {
+    const view = renderPage();
+    await showDraft(view.user);
+    expect(await screen.findByRole('img', { name: API_NAME })).toHaveAttribute('src', 'blob:test/3');
+    return view;
+  }
+
+  it('replaces the thumbnail with the API\u2019s own as an unsaved change', async () => {
+    servePublishedThumbnail();
+    const { user } = await openDraftDetails();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: RELOAD })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: RELOAD }));
+
+    expect(screen.getByRole('img', { name: API_NAME })).toHaveAttribute('src', 'blob:test/7');
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+  });
+
+  it('offers no reload once the API turns out to have no thumbnail', async () => {
+    let releaseRead: () => void = () => {};
+    const readHeld = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    servePublishedThumbnail(
+      mswHttp.get(apiUrl(API_THUMBNAIL_PATH), async () => {
+        await readHeld;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await openDraftDetails();
+
+    expect(screen.getByRole('button', { name: RELOAD })).toBeDisabled();
+    releaseRead();
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: RELOAD })).not.toBeInTheDocument());
+    expect(screen.getByRole('img', { name: API_NAME })).toHaveAttribute('src', 'blob:test/3');
+  });
+
+  it('changes nothing and says so when the API\u2019s thumbnail cannot be read', async () => {
+    servePublishedThumbnail(failure('get', API_THUMBNAIL_PATH, 500, 'INTERNAL_ERROR'));
+    const { user } = await openDraftDetails();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: RELOAD })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: RELOAD }));
+
+    expect(await screen.findByText('The API\u2019s thumbnail could not be loaded.')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: API_NAME })).toHaveAttribute('src', 'blob:test/3');
+  });
+
+  it('offers no reload on a first publish, which already shows the API\u2019s own thumbnail', async () => {
+    servePublicationState();
+
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: 'Change thumbnail' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: RELOAD })).not.toBeInTheDocument();
+  });
+});
+
 describe('PortalPublishPage — version toggle while an action runs', () => {
   it('stays disabled until the save finishes', async () => {
     servePublicationState({
@@ -1545,12 +2294,12 @@ describe('PortalPublishPage — while a publish runs', () => {
 
     await user.click(screen.getByRole('button', { name: 'Publish' }));
     // Both saves have gone through; the publish call is still in flight.
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Publishing\u2026' })).toBeDisabled());
     await new Promise((resolve) => setTimeout(resolve, 150));
 
     expect(screen.queryByText(/^Edited/)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Republish' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publishing\u2026' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Republishing\u2026' })).not.toBeInTheDocument();
     expect(await screen.findByText('portals listing')).toBeInTheDocument();
     expect(reads.publication.count()).toBe(1);
   });
@@ -1566,6 +2315,79 @@ describe('PortalPublishPage — while a publish runs', () => {
     // One read each when the page opened, none for the three writes after it.
     expect(reads.draft.count()).toBe(1);
     expect(reads.publication.count()).toBe(1);
+  });
+});
+
+describe('PortalPublishPage — progress on the portal actions', () => {
+  /** A request that waits until released, then answers as `answer` does. */
+  function held(method: 'post', path: string, answer: () => Response) {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      mswHttp[method](apiUrl(path), async () => {
+        await gate;
+        return answer();
+      }),
+    );
+    return () => release();
+  }
+
+  const conflict = () =>
+    HttpResponse.json({ code: 'PUBLICATION_PORTAL_CONFLICT', message: 'Conflict.', status: 'error' } as never, { status: 409 });
+
+  const spinnerIn = async (name: string) => within(await screen.findByRole('button', { name })).findByRole('progressbar');
+
+  it('shows progress on Publish until the publish ends, holding the other actions meanwhile, and stops when it fails', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    server.use(accepts('put', DRAFT_PATH, aPublicationDraftDetails()), accepts('put', DRAFT_DEFINITION_PATH, undefined));
+    const release = held('post', PUBLISH_PATH, conflict);
+
+    const { user } = renderPage();
+    await screen.findByDisplayValue('Loan Management Service');
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    expect(await spinnerIn('Publishing\u2026')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publishing\u2026' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'More publish actions' })).toBeDisabled();
+
+    release();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Publish' })).toBeEnabled());
+    expect(within(screen.getByRole('button', { name: 'Publish' })).queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('shows progress on Unpublish until the unpublish ends', async () => {
+    servePublicationState({ publication: aPublication() });
+    const release = held('post', UNPUBLISH_PATH, () => new HttpResponse(null, { status: 204 }));
+
+    const { user } = renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+    await confirmInDialog(user);
+
+    expect(await spinnerIn('Unpublishing\u2026')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'More publish actions' })).toBeDisabled();
+    release();
+    expect(await screen.findByText('portals listing')).toBeInTheDocument();
+  });
+
+  it('shows progress on Deprecate until the deprecation ends', async () => {
+    servePublicationState({ publication: aPublication() });
+    const release = held('post', DEPRECATE_PATH, () => HttpResponse.json(aPublication({ status: 'DEPRECATED' })));
+
+    const { user } = renderPage();
+    await screen.findByRole('button', { name: 'Unpublish' });
+    await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Deprecate' }));
+    await user.click(await screen.findByRole('button', { name: 'Deprecate' }));
+    await confirmInDialog(user);
+
+    expect(await spinnerIn('Deprecating\u2026')).toBeInTheDocument();
+    release();
+    expect(await screen.findByText('portals listing')).toBeInTheDocument();
   });
 });
 
@@ -1589,6 +2411,24 @@ describe('PortalPublishPage — unsaved changes', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled());
     expect(screen.queryByText(/Unsaved changes/)).not.toBeInTheDocument();
+  });
+
+  it('does not count a JSON/YAML switch as a change, only an edit to the content', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ updatedAt: new Date().toISOString() }) });
+    server.use(resource(DRAFT_DEFINITION_PATH, { openapi: '3.0.3', info: { title: 'Loans', version: '1.0.0' }, paths: {} }));
+
+    const { user } = renderPage();
+    await user.click(await screen.findByRole('tab', { name: 'Specification' }));
+    await screen.findByRole('textbox', { name: 'API definition (JSON)' });
+
+    await user.click(screen.getByRole('button', { name: 'YAML' }));
+    const yamlEditor = await screen.findByRole('textbox', { name: 'API definition (YAML)' });
+    expect(screen.queryByText('Unsaved changes', { exact: false })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+
+    await user.type(yamlEditor, 'x-note: edited');
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled();
   });
 
   it('reports unsaved changes alone when no draft has been saved yet, and again once an edit is undone', async () => {
@@ -1632,5 +2472,446 @@ describe('PortalPublishPage — saving a draft', () => {
 
     expect(await screen.findByText(/^Edited/)).toBeInTheDocument();
     expect(draftReads.count()).toBe(1);
+  });
+});
+
+describe('PortalPublishPage — landing page', () => {
+  const EDITOR = 'Landing page (Markdown)';
+
+  /** A landing page served as Markdown text at `path`, with its reads counted. */
+  const landingPageAt = (path: string, text: string, reads: Recorder = recorder()) =>
+    mswHttp.get(apiUrl(path), async ({ request }) => {
+      await reads.capture(request);
+      return new HttpResponse(text, { headers: { 'Content-Type': 'text/markdown' } });
+    });
+
+  const openLandingPage = async (user: ReturnType<typeof renderPage>['user']) => {
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Landing Page' }));
+  };
+
+  it('offers to create one from the API details when none is stored, and reads nothing for it', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    const reads = recorder();
+    server.use(
+      landingPageAt(DRAFT_LANDING_PATH, '# draft', reads),
+      landingPageAt(PUBLICATION_LANDING_PATH, '# published', reads),
+      definitionText(
+        DRAFT_DEFINITION_PATH,
+        JSON.stringify({ openapi: '3.0.3', paths: { '/loans': { get: { summary: 'List loans' } } } }),
+        'application/json',
+      ),
+    );
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+    expect(screen.getByText('No landing page')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: EDITOR })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Create from API details' }));
+
+    const editor = screen.getByRole('textbox', { name: EDITOR }) as HTMLTextAreaElement;
+    expect(editor.value).toBe(
+      [
+        '## Overview',
+        '',
+        'Manage loan applications and repayments.',
+        '',
+        '## Endpoints',
+        '',
+        '- **Production:** https://api.example.com/loans',
+        '',
+        '## Resources',
+        '',
+        '- **GET** `/loans` — List loans',
+        '',
+      ].join('\n'),
+    );
+    expect(screen.getByRole('region', { name: 'Preview' })).toHaveTextContent('List loans');
+    expect(screen.getByText(/Publishing replaces the portal’s default section/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeEnabled();
+    expect(reads.count()).toBe(0);
+
+    await user.type(editor, '!');
+    expect(screen.queryByText(/Publishing replaces the portal’s default section/)).not.toBeInTheDocument();
+  });
+
+  it('drops the generated-page notice once the page is edited, and never shows it for a page that was already there', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ hasLandingPage: true }) });
+    server.use(landingPageAt(DRAFT_LANDING_PATH, '# Existing'));
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+    expect(await screen.findByRole('textbox', { name: EDITOR })).toHaveValue('# Existing');
+    expect(screen.queryByText(/Publishing replaces the portal’s default section/)).not.toBeInTheDocument();
+  });
+
+  it('shows what is typed in the preview as it is typed', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ hasLandingPage: true }) });
+    server.use(landingPageAt(DRAFT_LANDING_PATH, ''));
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+    expect(await screen.findByText('Your landing page appears here as you write.')).toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', { name: EDITOR }), '# Loans');
+
+    expect(await within(screen.getByRole('region', { name: 'Preview' })).findByRole('heading', { name: 'Loans' })).toBeInTheDocument();
+  });
+
+  it('opens on the draft’s own page rather than the published one, and does not save it again', async () => {
+    servePublicationState({
+      draft: aPublicationDraftDetails({ hasLandingPage: true }),
+      publication: aPublication({ hasLandingPage: true }),
+    });
+    const draftReads = recorder();
+    const saves = recorder();
+    server.use(
+      landingPageAt(DRAFT_LANDING_PATH, '# Draft page', draftReads),
+      landingPageAt(PUBLICATION_LANDING_PATH, '# Published page'),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      noContent('put', DRAFT_LANDING_PATH, { record: saves }),
+    );
+    const { user } = renderPage();
+
+    await showDraft(user);
+    await user.click(screen.getByRole('tab', { name: 'Landing Page' }));
+    expect(await screen.findByDisplayValue('# Draft page')).toBeInTheDocument();
+    expect(draftReads.count()).toBe(1);
+
+    await user.click(screen.getByRole('tab', { name: 'API Details' }));
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+    expect(await screen.findByText('Draft saved.')).toBeInTheDocument();
+    expect(saves.count()).toBe(0);
+  });
+
+  it('opens on the published page when the draft has none, and saves it into the draft', async () => {
+    servePublicationState({
+      draft: aPublicationDraftDetails(),
+      publication: aPublication({ hasLandingPage: true }),
+    });
+    const saves = recorder();
+    server.use(
+      landingPageAt(PUBLICATION_LANDING_PATH, '# Published page'),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      noContent('put', DRAFT_LANDING_PATH, { record: saves }),
+    );
+    const { user } = renderPage();
+
+    await showDraft(user);
+    await user.click(screen.getByRole('tab', { name: 'Landing Page' }));
+    expect(await screen.findByDisplayValue('# Published page')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+
+    await user.click(screen.getByRole('tab', { name: 'API Details' }));
+    await makeEdit(user);
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(saves.count()).toBe(1));
+    expect(saves.last()?.body).toBe('# Published page');
+    expect(saves.last()?.headers.get('content-type')).toContain('text/markdown');
+  });
+
+  it('saves the edited page with Save Draft', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ hasLandingPage: true }) });
+    const saves = recorder();
+    server.use(
+      landingPageAt(DRAFT_LANDING_PATH, '# Draft page'),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      noContent('put', DRAFT_LANDING_PATH, { record: saves }),
+    );
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+    await user.type(await screen.findByRole('textbox', { name: EDITOR }), ' edited');
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(saves.count()).toBe(1));
+    expect(saves.last()?.body).toBe('# Draft page edited');
+    expect(await screen.findByText('Draft saved.')).toBeInTheDocument();
+    expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+  });
+
+  it('still saves the landing page when the thumbnail fails, and does not say the draft was saved', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ hasLandingPage: true }) });
+    const saves = recorder();
+    server.use(
+      landingPageAt(DRAFT_LANDING_PATH, '# Draft page'),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      noContent('put', DRAFT_LANDING_PATH, { record: saves }),
+    );
+    const thumbnail = answerThumbnailSaves({ code: 'INTERNAL_ERROR', status: 500 });
+    const { container, user } = renderPage();
+
+    await screen.findByDisplayValue(API_NAME);
+    await user.upload(
+      container.querySelector<HTMLInputElement>('input[type="file"]')!,
+      new File(['png'], 'logo.png', { type: 'image/png' }),
+    );
+    await openLandingPage(user);
+    await user.type(await screen.findByRole('textbox', { name: EDITOR }), ' edited');
+    await user.click(screen.getByRole('button', { name: 'Save Draft' }));
+
+    await waitFor(() => expect(thumbnail.saves()).toBe(1));
+    await waitFor(() => expect(saves.count()).toBe(1));
+    expect(saves.last()?.body).toBe('# Draft page edited');
+    expect(screen.queryByText('Draft saved.')).not.toBeInTheDocument();
+  });
+
+  it('Publish saves the landing page before it publishes', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails() });
+    const order: string[] = [];
+    server.use(
+      definitionText(DRAFT_DEFINITION_PATH, YAML_DEFINITION, 'application/yaml'),
+      accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+      accepts('put', DRAFT_DEFINITION_PATH, undefined),
+      mswHttp.put(apiUrl(DRAFT_LANDING_PATH), () => {
+        order.push('landing page');
+        return new HttpResponse(null, { status: 204 });
+      }),
+      mswHttp.post(apiUrl(PUBLISH_PATH), () => {
+        order.push('publish');
+        return HttpResponse.json(aPublication());
+      }),
+    );
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+    await user.click(screen.getByRole('button', { name: 'Create from API details' }));
+    await user.click(screen.getByRole('button', { name: 'Publish' }));
+
+    expect(await screen.findByText('portals listing')).toBeInTheDocument();
+    expect(order).toEqual(['landing page', 'publish']);
+  });
+
+  it('opens no editor when a stored page could not be read, so it is not written over', async () => {
+    servePublicationState({ draft: aPublicationDraftDetails({ hasLandingPage: true }) });
+    server.use(failure('get', DRAFT_LANDING_PATH, 500, 'INTERNAL_ERROR'));
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+
+    expect(await screen.findByText('Unable to load the landing page.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create from API details' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: EDITOR })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Draft' })).toBeDisabled();
+  });
+
+  it('shows the published page as rendered text only in the published view', async () => {
+    servePublicationState({ publication: aPublication({ hasLandingPage: true }) });
+    server.use(landingPageAt(PUBLICATION_LANDING_PATH, '# Live page'));
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+
+    expect(await screen.findByRole('heading', { name: 'Live page' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: EDITOR })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create from API details' })).not.toBeInTheDocument();
+  });
+
+  it('says the portal shows its default page when none is published, with nothing to create', async () => {
+    servePublicationState({ publication: aPublication() });
+    const { user } = renderPage();
+
+    await openLandingPage(user);
+
+    expect(await screen.findByText('The portal shows its default page.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create from API details' })).not.toBeInTheDocument();
+  });
+
+  describe('opened from the portal card', () => {
+    it('selects no document for "Configure & Publish" when nothing is saved, leaving the choice and the publish to the user', async () => {
+      servePublicationState();
+      const publishRequests = recorder();
+      server.use(
+        collection(DOCS_PATH, TWO_DOCS),
+        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+      );
+
+      const { user } = renderFromCard({});
+
+      await screen.findByDisplayValue('Loan Management Service');
+      await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+      await screen.findByText('Common questions');
+      expect(documentBox('Common questions')).not.toBeChecked();
+      expect(documentBox('Getting started')).not.toBeChecked();
+      expect(publishRequests.count()).toBe(0);
+    });
+
+    it('keeps a saved selection for "Configure & Publish" instead of selecting everything', async () => {
+      servePublicationState({
+        draft: aPublicationDraftDetails({ documents: publicationSelections({ displayName: 'Getting started', id: 'guide' }) }),
+      });
+      server.use(collection(DOCS_PATH, TWO_DOCS));
+
+      const { user } = renderFromCard({});
+
+      await screen.findByDisplayValue('Loan Management Service');
+      await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+      await screen.findByText('Common questions');
+      expect(documentBox('Getting started')).toBeChecked();
+      expect(documentBox('Common questions')).not.toBeChecked();
+    });
+
+    it('republishes the publication\u2019s documents and plans as they are, without the ones it left out', async () => {
+      const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold', status: 'ACTIVE' });
+      servePublicationState({
+        plans: [gold],
+        publication: aPublication({
+          documents: publicationSelections(
+            { displayName: 'Getting started', id: 'guide' },
+            { displayName: 'Common questions', id: 'faq' },
+          ),
+          subscriptionPlans: publicationSelections('gold'),
+        }),
+      });
+      const draftRequests = recorder();
+      const publishRequests = recorder();
+      server.use(
+        collection(DOCS_PATH, THREE_DOCS),
+        accepts('put', DRAFT_PATH, aPublicationDraftDetails(), { record: draftRequests }),
+        accepts('put', DRAFT_DEFINITION_PATH, undefined),
+        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+      );
+
+      const { user } = renderFromCard({ portalName: 'Acme' });
+
+      await showDraft(user);
+      await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+      await screen.findByText('Release notes');
+      expect(documentBox('Getting started')).toBeChecked();
+      expect(documentBox('Common questions')).toBeChecked();
+      expect(documentBox('Release notes')).not.toBeChecked();
+      await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
+      expect(await screen.findByRole('checkbox', { name: /Gold/ })).toBeChecked();
+
+      await user.click(screen.getByRole('button', { name: 'Republish' }));
+
+      await waitFor(() => expect(publishRequests.count()).toBe(1));
+      const body = JSON.parse(draftRequests.last()?.body ?? '{}');
+      expect([...body.docIds].sort()).toEqual(['faq', 'guide']);
+      expect(body.subscriptionPlanIds).toEqual(['gold']);
+    });
+
+    it('keeps a publication with no documents at none', async () => {
+      servePublicationState({ publication: aPublication({ documents: [] }) });
+      server.use(collection(DOCS_PATH, TWO_DOCS));
+
+      const { user } = renderFromCard({});
+
+      await showDraft(user);
+      await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+      await screen.findByText('Common questions');
+      expect(documentBox('Getting started')).not.toBeChecked();
+      expect(documentBox('Common questions')).not.toBeChecked();
+    });
+
+    it('selects no document on a first publish opened by a direct link, and publishes nothing', async () => {
+      servePublicationState();
+      const publishRequests = recorder();
+      server.use(
+        collection(DOCS_PATH, TWO_DOCS),
+        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+      );
+
+      const { user } = renderPage();
+
+      await screen.findByDisplayValue('Loan Management Service');
+      await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+      await screen.findByText('Common questions');
+      expect(documentBox('Common questions')).not.toBeChecked();
+      expect(documentBox('Getting started')).not.toBeChecked();
+      expect(publishRequests.count()).toBe(0);
+    });
+
+    it('lets "Configure & Publish" publish without waiting for the document list', async () => {
+      servePublicationState();
+      let release: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const publishRequests = recorder();
+      server.use(
+        mswHttp.get(apiUrl(DOCS_PATH), async () => {
+          await gate;
+          return HttpResponse.json({
+            count: 2,
+            list: TWO_DOCS,
+            pagination: { limit: 100, offset: 0, total: 2 },
+          });
+        }),
+        accepts('put', DRAFT_PATH, aPublicationDraftDetails()),
+        accepts('put', DRAFT_DEFINITION_PATH, undefined),
+        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
+      );
+
+      const { user } = renderFromCard({});
+
+      await screen.findByDisplayValue('Loan Management Service');
+      await user.click(screen.getByRole('tab', { name: 'Documentation' }));
+      expect(screen.queryByText('Common questions')).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Publish' }));
+      await waitFor(() => expect(publishRequests.count()).toBe(1));
+      release();
+    });
+
+  });
+
+  describe('Published version actions', () => {
+    it('makes Unpublish the main action, and unpublishes after confirmation', async () => {
+      servePublicationState({ publication: aPublication() });
+      server.use(noContent('post', UNPUBLISH_PATH, { record: requests }));
+
+      const { user } = renderPage();
+
+      await user.click(await screen.findByRole('button', { name: 'Unpublish' }));
+      expect(screen.queryByRole('button', { name: 'Save Draft' })).not.toBeInTheDocument();
+      await confirmInDialog(user);
+
+      await waitFor(() => expect(requests.count()).toBe(1));
+    });
+
+    it('keeps Deprecate behind the arrow, arms it, then deprecates after confirmation', async () => {
+      servePublicationState({ publication: aPublication() });
+      server.use(accepts('post', DEPRECATE_PATH, aPublication({ status: 'DEPRECATED' }), { record: requests }));
+
+      const { user } = renderPage();
+
+      await screen.findByRole('button', { name: 'Unpublish' });
+      expect(screen.queryByRole('button', { name: 'Deprecate' })).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+      await user.click(await screen.findByRole('menuitem', { name: 'Deprecate' }));
+      // Picking it only arms the main button; nothing is sent until that is clicked and confirmed.
+      expect(requests.count()).toBe(0);
+      await user.click(await screen.findByRole('button', { name: 'Deprecate' }));
+      await confirmInDialog(user);
+
+      await waitFor(() => expect(requests.count()).toBe(1));
+    });
+
+    it('offers no Deprecate once the listing is already deprecated, while Unpublish stays available', async () => {
+      servePublicationState({ publication: aPublication({ status: 'DEPRECATED' }) });
+
+      const { user } = renderPage();
+
+      expect(await screen.findByRole('button', { name: 'Unpublish' })).toBeEnabled();
+      await user.click(screen.getByRole('button', { name: 'More publish actions' }));
+      expect(await screen.findByRole('menuitem', { name: 'Deprecate' })).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('shows neither action when the API is not live on the portal', async () => {
+      servePublicationState();
+
+      renderPage();
+
+      await screen.findByDisplayValue('Loan Management Service');
+      expect(screen.queryByRole('button', { name: 'Unpublish' })).not.toBeInTheDocument();
+    });
   });
 });

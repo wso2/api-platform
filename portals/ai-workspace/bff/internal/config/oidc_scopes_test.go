@@ -106,6 +106,7 @@ var excludedScopeResources = []string{
 	"ap:rest_api:",
 	"ap:subscription:",
 	"ap:subscription_plan:",
+	"ap:meter:",
 	"ap:websub_api:",
 	"ap:webbroker_api:",
 	// Publishing a REST API to a portal, unlike the type-agnostic draft/publication
@@ -118,6 +119,11 @@ var excludedScopeResources = []string{
 	"ap:api_portal:graphql_api:",
 	"ap:docs:",
 	"ap:thumbnail:",
+	"ap:service_account:",
+	// Webhook secret management (rotation, hashing) is an org-level admin capability
+	// surfaced in the API control plane console, not a workspace feature — the AI
+	// Workspace never registers or delivers webhooks itself.
+	"ap:webhook_secret:",
 }
 
 func isExcludedScope(scope string) bool {

@@ -37,6 +37,7 @@ import {
   type FieldErrors,
 } from '../config/validate';
 import type { AIWorkspaceHostPort } from '../hostPort';
+import { NO_PERMISSION_TOOLTIP } from '../permissions';
 import type { ConfigValues, Gateway, GatewayConfiguration } from '../types';
 import ConfigStatusBar from './ConfigStatusBar';
 import SettingField from './SettingField';
@@ -47,6 +48,12 @@ export type GatewaySettingsDrawerProps = {
   onClose: () => void;
   gateway: Gateway | null;
   port: AIWorkspaceHostPort;
+  /**
+   * Whether the user holds a scope that writes the configuration. When not, the
+   * drawer still reads and polls — reading is its own scope — but every field is
+   * read-only and Save says why.
+   */
+  canWrite: boolean;
 };
 
 /**
@@ -84,6 +91,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   onClose,
   gateway,
   port,
+  canWrite,
 }) => {
   const { apiFetch, notify } = port;
   const gatewayId = gateway?.id;
@@ -211,11 +219,21 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
    * minutes, which is why the button explains itself rather than just greying out.
    */
   const applying = isApplying(config?.status);
+  /**
+   * The organization may not write at all. Read directly rather than through
+   * `canCreate('gateways')`: that answers whether there is room for one MORE
+   * gateway, and a full quota must still leave an existing one configurable.
+   * `false` when the host supplies no entitlements, which is every deployment
+   * without a supplier mounted.
+   */
+  const readOnly = port.resourceLimits?.readOnly ?? false;
   const canSave =
+    canWrite &&
     dirtyCount > 0 &&
     Object.keys(clientErrors).length === 0 &&
     !saving &&
-    !applying;
+    !applying &&
+    !readOnly;
 
   const setDraft = (path: string, value: unknown) => {
     setDrafts((current) => ({ ...current, [path]: value }));
@@ -374,13 +392,19 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
             </Alert>
           ) : null}
 
+          {config && !canWrite ? (
+            <Alert severity="info" sx={{ my: 2 }}>
+              You can view this configuration, but you don&apos;t have permission to change it.
+            </Alert>
+          ) : null}
+
           {listed.map((field) => (
             <SettingField
               key={field.path}
               field={field}
               value={currentValue(field.path)}
               error={errors[field.path]}
-              readOnly={saving}
+              readOnly={saving || !canWrite}
               onChange={(value) => setDraft(field.path, value)}
             />
           ))}
@@ -391,7 +415,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
               field={field}
               value={currentValue(field.path)}
               error={errors[field.path]}
-              readOnly={saving}
+              readOnly={saving || !canWrite}
               onChange={(value) => setDraft(field.path, value)}
             />
           ))}
@@ -424,9 +448,13 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
             </Button>
             <Tooltip
               title={
-                applying
-                  ? 'The previous change is still being applied. Saving is available once it has landed.'
-                  : ''
+                !canWrite
+                  ? NO_PERMISSION_TOOLTIP
+                  : readOnly
+                    ? (port.resourceLimits?.readOnlyMessage ?? '')
+                    : applying
+                      ? 'The previous change is still being applied. Saving is available once it has landed.'
+                      : ''
               }
             >
               {/* Wrapped: a disabled button fires no events, so the tooltip

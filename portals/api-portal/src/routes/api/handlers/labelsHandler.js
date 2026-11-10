@@ -21,11 +21,13 @@
  * Tag: Labels
  */
 const apiMetadataService = require('../../../services/apiMetadataService');
+const { compose } = require('./compose');
+const { requireCsrfForMutatingApi } = require('../../../middlewares/csrfProtection');
 
 module.exports = {
-    createLabel: apiMetadataService.createLabel,
+    createLabel: compose(requireCsrfForMutatingApi, apiMetadataService.createLabel),
     listLabels: apiMetadataService.listLabels,
     getLabel: apiMetadataService.getLabel,
-    updateLabel: apiMetadataService.updateLabel,
-    deleteLabel: apiMetadataService.deleteLabel,
+    updateLabel: compose(requireCsrfForMutatingApi, apiMetadataService.updateLabel),
+    deleteLabel: compose(requireCsrfForMutatingApi, apiMetadataService.deleteLabel),
 };

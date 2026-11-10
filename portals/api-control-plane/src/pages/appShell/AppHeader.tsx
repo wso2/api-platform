@@ -16,24 +16,28 @@
  * under the License.
  */
 
-import { ColorSchemeImage, ColorSchemeToggle, Header, UserMenu } from '@wso2/oxygen-ui';
+import { ColorSchemeToggle, Header, UserMenu } from '@wso2/oxygen-ui';
 import { LogOut, Menu } from '@wso2/oxygen-ui-icons-react';
 import { Fragment } from 'react';
 import { useIntl } from 'react-intl';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { useBrandLogo } from '@/branding/BrandLogoProvider';
+import { BrandLockup } from '@/branding/BrandLockup';
 import { ErrorBoundary } from '@/components/errors/ErrorBoundary';
 import { HeaderSwitchersErrorFallback } from '@/components/errors/ErrorFallback';
 import { useAuth } from '@/contexts/auth/AuthProvider';
-import { HEADER_ACTIONS_SLOT, type ApiControlPlaneHeaderAction } from '@/extensions';
+import {
+  HEADER_ACTIONS_SLOT,
+  HEADER_START_SLOT,
+  type ApiControlPlaneHeaderAction,
+} from '@/extensions';
 import { usePort } from '@/hostPort';
 import { routes } from '@/routes/paths';
 import { getRouteParamsFromPathname } from '@/scope/consoleRouteParams';
 import { useSlot } from '@/slots';
 import { HeaderScopeSwitchers } from './HeaderScopeSwitchers';
 
-const BRAND_LOGO_HEIGHT = 32;
+const BRAND_LOGO_HEIGHT = 26;
 /** Matches Oxygen's own Header.Toggle icon size, so swapping the glyph doesn't resize the button. */
 const TOGGLE_ICON_SIZE = 20;
 
@@ -65,9 +69,10 @@ export function AppHeader() {
   const navigate = useNavigate();
   // const { actions } = useAppShell();
   const auth = useAuth();
-  const brandLogo = useBrandLogo();
   // Cloud-only entries; empty in a standalone console, which registers none.
   const headerActions = useSlot<ApiControlPlaneHeaderAction>(HEADER_ACTIONS_SLOT);
+  // Cloud-only: replaces the sidebar-collapse toggle below when present.
+  const headerStartActions = useSlot<ApiControlPlaneHeaderAction>(HEADER_START_SLOT);
 
   const userName = auth.user?.name || 'User';
   const userEmail = auth.user?.email || '';
@@ -79,8 +84,23 @@ export function AppHeader() {
   };
 
   return (
-    <Header>
-      <Header.Toggle collapseIcon={<Menu size={TOGGLE_ICON_SIZE} />} />
+    // `position`/`zIndex` are load-bearing, not cosmetic. The header is an
+    // `AppBar`, and the theme's `MuiPaper` override gives every Paper a
+    // `backdrop-filter` — which makes the header a stacking context. Its own
+    // `position: static` nullifies `AppBar`'s `zIndex`, so that context sits at
+    // `auto`, before the main content in DOM order. Anything rendered inside
+    // the header that must float over the page — the trial badge's usage panel
+    // uses `disablePortal`, so it renders here rather than at the body — is
+    // trapped below the page whatever z-index it asks for. Positioning the
+    // header lets its `appBar` level apply, lifting the whole context above
+    // the content. Portalled surfaces (menus, modals, tooltips) sit higher
+    // still and are unaffected.
+    <Header sx={{ position: 'relative', zIndex: 'appBar' }}>
+      {headerStartActions.length > 0 ? (
+        <HeaderExtensionActions entries={headerStartActions} />
+      ) : (
+        <Header.Toggle collapseIcon={<Menu size={TOGGLE_ICON_SIZE} />} />
+      )}
       <Header.Brand
         aria-label={intl.formatMessage({
           id: 'appShell.header.brand.aria',
@@ -89,15 +109,7 @@ export function AppHeader() {
         onClick={goToOrganizationHome}
       >
         <Header.BrandLogo>
-          <ColorSchemeImage
-            alt={intl.formatMessage({
-              id: 'appShell.header.title',
-              defaultMessage: 'API Platform',
-            })}
-            height={BRAND_LOGO_HEIGHT}
-            src={brandLogo}
-            width="auto"
-          />
+          <BrandLockup height={BRAND_LOGO_HEIGHT} />
         </Header.BrandLogo>
       </Header.Brand>
 

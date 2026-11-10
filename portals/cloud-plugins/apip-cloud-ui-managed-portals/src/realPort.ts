@@ -12,6 +12,9 @@
 import type {
   CreateManagedPortalInput,
   ManagedPortal,
+  ManagedPortalChange,
+  ManagedPortalChangeError,
+  ManagedPortalChangeOp,
   ManagedPortalStatus,
   OrgEnvironment,
   PortalPort,
@@ -24,6 +27,37 @@ const ORG_HEADER = 'X-Org-Id';
 
 // Bounded so a stalled BFF request can't leave UI mutations pending indefinitely.
 const REQUEST_TIMEOUT_MS = 30_000;
+
+// A create can outlast the gateway's request timeout while the backend carries
+// on and finishes it, so a timed-out create is followed by polling for the
+// portal instead of being reported as a failure straight away.
+const CREATE_SETTLE_WINDOW_MS = 90_000;
+const CREATE_SETTLE_INTERVAL_MS = 3_000;
+const CREATE_STILL_RUNNING_MESSAGE =
+  'The portal is taking longer than expected to create. Check the portal list again in a few minutes.';
+
+/** Error from a platform-api call, with the HTTP status when the server answered. */
+class RequestError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+    readonly timedOut = false
+  ) {
+    super(message);
+    this.name = 'RequestError';
+  }
+}
+
+/** Whether a create failed only because the request ran out of time. */
+function isTimeout(err: unknown): boolean {
+  return err instanceof RequestError && (err.timedOut || err.status === 504);
+}
+
+/** Whether a poll error will not clear by waiting, so the poll should stop and report it. */
+function isPermanentPollError(err: unknown): boolean {
+  if (!(err instanceof RequestError) || err.status === undefined) return false;
+  return err.status >= 400 && err.status < 500 && ![404, 408, 429].includes(err.status);
+}
 
 type WindowRuntimeConfig = Partial<{
   platformApiBaseUrl: string;
@@ -57,6 +91,17 @@ async function request<T>(
   path: string,
   body?: unknown
 ): Promise<T> {
+  return (await send<T>(base, orgRef, method, path, body)).body;
+}
+
+/** Like `request`, with the response's status; a 2xx with no body has none. */
+async function send<T>(
+  base: string,
+  orgRef: string,
+  method: string,
+  path: string,
+  body?: unknown
+): Promise<{ status: number; body: T }> {
   const mutating = method !== 'GET';
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -76,7 +121,7 @@ async function request<T>(
     });
   } catch (err) {
     if ((err as { name?: string }).name === 'AbortError') {
-      throw new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
+      throw new RequestError(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s`, undefined, true);
     }
     throw err;
   } finally {
@@ -95,11 +140,11 @@ async function request<T>(
     } catch {
       // Non-JSON body; keep the status-based message.
     }
-    throw new Error(message);
+    throw new RequestError(message, response.status);
   }
 
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
+  const text = response.status === 204 ? '' : await response.text();
+  return { status: response.status, body: (text.trim() === '' ? undefined : JSON.parse(text)) as T };
 }
 
 // Wire shapes match the plugin's OAS.
@@ -110,7 +155,10 @@ type WirePortal = {
   description?: string | null;
   url?: string;
   loginEnvironment?: string;
+  selfSignup?: boolean;
   status?: string;
+  change?: { op?: string; loginEnvironment?: string; selfSignup?: boolean };
+  lastChangeError?: { op?: string; loginEnvironment?: string; selfSignup?: boolean; message?: string; at?: string };
   updatedAt?: string;
 };
 type WirePortalList = { count?: number; list?: WirePortal[] };
@@ -122,8 +170,38 @@ type WirePortalList = { count?: number; list?: WirePortal[] };
  * button (see fallback in ManagedPortalsList).
  */
 function normalizeStatus(raw?: string): ManagedPortalStatus | undefined {
-  if (raw === 'pending' || raw === 'active' || raw === 'failed') return raw;
+  if (raw === 'pending' || raw === 'active' || raw === 'failed' || raw === 'deleting') return raw;
   return undefined;
+}
+
+/** An unknown change kind from a newer backend reads as no change: the row says "Updating" generically. */
+function normalizeChangeOp(raw?: string): ManagedPortalChangeOp | undefined {
+  if (raw === 'loginEnvironment' || raw === 'selfSignup' || raw === 'rotateKey') return raw;
+  return undefined;
+}
+
+function changeFromWire(w: WirePortal['change']): ManagedPortalChange | undefined {
+  const op = normalizeChangeOp(w?.op);
+  if (!op) return undefined;
+  return { op, loginEnvironment: w?.loginEnvironment, selfSignup: w?.selfSignup };
+}
+
+/** Message for a failed change the backend sent without one. */
+export const CHANGE_FAILED_FALLBACK_MESSAGE = 'The last change to this portal did not complete. Try it again.';
+
+/**
+ * Any lastChangeError means the last change failed, so it is kept even when
+ * its kind is unknown to this UI or its message is empty.
+ */
+function changeErrorFromWire(w: WirePortal['lastChangeError']): ManagedPortalChangeError | undefined {
+  if (!w) return undefined;
+  return {
+    op: normalizeChangeOp(w.op),
+    loginEnvironment: w.loginEnvironment,
+    selfSignup: w.selfSignup,
+    message: w.message?.trim() || CHANGE_FAILED_FALLBACK_MESSAGE,
+    at: w.at,
+  };
 }
 
 // `name` is the value loginEnvironment expects; other response fields are ignored.
@@ -142,9 +220,38 @@ function fromWire(w: WirePortal): ManagedPortal {
     description: w.description ?? undefined,
     url: w.url,
     loginEnvironment: w.loginEnvironment,
+    selfSignup: w.selfSignup,
     status: normalizeStatus(w.status),
+    change: changeFromWire(w.change),
+    lastChangeError: changeErrorFromWire(w.lastChangeError),
     updatedAt: w.updatedAt,
   };
+}
+
+/**
+ * Polls for a portal whose create timed out, returning it once it exists or null
+ * when the window passes without it.
+ */
+async function awaitCreatedPortal(base: string, orgHandle: string, handle: string): Promise<ManagedPortal | null> {
+  const deadline = Date.now() + CREATE_SETTLE_WINDOW_MS;
+  for (;;) {
+    try {
+      const body = await request<WirePortal>(
+        base,
+        orgHandle,
+        'GET',
+        `/managed-api-portals/${encodeURIComponent(handle)}`
+      );
+      return fromWire(body);
+    } catch (err) {
+      // Only a server answer that can change by waiting keeps the poll going;
+      // anything else is reported as it is.
+      if (!(err instanceof RequestError) || isPermanentPollError(err)) throw err;
+    }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return null;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(CREATE_SETTLE_INTERVAL_MS, remaining)));
+  }
 }
 
 /** PortalPort backed by the BFF proxy at `base`, scoped to `orgHandle` via the X-Org-Id header. */
@@ -160,24 +267,36 @@ export function createRealPortalPort(base: string, orgHandle: string): PortalPor
       return fromWire(body);
     },
     async create(input: CreateManagedPortalInput) {
-      const body = await request<WirePortal>(base, orgHandle, 'POST', '/managed-api-portals', {
-        handle: input.handle,
-        name: input.name,
-        description: input.description,
-        loginEnvironment: input.loginEnvironment,
-      });
-      return fromWire(body);
+      try {
+        const body = await request<WirePortal>(base, orgHandle, 'POST', '/managed-api-portals', {
+          handle: input.handle,
+          name: input.name,
+          description: input.description,
+          loginEnvironment: input.loginEnvironment,
+          selfSignup: input.selfSignup,
+        });
+        return fromWire(body);
+      } catch (err) {
+        if (!isTimeout(err) || !input.handle) throw err;
+        const portal = await awaitCreatedPortal(base, orgHandle, input.handle);
+        if (portal) return portal;
+        throw new Error(CREATE_STILL_RUNNING_MESSAGE);
+      }
     },
     async update(id: string, input: UpdateManagedPortalInput) {
       const body = await request<WirePortal>(base, orgHandle, 'PUT', url(id), {
         name: input.name,
         description: input.description,
         loginEnvironment: input.loginEnvironment,
+        selfSignup: input.selfSignup,
       });
       return fromWire(body);
     },
     async remove(id: string) {
-      await request<void>(base, orgHandle, 'DELETE', url(id));
+      // 204: deleted. 202: the cloud's orchestrator tears it down, and the portal
+      // reads as deleting until it is gone.
+      const res = await send<{ status?: string } | undefined>(base, orgHandle, 'DELETE', url(id));
+      return { pending: res.status === 202 || res.body?.status === 'deleting' };
     },
     async listEnvironments(): Promise<OrgEnvironment[]> {
       // Sibling endpoint reached via the same BFF proxy and org-id header as the portal calls.

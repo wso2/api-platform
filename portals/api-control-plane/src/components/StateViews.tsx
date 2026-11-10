@@ -22,7 +22,9 @@ import { Lock } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, useIntl } from 'react-intl';
 
 import { AppLoader } from './AppLoader';
-import { Can } from '@/permissions';
+import { SecondaryText } from './common/SecondaryText';
+import { CanCreate } from '@/permissions';
+import type { LimitedComponent } from '@/hooks/useResourceLimits';
 
 const messages = defineMessages({
   forbiddenTitle: {
@@ -52,6 +54,12 @@ export function LoadingState({
 type EmptyStateProps = {
   title: string;
   description?: string;
+  /**
+   * Keep the description on one line (illustration layout only), lifting the
+   * usual 440px column cap. For short sentences that would otherwise orphan a
+   * word onto a second line; long text should leave this off.
+   */
+  singleLineDescription?: boolean;
   /** Rendered only alongside `onAction`; one empty state offers one way out. */
   actionLabel?: string;
   /** Leading mark on the action button, e.g. `<Plus />` for a create prompt. */
@@ -61,6 +69,15 @@ type EmptyStateProps = {
   onAction?: () => void;
   /** Optional `operationId` to gate the action button behind. */
   operationId?: string;
+  /**
+   * Which product component the action creates, for the quota check. Omit for
+   * an action nothing caps, and only `operationId` gates the button.
+   *
+   * A first-run empty state is exactly where a quota is easiest to miss: the
+   * count that has run out is the organization's, not this list's, so "no rows
+   * here" says nothing about whether another one may be created.
+   */
+  component?: LimitedComponent;
 };
 
 /**
@@ -70,19 +87,21 @@ type EmptyStateProps = {
 export function EmptyState({
   title,
   description,
+  singleLineDescription = false,
   actionLabel,
   actionIcon,
   illustration,
   onAction,
   operationId = '',
+  component,
 }: EmptyStateProps) {
   const action =
     actionLabel && onAction ? (
-      <Can do={operationId} denied="disable">
+      <CanCreate do={operationId} component={component} denied="disable">
         <Button onClick={onAction} startIcon={actionIcon} variant="contained">
           {actionLabel}
         </Button>
-      </Can>
+      </CanCreate>
     ) : null;
 
   if (illustration) {
@@ -100,15 +119,21 @@ export function EmptyState({
           py: 6,
         }}
       >
-        <Stack alignItems="center" spacing={1} sx={{ maxWidth: 440 }}>
+        <Stack
+          alignItems="center"
+          spacing={1}
+          sx={{ maxWidth: singleLineDescription ? 'none' : 440 }}
+        >
           {illustration}
           <Typography sx={{ fontWeight: 700, pt: 2 }} variant="h5">
             {title}
           </Typography>
           {description && (
-            <Typography color="text.secondary" sx={{ textAlign: 'center' }}>
+            <SecondaryText
+              sx={{ textAlign: 'center', whiteSpace: singleLineDescription ? 'nowrap' : undefined }}
+            >
               {description}
-            </Typography>
+            </SecondaryText>
           )}
           {action && <Box sx={{ pt: 2 }}>{action}</Box>}
         </Stack>

@@ -25,9 +25,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/common/types/ref"
-	"github.com/google/cel-go/ext"
+	"cel.dev/cel-go/cel"
+	"cel.dev/cel-go/common/types/ref"
+	"cel.dev/cel-go/ext"
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
@@ -181,6 +181,7 @@ type globalPropertyVariable struct {
 // collection per call.
 var globalPropertyVariables = []globalPropertyVariable{
 	{"request.path", cel.StringType, ""},
+	{"request.pathTemplate", cel.StringType, ""},
 	{"request.method", cel.StringType, ""},
 	{"request.id", cel.StringType, ""},
 	{"request.header", cel.MapType(cel.StringType, cel.StringType), map[string]string{}},
@@ -308,6 +309,11 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 		}
 		if referenced["request.method"] {
 			ctx["request.method"] = event.Operation.APIMethod
+		}
+	}
+	if referenced["request.pathTemplate"] {
+		if tmpl, ok := event.Properties[dto.PropKeyOperationPath].(string); ok {
+			ctx["request.pathTemplate"] = tmpl
 		}
 	}
 	if referenced["request.id"] && event.MetaInfo != nil {

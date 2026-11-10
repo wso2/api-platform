@@ -67,6 +67,7 @@ import ExternalServersCreateForm from './ExternalServersCreateForm';
 import ExternalServersValidationDetails from './ExternalServersValidationDetails';
 import type { EndpointValidationResponse } from './externalServersValidationTypes';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
+import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
 // Backend field names (from CreateMCPServerRequest) mapped onto this form's state keys.
 // "displayName" maps to the server name field; the rest match one-to-one.
@@ -380,6 +381,12 @@ export default function ExternalServersNew(): JSX.Element {
     Boolean(versionValidationError) ||
     !serverTarget.trim();
 
+  // When the organization is read-only, that — not the user's role — is why
+  // creation is unavailable, and saying "contact your admin" would send them
+  // after the wrong fix. Empty while the organization may write, so the
+  // permission wording stands.
+  const { readOnlyMessage } = useResourceLimits();
+
   if (!canCreateMcpProxy) {
     return (
       <PageContent fullWidth>
@@ -391,12 +398,14 @@ export default function ExternalServersNew(): JSX.Element {
             />
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            <FormattedMessage
-              id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.creation.unavailable.description"
-              defaultMessage={
-                'You do not have permission to create MCP Proxies. Please contact your admin.'
-              }
-            />
+            {readOnlyMessage || (
+              <FormattedMessage
+                id="aiWorkspace.pages.appShell.appShellPages.externalServers.Main.creation.unavailable.description"
+                defaultMessage={
+                  'You do not have permission to create MCP Proxies. Please contact your admin.'
+                }
+              />
+            )}
           </Typography>
         </Stack>
       </PageContent>

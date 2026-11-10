@@ -29,6 +29,7 @@ import (
 
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	"github.com/wso2/api-platform/tests/framework/suites/it/steps/apcli"
 )
 
 // testContext carries the runner scope and cleanup registry the steps rely on.
@@ -48,18 +49,6 @@ func fakeCLI(t *testing.T) string {
 	path := filepath.Join(t.TempDir(), "ap")
 	script := "#!/bin/sh\necho \"args=$*\"\necho \"home=$HOME\"\necho \"token=$WSO2AP_AIWORKSPACE_TOKEN\"\necho \"oops\" >&2\nexit ${FAKE_AP_EXIT:-0}\n"
 	require.NoError(t, os.WriteFile(path, []byte(script), 0o755))
-	return path
-}
-
-// fakeCLIInWorkingDirectory is fakeCLI placed under the test's working directory, so a
-// relative path to it only resolves from that directory.
-func fakeCLIInWorkingDirectory(t *testing.T) string {
-	t.Helper()
-	dir, err := os.MkdirTemp(mustGetwd(t), ".fake-ap-")
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, os.RemoveAll(dir)) })
-	path := filepath.Join(dir, "ap")
-	require.NoError(t, os.Rename(fakeCLI(t), path))
 	return path
 }
 
@@ -92,107 +81,16 @@ func TestLookup(t *testing.T) {
 }
 
 func TestAssertContainsAll(t *testing.T) {
-	ok := cliResult{stdout: "Status: success\napplied successfully", exit: 0}
+	ok := apcli.Result{Stdout: "Status: success\napplied successfully", Exit: 0}
 	require.NoError(t, assertContainsAll(ok, successMarker, createdMarker))
 	require.NoError(t, assertContainsAll(ok))
 
 	require.ErrorContains(t, assertContainsAll(ok, updatedMarker), "updated successfully")
-	require.ErrorContains(t, assertContainsAll(cliResult{stdout: "Status: success", exit: 1}, successMarker), "exit 0")
-	require.ErrorContains(t, assertContainsAll(cliResult{}, successMarker), "Status: success")
+	require.ErrorContains(t, assertContainsAll(apcli.Result{Stdout: "Status: success", Exit: 1}, successMarker), "exit 0")
+	require.ErrorContains(t, assertContainsAll(apcli.Result{}, successMarker), "Status: success")
 
-	split := cliResult{stdout: "Status: success", stderr: "applied successfully"}
+	split := apcli.Result{Stdout: "Status: success", Stderr: "applied successfully"}
 	require.NoError(t, assertContainsAll(split, successMarker, createdMarker), "stdout and stderr are searched together")
-}
-
-func TestResolveBinary(t *testing.T) {
-	binary := fakeCLIInWorkingDirectory(t)
-
-	t.Setenv(envCLIBinary, binary)
-	got, err := resolveBinary()
-	require.NoError(t, err)
-	require.Equal(t, binary, got)
-
-	relative := relativeToWorkingDirectory(t, binary)
-	require.False(t, filepath.IsAbs(relative))
-	t.Setenv(envCLIBinary, relative)
-	got, err = resolveBinary()
-	require.NoError(t, err)
-	require.True(t, filepath.IsAbs(got), "resolved path %q must be absolute", got)
-	require.Equal(t, binary, got)
-
-	t.Setenv(envCLIBinary, filepath.Join(relative, "..", "missing"))
-	_, err = resolveBinary()
-	require.ErrorContains(t, err, "make -C tests/framework ap-cli")
-	require.ErrorContains(t, err, string(filepath.Separator), "the error names the resolved path")
-
-	t.Setenv(envCLIBinary, filepath.Join(t.TempDir(), "missing"))
-	_, err = resolveBinary()
-	require.ErrorContains(t, err, "make -C tests/framework ap-cli")
-
-	t.Setenv(envCLIBinary, t.TempDir())
-	_, err = resolveBinary()
-	require.ErrorContains(t, err, "is a directory")
-}
-
-func TestCLIRunIsolatesHomeAndReportsExitStatus(t *testing.T) {
-	ctx, reg := testContext(t)
-	t.Setenv(envCLIBinary, relativeToWorkingDirectory(t, fakeCLIInWorkingDirectory(t)))
-	bin, err := resolveBinary()
-	require.NoError(t, err)
-	c, err := newCLI(ctx, bin)
-	require.NoError(t, err)
-	require.NotEqual(t, mustGetwd(t), c.workspace, "the CLI runs from its own scratch workspace")
-	require.Len(t, reg.Pending(), 2, "the HOME and workspace are both registered for cleanup")
-
-	res, err := c.run(ctx, []string{"WSO2AP_AIWORKSPACE_TOKEN=tok"}, "ai-workspace", "build", "-f", "demo")
-	require.NoError(t, err)
-	require.Equal(t, 0, res.exit)
-	require.Contains(t, res.stdout, "args=ai-workspace build -f demo")
-	require.Contains(t, res.stdout, "home="+c.home)
-	require.Contains(t, res.stdout, "token=tok")
-	require.Equal(t, "oops\n", res.stderr)
-
-	t.Setenv("FAKE_AP_EXIT", "3")
-	res, err = c.run(ctx, nil, "version")
-	require.NoError(t, err, "a non-zero exit is a result, not an error")
-	require.Equal(t, 3, res.exit)
-}
-
-func mustGetwd(t *testing.T) string {
-	t.Helper()
-	dir, err := os.Getwd()
-	require.NoError(t, err)
-	return dir
-}
-
-func relativeToWorkingDirectory(t *testing.T, path string) string {
-	t.Helper()
-	relative, err := filepath.Rel(mustGetwd(t), path)
-	require.NoError(t, err)
-	return relative
-}
-
-func TestCLIRunFailsWhenTheBinaryCannotRun(t *testing.T) {
-	ctx, _ := testContext(t)
-	c, err := newCLI(ctx, filepath.Join(t.TempDir(), "absent"))
-	require.NoError(t, err)
-
-	res, err := c.run(ctx, nil, "version")
-	require.Error(t, err)
-	require.Equal(t, -1, res.exit)
-}
-
-func TestScratchDirectoriesAreRemovedByCleanup(t *testing.T) {
-	ctx, reg := testContext(t)
-	c, err := newCLI(ctx, fakeCLI(t))
-	require.NoError(t, err)
-	require.DirExists(t, c.home)
-	require.DirExists(t, c.workspace)
-
-	require.NoError(t, reg.Sweep(ctx))
-	require.NoDirExists(t, c.home)
-	require.NoDirExists(t, c.workspace)
-	require.Empty(t, reg.Pending())
 }
 
 // fixtureSuite builds a feature root holding one fixture set and a session whose workspace
@@ -221,11 +119,11 @@ func fixtureSuite(t *testing.T) (context.Context, *Steps, string) {
 	}
 
 	s := &Steps{featureRoot: root, registered: map[string]bool{}}
-	t.Setenv(envCLIBinary, fakeCLI(t))
+	t.Setenv(apcli.EnvBinary, fakeCLI(t))
 	c, err := s.session(ctx)
 	require.NoError(t, err)
-	require.NoError(t, os.MkdirAll(filepath.Join(c.workspace, "demo-proxy"), 0o755))
-	return ctx, s, filepath.Join(c.workspace, "demo-proxy")
+	require.NoError(t, os.MkdirAll(filepath.Join(c.Workspace(), "demo-proxy"), 0o755))
+	return ctx, s, filepath.Join(c.Workspace(), "demo-proxy")
 }
 
 func TestStageCreateExpandsMetadataAndRuntimeButCopiesDefinitionVerbatim(t *testing.T) {
@@ -293,22 +191,22 @@ func TestReadFixtureRefusesPathsOutsideTheFeatureRoot(t *testing.T) {
 
 func TestExecuteClearsTheStaleResultBeforeEachCall(t *testing.T) {
 	ctx, _ := testContext(t)
-	t.Setenv(envCLIBinary, fakeCLI(t))
+	t.Setenv(apcli.EnvBinary, fakeCLI(t))
 	s := &Steps{registered: map[string]bool{}}
 
 	_, err := s.execute(ctx, nil, "version")
 	require.NoError(t, err)
-	require.Contains(t, s.last.stdout, "args=version")
+	require.Contains(t, s.last.Stdout, "args=version")
 
-	t.Setenv(envCLIBinary, filepath.Join(t.TempDir(), "gone"))
+	t.Setenv(apcli.EnvBinary, filepath.Join(t.TempDir(), "gone"))
 	s.cli = nil
 	_, err = s.execute(ctx, nil, "version")
 	require.Error(t, err)
-	require.Equal(t, cliResult{}, s.last, "a failed invocation must not leave the previous result to assert on")
+	require.Equal(t, apcli.Result{}, s.last, "a failed invocation must not leave the previous result to assert on")
 }
 
 func TestReportedAppliedChecksTheLastResult(t *testing.T) {
-	s := &Steps{last: cliResult{stdout: "Status: success\nupdated successfully"}}
+	s := &Steps{last: apcli.Result{Stdout: "Status: success\nupdated successfully"}}
 	require.NoError(t, s.reportedApplied(context.Background(), "llm-provider", "updated"))
 	require.Error(t, s.reportedApplied(context.Background(), "llm-provider", "created"))
 }

@@ -17,11 +17,25 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
-import { Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import DeployPage from './DeployPage';
-import { createDeployClient, takesEndpointUrl, type ArtifactKind } from './deployApi';
+import { createDeployClient, gatewayTypeForKind, takesEndpointUrl, type ArtifactKind } from './deployApi';
+import { createManagedGatewaysClient } from './managedGatewaysApi';
+import {
+  createSelfHostedGatewaysClient,
+  defaultSelfHostedName,
+  latestVersionFor,
+} from './selfHostedGatewaysApi';
+import SelfHostedSetupDrawer from './components/SelfHostedSetupDrawer';
+import { CONTROL_PLANE_HOST_PLACEHOLDER } from './components/GatewaySetupSteps';
 import { isSettling } from './utils/status';
-import type { CloudHostPort } from './hostPort';
+import type { CloudHostPort, GatewayVersionEntry } from './hostPort';
+import {
+  API_DEPLOYMENT_OPERATIONS,
+  ARTIFACT_READ_OPERATIONS,
+  GATEWAY_CREATE_OPERATIONS,
+  permissionsOf,
+} from './permissions';
 import type { ApiOwnership, Build, Environment } from './types';
 
 export type DeployFeatureProps = {
@@ -42,6 +56,9 @@ export type DeployFeatureProps = {
 /** How often to re-read while a deployment is still settling. */
 const POLL_INTERVAL_MS = 4000;
 
+/** How long a managed gateway may stay in provisioning before the page stops waiting for it. */
+const PROVISIONING_TIMEOUT_MS = 10 * 60 * 1000;
+
 const errorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
@@ -56,11 +73,31 @@ const errorMessage = (error: unknown, fallback: string) =>
  * reject.
  */
 const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifactHandle }) => {
-  const { apiFetch, projectHandle, apiHandle, notify } = port;
+  const { apiFetch, projectHandle, apiHandle, notify, gatewayVersions, gatewayControlPlaneHost } = port;
+  const permissions = permissionsOf(port);
   const handle = artifactHandle ?? apiHandle;
+
+  // What the signed-in user may be offered, from the scopes each operation
+  // accepts. The server still decides; this keeps the page from offering a call
+  // it would refuse, and from making one it knows will be refused.
+  const canView =
+    permissions.canAny(API_DEPLOYMENT_OPERATIONS.ListApiDeployments) &&
+    permissions.canAny(API_DEPLOYMENT_OPERATIONS.ListApiBuilds);
+  const canDeploy = permissions.canAny(API_DEPLOYMENT_OPERATIONS.DeployApi);
+  const canUndeploy = permissions.canAny(API_DEPLOYMENT_OPERATIONS.UndeployApi);
+  const canDeleteBuild = permissions.canAny(API_DEPLOYMENT_OPERATIONS.DeleteApiBuild);
+  const canAddGateway = permissions.canAny(GATEWAY_CREATE_OPERATIONS);
+  // The gateway type this artifact kind deploys to: AI artifacts need AI gateways.
+  const gatewayType = gatewayTypeForKind(kind);
+  // Identifies the artifact this page is showing. A create that was started for another
+  // one must not leak its result into this one.
+  const scopeKey = `${projectHandle ?? ''}/${handle ?? ''}/${kind}`;
+  const scopeRef = useRef(scopeKey);
+  scopeRef.current = scopeKey;
 
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [builds, setBuilds] = useState<Build[]>([]);
+  const [apiName, setApiName] = useState<string | undefined>(undefined);
   const [apiEndpointUrl, setApiEndpointUrl] = useState<string | undefined>(undefined);
   // Starts unresolved: deploy actions stay disabled until a successful read
   // confirms the control plane owns this API.
@@ -72,6 +109,36 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // The managed gateway being created from the empty page, until it is active.
+  const [provisioning, setProvisioning] = useState<{
+    startedAt: number;
+    environment: string;
+    gatewayId?: string;
+  } | null>(null);
+  // The self-hosted gateway just added, whose setup steps the drawer shows. It lives
+  // here rather than on the empty page, which gives way to the pipeline once the
+  // gateway exists.
+  const [selfHosted, setSelfHosted] = useState<{
+    id: string;
+    environment: string;
+    token: string | null;
+    version?: GatewayVersionEntry;
+  } | null>(null);
+  // Set from the moment the self-hosted registration request is sent until it
+  // resolves (success or failure) — covers the brief window before `selfHosted`
+  // exists, during which the empty page's card shows a provisioning state like
+  // the managed gateway's does.
+  const [selfHostedPending, setSelfHostedPending] = useState<{ startedAt: number } | null>(null);
+  const selfHostedClient = useMemo(() => createSelfHostedGatewaysClient(apiFetch), [apiFetch]);
+  const gatewaysClient = useMemo(() => createManagedGatewaysClient(apiFetch), [apiFetch]);
+
+  // Moving to another artifact drops whatever gateway creation was in flight for the last.
+  useEffect(() => {
+    setProvisioning(null);
+    setSelfHosted(null);
+    setSelfHostedPending(null);
+  }, [scopeKey]);
 
   const client = useMemo(
     () =>
@@ -86,46 +153,86 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
   const settlingRef = useRef(false);
   settlingRef.current = isSettling(environments);
 
+  // Numbers each load, so only the newest may write state: a load restarts when
+  // `canView` changes on the same artifact, and `apiFetch` cannot be cancelled,
+  // so an earlier read resolving last would otherwise put back what it saw.
+  const loadSeqRef = useRef(0);
+
   const load = useCallback(
     async (options: { quiet?: boolean } = {}) => {
-      if (!client) return;
+      const seq = ++loadSeqRef.current;
+      if (!client || !canView) {
+        // Also ends the spinner of a superseded foreground read, which no longer
+        // clears it itself.
+        setLoading(false);
+        return;
+      }
+      // `DeployFeature` stays mounted when the route moves to another artifact, so a read
+      // that was started for the last one can resolve after the next is showing. It must
+      // not write its pipeline, builds or error over the new artifact's, nor may any
+      // read that a newer one has superseded.
+      const scope = scopeRef.current;
+      const isStale = () => scopeRef.current !== scope || seq !== loadSeqRef.current;
       if (!options.quiet) setLoading(true);
       try {
-        const [stages, prepared] = await Promise.all([
-          client.listEnvironments(),
-          client.listBuilds(),
-        ]);
-        setEnvironments(stages);
-        setBuilds(prepared);
+        // The two reads are independent: the environments (and the gateways in them) are
+        // what the setup drawer and the poll depend on, so they are kept even when the
+        // builds read fails. The failure itself is still reported below.
+        const [stages, prepared] = await Promise.allSettled([client.listEnvironments(), client.listBuilds()]);
+        if (isStale()) return;
+        if (stages.status === 'rejected') throw stages.reason;
+        setEnvironments(stages.value);
+        if (prepared.status === 'rejected') throw prepared.reason;
+        setBuilds(prepared.value);
         setError(null);
       } catch (loadError) {
+        if (isStale()) return;
         setError(errorMessage(loadError, 'Unable to load the deployment pipeline.'));
       } finally {
-        if (!options.quiet) setLoading(false);
+        // The newest read clears the spinner even when it is quiet: a foreground
+        // read it superseded set it and, being stale, no longer clears it.
+        if (!isStale()) setLoading(false);
       }
     },
-    [client]
+    [canView, client]
   );
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  // The artifact's own record is read under its resource's scopes, not the
+  // deployment ones, so a user holding only those cannot read it.
+  const canReadArtifact = permissions.canAny(ARTIFACT_READ_OPERATIONS[kind]);
+
   // Read once per API rather than on every settling poll: neither the API's
   // backend URL nor its ownership is pipeline state. A failed read leaves the
   // pipeline viewable, but ownership unverified, so the actions stay disabled.
+  // So does a read the user may not make: it is not attempted, and ownership
+  // is left unverified rather than assumed — deploying an API a gateway owns
+  // is what the check exists to prevent, and only the API's own record says
+  // so. Only a REST API can be gateway-owned (see `readApi`), so for any other
+  // kind the unreadable record changes nothing but the display name.
   useEffect(() => {
-    if (!client) return undefined;
+    if (!client || !canView) return undefined;
+    if (!canReadArtifact) {
+      setApiName(undefined);
+      setApiEndpointUrl(undefined);
+      setOwnership(kind === 'RestApi' ? 'unverified' : 'control-plane');
+      return undefined;
+    }
     let cancelled = false;
     setOwnership('checking');
     void client.readApi().then(
       (api) => {
         if (cancelled) return;
+        setApiName(api.name);
         setApiEndpointUrl(api.endpointUrl);
         setOwnership(api.readOnly ? 'gateway' : 'control-plane');
       },
       () => {
         if (cancelled) return;
+        setApiName(undefined);
         setApiEndpointUrl(undefined);
         setOwnership('unverified');
       }
@@ -133,7 +240,7 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     return () => {
       cancelled = true;
     };
-  }, [client]);
+  }, [canReadArtifact, canView, client, kind]);
 
   // A deployment settles asynchronously once its gateway acknowledges, so poll
   // while anything is in flight and stop as soon as everything has settled.
@@ -203,6 +310,109 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
     );
   };
 
+  const handleAddSelfHostedGateway = (environment: string) => {
+    if (busy || provisioning || selfHostedPending || ownership !== 'control-plane') return;
+    const scope = scopeRef.current;
+    const version = latestVersionFor(gatewayVersions, gatewayType);
+    setBusy(true);
+    setSelfHostedPending({ startedAt: Date.now() });
+    selfHostedClient
+      .createDefaultGateway(environment, version?.version, gatewayType)
+      .then(
+        ({ id, token }) => {
+          if (scopeRef.current !== scope) return undefined;
+          setSelfHosted({ id, environment, token, version });
+          notify(`Self-hosted gateway "${defaultSelfHostedName(gatewayType)}" registered.`, 'success');
+          // The gateway exists from here on. `load` reports its own failure through the page's
+          // error state, and the setup drawer stays visible either way.
+          return load({ quiet: true });
+        },
+        (createError) => {
+          if (scopeRef.current === scope) notify(errorMessage(createError, 'Unable to register the gateway.'), 'error');
+        }
+      )
+      .finally(() => {
+        if (scopeRef.current !== scope) return;
+        setBusy(false);
+        setSelfHostedPending(null);
+      });
+  };
+
+  const handleAddCloudGateway = (environment: string) => {
+    if (busy || provisioning || selfHostedPending || ownership !== 'control-plane') return;
+    const scope = scopeRef.current;
+    setProvisioning({ startedAt: Date.now(), environment });
+    gatewaysClient.createDefaultGateway(environment, gatewayType).then(
+      ({ id }) => {
+        if (scopeRef.current !== scope) return;
+        setProvisioning((current) => (current ? { ...current, gatewayId: id } : current));
+      },
+      (createError) => {
+        if (scopeRef.current !== scope) return;
+        setProvisioning(null);
+        notify(errorMessage(createError, 'Unable to create the gateway.'), 'error');
+      }
+    );
+  };
+
+  // Until the gateway is really active, keep reading the managed gateways. Once
+  // it is, the pipeline is read again and now has a gateway to deploy to. The gateway
+  // is followed by the id the create returned, never by name: another gateway in the
+  // environment can carry the same one.
+  useEffect(() => {
+    if (!provisioning) return undefined;
+    let cancelled = false;
+    const timedOut = () => Date.now() - provisioning.startedAt > PROVISIONING_TIMEOUT_MS;
+    // The gateway may exist even though the page gave up waiting, so read the pipeline again.
+    const giveUp = () => {
+      setProvisioning(null);
+      notify('The gateway is taking longer than expected. Check the Gateways page for its status.', 'warning');
+      void load({ quiet: true });
+    };
+    const check = async () => {
+      try {
+        const gateways = await gatewaysClient.listGateways(gatewayType);
+        if (cancelled) return;
+        const mine = provisioning.gatewayId
+          ? gateways.find((gateway) => gateway.id === provisioning.gatewayId)
+          : undefined;
+        if (mine?.status === 'active') {
+          setProvisioning(null);
+          void load({ quiet: true });
+        } else if (mine?.status === 'failed') {
+          setProvisioning(null);
+          notify(mine.statusReason || 'The gateway could not be created.', 'error');
+        } else if (timedOut()) {
+          giveUp();
+        }
+      } catch {
+        // A failed read is retried on the next tick — but not for ever.
+        if (!cancelled && timedOut()) giveUp();
+      }
+    };
+    const timer = setInterval(() => void check(), POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [provisioning, gatewaysClient, gatewayType, load, notify]);
+
+  // The registered self-hosted gateway is up once the pipeline lists it as active.
+  const selfHostedActive = selfHosted
+    ? environments
+        .flatMap((environment) => environment.gateways)
+        .some((gateway) => gateway.id === selfHosted.id && gateway.health === 'active')
+    : false;
+
+  // While the setup drawer waits for the gateway to connect, nothing else is settling, so
+  // the pipeline would stay as it was. Read it again until the gateway shows as active.
+  const waitingForSelfHosted = selfHosted !== null && !selfHostedActive;
+  useEffect(() => {
+    if (!waitingForSelfHosted) return undefined;
+    const timer = setInterval(() => void load({ quiet: true }), POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [waitingForSelfHosted, load]);
+
   const handleStop = (environment: Environment, gatewayId: string) => {
     const gateway = environment.gateways.find((candidate) => candidate.id === gatewayId);
     if (!client || !gateway?.deploymentId) return;
@@ -212,6 +422,26 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
       `Unable to stop ${gateway.name}.`
     );
   };
+
+  // Kept apart from the page below so it stays up when the pipeline cannot be read: the
+  // token and the setup steps are the only way to connect the gateway just registered.
+  const setupDrawer = selfHosted ? (
+    <SelfHostedSetupDrawer
+      key={selfHosted.id}
+      open
+      gatewayName={defaultSelfHostedName(gatewayType)}
+      environment={selfHosted.environment}
+      versionEntry={selfHosted.version}
+      controlPlaneHost={gatewayControlPlaneHost ?? CONTROL_PLANE_HOST_PLACEHOLDER}
+      initialToken={selfHosted.token}
+      isActive={selfHostedActive}
+      onHasActiveToken={() => selfHostedClient.hasActiveToken(selfHosted.id)}
+      onGenerateToken={() => selfHostedClient.generateToken(selfHosted.id)}
+      onReconfigureToken={() => selfHostedClient.reconfigureToken(selfHosted.id)}
+      onError={(message) => notify(message, 'error')}
+      onClose={() => setSelfHosted(null)}
+    />
+  ) : null;
 
   // `handle`, not the Port's apiHandle: the AI Workspace passes the artifact in
   // rather than carrying it on the Port, and this guard is what decides whether the
@@ -225,6 +455,17 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
         <Typography variant="body2" color="text.secondary">
           Open an API within a project to deploy it.
         </Typography>
+      </PageContent>
+    );
+  }
+
+  if (!canView) {
+    return (
+      <PageContent fullWidth sx={{ minWidth: 0 }}>
+        <PageTitle sx={{ mb: 2 }}>
+          <PageTitle.Header>Deploy</PageTitle.Header>
+        </PageTitle>
+        <Alert severity="warning">You don&apos;t have permission to view deployments.</Alert>
       </PageContent>
     );
   }
@@ -265,22 +506,35 @@ const DeployFeature: FC<DeployFeatureProps> = ({ port, kind = 'RestApi', artifac
             Retry
           </Button>
         </Box>
+        {setupDrawer}
       </PageContent>
     );
   }
 
   return (
+    <>
     <DeployPage
       environments={environments}
       builds={builds}
+      apiName={apiName ?? handle}
       apiEndpointUrl={apiEndpointUrl}
+      onAddGateway={handleAddSelfHostedGateway}
+      onAddCloudGateway={handleAddCloudGateway}
+      provisioning={provisioning ?? undefined}
+      selfHostedPending={selfHostedPending ?? undefined}
       takesEndpoint={takesEndpoint}
       ownership={ownership}
+      canDeploy={canDeploy}
+      canUndeploy={canUndeploy}
+      canDeleteBuild={canDeleteBuild}
+      canAddGateway={canAddGateway}
       busy={busy}
       onDeploy={handleDeploy}
       onStopGateway={handleStop}
       onDeleteBuild={handleDeleteBuild}
     />
+    {setupDrawer}
+    </>
   );
 };
 

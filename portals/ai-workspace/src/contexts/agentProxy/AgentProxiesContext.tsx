@@ -36,6 +36,7 @@ import * as agentProxiesApis from '../../apis/agent/agentProxiesApis';
 import { useAppShell } from '../AppShellContext';
 import { PLATFORM_API_BASE_URL } from '../../paths';
 import { logger } from '../../utils/logger';
+import { fetchAllPages } from '../../utils/pagination';
 
 // ============================================================================
 // Agent Proxies List Context - For managing the list of all Agent proxies
@@ -129,9 +130,11 @@ export function AgentProxiesProvider({ children }: AgentProxiesProviderProps) {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await agentProxiesApis.getAgentProxies(
-        projectId,
-        apimBaseUrl
+      // The collection endpoint defaults to limit=20 when unpaged, and this
+      // list has no pager of its own — walk every page so projects with more
+      // than 20 Agent proxies aren't silently truncated.
+      const response = await fetchAllPages<AgentProxyListItem>((limit, offset) =>
+        agentProxiesApis.getAgentProxies(projectId, apimBaseUrl, limit, offset)
       );
       if (agentProxiesRequestRef.current !== requestId) return;
       setAgentProxiesResponse(response);

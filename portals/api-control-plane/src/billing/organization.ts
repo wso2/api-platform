@@ -22,11 +22,58 @@ import { runtimeConfig } from '../config/runtime';
 // product whose subscription drives APIP gateway provisioning.
 const PRODUCT = 'api-platform';
 
+// Placeholder origin a candidate path is resolved against, to see whether the
+// URL parser keeps it on this origin.
+const PROBE_ORIGIN = 'https://same-origin.invalid';
+
+/**
+ * Whether `path` stays on this page's origin. A leading `/` alone does not
+ * decide it: the URL parser reads `//host`, `/\host`, and a tab or newline
+ * between the slashes as another host. A value it cannot parse is not a path.
+ */
+const isSameOriginPath = (path: string): boolean => {
+  if (!path.startsWith('/')) return false;
+  try {
+    return new URL(path, PROBE_ORIGIN).origin === PROBE_ORIGIN;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The same-origin path billing is reached through: `<proxy base>/billing`, the
+ * way the BFF names its upstreams (`{proxy_prefix}/{name}`) and a gateway in
+ * front of the console routes them. The proxy base is `platformApiBaseUrl` when
+ * that is a same-origin path (`/proxy` behind the BFF, `/api-management/proxy`
+ * behind a gateway). Anything else, an absolute URL straight to a Platform API
+ * or no value at all, has no billing route of its own, so billing stays on the
+ * BFF's default `/proxy`.
+ *
+ * A deployment that routes billing apart from the proxy names its path in
+ * `billingBaseUrl`, which wins when it is a same-origin path.
+ */
+const billingBase = (): string => {
+  const own = runtimeConfig.billingBaseUrl.trim().replace(/\/+$/, '');
+  if (isSameOriginPath(own)) return own;
+  const base = runtimeConfig.platformApiBaseUrl.replace(/\/+$/, '');
+  return `${isSameOriginPath(base) ? base : '/proxy'}/billing`;
+};
+
 /** The organization's billing record, as far as anything in this console reads it. */
 export type BillingOrganization = {
   subscription?: {
     status?: string;
-    trial?: { days_remaining: number; trial_end: string } | null;
+    trial?: {
+      days_remaining: number;
+      trial_end: string;
+      /**
+       * Full length of the trial in days, as the product is configured. Read
+       * rather than assumed: the badge's progress ring is `elapsed / trial_days`,
+       * and a hardcoded constant here pinned the ring at a full circle for the
+       * first half of every trial.
+       */
+      trial_days?: number;
+    } | null;
   } | null;
 };
 
@@ -48,15 +95,16 @@ let pending: Promise<BillingOrganization | null> | null = null;
 
 /**
  * Reads the organization's billing record, activating the subscription on first
- * login as a side effect. Resolves `null` when the BFF has no billing upstream
- * (every standalone deployment today), so a caller needs no config of its own.
+ * login as a side effect. Resolves `null` when the deployment has no billing
+ * route (`billingProxyEnabled` off, every standalone deployment today), so a
+ * caller needs no config of its own.
  *
  * A failed read clears the memo, so a later caller retries rather than being
  * stuck with the rejection for the rest of the session.
  */
 export function getBillingOrganization(): Promise<BillingOrganization | null> {
   if (!runtimeConfig.billingProxyEnabled) return Promise.resolve(null);
-  pending ??= fetch(`/proxy/billing/organization?product=${PRODUCT}`, {
+  pending ??= fetch(`${billingBase()}/organization?product=${PRODUCT}`, {
     credentials: 'same-origin',
     headers: { Accept: 'application/json' },
   })

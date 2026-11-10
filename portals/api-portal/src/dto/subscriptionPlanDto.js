@@ -17,6 +17,7 @@
  * under the License.
  */
 const { applyAudit } = require('./dtoUtils');
+const PlanPricing = require('./planPricingDto');
 
 class SubscriptionPlan {
     constructor(subscriptionPlan, audit) {
@@ -31,6 +32,12 @@ class SubscriptionPlan {
             timeAmount: l.time_amount,
             limitCount: Number.isSafeInteger(Number(l.limit_count)) ? Number(l.limit_count) : String(l.limit_count),
         }));
+        // A plan is paid when it has pricing; `pricing` is absent from rows that were not
+        // fetched with it, and those read as free.
+        this.paid = Boolean(subscriptionPlan.pricing);
+        if (subscriptionPlan.pricing) {
+            this.pricing = new PlanPricing(subscriptionPlan.pricing);
+        }
         applyAudit(this, audit);
     }
 }

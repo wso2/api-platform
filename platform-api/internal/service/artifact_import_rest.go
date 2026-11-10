@@ -29,10 +29,21 @@ import (
 
 // gatewayRestOperation mirrors the gateway RestApi CR's flat operation shape
 // ({method, path, policies}), which differs from model.Operation's nested Request.
+// When Match is set it takes precedence over the simple method/path fields.
 type gatewayRestOperation struct {
-	Method   string         `json:"method"`
-	Path     string         `json:"path"`
-	Policies []model.Policy `json:"policies,omitempty"`
+	Method   string                     `json:"method,omitempty"`
+	Path     string                     `json:"path,omitempty"`
+	Match    *gatewayRestOperationMatch `json:"match,omitempty"`
+	Policies []model.Policy             `json:"policies,omitempty"`
+}
+
+// gatewayRestOperationMatch is the gateway's {match: {method, path: {value}}} operation form.
+// Header matchers and the path-match type have no control-plane field and are not read.
+type gatewayRestOperationMatch struct {
+	Method string `json:"method"`
+	Path   struct {
+		Value string `json:"value"`
+	} `json:"path"`
 }
 
 // restAPIImporter imports REST API artifacts (project-scoped).
@@ -132,9 +143,13 @@ func normalizeGatewayRestOperations(spec map[string]interface{}, cfg *model.Rest
 		if cfg.Operations[idx].Request != nil {
 			continue
 		}
+		method, path := op.Method, op.Path
+		if op.Match != nil {
+			method, path = op.Match.Method, op.Match.Path.Value
+		}
 		cfg.Operations[idx].Request = &model.OperationRequest{
-			Method:   strings.ToUpper(op.Method), // normalize case before storing (GO-AUTH-006)
-			Path:     op.Path,
+			Method:   strings.ToUpper(method), // normalize case before storing (GO-AUTH-006)
+			Path:     path,
 			Policies: op.Policies,
 		}
 	}

@@ -481,3 +481,39 @@ func TestScopeEnforcer_UsesPatternWhenAlreadyMatched(t *testing.T) {
 		})
 	}
 }
+
+// ExemptRoutes matches the route pattern exactly. A route that merely sits
+// under the exempt route's path keeps its scope check.
+func TestScopeEnforcer_ExemptRoutesMatchTheRouteExactly(t *testing.T) {
+	var reached bool
+	mux := newTestMux(&reached)
+	hit := func(http.ResponseWriter, *http.Request) { reached = true }
+	mux.HandleFunc("POST /api/v0.9/mcp", hit)
+	mux.HandleFunc("POST /api/v0.9/mcp/extra", hit)
+
+	serve := func(exempt []string, path string) (int, bool) {
+		reached = false
+		cfg := enabledConfig()
+		cfg.Routes = mux
+		cfg.SkipPaths = testSkipPaths
+		cfg.ExemptRoutes = exempt
+		enforcer, err := ScopeEnforcer(newTestRegistry(t), cfg)
+		if err != nil {
+			t.Fatalf("ScopeEnforcer: %v", err)
+		}
+		rec := httptest.NewRecorder()
+		enforcer(mux).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, nil))
+		return rec.Code, reached
+	}
+	exempt := []string{"POST /api/v0.9/mcp"}
+
+	if code, ok := serve(exempt, "/api/v0.9/mcp"); code != http.StatusOK || !ok {
+		t.Errorf("the exempt route: got %d, reached=%v, want 200 and reached", code, ok)
+	}
+	if code, ok := serve(exempt, "/api/v0.9/mcp/extra"); code != http.StatusForbidden || ok {
+		t.Errorf("a route under the exempt path: got %d, reached=%v, want 403 and not reached", code, ok)
+	}
+	if code, ok := serve(nil, "/api/v0.9/mcp"); code != http.StatusForbidden || ok {
+		t.Errorf("without ExemptRoutes: got %d, reached=%v, want 403 and not reached", code, ok)
+	}
+}

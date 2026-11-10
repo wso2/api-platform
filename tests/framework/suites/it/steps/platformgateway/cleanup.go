@@ -20,6 +20,8 @@ package platformgateway
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
@@ -88,6 +90,38 @@ func managementEndpointOf(topo *runtime.Topology) (managementEndpoint, error) {
 		version:       version,
 		authorization: BasicAuthHeader(topo.Admin.Username, topo.Admin.Password),
 	}, nil
+}
+
+// ControllerEndpoints returns the management and admin API base URLs of the topology's
+// gateway controller, in the base paths of the Gateway release under test. They are what a
+// client outside the suite, such as the ap CLI, is configured with.
+func ControllerEndpoints(topo *runtime.Topology) (management, admin string, err error) {
+	if topo == nil {
+		return "", "", errors.New("controller endpoints: topology is required")
+	}
+	endpoint, err := managementEndpointOf(topo)
+	if err != nil {
+		return "", "", err
+	}
+	return endpoint.restURL + ManagementBasePathForVersion(endpoint.version),
+		endpoint.adminURL + adminBasePathForVersion(endpoint.version), nil
+}
+
+// CleanupKindForResource returns the cleanup kind that deletes a resource of the kind a step
+// names ("API", "MCP proxy", ...).
+func CleanupKindForResource(kind string) (cleanup.Kind, error) {
+	spec, ok := resourceKinds[kind]
+	if !ok {
+		return cleanup.Kind{}, fmt.Errorf("unknown resource kind %q", kind)
+	}
+	if spec.collection == "" {
+		return cleanup.KindAPI, nil
+	}
+	cleanupKind, ok := cleanupKindForCollection(spec.collection)
+	if !ok {
+		return cleanup.Kind{}, fmt.Errorf("resource kind %q has no cleanup kind", kind)
+	}
+	return cleanupKind, nil
 }
 
 // certificatesCollection is deleted waiting out 409 Conflict: the controller refuses to delete a

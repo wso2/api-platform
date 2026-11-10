@@ -211,7 +211,10 @@ every key below with `api-portal-ui.`.
   umbrella) and dev-only TLS skip.
 - `config.auth.*` — `publicKeyPath` for the mounted Platform API key, `claimMappings`, and
   `idp.*` for OIDC login. OIDC is active when `idp.clientId` is set; otherwise login goes
-  through the Platform API.
+  through the Platform API. `idp.issuerTemplate` / `idp.jwksUrlTemplate` /
+  `idp.templateOrgClaim` accept bearer tokens from per-organization issuers
+  (`.../o/{org}/oauth2/token`) in multi-organization mode; see
+  `portals/api-portal/docs/administer/multi-organization.md`.
 - `config.auth.authorization.*` — REST scope enforcement (`enabled`), `mode` (`role` default
   via `roleToScopeMapping`, or `scope`), and page role gating (`pageRoleValidation`,
   `portalRoles`).

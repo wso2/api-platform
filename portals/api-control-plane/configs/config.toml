@@ -2,6 +2,16 @@
 
 domain = '{{ env "APIP_ACP_DOMAIN" "localhost:8082" }}'
 
+# Console features to hide, by name. Each page-level name (metrics, logs,
+# observability, insights, api-insights, compliance, subscription-plans, meters,
+# service-accounts)
+# leaves the sidebar and its page answers "not found"; paidplan instead keeps
+# paid plans "coming soon" (no Paid plan switch). Unset or empty keeps every
+# feature on. A TOML array
+# (disable_features = ["metrics", "meters"]) or, via the env var, a
+# comma-separated list (APIP_ACP_DISABLE_FEATURES=metrics,meters).
+disable_features = '{{ env "APIP_ACP_DISABLE_FEATURES" "" }}'
+
 [api_control_plane.server.http]
 
 enabled = '{{ env "APIP_ACP_SERVER_HTTP_ENABLED" "true" }}'
@@ -31,6 +41,50 @@ tls_skip_verify = '{{ env "APIP_ACP_CONTROL_PLANE_TLS_SKIP_VERIFY" "false" }}'
 
 # Public catalog URL exposed to the browser at runtime, including production builds.
 base_url = '{{ env "APIP_ACP_POLICY_HUB_BASE_URL" "" }}'
+
+
+# Self-hosted-gateway releases the SPA's "Add Gateway" Quick Start step offers
+# a download for, one entry per gateway type this portal manages ("regular",
+# "event" — not "ai", which is AI Workspace's own catalog). Like policy_hub
+# above, this is a public catalog the browser reads verbatim, not something
+# templated per-environment — hence plain literal values here rather than
+# `{{ env ... }}`, the same convention [[api_control_plane.control_plane.upstreams]]
+# uses in the cloud overlay. Listed newest first — the first entry per type is
+# what the "Add Gateway" form marks "Latest". "regular" mirrors AI Workspace's
+# own released catalog (config.env.ts's PLATFORM_GATEWAY_VERSIONS); "event" is
+# still a placeholder — TODO: confirm its real released version/tag/channel
+# before relying on it in production.
+[[api_control_plane.gateway_versions]]
+type    = "regular"
+version = "2026.09.24"
+channel = "STS"
+
+[[api_control_plane.gateway_versions]]
+type           = "regular"
+version        = "1.1"
+latest_version = "v1.1.0"
+channel        = "LTS"
+
+[[api_control_plane.gateway_versions]]
+type           = "regular"
+version        = "1.0"
+latest_version = "v1.0.0"
+channel        = "LTS"
+
+[[api_control_plane.gateway_versions]]
+type           = "event"
+version        = "1.0"
+latest_version = "v1.0.0"
+channel        = "LTS"
+
+
+[api_control_plane.gateway]
+
+# Control plane address for self-hosted gateways: host[:port][/path], no scheme.
+# Set per environment. If empty, the console's own setup panel uses the platform
+# host, and the cloud gateway and deploy setup commands show
+# <control-plane-host:port> until a host is set.
+controlplane_host = '{{ env "APIP_ACP_GATEWAY_CONTROLPLANE_HOST" "" }}'
 
 
 [api_control_plane.session]
@@ -74,14 +128,23 @@ client_auth_method       = '{{ env "APIP_ACP_AUTH_OIDC_CLIENT_AUTH_METHOD" "clie
 # Must equal the IdP-registered redirect URI, pointing at /api/auth/callback.
 redirect_url             = '{{ env "APIP_ACP_AUTH_OIDC_REDIRECT_URL" "" }}'
 post_logout_redirect_url = '{{ env "APIP_ACP_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL" "" }}'
-# No `scope` key here on purpose: Load overlays this file's parsed keys onto
-# defaultConfig() unconditionally (mapstructure decode, not an omitempty-aware
-# merge), so a present-but-empty key would silently blank out the built-in
-# default (every ap:* scope Platform API authorizes against — see
-# defaultOIDCScopes in bff/internal/config/config.go) for every deployment that
-# doesn't set APIP_ACP_AUTH_OIDC_SCOPE. An IdP that genuinely needs a narrower
-# set (and can't grant the full ap:* list) should add this key in its own
-# mounted config.toml overlay, keeping offline_access in the override.
+# Scopes requested on /oauth2/authorize, space-separated. Empty keeps the
+# built-in default (every ap:* scope the Platform API spec declares — see
+# defaultOIDCScopes in bff/internal/config/config.go). A non-empty value
+# REPLACES that default; it is never merged with it.
+#  - REQUIRED when the console is built with the cloud plugins: set the full
+#    default list PLUS the cloud extension's scopes (ap:environment:*,
+#    ap:pipeline:*, ap:deployment:*, ap:organization:delete). Left unset, no token
+#    carries the cloud scopes and the pages that need them are hidden. Setting
+#    only the plugin scopes drops every base ap:* scope instead.
+#  - Also used to narrow the list for an IdP that cannot grant all of it.
+# Keep offline_access in any override. The BFF logs a warning at startup when an
+# override omits offline_access or any default ap:* scope.
+scope                    = '{{ env "APIP_ACP_AUTH_OIDC_SCOPE" "" }}'
+# Resource indicator (RFC 8707) sent on /oauth2/authorize. An IdP that scopes
+# tokens per resource server (WSO2 Thunder) only puts that server's scopes into
+# the token and sets aud to it; empty sends no parameter at all.
+resource                 = '{{ env "APIP_ACP_AUTH_OIDC_RESOURCE" "" }}'
 
 # Which claim names carry each user/org field — for BOTH auth modes (OIDC tokens
 # from the configured IdP, and the JWTs Platform API's file-based login signs).
@@ -91,6 +154,8 @@ post_logout_redirect_url = '{{ env "APIP_ACP_AUTH_OIDC_POST_LOGOUT_REDIRECT_URL"
 # names differently (e.g. WSO2 Thunder emits ouId/ouName/ouHandle for org).
 [api_control_plane.auth.claim_mappings]
 
+# display_name is shown ahead of username when the token carries it (OIDC "name").
+display_name = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_DISPLAY_NAME" "name" }}'
 username   = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_USERNAME" "username" }}'
 email      = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_EMAIL" "email" }}'
 roles      = '{{ env "APIP_ACP_AUTH_CLAIM_MAPPINGS_ROLES" "roles" }}'
@@ -114,3 +179,4 @@ mode                  = '{{ env "APIP_ACP_AUTH_AUTHORIZATION_MODE" "scope" }}'
 # otherwise). Mount the SAME file the Platform API reads, so the console and the API
 # cannot disagree about what a role grants. Ignored in scope mode.
 role_to_scope_mapping = '{{ env "APIP_ACP_AUTH_AUTHORIZATION_ROLE_TO_SCOPE_MAPPING" "" }}'
+

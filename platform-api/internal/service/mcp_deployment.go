@@ -55,7 +55,7 @@ type MCPDeploymentService struct {
 func NewMCPDeploymentService(mcpRepo repository.MCPProxyRepository, deploymentRepo repository.DeploymentRepository,
 	gatewayRepo repository.GatewayRepository, orgRepo repository.OrganizationRepository, artifactRepo repository.ArtifactRepository,
 	apiKeyRepo repository.APIKeyRepository, gatewayEventsService *GatewayEventsService,
-	definitions ArtifactDefinitions, cfg *config.Server, slogger *slog.Logger) *MCPDeploymentService {
+	definitions ArtifactDefinitions, identity *IdentityService, cfg *config.Server, slogger *slog.Logger) *MCPDeploymentService {
 	return &MCPDeploymentService{
 		mcpRepo:              mcpRepo,
 		deploymentRepo:       deploymentRepo,
@@ -66,7 +66,7 @@ func NewMCPDeploymentService(mcpRepo repository.MCPProxyRepository, deploymentRe
 		gatewayEventsService: gatewayEventsService,
 		cfg:                  cfg,
 		utils:                &utils.MCPUtils{},
-		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, cfg, slogger),
+		builds:               NewBuildService(artifactRepo, deploymentRepo, definitions, identity, cfg, slogger),
 		slogger:              slogger,
 	}
 }
@@ -767,16 +767,16 @@ func (s *MCPDeploymentService) getMCPProxyUUIDByHandle(handle, orgUUID string) (
 		return "", apperror.ValidationFailed.New("artifact handle is required")
 	}
 
-	artifact, err := s.artifactRepo.GetByHandle(handle, orgUUID)
+	// Handles are unique only WITHIN a kind, so the lookup is scoped to this
+	// endpoint's kind: an artifact of another kind sharing the handle neither
+	// resolves here nor hides this kind's artifact.
+	artifact, err := s.artifactRepo.GetAPIMetadataByHandleAndKind(handle, constants.MCPProxy, orgUUID)
 	if err != nil {
 		return "", err
 	}
-	// Handles are unique only WITHIN a kind, and this lookup spans every kind's
-	// table, so an artifact of another kind that happens to share the handle must
-	// not be reachable through this endpoint.
-	if artifact == nil || artifact.Type != constants.MCPProxy {
+	if artifact == nil {
 		return "", apperror.MCPProxyNotFound.New()
 	}
 
-	return artifact.UUID, nil
+	return artifact.ID, nil
 }

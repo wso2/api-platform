@@ -71,7 +71,7 @@ func TestRunGoModDownload_NoGoMod(t *testing.T) {
 
 func TestRunGoModDownload_ValidModule(t *testing.T) {
 	tmpDir := t.TempDir()
-	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.26.10")
 
 	err := runGoModDownload(tmpDir)
 
@@ -90,7 +90,7 @@ func TestRunGoModTidy_NoGoMod(t *testing.T) {
 
 func TestRunGoModTidy_ValidModule(t *testing.T) {
 	tmpDir := t.TempDir()
-	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.26.10")
 
 	err := runGoModTidy(tmpDir)
 
@@ -101,7 +101,7 @@ func TestRunGoBuild_NoSource(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create go.mod but no source files
-	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.26.10")
 
 	options := &types.CompilationOptions{
 		OutputPath: filepath.Join(tmpDir, "output", "binary"),
@@ -118,7 +118,7 @@ func TestRunGoBuild_NoSource(t *testing.T) {
 
 func TestRunGoBuild_CreatesOutputDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
-	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.26.10")
 
 	// Output dir that doesn't exist yet
 	outputDir := filepath.Join(tmpDir, "deep", "nested", "output")
@@ -141,7 +141,7 @@ func TestRunGoBuild_CreatesOutputDirectory(t *testing.T) {
 
 func TestRunGoBuild_WithBuildTags(t *testing.T) {
 	tmpDir := t.TempDir()
-	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.26.10")
 
 	options := &types.CompilationOptions{
 		OutputPath: filepath.Join(tmpDir, "binary"),
@@ -158,7 +158,7 @@ func TestRunGoBuild_WithBuildTags(t *testing.T) {
 
 func TestRunGoBuild_WithLDFlags(t *testing.T) {
 	tmpDir := t.TempDir()
-	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.26.10")
 
 	options := &types.CompilationOptions{
 		OutputPath: filepath.Join(tmpDir, "binary"),
@@ -174,7 +174,7 @@ func TestRunGoBuild_WithLDFlags(t *testing.T) {
 
 func TestRunGoBuild_WithCoverage(t *testing.T) {
 	tmpDir := t.TempDir()
-	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.26.10")
 
 	options := &types.CompilationOptions{
 		OutputPath: filepath.Join(tmpDir, "binary"),
@@ -190,7 +190,7 @@ func TestRunGoBuild_WithCoverage(t *testing.T) {
 
 func TestRunGoBuild_WithCGOEnabled(t *testing.T) {
 	tmpDir := t.TempDir()
-	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.26.10")
 
 	options := &types.CompilationOptions{
 		OutputPath: filepath.Join(tmpDir, "binary"),
@@ -209,7 +209,7 @@ func TestPrintGoModForDebug_ValidFile(t *testing.T) {
 
 	content := `module example.com/test
 
-go 1.21
+go 1.26.10
 
 require github.com/stretchr/testify v1.8.0
 `
@@ -226,7 +226,7 @@ func TestPrintGoModForDebug_FileNotFound(t *testing.T) {
 
 func TestCompileBinary_FullPipeline_InvalidSource(t *testing.T) {
 	tmpDir := t.TempDir()
-	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.21")
+	testutils.WriteGoModWithVersion(t, tmpDir, "testmodule", "1.26.10")
 
 	// Create cmd/policy-engine directory but no main.go
 	cmdDir := filepath.Join(tmpDir, "cmd", "policy-engine")

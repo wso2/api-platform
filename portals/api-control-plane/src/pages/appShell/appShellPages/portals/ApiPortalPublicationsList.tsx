@@ -21,13 +21,17 @@ import { Box, PageTitle, SearchBar, Stack, Typography } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
-import { useApiPublications } from '@/api/resources/apiPublications';
+import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
+import { useApiPublications, type PublicationSummaryItem } from '@/api/resources/apiPublications';
+import { PortalPublishIllustration } from '@/components/illustrations/PortalPublishIllustration';
 import { EmptyState, LoadingState } from '@/components/StateViews';
 import { useExtensions } from '@/extensions';
 import { routes } from '@/routes/paths';
+import { useActionPermission, useCan } from '@/permissions';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { PortalPublicationCard } from './components/PortalPublicationCard';
 import { PublicationLoadError } from './components/PublicationLoadError';
+import { PublishWithDefaults } from './components/PublishWithDefaults';
 import { restPublishTarget, type PublishTarget } from './publishTarget';
 
 const messages = defineMessages({
@@ -69,7 +73,7 @@ const messages = defineMessages({
   },
   emptyTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.emptyTitle',
-    defaultMessage: 'No Portals Available',
+    defaultMessage: 'Create your first portal',
     description: 'Shown when the organization has not registered any portal yet.',
   },
   emptyDescription: {
@@ -86,6 +90,18 @@ const messages = defineMessages({
 
 /** Portals are an org-wide, rarely-changing collection — one page is enough. */
 const LIST_LIMIT = 100;
+
+type RunningPublish = {
+  apiPortalId: string;
+  orgHandle: string;
+  projectHandler: string;
+  publication: PublicationSummaryItem;
+  target: PublishTarget;
+};
+
+/** Handles repeat across organizations, so the organization is part of a publish's identity. */
+const runningKey = (orgHandle: string, target: PublishTarget, apiPortalId: string) =>
+  `${orgHandle}/${target.apiType}/${target.apiHandle}/${apiPortalId}`;
 
 type ApiPortalPublicationsListProps = {
   /** The API's display name for the heading; defaults to the REST API in console scope. */
@@ -111,8 +127,39 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
   );
   const target = targetProp ?? restTarget;
   const apiHandler = target.apiHandle;
+  // A card's Publish publishes from the card; without the kind's publication
+  // scope the cards say why instead of starting a call that fails. Both kinds
+  // asked unconditionally (hooks), then the target's is used.
+  const restPublish = useActionPermission('publishRestApiToApiPortal');
+  const graphqlPublish = useActionPermission('publishGraphQLApiToApiPortal');
+  const publishPermission = target.definitionKind === 'graphql' ? graphqlPublish : restPublish;
+  // One-click Publish saves a draft first, which needs its own scope.
+  const canSaveDraft = useCan('saveApiPublicationDraft');
 
   const [search, setSearch] = useState('');
+  // One-click publishes still running, by organization, API and portal. Held here and run outside the cards,
+  // so a card hidden by the search or a list reload neither cuts its publish short nor offers Publish again.
+  // Each keeps the organization and target it started with, in case the page moves to another meanwhile.
+  const [publishing, setPublishing] = useState<ReadonlyMap<string, RunningPublish>>(new Map());
+  const startPublish = (publication: PublicationSummaryItem) => {
+    const { apiPortalId } = publication;
+    if (!apiPortalId) return;
+    setPublishing((running) =>
+      new Map(running).set(runningKey(orgHandle, target, apiPortalId), {
+        apiPortalId,
+        orgHandle,
+        projectHandler,
+        publication,
+        target,
+      }),
+    );
+  };
+  const endPublish = (key: string) =>
+    setPublishing((running) => {
+      const next = new Map(running);
+      next.delete(key);
+      return next;
+    });
   const publicationsQuery = useApiPublications(target.apiType, apiHandler, { limit: LIST_LIMIT });
 
   // The empty-state "Add Portal" action points at the org-level portal registry,
@@ -120,18 +167,63 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
   // the extension being registered rather than emit a link that would 404.
   const extensions = useExtensions();
   const hasManagedPortalsExtension = extensions.some((ext) => ext.id === 'managed-api-portals');
+  // ...and only for a user who may create a portal there; others see the empty
+  // state without an action rather than a page whose Add Portal is disabled.
+  const canCreatePortal = useCan('CreateApiPortal');
+  const offerAddPortal = hasManagedPortalsExtension && canCreatePortal;
+
+  // Rendered first in every branch below, so React keeps them mounted whichever one shows. Each reads and
+  // writes in the organization and API it started in, even once the page has moved to another.
+  const runningPublishes = [...publishing].map(
+    ([
+      key,
+      {
+        apiPortalId,
+        orgHandle: runOrgHandle,
+        projectHandler: runProjectHandler,
+        publication,
+        target: runTarget,
+      },
+    ]) => (
+      <ApiScopeProvider key={key} orgId={runOrgHandle} projectId={runProjectHandler}>
+        <PublishWithDefaults
+          apiChanged={key !== runningKey(orgHandle, target, apiPortalId)}
+          apiPortalId={apiPortalId}
+          onDone={() => endPublish(key)}
+          // Once the page shows another API this reads that one's listing instead: harmless, as the
+          // run's own saves already marked its listing stale.
+          onFailed={() => publicationsQuery.refetch()}
+          onOpenPage={() =>
+            navigate(runTarget.publishPath(apiPortalId), {
+              state: { portalName: publication.apiPortalName },
+            })
+          }
+          portalName={publication.apiPortalName || apiPortalId}
+          target={runTarget}
+        />
+      </ApiScopeProvider>
+    ),
+  );
 
   // `isPending`, not `isLoading`: a disabled query reports `isLoading: false`
   // with no data, which would flash the empty state while scope resolves.
   if (publicationsQuery.isPending) {
-    return <LoadingState label={intl.formatMessage(messages.loading)} />;
+    return (
+      <>
+        {runningPublishes}
+        <LoadingState label={intl.formatMessage(messages.loading)} />
+      </>
+    );
   }
   if (publicationsQuery.error) {
     return (
-      <PublicationLoadError
-        error={publicationsQuery.error}
-        fallbackMessage={intl.formatMessage(messages.errorMessage)}
-      />
+      <>
+        {runningPublishes}
+        <PublicationLoadError
+          error={publicationsQuery.error}
+          fallbackMessage={intl.formatMessage(messages.errorMessage)}
+        />
+      </>
     );
   }
 
@@ -148,6 +240,7 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
 
   return (
     <>
+      {runningPublishes}
       <PageTitle>
         <PageTitle.Header>
           <FormattedMessage
@@ -170,15 +263,11 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
 
       {publications.length === 0 ? (
         <EmptyState
-          actionLabel={
-            hasManagedPortalsExtension ? intl.formatMessage(messages.emptyAction) : undefined
-          }
+          actionLabel={offerAddPortal ? intl.formatMessage(messages.emptyAction) : undefined}
           description={intl.formatMessage(messages.emptyDescription)}
-          onAction={
-            hasManagedPortalsExtension
-              ? () => navigate(routes.managedApiPortals(orgHandle))
-              : undefined
-          }
+          illustration={<PortalPublishIllustration />}
+          singleLineDescription
+          onAction={offerAddPortal ? () => navigate(routes.managedApiPortals(orgHandle)) : undefined}
           title={intl.formatMessage(messages.emptyTitle)}
         />
       ) : (
@@ -212,11 +301,17 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
             >
               {visiblePublications.map((publication) => (
                 <PortalPublicationCard
-                  apiHandle={apiHandler}
                   key={publication.apiPortalId}
+                  oneClickPublishAllowed={canSaveDraft}
+                  onPublish={() => startPublish(publication)}
                   orgHandle={orgHandle}
                   publication={publication}
-                  publishPath={target.publishPath}
+                  publishDeniedTooltip={publishPermission.allowed ? undefined : publishPermission.tooltip}
+                  publishing={Boolean(
+                    publication.apiPortalId &&
+                    publishing.has(runningKey(orgHandle, target, publication.apiPortalId)),
+                  )}
+                  target={target}
                 />
               ))}
             </Box>

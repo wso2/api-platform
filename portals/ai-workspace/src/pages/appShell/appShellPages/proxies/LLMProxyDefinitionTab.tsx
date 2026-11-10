@@ -48,6 +48,9 @@ import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import NoData from '../../../../assets/images/NoData.svg';
 import { logger } from '../../../../utils/logger';
 import SwaggerSpecViewer from '../../../../Components/SwaggerSpecViewer';
+import ReadOnlyTooltip, {
+  useOrgReadOnly,
+} from '../../../../Components/common/ReadOnlyTooltip';
 
 type OpenApiSpec = Record<string, unknown>;
 
@@ -156,6 +159,7 @@ function validateOpenApiText(
 
 export default function LLMProxyDefinitionTab() {
   const { proxy, setLocalProxy } = useProxy();
+
   const {
     templatesResponse,
     isLoading: isTemplatesLoading,
@@ -239,8 +243,10 @@ export default function LLMProxyDefinitionTab() {
   const showSnackbar = useAIWorkspaceSnackbar();
   // The OpenAPI definition is control-plane-only metadata: it is NOT part of the
   // gateway runtime artifact (the proxy deployment spec carries no OpenAPI), so it
-  // stays editable even for gateway-created (read-only) proxies.
-  const isReadOnlyProxy = false;
+  // stays editable even for gateway-created (read-only) proxies. A read-only
+  // ORGANIZATION is the one thing that does lock it: the control plane refuses
+  // the update like any other write.
+  const isReadOnlyProxy = useOrgReadOnly();
 
   useEffect(() => {
     setEditorText(proxy?.openapi || '');
@@ -355,7 +361,7 @@ export default function LLMProxyDefinitionTab() {
           templates={templatesResponse.list}
           isLoading={isTemplatesLoading || isSwappingSpec}
           error={templatesError}
-          disabled={Boolean(proxy?.readOnly)}
+          disabled={isReadOnlyProxy || Boolean(proxy?.readOnly)}
           helperText={
             <FormattedMessage
               id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDefinitionTab.inbound.interface.helper"
@@ -366,17 +372,20 @@ export default function LLMProxyDefinitionTab() {
       </Box>
 
       <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<PenLine size={16} />}
-          onClick={() => setUpdateSpecModalOpen(true)}
-        >
-          <FormattedMessage
-            id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDefinitionTab.update.openapi.definition"
-            defaultMessage={'Update OpenAPI Definition'}
-          />
-        </Button>
+        <ReadOnlyTooltip>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<PenLine size={16} />}
+            onClick={() => setUpdateSpecModalOpen(true)}
+            disabled={isReadOnlyProxy}
+          >
+            <FormattedMessage
+              id="aiWorkspace.pages.appShell.appShellPages.proxies.LLMProxyDefinitionTab.update.openapi.definition"
+              defaultMessage={'Update OpenAPI Definition'}
+            />
+          </Button>
+        </ReadOnlyTooltip>
       </Box>
 
       <Dialog

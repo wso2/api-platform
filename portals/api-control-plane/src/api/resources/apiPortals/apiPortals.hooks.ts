@@ -16,11 +16,12 @@
  * under the License.
  */
 
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
 
 import { useApiScope } from '../../core/scope';
 import type { ListApiPortalsQuery } from './apiPortals.endpoints';
-import { apiPortalQueries } from './apiPortals.queries';
+import { apiPortalKeys, apiPortalQueries } from './apiPortals.queries';
 
 /** Everything a caller may vary on the list request. */
 export type ApiPortalListFilters = ListApiPortalsQuery;
@@ -48,4 +49,20 @@ export const useApiPortals = (
     enabled: Boolean(org),
     placeholderData: keepPreviousData,
   });
+};
+
+/**
+ * Invalidates every cached API Portal query for the org.
+ *
+ * The resource root rather than the list key, because a create or delete
+ * shifts counts and pagination on pages the user has not visited yet.
+ */
+export const useInvalidateApiPortals = (orgId?: string) => {
+  const queryClient = useQueryClient();
+  const { org } = useApiScope({ orgId });
+
+  return useCallback(() => {
+    if (!org) return;
+    void queryClient.invalidateQueries({ queryKey: apiPortalKeys.all(org) });
+  }, [org, queryClient]);
 };

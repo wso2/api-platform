@@ -79,6 +79,8 @@ const (
 	FlagExpiryTime             = "expiry-time"
 	FlagSubscriptionPlanID     = "subscription-plan-id"
 	FlagSubscriptionToken      = "subscription-token"
+	FlagClearSubscriptionPlan  = "clear-subscription-plan"
+	FlagRotateToken            = "rotate-token"
 	FlagBillingCustomerID      = "billing-customer-id"
 	FlagBillingSubscriptionID  = "billing-subscription-id"
 	FlagReferenceID            = "reference-id"

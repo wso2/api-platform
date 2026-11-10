@@ -75,6 +75,7 @@ func newKindTestBuildService(t *testing.T, kind string, depRepo repository.Deplo
 		&kindTestArtifactRepo{kind: kind},
 		depRepo,
 		NewArtifactDefinitions(definitions...),
+		newTestIdentityService(),
 		&testConfig,
 		slog.Default(),
 	)
@@ -124,6 +125,7 @@ func TestBuildService_MissingArtifactIsNotFound(t *testing.T) {
 		&kindTestArtifactRepo{kind: "Mcp", missing: true},
 		&buildTestDeploymentRepo{},
 		NewArtifactDefinitions(&fakeDefinition{kind: "Mcp"}),
+		newTestIdentityService(),
 		&testConfig,
 		slog.Default(),
 	)
@@ -285,5 +287,45 @@ func TestDeploymentsByKind_RoutesAndRefuses(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "NotAKind") {
 		t.Errorf("error %q does not name the kind that was asked for", err.Error())
+	}
+}
+
+type kindTestProjects struct {
+	project string
+	found   bool
+}
+
+func (p kindTestProjects) GetProjectHandle(kind, handle, orgUUID string) (string, bool, error) {
+	return p.project, p.found, nil
+}
+
+// Plugins scope a deployment by the artifact's own project, so the capability
+// reports it, refuses a kind it does not deploy, and reports a missing artifact
+// as missing rather than as one that belongs to no project.
+func TestPluginDeployments_GetArtifactProjectByHandle(t *testing.T) {
+	kinds := DeploymentsByKind{constants.RestApi: restDeployments{}}
+
+	got, err := PluginDeployments{DeploymentsByKind: kinds, Projects: kindTestProjects{"payments", true}}.
+		GetArtifactProjectByHandle("orders", constants.RestApi, kindTestOrgUUID)
+	if err != nil || got != "payments" {
+		t.Fatalf("project = (%q, %v), want payments", got, err)
+	}
+
+	got, err = PluginDeployments{DeploymentsByKind: kinds, Projects: kindTestProjects{"", true}}.
+		GetArtifactProjectByHandle("orders", constants.RestApi, kindTestOrgUUID)
+	if err != nil || got != "" {
+		t.Fatalf("project of an artifact in no project = (%q, %v), want empty", got, err)
+	}
+
+	_, err = PluginDeployments{DeploymentsByKind: kinds, Projects: kindTestProjects{}}.
+		GetArtifactProjectByHandle("orders", constants.RestApi, kindTestOrgUUID)
+	if !apperror.ArtifactNotFound.Is(err) {
+		t.Fatalf("missing artifact error = %v, want ArtifactNotFound", err)
+	}
+
+	_, err = PluginDeployments{DeploymentsByKind: kinds, Projects: kindTestProjects{"payments", true}}.
+		GetArtifactProjectByHandle("orders", "NotAKind", kindTestOrgUUID)
+	if err == nil || apperror.ArtifactNotFound.Is(err) {
+		t.Fatalf("unknown kind error = %v, want a validation failure", err)
 	}
 }

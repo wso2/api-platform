@@ -11,9 +11,58 @@
 
 export type NotifySeverity = 'success' | 'info' | 'warning' | 'error';
 
+/**
+ * The signed-in user's permissions, as the host answers them. `canAny` takes an
+ * operation's accepted-scope list — the cloud spec's any-of list, `:manage`
+ * scopes included — and says whether the user may be offered it. Mirrors the
+ * host's `PermissionsPort`. Not a security boundary: platform-api decides.
+ */
+export type PermissionsPort = {
+  canAny: (scopes: readonly string[]) => boolean;
+};
+
 export type CloudHostPort = {
   orgHandle: string;
   projectHandle?: string;
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
+  /**
+   * Quota, when the mounting console tracks any. `refresh` after a create or
+   * delete; `canCreate`/`limitMessage` gate this feature's own create button.
+   * Optional: a host without entitlements omits it and nothing is capped.
+   */
+  /**
+   * Tells the host that data it also caches has changed. This feature writes
+   * through its own client, which the host's cache cannot see, so without it
+   * the host's counts stay stale. Optional: a host that caches nothing omits it.
+   */
+  resources?: {
+    invalidate: (resource: 'apiPortals') => void;
+  };
+
+  resourceLimits?: {
+    refresh: () => void;
+    canCreate?: (component: 'portals') => boolean;
+    limitMessage?: (component: 'portals') => string;
+    /**
+     * The organization may not write at all — a different question from
+     * whether it has room for one more portal, and the one that governs
+     * editing an existing one. `canCreate` already answers `false` while this
+     * holds, so the create button needs nothing extra; an edit has no count to
+     * consult and so must read this directly.
+     *
+     * Optional, and `false` when absent: a host with no entitlement supplier
+     * omits it and every control stays enabled exactly as before.
+     */
+    readOnly?: boolean;
+    /** Why the organization is read-only; the host supplies the wording. */
+    readOnlyMessage?: string;
+  };
+  /**
+   * Optional: a host whose Port carries no permission check omits it and
+   * nothing is gated — every control stays enabled exactly as before, and
+   * platform-api still refuses what the user may not do. See `permissionsOf`
+   * in `permissions.ts`.
+   */
+  permissions?: PermissionsPort;
 };

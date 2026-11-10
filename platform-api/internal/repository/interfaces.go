@@ -124,6 +124,7 @@ type APIRepository interface {
 	// API name validation methods
 	CheckAPIExistsByHandleInOrganization(handle, orgUUID string) (bool, error)
 	CheckAPIExistsByNameAndVersionInOrganization(name, version, orgUUID, excludeHandle string) (bool, error)
+	GetAPIVersionsByDisplayName(orgUUID, displayName string) ([]*model.API, error)
 }
 
 // DeploymentRepository defines the interface for deployment data operations
@@ -213,8 +214,9 @@ type SubscriptionPlanRepository interface {
 	GetByID(planID, orgUUID string) (*model.SubscriptionPlan, error)
 	GetByIDs(planIDs []string, orgUUID string) (map[string]string, error)
 	GetByHandleAndOrg(handle, orgUUID string) (*model.SubscriptionPlan, error)
-	ListByOrganization(orgUUID string, opts ListOptions) ([]*model.SubscriptionPlan, error)
-	CountByOrganization(orgUUID, search string) (int, error)
+	// ListByOrganization and CountByOrganization filter by status too, "" for any.
+	ListByOrganization(orgUUID string, opts ListOptions, status string) ([]*model.SubscriptionPlan, error)
+	CountByOrganization(orgUUID, search, status string) (int, error)
 	Update(plan *model.SubscriptionPlan) error
 	Delete(planID, orgUUID string) error
 	ExistsByHandleAndOrg(handle, orgUUID string) (bool, error)
@@ -227,6 +229,17 @@ type SubscriptionPlanRepository interface {
 	// GetHandlesByIDs maps subscription_plan_uuid to handle, for reconstructing
 	// a subscriptionPlanIds response from stored mapping rows.
 	GetHandlesByIDs(planUUIDs []string, orgUUID string) (map[string]string, error)
+	// CreateWithPricing inserts the plan, its limit and, for a paid plan (pricing not nil), its
+	// pricing, in one transaction. The plan is dated with the CreatedAt the caller sets, or now.
+	CreateWithPricing(plan *model.SubscriptionPlan, pricing *model.SubscriptionPlanPricing) error
+	// GetUsage returns what offers or uses the plan: the REST APIs listing its handle, the
+	// publication drafts and live publications offering it, and its subscriptions.
+	GetUsage(planUUID, handle, orgUUID string) (*model.SubscriptionPlanUsage, error)
+	// DeleteWithReferences deletes the plan and its references, in one transaction: the REST APIs
+	// and artifact_subscription_plans that offer it, and the plan on its subscriptions, which are
+	// kept. The publication rows that offer it are kept too, with their own copy of the plan. Its
+	// limits and pricing go with it. It returns false when the plan does not exist.
+	DeleteWithReferences(planUUID, handle, orgUUID string) (bool, error)
 }
 
 // PublicationRepository defines the interface for api_publications and its
@@ -235,20 +248,21 @@ type SubscriptionPlanRepository interface {
 // access to live rows (IsDraft false).
 type PublicationRepository interface {
 	// GetDraft returns the draft row for (artifactUUID, apiPortalUUID, orgUUID),
-	// plus the raw subscription-plan and document UUIDs its mapping tables
-	// store (not yet resolved to handles — the caller does that). Returns
-	// (nil, nil, nil, nil) when no draft has been saved.
-	GetDraft(artifactUUID, apiPortalUUID, orgUUID string) (pub *model.Publication, planUUIDs []string, docUUIDs []string, err error)
+	// plus the subscription-plan and document selections its mapping tables
+	// store, each with its copied handle and name and whether the source row
+	// still exists. Returns (nil, nil, nil, nil) when no draft has been saved.
+	GetDraft(artifactUUID, apiPortalUUID, orgUUID string) (pub *model.Publication, plans []model.PublicationSelection, docs []model.PublicationSelection, err error)
 	// GetPublication is GetDraft's counterpart for the live (IsDraft false)
 	// row. Returns (nil, nil, nil, nil) when this API is not published to
 	// this portal.
-	GetPublication(artifactUUID, apiPortalUUID, orgUUID string) (pub *model.Publication, planUUIDs []string, docUUIDs []string, err error)
+	GetPublication(artifactUUID, apiPortalUUID, orgUUID string) (pub *model.Publication, plans []model.PublicationSelection, docs []model.PublicationSelection, err error)
 	// SaveDraftDetails creates the draft row on first save (any artifactUUID +
 	// apiPortalUUID pairing with no existing draft), or replaces an existing
-	// one in full, together with its plan/document mapping rows (planUUIDs /
-	// docUUIDs — already resolved from handles by the caller). Returns the
-	// saved row with its resolved UUID and audit timestamps.
-	SaveDraftDetails(pub *model.Publication, planUUIDs []string, docUUIDs []string, actor string) (*model.Publication, error)
+	// one in full, together with its plan/document mapping rows (plans / docs —
+	// already resolved from handles by the caller, with the copy columns
+	// filled). Returns the saved row with its resolved UUID and audit
+	// timestamps.
+	SaveDraftDetails(pub *model.Publication, plans []model.PublicationSelection, docs []model.PublicationSelection, actor string) (*model.Publication, error)
 	// PromoteDraftToPublication makes the draft row for (artifactUUID,
 	// apiPortalUUID, orgUUID) live. The uuid of whichever row was first
 	// published for this pairing is the durable "anchor" identity and never
@@ -260,7 +274,11 @@ type PublicationRepository interface {
 	// (republish) versus this being the first publish. draftUpdatedAt is the
 	// draft's updated_at as the caller read it before pushing to the portal;
 	// a draft saved since then is not promoted (APIPublicationDraftChanged).
-	PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string, draftUpdatedAt time.Time) (pub *model.Publication, replaced bool, err error)
+	// plans and docs are the selections pushed to the portal, read at
+	// snapshotAt: their copy columns are refreshed and their rows re-stamped
+	// with snapshotAt on the draft's mapping rows, and any other mapping row is
+	// removed, before the rows become the live listing's.
+	PromoteDraftToPublication(artifactUUID, apiPortalUUID, orgUUID, actor string, draftUpdatedAt time.Time, snapshotAt time.Time, plans []model.PublicationSelection, docs []model.PublicationSelection) (pub *model.Publication, replaced bool, err error)
 	// UnpublishPublication is PromoteDraftToPublication's mirror, called
 	// after the portal removal succeeds: if no draft
 	// exists for (artifactUUID, apiPortalUUID, orgUUID), the live row (the
@@ -535,6 +553,69 @@ type SecretRepository interface {
 	Exists(orgID, handle string) (bool, error)
 }
 
+// WebhookSecretRepository persists org-level managed secrets and their
+// rotation versions. Version-changing writes serialize on the webhook_secrets_metadata row.
+type WebhookSecretRepository interface {
+	// Create inserts the secret info and its first version (version 1) atomically.
+	Create(info *model.WebhookSecretMetadata, first *model.WebhookSecret) error
+	GetMetadata(orgID, handle string) (*model.WebhookSecretMetadata, error)
+	ListMetadata(orgID string, limit, offset int) ([]*model.WebhookSecretMetadata, int, error)
+	// ListVersions returns every version of a secret, newest first.
+	ListVersions(secretUUID string) ([]*model.WebhookSecret, error)
+	// AddVersion appends the next version, failing with WebhookSecretVersionLimit
+	// when maxVersions versions already exist.
+	AddVersion(secretUUID string, maxVersions int, w *model.WebhookSecret) error
+	// ListVersionsForOrg returns every version of every secret of the given type in
+	// an organization, newest first.
+	ListVersionsForOrg(orgID, secretType string) ([]*model.WebhookSecret, error)
+	// GetVersionByHash returns the version of an organization's secret of the given type whose
+	// secret_hash equals hash, or nil when there is none.
+	GetVersionByHash(orgID, secretType, hash string) (*model.WebhookSecret, error)
+	// DeleteVersion removes one version; the last remaining version is refused.
+	DeleteVersion(secretUUID string, version int, actor string) error
+	Delete(orgID, handle string) error
+}
+
+// ServiceAccountRepository persists service accounts. Every write that
+// revokes tokens takes the ledger row too, so both land in one transaction.
+type ServiceAccountRepository interface {
+	// Create inserts the account and its identity row (uuid = sa.UUID,
+	// idp_id = subject) together.
+	Create(sa *model.ServiceAccount, subject string) error
+	GetByHandle(orgID, handle string) (*model.ServiceAccount, error)
+	// GetByClientID is the token endpoint's lookup. Not org-scoped: the caller
+	// presents no organization and client_id is globally unique.
+	GetByClientID(clientID string) (*model.ServiceAccount, error)
+	// List and Count filter by search (name or handle) when it is non-empty.
+	List(orgID, search string, limit, offset int) ([]*model.ServiceAccount, error)
+	Count(orgID, search string) (int, error)
+	// Update writes metadata, roles, status and token version; rev is written
+	// too when non-nil. It fails with a conflict unless the row still has
+	// prevVersion and prevStatus.
+	Update(sa *model.ServiceAccount, prevVersion int64, prevStatus string, rev *model.ServiceAccountRevocation) error
+	// UpdateSecret replaces the secret hash and token version and writes rev,
+	// unless the row no longer has prevVersion.
+	UpdateSecret(sa *model.ServiceAccount, prevVersion int64, rev *model.ServiceAccountRevocation) error
+	// Delete removes the account and writes rev, which outlives it, unless the
+	// row no longer has prevVersion.
+	Delete(orgID, uuid string, prevVersion int64, rev *model.ServiceAccountRevocation) error
+	TouchLastUsed(uuid string, at time.Time, ip string) error
+	// ForeignReservedIdentities returns sa:-prefixed identities no service
+	// account minted.
+	ForeignReservedIdentities() ([]string, error)
+}
+
+// ServiceAccountRevocationRepository reads and prunes the revocation ledger.
+type ServiceAccountRevocationRepository interface {
+	// Revoke upserts one account's watermark. A higher min_token_version always
+	// wins, so the watermark never moves backwards.
+	Revoke(rev *model.ServiceAccountRevocation) error
+	// ListActive returns every unexpired watermark.
+	ListActive(now time.Time) ([]*model.ServiceAccountRevocation, error)
+	// PruneExpired deletes rows no live token could match.
+	PruneExpired(now time.Time) (int64, error)
+}
+
 // CustomPolicyRepository defines the interface for custom policy persistence
 type CustomPolicyRepository interface {
 	InsertCustomPolicy(policy *model.CustomPolicy) error
@@ -565,18 +646,10 @@ type DocumentRepository interface {
 	DeleteDocument(artifactUUID, handle, orgUUID, docType string) error
 	DocumentHandleExistsForArtifact(artifactUUID, handle string) (bool, error)
 	DocumentDisplayNameExistsForArtifact(artifactUUID, displayName, excludeHandle string) (bool, error)
-	// GetDocumentUUIDsByHandles resolves each handle to its document uuid,
-	// scoped to one artifact (api_documents' real unique index is
-	// (artifact_uuid, handle) — a handle is only guaranteed unique per
-	// artifact, not per org). A handle absent from the returned map does not
-	// exist for this artifact. Used by API Publication draft/publish save to
-	// validate and resolve docIds.
-	GetDocumentUUIDsByHandles(artifactUUID string, handles []string, orgUUID string) (map[string]string, error)
-	// GetDocumentHandlesByUUIDs is the inverse, for reconstructing a docIds
-	// response from stored api_publication_doc_mappings rows. Scoped to the
-	// organization only (not a single artifact) since a mapping row's
-	// doc_uuid already came from that same artifact's own resolved set.
-	GetDocumentHandlesByUUIDs(docUUIDs []string, orgUUID string) (map[string]string, error)
+	// GetDocumentsByHandles looks up each handle's document (uuid, handle, type, display name,
+	// file name; no content) within one artifact. Reserved types (DEFINITION, THUMBNAIL) are never
+	// returned; a handle missing from the map is not selectable for this artifact.
+	GetDocumentsByHandles(artifactUUID string, handles []string, orgUUID string) (map[string]*model.Document, error)
 }
 
 // AuditRepository defines the interface for audit record writes.
@@ -594,6 +667,14 @@ type UserIdentityMappingRepository interface {
 	// a single query (avoids N+1 on list endpoints). UUIDs with no mapping are
 	// absent from the returned map.
 	GetSubsByUUIDs(uuids []string) (map[string]string, error)
+	// GetOrCreateUUIDWithDisplayName is GetOrCreateUUID that also stores the
+	// user's display name, or refreshes it when a non-empty value differs from
+	// the stored one. An empty displayName leaves the row as it is. A failure to
+	// save the name alone returns the valid UUID with ErrDisplayNameNotSaved.
+	GetOrCreateUUIDWithDisplayName(identity, displayName string) (string, error)
+	// GetIdentitiesByUUIDs batch-resolves multiple UUIDs to their idp_id and
+	// display name in a single query. UUIDs with no mapping are absent.
+	GetIdentitiesByUUIDs(uuids []string) (map[string]UserIdentity, error)
 }
 
 // UserOrganizationMappingRepository defines the interface for user<->organization
@@ -609,4 +690,38 @@ type UserOrganizationMappingRepository interface {
 	DeleteByUser(tx *sql.Tx, userUUID string) error
 	// DeleteByOrg removes all membership rows for orgUUID, within tx.
 	DeleteByOrg(tx *sql.Tx, orgUUID string) error
+}
+
+// MeterRepository stores the organization's meters, made here or copied from an API Portal, keyed by
+// organization and handle.
+type MeterRepository interface {
+	// GetByHandle returns the meter, or nil when the organization has no meter with that handle.
+	GetByHandle(orgUUID, handle string) (*model.Meter, error)
+	// ListByOrganization returns the organization's meters ordered by handle.
+	ListByOrganization(orgUUID string) ([]*model.Meter, error)
+	// Create stores a new meter; ErrMeterExists when the organization has one with that handle.
+	Create(meter *model.Meter) error
+	// Upsert creates the meter or replaces the stored meter with the same handle.
+	Upsert(meter *model.Meter) error
+	// Delete removes the meter; a meter that does not exist is not an error.
+	Delete(orgUUID, handle string) error
+}
+
+// SubscriptionPlanPricingRepository reads the pricing of paid plans, one per plan. Pricing is stored
+// with its plan (SubscriptionPlanRepository.CreateWithPricing) and never changes.
+type SubscriptionPlanPricingRepository interface {
+	// GetByPlan returns the pricing of the plan, or nil when the plan is free.
+	GetByPlan(planUUID, orgUUID string) (*model.SubscriptionPlanPricing, error)
+	// ListByOrganization returns the pricing of each of the organization's paid plans.
+	ListByOrganization(orgUUID string) ([]*model.SubscriptionPlanPricing, error)
+}
+
+// SubscriptionBillingRepository persists the billing state of paid subscriptions.
+type SubscriptionBillingRepository interface {
+	// Get returns the billing state of the subscription, or nil for a free subscription.
+	Get(subscriptionUUID, orgUUID string) (*model.SubscriptionBilling, error)
+	// GetMany returns the billing state of each given subscription that has one, by subscription UUID.
+	GetMany(subscriptionUUIDs []string, orgUUID string) (map[string]*model.SubscriptionBilling, error)
+	// Upsert stores the billing state of a subscription.
+	Upsert(billing *model.SubscriptionBilling) error
 }

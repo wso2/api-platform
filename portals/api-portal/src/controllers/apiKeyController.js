@@ -61,6 +61,18 @@ async function resolveApiIdOrRespond(orgId, apiHandle, res, req) {
     return apiId;
 }
 
+// Platform API's API key webhook does not accept WebSub APIs, so a key generated for one
+// would be returned to the user but never reach the gateway. Refuse it up front; listing
+// and revoking existing keys stay available.
+async function rejectIfWebSubOrRespond(orgId, apiHandle, res) {
+    const webSubId = await apiDao.getIdByType(orgId, apiHandle, constants.API_TYPE.WEBSUB);
+    if (webSubId) {
+        util.sendError(res, 400, 'Bad Request', { errors: [{ message: 'API keys are not supported for WebSub APIs' }] });
+        return true;
+    }
+    return false;
+}
+
 // Returns undefined when no handle was given, null when the handle didn't resolve, or the uuid.
 async function resolveAppId(orgId, userId, appHandle) {
     if (!appHandle) return undefined;
@@ -68,13 +80,14 @@ async function resolveAppId(orgId, userId, appHandle) {
     return app ? app.uuid : null;
 }
 
-// Resolves an API key's handle (as sent in `keyId` in request bodies) to its uuid, scoped to apiId.
-async function resolveKeyId(orgId, apiId, keyHandle) {
-    return apiKeyDao.getIdByHandle(orgId, apiId, keyHandle);
+// Resolves an API key's handle (as sent in `keyId` in request bodies) to its uuid, scoped to
+// apiId and to the calling user.
+async function resolveKeyId(orgId, apiId, keyHandle, createdBy) {
+    return apiKeyDao.getIdByHandle(orgId, apiId, keyHandle, createdBy);
 }
 
-async function resolveKeyIdOrRespond(orgId, apiId, keyHandle, res) {
-    const keyId = await resolveKeyId(orgId, apiId, keyHandle);
+async function resolveKeyIdOrRespond(orgId, apiId, keyHandle, res, req) {
+    const keyId = await resolveKeyId(orgId, apiId, keyHandle, util.resolveActor(req));
     if (!keyId) {
         util.sendError(res, 404, 'Not Found', { errors: [{ message: 'API key not found' }] });
         return null;
@@ -120,6 +133,7 @@ async function generateApiKey(req, res) {
     try {
         const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res, req);
         if (!apiId) return;
+        if (await rejectIfWebSubOrRespond(orgId, apiHandle, res)) return;
         const appId = await resolveAppId(orgId, util.resolveActor(req), appIdResult.value);
         if (appIdResult.value && !appId) {
             return util.sendError(res, 404, 'Not Found', { errors: [{ message: 'Application not found' }] });
@@ -249,7 +263,8 @@ async function regenerateApiKey(req, res) {
     try {
         const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res, req);
         if (!apiId) return;
-        const keyId = await resolveKeyIdOrRespond(orgId, apiId, keyHandle.trim(), res);
+        if (await rejectIfWebSubOrRespond(orgId, apiHandle, res)) return;
+        const keyId = await resolveKeyIdOrRespond(orgId, apiId, keyHandle.trim(), res, req);
         if (!keyId) return;
         const result = await apiKeyService.regenerate({
             orgId, apiId, keyId, expiresAt, actor: util.resolveActor(req), userToken: req.user?.accessToken,
@@ -279,7 +294,7 @@ async function revokeApiKey(req, res) {
     try {
         const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res, req);
         if (!apiId) return;
-        const keyId = await resolveKeyIdOrRespond(orgId, apiId, keyHandle.trim(), res);
+        const keyId = await resolveKeyIdOrRespond(orgId, apiId, keyHandle.trim(), res, req);
         if (!keyId) return;
         await apiKeyService.revoke({ orgId, apiId, keyId, actor: util.resolveActor(req), userToken: req.user?.accessToken });
         logUserAction('API_KEY_REVOKED', req, { orgId, apiId: apiHandle, keyId, resourceUuid: keyId, resourceType: 'api_key' });
@@ -309,7 +324,7 @@ async function associateApiKeyApplication(req, res) {
     try {
         const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res, req);
         if (!apiId) return;
-        const keyId = await resolveKeyIdOrRespond(orgId, apiId, keyHandle.trim(), res);
+        const keyId = await resolveKeyIdOrRespond(orgId, apiId, keyHandle.trim(), res, req);
         if (!keyId) return;
         const appId = await resolveAppId(orgId, util.resolveActor(req), appHandle.trim());
         if (!appId) {
@@ -343,7 +358,7 @@ async function removeApiKeyApplication(req, res) {
     try {
         const apiId = await resolveApiIdOrRespond(orgId, apiHandle, res, req);
         if (!apiId) return;
-        const keyId = await resolveKeyIdOrRespond(orgId, apiId, keyHandle.trim(), res);
+        const keyId = await resolveKeyIdOrRespond(orgId, apiId, keyHandle.trim(), res, req);
         if (!keyId) return;
         await apiKeyService.removeApplicationAssociation({ orgId, apiId, keyId, actor: util.resolveActor(req) });
         logUserAction('API_KEY_APP_DISASSOCIATED', req, { orgId, apiId: apiHandle, keyId, resourceUuid: keyId, resourceType: 'api_key' });

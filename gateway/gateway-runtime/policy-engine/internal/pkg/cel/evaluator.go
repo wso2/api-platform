@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/google/cel-go/cel"
+	"cel.dev/cel-go/cel"
 
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )

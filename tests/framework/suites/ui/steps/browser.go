@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	playwright "github.com/mxschmitt/playwright-go"
 
@@ -40,17 +41,43 @@ const (
 	keySensitiveArtifacts = "uiSensitiveArtifacts"
 )
 
+// playwrightInstallTimeout bounds downloading the Playwright Node driver, which otherwise has
+// no deadline and previously hung every scenario in the suite on one stalled download.
+const playwrightInstallTimeout = 3 * time.Minute
+
 // driver starts the local playwright driver once per process. The driver is a multiplexer:
 // every block's browser connection goes through this one Node subprocess.
 var driver = sync.OnceValues(func() (*playwright.Playwright, error) {
-	if err := playwright.Install(&playwright.RunOptions{SkipInstallBrowsers: true}); err != nil {
-		return nil, fmt.Errorf("ui: installing the playwright driver: %w", err)
+	if err := installPlaywrightDriver(); err != nil {
+		return nil, err
 	}
 	if err := browser.PlaywrightVersionMatchesModule(); err != nil {
 		return nil, err
 	}
 	return playwright.Run()
 })
+
+func installPlaywrightDriver() error {
+	err := withTimeout(playwrightInstallTimeout, func() error {
+		return playwright.Install(&playwright.RunOptions{SkipInstallBrowsers: true})
+	})
+	if err != nil {
+		return fmt.Errorf("ui: installing the playwright driver: %w", err)
+	}
+	return nil
+}
+
+// withTimeout bounds fn to d; fn keeps running past d since there's no way to cancel it.
+func withTimeout(d time.Duration, fn func() error) error {
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(d):
+		return fmt.Errorf("timed out after %s", d)
+	}
+}
 
 // browsers holds one remote-browser connection per BLOCK — each block runs its own browser
 // container, and scenarios isolate through contexts, not browser instances. Connections live
@@ -70,10 +97,14 @@ func (u *UI) browserFor() (playwright.Browser, error) {
 	ws := "ws" + strings.TrimPrefix(base, "http") + browser.PlaywrightWSPath
 
 	browsers.Lock()
-	defer browsers.Unlock()
 	if b, ok := browsers.byWS[ws]; ok && b.IsConnected() {
+		browsers.Unlock()
 		return b, nil
 	}
+	browsers.Unlock()
+
+	// driver() has its own sync.OnceValues synchronization. Not held under browsers' lock, so a
+	// slow or timed-out install doesn't serialize every other block's own, unrelated connect.
 	pw, err := driver()
 	if err != nil {
 		return nil, err
@@ -82,7 +113,17 @@ func (u *UI) browserFor() (playwright.Browser, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ui: connecting to the block's browser at %s: %w", ws, err)
 	}
+
+	browsers.Lock()
+	if existing, ok := browsers.byWS[ws]; ok && existing.IsConnected() {
+		browsers.Unlock()
+		// Close() sends a synchronous protocol request and waits for the reply — never under
+		// browsers' lock, or a stalled close blocks every other block's lookup behind it too.
+		_ = b.Close()
+		return existing, nil
+	}
 	browsers.byWS[ws] = b
+	browsers.Unlock()
 	return b, nil
 }
 

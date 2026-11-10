@@ -111,6 +111,17 @@ const (
 	CodeRESTAPIDeploymentValidationFailed = "REST_API_DEPLOYMENT_VALIDATION_FAILED"
 	CodeRESTAPIAPIKeyNotFound             = "REST_API_API_KEY_NOT_FOUND"
 	CodeRESTAPIAPIKeyForbidden            = "REST_API_API_KEY_FORBIDDEN"
+
+	// Sending a test request to a REST API through a gateway it is deployed to
+	// (POST /gateway-relay/invoke).
+	CodeRESTAPIInvokeGatewayNotDeployed       = "REST_API_INVOKE_GATEWAY_NOT_DEPLOYED"
+	CodeRESTAPIInvokeGatewayNoEndpoint        = "REST_API_INVOKE_GATEWAY_NO_ENDPOINT"
+	CodeRESTAPIInvokeGatewayUnsupportedScheme = "REST_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME"
+	CodeRESTAPIInvokeTargetNotAllowed         = "REST_API_INVOKE_TARGET_NOT_ALLOWED"
+	CodeRESTAPIInvokeRequestInvalid           = "REST_API_INVOKE_REQUEST_INVALID"
+	CodeRESTAPIInvokeBusy                     = "REST_API_INVOKE_BUSY"
+	CodeRESTAPIInvokeUpstreamTimeout          = "REST_API_INVOKE_UPSTREAM_TIMEOUT"
+	CodeRESTAPIInvokeUpstreamUnreachable      = "REST_API_INVOKE_UPSTREAM_UNREACHABLE"
 )
 
 // MCP proxy domain codes. MCP_PROXY_UPSTREAM_UNAUTHORIZED reports that the
@@ -180,6 +191,22 @@ const (
 	CodeSecretNotFound = "SECRET_NOT_FOUND"
 	CodeSecretExists   = "SECRET_EXISTS"
 	CodeSecretInUse    = "SECRET_IN_USE"
+)
+
+// Webhook secret domain codes.
+const (
+	CodeWebhookSecretNotFound     = "WEBHOOK_SECRET_NOT_FOUND"
+	CodeWebhookSecretExists       = "WEBHOOK_SECRET_EXISTS"
+	CodeWebhookSecretVersionLimit = "WEBHOOK_SECRET_VERSION_LIMIT"
+	CodeWebhookSecretLastVersion  = "WEBHOOK_SECRET_LAST_VERSION"
+)
+
+// Service account domain codes.
+const (
+	CodeServiceAccountNotFound = "SERVICE_ACCOUNT_NOT_FOUND"
+	CodeServiceAccountExists   = "SERVICE_ACCOUNT_EXISTS"
+	// CodeServiceAccountInvalidScope is RFC 6749's invalid_scope at the token endpoint.
+	CodeServiceAccountInvalidScope = "SERVICE_ACCOUNT_INVALID_SCOPE"
 )
 
 // Artifact domain codes. Used by flows that operate on a generic artifact
@@ -263,4 +290,24 @@ const (
 	// CodeAPIPublicationDraftChanged: the draft was saved while a publish of it
 	// was in flight, so the copy sent to the portal is no longer the draft.
 	CodeAPIPublicationDraftChanged = "PUBLICATION_DRAFT_CHANGED"
+	// CodeAPIPublicationPlanPricingConflict: the API Portal already has a plan with
+	// a published plan's handle, priced differently. The portal cannot change a
+	// plan's pricing, so the plan is not published there.
+	CodeAPIPublicationPlanPricingConflict = "PUBLICATION_PLAN_PRICING_CONFLICT"
+	// CodeAPIPublicationMeterConflict: the API Portal already has a meter with the same id as one a
+	// published plan charges for, but with other settings. The plan is not published there.
+	CodeAPIPublicationMeterConflict = "PUBLICATION_METER_CONFLICT"
+
+	// Monetization: meters and plan pricing made in the Management Portal are kept here and reach an
+	// API Portal with the plans published there.
+	CodeMeterNotFound                   = "METER_NOT_FOUND"
+	CodeMeterExists                     = "METER_EXISTS"
+	CodeMeterInUse                      = "METER_IN_USE"
+	CodeSubscriptionPlanPricingNotFound = "SUBSCRIPTION_PLAN_PRICING_NOT_FOUND"
+	// CodeSubscriptionPlanPricingLocked: a request that would change a plan's pricing, which is set
+	// once.
+	CodeSubscriptionPlanPricingLocked = "SUBSCRIPTION_PLAN_PRICING_LOCKED"
+	// CodeSubscriptionPlanInUse: a plan to delete, or whose name or limit would change, is still
+	// offered or used here.
+	CodeSubscriptionPlanInUse = "SUBSCRIPTION_PLAN_IN_USE"
 )

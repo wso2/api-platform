@@ -76,6 +76,56 @@ describe('getBillingOrganization', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  /**
+   * Billing is a named route under the console's proxy, so it moves with the
+   * proxy: `/proxy/billing` behind the BFF, `/api-management/proxy/billing`
+   * behind a gateway that serves the console under a path. A Platform API URL
+   * that is not a same-origin path has no billing route, so billing stays on
+   * the BFF's default. That includes values that start with `/` but that the
+   * URL parser reads as another host, and values it cannot parse.
+   */
+  it.each([
+    ['/proxy', '/proxy/billing/organization?product=api-platform'],
+    ['/api-management/proxy/', '/api-management/proxy/billing/organization?product=api-platform'],
+    ['', '/proxy/billing/organization?product=api-platform'],
+    ['https://localhost:9243', '/proxy/billing/organization?product=api-platform'],
+    ['//platform.example.com', '/proxy/billing/organization?product=api-platform'],
+    ['/\\platform.example.com', '/proxy/billing/organization?product=api-platform'],
+    ['/\t/platform.example.com', '/proxy/billing/organization?product=api-platform'],
+    ['//[', '/proxy/billing/organization?product=api-platform'],
+  ])('reads billing under the proxy base for platformApiBaseUrl %j', async (base, expected) => {
+    vi.spyOn(runtimeConfig, 'platformApiBaseUrl', 'get').mockReturnValue(base);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(okResponse({}));
+
+    await getBillingOrganization();
+
+    expect(fetchMock).toHaveBeenCalledWith(expected, expect.anything());
+  });
+
+  /**
+   * A deployment that routes billing apart from the proxy names its path in
+   * `billingBaseUrl`. Only a same-origin path is taken; anything else falls
+   * back to the proxy route.
+   */
+  it.each([
+    ['/_api/billing/api/v1', '/_api/billing/api/v1/organization?product=api-platform'],
+    ['/_api/billing/api/v1/', '/_api/billing/api/v1/organization?product=api-platform'],
+    [
+      'https://billing.example.com/v1',
+      '/api-management/proxy/billing/organization?product=api-platform',
+    ],
+    ['//billing.example.com', '/api-management/proxy/billing/organization?product=api-platform'],
+    ['', '/api-management/proxy/billing/organization?product=api-platform'],
+  ])('reads billing at billingBaseUrl %j when it is a same-origin path', async (own, expected) => {
+    vi.spyOn(runtimeConfig, 'platformApiBaseUrl', 'get').mockReturnValue('/api-management/proxy');
+    vi.spyOn(runtimeConfig, 'billingBaseUrl', 'get').mockReturnValue(own);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(okResponse({}));
+
+    await getBillingOrganization();
+
+    expect(fetchMock).toHaveBeenCalledWith(expected, expect.anything());
+  });
+
   it('lets a later caller retry after a failed read, rather than caching the rejection', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

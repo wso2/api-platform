@@ -32,17 +32,49 @@ const orgContext = require("../utils/orgContext");
 const logger = require("../config/logger");
 const path = require("path");
 const fs = require("fs").promises;
-const fsDir = require("fs");
 const yaml = require('../utils/yaml');
 const APIDTO = require("../dto/apiDto");
 const ViewDTO = require("../dto/viewsDto");
 const APIDocDTO = require("../dto/apiDocDto");
 const constants = require("../utils/constants");
 const subscriptionPlanDTO = require("../dto/subscriptionPlanDto");
+const subscriptionPlanEvents = require("./subscriptionPlanEvents");
+const planPricingService = require('./billing/planPricingService');
+const { PricingValidationError } = require('./billing/planPricingValidation');
+const billingCatalogService = require('./billing/billingCatalogService');
+const checkoutService = require('./billing/checkoutService');
+const sharedKeyAuth = require('../middlewares/sharedKeyAuth');
+const { BillingProviderError } = require('../billing/http');
+const billingProvider = require('../billing/billingProvider');
+const billingConfigurationDao = require('../dao/billingConfigurationDao');
+const billingApiPlanDao = require('../dao/billingApiPlanDao');
 const userIdpReferenceDao = require("../dao/userIdpReferenceDao");
 const { logUserAction } = require('../middlewares/auditLogger');
-const { CustomError, ValidationError, NotFoundError } = require("../utils/errors/customErrors");
+const { CustomError, ValidationError, NotFoundError, ConflictError } = require("../utils/errors/customErrors");
+const apiContentRules = require('../utils/apiContentRules');
 const LabelDTO = require("../dto/labelDto");
+
+// The thumbnail slot holds one image keyed 'api-icon'. A replace also frees its target name,
+// which an image from a content ZIP may already use.
+const applyThumbnailChange = async (change, apiId, orgId, userId, t) => {
+    if (change.action === 'none') return;
+    await apiFileDao.deleteByKey(constants.API_ICON, apiId, t);
+    if (change.action === 'replace') {
+        await apiFileDao.delete(change.fileName, constants.DOC_TYPES.IMAGES, orgId, apiId, t);
+        await apiFileDao.store(change.content, change.fileName, apiId, constants.DOC_TYPES.IMAGES, userId, t, constants.API_ICON);
+    }
+};
+
+// A docsToRemove entry: a file name removes it from every category, { fileName, type } from that one.
+const removeDoc = async (doc, orgId, apiId, t) => {
+    if (typeof doc === 'string') {
+        return apiFileDao.deleteByFileName(doc, orgId, apiId, t);
+    }
+    if (typeof doc?.fileName !== 'string' || typeof doc?.type !== 'string' || !constants.CONTENT_TYPES.DOC_PATTERN.test(doc.type)) {
+        throw new ValidationError('docsToRemove entries must be a file name or { fileName, type }');
+    }
+    return apiFileDao.delete(doc.fileName, doc.type, orgId, apiId, t);
+};
 
 const createAPIMetadata = async (req, res) => {
     const orgId = req.orgId;
@@ -59,7 +91,6 @@ const createAPIMetadata = async (req, res) => {
 
     try {
         let artifactApiContent = [];
-        let resolvedImageMetadata = {};
         if (apiArtifactFile?.buffer) {
             fullApiBundle = await extractFullApiBundleFromUploadedZip(apiArtifactFile, orgId, 'new-api');
             apiMetadata = fullApiBundle.apiMetadata;
@@ -72,14 +103,8 @@ const createAPIMetadata = async (req, res) => {
                 apiDefinitionFile = preparedDefinition.apiDefinitionFile;
                 apiFileName = preparedDefinition.apiDefinitionFileName;
             }
-            artifactApiContent = await extractApiContentFromUploadedZip(apiArtifactFile, orgId, 'new-api', 'artifact');
-            resolvedImageMetadata = buildImageMetadataFromContent(artifactApiContent);
-            const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
-            artifactApiContent.forEach(file => {
-                if (file.type === constants.DOC_TYPES.IMAGES) {
-                    file.key = filenameToKey[file.fileName];
-                }
-            });
+            artifactApiContent = fullApiBundle.content;
+            assignSlotsAndRejectDuplicates(artifactApiContent, {});
         } else if (req.files?.metadata?.[0]) {
             // `metadata` supplied as an uploaded YAML/JSON file (k8s-style artifact document).
             apiMetadata = parseApiMetadataFromYamlRequest(req);
@@ -121,9 +146,16 @@ const createAPIMetadata = async (req, res) => {
                 "Missing or Invalid fields in the request payload"
             );
         }
+        const thumbnailChange = apiContentRules.readThumbnailChange(req.files, apiMetadata, true);
+        apiContentRules.assertMarkdownDocParts(req.files);
+        delete apiMetadata.removeThumbnail;
         const { status: apiStatus, agentVisibility } = apiMetadata;
         if (apiStatus && !Object.values(constants.API_STATUS).includes(apiStatus)) {
             throw new ValidationError(`Invalid status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
+        }
+        // An API created without a status is published.
+        if (!apiStatus) {
+            apiMetadata.status = constants.API_STATUS.PUBLISHED;
         }
         if (agentVisibility) {
             const normalizedAgentVisibility = agentVisibility.toUpperCase();
@@ -135,6 +167,9 @@ const createAPIMetadata = async (req, res) => {
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
         normalizeGraphQLEndpoints(apiMetadata);
+        // Paid plans are created with the billing provider before anything is saved: when any part
+        // fails, what was created is removed and the request fails, and the API is not created.
+        const billing = await buildPaidPlans(orgId, billingApi(null, apiMetadata), apiMetadata.subscriptionPlans);
         let createdAPIRecord;
         await db.withTransaction(async (t) => {
             // Create apimetadata record
@@ -160,6 +195,7 @@ const createAPIMetadata = async (req, res) => {
                     };
                 }
                 await subscriptionPlanDao.createApiMapping(subscriptionPlans, apiId, userId, t);
+                await billingCatalogService.saveApiPlans(billing.apiPlans, t, apiId);
             }
             //store api labels
             if (apiMetadata.labels) {
@@ -241,8 +277,12 @@ const createAPIMetadata = async (req, res) => {
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
                 await apiFileDao.storeMany(artifactApiContent, apiId, userId, t);
             }
+            await applyThumbnailChange(thumbnailChange, apiId, orgId, userId, t);
             apiMetadata.id = apiMetadata.handle;
             delete apiMetadata.handle;
+        }).catch(async (err) => {
+            await billing.undo();
+            throw err;
         });
 
         logUserAction('API_METADATA_CREATED', req, { orgId, apiId: createdAPIRecord.uuid, resourceUuid: createdAPIRecord.uuid, resourceType: 'rest_api' });
@@ -263,7 +303,7 @@ const createAPIMetadata = async (req, res) => {
             stack: error.stack,
             orgId: req.orgId
         });
-        util.handleError(res, error);
+        util.handleError(res, billingCatalogFailure(error));
     }
 };
 
@@ -297,18 +337,6 @@ function normalizeGraphQLEndpoints(apiMetadata) {
     }
     apiMetadata.endPoints.productionURL = normalizeGraphQLEndpoint(apiMetadata.endPoints.productionURL);
     apiMetadata.endPoints.sandboxURL = normalizeGraphQLEndpoint(apiMetadata.endPoints.sandboxURL);
-}
-
-async function allowAPIStatusChange(apiStatus, orgId, apiId) {
-    
-    if (apiStatus === constants.API_STATUS.CREATED) {
-
-        const subApis = await subDao.listByApi(orgId, apiId);
-        if (subApis.length > 0) {
-            return false;
-        }
-    }
-    return true;
 }
 
 /**
@@ -485,7 +513,6 @@ const updateAPIMetadata = async (req, res) => {
             apiId
         });
         let artifactApiContent = [];
-        let resolvedImageMetadata = {};
         if (apiArtifactFile?.buffer) {
             fullApiBundle = await extractFullApiBundleFromUploadedZip(apiArtifactFile, orgId, apiId);
             apiMetadata = fullApiBundle.apiMetadata;
@@ -498,14 +525,8 @@ const updateAPIMetadata = async (req, res) => {
                 apiDefinitionFile = preparedDefinition.apiDefinitionFile;
                 apiFileName = preparedDefinition.apiDefinitionFileName;
             }
-            artifactApiContent = await extractApiContentFromUploadedZip(apiArtifactFile, orgId, apiId, 'artifact');
-            resolvedImageMetadata = buildImageMetadataFromContent(artifactApiContent);
-            const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
-            artifactApiContent.forEach(file => {
-                if (file.type === constants.DOC_TYPES.IMAGES) {
-                    file.key = filenameToKey[file.fileName];
-                }
-            });
+            artifactApiContent = fullApiBundle.content;
+            assignSlotsAndRejectDuplicates(artifactApiContent, {});
         } else if (req.files?.metadata?.[0]) {
             // `metadata` supplied as an uploaded YAML/JSON file (k8s-style artifact document).
             apiMetadata = parseApiMetadataFromYamlRequest(req);
@@ -543,9 +564,16 @@ const updateAPIMetadata = async (req, res) => {
                 "Missing or Invalid fields in the request payload"
             );
         }
+        const thumbnailChange = apiContentRules.readThumbnailChange(req.files, apiMetadata, false);
+        apiContentRules.assertMarkdownDocParts(req.files);
+        delete apiMetadata.removeThumbnail;
         const { status: updateApiStatus, agentVisibility: updateAgentVisibility } = apiMetadata;
         if (updateApiStatus && !Object.values(constants.API_STATUS).includes(updateApiStatus)) {
             throw new ValidationError(`Invalid status '${updateApiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
+        }
+        // An update without a status keeps the API's current one.
+        if (!updateApiStatus && existingRecord) {
+            apiMetadata.status = existingRecord.status;
         }
         if (updateAgentVisibility) {
             const normalizedUpdateAgentVisibility = updateAgentVisibility.toUpperCase();
@@ -574,10 +602,41 @@ const updateAPIMetadata = async (req, res) => {
         apiMetadata.endPoints.productionURL = changeEndpoint(apiMetadata.endPoints.productionURL);
         apiMetadata.endPoints.sandboxURL = changeEndpoint(apiMetadata.endPoints.sandboxURL);
         normalizeGraphQLEndpoints(apiMetadata);
-        let allowStatusChange = await allowAPIStatusChange(apiMetadata.status, orgId, apiId);
-        if (!allowStatusChange) {
-            throw new CustomError(409, constants.ERROR_MESSAGE.ERR_SUB_EXIST, "API has subscriptions.");
+        // The plans the update lists must exist, and the ones it removes from the API must have no
+        // subscriptions to it.
+        let removedPlans = [];
+        if (Array.isArray(apiMetadata.subscriptionPlans)) {
+            for (const plan of apiMetadata.subscriptionPlans) {
+                if (!plan || !(await subscriptionPlanDao.getByName(orgId, plan.id))) {
+                    throw new NotFoundError("Subscription plan not found");
+                }
+            }
+            const kept = new Set(apiMetadata.subscriptionPlans.map((plan) => plan && plan.id));
+            removedPlans = (await subscriptionPlanDao.listByApi(apiId)).filter((plan) => !kept.has(plan.handle));
+            await refuseSubscribedPlans(orgId, apiId, removedPlans);
         }
+        // Paid plans the update newly enables are created with the billing provider before anything
+        // is saved: when any part fails, what was created is removed and the update fails.
+        const billing = await buildPaidPlans(orgId, billingApi(apiId, {
+            ...apiMetadata,
+            name: apiMetadata.name || (existingRecord && existingRecord.name),
+            version: apiMetadata.version || (existingRecord && existingRecord.version),
+        }), apiMetadata.subscriptionPlans);
+        // The removed plans' open checkouts are ended before the update is saved, and their paid plans
+        // taken off sale once it is.
+        let removedApiPlans = [];
+        if (removedPlans.length > 0) {
+            const planUuids = removedPlans.map((plan) => plan.uuid);
+            try {
+                await endOpenCheckouts(orgId, { apiUuid: apiId, planUuids });
+                removedApiPlans = (await billingApiPlanDao.listByOrg(orgId, { apiUuid: apiId }))
+                    .filter((apiPlan) => planUuids.includes(apiPlan.plan_uuid));
+            } catch (err) {
+                await billing.undo();
+                throw err;
+            }
+        }
+        let updated;
         await db.withTransaction(async (t) => {
             // Create apimetadata record
             logger.info('Updating API metadata in database', {
@@ -634,8 +693,13 @@ const updateAPIMetadata = async (req, res) => {
                         }
                     };
                 }
+                // Checked again with the plans locked: a subscription may have been made since the first check.
+                await refuseSubscribedPlans(orgId, apiId, removedPlans, t);
                 // Get subscription plan IDs and fail if any plan is not found
                 await subscriptionPlanDao.updateApiMapping(subscriptionPlans, apiId, userId, t);
+                await billingApiPlanDao.deleteApiPlans(orgId,
+                    removedApiPlans.map((apiPlan) => ({ apiUuid: apiPlan.api_uuid, planUuid: apiPlan.plan_uuid })), t);
+                await billingCatalogService.saveApiPlans(billing.apiPlans, t);
                 updatedAPI[0]["subscription_plans"] = await subscriptionPlanDao.listByApi(apiId, t);
             }
             // update api definition file (only when a new file was uploaded; never for MCP,
@@ -649,8 +713,8 @@ const updateAPIMetadata = async (req, res) => {
             }
             // remove docs the user deleted in the wizard
             if (Array.isArray(apiMetadata.docsToRemove)) {
-                for (const fileName of apiMetadata.docsToRemove) {
-                    await apiFileDao.deleteByFileName(fileName, orgId, apiId, t);
+                for (const doc of apiMetadata.docsToRemove) {
+                    await removeDoc(doc, orgId, apiId, t);
                 }
             }
             // upsert newly uploaded documentation files — use update (upsert by file_name+type)
@@ -714,9 +778,16 @@ const updateAPIMetadata = async (req, res) => {
             if (apiArtifactFile?.buffer && artifactApiContent.length > 0) {
                 await apiFileDao.upsertMany(artifactApiContent, apiId, orgId, userId, t);
             }
+            await applyThumbnailChange(thumbnailChange, apiId, orgId, userId, t);
             const audit = await userIdpReferenceDao.buildSingleAuditFields(updatedAPI[0]);
-            res.status(200).send(new APIDTO(updatedAPI[0], audit));
+            updated = new APIDTO(updatedAPI[0], audit);
+        }).catch(async (err) => {
+            await billing.undo();
+            throw err;
         });
+        await takeOffSale(orgId, removedApiPlans);
+        // Answered once the update is committed, so a failed commit is reported as a failure, not as a saved update.
+        res.status(200).send(updated);
         // Fired only after the transaction above has committed and released its
         // connection — logUserAction's DB write is fire-and-forget on the shared
         // single-connection SQLite pool, and running it while that connection is
@@ -730,7 +801,7 @@ const updateAPIMetadata = async (req, res) => {
             orgId,
             apiId
         });
-        util.handleError(res, error);
+        util.handleError(res, billingCatalogFailure(error));
     }
 };
 
@@ -739,6 +810,19 @@ const deleteAPIMetadata = async (req, res) => {
     const { apiId: apiHandle } = req.params;
     let apiId;
     let deleted = false;
+    let apiPlans = [];
+    try {
+        // The API's open checkouts are ended before it is deleted, and its paid plans taken off sale once it is.
+        const apiUuid = await resolveScopedApiId(req, orgId, apiHandle);
+        if (apiUuid && (await subDao.listByApi(orgId, apiUuid)).length === 0
+            && (await apiKeyDao.list(orgId, { apiId: apiUuid, status: 'ACTIVE' })).length === 0) {
+            await endOpenCheckouts(orgId, { apiUuid });
+            apiPlans = await billingApiPlanDao.listByOrg(orgId, { apiUuid });
+        }
+    } catch (error) {
+        logger.error('API metadata deletion failed', { error: error.message, orgId, apiId: apiHandle });
+        return util.handleError(res, billingCatalogFailure(error));
+    }
     await db.withTransaction(async (t) => {
         try {
             apiId = await resolveScopedApiId(req, orgId, apiHandle);
@@ -760,7 +844,6 @@ const deleteAPIMetadata = async (req, res) => {
                 throw new NotFoundError("Resource not found to delete");
             } else {
                 deleted = true;
-                res.status(200).send("Resouce Deleted Successfully");
             }
         } catch (error) {
             logger.error('API metadata deletion failed', {
@@ -776,120 +859,27 @@ const deleteAPIMetadata = async (req, res) => {
     // connection — see the comment in updateAPIMetadata for why firing this
     // while the connection is still checked out deadlocks against itself.
     if (deleted) {
+        await takeOffSale(orgId, apiPlans);
+        res.status(200).send("Resouce Deleted Successfully");
         logUserAction('API_METADATA_DELETED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'rest_api' });
     }
 };
 
-const createAPITemplate = async (req, res) => {
-    logger.info('Creating API template...', {
-        orgId: req.orgId,
-        apiId: req.params.apiId,
-        fileName: req.file?.originalname,
-    });
-    try {
-        const orgId = req.orgId;
-        const { apiId: apiHandle } = req.params;
-        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
-        if (!apiId) {
-            return util.sendError(res, 404, 'API not found');
-        }
-        const userId = util.resolveActor(req);
-        const zipFilePath = req.file.path;
-        const extractPath = path.join("/tmp", orgId + "/" + apiId);
-        await fs.mkdir(extractPath, { recursive: true });
-        await util.unzipDirectory(zipFilePath, extractPath);
-
-        const apiContentFileName = req.file.originalname.split(".zip")[0];
-
-        // Build complete paths
-        const contentPath = path.join(extractPath, apiContentFileName, "content");
-        const imagesPath = path.join(extractPath, apiContentFileName, "images");
-        const documentPath = path.join(extractPath, apiContentFileName, "documents");
-
-        // Verify directories exist
-        try {
-            if (fsDir.existsSync(contentPath)) {
-                await fs.access(contentPath);
-            }
-            if (fsDir.existsSync(imagesPath)) {
-                await fs.access(imagesPath);
-            }
-            if (fsDir.existsSync(documentPath)) {
-                await fs.access(documentPath);
-            }
-        } catch (err) {
-            logger.error('Error while trying to access directories', {
-                error: err.message,
-                contentPath,
-                imagesPath,
-                documentPath,
-                orgId,
-                apiId
-            });
-            throw new Error(
-                `Required directories not found after extraction. Content path: ${contentPath}, Images path: ${imagesPath}
-                , Documents path: ${documentPath}`,
-                { cause: err }
-            );
-        }
-        let apiContent = [];
-
-        //get api files
-        if (fsDir.existsSync(contentPath)) {
-            let apiLanding = await util.getAPIFileContent(contentPath);
-            apiContent.push(...apiLanding);
-        }
-        //get api images
-        if (fsDir.existsSync(imagesPath)) {
-            const apiImages = await util.getAPIImages(imagesPath);
-            apiContent.push(...apiImages);
-        }
-        //get api documents
-        if (fsDir.existsSync(documentPath)) {
-            const apiDocuments = await util.readDocFiles(documentPath);
-            apiContent.push(...apiDocuments);
-        }
-        let docMetadata = "";
-        if (req.body.docMetadata) {
-            docMetadata = JSON.parse(req.body.docMetadata);
-            const links = util.getAPIDocLinks(docMetadata);
-            apiContent.push(...links);
-        }
-        let imageMetadata = {};
-        if (req.body.imageMetadata) {
-            imageMetadata = JSON.parse(req.body.imageMetadata);
-        }
-        const resolvedImageMetadata = buildImageMetadataFromContent(apiContent, imageMetadata);
-        const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
-        apiContent.forEach(file => {
-            if (file.type === constants.DOC_TYPES.IMAGES) {
-                file.key = filenameToKey[file.fileName];
-            }
-        });
-        await db.withTransaction(async (t) => {
-            //check whether api belongs to given org
-            let apiMetadata = await apiDao.get(orgId, apiId, t);
-
-            if (apiMetadata) {
-                // Replace any previously stored images with this upload's set
-                await apiFileDao.deleteAllByType(constants.DOC_TYPES.IMAGES, apiId, t);
-                await apiFileDao.storeMany(apiContent, apiId, userId, t);
-            } else {
-                throw new ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
-            }
-        });
-        await fs.rm(extractPath, { recursive: true, force: true });
-        res.status(201).type("application/json").send({ message: "API Template updated successfully" });
-    } catch (error) {
-        logger.error('API content creation failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId: req.orgId,
-            apiId: req.params.apiId,
-            fileName: req.file?.originalname,
-        });
-        util.handleError(res, error);
+const assignSlotsAndRejectDuplicates = (apiContent, imageMetadata) => {
+    apiContentRules.assignImageSlots(apiContent, imageMetadata);
+    const duplicates = apiContentRules.findDuplicateItems(apiContent);
+    if (duplicates.length) {
+        throw new ValidationError(`Duplicate content in upload: ${duplicates.map(apiContentRules.describeItem).join(', ')}`);
     }
+};
+
+const readContentUpload = async (req, uploadedFile, orgId, apiId) => {
+    const docMetadata = apiContentRules.parseDocMetadata(req.body.docMetadata);
+    const imageMetadata = apiContentRules.parseImageMetadata(req.body.imageMetadata);
+    const apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId);
+    apiContent.push(...util.getAPIDocLinks(docMetadata));
+    assignSlotsAndRejectDuplicates(apiContent, imageMetadata);
+    return apiContent;
 };
 
 const createAPIContent = async (req, res) => {
@@ -907,37 +897,23 @@ const createAPIContent = async (req, res) => {
             return util.sendError(res, 404, 'API not found');
         }
         const userId = util.resolveActor(req);
-        let apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic');
-        let docMetadata = "";
-        if (req.body.docMetadata) {
-            docMetadata = JSON.parse(req.body.docMetadata);
-            const links = util.getAPIDocLinks(docMetadata);
-            apiContent.push(...links);
+        const apiContent = await readContentUpload(req, uploadedFile, orgId, apiId);
+        if (apiContent.length === 0) {
+            throw new ValidationError('The upload has no content to add');
         }
-        let imageMetadata = {};
-        if (req.body.imageMetadata) {
-            imageMetadata = JSON.parse(req.body.imageMetadata);
-        }
-        const resolvedImageMetadata = buildImageMetadataFromContent(apiContent, imageMetadata);
-        const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
-        apiContent.forEach(file => {
-            if (file.type === constants.DOC_TYPES.IMAGES) {
-                file.key = filenameToKey[file.fileName];
-            }
-        });
         await db.withTransaction(async (t) => {
-            //check whether api belongs to given org
-            let apiMetadata = await apiDao.get(orgId, apiId, t);
-
-            if (apiMetadata) {
-                // Replace any previously stored images with this upload's set
-                await apiFileDao.deleteAllByType(constants.DOC_TYPES.IMAGES, apiId, t);
-                await apiFileDao.storeMany(apiContent, apiId, userId, t);
-            } else {
+            const apiMetadata = await apiDao.get(orgId, apiId, t);
+            if (!apiMetadata) {
                 throw new ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
             }
+            const existing = await apiFileDao.findExisting(apiContent, apiId, t);
+            if (existing.length) {
+                throw new ConflictError(existing.map(item => ({ message: `Content already exists: ${apiContentRules.describeItem(item)}` })));
+            }
+            await apiFileDao.storeMany(apiContent, apiId, userId, t);
         });
-        res.status(201).type("application/json").send({ message: "API content updated successfully" });
+        res.status(201).type("application/json").send({ message: "API content created successfully" });
+        logUserAction('API_CONTENT_CREATED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'api_content' });
     } catch (error) {
         logger.error('API content creation failed', {
             error: error.message,
@@ -950,116 +926,9 @@ const createAPIContent = async (req, res) => {
     }
 };
 
-const updateAPITemplate = async (req, res) => {
-    logger.info('Updating API template...', {
-        orgId: req.orgId,
-        apiId: req.params.apiId,
-        fileName: req.file?.originalname
-    });
-    try {
-        const orgId = req.orgId;
-        const { apiId: apiHandle } = req.params;
-        const apiId = await resolveScopedApiId(req, orgId, apiHandle);
-        if (!apiId) {
-            return util.sendError(res, 404, 'API not found');
-        }
-        const userId = util.resolveActor(req);
-        let imageMetadata;
-        if (req.body.imageMetadata) {
-            imageMetadata = JSON.parse(req.body.imageMetadata);
-        }
-        const zipFilePath = req.file.path;
-        const extractPath = path.join("/tmp", orgId + "/" + apiId);
-        await fs.mkdir(extractPath, { recursive: true });
-        await util.unzipDirectory(zipFilePath, extractPath);
-        const apiContentFileName = req.file.originalname.split(".zip")[0];
-
-        // Build complete paths
-        const contentPath = path.join(extractPath, apiContentFileName, "content");
-        const imagesPath = path.join(extractPath, apiContentFileName, "images");
-        const documentPath = path.join(extractPath, apiContentFileName, "documents");
-
-        // Verify directories exist
-        try {
-            if (fsDir.existsSync(contentPath)) {
-                await fs.access(contentPath);
-            }
-            if (fsDir.existsSync(imagesPath)) {
-                await fs.access(imagesPath);
-            }
-            if (fsDir.existsSync(documentPath)) {
-                await fs.access(documentPath);
-            }
-        } catch (err) {
-            logger.error('Error accessing directories during API template update', {
-                error: err.message,
-                contentPath,
-                imagesPath,
-                documentPath,
-                orgId: req.orgId,
-                apiId: req.params.apiId
-            });
-            throw new Error(
-                `Required directories not found after extraction. Content path: ${contentPath}, Images path: ${imagesPath},
-                Documents path: ${documentPath}`,
-                { cause: err }
-            );
-        }
-        let apiContent = [];
-        //get api files
-        if (fsDir.existsSync(contentPath)) {
-            let apiLanding = await util.getAPIFileContent(contentPath);
-            apiContent.push(...apiLanding);
-        }
-        //get api images
-        if (fsDir.existsSync(imagesPath)) {
-            const apiImages = await util.getAPIImages(imagesPath);
-            apiContent.push(...apiImages);
-        }
-        //get api documents
-        if (fsDir.existsSync(documentPath)) {
-            const apiDocuments = await util.readDocFiles(documentPath);
-            apiContent.push(...apiDocuments);
-        }
-
-        if (req.body.docMetadata) {
-            const docMetadata = JSON.parse(req.body.docMetadata);
-            const links = util.getAPIDocLinks(docMetadata);
-            apiContent.push(...links);
-        }
-        const filenameToKey = Object.fromEntries(Object.entries(imageMetadata || {}).map(([key, fileName]) => [fileName, key]));
-        apiContent.forEach(file => {
-            if (file.type === constants.DOC_TYPES.IMAGES) {
-                file.key = filenameToKey[file.fileName];
-            }
-        });
-        await db.withTransaction(async (t) => {
-            //check whether api belongs to given org
-            const apiMetadata = await apiDao.get(orgId, apiId, t);
-            if (apiMetadata) {
-                // Update API files (including images, keyed by their named slot)
-                await apiFileDao.upsertMany(apiContent, apiId, orgId, userId, t);
-            } else {
-                throw new ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
-            }
-        });
-        await fs.rm(extractPath, { recursive: true, force: true });
-        res.status(201).send({ message: "API Files updated successfully" });
-    } catch (error) {
-        logger.error('API content update failed', {
-            error: error.message,
-            stack: error.stack,
-            orgId: req.orgId,
-            apiId: req.params.apiId,
-            fileName: req.file?.originalname
-        });
-        util.handleError(res, error);
-    }
-};
-
 const updateAPIContent = async (req, res) => {
     const uploadedFile = req.files?.content?.[0] ?? req.file;
-    logger.info('Updating API content...', {
+    logger.info('Replacing API content...', {
         orgId: req.orgId,
         apiId: req.params.apiId,
         fileName: uploadedFile?.originalname
@@ -1072,37 +941,26 @@ const updateAPIContent = async (req, res) => {
             return util.sendError(res, 404, 'API not found');
         }
         const userId = util.resolveActor(req);
-        let imageMetadata;
-        if (req.body.imageMetadata) {
-            imageMetadata = JSON.parse(req.body.imageMetadata);
-        }
-        let apiContent = await extractApiContentFromUploadedZip(uploadedFile, orgId, apiId, 'classic');
-
-        if (req.body.docMetadata) {
-            const docMetadata = JSON.parse(req.body.docMetadata);
-            const links = util.getAPIDocLinks(docMetadata);
-            apiContent.push(...links);
-        }
-        const resolvedImageMetadata = buildImageMetadataFromContent(apiContent, imageMetadata || {});
-        const filenameToKey = Object.fromEntries(Object.entries(resolvedImageMetadata).map(([key, fileName]) => [fileName, key]));
-        apiContent.forEach(file => {
-            if (file.type === constants.DOC_TYPES.IMAGES) {
-                file.key = filenameToKey[file.fileName];
-            }
-        });
+        const apiContent = await readContentUpload(req, uploadedFile, orgId, apiId);
+        let removed = 0;
         await db.withTransaction(async (t) => {
-            //check whether api belongs to given org
             const apiMetadata = await apiDao.get(orgId, apiId, t);
-            if (apiMetadata) {
-                // Update API files (including images, keyed by their named slot)
-                await apiFileDao.upsertMany(apiContent, apiId, orgId, userId, t);
-            } else {
+            if (!apiMetadata) {
                 throw new ValidationError(constants.ERROR_MESSAGE.API_NOT_IN_ORG);
             }
+            removed = await apiFileDao.deleteAllContent(apiId, t);
+            if (apiContent.length) {
+                await apiFileDao.storeMany(apiContent, apiId, userId, t);
+            }
         });
-        res.status(201).send({ message: "API Files updated successfully" });
+        if (removed === 0 && apiContent.length) {
+            res.status(201).send({ message: "API content created successfully" });
+        } else {
+            res.status(200).send({ message: "API content replaced successfully" });
+        }
+        logUserAction('API_CONTENT_UPDATED', req, { orgId, apiId, resourceUuid: apiId, resourceType: 'api_content' });
     } catch (error) {
-        logger.error('API content update failed', {
+        logger.error('API content replace failed', {
             error: error.message,
             stack: error.stack,
             orgId: req.orgId,
@@ -1134,6 +992,7 @@ const getAPIFile = async (req, res) => {
     // visitors, so ?orgId does select the organization whose icons are read — any
     // organization under this portal_id (orgContext.resolvePublicContentOrg).
     const isImageType = type === constants.DOC_TYPES.IMAGES;
+    res.set('X-Content-Type-Options', 'nosniff');
     let apiFileResponse;
     let apiFile;
     let contentType;
@@ -1174,6 +1033,10 @@ const getAPIFile = async (req, res) => {
             contentType = util.retrieveContentType(apiFileName, constants.IMAGE);
         }
         res.set(constants.MIME_TYPES.CONYEMT_TYPE, contentType);
+        // An SVG can carry script: opened directly it is downloaded, while <img> tags still show it.
+        if (contentType === constants.MIME_TYPES.SVG) {
+            res.attachment(apiFileName);
+        }
         // Send file content as text
         return res.status(200).send(apiFile);
     } catch (error) {
@@ -1218,6 +1081,12 @@ const deleteAPIFile = async (req, res) => {
     const apiFileName = req.query.fileName;
     const fileType = req.query.type;
     try {
+        if (!fileType) {
+            throw new ValidationError('Missing required query parameter: type');
+        }
+        if (!apiContentRules.isContentType(fileType)) {
+            throw new ValidationError(`Invalid content type: ${fileType}`);
+        }
         const apiId = await resolveScopedApiId(req, orgId, apiHandle);
         if (!apiId) {
             return util.sendError(res, 404, 'API not found');
@@ -1230,6 +1099,7 @@ const deleteAPIFile = async (req, res) => {
         }
         if (apiFileResponse) {
             res.status(204).send();
+            logUserAction('API_CONTENT_DELETED', req, { orgId, apiId, fileName: apiFileName, fileType, resourceUuid: apiId, resourceType: 'api_content' });
         } else {
             util.sendError(res, 404, 'API Content not found');
         }
@@ -1277,7 +1147,8 @@ const putSubscriptionPlans = async (req, res) => {
 }
 
 // The plan's own `id` in the request body is what the client wants to become the stored handle.
-// YAML-sourced plans already carry `.handle` (set from metadata.name), so this is a no-op for them.
+// A YAML plan's metadata.name arrives as that `id` (mapYamlToSubscriptionPlan), as for APIs,
+// applications and key managers.
 function normalizePlanHandle(plan) {
     if (!plan) {
         return plan;
@@ -1289,7 +1160,41 @@ function normalizePlanHandle(plan) {
     return plan;
 }
 
+// The Platform API keeps a plan by its handle and takes at most 40 characters, so a new plan's handle is held to that.
+// A plan that already has a longer handle keeps it.
+const MAX_PLAN_HANDLE_CHARS = 40;
+
+/** Refuses (400) a new plan whose handle the Platform API could not keep. */
+function checkNewPlanHandle(plan) {
+    if ([...String(plan.handle)].length > MAX_PLAN_HANDLE_CHARS) {
+        throw new CustomError(400, constants.ERROR_CODE[400], `id must be at most ${MAX_PLAN_HANDLE_CHARS} characters`);
+    }
+}
+
+/**
+ * A plan created with `pricing` gets it in the same transaction, so the plan and its pricing are
+ * saved together or not at all. Pricing is set only when a plan is created: pricing sent for a plan
+ * that already exists is refused (409 PLAN_PRICING_LOCKED), and a plan updated without pricing keeps
+ * the pricing it has. It runs before the plan's created event is published, which carries the
+ * pricing (`plan.pricing`).
+ */
+async function applyNewPlanPricing(orgId, body, plan, created, userId, t) {
+    if (body.pricing === undefined || body.pricing === null) return;
+    if (!created) {
+        throw Object.assign(new CustomError(409, planPricingService.pricingLockedMessage(plan.handle)),
+            { catalogCode: planPricingService.PRICING_LOCKED });
+    }
+    try {
+        plan.pricing = await planPricingService.setNewPlanPricing(orgId, plan, body.pricing, t);
+    } catch (err) {
+        if (err instanceof PricingValidationError) throw new CustomError(400, constants.ERROR_CODE[400], err.message);
+        throw err;
+    }
+}
+
 const createSubscriptionPlan = async (req, res) => {
+    // A change the Platform API made is not sent back to it (sharedKeyAuth.madeByPlatformApi).
+    const echo = !sharedKeyAuth.madeByPlatformApi(req);
     const orgId = req.orgId;
     const subscriptionPlan = normalizePlanHandle(req.body);
     const userId = util.resolveActor(req);
@@ -1302,18 +1207,29 @@ const createSubscriptionPlan = async (req, res) => {
     }
 
     try {
+        checkNewPlanHandle(subscriptionPlan);
+        let createdPlanUuid;
+        let created;
         await db.withTransaction(async (t) => {
             const subscriptionPlanResponse = await subscriptionPlanDao.create(orgId, subscriptionPlan, userId, t);
             if (subscriptionPlanResponse) {
+                createdPlanUuid = subscriptionPlanResponse.uuid;
+                await applyNewPlanPricing(orgId, subscriptionPlan, subscriptionPlanResponse, true, userId, t);
+                if (echo) {
+                    await subscriptionPlanEvents.publishPlanUpsert(
+                        subscriptionPlanEvents.EVENT.CREATED, orgId, subscriptionPlanResponse, t);
+                }
                 logger.info('Created subscription plan', {
                     orgId
                 });
                 const audit = await userIdpReferenceDao.buildSingleAuditFields(subscriptionPlanResponse);
-                res.status(201).send(new subscriptionPlanDTO(subscriptionPlanResponse, audit));
+                created = new subscriptionPlanDTO(subscriptionPlanResponse, audit);
             } else {
                 throw new CustomError(500, constants.ERROR_CODE[500], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_CREATE_ERROR);
             }
         });
+        res.status(201).send(created);
+        logUserAction('SUBSCRIPTION_PLAN_CREATED', req, { orgId, resourceUuid: createdPlanUuid, resourceType: 'subscription_plan' });
     } catch (error) {
         logger.error('subscription plan create error failed', {
             error: error.message,
@@ -1325,6 +1241,8 @@ const createSubscriptionPlan = async (req, res) => {
 };
 
 const createSubscriptionPlans = async (req, res) => {
+    // A change the Platform API made is not sent back to it (sharedKeyAuth.madeByPlatformApi).
+    const echo = !sharedKeyAuth.madeByPlatformApi(req);
     try {
         const orgId = req.orgId;
         const subscriptionPlans = req.body;
@@ -1339,6 +1257,7 @@ const createSubscriptionPlans = async (req, res) => {
         await db.withTransaction(async (t) => {
             for (const plan of subscriptionPlans) {
                 normalizePlanHandle(plan);
+                checkNewPlanHandle(plan);
                 const created = await subscriptionPlanDao.create(orgId, plan, userId, t);
                 if (!created) {
                     throw new CustomError(
@@ -1347,6 +1266,8 @@ const createSubscriptionPlans = async (req, res) => {
                         `Failed to create plan: ${plan.handle || "unknown"}`
                     );
                 }
+                await applyNewPlanPricing(orgId, plan, created, true, userId, t);
+                if (echo) await subscriptionPlanEvents.publishPlanUpsert(subscriptionPlanEvents.EVENT.CREATED, orgId, created, t);
                 createdRecords.push(created);
             }
         });
@@ -1356,6 +1277,8 @@ const createSubscriptionPlans = async (req, res) => {
             orgId
         });
         res.status(201).send(createdPlans);
+        createdRecords.forEach((created) => logUserAction('SUBSCRIPTION_PLAN_CREATED', req,
+            { orgId, resourceUuid: created.uuid, resourceType: 'subscription_plan' }));
     } catch (error) {
         logger.error('subscription plan create error failed', {
             error: error.message,
@@ -1367,6 +1290,8 @@ const createSubscriptionPlans = async (req, res) => {
 };
 
 const updateSubscriptionPlan = async (req, res) => {
+    // A change the Platform API made is not sent back to it (sharedKeyAuth.madeByPlatformApi).
+    const echo = !sharedKeyAuth.madeByPlatformApi(req);
     const orgId = req.orgId;
     logger.info('Updating subscription plan...', {
         orgId
@@ -1379,15 +1304,27 @@ const updateSubscriptionPlan = async (req, res) => {
     }
 
     try {
+        let updatedPlanUuid;
+        let saved;
         await db.withTransaction(async (t) => {
             const { subscriptionPlanResponse, statusCode } =  await subscriptionPlanDao.put(orgId, subscriptionPlan, userId, t);
+            if (statusCode === 201) checkNewPlanHandle(subscriptionPlan);
             if (subscriptionPlanResponse) {
+                updatedPlanUuid = subscriptionPlanResponse.uuid;
+                await applyNewPlanPricing(orgId, subscriptionPlan, subscriptionPlanResponse, statusCode === 201, userId, t);
+                if (echo) {
+                    await subscriptionPlanEvents.publishPlanUpsert(
+                        statusCode === 201 ? subscriptionPlanEvents.EVENT.CREATED : subscriptionPlanEvents.EVENT.UPDATED,
+                        orgId, subscriptionPlanResponse, t);
+                }
                 const audit = await userIdpReferenceDao.buildSingleAuditFields(subscriptionPlanResponse);
-                res.status(statusCode).send(new subscriptionPlanDTO(subscriptionPlanResponse, audit));
+                saved = { statusCode, plan: new subscriptionPlanDTO(subscriptionPlanResponse, audit) };
             } else {
                 throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
             }
         });
+        res.status(saved.statusCode).send(saved.plan);
+        logUserAction('SUBSCRIPTION_PLAN_UPDATED', req, { orgId, resourceUuid: updatedPlanUuid, resourceType: 'subscription_plan' });
     } catch (error) {
         logger.error('subscription plan not found failed', {
             error: error.message,
@@ -1399,6 +1336,8 @@ const updateSubscriptionPlan = async (req, res) => {
 };
 
 const updateSubscriptionPlans = async (req, res) => {
+    // A change the Platform API made is not sent back to it (sharedKeyAuth.madeByPlatformApi).
+    const echo = !sharedKeyAuth.madeByPlatformApi(req);
     try {
         const orgId = req.orgId;
         const subscriptionPlans = req.body;
@@ -1415,12 +1354,19 @@ const updateSubscriptionPlans = async (req, res) => {
             for (const plan of subscriptionPlans) {
                 normalizePlanHandle(plan);
                 const result = await subscriptionPlanDao.put(orgId, plan, userId, t);
+                if (result?.statusCode === 201) checkNewPlanHandle(plan);
                 if (!result?.subscriptionPlanResponse) {
                     throw new CustomError(
                         500,
                         constants.ERROR_CODE[500],
                         `Failed to upsert plan: ${plan.handle || "unknown"}`
                     );
+                }
+                await applyNewPlanPricing(orgId, plan, result.subscriptionPlanResponse, result.statusCode === 201, userId, t);
+                if (echo) {
+                    await subscriptionPlanEvents.publishPlanUpsert(
+                        result.statusCode === 201 ? subscriptionPlanEvents.EVENT.CREATED : subscriptionPlanEvents.EVENT.UPDATED,
+                        orgId, result.subscriptionPlanResponse, t);
                 }
                 updatedRecords.push(result.subscriptionPlanResponse);
                 if (result.statusCode === 201) anyCreated = true;
@@ -1430,6 +1376,8 @@ const updateSubscriptionPlans = async (req, res) => {
         const updatedPlans = updatedRecords.map((record, i) => new subscriptionPlanDTO(record, audits[i]));
 
         res.status(anyCreated ? 201 : 200).send(updatedPlans);
+        updatedRecords.forEach((record) => logUserAction('SUBSCRIPTION_PLAN_UPDATED', req,
+            { orgId, resourceUuid: record.uuid, resourceType: 'subscription_plan' }));
     } catch (error) {
         logger.error('subscription plan create error failed', {
             error: error.message,
@@ -1440,6 +1388,18 @@ const updateSubscriptionPlans = async (req, res) => {
     }
 };
 
+const PLAN_IN_USE = 'PLAN_IN_USE';
+
+/** The refusal for deleting a plan that an API offers or subscriptions use. */
+function planInUseMessage(name) {
+    return `The plan ${name} is in use and can't be deleted.`;
+}
+
+/**
+ * Deletes a plan that no API offers and no subscription uses. A plan an API offers, or with
+ * subscriptions, is kept and the request is refused (409 PLAN_IN_USE); the counts and the delete run
+ * in one transaction, so a subscription or an offer added meanwhile cannot be left without its plan.
+ */
 const deleteSubscriptionPlan = async (req, res) => {
     const orgId = req.orgId;
     const { planId } = req.params;
@@ -1448,14 +1408,38 @@ const deleteSubscriptionPlan = async (req, res) => {
         planId
     });
     try {
+        // A deleted plan can no longer be bought: its open checkouts are ended first. Not when an API
+        // offers it or it has subscriptions, which the delete refuses below.
+        const existing = await subscriptionPlanDao.getByName(orgId, planId);
+        if (existing && await subscriptionPlanDao.countApis(orgId, existing.uuid) === 0
+            && await subscriptionPlanDao.countSubscriptions(orgId, existing.uuid) === 0) {
+            await endOpenCheckouts(orgId, { planUuid: existing.uuid });
+        }
         await db.withTransaction(async (t) => {
-            const deleteCount = await subscriptionPlanDao.delete(orgId, planId, t);
-            if (deleteCount === 0) {
-                throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
-            } else {
-                res.status(204).send();
+            const plan = await subscriptionPlanDao.getByName(orgId, planId, t);
+            // A plan that an API offers is not deleted (409): subscribers see it on that API's page.
+            // This also covers a Platform API publish that timed out after its listing was saved: the
+            // Platform API then deletes the plans it created here, and the ones the API offers are kept.
+            const offeredBy = plan ? await subscriptionPlanDao.countApis(orgId, plan.uuid, t) : 0;
+            if (offeredBy > 0) {
+                throw Object.assign(new CustomError(409, planInUseMessage(plan.display_name || plan.handle)),
+                    { catalogCode: PLAN_IN_USE });
             }
+            const { deleted, subscriptionCount } = plan
+                ? await subscriptionPlanDao.delete(orgId, planId, t)
+                : { deleted: 0, subscriptionCount: 0 };
+            if (subscriptionCount > 0) {
+                throw Object.assign(
+                    new CustomError(409, planInUseMessage(plan.display_name || plan.handle)),
+                    { catalogCode: PLAN_IN_USE });
+            }
+            if (deleted === 0) {
+                throw new CustomError(404, constants.ERROR_CODE[404], constants.ERROR_MESSAGE.SUBSCRIPTION_PLAN_NOT_FOUND);
+            }
+            if (!sharedKeyAuth.madeByPlatformApi(req)) await subscriptionPlanEvents.publishPlanDeleted(orgId, plan, t);
         });
+        res.status(204).send();
+        logUserAction('SUBSCRIPTION_PLAN_DELETED', req, { orgId, planId, resourceUuid: planId, resourceType: 'subscription_plan' });
     } catch (error) {
         logger.error('subscription plan delete error failed', {
             error: error.message,
@@ -1530,6 +1514,7 @@ const createLabel = async (req, res) => {
     try {
         const record = await labelDao.create(orgId, label, userId);
         res.status(201).json(new LabelDTO(record));
+        logUserAction('LABEL_CREATED', req, { orgId, resourceUuid: record?.uuid, resourceType: 'label' });
     } catch (error) {
         logger.error('label create failed', { error: error.message, stack: error.stack, orgId });
         util.handleError(res, error);
@@ -1566,6 +1551,7 @@ const updateLabel = async (req, res) => {
         }
         const record = await labelDao.updateById(orgId, labelId, label, userId);
         res.status(200).json(new LabelDTO(record));
+        logUserAction('LABEL_UPDATED', req, { orgId, resourceUuid: labelId, resourceType: 'label' });
     } catch (error) {
         logger.error('label update failed', { error: error.message, stack: error.stack, orgId });
         util.handleError(res, error);
@@ -1583,6 +1569,7 @@ const deleteLabel = async (req, res) => {
         }
         await labelDao.deleteById(orgId, labelId);
         res.status(204).send();
+        logUserAction('LABEL_DELETED', req, { orgId, resourceUuid: labelId, resourceType: 'label' });
     } catch (error) {
         logger.error('label delete failed', { error: error.message, stack: error.stack, orgId });
         util.handleError(res, error);
@@ -1628,9 +1615,11 @@ const addView = async (req, res) => {
         req.body.handle = req.body.id;
     }
     try {
+        let createdViewUuid;
         await db.withTransaction(async (t) => {
             const viewResponse = await viewDao.create(orgId, req.body, userId, t);
             await viewDao.addLabels(orgId, viewResponse.uuid, labels, userId, t);
+            createdViewUuid = viewResponse.uuid;
         });
         // Responded to only after the transaction has COMMITTED. Sending from inside
         // the callback is wrong twice over: a client that reads the view back can beat
@@ -1641,6 +1630,7 @@ const addView = async (req, res) => {
         // swallowed the error, so withTransaction saw the callback resolve and
         // committed the partial write instead of rolling it back.
         res.status(201).send({ message: "View added successfully" });
+        logUserAction('VIEW_CREATED', req, { orgId, resourceUuid: createdViewUuid, resourceType: 'view' });
     } catch (error) {
         logger.error('view create error failed', {
             error: error.message,
@@ -1804,116 +1794,74 @@ const getViewsFromDB = async (orgId) => {
     }
 }
 
-const collectWebContentFiles = async (webPath) => {
-    const files = await fs.readdir(webPath, { withFileTypes: true });
-    const contentFiles = [];
-    for (const file of files) {
-        if (!file.isFile() || file.name === '.DS_Store') {
-            continue;
-        }
-        const filePath = path.join(webPath, file.name);
-        const fileExtension = path.extname(file.name).toLowerCase();
-        if (util.isTextFile(fileExtension)) {
-            const content = await fs.readFile(filePath, constants.CHARSET_UTF8);
-            contentFiles.push({ fileName: file.name, content: content, type: constants.DOC_TYPES.API_LANDING });
-        } else if (util.isImageFile(fileExtension)) {
-            const content = await fs.readFile(filePath);
-            contentFiles.push({ fileName: file.name, content: content, type: constants.DOC_TYPES.IMAGES });
-        }
-    }
-    return contentFiles;
-};
-
-const buildImageMetadataFromContent = (contentFiles = [], providedImageMetadata = {}) => {
-    const resolvedImageMetadata = { ...(providedImageMetadata || {}) };
-
-    for (const file of contentFiles) {
-        if (file?.type !== constants.DOC_TYPES.IMAGES || !file.fileName) {
-            continue;
-        }
-        const imageTag = path.parse(file.fileName).name;
-        if (imageTag && !resolvedImageMetadata[imageTag]) {
-            resolvedImageMetadata[imageTag] = file.fileName;
-        }
-    }
-
-    return resolvedImageMetadata;
-};
-
-async function resolveZipRootPath(extractPath) {
-    const entries = await fs.readdir(extractPath, { withFileTypes: true });
-    const relevantEntries = entries.filter(entry => entry.name !== '.DS_Store' && entry.name !== '__MACOSX');
-    if (relevantEntries.length === 1 && relevantEntries[0].isDirectory()) {
-        return path.join(extractPath, relevantEntries[0].name);
-    }
-    return extractPath;
-}
-
-async function extractApiContentFromUploadedZip(zipFile, orgId, apiId, mode = 'classic') {
-    if (!zipFile) {
-        throw new ValidationError("Missing required zip file");
-    }
-
-    const zipFileName = path.basename(String(zipFile.originalname || ''));
-    if (!zipFileName?.toLowerCase().endsWith('.zip')) {
-        throw new ValidationError('Invalid zip file. Expected a .zip file');
-    }
-
+/**
+ * Reads a content ZIP (kind 'content') or a full API ZIP (kind 'artifact') by the content ZIP
+ * entry rules: extracts it once, rejects every entry the rules don't accept in one 400, and reads
+ * only the accepted files. Returns the content items and, for an artifact, its metadata file and
+ * definition as { fileName, buffer }.
+ */
+async function readContentZip(zipFile, orgId, apiId, kind) {
     const extractionKey = `${orgId || 'org'}-${apiId || 'api'}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const tempBasePath = path.join('/tmp', 'api-content-upload', extractionKey);
     const extractPath = path.join(tempBasePath, 'extracted');
     const tempZipPath = path.join(tempBasePath, `${extractionKey}.zip`);
-
     try {
         await fs.mkdir(extractPath, { recursive: true });
-
-        if (zipFile.path) {
-            await util.unzipDirectory(zipFile.path, extractPath);
-        } else if (zipFile.buffer) {
-            await fs.writeFile(tempZipPath, zipFile.buffer);
-            await util.unzipDirectory(tempZipPath, extractPath);
-        } else {
-            throw new ValidationError('Invalid zip input. Missing file path or buffer');
-        }
-
-        const rootPath = await resolveZipRootPath(extractPath);
-
-        const webPath = path.join(rootPath, constants.ARTIFACT_DIR.WEB);
-        const docsPath = path.join(rootPath, constants.ARTIFACT_DIR.DOCS);
-        const hasWebDir = fsDir.existsSync(webPath);
-        const hasDocsDir = fsDir.existsSync(docsPath);
-
-        if (!hasWebDir && !hasDocsDir) {
-            if (mode === 'artifact') {
-                return [];
+        let zipPath = zipFile.path;
+        if (!zipPath) {
+            if (!zipFile.buffer) {
+                throw new ValidationError('Invalid zip input. Missing file path or buffer');
             }
-            throw new ValidationError('Missing required directories in uploaded zip. At least one of web or docs is required at root level');
+            await fs.writeFile(tempZipPath, zipFile.buffer);
+            zipPath = tempZipPath;
         }
+        const extracted = await util.unzipDirectory(zipPath, extractPath, { allowEmpty: true });
+        const toZipPath = (file) => path.relative(extractPath, file).split(path.sep).join('/');
+        const folders = (await fs.readdir(extractPath, { recursive: true, withFileTypes: true }))
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => toZipPath(path.join(entry.parentPath, entry.name)));
+        const { items, metadataPath, definitionPath, rejected } =
+            apiContentRules.classifyContentZip(extracted.map(toZipPath), kind, folders);
+        if (rejected.length) {
+            throw new ValidationError('Content ZIP has entries the portal does not accept',
+                rejected.map((entry) => ({ message: `${entry.path}: ${entry.reason}` })));
+        }
+        const read = (zipEntryPath, encoding) => fs.readFile(path.join(extractPath, ...zipEntryPath.split('/')), encoding);
+        const readNamed = async (zipEntryPath) => zipEntryPath
+            ? { fileName: path.posix.basename(zipEntryPath), buffer: await read(zipEntryPath) }
+            : null;
+        const content = [];
+        for (const item of items) {
+            const encoding = item.type === constants.DOC_TYPES.API_LANDING ? constants.CHARSET_UTF8 : undefined;
+            content.push({ fileName: item.fileName, content: await read(item.path, encoding), type: item.type });
+        }
+        return { content, metadata: await readNamed(metadataPath), definition: await readNamed(definitionPath) };
+    } finally {
+        await fs.rm(tempBasePath, { recursive: true, force: true });
+        // Multer may have saved the upload to disk (zipFile.path).
+        if (zipFile.path) {
+            await fs.rm(zipFile.path, { force: true });
+        }
+    }
+}
 
-        const apiContent = [];
-        if (hasWebDir) {
-            await fs.access(webPath);
-            const apiWebFiles = await collectWebContentFiles(webPath);
-            apiContent.push(...apiWebFiles);
-        }
-        if (hasDocsDir) {
-            await fs.access(docsPath);
-            const apiDocuments = await util.readDocFiles(docsPath, '', true);
-            apiContent.push(...apiDocuments);
-        }
-
-        return apiContent;
+async function extractApiContentFromUploadedZip(zipFile, orgId, apiId) {
+    if (!zipFile) {
+        throw new ValidationError('Missing required file: content');
+    }
+    const zipFileName = path.basename(String(zipFile.originalname || ''));
+    if (!zipFileName.toLowerCase().endsWith('.zip')) {
+        throw new ValidationError('content must be a .zip file');
+    }
+    try {
+        const { content } = await readContentZip(zipFile, orgId, apiId, apiContentRules.ZIP_KIND.CONTENT);
+        return content;
     } catch (error) {
         if (error instanceof ValidationError) {
             throw error;
         }
-        throw new ValidationError(`Invalid zip file: ${error.message}`);
-    } finally {
-        await fs.rm(tempBasePath, { recursive: true, force: true });
-        // Clean up the original upload file when multer saved it to disk (zipFile.path)
-        if (zipFile.path) {
-            await fs.rm(zipFile.path, { force: true });
-        }
+        logger.warn('Content ZIP could not be read', { error: error.message, orgId, apiId });
+        throw new ValidationError('Invalid zip file');
     }
 }
 
@@ -1926,70 +1874,36 @@ async function extractFullApiBundleFromUploadedZip(zipFile, orgId, apiId) {
         throw new ValidationError("Invalid artifact file. Expected a .zip file");
     }
 
-    const extractionKey = `${orgId || 'org'}-${apiId || 'api'}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    const tempBasePath = path.join('/tmp', 'api-content-upload', extractionKey);
-    const tempZipPath = path.join(tempBasePath, 'apiContent.zip');
-    const extractPath = path.join(tempBasePath, 'extracted');
-
     try {
-        await fs.mkdir(extractPath, { recursive: true });
-        await fs.writeFile(tempZipPath, zipFile.buffer);
-        await util.unzipDirectory(tempZipPath, extractPath);
-
-        const rootPath = await resolveZipRootPath(extractPath);
-        const metadataFilePath = await util.findFileByNameRecursive(rootPath, ['metadata.yaml', 'metadata.yml', 'api.yaml', 'mcp.yaml']);
-        if (!metadataFilePath) {
+        const { content, metadata, definition } =
+            await readContentZip(zipFile, orgId, apiId, apiContentRules.ZIP_KIND.ARTIFACT);
+        if (!metadata) {
             throw new ValidationError("Invalid full API zip: missing metadata.yaml, metadata.yml, api.yaml or mcp.yaml");
         }
-
-        const apiMetadataBuffer = await fs.readFile(metadataFilePath);
-        const apiMetadata = parseApiMetadataFromYamlFile(path.basename(metadataFilePath), apiMetadataBuffer);
+        const apiMetadata = parseApiMetadataFromYamlFile(metadata.fileName, metadata.buffer);
         const isMcp = apiMetadata.type === constants.API_TYPE.MCP;
-
-        // The contract lives in a `definition` file. An MCP server's contract IS its tools
-        // schema (returned as schemaDefinitionFile so the MCP branch stores it under
-        // SCHEMA_DEFINITION); every other type carries an OpenAPI/WSDL/SDL definition
-        // (returned as apiDefinitionFile). Both use the same file name — the resolved
-        // API type decides how it is interpreted.
-        const definitionCandidates = [
-            constants.FILE_NAME.API_DEFINITION_YAML_FILE_NAME,
-            'definition.yml',
-            constants.FILE_NAME.API_DEFINITION_FILE_NAME,
-        ];
-        let schemaDefinitionFile;
-        let schemaDefinitionFileName;
-        let apiDefinitionFile;
-        let apiDefinitionFileName;
-        if (isMcp) {
-            const schemaDefinitionFilePath = await util.findFileByNameRecursive(rootPath, definitionCandidates);
-            if (!schemaDefinitionFilePath) {
-                throw new ValidationError("Invalid MCP server zip: missing definition file (definition.yaml/yml/json)");
-            }
-            schemaDefinitionFile = await fs.readFile(schemaDefinitionFilePath);
-            schemaDefinitionFileName = path.basename(schemaDefinitionFilePath);
-        } else {
-            const definitionFilePath = await util.findFileByNameRecursive(rootPath, definitionCandidates);
-            if (!definitionFilePath) {
-                throw new ValidationError("Invalid full API zip: missing definition file (definition.yaml/yml/json)");
-            }
-            apiDefinitionFile = await fs.readFile(definitionFilePath);
-            apiDefinitionFileName = path.basename(definitionFilePath);
+        if (!definition) {
+            throw new ValidationError(isMcp
+                ? "Invalid MCP server zip: missing definition file (definition.yaml/yml/json)"
+                : "Invalid full API zip: missing definition file (definition.yaml/yml/json)");
         }
 
+        // An MCP server's contract IS its tools schema (returned as schemaDefinitionFile so the MCP
+        // branch stores it under SCHEMA_DEFINITION); every other type carries an OpenAPI/WSDL/SDL
+        // definition (returned as apiDefinitionFile). The resolved API type decides which.
         return {
             apiMetadata,
-            apiDefinitionFile,
-            apiDefinitionFileName,
-            schemaDefinitionFile,
-            schemaDefinitionFileName,
+            content,
+            ...(isMcp
+                ? { schemaDefinitionFile: definition.buffer, schemaDefinitionFileName: definition.fileName }
+                : { apiDefinitionFile: definition.buffer, apiDefinitionFileName: definition.fileName }),
         };
     } catch (error) {
         if (error instanceof ValidationError) {
             throw error;
         }
-        throw new ValidationError(`Invalid artifact zip file: ${error.message}`);
-    } finally {
-        await fs.rm(tempBasePath, { recursive: true, force: true });
+        logger.warn('Artifact ZIP could not be read', { error: error.message, orgId, apiId });
+        throw new ValidationError('Invalid artifact zip file');
     }
 }
 
@@ -2000,8 +1914,9 @@ function mapArtifactYamlToApiMetadata(parsedYaml) {
     const metadata = parsedYaml.metadata || {};
     const spec = parsedYaml.spec || {};
     const apiType = util.resolveApiType(spec.type);
-    const apiStatus = spec.status || constants.API_STATUS.PUBLISHED;
-    if (!Object.values(constants.API_STATUS).includes(apiStatus)) {
+    // A missing status is left out: a create publishes the API, an update keeps its status.
+    const apiStatus = spec.status;
+    if (apiStatus !== undefined && !Object.values(constants.API_STATUS).includes(apiStatus)) {
         throw new ValidationError(`Invalid API status '${apiStatus}'. Must be one of: ${Object.values(constants.API_STATUS).join(', ')}.`);
     }
     const agentVisibility = (spec.agentVisibility || constants.AGENT_VISIBILITY.VISIBLE).toUpperCase();
@@ -2066,6 +1981,101 @@ function parseApiMetadataFromYamlFile(fileName, fileBuffer) {
     return mapArtifactYamlToApiMetadata(parsedYaml);
 }
 
+/** The API a request saves, as the billing catalog needs it. */
+function billingApi(apiUuid, apiMetadata) {
+    return { uuid: apiUuid, name: apiMetadata.name, version: apiMetadata.version };
+}
+
+/**
+ * Creates with the billing provider the paid plans a request enables for the API (`plans` as the
+ * request lists them, { id }), before the request saves anything (see billingCatalogService.build).
+ * A plan that is not found is left to the request, which fails on it. Throws BillingCatalogError
+ * when a plan cannot be sold on the API or the provider fails; resolves to { apiPlans, undo }.
+ */
+async function buildPaidPlans(orgId, api, plans) {
+    const pairs = [];
+    for (const plan of Array.isArray(plans) ? plans : []) {
+        const found = plan && plan.id ? await subscriptionPlanDao.getByName(orgId, plan.id) : null;
+        if (found) pairs.push({ api, planUuid: found.uuid });
+    }
+    const conn = pairs.length > 0 ? await billingConfigurationDao.getWithSecrets(orgId) : null;
+    return billingCatalogService.build(orgId, conn, pairs);
+}
+
+/**
+ * Takes API plans (billingApiPlanDao rows) off sale with the billing provider, once the change that
+ * removed them is saved.
+ */
+async function takeOffSale(orgId, apiPlans) {
+    if (apiPlans.length === 0) return;
+    let connector;
+    try {
+        const conn = await billingConfigurationDao.getWithSecrets(orgId);
+        if (!conn) return;
+        connector = billingProvider.forConfiguration(conn);
+    } catch (error) {
+        logger.error('Paid plans could not be taken off sale', { orgId, error: error.message });
+        return;
+    }
+    for (const apiPlan of apiPlans) {
+        try {
+            await billingCatalogService.retire(orgId, connector, [apiPlan]);
+        } catch (_error) {
+            // Logged by retire.
+        }
+    }
+}
+
+/**
+ * Ends the open checkouts a change would leave payable, before the change is saved
+ * (checkoutService.endOpenCheckoutsFor; `which` is { apiUuid }, { apiUuid, planUuids } or { planUuid }).
+ * A checkout Stripe would not end, or Stripe failing, fails the change with 409 and nothing is saved.
+ */
+async function endOpenCheckouts(orgId, which) {
+    try {
+        await checkoutService.endOpenCheckoutsFor(orgId, which);
+    } catch (error) {
+        if (!(error instanceof checkoutService.CheckoutError) && !(error instanceof BillingProviderError)) throw error;
+        logger.warn('Open checkouts could not be ended before the change', { orgId, ...which, error: error.message });
+        const message = error instanceof checkoutService.CheckoutError ? error.message
+            : 'Stripe could not be reached to end a subscriber\'s open checkout, so nothing was changed. '
+                + 'Try again in a few minutes.';
+        throw new CustomError(409, message);
+    }
+}
+
+/**
+ * Refuses (409 ERR_PLAN_SUB_EXIST) removing plans from an API while they have subscriptions to it: a plan stays on the
+ * API until its subscriptions have ended. The Platform API turns the code into its own publish message.
+ */
+async function refuseSubscribedPlans(orgId, apiId, plans, t) {
+    if (plans.length === 0) return;
+    const counts = await subscriptionPlanDao.countApiSubscriptions(orgId, apiId, plans.map((plan) => plan.uuid), t);
+    const subscribed = plans.filter((plan) => counts.has(plan.uuid)).map((plan) => plan.display_name || plan.handle);
+    if (subscribed.length > 0) {
+        throw new CustomError(409, constants.ERROR_MESSAGE.ERR_PLAN_SUB_EXIST, planSubscribedMessage(subscribed));
+    }
+}
+
+/** The refusal for removing plans (by name) from an API while they have subscriptions to it. */
+function planSubscribedMessage(names) {
+    if (names.length === 1) {
+        return `The plan ${names[0]} has subscriptions to this API, so it can't be removed from the API until they have ended.`;
+    }
+    return `The plans ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} have subscriptions to this API, `
+        + 'so they can\'t be removed from the API until those subscriptions have ended.';
+}
+
+/**
+ * The error to answer with: a paid plan that cannot be sold on the API becomes ERR_BILLING_CATALOG
+ * (409), which the Platform API turns into its own message. The answer says which plan failed and why.
+ */
+function billingCatalogFailure(error) {
+    if (!(error instanceof billingCatalogService.BillingCatalogError)) return error;
+    logger.warn('A paid plan cannot be sold on the API', { reason: error.message });
+    return new CustomError(409, constants.ERROR_MESSAGE.ERR_BILLING_CATALOG, error.message);
+}
+
 function parseApiMetadataFromYamlRequest(req) {
     const metadataFile = req.files?.metadata?.[0];
     if (!metadataFile?.buffer) {
@@ -2086,14 +2096,19 @@ function legacyLimitsFromSpec(spec) {
     return [];
 }
 
+/**
+ * A plan in a YAML file as the JSON body the plan handlers take. `spec.pricing` is the JSON `pricing`
+ * shape, so a paid plan from YAML is checked, saved and sent on exactly as one from JSON.
+ */
 function mapYamlToSubscriptionPlan(item) {
     const { metadata = {}, spec = {} } = item;
     return {
-        handle: metadata.name,
+        id: metadata.name,
         displayName: spec.displayName,
         description: spec.description,
         refId: spec.refId,
         limits: Array.isArray(spec.limits) ? spec.limits : legacyLimitsFromSpec(spec),
+        pricing: spec.pricing,
     };
 }
 
@@ -2167,8 +2182,8 @@ function prepareApiDefinitionForStorage(fileName, fileBuffer) {
 function validateSchemaDefinitionFileName(fileName) {
     const sanitizedFileName = path.basename(String(fileName || ''));
     const extension = path.extname(sanitizedFileName).toLowerCase();
-    if (extension !== '.json' && extension !== '.yaml') {
-        throw new ValidationError("Invalid schema definition file type. Expected '.json' or '.yaml'");
+    if (extension !== '.json' && extension !== '.yaml' && extension !== '.yml') {
+        throw new ValidationError("Invalid schema definition file type. Expected '.json', '.yaml' or '.yml'");
     }
     return sanitizedFileName;
 }
@@ -2208,13 +2223,12 @@ module.exports = {
     getAllAPIMetadata,
     updateAPIMetadata,
     deleteAPIMetadata,
-    createAPITemplate,
-    updateAPITemplate,
     createAPIContent,
     updateAPIContent,
     getAPIFile,
     getAPIDocTypes,
     deleteAPIFile,
+    extractApiContentFromUploadedZip,
     getMetadataListFromDB,
     getMetadataFromDB,
     addSubscriptionPlans,

@@ -40,10 +40,93 @@ export type ApiFetch = <T = unknown>(
   body?: unknown
 ) => Promise<T | undefined>;
 
+/**
+ * One gateway release the Quick Start step can offer a download for, keyed by
+ * `type` since the AI gateway and the regular/event gateway ship as separate
+ * artifacts. Mirrors AI Workspace's own `GatewayVersionEntry`
+ * (`src/config.env.ts`) so the two hosts can feed this from whatever each
+ * already has — AI Workspace from its existing `PLATFORM_GATEWAY_VERSIONS`,
+ * API Control Plane from its own runtime config — without this package caring
+ * which.
+ */
+export type GatewayVersionEntry = {
+  type: 'ai' | 'regular' | 'event';
+  version: string;
+  /** Release tag, e.g. `v1.2.0`. Defaults to `v${version}` when omitted. */
+  latestVersion?: string;
+  /** Zip/folder version when it differs from `version` (rare). */
+  distVersion?: string;
+  channel: 'STS' | 'LTS';
+};
+
+/**
+ * The gateway quotas this feature may ask about. Each hosting kind is capped
+ * separately, so a control committing to one kind asks about that kind;
+ * `gateways` answers the broader "may any gateway be created" for a control
+ * that only opens the choice, and is false only once no kind has room.
+ */
+export type GatewayLimitComponent = 'gateways' | 'managedGateways' | 'selfHostedGateways';
+
+/**
+ * The signed-in user's permissions, as the host answers them. `canAny` takes an
+ * operation's accepted-scope list — the cloud spec's any-of list, `:manage`
+ * scopes included — and says whether the user may be offered it. Mirrors the
+ * host's `PermissionsPort`. Not a security boundary: platform-api decides.
+ */
+export type PermissionsPort = {
+  canAny: (scopes: readonly string[]) => boolean;
+};
+
 export type AIWorkspaceHostPort = {
   orgHandle: string;
   projectHandle?: string;
   navigate: (path: string) => void;
   notify: (message: string, severity?: NotifySeverity) => void;
   apiFetch: ApiFetch;
+  /** Available release versions per gateway type, for the self-hosted Quick Start panel. */
+  gatewayVersions: GatewayVersionEntry[];
+  /**
+   * `host:port` a self-hosted gateway's controller dials to reach the control plane, shown in
+   * the setup commands. Falls back to this page's own host when the host does not supply it.
+   */
+  controlPlaneHost?: string;
+  /**
+   * Quota, when the mounting console tracks any. `refresh` after a create or
+   * delete; `canCreate`/`limitMessage` gate this feature's own create button.
+   * Optional: a host without entitlements omits it and nothing is capped.
+   */
+  /**
+   * Tells the host that data it also caches has changed. This feature writes
+   * through its own client, which the host's cache cannot see, so without it
+   * the host's counts stay stale. Optional: a host that caches nothing omits it.
+   */
+  resources?: {
+    invalidate: (resource: 'gateways') => void;
+  };
+
+  resourceLimits?: {
+    refresh: () => void;
+    canCreate?: (component: GatewayLimitComponent) => boolean;
+    limitMessage?: (component: GatewayLimitComponent) => string;
+    /**
+     * The organization may not write at all — a different question from
+     * whether it has room for one more gateway, and the one that governs
+     * editing an existing one. `canCreate` already answers `false` while this
+     * holds, so the create button needs nothing extra; an update has no count
+     * to consult and so must read this directly.
+     *
+     * Optional, and `false` when absent: a host with no entitlement supplier
+     * omits it and every control stays enabled exactly as before.
+     */
+    readOnly?: boolean;
+    /** Why the organization is read-only; the host supplies the wording. */
+    readOnlyMessage?: string;
+  };
+  /**
+   * Optional: a host whose Port carries no permission check omits it and
+   * nothing is gated — every control stays enabled exactly as before, and
+   * platform-api still refuses what the user may not do. See `permissionsOf`
+   * in `permissions.ts`.
+   */
+  permissions?: PermissionsPort;
 };

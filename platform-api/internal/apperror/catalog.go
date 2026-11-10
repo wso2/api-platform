@@ -79,6 +79,25 @@ var (
 	RESTAPIDeploymentValidationFailed = def(CodeRESTAPIDeploymentValidationFailed, http.StatusBadRequest, "%s")
 	RESTAPIAPIKeyNotFound             = def(CodeRESTAPIAPIKeyNotFound, http.StatusNotFound, "The specified API key could not be found.")
 	RESTAPIAPIKeyForbidden            = def(CodeRESTAPIAPIKeyForbidden, http.StatusForbidden, "You do not have permission to access this API key.")
+
+	// Invoking a REST API through a gateway. The messages never name the
+	// resolved address or which check refused a request; that goes to the log.
+	RESTAPIInvokeGatewayNotDeployed = def(CodeRESTAPIInvokeGatewayNotDeployed, http.StatusNotFound,
+		"This REST API is not deployed to the selected gateway.")
+	RESTAPIInvokeGatewayNoEndpoint = def(CodeRESTAPIInvokeGatewayNoEndpoint, http.StatusUnprocessableEntity,
+		"The selected gateway has no endpoint configured.")
+	RESTAPIInvokeGatewayUnsupportedScheme = def(CodeRESTAPIInvokeGatewayUnsupportedScheme, http.StatusUnprocessableEntity,
+		"The selected gateway's endpoint is not an http or https address.")
+	RESTAPIInvokeTargetNotAllowed = def(CodeRESTAPIInvokeTargetNotAllowed, http.StatusForbidden,
+		"This gateway cannot be reached from the control plane.")
+	RESTAPIInvokeRequestInvalid = def(CodeRESTAPIInvokeRequestInvalid, http.StatusBadRequest,
+		"This request cannot be sent as written.")
+	RESTAPIInvokeBusy = def(CodeRESTAPIInvokeBusy, http.StatusServiceUnavailable,
+		"Too many test requests are in flight; try again shortly.")
+	RESTAPIInvokeUpstreamTimeout = def(CodeRESTAPIInvokeUpstreamTimeout, http.StatusGatewayTimeout,
+		"The gateway did not respond in time.")
+	RESTAPIInvokeUpstreamUnreachable = def(CodeRESTAPIInvokeUpstreamUnreachable, http.StatusBadGateway,
+		"The gateway could not be reached.")
 )
 
 // LLM provider / proxy entries.
@@ -226,6 +245,23 @@ var (
 	SecretInUse    = def(CodeSecretInUse, http.StatusConflict, "The secret is in use and cannot be deleted.")
 )
 
+// Webhook secret entries.
+var (
+	WebhookSecretNotFound     = def(CodeWebhookSecretNotFound, http.StatusNotFound, "The specified webhook secret could not be found.")
+	WebhookSecretExists       = def(CodeWebhookSecretExists, http.StatusConflict, "A webhook secret with this id already exists.")
+	WebhookSecretVersionLimit = def(CodeWebhookSecretVersionLimit, http.StatusConflict, "The maximum number of secret versions is reached. Delete a version before rotating.")
+	WebhookSecretLastVersion  = def(CodeWebhookSecretLastVersion, http.StatusConflict, "The last remaining secret version cannot be deleted. Delete the webhook secret instead.")
+)
+
+// Service account entries.
+var (
+	ServiceAccountNotFound = def(CodeServiceAccountNotFound, http.StatusNotFound, "The specified service account could not be found.")
+	ServiceAccountExists   = def(CodeServiceAccountExists, http.StatusConflict, "A service account with this ID already exists.")
+	// Same body for a missing scope and an ungranted one, so it does not list the account's grants.
+	ServiceAccountInvalidScope = def(CodeServiceAccountInvalidScope, http.StatusBadRequest,
+		"The requested scope is missing, or is not granted to this service account.")
+)
+
 // Artifact entries — generic artifact-reference flows and the
 // data-plane-origin guard. The guard produces client-appropriate messages at
 // the call site, so these are passthrough templates.
@@ -311,10 +347,42 @@ var (
 	// the next publish.
 	APIPublicationDraftChanged = def(CodeAPIPublicationDraftChanged, http.StatusConflict,
 		"The draft changed while publishing. Review it and publish again.")
+	// APIPublicationPlanPricingConflict: the API Portal has a plan with this handle
+	// whose pricing differs, for example one left there by an earlier publish of a
+	// since-deleted plan. %s is the plan handle.
+	APIPublicationPlanPricingConflict = def(CodeAPIPublicationPlanPricingConflict, http.StatusConflict,
+		"The API Portal already has a plan %s with different pricing. Create a plan with a different handle and offer that instead.")
+	// APIPublicationMeterConflict: the API Portal has a meter with the same id as one a published
+	// plan charges for, but with other settings (made there, or left by an earlier publish of a meter
+	// changed since). Nothing is written. %s is the meter id.
+	APIPublicationMeterConflict = def(CodeAPIPublicationMeterConflict, http.StatusConflict,
+		"The API Portal already has a meter %s with different settings. Create a meter with a different id, price a new plan with it and offer that plan instead.")
 )
 
 // API document entries.
 var (
 	APIDocumentNameExists = def(CodeAPIDocumentNameExists, http.StatusConflict,
 		"A document with this name already exists for this API.")
+)
+
+// Monetization entries. Meters and plan pricing made in the Management Portal are kept here and
+// reach an API Portal with the plans published there; those made in an API Portal are copies kept
+// current by its webhook events.
+var (
+	MeterNotFound = def(CodeMeterNotFound, http.StatusNotFound, "The specified meter could not be found.")
+	// MeterExists refuses a meter whose id the organization already has; %s is the id. It uses the
+	// API Portal's words for the same refusal.
+	MeterExists = def(CodeMeterExists, http.StatusConflict, `A meter with id "%s" already exists in this organization.`)
+	// MeterInUse refuses changing or deleting a meter that a plan's pricing here uses. %s is the
+	// message, which counts the plans that price the meter, in the API Portal's words.
+	MeterInUse                      = def(CodeMeterInUse, http.StatusConflict, "%s")
+	SubscriptionPlanPricingNotFound = def(CodeSubscriptionPlanPricingNotFound, http.StatusNotFound,
+		"This subscription plan has no pricing.")
+	// SubscriptionPlanPricingLocked refuses pricing for a plan that already exists, in a plan update
+	// or an API Portal plan event that would change it: pricing is set once and never changes.
+	SubscriptionPlanPricingLocked = def(CodeSubscriptionPlanPricingLocked, http.StatusConflict,
+		"Pricing can't be updated once a plan is created. Create a new plan with the new pricing.")
+	// SubscriptionPlanInUse refuses deleting a plan, or changing its name or limit, while something
+	// here offers or uses it. %s is the message, which names the plan and counts what uses it.
+	SubscriptionPlanInUse = def(CodeSubscriptionPlanInUse, http.StatusConflict, "%s")
 )

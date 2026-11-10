@@ -16,6 +16,12 @@
 
 package config
 
+import (
+	"encoding/json"
+	"log/slog"
+	"strings"
+)
+
 // buildRuntimeConfig collects the values the SPA reads from
 // window.__RUNTIME_CONFIG__ (see src/config/runtime.ts's fromWindow()). Unlike
 // ai-workspace's BFF — which invented its own APIP_AIW_* runtime-config
@@ -39,8 +45,14 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 		out["POLICY_HUB_BASE_URL"] = cfg.PolicyHub.BaseURL
 	}
 
+	// Address self-hosted gateways dial, shown in setup commands. Only emit it
+	// when configured so the SPA does not guess for gateways running elsewhere.
+	if cfg.Gateway.ControlPlaneHost != "" {
+		out["GATEWAY_CONTROL_PLANE_HOST"] = cfg.Gateway.ControlPlaneHost
+	}
+
 	// billingProxyEnabled tells the SPA a "billing" named upstream exists, so
-	// ProductActivation can call it (same-origin, via /proxy/billing/...)
+	// ProductActivation can call it (same-origin, via {proxy_prefix}/billing/...)
 	// without ever knowing the real billing service URL. Absent (defaults
 	// false client-side) for every deployment that doesn't configure one —
 	// every standalone deployment today.
@@ -59,5 +71,50 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 		out["moesifAppUrl"] = cfg.ControlPlane.MoesifAppURL
 	}
 
+	// gatewayVersions is the self-hosted-gateway release catalog for the Quick
+	// Start download step (see config.GatewayVersionEntry). This is the first
+	// key here that isn't a plain string, so — unlike every other entry in
+	// this map — it's JSON-encoded into one and the SPA JSON.parses it back
+	// out (see src/config/runtime.ts's gatewayVersions reader).
+	if len(cfg.GatewayVersions) > 0 {
+		if enc, err := json.Marshal(cfg.GatewayVersions); err != nil {
+			slog.Error("failed to marshal gateway_versions for runtime config", "error", err)
+		} else {
+			out["gatewayVersions"] = string(enc)
+		}
+	}
+
+	// disableFeatures is a deny-list: absent (nothing disabled) is the default,
+	// so every page stays on until a deployment names it.
+	if v, ok := runtimeValue(cfg.DisableFeatures); ok {
+		out["disableFeatures"] = v
+	}
+
+	// Only the [sanitize_html_docs] keys that are set; the SPA defaults the rest.
+	if v, ok := runtimeValue(cfg.SanitizeHTMLDocs.Enabled); ok {
+		out["sanitizeHtmlDocsEnabled"] = v
+	}
+	if v, ok := runtimeValue(cfg.SanitizeHTMLDocs.AdditionalAllowedTags); ok {
+		out["sanitizeHtmlDocsAdditionalAllowedTags"] = v
+	}
+	if v, ok := runtimeValue(cfg.SanitizeHTMLDocs.AdditionalAllowedAttributes); ok {
+		out["sanitizeHtmlDocsAdditionalAllowedAttributes"] = v
+	}
+
 	return out
+}
+
+// runtimeValue renders a config value for window.__RUNTIME_CONFIG__: a string
+// as-is, a native TOML bool, array or table as JSON. Unset or blank values
+// report false so the key is left out.
+func runtimeValue(v any) (string, bool) {
+	switch v := v.(type) {
+	case nil:
+		return "", false
+	case string:
+		return v, strings.TrimSpace(v) != ""
+	default:
+		b, err := json.Marshal(v)
+		return string(b), err == nil
+	}
 }

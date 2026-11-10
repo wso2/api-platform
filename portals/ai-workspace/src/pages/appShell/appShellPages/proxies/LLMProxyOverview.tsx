@@ -90,6 +90,7 @@ import {
 import { getLLMProxyDeployments } from '../../../../apis/llmProxiesApis';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { logger } from '../../../../utils/logger';
+import { useOrgReadOnly } from '../../../../Components/common/ReadOnlyTooltip';
 
 type TabPanelProps = {
   value: number;
@@ -194,13 +195,21 @@ function ProxyOverviewContent() {
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const isReadOnlyProxy = Boolean(proxy?.readOnly);
+  // Whether the artifact itself was created from a gateway, which owns its
+  // runtime configuration. Kept separate from the flag below because only this
+  // one is true of the artifact: the gateway-managed banners and warnings speak
+  // about the gateway, and must not appear merely because the organization has
+  // gone read-only.
+  const isGatewayManagedProxy = Boolean(proxy?.readOnly);
+  // Everything that only disables a control reads this one: an organization
+  // that may not write at all disables the same controls the gateway does.
+  const isReadOnlyProxy = useOrgReadOnly() || isGatewayManagedProxy;
   const [activeDeploymentCount, setActiveDeploymentCount] = useState<number | null>(null);
 
   useEffect(() => {
     const organizationId = currentOrganization?.uuid;
     const proxyId = proxy?.id;
-    if (!organizationId || !proxyId || !isReadOnlyProxy || !canDeleteProxy) {
+    if (!organizationId || !proxyId || !isGatewayManagedProxy || !canDeleteProxy) {
       setActiveDeploymentCount(null);
       return;
     }
@@ -231,17 +240,17 @@ function ProxyOverviewContent() {
     return () => {
       isCancelled = true;
     };
-  }, [currentOrganization?.uuid, proxy?.id, isReadOnlyProxy, canDeleteProxy]);
+  }, [currentOrganization?.uuid, proxy?.id, isGatewayManagedProxy, canDeleteProxy]);
 
   const deleteBlockedReason = useMemo(() => {
-    if (!isReadOnlyProxy || activeDeploymentCount === null || activeDeploymentCount === 0) {
+    if (!isGatewayManagedProxy || activeDeploymentCount === null || activeDeploymentCount === 0) {
       return null;
     }
     return activeDeploymentDeleteBlockedReason(
       'App LLM Proxy',
       activeDeploymentCount
     );
-  }, [isReadOnlyProxy, activeDeploymentCount]);
+  }, [isGatewayManagedProxy, activeDeploymentCount]);
 
   const getProviderId = (providerValue?: LLMProxy['provider']): string => {
     if (!providerValue) return '';
@@ -597,7 +606,7 @@ function ProxyOverviewContent() {
                 </TabPanel>
 
                 <TabPanel value={tabIndex} index={2}>
-                  {isReadOnlyProxy && (
+                  {isGatewayManagedProxy && (
                     <GatewayArtifactReadOnlyBanner message="The provider connection is managed by the gateway that created this proxy and is read-only here." />
                   )}
                   <LLMProxyProviderTab
@@ -614,14 +623,14 @@ function ProxyOverviewContent() {
                 </TabPanel>
 
                 <TabPanel value={tabIndex} index={3}>
-                  {isReadOnlyProxy && (
+                  {isGatewayManagedProxy && (
                     <GatewayArtifactReadOnlyBanner message="Security settings are managed by the gateway that created this proxy and are read-only here." />
                   )}
                   <LLMProxySecurityTab />
                 </TabPanel>
 
                 <TabPanel value={tabIndex} index={4}>
-                  {isReadOnlyProxy && (
+                  {isGatewayManagedProxy && (
                     <GatewayArtifactReadOnlyBanner message="Guardrails & policies are managed by the gateway that created this proxy and are read-only here." />
                   )}
                   <LLMProxyGuardrailsTab />
@@ -685,7 +694,7 @@ function ProxyOverviewContent() {
       >
         <DialogTitle>Delete App LLM Proxy</DialogTitle>
         <DialogContent>
-          {isReadOnlyProxy ? (
+          {isGatewayManagedProxy ? (
             <GatewayArtifactDeleteWarning
               artifactType="App LLM Proxy"
               artifactName={proxy.displayName}

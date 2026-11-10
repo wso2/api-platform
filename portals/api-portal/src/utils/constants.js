@@ -15,6 +15,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+const path = require('node:path');
+
 // Hardcoded URL prefix the whole portal mounts itself under (see ROUTE.BASE_PATH).
 // Single-sourced here so the invocation-URL builders below and the route mount in
 // app.js can't disagree about it.
@@ -33,8 +35,15 @@ const API_PORTAL_BASE_PATH = `/${API_PORTAL_BASE_SEGMENT}/${API_PORTAL_VERSION}`
 // backward-compatibility but not used — org context is resolved from the
 // token/session, not the URL.
 const apiPortalOrgPath = (_orgId) => `${PORTAL_BASE_PATH}/${API_PORTAL_BASE_SEGMENT}/${API_PORTAL_VERSION}`;
+// The API Portal OpenAPI spec. It is read at runtime (routing, request validation,
+// scope checks), so it lives under resources/, not docs/. Resolved from this file
+// rather than process.cwd() so it is found whatever the working folder is.
+const OPENAPI_SPEC_PATH = path.join(
+    __dirname, '..', '..', 'resources', 'openapi', 'api-portal-openapi-spec-v0.9.yaml'
+);
 
 module.exports = {
+    OPENAPI_SPEC_PATH,
     // Allowed algorithms for IdP JWT verification.
     JWT_ASYMMETRIC_ALGORITHMS: ['RS256', 'RS384', 'RS512', 'PS256'],
     API_PORTAL_API: {
@@ -112,6 +121,12 @@ module.exports = {
             API_DEFINITION: 'Specification'
         }
     },
+    // Types the /assets endpoints may write or delete; API_DEFINITION and SCHEMA_DEFINITION are never content.
+    CONTENT_TYPES: {
+        FIXED: ['MARKETING', 'IMAGE'],
+        // Any category name, as an upload stores it from docs/<Folder>/; the match is exact, so no wildcards.
+        DOC_PATTERN: /^DOC_.+$/s,
+    },
     MIME_TYPES: {
         HTML: 'text/html',
         TEXT: 'text/plain',
@@ -135,7 +150,7 @@ module.exports = {
         ADMIN: 'admin',
         DEVELOPER: 'dev',
         // Same any-of scope groups the admin `/api/v0.9/mcp-servers*` OpenAPI security
-        // requirements declare per operation (docs/api-portal-openapi-spec-v0.9.yaml) — reused
+        // requirements declare per operation (resources/openapi/api-portal-openapi-spec-v0.9.yaml) — reused
         // here so the MCP registry protocol routes (mcpRegistryRoute.js) grant access to
         // exactly the same principals as the equivalent admin CRUD operation.
         MCP_CREATE: ['dp:mcp_server:create', 'dp:mcp_server:manage'],
@@ -205,6 +220,9 @@ module.exports = {
             '**/oauth2-keys',
             '**/oauth2-keys?**',
             '**/subscriptions',
+            '**/usage',
+            '**/billing',
+            '**/billing/**',
             '/*/settings',
             // The settings page's view-scoped LLM instruction endpoints (settingsRoute.js).
             '/*/views/*/llms-config',
@@ -218,6 +236,9 @@ module.exports = {
             '**/oauth2-keys',
             '**/oauth2-keys?**',
             '**/subscriptions',
+            '**/usage',
+            '**/billing',
+            '**/billing/**',
             '/*/settings',
             // The settings page's view-scoped LLM instruction endpoints (settingsRoute.js).
             '/*/views/*/llms-config',
@@ -247,7 +268,7 @@ module.exports = {
     FILE_NAME: {
         MAIN: 'main.hbs',
         PAGE: 'page.hbs',
-        API_MD_CONTENT_FILE_NAME: 'apiContent.md',
+        API_MD_CONTENT_FILE_NAME: 'api-content.md',
         API_HBS_CONTENT_FILE_NAME: 'api-content.hbs',
         API_DOC_MD: 'api-doc.md',
         API_DOC_HBS: 'api-doc.hbs',
@@ -353,6 +374,11 @@ module.exports = {
         OAUTH2_KEY_DELETE_ERROR: "Error while deleting OAuth2 key",
         OAUTH2_KEY_RETRIEVE_ERROR: "Error while retrieving OAuth2 key",
         OAUTH2_KEY_NOT_FOUND: "OAuth2 key not found",
+        // An application holds at most one key per key type. The sentence says what
+        // to do about it rather than only that it failed. The key type is left out
+        // on purpose: the picker already disables the choices that would land here,
+        // so by the time anyone reads this they are looking at a direct API call.
+        OAUTH2_KEY_ALREADY_ASSOCIATED: "A key is already associated with this application. Remove it to associate another.",
         APPLICATION_NOT_FOUND: "Application not found",
         OAUTH2_KEY_OPERATION_UNSUPPORTED: "The key manager does not support this operation",
         OAUTH2_KEY_TOKEN_ERROR: "Error while generating the access token",
@@ -363,6 +389,8 @@ module.exports = {
         WEBHOOK_SUBSCRIBER_NOT_FOUND: "Webhook subscriber not found",
         ERR_SUB_EXIST: "ERR_SUB_EXIST",
         ERR_KEY_EXIST: "ERR_KEY_EXIST",
+        ERR_BILLING_CATALOG: "ERR_BILLING_CATALOG",
+        ERR_PLAN_SUB_EXIST: "ERR_PLAN_SUB_EXIST",
         ERR_WORKFLOW_EXIST: "ERR_WORKFLOW_EXIST",
         UNAUTHORIZED_ORG: "You are not authorized to access this organization",
         UNAUTHORIZED_API: "You are not authorized to access this API",

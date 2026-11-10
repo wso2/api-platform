@@ -145,6 +145,9 @@
 
     return {
       get: function () { return chips.slice(); },
+      // Adds the text still in the box as a chip, as Enter does. Leaving the box does the same;
+      // Save calls this first, as its click can be handled before the box loses focus.
+      commit: commit,
       set: function (list) {
         chips = [];
         var items = Array.isArray(list)

@@ -70,7 +70,7 @@ A **build-time tool** (not a runtime component) that discovers, validates, and c
 
 ### Prerequisites
 
-- Go 1.26.1+
+- Go 1.26.10+
 - Docker with Buildx
 - Make
 

@@ -31,6 +31,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { REST_API_TYPE, useApiPublications } from '@/api/resources/apiPublications';
 import type { RestApi } from '@/api/resources/restApis';
 import { routes } from '@/routes/paths';
+import { useCan } from '@/permissions';
 
 // Same cap `ApiPortalPublicationsList` uses to read every portal in one page.
 const LIST_LIMIT = 100;
@@ -94,6 +95,8 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
   const { orgHandle = '', projectHandler = '', apiHandler = '' } = useParams();
   const navigate = useNavigate();
   const intl = useIntl();
+  // The Publish step links to publishing only for a user who may publish.
+  const canPublish = useCan('publishRestApiToApiPortal');
 
   const publicationsQuery = useApiPublications(REST_API_TYPE, apiHandler, { limit: LIST_LIMIT });
   // isPlaceholderData excludes the previous API's publish status left over from keepPreviousData.
@@ -133,7 +136,9 @@ export function ProgressBanner({ api, deployed }: { api: RestApi; deployed: bool
       label: intl.formatMessage(progressStepMessages.stepPublish),
       Icon: Globe,
       complete: published,
-      onClick: () => navigate(routes.apiPortals(orgHandle, projectHandler, apiHandler)),
+      onClick: canPublish
+        ? () => navigate(routes.apiPortals(orgHandle, projectHandler, apiHandler))
+        : undefined,
     },
   ];
 

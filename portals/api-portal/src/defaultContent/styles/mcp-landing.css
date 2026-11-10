@@ -232,8 +232,49 @@
   padding: 1.5rem 2rem 1.875rem;
 }
 
+/* The payment dialog: Stripe's checkout form, which sets its own height. */
+.checkout-pay-modal {
+  width: 36rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
+.checkout-pay-body {
+  padding: 1.5rem 1.5rem 1.75rem;
+  min-height: 12rem;
+}
+
+.checkout-pay-loading {
+  display: flex;
+  justify-content: center;
+  padding: 3rem 0;
+}
+
+.checkout-pay-loading[hidden] {
+  display: none;
+}
+
+.checkout-pay-spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: checkout-pay-spin 0.7s linear infinite;
+}
+
+@keyframes checkout-pay-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checkout-pay-spinner { animation-duration: 2s; }
+}
+
+/* A dialog's close button sits in its top-right corner, over the header. */
 #mcpTokenModalClose,
-#apiTokenModalClose {
+#apiTokenModalClose,
+.mc-token-modal > .mc-modal-close {
   position: absolute;
   top: 1rem; right: 1rem;
   z-index: 2;
@@ -422,6 +463,18 @@
 .mc-manage-status-badge--active    { background: var(--success-surface); color: var(--success); }
 .mc-manage-status-badge--suspended { background: var(--warning-surface); color: var(--warning); }
 
+/* A flat rate plan the subscriber unsubscribed from: a banner saying when it ends. */
+.mc-manage-ends {
+  margin: 0.75rem 0 0;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.6875rem;
+  background: var(--danger-surface);
+  color: var(--danger);
+  font-size: 0.84375rem;
+  line-height: 1.55;
+}
+.mc-manage-ends[hidden] { display: none; }
+
 .mc-manage-divider {
   margin: 1.375rem 0 1.125rem;
   border: none;
@@ -448,6 +501,7 @@
   transition: background 0.15s, opacity 0.15s;
   background: var(--white);
 }
+.mc-manage-action-btn[hidden] { display: none; }
 .mc-manage-action-btn.mc-manage-action-btn--regenerate { border: 1px solid color-mix(in srgb, var(--primary) 34%, var(--surface)); color: var(--primary); }
 .mc-manage-action-btn.mc-manage-action-btn--regenerate:hover { background: color-mix(in srgb, var(--primary) 5%, var(--surface)); }
 .mc-manage-action-btn.mc-manage-action-btn--suspend { border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--surface)); color: var(--warning); }

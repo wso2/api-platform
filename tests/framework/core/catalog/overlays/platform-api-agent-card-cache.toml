@@ -1,7 +1,10 @@
-# Enables the platform-api webhook receiver for API Portal integration tests.
+# Enables the platform-api webhook receiver for API Portal integration tests. The monetization
+# and publication-drafts scenarios this block runs send events with no secret_hash (they predate
+# the webhook-secret feature), so the shared-secret fallback must stay on.
 [platform_api.webhook]
 enabled = true
 secret = '{{ env "APIP_CP_WEBHOOK_SECRET" }}'
+legacy_shared_secret = true
 
 # Agent Card display-cache timings for the Agent proxy scenarios.
 #
@@ -12,3 +15,13 @@ secret = '{{ env "APIP_CP_WEBHOOK_SECRET" }}'
 [platform_api.agent_card_cache]
 positive_ttl = "20s"
 negative_ttl = "8s"
+
+# Turns on the Platform API's MCP server at /api/v0.9/mcp.
+[platform_api.mcp_server]
+enabled = true
+
+# Service accounts: the /service-accounts routes, /roles, /.well-known/jwks and service-account
+# token verification. With no signing keys configured, tokens are signed with the auth.jwt key
+# pair the framework generates; lifetime and audience stay at their defaults.
+[platform_api.auth.service_account]
+enabled = true
