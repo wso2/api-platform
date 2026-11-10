@@ -1148,6 +1148,7 @@ function validateScripts(strContent) {
             // Paired with listing-cards.js in both api-listing.hbs and mcp-listing.hbs.
             "<script src='/technical-scripts/paginate.js' defer></script>",
             "<script src='/technical-scripts/mcp-landing.js' defer></script>",
+            "<script src='/technical-scripts/subscription-state.js' defer></script>",
             "<script src='/technical-scripts/api-subscription-plans.js' defer></script>",
             "<script src='/technical-scripts/mcp-subscription-plans.js' defer></script>",
             "<script src='/technical-scripts/dev-reload.js' defer></script>",
@@ -1562,6 +1563,7 @@ module.exports = {
     validateRequestParameters,
     rejectExtraProperties,
     readFilesInDirectory,
+    validateScripts,
     validateTemplateExpressions,
     appendAPIImageURL,
     appendSubscriptionPlanDetails,

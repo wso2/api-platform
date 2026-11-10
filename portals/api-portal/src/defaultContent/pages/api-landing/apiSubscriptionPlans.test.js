@@ -107,3 +107,9 @@ test('unauthenticated visitors see login links and no subscriptions table', () =
     assert.ok(out.includes('/login'));
     assert.ok(!out.includes('id="apiSubscriptionsTable"'));
 });
+
+test('every script the partial loads is on the theme upload allowlist', () => {
+    const { validateScripts } = require('../../../utils/util');
+    const source = fs.readFileSync(path.join(__dirname, 'partials', 'api-subscription-plans.hbs'), 'utf8');
+    assert.doesNotThrow(() => validateScripts(source));
+});
