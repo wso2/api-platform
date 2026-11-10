@@ -32,8 +32,12 @@ code, whether you changed gateway components or only test files.
    and select the feature by its tag:
    ```bash
    cd tests/framework
-   go test ./suites/it -count=1 -v -timeout=60m -blocks <block>/sqlite -feature-tags "@<feature-tag>"
+   go test ./suites/it -count=1 -v -timeout=60m -blocks <block-or-variant> -feature-tags "@<feature-tag>"
    ```
+   A block without a database matrix is selected by its name (`api-portal-core`). A block
+   with one runs once per engine: its bare name runs every variant, and one variant is
+   selected as `gateway-core/sqlite`, or `platform-api-core/api-sqlite_gateway-sqlite` when
+   the matrix covers two components.
 
 3. **Adding a feature to the suite.** `.agents/skills/write-framework-tests/SKILL.md` walks
    through writing a test end to end. In short:

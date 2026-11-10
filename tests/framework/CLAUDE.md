@@ -10,8 +10,9 @@
 
 - Test on-premises product behaviour in `suites/it`, and its portal journeys in `suites/ui`.
   Test behaviour that exists only in the hosted cloud in `suites/cloud`.
-- Every test starts from an entry in a scenario list: `scenarios/on-prem/` for `suites/it`
-  and `suites/ui`, `scenarios/cloud/` for `suites/cloud`. See "Scenario Lists".
+- Every product test starts from an entry in a scenario list: `scenarios/on-prem/` for
+  `suites/it` and `suites/ui`, `scenarios/cloud/` for `suites/cloud`. See "Scenario Lists".
+  A framework-support feature takes an exclusion annotation instead ("Scenario Annotations").
 - `.agents/skills/write-framework-tests/SKILL.md` (at the repository root) walks through
   writing a test from its scenario-list entry to a passing scenario, step by step.
 - The cloud suite runs from the apim-saas e2e image against a shared organisation. On a pull
@@ -487,8 +488,9 @@ To add a feature to the suite:
 
 ## Scenario Lists
 
-Every test starts from a scenario list: one file per product feature, one entry per
-scenario ID, kept by hand.
+Every product test starts from a scenario list: one file per product feature, one entry per
+scenario ID, kept by hand. A framework-support feature has no list entry; it carries an
+exclusion annotation instead ("Scenario Annotations").
 
 | Lists | For | Layers each entry records |
 |---|---|---|

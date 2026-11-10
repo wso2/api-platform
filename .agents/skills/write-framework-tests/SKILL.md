@@ -12,8 +12,10 @@ to follow. Run commands from `tests/framework`.
 
 ## Step 1: Start from the scenario list
 
-Every test starts from an entry in its feature's scenario list ("Scenario Lists" in
-`CLAUDE.md`):
+Every product test starts from an entry in its feature's scenario list ("Scenario Lists" in
+`CLAUDE.md`). A framework-support feature (one that tests the framework, not a product) has no
+entry; it carries one exclusion annotation (`@setup`, `@infra`, `@framework` or
+`@migration`) instead ("Scenario Annotations").
 
 - On-premises tests (`suites/it`, `suites/ui`): `scenarios/on-prem/<CODE>.yaml`.
 - Cloud tests (`suites/cloud`): `scenarios/cloud/<CODE>.yaml`.
