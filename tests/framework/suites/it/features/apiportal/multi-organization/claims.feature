@@ -88,6 +88,7 @@ Feature: API Portal multi-organization organization claims
 
     # An unknown organization is provisioned from the claim and named from the org-name claim
     Given I generate a unique resource name from "globex" and store it as "globex"
+    And the API Portal "api-portal-multi-organization" organization with IDP reference "${CTX:globex}" is removed after the scenario
     And I mint an API Portal IDP token stored as "token" with claims:
       | sub      | gina                 |
       | org_id   | ${CTX:globex}        |
@@ -111,6 +112,7 @@ Feature: API Portal multi-organization organization claims
 
     # The org-handle claim becomes the provisioned organization's handle as it is
     Given I generate a unique resource name from "handled" and store it as "handled"
+    And the API Portal "api-portal-multi-organization" organization with IDP reference "${CTX:handled}" is removed after the scenario
     And I mint an API Portal IDP token stored as "token" with claims:
       | sub        | hana                      |
       | org_id     | ${CTX:handled}            |
@@ -123,6 +125,7 @@ Feature: API Portal multi-organization organization claims
 
     # A single-entry list claim is that organization, and one naming two is refused
     Given I generate a unique resource name from "listed" and store it as "listed"
+    And the API Portal "api-portal-multi-organization" organization with IDP reference "${CTX:listed}" is removed after the scenario
     And I mint an API Portal IDP token stored as "plain" with claims:
       | sub    | l1             |
       | org_id | ${CTX:listed}  |
@@ -206,6 +209,7 @@ Feature: API Portal multi-organization organization claims
     # Per-organization issuers: the testbench signs a token issued as ".../o/<org>/oauth2/token"
     # with that organization's own key, served at ".../o/<org>/oauth2/jwks".
     Given I generate a unique resource name from "suborg" and store it as "suborg"
+    And the API Portal "api-portal-multi-organization" organization with IDP reference "${CTX:suborg}" is removed after the scenario
     And I mint an API Portal IDP token stored as "token" with claims:
       | sub        | s1                                                   |
       | org_id     | ${CTX:suborg}                                        |
