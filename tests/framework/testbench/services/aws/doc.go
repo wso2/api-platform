@@ -89,7 +89,8 @@
 //	investment advice              denied topic "Investment Advice", blocked
 //	contraband, secret recipe      custom words, blocked; version 1 blocks only "contraband"
 //	email at example.com, phone    PII (EMAIL, PHONE, US_SOCIAL_SECURITY_NUMBER), anonymized:
-//	555-123-4567, SSN 123-45-6789  "mask-" addresses get a restorable placeholder, others "*****"
+//	555-123-4567, SSN 123-45-6789  each match becomes "*****", or $ANONYMIZED_<TYPE>$ for every
+//	                               match when the text contains "mask-" anywhere
 //	simulate … error               500 InternalServerException
 //	simulate … outage              503 ServiceUnavailableException
 //	simulate … unresponsive        held without an answer until the caller gives up, or for at
