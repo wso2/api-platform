@@ -418,3 +418,47 @@ func TestServeServesATLSServiceOverHTTPS(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode, "a plain HTTP request must not be served")
 	}
 }
+
+// TestResponseRecorderForwardsHijack covers the one capability a wrapper silently removes: a
+// service that ends a committed response abruptly needs the connection, and without
+// forwarding it would get an ordinary 500 instead of the cut-off it meant to produce.
+func TestResponseRecorderForwardsHijack(t *testing.T) {
+	hijackable := make(chan bool, 1)
+	srv := httptest.NewServer(observability("hijack-probe", http.HandlerFunc(
+		func(w http.ResponseWriter, _ *http.Request) {
+			h, ok := w.(http.Hijacker)
+			hijackable <- ok
+			if !ok {
+				return
+			}
+			conn, buf, err := h.Hijack()
+			if err != nil {
+				return
+			}
+			defer func() { _ = conn.Close() }()
+			_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi")
+			_ = buf.Flush()
+		})))
+	defer srv.Close()
+
+	resp, err := srv.Client().Get(srv.URL + "/probe")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	require.True(t, <-hijackable, "the wrapped writer must still satisfy http.Hijacker")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "hi", string(body))
+}
+
+// TestResponseRecorderHijackRefusesAnUnhijackableWriter keeps the failure explicit rather
+// than panicking on a type assertion, so a future wrapper change surfaces as an error.
+func TestResponseRecorderHijackRefusesAnUnhijackableWriter(t *testing.T) {
+	rec := &responseRecorder{ResponseWriter: httptest.NewRecorder()}
+	conn, buf, err := rec.Hijack()
+	require.Error(t, err)
+	require.Nil(t, conn)
+	require.Nil(t, buf)
+	require.Contains(t, err.Error(), "does not support hijacking")
+}

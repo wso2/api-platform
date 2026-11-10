@@ -225,6 +225,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the response body should be:$`, b.responseBodyIs)
 	sc.Step(`^the response body should contain "([^"]*)"$`, b.responseContains)
 	sc.Step(`^the response body should not contain "([^"]*)"$`, b.responseNotContains)
+	sc.Step(`^the response body should (have|not have) been cut off$`, b.responseCutOff)
 	sc.Step(`^the response body should match pattern "([^"]*)"$`, b.responseMatchesPattern)
 	sc.Step(`^the response should contain Prometheus metrics$`, b.responseContainsPrometheusMetrics)
 	sc.Step(`^the response should contain metric "([^"]*)"$`, b.responseContainsMetric)
@@ -294,6 +295,12 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I send (\d+) "([^"]*)" requests to "([^"]*)"$`, b.sendRepeated)
 	sc.Step(`^I send (\d+) "([^"]*)" requests to "([^"]*)" with body:$`, b.sendRepeatedWithBody)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with body:$`, b.sendRequestWithBody)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" allowing a cut-off body$`,
+		b.sendCutOffTolerantRequest)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" allowing a cut-off body with body:$`,
+		b.sendCutOffTolerantRequestWithBody)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until the response body is cut off with body:$`,
+		b.sendUntilCutOff)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with a JSON body of (\d+) bytes$`, b.sendSizedJSONBody)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, b.sendUntilStatus)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) or (\d+)$`, b.sendUntilStatusOneOf)
@@ -1941,6 +1948,97 @@ func (b *Base) invokeWith(
 	})
 	if err != nil {
 		return fmt.Errorf("invoking %s %s: %w", method, url, err)
+	}
+	return nil
+}
+
+// sendCutOffTolerantRequest sends a request that keeps a response whose body ends early
+// instead of failing on it. An upstream that commits a 200 and then dies mid-body is a real
+// failure shape a proxy cannot rescue, and the partial response is the only evidence of it;
+// every other step treats a short body as the transport error it normally is.
+func (b *Base) sendCutOffTolerantRequest(ctx context.Context, method, path string) error {
+	return b.sendCutOffTolerantRequestWithBody(ctx, method, path, nil)
+}
+
+// sendCutOffTolerantRequestWithBody is sendCutOffTolerantRequest with a request body.
+func (b *Base) sendCutOffTolerantRequestWithBody(
+	ctx context.Context, method, path string, body *godog.DocString,
+) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURL(resolved)
+	if err != nil {
+		return err
+	}
+	headers := b.scenarioHeaders(ctx)
+	payload, err := b.expandBody(ctx, body, headers)
+	if err != nil {
+		return err
+	}
+	if _, err := b.funnel.Send(ctx, httpx.Request{
+		Method: strings.ToUpper(method), URL: url,
+		Headers: headers, Body: payload,
+		Host:               b.requestHost(ctx),
+		AllowTruncatedBody: true,
+	}); err != nil {
+		return fmt.Errorf("invoking %s %s: %w", strings.ToUpper(method), url, err)
+	}
+	return nil
+}
+
+// sendUntilCutOff polls a data-plane path, tolerating a short body, until one arrives cut
+// off. The companion to sendUntilStatus for an upstream that commits a 200 and then dies: the
+// status is 200 whether the route is live yet or not, so only the cut-off says the request
+// reached the target rather than a not-found or a cold-start error on the way there.
+func (b *Base) sendUntilCutOff(ctx context.Context, method, path string, body *godog.DocString) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURL(resolved)
+	if err != nil {
+		return err
+	}
+	headers := b.scenarioHeaders(ctx)
+	payload, err := b.expandBody(ctx, body, headers)
+	if err != nil {
+		return err
+	}
+
+	return stepscommon.AwaitResponse(ctx,
+		func(ctx context.Context) (*httpx.Response, error) {
+			response, sendErr := b.funnel.Send(ctx, httpx.Request{
+				Method: strings.ToUpper(method), URL: url, Body: payload, Headers: headers,
+				Host:               b.requestHost(ctx),
+				AllowTruncatedBody: true,
+			})
+			if sendErr != nil {
+				return nil, retry.Transient(sendErr)
+			}
+			return response, nil
+		},
+		func(r *httpx.Response) bool { return r != nil && r.BodyTruncated },
+		fmt.Sprintf("waiting for %s %s to answer with a cut-off body", strings.ToUpper(method), url))
+}
+
+// responseCutOff asserts whether the published response's body ended before the upstream
+// said it would. Only a request sent with the cut-off-tolerant step can report true, so a
+// "should have been cut off" assertion on an ordinary request fails rather than misleading.
+func (b *Base) responseCutOff(ctx context.Context, expectation string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	want := expectation == "have"
+	if resp.BodyTruncated != want {
+		if want {
+			return fmt.Errorf("expected the body to have been cut off, but it arrived whole (%s %s -> %d, %d bytes)",
+				resp.Method, resp.URL, resp.StatusCode, len(resp.Body))
+		}
+		return fmt.Errorf("expected a whole body, but it was cut off (%s %s -> %d, %d bytes)",
+			resp.Method, resp.URL, resp.StatusCode, len(resp.Body))
 	}
 	return nil
 }

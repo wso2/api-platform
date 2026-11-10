@@ -499,6 +499,9 @@ blocks:
       - name: model-failover-steering
         features:
           - features/gateway/ai/model_failover_steering.feature
+      - name: model-failover-streaming
+        features:
+          - features/gateway/ai/model_failover_streaming.feature
       - name: upstream-url-validation
         tags: "gateway-version>=1.2.0"
         features:
