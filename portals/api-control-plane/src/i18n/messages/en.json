@@ -3540,6 +3540,10 @@
     "defaultMessage": "Publish {apiName}",
     "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.apiThumbnailFailed": {
+    "defaultMessage": "The API’s thumbnail could not be loaded.",
+    "description": "Shown when the publisher asks for the API’s own thumbnail and reading it failed, so nothing changed."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.back": {
     "defaultMessage": "Back to API portals"
   },
@@ -3566,18 +3570,6 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecatedBannerMeta": {
     "defaultMessage": "Deprecated {time}",
     "description": "Banner byline when the live listing is flagged as deprecated. {time} is a relative time such as \"2 days ago\"."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.documentsIncomplete": {
-    "defaultMessage": "This API has too many documents to attach them all automatically. Pick the ones to publish on the Documentation tab.",
-    "description": "Shown when the API’s document list was cut short, so nothing was preselected and nothing was published automatically."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.documentsLoadFailed": {
-    "defaultMessage": "The API’s documents could not be loaded, so they are not attached yet. Publishing is paused until they load.",
-    "description": "Shown when the portal card sent the user here to publish with every document, and listing them failed."
-  },
-  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.documentsRetry": {
-    "defaultMessage": "Retry",
-    "description": "Button reloading the API’s documents after a failed load."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftBannerMeta": {
     "defaultMessage": "Edited {time}",
@@ -3674,6 +3666,10 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.productionUrlLabel": {
     "defaultMessage": "Production URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.reloadThumbnail": {
+    "defaultMessage": "Use the API’s default thumbnail",
+    "description": "Icon button replacing the thumbnail on this page with the API’s own current one."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.sandboxUrlLabel": {
     "defaultMessage": "Sandbox URL"
@@ -3851,7 +3847,11 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.publish": {
     "defaultMessage": "Publish",
-    "description": "Split button action publishing this API to this portal straight away, with all its documents attached and no subscription plan selected."
+    "description": "Split button action, offered only while nothing is saved for this API on this portal, that publishes it there straight away."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.publishing": {
+    "defaultMessage": "Publishing…",
+    "description": "The Publish button’s label while its publish runs."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.statusLabel": {
     "defaultMessage": "Status",
@@ -3882,14 +3882,26 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecate": {
     "defaultMessage": "Deprecate"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecating": {
+    "defaultMessage": "Deprecating…",
+    "description": "Label of the Deprecate button while the deprecation is in progress."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.moreActions": {
     "defaultMessage": "More publish actions"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.publish": {
     "defaultMessage": "Publish"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.publishing": {
+    "defaultMessage": "Publishing…",
+    "description": "Label of the Publish button while the publish is in progress."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.republish": {
     "defaultMessage": "Republish"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.republishing": {
+    "defaultMessage": "Republishing…",
+    "description": "Label of the Republish button while the republish is in progress."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.saveDraft": {
     "defaultMessage": "Save Draft"
@@ -3897,11 +3909,27 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublish": {
     "defaultMessage": "Unpublish"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublishing": {
+    "defaultMessage": "Unpublishing…",
+    "description": "Label of the Unpublish button while the unpublish is in progress."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishWithDefaults.needsReview": {
+    "defaultMessage": "Nothing was published to {portalName}. Check the details here, then publish.",
+    "description": "Shown when a one-click Publish from a portal card cannot publish as it is and opens the publish page instead. {portalName} is user-supplied."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishWithDefaults.published": {
+    "defaultMessage": "Published {apiName} to {portalName}.",
+    "description": "Shown once a one-click Publish from a portal card succeeds. {apiName} and {portalName} are user-supplied."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishedSpecificationTab.error": {
     "defaultMessage": "Unable to load the published specification."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishedSpecificationTab.loading": {
     "defaultMessage": "Loading the published specification"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.apiDefinitionChanged": {
+    "defaultMessage": "Differs from the API’s specification.",
+    "description": "Tooltip of the info icon beside the button that loads the API’s own specification."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLabel": {
     "defaultMessage": "API definition ({format})",
@@ -3913,6 +3941,10 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.formatLabel": {
     "defaultMessage": "Source format",
     "description": "Accessible name for the YAML / JSON toggle buttons."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.loadApiDefinition": {
+    "defaultMessage": "Load the API’s specification",
+    "description": "Button replacing the specification on this page with the API’s own current one. Shown only when the two differ."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed": {
     "defaultMessage": "This is not valid {format}: {detail}",

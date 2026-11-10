@@ -171,6 +171,30 @@ describe('ApiDetailsTab', () => {
     expect(screen.queryByRole('button', { name: 'Change thumbnail' })).not.toBeInTheDocument();
   });
 
+  it('offers the API\u2019s own thumbnail beside the picker only when asked to, each icon named by a tooltip', async () => {
+    const onThumbnailReload = vi.fn();
+    const { rerender, user } = renderWithProviders(<ApiDetailsTab onThumbnailPick={vi.fn()} values={VALUES} />);
+    expect(screen.queryByRole('button', { name: 'Use the API\u2019s default thumbnail' })).not.toBeInTheDocument();
+
+    rerender(<ApiDetailsTab onThumbnailPick={vi.fn()} onThumbnailReload={onThumbnailReload} values={VALUES} />);
+
+    await user.hover(screen.getByRole('button', { name: 'Change thumbnail' }));
+    expect(await screen.findByRole('tooltip', { name: 'Change thumbnail' })).toBeInTheDocument();
+    await user.hover(screen.getByRole('button', { name: 'Use the API\u2019s default thumbnail' }));
+    expect(await screen.findByRole('tooltip', { name: 'Use the API\u2019s default thumbnail' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Use the API\u2019s default thumbnail' }));
+    expect(onThumbnailReload).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds the reload back while the API\u2019s thumbnail is still being read', () => {
+    renderWithProviders(
+      <ApiDetailsTab onThumbnailPick={vi.fn()} onThumbnailReload={vi.fn()} thumbnailReloadDisabled values={VALUES} />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Use the API\u2019s default thumbnail' })).toBeDisabled();
+  });
+
   it('clears a URL with the clear button, and stops offering gateway URLs in custom mode', async () => {
     const onChange = vi.fn();
     const options = [{ gatewayName: 'Gateway A', url: 'https://gw-a.example.com/loans' }];
