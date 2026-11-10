@@ -273,7 +273,7 @@ export function ApiList({
   const confirmDelete = () => {
     if (!toDelete?.id) return;
     const { apiType, displayName, id } = toDelete;
-    trackFeature('apip.manage-apis.delete-api', {
+    trackFeature('apip.manage-apis.api-delete-click', {
       api_type: apiType === 'graphql' ? 'graphql-api' : 'rest-api',
     });
     const onSettled = {

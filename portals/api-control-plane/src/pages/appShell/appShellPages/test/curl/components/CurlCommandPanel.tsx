@@ -161,7 +161,7 @@ export function CurlCommandPanel({ request }: CurlCommandPanelProps) {
             getValue={() => toCurl(request, { revealSecrets: true })}
             label={intl.formatMessage(messages.copyCommand)}
             onCopy={() =>
-              trackFeature('apip.manage-apis.test-console.copy-curl', { api_type: 'rest-api' })
+              trackFeature('apip.manage-apis.test-console-curl-copy', { api_type: 'rest-api' })
             }
           />
         </Box>

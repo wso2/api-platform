@@ -67,7 +67,7 @@ describe('EndpointsPanel — feature usage', () => {
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(trackedFeatures()).toEqual([
-      ['apip.manage-apis.update-api', { api_type: 'rest-api', part: 'endpoint' }],
+      ['apip.manage-apis.api-endpoint-update-click', { api_type: 'rest-api' }],
     ]);
   });
 

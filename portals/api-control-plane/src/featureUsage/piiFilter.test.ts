@@ -75,16 +75,16 @@ describe('maskUri', () => {
 describe('filterMoesifRequest', () => {
   /** An action as moesif-browser-js builds it, plus fields that must not survive. */
   const sdkAction = (overrides: Record<string, unknown> = {}) => ({
-    action_name: 'apip.manage-apis.create-rest-api',
+    action_name: 'apip.manage-apis.rest-api-create-click',
     anonymous_id: ANON,
     company_id: ORG,
     email: 'alice@example.com',
     metadata: {
-      action: 'REST API Creation',
+      action: 'REST API Creation Click',
       apiName: 'Payments API',
       category: 'manage-apis',
       creation_method: 'scratch',
-      event_category: 'adoption',
+      event_category: 'engagement',
       initiating_product: 'apip',
       platform: 'web',
       tier: 'core',
@@ -102,14 +102,14 @@ describe('filterMoesifRequest', () => {
 
   it('rebuilds an action from the allowlist only', () => {
     expect(filterMoesifRequest(`${HOST}/v1/actions`, sdkAction())).toEqual({
-      action_name: 'apip.manage-apis.create-rest-api',
+      action_name: 'apip.manage-apis.rest-api-create-click',
       anonymous_id: ANON,
       company_id: ORG,
       metadata: {
-        action: 'REST API Creation',
+        action: 'REST API Creation Click',
         category: 'manage-apis',
         creation_method: 'scratch',
-        event_category: 'adoption',
+        event_category: 'engagement',
         initiating_product: 'apip',
         platform: 'web',
         tier: 'core',

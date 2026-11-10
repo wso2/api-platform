@@ -264,7 +264,7 @@ describe('ApiThumbnailManager — feature usage', () => {
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(trackedFeatures()).toEqual([
-      ['apip.manage-apis.api-thumbnail', { api_type: 'rest-api', operation: 'upsert' }],
+      ['apip.manage-apis.api-thumbnail-upload-click', { api_type: 'rest-api' }],
     ]);
   });
 
@@ -281,7 +281,7 @@ describe('ApiThumbnailManager — feature usage', () => {
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(trackedFeatures()).toEqual([
-      ['apip.manage-apis.api-thumbnail', { api_type: 'graphql-api', operation: 'upsert' }],
+      ['apip.manage-apis.api-thumbnail-upload-click', { api_type: 'graphql-api' }],
     ]);
   });
 
@@ -308,7 +308,7 @@ describe('ApiThumbnailManager — feature usage', () => {
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(trackedFeatures()).toEqual([
-      ['apip.manage-apis.api-thumbnail', { api_type: 'rest-api', operation: 'delete' }],
+      ['apip.manage-apis.api-thumbnail-remove-click', { api_type: 'rest-api' }],
     ]);
   });
 

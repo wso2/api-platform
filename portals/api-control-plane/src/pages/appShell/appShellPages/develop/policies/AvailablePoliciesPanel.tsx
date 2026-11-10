@@ -152,7 +152,7 @@ export function AvailablePoliciesPanel({
   disabled = false,
 }: {
   /** The kind of API whose policies page shows the catalog, for usage analytics. */
-  artifactKind: NonNullable<FeatureDimensions<'apip.policies.browse-policies'>['artifact_kind']>;
+  artifactKind: NonNullable<FeatureDimensions<'apip.policies.policy-hub-browse'>['artifact_kind']>;
   onSelect: (policy: PolicySummary) => void;
   /** Catalog stays browsable, but its policies can be neither dragged nor clicked to attach. */
   disabled?: boolean;
@@ -164,7 +164,7 @@ export function AvailablePoliciesPanel({
     // Once per visit to the catalog, however often identity re-renders this.
     if (openReported.current) return;
     openReported.current = true;
-    trackFeature('apip.policies.browse-policies', { artifact_kind: artifactKind });
+    trackFeature('apip.policies.policy-hub-browse', { artifact_kind: artifactKind });
   }, [artifactKind, trackFeature]);
   const [search, setSearch] = useState('');
   const [activeCategories, setActiveCategories] = useState<string[]>([]);

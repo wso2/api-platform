@@ -93,10 +93,7 @@ export function GatewayDeploymentHistory({
 
   // The drawer rows' delete icon is the only caller.
   const handleDelete = (deployment: Deployment) => {
-    trackFeature('apip.lifecycle.manage-deployment', {
-      artifact_kind: artifactKind,
-      operation: 'delete',
-    });
+    trackFeature('apip.lifecycle.deployment-delete-click', { artifact_kind: artifactKind });
     deleteMutation.mutate(
       { apiId, deploymentId: deployment.deploymentId, gatewayId: deployment.gatewayId },
       // No `onError`: the query client's `onMutationError` already notifies.
@@ -157,7 +154,7 @@ export function GatewayDeploymentHistory({
           <Button
             color="primary"
             onClick={() => {
-              trackFeature('apip.lifecycle.view-deployment-history', {
+              trackFeature('apip.lifecycle.deployment-history-view', {
                 artifact_kind: artifactKind,
               });
               setDrawerOpen(true);

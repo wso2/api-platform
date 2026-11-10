@@ -93,7 +93,7 @@ const messages = defineMessages({
   },
 });
 
-type DeployDimensions = FeatureDimensions<'apip.lifecycle.deploy-api'>;
+type DeployDimensions = FeatureDimensions<'apip.lifecycle.api-deploy-click'>;
 const GATEWAY_TYPES: readonly string[] = [
   'regular',
   'ai',
@@ -181,7 +181,7 @@ export function GatewayDeployCard({
     const gatewayType = deployGatewayType(gateway);
     // The gateway type is required; a gateway of an unknown type is not reported.
     if (gatewayType) {
-      trackFeature('apip.lifecycle.deploy-api', {
+      trackFeature('apip.lifecycle.api-deploy-click', {
         artifact_kind: artifactKind,
         gateway_hosting: deployGatewayHosting(gateway),
         gateway_type: gatewayType,

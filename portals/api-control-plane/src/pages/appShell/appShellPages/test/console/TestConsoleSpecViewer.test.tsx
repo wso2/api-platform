@@ -484,7 +484,7 @@ describe('TestConsoleSpecViewer — feature usage', () => {
     await clickExecute(() => Promise.reject(new TypeError('Failed to fetch')));
 
     const consoleUse = (callMode: string, outcome: string) => [
-      'apip.manage-apis.test-console',
+      'apip.manage-apis.test-console-execute',
       { api_type: 'rest-api', call_mode: callMode, outcome },
     ];
     expect(trackedFeatures()).toEqual([

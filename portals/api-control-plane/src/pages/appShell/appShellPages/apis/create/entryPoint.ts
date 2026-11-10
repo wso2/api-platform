@@ -24,11 +24,11 @@ import { dimensionValues, type FeatureDimensions } from '@/featureUsage';
  * wizard do not pull in the lazily loaded wizard itself.
  */
 export type ApiCreationEntryPoint =
-  FeatureDimensions<'apip.manage-apis.api-creation-wizard'>['entry_point'];
+  FeatureDimensions<'apip.manage-apis.api-creation-wizard-open'>['entry_point'];
 
 const STATE_KEY = 'apiCreationEntryPoint';
 
-const ENTRY_POINTS = dimensionValues('apip.manage-apis.api-creation-wizard', 'entry_point');
+const ENTRY_POINTS = dimensionValues('apip.manage-apis.api-creation-wizard-open', 'entry_point');
 
 /**
  * Navigation options for a control that opens the wizard:

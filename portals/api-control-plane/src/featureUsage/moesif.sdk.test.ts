@@ -76,7 +76,7 @@ const trackCreateWithRealSdk = async () => {
   const { trackFeatureUsage } = await import('./moesif');
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   trackFeatureUsage(
-    'apip.manage-apis.create-rest-api',
+    'apip.manage-apis.rest-api-create-click',
     { creation_method: 'scratch' },
     { companyId: ORG, userId: USER },
   );
@@ -97,7 +97,7 @@ describe('moesif-browser-js behind the PII filter', () => {
       request: { uri: string };
     }>;
     expect(batch).toHaveLength(1);
-    expect(batch[0].action_name).toBe('apip.manage-apis.create-rest-api');
+    expect(batch[0].action_name).toBe('apip.manage-apis.rest-api-create-click');
     expect(batch[0].request.uri).toBe(`${window.location.origin}${routes.newApi()}`);
   });
 

@@ -94,7 +94,7 @@ In the browser:
    page load.
 4. Within 5 seconds (or after 20 actions), it sends `POST /v1/actions/batch`.
    Check its payload:
-   - `action_name` is `apip.manage-apis.api-creation-wizard`;
+   - `action_name` is `apip.manage-apis.api-creation-wizard-open`;
    - `request.uri` is a route template such as
      `https://<console>/organizations/:orgHandle/projects/:projectHandler/apis/new`,
      with no org or project handle, no query string and no fragment;
@@ -121,12 +121,12 @@ Tracking never shows an error to the user, so these are the only signs.
 Every action carries the same metadata, so one filter selects API Platform:
 `metadata.initiating_product = apip`. For the first feature:
 
-| Moesif view              | Set-up                                                                                                                                                                                                                      |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| REST API creation funnel | Funnel, in this order: `apip.manage-apis.api-creation-wizard` → `apip.manage-apis.api-creation-wizard.select-api-type` → `apip.manage-apis.api-creation-wizard.select-creation-method` → `apip.manage-apis.create-rest-api` |
-| Where users start        | Segment `apip.manage-apis.api-creation-wizard` by `metadata.entry_point`                                                                                                                                                    |
-| Scratch vs. contract     | Segment `apip.manage-apis.create-rest-api` by `metadata.creation_method`                                                                                                                                                    |
-| Adoption across features | Filter `metadata.event_category = adoption`, group by `action_name`                                                                                                                                                         |
+| Moesif view              | Set-up                                                                                                                                                                                                                           |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REST API creation funnel | Funnel, in this order: `apip.manage-apis.api-creation-wizard-open` → `apip.manage-apis.api-creation-wizard-api-type-select` → `apip.manage-apis.api-creation-wizard-creation-method-select` → `apip.manage-apis.rest-api-create` |
+| Where users start        | Segment `apip.manage-apis.api-creation-wizard-open` by `metadata.entry_point`                                                                                                                                                    |
+| Scratch vs. contract     | Segment `apip.manage-apis.rest-api-create` by `metadata.creation_method`                                                                                                                                                         |
+| Adoption across features | Filter `metadata.event_category = adoption`, group by `action_name`                                                                                                                                                              |
 
 Users and companies show up in Moesif as UUIDs: the Thunder user ID (`sub`) and
 the organization ID (the `ouId` claim). The console never sends names.
@@ -216,11 +216,15 @@ Features are defined in the API Platform feature taxonomy (the WSO2
 feature-taxonomy schema v1) before the console can emit them. Agree on the entry
 with the taxonomy owners first. Its rules:
 
-- **`code`** is `<product>.<category>.<action>`, e.g.
-  `apip.manage-apis.create-rest-api`. It is sent verbatim as the Moesif action
-  name.
-- A **sub-feature** (one step of a feature) is prefixed by its parent's code,
-  e.g. `apip.manage-apis.api-creation-wizard.select-api-type`.
+- **`code`** is `<product>.<category>.<feature-action>`, feature first, e.g.
+  `apip.manage-apis.rest-api-create`. The second segment is the category id.
+  It is sent verbatim as the Moesif action name.
+- **One code per UI action.** Each button, confirm or step that commits
+  something is its own feature: `api-thumbnail-upload` and
+  `api-thumbnail-remove`, not one code with an `operation` dimension. A
+  dimension only describes a variant of the same action (REST or GraphQL, the
+  gateway type). Each step of a flow is its own code too, so a Moesif funnel can
+  order them (`api-creation-wizard-open` → `…-api-type-select` → …).
 - **`event_category`** says what the step means:
 
   | Value         | Use it for                                   | Example          |
@@ -243,7 +247,7 @@ renaming an old one.
 Copy the entry into `API_PLATFORM_FEATURES`:
 
 ```ts
-'apip.manage-apis.delete-api': {
+'apip.manage-apis.api-delete': {
   name: 'API Deletion',            // taxonomy `name` → metadata.action
   category: 'manage-apis',         // taxonomy `category`
   tier: 'core',
@@ -267,7 +271,7 @@ const trackFeature = useTrackFeature();
 
 <Button
   onClick={() => {
-    trackFeature('apip.manage-apis.delete-api', { api_type: 'rest-api' });
+    trackFeature('apip.manage-apis.api-delete', { api_type: 'rest-api' });
     confirmDelete();
   }}
 />;
@@ -374,44 +378,56 @@ Every feature below fires on the click that commits it (after client-side
 validation, before the request), once per click. Cancel, typing, navigation,
 search and view toggles report nothing.
 
-| Area         | Code                                                      | Fires on                                                             | Dimensions                                          |
-| ------------ | --------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------- |
-| API creation | `apip.manage-apis.api-creation-wizard`                    | wizard opens                                                         | `entry_point`                                       |
-|              | `…api-creation-wizard.select-api-type`                    | Continue on the type step                                            | `api_type`                                          |
-|              | `…api-creation-wizard.select-creation-method`             | Continue on the definition step                                      | `api_type`, `creation_method`                       |
-|              | `apip.manage-apis.create-rest-api` / `create-graphql-api` | Create                                                               | `creation_method`, `contract_source`?               |
-| APIs         | `apip.manage-apis.update-api`                             | Save on the edit page, endpoint drawer, or "Update API" (definition) | `api_type`, `part`                                  |
-|              | `apip.manage-apis.delete-api`                             | delete confirm                                                       | `api_type`                                          |
-|              | `apip.manage-apis.api-thumbnail`                          | upload / remove confirm                                              | `operation`, `api_type`?                            |
-|              | `apip.manage-apis.api-documentation`                      | Create, Save, delete confirm                                         | `operation`, `api_type`?, `document_type`?          |
-| Test         | `apip.manage-apis.test-console`                           | Execute (REST) / run (GraphQL), after the response                   | `api_type`, `call_mode`?, `outcome`                 |
-|              | `apip.manage-apis.test-console.copy-curl`                 | Copy command (cURL view)                                             | `api_type`                                          |
-| Keys         | `apip.security.api-key-issuance`                          | Create key; Get Test API Key / Issue a new key                       | `artifact_kind`, `key_purpose`                      |
-|              | `apip.security.api-key-management`                        | revoke confirm                                                       | `artifact_kind`, `operation`                        |
-| Policies     | `apip.policies.<capability>` (10 codes)                   | Save changes, once per newly attached policy                         | `artifact_kind`?, `policy_scope`?, `policy_name`    |
-|              | `apip.policies.browse-policies`                           | Policy Hub catalogue shown                                           | `artifact_kind`?                                    |
-| Deploy       | `apip.lifecycle.deploy-api`                               | Deploy                                                               | `artifact_kind`, `gateway_type`, `gateway_hosting`? |
-|              | `apip.lifecycle.manage-deployment`                        | Stop, Redeploy, Restore, delete                                      | `artifact_kind`, `operation`                        |
-|              | `apip.lifecycle.view-deployment-history`                  | View More                                                            | `artifact_kind`?                                    |
-| Publish      | `apip.lifecycle.publish-api`                              | Publish / Republish, one-click Publish                               | `api_type`                                          |
-|              | `apip.lifecycle.manage-publication`                       | unpublish / deprecate confirm                                        | `api_type`, `operation`                             |
-|              | `apip.lifecycle.publication-draft`                        | Save Draft, once per part saved                                      | `draft_part`, `api_type`?                           |
-|              | `apip.lifecycle.open-api-portal`                          | View in Portal                                                       | `api_type`?                                         |
-| Gateways     | `apip.gateway.register-gateway`                           | Provision gateway                                                    | `gateway_type`, `gateway_hosting`?                  |
-|              | `apip.gateway.manage-gateway`                             | Save (name, description)                                             | `operation`, `gateway_type`?                        |
-|              | `apip.gateway.gateway-token`                              | Generate new token confirm                                           | `operation`                                         |
-|              | `apip.gateway.copy-setup-command`                         | any copy button in the setup steps                                   | `install_method`, `setup_step`                      |
-|              | `apip.policies.view-gateway-policies`                     | Policies tab, first open per visit                                   | —                                                   |
-| Organization | `apip.admin.manage-projects`                              | Create; delete confirm                                               | `operation`                                         |
-|              | `apip.security.service-accounts`                          | create, edit, enable, disable, regenerate, delete, Get token         | `operation`                                         |
-|              | `apip.monetization.meter-management`                      | Add, Save, delete confirm                                            | `operation`                                         |
-|              | `apip.monetization.subscription-plan-management`          | Add, Save, status switch, delete confirm                             | `operation`                                         |
+| Area         | Code (`apip.` + …)                                                                                               | Fires on                                              | Dimensions                                                                   |
+| ------------ | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------- |
+| API creation | `manage-apis.api-creation-wizard-open`                                                                           | wizard opens                                          | `entry_point`                                                                |
+|              | `manage-apis.api-creation-wizard-api-type-select`                                                                | Continue on the type step                             | `api_type`                                                                   |
+|              | `manage-apis.api-creation-wizard-creation-method-select`                                                         | Continue on the definition step                       | `api_type`, `creation_method`                                                |
+|              | `manage-apis.rest-api-create-click` / `graphql-api-create-click`                                                 | Create                                                | `creation_method`, `contract_source`?                                        |
+| APIs         | `manage-apis.api-update-click`                                                                                   | Save on the edit page                                 | `api_type`                                                                   |
+|              | `manage-apis.api-endpoint-update-click`                                                                          | Save in the endpoint drawer                           | `api_type`                                                                   |
+|              | `manage-apis.api-definition-update-click`                                                                        | "Update API" confirm (definition)                     | —                                                                            |
+|              | `manage-apis.api-delete-click`                                                                                   | delete confirm                                        | `api_type`                                                                   |
+|              | `manage-apis.api-thumbnail-upload-click` / `api-thumbnail-remove-click`                                          | upload / remove confirm                               | `api_type`?                                                                  |
+|              | `manage-apis.api-document-create-click` / `-update-click` / `-delete-click`                                      | Create, Save, delete confirm                          | `api_type`?, `document_type`?                                                |
+| Test         | `manage-apis.test-console-execute`                                                                               | Execute (REST) / run (GraphQL), after the response    | `api_type`, `call_mode`?, `outcome`                                          |
+|              | `manage-apis.test-console-curl-copy`                                                                             | Copy command (cURL view)                              | `api_type`                                                                   |
+| Keys         | `security.api-key-create-click`                                                                                  | Create key                                            | `artifact_kind`                                                              |
+|              | `security.test-api-key-generate-click`                                                                           | Get Test API Key / Issue a new key                    | `artifact_kind`                                                              |
+|              | `security.api-key-revoke-click`                                                                                  | revoke confirm                                        | `artifact_kind`                                                              |
+| Policies     | `policies.<capability>-attach` (10 codes)                                                                        | Save changes, once per newly attached policy          | `artifact_kind`?, `policy_scope`?, `policy_name`                             |
+|              | `policies.policy-hub-browse`                                                                                     | Policy Hub catalogue shown                            | `artifact_kind`?                                                             |
+| Deploy       | `lifecycle.api-deploy-click`                                                                                     | Deploy                                                | `artifact_kind`, `gateway_type`, `gateway_hosting`?                          |
+|              | `lifecycle.deployment-undeploy-click` / `-redeploy-click` / `-restore-click` / `-delete-click`                   | Stop, Redeploy, Restore, delete                       | `artifact_kind`                                                              |
+|              | `lifecycle.deployment-history-view`                                                                              | View More                                             | `artifact_kind`?                                                             |
+| Publish      | `lifecycle.api-publish-click`                                                                                    | Publish / Republish, one-click Publish                | `api_type`                                                                   |
+|              | `lifecycle.api-unpublish-click` / `api-deprecate-click`                                                          | unpublish / deprecate confirm                         | `api_type`                                                                   |
+|              | `lifecycle.publication-draft-save-click`                                                                         | Save Draft, once per click                            | `api_type`?, `definition_saved`, `thumbnail_changed`, `landing_page_changed` |
+|              | `lifecycle.api-portal-open`                                                                                      | View in Portal                                        | `api_type`?                                                                  |
+| Gateways     | `gateway.gateway-register-click`                                                                                 | Provision gateway                                     | `gateway_type`, `gateway_hosting`?                                           |
+|              | `gateway.gateway-update-click`                                                                                   | Save (name, description)                              | `gateway_type`?                                                              |
+|              | `gateway.gateway-token-regenerate-click`                                                                         | Generate new token confirm                            | —                                                                            |
+|              | `gateway.gateway-setup-command-copy`                                                                             | any copy button in the setup steps                    | `install_method`, `setup_step`                                               |
+|              | `policies.gateway-policies-view`                                                                                 | Policies tab, first open per visit                    | —                                                                            |
+| Organization | `admin.project-create-click` / `project-delete-click`                                                            | Create; delete confirm                                | —                                                                            |
+|              | `security.service-account-create-click` / `-update-click` / `-enable-click` / `-disable-click` / `-delete-click` | create, edit, enable, disable confirm, delete confirm | —                                                                            |
+|              | `security.service-account-secret-regenerate-click`                                                               | regenerate confirm                                    | —                                                                            |
+|              | `security.service-account-test-token-get-click`                                                                  | Get token                                             | —                                                                            |
+|              | `monetization.meter-create-click` / `-update-click` / `-delete-click`                                            | Add, Save, delete confirm                             | —                                                                            |
+|              | `monetization.subscription-plan-create-click` / `-update-click` / `-delete-click`                                | Add, Save, delete confirm                             | —                                                                            |
+|              | `monetization.subscription-plan-status-change-click`                                                             | status switch                                         | `status`                                                                     |
+
+**UI actions and endpoint features.** A UI action that triggers a Platform API
+call ends in `-click` (`api-delete-click`). The endpoint it calls is a feature
+of its own, without the suffix (`api-delete`), reported by Platform API with
+request-only dimensions and an `outcome`. The UI actions show how far users get
+and where they drop off; the endpoint features show whether the call worked.
 
 `?` marks an optional dimension. `taxonomy.ts` lists every value.
 
 **Policies.** The console doesn't know a policy's category, so
 `trackPolicyAttachment` (`policies.ts`) maps the policy name to its capability
-feature (`api-key-auth` → `apip.policies.client-authentication`). Only the WSO2
+feature (`api-key-auth` → `apip.policies.client-authentication-attach`). Only the WSO2
 policies bundled with the gateway are mapped; a custom, AI or MCP policy is not
 reported, because its name could be the customer's own text.
 
@@ -422,10 +438,9 @@ documentation links, and the test key minted automatically on page load.
 **Pages WSO2 Cloud replaces.** In the cloud build, the Gateways pages and both
 Deploy pages are cloud-plugin pages (`page.gateways`, `page.apiDeploy`,
 `page.graphqlApiDeploy`). The built-in pages above are tracked, but in WSO2
-Cloud `register-gateway`, `manage-gateway`, `gateway-token`,
-`copy-setup-command`, `view-gateway-policies`, `deploy-api`,
-`manage-deployment` and `view-deployment-history` only appear once the cloud
-plugins report them too.
+Cloud the gateway features, `gateway-policies-view`, `api-deploy`, the
+`deployment-*` features and `deployment-history-view` only appear once the
+cloud plugins report them too.
 
 ---
 

@@ -82,7 +82,7 @@ describe('ProjectCreatePage', () => {
       id: 'billing',
       description: 'Invoices',
     });
-    expect(trackedFeatures()).toEqual([['apip.admin.manage-projects', { operation: 'create' }]]);
+    expect(trackedFeatures()).toEqual([['apip.admin.project-create-click', {}]]);
     await screen.findByText('Project home');
   });
 

@@ -243,7 +243,7 @@ const messages = defineMessages({
 /** Which install path the panel is showing. */
 type SetupTab = 'quickStart' | 'virtualMachine' | 'docker' | 'kubernetes';
 
-type SetupCommandDimensions = FeatureDimensions<'apip.gateway.copy-setup-command'>;
+type SetupCommandDimensions = FeatureDimensions<'apip.gateway.gateway-setup-command-copy'>;
 
 /** How feature usage names each install path. */
 const INSTALL_METHOD: Record<SetupTab, SetupCommandDimensions['install_method']> = {
@@ -399,7 +399,7 @@ export function GatewayGetStartedPanel({
 
   const reconfigure = () => {
     setConfirmOpen(false);
-    trackFeature('apip.gateway.gateway-token', { operation: 'rotate' });
+    trackFeature('apip.gateway.gateway-token-regenerate-click', {});
     rotateToken.mutate(undefined, {
       onSuccess: (result) => {
         setToken(result.token);
@@ -410,7 +410,7 @@ export function GatewayGetStartedPanel({
 
   /** Reports a copied setup command as the step it belongs to, on the path shown. */
   const reportCopy = (setupStep: SetupCommandDimensions['setup_step']) => () =>
-    trackFeature('apip.gateway.copy-setup-command', {
+    trackFeature('apip.gateway.gateway-setup-command-copy', {
       install_method: INSTALL_METHOD[tab],
       setup_step: setupStep,
     });

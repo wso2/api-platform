@@ -178,7 +178,7 @@ function GraphqlApiEditPageContent() {
   }
 
   const save = (values: GraphqlApiBasicInfoFormValues) => {
-    trackFeature('apip.manage-apis.update-api', { api_type: 'graphql-api', part: 'metadata' });
+    trackFeature('apip.manage-apis.api-update-click', { api_type: 'graphql-api' });
     updateApi.mutate(
       { graphqlApiId: graphqlApiHandler, body: toUpdateBody(api, sdl, values) },
       {

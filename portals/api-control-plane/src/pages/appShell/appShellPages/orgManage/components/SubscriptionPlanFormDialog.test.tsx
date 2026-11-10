@@ -180,7 +180,7 @@ describe('SubscriptionPlanFormDialog', () => {
     });
     expect(onClose).toHaveBeenCalled();
     expect(trackedFeatures()).toEqual([
-      ['apip.monetization.subscription-plan-management', { operation: 'create' }],
+      ['apip.monetization.subscription-plan-create-click', {}],
     ]);
   });
 
@@ -401,7 +401,7 @@ describe('SubscriptionPlanFormDialog', () => {
     // Status isn't editable in this dialog — the plan's own status must round-trip.
     expect(JSON.parse(requests.last()!.body).status).toBe('INACTIVE');
     expect(trackedFeatures()).toEqual([
-      ['apip.monetization.subscription-plan-management', { operation: 'update' }],
+      ['apip.monetization.subscription-plan-update-click', {}],
     ]);
   });
 

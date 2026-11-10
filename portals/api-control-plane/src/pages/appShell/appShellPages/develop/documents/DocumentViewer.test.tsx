@@ -246,8 +246,8 @@ describe('DocumentViewer — feature usage', () => {
       await waitFor(() => expect(onDeleted).toHaveBeenCalledTimes(1));
       expect(trackedFeatures()).toEqual([
         [
-          'apip.manage-apis.api-documentation',
-          { api_type: 'rest-api', document_type: documentType, operation: 'delete' },
+          'apip.manage-apis.api-document-delete-click',
+          { api_type: 'rest-api', document_type: documentType },
         ],
       ]);
     },

@@ -151,9 +151,7 @@ describe('CreateServiceAccountPage', () => {
         displayName: 'CI deployer',
         roles: ['ap_service_account'],
       });
-      expect(trackedFeatures()).toEqual([
-        ['apip.security.service-accounts', { operation: 'create' }],
-      ]);
+      expect(trackedFeatures()).toEqual([['apip.security.service-account-create-click', {}]]);
       await waitFor(() =>
         expect(screen.getByTestId('location')).toHaveTextContent(
           `/organizations/${ORG}/service-accounts/created`,

@@ -76,7 +76,7 @@ const messages = defineMessages({
 });
 
 /** The kind of API whose deployments these components manage, for usage analytics. */
-export type DeployArtifactKind = FeatureDimensions<'apip.lifecycle.deploy-api'>['artifact_kind'];
+export type DeployArtifactKind = FeatureDimensions<'apip.lifecycle.api-deploy-click'>['artifact_kind'];
 
 /**
  * What a per-deployment action mutation (restore/undeploy/delete) needs to
@@ -143,10 +143,7 @@ export function GatewayDeploymentSelector({
     if (readOnly) return;
     const deployment = deployments.find((item) => item.deploymentId === selectedId);
     if (!deployment) return;
-    trackFeature('apip.lifecycle.manage-deployment', {
-      artifact_kind: artifactKind,
-      operation: 'restore',
-    });
+    trackFeature('apip.lifecycle.deployment-restore-click', { artifact_kind: artifactKind });
     restoreMutation.mutate(
       { apiId, deploymentId: deployment.deploymentId, gatewayId: deployment.gatewayId },
       // No `onError`: the query client's `onMutationError` already notifies.

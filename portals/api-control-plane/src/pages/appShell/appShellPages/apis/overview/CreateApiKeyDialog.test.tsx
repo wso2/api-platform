@@ -245,10 +245,7 @@ describe('CreateApiKeyDialog — feature usage', () => {
 
       await waitFor(() => expect(requests.count()).toBe(1));
       expect(trackedFeatures()).toEqual([
-        [
-          'apip.security.api-key-issuance',
-          { artifact_kind: artifactKind, key_purpose: 'production' },
-        ],
+        ['apip.security.api-key-create-click', { artifact_kind: artifactKind }],
       ]);
     },
   );

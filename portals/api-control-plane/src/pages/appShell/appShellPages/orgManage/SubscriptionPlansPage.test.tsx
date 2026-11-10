@@ -252,7 +252,7 @@ describe('SubscriptionPlansPage', () => {
       status: 'INACTIVE',
     });
     expect(trackedFeatures()).toEqual([
-      ['apip.monetization.subscription-plan-management', { operation: 'deactivate' }],
+      ['apip.monetization.subscription-plan-status-change-click', { status: 'inactive' }],
     ]);
   });
 
@@ -276,7 +276,7 @@ describe('SubscriptionPlansPage', () => {
       status: 'ACTIVE',
     });
     expect(trackedFeatures()).toEqual([
-      ['apip.monetization.subscription-plan-management', { operation: 'activate' }],
+      ['apip.monetization.subscription-plan-status-change-click', { status: 'active' }],
     ]);
   });
 
@@ -317,9 +317,7 @@ describe('SubscriptionPlansPage', () => {
     // The dialog closes from the mutation's own onSuccess, a tick after the
     // request itself resolves — not necessarily settled by the line above.
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(trackedFeatures()).toEqual([
-      ['apip.monetization.subscription-plan-management', { operation: 'delete' }],
-    ]);
+    expect(trackedFeatures()).toEqual([['apip.monetization.subscription-plan-delete-click', {}]]);
   });
 
   it('reports no deletion when the confirmation is cancelled', async () => {

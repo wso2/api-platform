@@ -487,7 +487,7 @@ export function SubscriptionPlanFormDialog({
     const expiryTime = form.expiryDate ? toExpiryTime(form.expiryDate) : undefined;
 
     if (isEdit && plan) {
-      trackFeature('apip.monetization.subscription-plan-management', { operation: 'update' });
+      trackFeature('apip.monetization.subscription-plan-update-click', {});
       updateMutation.mutate(
         {
           // The editable fields only: a body with pricing is refused, and the
@@ -517,7 +517,7 @@ export function SubscriptionPlanFormDialog({
     }
 
     // A paid plan is created with its pricing in the one request.
-    trackFeature('apip.monetization.subscription-plan-management', { operation: 'create' });
+    trackFeature('apip.monetization.subscription-plan-create-click', {});
     createMutation.mutate(
       {
         displayName: trimmedName,

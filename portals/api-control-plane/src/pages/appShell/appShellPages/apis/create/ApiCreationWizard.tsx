@@ -56,7 +56,7 @@ import { readApiCreationEntryPoint } from './entryPoint';
 const CONFIGURE_FORM_ID = 'api-creation-configure-form';
 
 type TaxonomyApiType =
-  FeatureDimensions<'apip.manage-apis.api-creation-wizard.select-api-type'>['api_type'];
+  FeatureDimensions<'apip.manage-apis.api-creation-wizard-api-type-select'>['api_type'];
 
 /** The taxonomy's `api_type` for a wizard type; a type without one is not reported. */
 const TAXONOMY_API_TYPES: Readonly<Record<string, TaxonomyApiType>> = {
@@ -64,7 +64,7 @@ const TAXONOMY_API_TYPES: Readonly<Record<string, TaxonomyApiType>> = {
   rest: 'rest-api',
 };
 
-type CreationDimensions = FeatureDimensions<'apip.manage-apis.create-graphql-api'>;
+type CreationDimensions = FeatureDimensions<'apip.manage-apis.graphql-api-create-click'>;
 
 /** The taxonomy's contract source; one the console doesn't offer is left out. */
 const taxonomyContractSource = (
@@ -175,10 +175,10 @@ const ApiCreationWizardContent = () => {
   /*
    * Feature usage: one Moesif action per screen the user moves past, so a
    * funnel can order them and show where users stop.
-   *   1. apip.manage-apis.api-creation-wizard                          (opened)
-   *   2. apip.manage-apis.api-creation-wizard.select-api-type          (type chosen)
-   *   3. apip.manage-apis.api-creation-wizard.select-creation-method   (scratch or contract)
-   *   4. apip.manage-apis.create-rest-api / create-graphql-api         (Create clicked)
+   *   1. apip.manage-apis.api-creation-wizard-open                      (opened)
+   *   2. apip.manage-apis.api-creation-wizard-api-type-select           (type chosen)
+   *   3. apip.manage-apis.api-creation-wizard-creation-method-select    (scratch or contract)
+   *   4. apip.manage-apis.rest-api-create / graphql-api-create          (Create clicked)
    * Form fields are not reported: edits are noise, and their values are
    * customer text that must not reach analytics.
    */
@@ -196,7 +196,7 @@ const ApiCreationWizardContent = () => {
     // Once per visit, however often identity or route state re-render this.
     if (openReported.current) return;
     openReported.current = true;
-    trackFeature('apip.manage-apis.api-creation-wizard', {
+    trackFeature('apip.manage-apis.api-creation-wizard-open', {
       entry_point: readApiCreationEntryPoint(location.state),
     });
   }, [location.state, trackFeature]);
@@ -249,7 +249,7 @@ const ApiCreationWizardContent = () => {
       if (graphqlSourceDraft === null) return;
       const creation = graphqlCreationDimensions(graphqlSourceDraft.schemaSource);
       if (creation) {
-        trackFeature('apip.manage-apis.api-creation-wizard.select-creation-method', {
+        trackFeature('apip.manage-apis.api-creation-wizard-creation-method-select', {
           api_type: 'graphql-api',
           creation_method: creation.creation_method,
         });
@@ -259,7 +259,7 @@ const ApiCreationWizardContent = () => {
     } else {
       if (sourceDraft === null) return;
       if (restApproach) {
-        trackFeature('apip.manage-apis.api-creation-wizard.select-creation-method', {
+        trackFeature('apip.manage-apis.api-creation-wizard-creation-method-select', {
           api_type: 'rest-api',
           creation_method: restApproach,
         });
@@ -356,7 +356,7 @@ const ApiCreationWizardContent = () => {
     // the server's answer: the product decision for this feature. Retry on the
     // progress screen is not a new use.
     if (restApproach) {
-      trackFeature('apip.manage-apis.create-rest-api', {
+      trackFeature('apip.manage-apis.rest-api-create-click', {
         contract_source:
           restApproach === 'contract' ? taxonomyContractSource(restContractSource) : undefined,
         creation_method: restApproach,
@@ -426,7 +426,7 @@ const ApiCreationWizardContent = () => {
     if (!activeScope.projectHandler) return;
     // On the Create click, as for REST; Retry on the progress screen is not a new use.
     const creation = graphqlCreationDimensions(finalData.schemaSource);
-    if (creation) trackFeature('apip.manage-apis.create-graphql-api', creation);
+    if (creation) trackFeature('apip.manage-apis.graphql-api-create-click', creation);
 
     setGraphqlSubmittedValues(finalData);
     setGraphqlCreationStarted(true);
@@ -657,7 +657,7 @@ const ApiCreationWizardContent = () => {
                     if (step === 'apiType') {
                       const taxonomyApiType = apiType ? TAXONOMY_API_TYPES[apiType.key] : undefined;
                       if (taxonomyApiType) {
-                        trackFeature('apip.manage-apis.api-creation-wizard.select-api-type', {
+                        trackFeature('apip.manage-apis.api-creation-wizard-api-type-select', {
                           api_type: taxonomyApiType,
                         });
                       }

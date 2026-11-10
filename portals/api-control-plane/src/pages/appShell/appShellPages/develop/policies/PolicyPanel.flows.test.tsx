@@ -288,9 +288,9 @@ describe('PolicyPanel — resources', () => {
 });
 
 describe('PolicyPanel — feature usage', () => {
-  const browse = ['apip.policies.browse-policies', { artifact_kind: 'rest-api' }];
+  const browse = ['apip.policies.policy-hub-browse', { artifact_kind: 'rest-api' }];
   const apiKeyAuth = (policyScope: 'api' | 'operation') => [
-    'apip.policies.client-authentication',
+    'apip.policies.client-authentication-attach',
     { artifact_kind: 'rest-api', policy_name: 'api-key-auth', policy_scope: policyScope },
   ];
 

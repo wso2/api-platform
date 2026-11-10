@@ -401,10 +401,9 @@ function DocumentForm({
     if (!valid || saving) return;
 
     if (!existing) {
-      trackFeature('apip.manage-apis.api-documentation', {
+      trackFeature('apip.manage-apis.api-document-create-click', {
         api_type: documentationApiType(apiType),
         document_type: documentationDocumentType(type),
-        operation: 'create',
       });
       createMutation.mutate(
         {
@@ -435,10 +434,9 @@ function DocumentForm({
       otherTypeName: existingIsCustomType ? existing.type : undefined,
       inlineContent: contentChanged ? content : undefined,
     };
-    trackFeature('apip.manage-apis.api-documentation', {
+    trackFeature('apip.manage-apis.api-document-update-click', {
       api_type: documentationApiType(apiType),
       document_type: documentationDocumentType(body.type),
-      operation: 'update',
     });
     updateMutation.mutate(
       { apiId: apiHandle, apiType, body, docId: existing.id },

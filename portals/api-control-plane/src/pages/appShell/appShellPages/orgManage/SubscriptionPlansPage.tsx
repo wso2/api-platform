@@ -285,8 +285,8 @@ export function SubscriptionPlansPage() {
   const toggleStatus = (plan: SubscriptionPlan) => {
     if (!plan.id) return;
     const nextStatus = plan.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-    trackFeature('apip.monetization.subscription-plan-management', {
-      operation: nextStatus === 'ACTIVE' ? 'activate' : 'deactivate',
+    trackFeature('apip.monetization.subscription-plan-status-change-click', {
+      status: nextStatus === 'ACTIVE' ? 'active' : 'inactive',
     });
     updateMutation.mutate(
       {
@@ -319,7 +319,7 @@ export function SubscriptionPlansPage() {
   const confirmDelete = () => {
     if (!deleteTarget?.id) return;
     const { displayName, id } = deleteTarget;
-    trackFeature('apip.monetization.subscription-plan-management', { operation: 'delete' });
+    trackFeature('apip.monetization.subscription-plan-delete-click', {});
     deleteMutation.mutate(
       { subscriptionPlanId: id },
       {

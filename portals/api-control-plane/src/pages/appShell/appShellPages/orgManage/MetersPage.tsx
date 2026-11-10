@@ -219,7 +219,7 @@ export function MetersPage() {
   const confirmDelete = () => {
     if (!deleteTarget?.id) return;
     const { displayName, id } = deleteTarget;
-    trackFeature('apip.monetization.meter-management', { operation: 'delete' });
+    trackFeature('apip.monetization.meter-delete-click', {});
     deleteMutation.mutate(
       { meterId: id },
       {

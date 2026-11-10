@@ -47,7 +47,7 @@ describe('the feature registry', () => {
   });
 
   it('reads the values of a dimension', () => {
-    expect(dimensionValues('apip.manage-apis.delete-api', 'api_type')).toEqual([
+    expect(dimensionValues('apip.manage-apis.api-delete-click', 'api_type')).toEqual([
       'rest-api',
       'graphql-api',
     ]);
@@ -57,10 +57,10 @@ describe('the feature registry', () => {
 describe('featureMetadata', () => {
   it('sends an optional dimension only when it is given', () => {
     expect(
-      featureMetadata('apip.manage-apis.create-rest-api', { creation_method: 'scratch' }),
+      featureMetadata('apip.manage-apis.rest-api-create-click', { creation_method: 'scratch' }),
     ).not.toHaveProperty('contract_source');
     expect(
-      featureMetadata('apip.manage-apis.create-rest-api', {
+      featureMetadata('apip.manage-apis.rest-api-create-click', {
         contract_source: 'file',
         creation_method: 'contract',
       }),
@@ -68,7 +68,7 @@ describe('featureMetadata', () => {
   });
 
   it('carries only the taxonomy fields for a feature without dimensions', () => {
-    expect(featureMetadata('apip.policies.view-gateway-policies', undefined)).toEqual({
+    expect(featureMetadata('apip.policies.gateway-policies-view', undefined)).toEqual({
       action: 'Gateway Policies View',
       category: 'policies',
       event_category: 'discovery',
@@ -81,16 +81,16 @@ describe('featureMetadata', () => {
 
 describe('policy capabilities', () => {
   it.each([
-    ['api-key-auth', 'apip.policies.client-authentication'],
-    ['backend-jwt', 'apip.policies.backend-authentication'],
-    ['subscription-validation', 'apip.policies.access-control'],
-    ['advanced-ratelimit', 'apip.policies.rate-limiting'],
-    ['redirect', 'apip.policies.traffic-routing'],
-    ['json-xml-mediator', 'apip.policies.transformation'],
-    ['regex-guardrail', 'apip.policies.content-validation'],
-    ['cors', 'apip.policies.cors'],
-    ['log-message', 'apip.policies.interception'],
-    ['analytics-header-filter', 'apip.policies.analytics-filtering'],
+    ['api-key-auth', 'apip.policies.client-authentication-attach'],
+    ['backend-jwt', 'apip.policies.backend-authentication-attach'],
+    ['subscription-validation', 'apip.policies.access-control-attach'],
+    ['advanced-ratelimit', 'apip.policies.rate-limiting-attach'],
+    ['redirect', 'apip.policies.traffic-routing-attach'],
+    ['json-xml-mediator', 'apip.policies.transformation-attach'],
+    ['regex-guardrail', 'apip.policies.content-validation-attach'],
+    ['cors', 'apip.policies.cors-attach'],
+    ['log-message', 'apip.policies.interception-attach'],
+    ['analytics-header-filter', 'apip.policies.analytics-filtering-attach'],
   ])('maps %s to %s', (policy, code) => {
     expect(policyFeatureOf(policy)).toBe(code);
   });
@@ -116,17 +116,17 @@ describe('policy capabilities', () => {
 
     expect(trackFeature.mock.calls).toEqual([
       [
-        'apip.policies.rate-limiting',
+        'apip.policies.rate-limiting-attach',
         { artifact_kind: 'rest-api', policy_name: 'basic-ratelimit', policy_scope: 'operation' },
       ],
       [
-        'apip.policies.cors',
+        'apip.policies.cors-attach',
         { artifact_kind: 'graphql-api', policy_name: 'cors', policy_scope: 'api' },
       ],
     ]);
     // The single-policy capabilities carry no policy_name to Moesif.
-    expect(featureMetadata('apip.policies.cors', trackFeature.mock.calls[1][1])).not.toHaveProperty(
-      'policy_name',
-    );
+    expect(
+      featureMetadata('apip.policies.cors-attach', trackFeature.mock.calls[1][1]),
+    ).not.toHaveProperty('policy_name');
   });
 });

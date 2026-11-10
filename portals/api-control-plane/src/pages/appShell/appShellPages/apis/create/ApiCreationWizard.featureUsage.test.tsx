@@ -137,13 +137,13 @@ describe('ApiCreationWizard — feature usage', () => {
 
     await waitFor(() => expect(sdk.track).toHaveBeenCalledTimes(4));
     expect(tracked()).toEqual([
-      ['apip.manage-apis.api-creation-wizard', { entry_point: 'api-list' }],
-      ['apip.manage-apis.api-creation-wizard.select-api-type', { api_type: 'rest-api' }],
+      ['apip.manage-apis.api-creation-wizard-open', { entry_point: 'api-list' }],
+      ['apip.manage-apis.api-creation-wizard-api-type-select', { api_type: 'rest-api' }],
       [
-        'apip.manage-apis.api-creation-wizard.select-creation-method',
+        'apip.manage-apis.api-creation-wizard-creation-method-select',
         { api_type: 'rest-api', creation_method: 'scratch' },
       ],
-      ['apip.manage-apis.create-rest-api', { creation_method: 'scratch' }],
+      ['apip.manage-apis.rest-api-create-click', { creation_method: 'scratch' }],
     ]);
     expect(createRequests.count()).toBe(1);
   });
@@ -181,7 +181,7 @@ describe('ApiCreationWizard — feature usage', () => {
 
     await waitFor(() =>
       expect(tracked()).toEqual([
-        ['apip.manage-apis.api-creation-wizard', { entry_point: 'direct' }],
+        ['apip.manage-apis.api-creation-wizard-open', { entry_point: 'direct' }],
       ]),
     );
   });
@@ -196,7 +196,7 @@ describe('ApiCreationWizard — feature usage', () => {
     await createFromScratch({ route: path });
 
     await waitFor(() =>
-      expect(tracked().map(([action]) => action)).toContain('apip.manage-apis.create-rest-api'),
+      expect(tracked().map(([action]) => action)).toContain('apip.manage-apis.rest-api-create-click'),
     );
   });
 });
@@ -240,14 +240,14 @@ describe('ApiCreationWizard — feature usage, other paths', () => {
     await user.click(await screen.findByRole('button', { name: 'Create' }));
 
     await waitFor(() =>
-      expect(tracked().map(([action]) => action)).toContain('apip.manage-apis.create-rest-api'),
+      expect(tracked().map(([action]) => action)).toContain('apip.manage-apis.rest-api-create-click'),
     );
     expect(tracked().slice(2)).toEqual([
       [
-        'apip.manage-apis.api-creation-wizard.select-creation-method',
+        'apip.manage-apis.api-creation-wizard-creation-method-select',
         { api_type: 'rest-api', creation_method: 'contract' },
       ],
-      ['apip.manage-apis.create-rest-api', { contract_source: 'url', creation_method: 'contract' }],
+      ['apip.manage-apis.rest-api-create-click', { contract_source: 'url', creation_method: 'contract' }],
     ]);
     // Nothing the user supplied rides along: not the URL, not the title.
     expect(JSON.stringify(sdk.track.mock.calls)).not.toMatch(/example\.com|Orders/);
@@ -274,15 +274,15 @@ describe('ApiCreationWizard — feature usage, other paths', () => {
     await user.click(await screen.findByRole('button', { name: 'Create' }));
 
     await waitFor(() =>
-      expect(tracked().map(([action]) => action)).toContain('apip.manage-apis.create-graphql-api'),
+      expect(tracked().map(([action]) => action)).toContain('apip.manage-apis.graphql-api-create-click'),
     );
     expect(tracked().slice(1)).toEqual([
-      ['apip.manage-apis.api-creation-wizard.select-api-type', { api_type: 'graphql-api' }],
+      ['apip.manage-apis.api-creation-wizard-api-type-select', { api_type: 'graphql-api' }],
       [
-        'apip.manage-apis.api-creation-wizard.select-creation-method',
+        'apip.manage-apis.api-creation-wizard-creation-method-select',
         { api_type: 'graphql-api', creation_method: 'scratch' },
       ],
-      ['apip.manage-apis.create-graphql-api', { creation_method: 'scratch' }],
+      ['apip.manage-apis.graphql-api-create-click', { creation_method: 'scratch' }],
     ]);
   });
 });

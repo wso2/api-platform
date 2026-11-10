@@ -131,10 +131,7 @@ export function ApiThumbnailManager({
       notify(intl.formatMessage(messages.errorSize), 'error');
       return;
     }
-    trackFeature('apip.manage-apis.api-thumbnail', {
-      api_type: asApiType(apiType),
-      operation: 'upsert',
-    });
+    trackFeature('apip.manage-apis.api-thumbnail-upload-click', { api_type: asApiType(apiType) });
     try {
       await upsertMutation.mutateAsync({ apiType, apiId, file });
       notify(intl.formatMessage(messages.uploadSuccess), 'success');
@@ -144,10 +141,7 @@ export function ApiThumbnailManager({
   };
 
   const onConfirmDelete = async () => {
-    trackFeature('apip.manage-apis.api-thumbnail', {
-      api_type: asApiType(apiType),
-      operation: 'delete',
-    });
+    trackFeature('apip.manage-apis.api-thumbnail-remove-click', { api_type: asApiType(apiType) });
     try {
       await deleteMutation.mutateAsync({ apiType, apiId });
       notify(intl.formatMessage(messages.deleteSuccess), 'success');

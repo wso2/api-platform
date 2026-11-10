@@ -366,7 +366,7 @@ function CreatedView() {
     if (!scopesReady || mutation.isPending) return;
     // A failed retry must not leave the previous token on screen.
     setIssued(null);
-    trackFeature('apip.security.service-accounts', { operation: 'issue-test-token' });
+    trackFeature('apip.security.service-account-test-token-get-click', {});
     mutation.mutate(
       {
         client_id: clientId,

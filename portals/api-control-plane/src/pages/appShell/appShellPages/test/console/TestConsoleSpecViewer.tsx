@@ -235,7 +235,7 @@ export default function TestConsoleSpecViewer({
   const { mutateAsync: invoke } = useInvokeRestApiOnGateway({ orgId: orgHandle });
   const trackFeature = useTrackFeature();
   const onExecuted: RelayContext['onExecuted'] = (mode, outcome) =>
-    trackFeature('apip.manage-apis.test-console', {
+    trackFeature('apip.manage-apis.test-console-execute', {
       api_type: 'rest-api',
       call_mode: mode,
       outcome,

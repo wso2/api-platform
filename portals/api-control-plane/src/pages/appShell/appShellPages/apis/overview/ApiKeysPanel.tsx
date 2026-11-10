@@ -200,9 +200,8 @@ export function ApiKeysPanel({ apiId, apiKind = 'rest' }: ApiKeysPanelProps) {
   const revoke = () => {
     if (!revokeTarget) return;
     const { displayName: name } = revokeTarget;
-    trackFeature('apip.security.api-key-management', {
+    trackFeature('apip.security.api-key-revoke-click', {
       artifact_kind: apiKind === 'graphql' ? 'graphql-api' : 'rest-api',
-      operation: 'revoke',
     });
     revokeMutation.mutate(apiId, revokeTarget.id, {
       onSuccess: () => {

@@ -617,10 +617,7 @@ describe('TestPage — proxy or direct', () => {
 });
 
 describe('TestPage — feature usage', () => {
-  const testKeyIssued = [
-    'apip.security.api-key-issuance',
-    { artifact_kind: 'rest-api', key_purpose: 'test' },
-  ];
+  const testKeyIssued = ['apip.security.test-api-key-generate-click', { artifact_kind: 'rest-api' }];
 
   it('reports test keys the user asks for, not the one minted on load, and cURL copies', async () => {
     server.use(...pathFor(securedApi({ in: 'header', key: 'X-API-Key' })));
@@ -642,7 +639,7 @@ describe('TestPage — feature usage', () => {
     expect(trackedFeatures()).toEqual([
       testKeyIssued,
       testKeyIssued,
-      ['apip.manage-apis.test-console.copy-curl', { api_type: 'rest-api' }],
+      ['apip.manage-apis.test-console-curl-copy', { api_type: 'rest-api' }],
     ]);
   });
 });

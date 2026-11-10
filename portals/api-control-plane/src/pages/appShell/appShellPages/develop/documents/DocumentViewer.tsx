@@ -122,10 +122,9 @@ export function DocumentViewer({
   const document = documentQuery.data;
 
   const confirmDelete = () => {
-    trackFeature('apip.manage-apis.api-documentation', {
+    trackFeature('apip.manage-apis.api-document-delete-click', {
       api_type: documentationApiType(apiType),
       document_type: documentationDocumentType(document.type),
-      operation: 'delete',
     });
     deleteMutation.mutate(
       { apiId: apiHandle, apiType, docId },

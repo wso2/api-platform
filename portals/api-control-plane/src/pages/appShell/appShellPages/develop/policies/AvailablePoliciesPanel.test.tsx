@@ -211,7 +211,7 @@ describe('AvailablePoliciesPanel', () => {
     rerender(<AvailablePoliciesPanel artifactKind="graphql-api" disabled onSelect={vi.fn()} />);
 
     expect(trackedFeatures()).toEqual([
-      ['apip.policies.browse-policies', { artifact_kind: 'graphql-api' }],
+      ['apip.policies.policy-hub-browse', { artifact_kind: 'graphql-api' }],
     ]);
   });
 });

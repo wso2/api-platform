@@ -261,10 +261,7 @@ export function GatewayDeployEnvCard({
   // `onError` is omitted throughout: the query client's `onMutationError`
   // already notifies, so a local handler would only duplicate the toast.
   const handleUndeploy = () => {
-    trackFeature('apip.lifecycle.manage-deployment', {
-      artifact_kind: artifactKind,
-      operation: 'undeploy',
-    });
+    trackFeature('apip.lifecycle.deployment-undeploy-click', { artifact_kind: artifactKind });
     undeployMutation.mutate(
       {
         apiId,
@@ -284,10 +281,7 @@ export function GatewayDeployEnvCard({
   };
 
   const handleRedeploy = () => {
-    trackFeature('apip.lifecycle.manage-deployment', {
-      artifact_kind: artifactKind,
-      operation: 'restore',
-    });
+    trackFeature('apip.lifecycle.deployment-redeploy-click', { artifact_kind: artifactKind });
     restoreMutation.mutate(
       {
         apiId,

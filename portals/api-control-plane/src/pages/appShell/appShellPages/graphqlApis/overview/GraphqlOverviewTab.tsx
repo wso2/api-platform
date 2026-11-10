@@ -77,7 +77,7 @@ function EndpointPanel({ api, sdl }: { api: GraphQLApiDetail; sdl?: string }) {
         if (!api.id || sdl === undefined) {
           return Promise.reject(new Error('The API or its schema has not loaded yet.'));
         }
-        trackFeature('apip.manage-apis.update-api', { api_type: 'graphql-api', part: 'endpoint' });
+        trackFeature('apip.manage-apis.api-endpoint-update-click', { api_type: 'graphql-api' });
         return updateApi.mutateAsync({
           graphqlApiId: api.id,
           body: {

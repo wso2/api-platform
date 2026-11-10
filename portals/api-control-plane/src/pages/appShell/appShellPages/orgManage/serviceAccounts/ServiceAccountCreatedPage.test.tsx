@@ -107,9 +107,7 @@ describe('ServiceAccountCreatedPage', () => {
     await user.click(screen.getByRole('button', { name: 'Get token' }));
 
     expect(await screen.findByText(/The credentials work/)).toBeInTheDocument();
-    expect(trackedFeatures()).toEqual([
-      ['apip.security.service-accounts', { operation: 'issue-test-token' }],
-    ]);
+    expect(trackedFeatures()).toEqual([['apip.security.service-account-test-token-get-click', {}]]);
     expect(screen.getByText(/Expires in 1[45]:/)).toBeInTheDocument();
     expect(screen.getByText('scopes in this token')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /scopes in this token/ }));
@@ -119,8 +117,8 @@ describe('ServiceAccountCreatedPage', () => {
     await user.click(screen.getByRole('button', { name: 'Get another' }));
     await waitFor(() => expect(issued).toBe(2));
     expect(trackedFeatures()).toEqual([
-      ['apip.security.service-accounts', { operation: 'issue-test-token' }],
-      ['apip.security.service-accounts', { operation: 'issue-test-token' }],
+      ['apip.security.service-account-test-token-get-click', {}],
+      ['apip.security.service-account-test-token-get-click', {}],
     ]);
   });
 

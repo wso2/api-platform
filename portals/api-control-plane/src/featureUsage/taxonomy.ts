@@ -23,8 +23,10 @@
  * action name; the other fields are copied from the same taxonomy entry and
  * ride along as metadata. Only codes listed here can be tracked.
  *
- * Every entry is a feature the console's UI actually offers (checked against
- * the pages, not only the taxonomy). A dimension lists only the values the
+ * Every entry is one UI action the console actually offers (checked against
+ * the pages, not only the taxonomy): a code is
+ * `<product>.<category>.<feature-action>`, and a dimension only describes a
+ * variant of that same action (REST or GraphQL, the gateway type). A dimension lists only the values the
  * console can produce, which may be fewer than the taxonomy allows for other
  * surfaces such as the CLI.
  *
@@ -63,26 +65,14 @@ const CONTRACT_SOURCES = ['url', 'file'] as const;
 /** Where an attached policy applies: the whole API, or one operation (resource). */
 const POLICY_SCOPES = ['api', 'operation'] as const;
 
-/**
- * The policies dimensions shared by the policy-capability features below.
- * `policy_name` lists the WSO2 policies of that capability that ship with the
- * gateway (gateway/build-manifest.yaml); a custom policy's name is the
- * customer's own text, so it is never sent.
- */
-const policyDimensions = <const N extends readonly string[]>(names: N) => ({
-  artifact_kind: optional(API_TYPES),
-  policy_name: required(names),
-  policy_scope: optional(POLICY_SCOPES),
-});
-const unnamedPolicyDimensions = {
-  artifact_kind: optional(API_TYPES),
-  policy_scope: optional(POLICY_SCOPES),
-};
+const DOCUMENT_TYPES = ['how-to', 'samples', 'public-forum', 'support-forum', 'other'] as const;
+/** A flag dimension; an enum rather than a boolean, so every value is a string. */
+const YES_NO = ['yes', 'no'] as const;
 
 export const API_PLATFORM_FEATURES = {
-  // ── Manage APIs ───────────────────────────────────────────────────────────
-  'apip.manage-apis.api-creation-wizard': {
-    name: 'API Creation Wizard',
+  // ── Manage APIs ─────────────────────────────────────────────────────────────
+  'apip.manage-apis.api-creation-wizard-open': {
+    name: 'API Creation Wizard Open',
     category: 'manage-apis',
     tier: 'core',
     eventCategory: 'discovery',
@@ -96,77 +86,129 @@ export const API_PLATFORM_FEATURES = {
       ]),
     },
   },
-  'apip.manage-apis.api-creation-wizard.select-api-type': {
+  'apip.manage-apis.api-creation-wizard-api-type-select': {
     name: 'API Type Selection',
     category: 'manage-apis',
     tier: 'core',
     eventCategory: 'engagement',
-    dimensions: { api_type: required(API_TYPES) },
+    dimensions: {
+      api_type: required(API_TYPES),
+    },
   },
-  'apip.manage-apis.api-creation-wizard.select-creation-method': {
+  'apip.manage-apis.api-creation-wizard-creation-method-select': {
     name: 'API Creation Method Selection',
     category: 'manage-apis',
     tier: 'core',
     eventCategory: 'engagement',
-    dimensions: { api_type: required(API_TYPES), creation_method: required(CREATION_METHODS) },
+    dimensions: {
+      api_type: required(API_TYPES),
+      creation_method: required(CREATION_METHODS),
+    },
   },
-  'apip.manage-apis.create-rest-api': {
-    name: 'REST API Creation',
+  'apip.manage-apis.rest-api-create-click': {
+    name: 'REST API Creation Click',
     category: 'manage-apis',
     tier: 'core',
-    eventCategory: 'adoption',
+    eventCategory: 'engagement',
     dimensions: {
       contract_source: optional(CONTRACT_SOURCES),
       creation_method: required(CREATION_METHODS),
     },
   },
-  'apip.manage-apis.create-graphql-api': {
-    name: 'GraphQL API Creation',
+  'apip.manage-apis.graphql-api-create-click': {
+    name: 'GraphQL API Creation Click',
     category: 'manage-apis',
     tier: 'core',
-    eventCategory: 'adoption',
+    eventCategory: 'engagement',
     dimensions: {
       contract_source: optional(CONTRACT_SOURCES),
       creation_method: required(CREATION_METHODS),
     },
   },
-  'apip.manage-apis.update-api': {
-    name: 'API Update',
+  'apip.manage-apis.api-update-click': {
+    name: 'API Details Update Click',
     category: 'manage-apis',
     tier: 'core',
     eventCategory: 'lifecycle',
     dimensions: {
       api_type: required(API_TYPES),
-      part: required(['metadata', 'endpoint', 'definition']),
     },
   },
-  'apip.manage-apis.delete-api': {
-    name: 'API Deletion',
+  'apip.manage-apis.api-endpoint-update-click': {
+    name: 'API Endpoint Update Click',
     category: 'manage-apis',
     tier: 'core',
     eventCategory: 'lifecycle',
-    dimensions: { api_type: required(API_TYPES) },
+    dimensions: {
+      api_type: required(API_TYPES),
+    },
   },
-  'apip.manage-apis.api-documentation': {
-    name: 'API Documentation',
+  'apip.manage-apis.api-definition-update-click': {
+    name: 'OpenAPI Definition Update Click',
+    category: 'manage-apis',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {},
+  },
+  'apip.manage-apis.api-delete-click': {
+    name: 'API Deletion Click',
+    category: 'manage-apis',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {
+      api_type: required(API_TYPES),
+    },
+  },
+  'apip.manage-apis.api-thumbnail-upload-click': {
+    name: 'API Thumbnail Upload Click',
     category: 'manage-apis',
     tier: 'core',
     eventCategory: 'lifecycle',
     dimensions: {
       api_type: optional(API_TYPES),
-      document_type: optional(['how-to', 'samples', 'public-forum', 'support-forum', 'other']),
-      operation: required(['create', 'update', 'delete']),
     },
   },
-  'apip.manage-apis.api-thumbnail': {
-    name: 'API Thumbnail',
+  'apip.manage-apis.api-thumbnail-remove-click': {
+    name: 'API Thumbnail Removal Click',
     category: 'manage-apis',
     tier: 'core',
     eventCategory: 'lifecycle',
-    dimensions: { api_type: optional(API_TYPES), operation: required(['upsert', 'delete']) },
+    dimensions: {
+      api_type: optional(API_TYPES),
+    },
   },
-  'apip.manage-apis.test-console': {
-    name: 'Test Console',
+  'apip.manage-apis.api-document-create-click': {
+    name: 'API Document Creation Click',
+    category: 'manage-apis',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {
+      api_type: optional(API_TYPES),
+      document_type: optional(DOCUMENT_TYPES),
+    },
+  },
+  'apip.manage-apis.api-document-update-click': {
+    name: 'API Document Update Click',
+    category: 'manage-apis',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {
+      api_type: optional(API_TYPES),
+      document_type: optional(DOCUMENT_TYPES),
+    },
+  },
+  'apip.manage-apis.api-document-delete-click': {
+    name: 'API Document Deletion Click',
+    category: 'manage-apis',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {
+      api_type: optional(API_TYPES),
+      document_type: optional(DOCUMENT_TYPES),
+    },
+  },
+  'apip.manage-apis.test-console-execute': {
+    name: 'Test Console Execution',
     category: 'manage-apis',
     tier: 'core',
     eventCategory: 'engagement',
@@ -176,17 +218,18 @@ export const API_PLATFORM_FEATURES = {
       outcome: required(['success', 'failure']),
     },
   },
-  'apip.manage-apis.test-console.copy-curl': {
+  'apip.manage-apis.test-console-curl-copy': {
     name: 'cURL Command Copy',
     category: 'manage-apis',
     tier: 'core',
     eventCategory: 'engagement',
-    dimensions: { api_type: required(['rest-api']) },
+    dimensions: {
+      api_type: required(['rest-api']),
+    },
   },
-
-  // ── Gateway & Runtime ─────────────────────────────────────────────────────
-  'apip.gateway.register-gateway': {
-    name: 'Gateway Registration',
+  // ── Gateway & Runtime ───────────────────────────────────────────────────────
+  'apip.gateway.gateway-register-click': {
+    name: 'Gateway Registration Click',
     category: 'gateway',
     tier: 'core',
     eventCategory: 'lifecycle',
@@ -195,24 +238,23 @@ export const API_PLATFORM_FEATURES = {
       gateway_type: required(GATEWAY_TYPES),
     },
   },
-  'apip.gateway.manage-gateway': {
-    name: 'Gateway Update & Deletion',
+  'apip.gateway.gateway-update-click': {
+    name: 'Gateway Update Click',
     category: 'gateway',
     tier: 'core',
     eventCategory: 'lifecycle',
     dimensions: {
       gateway_type: optional(GATEWAY_TYPES),
-      operation: required(['update', 'delete']),
     },
   },
-  'apip.gateway.gateway-token': {
-    name: 'Gateway Registration Token',
+  'apip.gateway.gateway-token-regenerate-click': {
+    name: 'Gateway Token Regeneration Click',
     category: 'gateway',
     tier: 'core',
     eventCategory: 'lifecycle',
-    dimensions: { operation: required(['rotate', 'revoke']) },
+    dimensions: {},
   },
-  'apip.gateway.copy-setup-command': {
+  'apip.gateway.gateway-setup-command-copy': {
     name: 'Gateway Setup Command Copy',
     category: 'gateway',
     tier: 'core',
@@ -222,240 +264,403 @@ export const API_PLATFORM_FEATURES = {
       setup_step: required(['check-runtime', 'download', 'setup', 'configure', 'start', 'install']),
     },
   },
-
-  // ── API Policies & Traffic Management ─────────────────────────────────────
-  'apip.policies.client-authentication': {
+  // ── API Policies & Traffic Management ───────────────────────────────────────
+  'apip.policies.client-authentication-attach': {
     name: 'Client Authentication',
     category: 'policies',
     tier: 'core',
     eventCategory: 'engagement',
-    dimensions: policyDimensions([
-      'api-key-auth',
-      'basic-auth',
-      'jwt-auth',
-      'mtls-auth',
-      'opaque-token-auth',
-    ]),
+    dimensions: {
+      artifact_kind: optional(API_TYPES),
+      policy_name: required([
+        'api-key-auth',
+        'basic-auth',
+        'jwt-auth',
+        'mtls-auth',
+        'opaque-token-auth',
+      ]),
+      policy_scope: optional(POLICY_SCOPES),
+    },
   },
-  'apip.policies.backend-authentication': {
+  'apip.policies.backend-authentication-attach': {
     name: 'Backend Authentication',
     category: 'policies',
     tier: 'core',
     eventCategory: 'engagement',
-    dimensions: policyDimensions([
-      'backend-jwt',
-      'aws-authentication',
-      'oauth2-generator',
-      'oauth2-token-exchange',
-    ]),
+    dimensions: {
+      artifact_kind: optional(API_TYPES),
+      policy_name: required([
+        'backend-jwt',
+        'aws-authentication',
+        'oauth2-generator',
+        'oauth2-token-exchange',
+      ]),
+      policy_scope: optional(POLICY_SCOPES),
+    },
   },
-  'apip.policies.access-control': {
+  'apip.policies.access-control-attach': {
     name: 'Subscription Validation',
     category: 'policies',
     tier: 'core',
     eventCategory: 'engagement',
-    dimensions: unnamedPolicyDimensions,
+    dimensions: {
+      artifact_kind: optional(API_TYPES),
+      policy_scope: optional(POLICY_SCOPES),
+    },
   },
-  'apip.policies.rate-limiting': {
+  'apip.policies.rate-limiting-attach': {
     name: 'Rate Limiting',
     category: 'policies',
     tier: 'core',
     eventCategory: 'engagement',
-    dimensions: policyDimensions(['basic-ratelimit', 'advanced-ratelimit']),
+    dimensions: {
+      artifact_kind: optional(API_TYPES),
+      policy_name: required(['basic-ratelimit', 'advanced-ratelimit']),
+      policy_scope: optional(POLICY_SCOPES),
+    },
   },
-  'apip.policies.traffic-routing': {
+  'apip.policies.traffic-routing-attach': {
     name: 'Traffic Routing',
     category: 'policies',
     tier: 'core',
     eventCategory: 'engagement',
-    dimensions: policyDimensions(['dynamic-endpoint', 'redirect']),
+    dimensions: {
+      artifact_kind: optional(API_TYPES),
+      policy_name: required(['dynamic-endpoint', 'redirect']),
+      policy_scope: optional(POLICY_SCOPES),
+    },
   },
-  'apip.policies.transformation': {
-    name: 'Request & Response Transformation',
+  'apip.policies.transformation-attach': {
+    name: 'Transformation',
     category: 'policies',
     tier: 'core',
     eventCategory: 'engagement',
-    dimensions: policyDimensions([
-      'set-headers',
-      'remove-headers',
-      'request-rewrite',
-      'host-rewrite',
-      'json-xml-mediator',
-      'respond',
-    ]),
+    dimensions: {
+      artifact_kind: optional(API_TYPES),
+      policy_name: required([
+        'set-headers',
+        'remove-headers',
+        'request-rewrite',
+        'host-rewrite',
+        'json-xml-mediator',
+        'respond',
+      ]),
+      policy_scope: optional(POLICY_SCOPES),
+    },
   },
-  'apip.policies.content-validation': {
+  'apip.policies.content-validation-attach': {
     name: 'Content Validation',
     category: 'policies',
     tier: 'core',
     eventCategory: 'engagement',
-    dimensions: policyDimensions([
-      'json-schema-guardrail',
-      'regex-guardrail',
-      'content-length-guardrail',
-      'url-guardrail',
-      'word-count-guardrail',
-      'sentence-count-guardrail',
-    ]),
+    dimensions: {
+      artifact_kind: optional(API_TYPES),
+      policy_name: required([
+        'json-schema-guardrail',
+        'regex-guardrail',
+        'content-length-guardrail',
+        'url-guardrail',
+        'word-count-guardrail',
+        'sentence-count-guardrail',
+      ]),
+      policy_scope: optional(POLICY_SCOPES),
+    },
   },
-  'apip.policies.cors': {
+  'apip.policies.cors-attach': {
     name: 'CORS',
     category: 'policies',
     tier: 'core',
     eventCategory: 'engagement',
-    dimensions: unnamedPolicyDimensions,
+    dimensions: {
+      artifact_kind: optional(API_TYPES),
+      policy_scope: optional(POLICY_SCOPES),
+    },
   },
-  'apip.policies.interception': {
+  'apip.policies.interception-attach': {
     name: 'Interception & Logging',
     category: 'policies',
     tier: 'core',
     eventCategory: 'engagement',
-    dimensions: policyDimensions(['interceptor-service', 'log-message']),
+    dimensions: {
+      artifact_kind: optional(API_TYPES),
+      policy_name: required(['interceptor-service', 'log-message']),
+      policy_scope: optional(POLICY_SCOPES),
+    },
   },
-  'apip.policies.analytics-filtering': {
-    name: 'Analytics Header Filtering',
+  'apip.policies.analytics-filtering-attach': {
+    name: 'Analytics Filtering',
     category: 'policies',
     tier: 'core',
     eventCategory: 'engagement',
-    dimensions: unnamedPolicyDimensions,
+    dimensions: {
+      artifact_kind: optional(API_TYPES),
+      policy_scope: optional(POLICY_SCOPES),
+    },
   },
-  'apip.policies.browse-policies': {
+  'apip.policies.policy-hub-browse': {
     name: 'Policy Hub Browsing',
     category: 'policies',
     tier: 'core',
     eventCategory: 'discovery',
-    dimensions: { artifact_kind: optional(API_TYPES) },
+    dimensions: {
+      artifact_kind: optional(API_TYPES),
+    },
   },
-  'apip.policies.view-gateway-policies': {
+  'apip.policies.gateway-policies-view': {
     name: 'Gateway Policies View',
     category: 'policies',
     tier: 'core',
     eventCategory: 'discovery',
     dimensions: {},
   },
-
-  // ── API Security ──────────────────────────────────────────────────────────
-  'apip.security.api-key-issuance': {
-    name: 'API Key Issuance',
+  // ── API Security ────────────────────────────────────────────────────────────
+  'apip.security.api-key-create-click': {
+    name: 'API Key Creation Click',
     category: 'security',
     tier: 'core',
     eventCategory: 'lifecycle',
     dimensions: {
       artifact_kind: required(API_TYPES),
-      key_purpose: required(['production', 'test']),
     },
   },
-  'apip.security.api-key-management': {
-    name: 'API Key Update & Revocation',
-    category: 'security',
-    tier: 'core',
-    eventCategory: 'lifecycle',
-    dimensions: { artifact_kind: required(API_TYPES), operation: required(['update', 'revoke']) },
-  },
-  'apip.security.service-accounts': {
-    name: 'Service Accounts',
+  'apip.security.test-api-key-generate-click': {
+    name: 'Test API Key Generation Click',
     category: 'security',
     tier: 'core',
     eventCategory: 'lifecycle',
     dimensions: {
-      operation: required([
-        'create',
-        'update',
-        'enable',
-        'disable',
-        'delete',
-        'regenerate-secret',
-        'issue-test-token',
-      ]),
+      artifact_kind: required(API_TYPES),
     },
   },
-
-  // ── API Lifecycle Management ──────────────────────────────────────────────
-  'apip.lifecycle.deploy-api': {
-    name: 'Artifact Deployment',
+  'apip.security.api-key-revoke-click': {
+    name: 'API Key Revocation Click',
+    category: 'security',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {
+      artifact_kind: required(API_TYPES),
+    },
+  },
+  'apip.security.service-account-create-click': {
+    name: 'Service Account Creation Click',
+    category: 'security',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {},
+  },
+  'apip.security.service-account-update-click': {
+    name: 'Service Account Update Click',
+    category: 'security',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {},
+  },
+  'apip.security.service-account-enable-click': {
+    name: 'Service Account Enabling Click',
+    category: 'security',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {},
+  },
+  'apip.security.service-account-disable-click': {
+    name: 'Service Account Disabling Click',
+    category: 'security',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {},
+  },
+  'apip.security.service-account-delete-click': {
+    name: 'Service Account Deletion Click',
+    category: 'security',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {},
+  },
+  'apip.security.service-account-secret-regenerate-click': {
+    name: 'Service Account Secret Regeneration Click',
+    category: 'security',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {},
+  },
+  'apip.security.service-account-test-token-get-click': {
+    name: 'Service Account Test Token Click',
+    category: 'security',
+    tier: 'core',
+    eventCategory: 'engagement',
+    dimensions: {},
+  },
+  // ── API Lifecycle Management ────────────────────────────────────────────────
+  'apip.lifecycle.api-deploy-click': {
+    name: 'API Deployment Click',
     category: 'lifecycle',
     tier: 'core',
-    eventCategory: 'adoption',
+    eventCategory: 'engagement',
     dimensions: {
       artifact_kind: required(API_TYPES),
       gateway_hosting: optional(GATEWAY_HOSTING),
       gateway_type: required(GATEWAY_TYPES),
     },
   },
-  'apip.lifecycle.manage-deployment': {
-    name: 'Deployment Management',
+  'apip.lifecycle.deployment-undeploy-click': {
+    name: 'Deployment Stop Click',
     category: 'lifecycle',
     tier: 'core',
     eventCategory: 'lifecycle',
     dimensions: {
       artifact_kind: required(API_TYPES),
-      operation: required(['undeploy', 'restore', 'delete']),
     },
   },
-  'apip.lifecycle.view-deployment-history': {
+  'apip.lifecycle.deployment-redeploy-click': {
+    name: 'Deployment Redeploy Click',
+    category: 'lifecycle',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {
+      artifact_kind: required(API_TYPES),
+    },
+  },
+  'apip.lifecycle.deployment-restore-click': {
+    name: 'Deployment Restore Click',
+    category: 'lifecycle',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {
+      artifact_kind: required(API_TYPES),
+    },
+  },
+  'apip.lifecycle.deployment-delete-click': {
+    name: 'Deployment Deletion Click',
+    category: 'lifecycle',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {
+      artifact_kind: required(API_TYPES),
+    },
+  },
+  'apip.lifecycle.deployment-history-view': {
     name: 'Deployment History View',
     category: 'lifecycle',
     tier: 'core',
     eventCategory: 'discovery',
-    dimensions: { artifact_kind: optional(API_TYPES) },
+    dimensions: {
+      artifact_kind: optional(API_TYPES),
+    },
   },
-  'apip.lifecycle.publish-api': {
-    name: 'API Publication',
+  'apip.lifecycle.api-publish-click': {
+    name: 'API Publication Click',
     category: 'lifecycle',
     tier: 'core',
-    eventCategory: 'adoption',
-    dimensions: { api_type: required(API_TYPES) },
+    eventCategory: 'engagement',
+    dimensions: {
+      api_type: required(API_TYPES),
+    },
   },
-  'apip.lifecycle.manage-publication': {
-    name: 'Publication Management',
+  'apip.lifecycle.api-unpublish-click': {
+    name: 'API Unpublication Click',
     category: 'lifecycle',
     tier: 'core',
     eventCategory: 'lifecycle',
-    dimensions: { api_type: required(API_TYPES), operation: required(['unpublish', 'deprecate']) },
+    dimensions: {
+      api_type: required(API_TYPES),
+    },
   },
-  'apip.lifecycle.publication-draft': {
-    name: 'Publication Draft',
+  'apip.lifecycle.api-deprecate-click': {
+    name: 'API Deprecation Click',
+    category: 'lifecycle',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {
+      api_type: required(API_TYPES),
+    },
+  },
+  'apip.lifecycle.publication-draft-save-click': {
+    name: 'Publication Draft Save Click',
     category: 'lifecycle',
     tier: 'core',
     eventCategory: 'lifecycle',
     dimensions: {
       api_type: optional(API_TYPES),
-      draft_part: required(['metadata', 'definition', 'landing-page', 'thumbnail']),
+      definition_saved: required(YES_NO),
+      landing_page_changed: required(YES_NO),
+      thumbnail_changed: required(YES_NO),
     },
   },
-  'apip.lifecycle.open-api-portal': {
-    name: 'API Portal Opened',
+  'apip.lifecycle.api-portal-open': {
+    name: 'API Portal Open',
     category: 'lifecycle',
     tier: 'core',
     eventCategory: 'engagement',
-    dimensions: { api_type: optional(API_TYPES) },
+    dimensions: {
+      api_type: optional(API_TYPES),
+    },
   },
-
-  // ── API Monetization ──────────────────────────────────────────────────────
-  'apip.monetization.subscription-plan-management': {
-    name: 'Subscription Plan Management',
+  // ── API Monetization ────────────────────────────────────────────────────────
+  'apip.monetization.subscription-plan-create-click': {
+    name: 'Subscription Plan Creation Click',
+    category: 'monetization',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {},
+  },
+  'apip.monetization.subscription-plan-update-click': {
+    name: 'Subscription Plan Update Click',
+    category: 'monetization',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {},
+  },
+  'apip.monetization.subscription-plan-status-change-click': {
+    name: 'Subscription Plan Status Change Click',
     category: 'monetization',
     tier: 'core',
     eventCategory: 'lifecycle',
     dimensions: {
-      operation: required(['create', 'update', 'activate', 'deactivate', 'delete']),
+      status: required(['active', 'inactive']),
     },
   },
-  'apip.monetization.meter-management': {
-    name: 'Meter Management',
+  'apip.monetization.subscription-plan-delete-click': {
+    name: 'Subscription Plan Deletion Click',
     category: 'monetization',
     tier: 'core',
     eventCategory: 'lifecycle',
-    dimensions: { operation: required(['create', 'update', 'delete']) },
+    dimensions: {},
   },
-
-  // ── Administration & Configuration ────────────────────────────────────────
-  'apip.admin.manage-projects': {
-    name: 'Project Management',
+  'apip.monetization.meter-create-click': {
+    name: 'Meter Creation Click',
+    category: 'monetization',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {},
+  },
+  'apip.monetization.meter-update-click': {
+    name: 'Meter Update Click',
+    category: 'monetization',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {},
+  },
+  'apip.monetization.meter-delete-click': {
+    name: 'Meter Deletion Click',
+    category: 'monetization',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {},
+  },
+  // ── Administration & Configuration ──────────────────────────────────────────
+  'apip.admin.project-create-click': {
+    name: 'Project Creation Click',
     category: 'admin',
     tier: 'core',
     eventCategory: 'lifecycle',
-    dimensions: { operation: required(['create', 'update', 'delete']) },
+    dimensions: {},
+  },
+  'apip.admin.project-delete-click': {
+    name: 'Project Deletion Click',
+    category: 'admin',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {},
   },
 } as const satisfies Record<string, FeatureSpec>;
 
@@ -512,33 +717,33 @@ export const isFeatureCode = (code: unknown): code is ApiPlatformFeatureCode =>
 /** A policy-capability feature: one of the `apip.policies.*` codes a policy maps to. */
 export type PolicyFeatureCode = Extract<
   ApiPlatformFeatureCode,
-  | 'apip.policies.client-authentication'
-  | 'apip.policies.backend-authentication'
-  | 'apip.policies.access-control'
-  | 'apip.policies.rate-limiting'
-  | 'apip.policies.traffic-routing'
-  | 'apip.policies.transformation'
-  | 'apip.policies.content-validation'
-  | 'apip.policies.cors'
-  | 'apip.policies.interception'
-  | 'apip.policies.analytics-filtering'
+  | 'apip.policies.client-authentication-attach'
+  | 'apip.policies.backend-authentication-attach'
+  | 'apip.policies.access-control-attach'
+  | 'apip.policies.rate-limiting-attach'
+  | 'apip.policies.traffic-routing-attach'
+  | 'apip.policies.transformation-attach'
+  | 'apip.policies.content-validation-attach'
+  | 'apip.policies.cors-attach'
+  | 'apip.policies.interception-attach'
+  | 'apip.policies.analytics-filtering-attach'
 >;
 
 /** Policies whose capability has a single policy, so the feature carries no `policy_name`. */
 const SINGLE_POLICY_FEATURES: Readonly<Record<string, PolicyFeatureCode>> = {
-  'analytics-header-filter': 'apip.policies.analytics-filtering',
-  cors: 'apip.policies.cors',
-  'subscription-validation': 'apip.policies.access-control',
+  'analytics-header-filter': 'apip.policies.analytics-filtering-attach',
+  cors: 'apip.policies.cors-attach',
+  'subscription-validation': 'apip.policies.access-control-attach',
 };
 
 const NAMED_POLICY_FEATURES: readonly PolicyFeatureCode[] = [
-  'apip.policies.client-authentication',
-  'apip.policies.backend-authentication',
-  'apip.policies.rate-limiting',
-  'apip.policies.traffic-routing',
-  'apip.policies.transformation',
-  'apip.policies.content-validation',
-  'apip.policies.interception',
+  'apip.policies.client-authentication-attach',
+  'apip.policies.backend-authentication-attach',
+  'apip.policies.rate-limiting-attach',
+  'apip.policies.traffic-routing-attach',
+  'apip.policies.transformation-attach',
+  'apip.policies.content-validation-attach',
+  'apip.policies.interception-attach',
 ];
 
 /** Policy name → the capability feature it belongs to, built from the registry. */

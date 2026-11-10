@@ -20,7 +20,7 @@ import type { ApiDocumentType } from '@/api/resources/apiDocuments';
 import { asApiType, type FeatureDimensions } from '@/featureUsage';
 import { isCustomDocumentType } from './documentTypes';
 
-type DocumentationDimensions = FeatureDimensions<'apip.manage-apis.api-documentation'>;
+type DocumentationDimensions = FeatureDimensions<'apip.manage-apis.api-document-create-click'>;
 
 const DOCUMENT_TYPE_DIMENSIONS: Record<
   ApiDocumentType,

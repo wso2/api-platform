@@ -134,7 +134,7 @@ function ApiEditPageContent() {
   }
 
   const save = (values: ApiBasicInfoFormValues) => {
-    trackFeature('apip.manage-apis.update-api', { api_type: 'rest-api', part: 'metadata' });
+    trackFeature('apip.manage-apis.api-update-click', { api_type: 'rest-api' });
     updateApi.mutate(
       { restApiId, body: toUpdateBody(api, values) },
       {

@@ -74,7 +74,7 @@ const messages = defineMessages({
 
 type TestKeySectionProps = {
   /** The kind of API under test, for usage analytics. */
-  artifactKind: FeatureDimensions<'apip.security.api-key-issuance'>['artifact_kind'];
+  artifactKind: FeatureDimensions<'apip.security.test-api-key-generate-click'>['artifact_kind'];
   error?: boolean;
   /** Name of the header or query parameter carrying the key. */
   keyName: string;
@@ -178,10 +178,7 @@ export function TestKeySection({
                   onClick={() => {
                     // Only this click counts: the key minted on page load is
                     // not something the user asked for.
-                    trackFeature('apip.security.api-key-issuance', {
-                      artifact_kind: artifactKind,
-                      key_purpose: 'test',
-                    });
+                    trackFeature('apip.security.test-api-key-generate-click', { artifact_kind: artifactKind });
                     onRegenerate();
                   }}
                   size="small"

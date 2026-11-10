@@ -218,7 +218,7 @@ describe('PortalPublishPage feature usage', () => {
       await user.click(screen.getByRole('button', { name: 'Publish' }));
 
       await waitFor(() => expect(publishRequests.count()).toBe(1));
-      expect(trackedFeatures()).toEqual([['apip.lifecycle.publish-api', { api_type: 'rest-api' }]]);
+      expect(trackedFeatures()).toEqual([['apip.lifecycle.api-publish-click', { api_type: 'rest-api' }]]);
     });
 
     it('reports nothing when the form is invalid and nothing is sent', async () => {
@@ -249,7 +249,7 @@ describe('PortalPublishPage feature usage', () => {
 
       await waitFor(() => expect(publishRequests.count()).toBe(1));
       expect(await screen.findByText('portals listing')).toBeInTheDocument();
-      expect(trackedFeatures()).toEqual([['apip.lifecycle.publish-api', { api_type: 'rest-api' }]]);
+      expect(trackedFeatures()).toEqual([['apip.lifecycle.api-publish-click', { api_type: 'rest-api' }]]);
     });
 
     it('reports a GraphQL API as graphql-api', async () => {
@@ -298,7 +298,7 @@ describe('PortalPublishPage feature usage', () => {
 
       await waitFor(() => expect(publishRequests.count()).toBe(1));
       expect(trackedFeatures()).toEqual([
-        ['apip.lifecycle.publish-api', { api_type: 'graphql-api' }],
+        ['apip.lifecycle.api-publish-click', { api_type: 'graphql-api' }],
       ]);
     });
   });
@@ -315,8 +315,15 @@ describe('PortalPublishPage feature usage', () => {
 
       expect(await screen.findByText('Draft saved.')).toBeInTheDocument();
       expect(trackedFeatures()).toEqual([
-        ['apip.lifecycle.publication-draft', { api_type: 'rest-api', draft_part: 'metadata' }],
-        ['apip.lifecycle.publication-draft', { api_type: 'rest-api', draft_part: 'definition' }],
+        [
+          'apip.lifecycle.publication-draft-save-click',
+          {
+            api_type: 'rest-api',
+            definition_saved: 'yes',
+            landing_page_changed: 'no',
+            thumbnail_changed: 'no',
+          },
+        ],
       ]);
     });
 
@@ -337,7 +344,15 @@ describe('PortalPublishPage feature usage', () => {
         await screen.findByText('Details saved. The specification has an error and was not saved.'),
       ).toBeInTheDocument();
       expect(trackedFeatures()).toEqual([
-        ['apip.lifecycle.publication-draft', { api_type: 'rest-api', draft_part: 'metadata' }],
+        [
+          'apip.lifecycle.publication-draft-save-click',
+          {
+            api_type: 'rest-api',
+            definition_saved: 'no',
+            landing_page_changed: 'no',
+            thumbnail_changed: 'no',
+          },
+        ],
       ]);
     });
 
@@ -366,10 +381,15 @@ describe('PortalPublishPage feature usage', () => {
 
       expect(await screen.findByText('Draft saved.')).toBeInTheDocument();
       expect(trackedFeatures()).toEqual([
-        ['apip.lifecycle.publication-draft', { api_type: 'rest-api', draft_part: 'metadata' }],
-        ['apip.lifecycle.publication-draft', { api_type: 'rest-api', draft_part: 'definition' }],
-        ['apip.lifecycle.publication-draft', { api_type: 'rest-api', draft_part: 'thumbnail' }],
-        ['apip.lifecycle.publication-draft', { api_type: 'rest-api', draft_part: 'landing-page' }],
+        [
+          'apip.lifecycle.publication-draft-save-click',
+          {
+            api_type: 'rest-api',
+            definition_saved: 'yes',
+            landing_page_changed: 'yes',
+            thumbnail_changed: 'yes',
+          },
+        ],
       ]);
     });
   });
@@ -386,7 +406,7 @@ describe('PortalPublishPage feature usage', () => {
 
       await waitFor(() => expect(requests.count()).toBe(1));
       expect(trackedFeatures()).toEqual([
-        ['apip.lifecycle.manage-publication', { api_type: 'rest-api', operation: 'unpublish' }],
+        ['apip.lifecycle.api-unpublish-click', { api_type: 'rest-api' }],
       ]);
     });
 
@@ -405,7 +425,7 @@ describe('PortalPublishPage feature usage', () => {
 
       await waitFor(() => expect(requests.count()).toBe(1));
       expect(trackedFeatures()).toEqual([
-        ['apip.lifecycle.manage-publication', { api_type: 'rest-api', operation: 'deprecate' }],
+        ['apip.lifecycle.api-deprecate-click', { api_type: 'rest-api' }],
       ]);
     });
 

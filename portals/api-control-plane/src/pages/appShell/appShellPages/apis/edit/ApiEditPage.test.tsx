@@ -152,9 +152,7 @@ describe('ApiEditPage — feature usage', () => {
     await user.click(screen.getByRole('button', { name: /Save changes/ }));
 
     await waitFor(() => expect(requests.count()).toBe(1));
-    expect(trackedFeatures()).toEqual([
-      ['apip.manage-apis.update-api', { api_type: 'rest-api', part: 'metadata' }],
-    ]);
+    expect(trackedFeatures()).toEqual([['apip.manage-apis.api-update-click', { api_type: 'rest-api' }]]);
   });
 
   it('reports nothing when the form is rejected before saving', async () => {

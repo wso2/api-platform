@@ -168,8 +168,7 @@ export function GatewayDetailHeader({ gateway, gatewayId }: GatewayDetailHeaderP
     }
 
     const gatewayType = TRACKED_GATEWAY_TYPES.find((type) => type === gateway.functionalityType);
-    trackFeature('apip.gateway.manage-gateway', {
-      operation: 'update',
+    trackFeature('apip.gateway.gateway-update-click', {
       ...(gatewayType && { gateway_type: gatewayType }),
     });
 

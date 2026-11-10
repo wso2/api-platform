@@ -215,7 +215,7 @@ describe('GatewayCreatePage', () => {
 
       await waitFor(() => expect(requests.count()).toBe(1));
       expect(trackedFeatures()).toEqual([
-        ['apip.gateway.register-gateway', { gateway_hosting: 'self-hosted', gateway_type: 'ai' }],
+        ['apip.gateway.gateway-register-click', { gateway_hosting: 'self-hosted', gateway_type: 'ai' }],
       ]);
     });
 

@@ -269,7 +269,7 @@ function ProjectCreatePageContent() {
     // Real form submit; Enter in the name field works as expected.
     event.preventDefault();
     if (!canSubmit) return;
-    trackFeature('apip.admin.manage-projects', { operation: 'create' });
+    trackFeature('apip.admin.project-create-click', {});
     try {
       const project = await mutation.mutateAsync({
         displayName: trimmedName,

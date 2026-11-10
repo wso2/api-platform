@@ -349,7 +349,7 @@ describe('GatewayDetailPage', () => {
 
       await waitFor(() => expect(updates.count()).toBe(1));
       expect(trackedFeatures()).toEqual([
-        ['apip.gateway.manage-gateway', { gateway_type: 'event', operation: 'update' }],
+        ['apip.gateway.gateway-update-click', { gateway_type: 'event' }],
       ]);
     });
 
@@ -390,7 +390,7 @@ describe('GatewayDetailPage', () => {
       await user.click(screen.getByRole('button', { name: 'Generate new token' }));
 
       await waitFor(() => expect(tokenRotations.count()).toBe(1));
-      expect(trackedFeatures()).toEqual([['apip.gateway.gateway-token', { operation: 'rotate' }]]);
+      expect(trackedFeatures()).toEqual([['apip.gateway.gateway-token-regenerate-click', {}]]);
     });
 
     it('reports the Policies tab the first time it is opened on a visit', async () => {
@@ -404,7 +404,7 @@ describe('GatewayDetailPage', () => {
       await user.click(screen.getByRole('tab', { name: 'Configurations' }));
       await user.click(screen.getByRole('tab', { name: 'Policies' }));
 
-      expect(trackedFeatures()).toEqual([['apip.policies.view-gateway-policies', {}]]);
+      expect(trackedFeatures()).toEqual([['apip.policies.gateway-policies-view', {}]]);
     });
 
     /** Clicks every copy button on the tab shown, in order. */
@@ -416,7 +416,7 @@ describe('GatewayDetailPage', () => {
 
     const copied = (installMethod: string, ...steps: string[]) =>
       steps.map((step) => [
-        'apip.gateway.copy-setup-command',
+        'apip.gateway.gateway-setup-command-copy',
         { install_method: installMethod, setup_step: step },
       ]);
 

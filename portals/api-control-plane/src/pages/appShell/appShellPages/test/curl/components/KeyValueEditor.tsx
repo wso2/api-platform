@@ -268,9 +268,8 @@ export function KeyValueEditor({
                         onClick={() => {
                           // The cURL view is REST-only. Only this click counts,
                           // not the key minted on page load.
-                          trackFeature('apip.security.api-key-issuance', {
+                          trackFeature('apip.security.test-api-key-generate-click', {
                             artifact_kind: 'rest-api',
-                            key_purpose: 'test',
                           });
                           onRegenerateSecret();
                         }}

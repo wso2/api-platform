@@ -412,10 +412,7 @@ describe('DocumentsPanel — feature usage', () => {
       expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=error-handling`),
     );
     expect(trackedFeatures()).toEqual([
-      [
-        'apip.manage-apis.api-documentation',
-        { api_type: 'rest-api', document_type: 'how-to', operation: 'create' },
-      ],
+      ['apip.manage-apis.api-document-create-click', { api_type: 'rest-api', document_type: 'how-to' }],
     ]);
   });
 
@@ -439,10 +436,7 @@ describe('DocumentsPanel — feature usage', () => {
       expect(screen.getByTestId('location')).toHaveTextContent(`${BASE}?doc=changes`),
     );
     expect(trackedFeatures()).toEqual([
-      [
-        'apip.manage-apis.api-documentation',
-        { api_type: 'rest-api', document_type: 'other', operation: 'create' },
-      ],
+      ['apip.manage-apis.api-document-create-click', { api_type: 'rest-api', document_type: 'other' }],
     ]);
   });
 
@@ -465,10 +459,7 @@ describe('DocumentsPanel — feature usage', () => {
 
     await waitFor(() => expect(requests.calls.some((r) => r.method === 'PUT')).toBe(true));
     expect(trackedFeatures()).toEqual([
-      [
-        'apip.manage-apis.api-documentation',
-        { api_type: 'rest-api', document_type: 'samples', operation: 'update' },
-      ],
+      ['apip.manage-apis.api-document-update-click', { api_type: 'rest-api', document_type: 'samples' }],
     ]);
   });
 });

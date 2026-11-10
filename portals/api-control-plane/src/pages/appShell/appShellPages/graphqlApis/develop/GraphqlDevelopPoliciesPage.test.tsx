@@ -158,9 +158,9 @@ describe('GraphqlDevelopPoliciesPage', () => {
 
     // The already-saved cors policy is not reported.
     expect(trackedFeatures()).toEqual([
-      ['apip.policies.browse-policies', { artifact_kind: 'graphql-api' }],
+      ['apip.policies.policy-hub-browse', { artifact_kind: 'graphql-api' }],
       [
-        'apip.policies.client-authentication',
+        'apip.policies.client-authentication-attach',
         { artifact_kind: 'graphql-api', policy_name: 'api-key-auth', policy_scope: 'api' },
       ],
     ]);

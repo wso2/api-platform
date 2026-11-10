@@ -328,7 +328,7 @@ function ServiceAccountForm({
         onClose();
         return;
       }
-      trackFeature('apip.security.service-accounts', { operation: 'update' });
+      trackFeature('apip.security.service-account-update-click', {});
       updateMutation.mutate(
         { body, id: base.id },
         {

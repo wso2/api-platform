@@ -200,7 +200,7 @@ describe('ApiKeysPanel — feature usage', () => {
 
       await waitFor(() => expect(requests.count()).toBe(1));
       expect(trackedFeatures()).toEqual([
-        ['apip.security.api-key-management', { artifact_kind: artifactKind, operation: 'revoke' }],
+        ['apip.security.api-key-revoke-click', { artifact_kind: artifactKind }],
       ]);
     },
   );

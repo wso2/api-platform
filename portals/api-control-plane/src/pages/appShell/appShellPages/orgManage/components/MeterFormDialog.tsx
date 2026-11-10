@@ -655,7 +655,7 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
       );
 
     if (isEdit && meter?.id) {
-      trackFeature('apip.monetization.meter-management', { operation: 'update' });
+      trackFeature('apip.monetization.meter-update-click', {});
       updateMutation.mutate(
         { body, meterId: meter.id },
         {
@@ -668,7 +668,7 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
       );
       return;
     }
-    trackFeature('apip.monetization.meter-management', { operation: 'create' });
+    trackFeature('apip.monetization.meter-create-click', {});
     createMutation.mutate(body, {
       onError,
       onSuccess: () => {

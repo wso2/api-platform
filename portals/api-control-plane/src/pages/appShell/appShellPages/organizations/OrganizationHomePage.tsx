@@ -353,7 +353,7 @@ function OrganizationHomePageContent() {
   const confirmDeleteProject = () => {
     if (!projectToDelete) return;
     const { displayName, id } = projectToDelete;
-    trackFeature('apip.admin.manage-projects', { operation: 'delete' });
+    trackFeature('apip.admin.project-delete-click', {});
     deleteProjectMutation.mutate(
       { projectId: id },
       {

@@ -377,9 +377,8 @@ export function CreateApiKeyDialog({
     // request asked for.
     const expiresAt = expiryDate(new Date(), parsedDuration, unit);
 
-    trackFeature('apip.security.api-key-issuance', {
+    trackFeature('apip.security.api-key-create-click', {
       artifact_kind: apiKind === 'graphql' ? 'graphql-api' : 'rest-api',
-      key_purpose: 'production',
     });
     createMutation.mutate(
       apiId,

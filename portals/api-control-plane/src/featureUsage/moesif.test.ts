@@ -61,7 +61,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const trackCreate = async (identity: FeatureUsageIdentity = { companyId: ORG, userId: USER }) => {
   const { trackFeatureUsage } = await load();
-  trackFeatureUsage('apip.manage-apis.create-rest-api', { creation_method: 'scratch' }, identity);
+  trackFeatureUsage('apip.manage-apis.rest-api-create-click', { creation_method: 'scratch' }, identity);
   await settle();
 };
 
@@ -86,7 +86,7 @@ describe('feature-usage tracking switch', () => {
   ])('sends nothing and never initialises Moesif with %s', async (_name, config) => {
     const { isFeatureUsageTrackingEnabled, trackFeatureUsage } = await load(config);
     trackFeatureUsage(
-      'apip.manage-apis.create-rest-api',
+      'apip.manage-apis.rest-api-create-click',
       { creation_method: 'scratch' },
       { companyId: ORG },
     );
@@ -101,8 +101,8 @@ describe('feature-usage tracking switch', () => {
 describe('trackFeatureUsage', () => {
   it('initialises Moesif once with the publishable key, batching, and no API capture', async () => {
     const { trackFeatureUsage } = await load();
-    trackFeatureUsage('apip.manage-apis.create-rest-api', { creation_method: 'scratch' }, {});
-    trackFeatureUsage('apip.manage-apis.create-rest-api', { creation_method: 'contract' }, {});
+    trackFeatureUsage('apip.manage-apis.rest-api-create-click', { creation_method: 'scratch' }, {});
+    trackFeatureUsage('apip.manage-apis.rest-api-create-click', { creation_method: 'contract' }, {});
     await settle();
 
     expect(sdk.init).toHaveBeenCalledTimes(1);
@@ -120,11 +120,11 @@ describe('trackFeatureUsage', () => {
   it('sends the taxonomy code as the action, with the taxonomy fields as metadata', async () => {
     await trackCreate();
 
-    expect(sdk.track).toHaveBeenCalledWith('apip.manage-apis.create-rest-api', {
-      action: 'REST API Creation',
+    expect(sdk.track).toHaveBeenCalledWith('apip.manage-apis.rest-api-create-click', {
+      action: 'REST API Creation Click',
       category: 'manage-apis',
       creation_method: 'scratch',
-      event_category: 'adoption',
+      event_category: 'engagement',
       initiating_product: 'apip',
       platform: 'web',
       tier: 'core',
@@ -134,7 +134,7 @@ describe('trackFeatureUsage', () => {
   it('sends only the dimensions the feature declares', async () => {
     const { trackFeatureUsage } = await load();
     trackFeatureUsage(
-      'apip.manage-apis.create-rest-api',
+      'apip.manage-apis.rest-api-create-click',
       { apiName: 'Payments API', creation_method: 'scratch' } as never,
       {},
     );
@@ -150,7 +150,7 @@ describe('trackFeatureUsage', () => {
     const { trackFeatureUsage } = await load();
 
     expect(() =>
-      trackFeatureUsage('apip.manage-apis.create-rest-api', { creation_method: 'scratch' }, {}),
+      trackFeatureUsage('apip.manage-apis.rest-api-create-click', { creation_method: 'scratch' }, {}),
     ).not.toThrow();
     await settle();
   });
@@ -182,12 +182,12 @@ describe('identity', () => {
   it('identifies once, not on every action or page load', async () => {
     const { trackFeatureUsage } = await load();
     trackFeatureUsage(
-      'apip.manage-apis.create-rest-api',
+      'apip.manage-apis.rest-api-create-click',
       { creation_method: 'scratch' },
       { companyId: ORG, userId: USER },
     );
     trackFeatureUsage(
-      'apip.manage-apis.create-rest-api',
+      'apip.manage-apis.rest-api-create-click',
       { creation_method: 'scratch' },
       { companyId: ORG, userId: USER },
     );
@@ -225,7 +225,7 @@ describe('identity', () => {
 
 describe('PII filter', () => {
   const unsafeAction = {
-    action_name: 'apip.manage-apis.create-rest-api',
+    action_name: 'apip.manage-apis.rest-api-create-click',
     company_id: ORG,
     metadata: { apiName: 'Payments API', creation_method: 'scratch' },
     request: { uri: 'https://console.example.com/organizations/acme-corp/home?q=secret' },

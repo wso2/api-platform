@@ -99,7 +99,7 @@ function GatewayDetailPageContent() {
   const changeTab = (next: GatewayTab) => {
     if (next === 'policies' && !policiesReported.current) {
       policiesReported.current = true;
-      trackFeature('apip.policies.view-gateway-policies');
+      trackFeature('apip.policies.gateway-policies-view');
     }
     setTab(next);
   };

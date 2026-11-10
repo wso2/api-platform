@@ -376,10 +376,10 @@ function ServiceAccountList() {
     if (!confirm) return;
     const { account, kind } = confirm;
     if (kind === 'disable') {
-      trackFeature('apip.security.service-accounts', { operation: 'disable' });
+      trackFeature('apip.security.service-account-disable-click', {});
       setStatus(account, 'disabled', () => setConfirm(null));
     } else if (kind === 'regenerate') {
-      trackFeature('apip.security.service-accounts', { operation: 'regenerate-secret' });
+      trackFeature('apip.security.service-account-secret-regenerate-click', {});
       regenerateMutation.mutate(
         { id: account.id },
         {
@@ -394,7 +394,7 @@ function ServiceAccountList() {
         },
       );
     } else {
-      trackFeature('apip.security.service-accounts', { operation: 'delete' });
+      trackFeature('apip.security.service-account-delete-click', {});
       deleteMutation.mutate(
         { id: account.id },
         {
@@ -596,9 +596,7 @@ function ServiceAccountList() {
                           if (action === 'edit') setFormTarget(account);
                           else if (action === 'token') setTokenTarget({ account });
                           else if (action === 'enable') {
-                            trackFeature('apip.security.service-accounts', {
-                              operation: 'enable',
-                            });
+                            trackFeature('apip.security.service-account-enable-click', {});
                             setStatus(account, 'active');
                           } else setConfirm({ account, kind: action });
                         }}

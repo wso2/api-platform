@@ -309,7 +309,7 @@ function CreateForm() {
     setSubmitted(true);
     if (!valid || pending) return;
     const name = displayName.trim();
-    trackFeature('apip.security.service-accounts', { operation: 'create' });
+    trackFeature('apip.security.service-account-create-click', {});
     createMutation.mutate(
       {
         displayName: name,

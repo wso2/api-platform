@@ -301,9 +301,7 @@ describe('DefinitionPanel — feature usage', () => {
     await user.click(within(dialog).getByRole('button', { name: /^Save$/i }));
 
     await waitFor(() => expect(requests.count()).toBe(1));
-    expect(trackedFeatures()).toEqual([
-      ['apip.manage-apis.update-api', { api_type: 'rest-api', part: 'definition' }],
-    ]);
+    expect(trackedFeatures()).toEqual([['apip.manage-apis.api-definition-update-click', {}]]);
   });
 
   it('reports nothing when "Update API" is cancelled', async () => {

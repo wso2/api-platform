@@ -314,7 +314,7 @@ export function PortalPublicationCard({
             disabled={!viewInPortalHref}
             endIcon={<ExternalLink size={16} />}
             href={viewInPortalHref}
-            onClick={() => trackFeature('apip.lifecycle.open-api-portal', { api_type: target.apiType })}
+            onClick={() => trackFeature('apip.lifecycle.api-portal-open', { api_type: target.apiType })}
             rel="noopener noreferrer"
             size="small"
             sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}

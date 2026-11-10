@@ -615,7 +615,7 @@ export function DefinitionPanel() {
     const file = new File([blob], fileName, { type: mimeType });
     const formData = new FormData();
     formData.append('file', file);
-    trackFeature('apip.manage-apis.update-api', { api_type: 'rest-api', part: 'definition' });
+    trackFeature('apip.manage-apis.api-definition-update-click', {});
     putOpenApi.mutate({ restApiId, formData }, { onSuccess: () => setIsEditing(false) });
   };
 

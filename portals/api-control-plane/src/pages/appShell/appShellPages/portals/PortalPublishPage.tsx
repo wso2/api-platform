@@ -34,7 +34,7 @@ import {
 import { isApiError, isErrorCode } from '@/api/core/errors';
 import { AppPage } from '@/components/AppPage';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { useTrackFeature, type FeatureDimensions } from '@/featureUsage';
+import { useTrackFeature } from '@/featureUsage';
 import { useFillScrollArea } from '@/hooks/useFillScrollArea';
 import { useFrozenWhile } from '@/hooks/useFrozenWhile';
 import { useObjectUrl } from '@/api/core/objectUrl';
@@ -287,8 +287,8 @@ type PublishTab =
 /** Which action is currently in flight, so the right button (and only that one) shows busy. */
 type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprecating';
 
-/** One part of the draft a save sends, as feature usage names it. */
-type DraftPart = FeatureDimensions<'apip.lifecycle.publication-draft'>['draft_part'];
+/** A part of the publication draft, saved by its own request. */
+type DraftPart = 'metadata' | 'definition' | 'thumbnail' | 'landing-page';
 
 /** Told about each part of the draft just before it is sent. */
 type ReportDraftPart = (part: DraftPart) => void;
@@ -724,20 +724,34 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     }
   };
 
-  // Save Draft reports each part it sends; Publish's own saves on the way to publishing do not.
-  const reportDraftPart: ReportDraftPart = (part) =>
-    trackFeature('apip.lifecycle.publication-draft', { api_type: apiType, draft_part: part });
-
+  // One Save Draft click is one action, reported once with the parts it sent
+  // (the details are always sent). Reported when the save ends, even on a
+  // failure, since which parts go out is only known as each one is decided.
+  // Publish's own saves on the way to publishing report nothing.
   const handleSaveDraft = () =>
     runAction('saving', async () => {
       if (!detailsValid()) return;
-      await saveDetails(reportDraftPart);
-      const definitionSaved = await saveDefinition(reportDraftPart);
-      await saveAssets(reportDraftPart);
-      notify(
-        intl.formatMessage(definitionSaved ? messages.draftSaved : messages.draftSavedDetailsOnly),
-        definitionSaved ? 'success' : 'warning',
-      );
+      const sent = new Set<DraftPart>();
+      const recordPart: ReportDraftPart = (part) => sent.add(part);
+      const flag = (part: DraftPart) => (sent.has(part) ? 'yes' : 'no');
+      try {
+        await saveDetails(recordPart);
+        const definitionSaved = await saveDefinition(recordPart);
+        await saveAssets(recordPart);
+        notify(
+          intl.formatMessage(
+            definitionSaved ? messages.draftSaved : messages.draftSavedDetailsOnly,
+          ),
+          definitionSaved ? 'success' : 'warning',
+        );
+      } finally {
+        trackFeature('apip.lifecycle.publication-draft-save-click', {
+          api_type: apiType,
+          definition_saved: flag('definition'),
+          landing_page_changed: flag('landing-page'),
+          thumbnail_changed: flag('thumbnail'),
+        });
+      }
     });
 
   // Each terminal action leaves this one portal's page behind for the listing,
@@ -748,7 +762,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const handlePublish = () =>
     runAction('publishing', async () => {
       if (!detailsValid()) return;
-      trackFeature('apip.lifecycle.publish-api', { api_type: apiType });
+      trackFeature('apip.lifecycle.api-publish-click', { api_type: apiType });
       await saveDetails();
       // Publish requires a saved, parseable definition — never proceed on a
       // partial save, which would publish whatever definition was already
@@ -772,10 +786,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   const confirmUnpublish = () => {
     setConfirmingUnpublish(false);
-    trackFeature('apip.lifecycle.manage-publication', {
-      api_type: apiType,
-      operation: 'unpublish',
-    });
+    trackFeature('apip.lifecycle.api-unpublish-click', { api_type: apiType });
     return runAction('unpublishing', async () => {
       await unpublishMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler });
       notify(intl.formatMessage(messages.unpublished, { portalName }), 'success');
@@ -785,10 +796,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   const confirmDeprecate = () => {
     setConfirmingDeprecate(false);
-    trackFeature('apip.lifecycle.manage-publication', {
-      api_type: apiType,
-      operation: 'deprecate',
-    });
+    trackFeature('apip.lifecycle.api-deprecate-click', { api_type: apiType });
     return runAction('deprecating', async () => {
       await deprecateMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler });
       notify(intl.formatMessage(messages.deprecated, { portalName }), 'success');

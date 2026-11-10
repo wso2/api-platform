@@ -363,7 +363,7 @@ describe('GraphqlTestConsolePage — with an api-key-auth policy', () => {
     await user.click(await screen.findByRole('button', { name: 'Get Test API Key' }));
     await vi.waitFor(() => expect(mints()).toBe(2));
     expect(trackedFeatures()).toEqual([
-      ['apip.security.api-key-issuance', { artifact_kind: 'graphql-api', key_purpose: 'test' }],
+      ['apip.security.test-api-key-generate-click', { artifact_kind: 'graphql-api' }],
     ]);
   });
 });
@@ -487,9 +487,9 @@ describe('GraphqlTestConsolePage — feature usage', () => {
 
       expect(global.fetch).toHaveBeenCalledTimes(4);
       expect(trackedFeatures()).toEqual([
-        ['apip.manage-apis.test-console', { api_type: 'graphql-api', outcome: 'success' }],
-        ['apip.manage-apis.test-console', { api_type: 'graphql-api', outcome: 'failure' }],
-        ['apip.manage-apis.test-console', { api_type: 'graphql-api', outcome: 'failure' }],
+        ['apip.manage-apis.test-console-execute', { api_type: 'graphql-api', outcome: 'success' }],
+        ['apip.manage-apis.test-console-execute', { api_type: 'graphql-api', outcome: 'failure' }],
+        ['apip.manage-apis.test-console-execute', { api_type: 'graphql-api', outcome: 'failure' }],
       ]);
     } finally {
       global.fetch = originalFetch;

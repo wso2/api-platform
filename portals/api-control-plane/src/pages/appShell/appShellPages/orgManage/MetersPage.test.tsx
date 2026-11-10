@@ -168,7 +168,7 @@ describe('MetersPage', () => {
       type: 'REQUEST_COUNT',
     });
     expect(trackedFeatures()).toEqual([
-      ['apip.monetization.meter-management', { operation: 'create' }],
+      ['apip.monetization.meter-create-click', {}],
     ]);
   });
 
@@ -506,7 +506,7 @@ describe('MetersPage', () => {
       typeKey: 'usage.outputTokens',
     });
     expect(trackedFeatures()).toEqual([
-      ['apip.monetization.meter-management', { operation: 'update' }],
+      ['apip.monetization.meter-update-click', {}],
     ]);
   });
 
@@ -550,7 +550,7 @@ describe('MetersPage', () => {
     expect(requests.count()).toBe(1);
     // The confirmed intent counts, whatever the server answers.
     expect(trackedFeatures()).toEqual([
-      ['apip.monetization.meter-management', { operation: 'delete' }],
+      ['apip.monetization.meter-delete-click', {}],
     ]);
   });
 

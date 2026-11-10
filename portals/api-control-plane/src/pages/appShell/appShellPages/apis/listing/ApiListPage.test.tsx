@@ -637,7 +637,7 @@ describe('ApiListPage — feature usage', () => {
       await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
       await waitFor(() => expect(requests.count()).toBe(1));
-      expect(trackedFeatures()).toEqual([['apip.manage-apis.delete-api', { api_type: apiType }]]);
+      expect(trackedFeatures()).toEqual([['apip.manage-apis.api-delete-click', { api_type: apiType }]]);
     },
   );
 

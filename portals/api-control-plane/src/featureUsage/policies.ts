@@ -21,13 +21,13 @@ import type { TrackFeature } from './useTrackFeature';
 
 /** What is known about where a policy was attached; every policy feature declares both. */
 export type PolicyAttachmentContext = Pick<
-  FeatureDimensions<'apip.policies.cors'>,
+  FeatureDimensions<'apip.policies.cors-attach'>,
   'artifact_kind' | 'policy_scope'
 >;
 
 /**
  * Reports one policy newly attached to an API, under the capability feature its
- * name belongs to (`api-key-auth` → `apip.policies.client-authentication`).
+ * name belongs to (`api-key-auth` → `apip.policies.client-authentication-attach`).
  * A policy the taxonomy doesn't classify, such as a custom one, is not
  * reported. `policy_name` is sent only by the features that declare it; for the
  * single-policy capabilities (CORS, access control, analytics filtering) the

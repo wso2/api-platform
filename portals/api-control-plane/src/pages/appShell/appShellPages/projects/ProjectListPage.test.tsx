@@ -243,7 +243,7 @@ describe('ProjectListPage', () => {
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(requests.last()?.url.pathname).toMatch(/\/projects\/retail$/);
-    expect(trackedFeatures()).toEqual([['apip.admin.manage-projects', { operation: 'delete' }]]);
+    expect(trackedFeatures()).toEqual([['apip.admin.project-delete-click', {}]]);
   });
 
   it('reports no deletion when the confirmation is cancelled', async () => {

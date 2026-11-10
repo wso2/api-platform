@@ -174,7 +174,7 @@ function ProjectListPageContent() {
   const confirmDelete = () => {
     if (!toDelete) return;
     const { displayName } = toDelete;
-    trackFeature('apip.admin.manage-projects', { operation: 'delete' });
+    trackFeature('apip.admin.project-delete-click', {});
     deleteProjectMutation.mutate(
       { projectId: toDelete.id },
       {

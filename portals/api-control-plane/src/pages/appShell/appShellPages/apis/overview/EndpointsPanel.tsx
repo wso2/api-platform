@@ -320,7 +320,7 @@ export function EndpointsPanel({ api }: { api: RestApi }) {
       editOperation="UpdateRESTAPI"
       gatewayManaged={api.readOnly === true}
       onSave={(endpointUrl) => {
-        trackFeature('apip.manage-apis.update-api', { api_type: 'rest-api', part: 'endpoint' });
+        trackFeature('apip.manage-apis.api-endpoint-update-click', { api_type: 'rest-api' });
         return updateApi.mutateAsync({
           restApiId: api.id ?? '',
           body: {

@@ -26,7 +26,7 @@
  * land here instead of being dropped (tracking is off in tests). Then:
  *
  *   beforeEach(() => resetTrackedFeatures());
- *   expect(trackedFeatures()).toEqual([['apip.manage-apis.delete-api', { api_type: 'rest-api' }]]);
+ *   expect(trackedFeatures()).toEqual([['apip.manage-apis.api-delete-click', { api_type: 'rest-api' }]]);
  *
  * The SDK path itself is covered by src/featureUsage/*.test.ts.
  */

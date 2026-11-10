@@ -152,7 +152,7 @@ describe('GatewayDeployCard — a live deployment', () => {
     );
     expect(requests.last()?.url.searchParams.get('gatewayId')).toBe(GATEWAY_ID);
     expect(trackedFeatures()).toEqual([
-      ['apip.lifecycle.manage-deployment', { artifact_kind: 'graphql-api', operation: 'undeploy' }],
+      ['apip.lifecycle.deployment-undeploy-click', { artifact_kind: 'graphql-api' }],
     ]);
   });
 });
@@ -187,7 +187,7 @@ describe('GatewayDeployCard — a failed deployment', () => {
     );
     expect(requests.last()?.url.searchParams.get('gatewayId')).toBe(GATEWAY_ID);
     expect(trackedFeatures()).toEqual([
-      ['apip.lifecycle.manage-deployment', { artifact_kind: 'graphql-api', operation: 'restore' }],
+      ['apip.lifecycle.deployment-redeploy-click', { artifact_kind: 'graphql-api' }],
     ]);
   });
 });
@@ -238,7 +238,7 @@ describe('GatewayDeployCard — deployment history', () => {
 
     expect(await screen.findByText('Edge_Gateway_2026-01-01_1')).toBeInTheDocument();
     expect(trackedFeatures()).toEqual([
-      ['apip.lifecycle.view-deployment-history', { artifact_kind: 'graphql-api' }],
+      ['apip.lifecycle.deployment-history-view', { artifact_kind: 'graphql-api' }],
     ]);
   });
 
@@ -259,8 +259,8 @@ describe('GatewayDeployCard — deployment history', () => {
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(requests.last()?.url.pathname).toContain(`/graphql-apis/${API}/deployments/d1`);
     expect(trackedFeatures()).toEqual([
-      ['apip.lifecycle.view-deployment-history', { artifact_kind: 'graphql-api' }],
-      ['apip.lifecycle.manage-deployment', { artifact_kind: 'graphql-api', operation: 'delete' }],
+      ['apip.lifecycle.deployment-history-view', { artifact_kind: 'graphql-api' }],
+      ['apip.lifecycle.deployment-delete-click', { artifact_kind: 'graphql-api' }],
     ]);
   });
 
@@ -312,7 +312,7 @@ describe('GatewayDeployCard — restoring an older deployment', () => {
     expect(requests.last()?.url.pathname).toContain(`/graphql-apis/${API}/deployments/older/restore`);
     expect(requests.last()?.url.searchParams.get('gatewayId')).toBe(GATEWAY_ID);
     expect(trackedFeatures()).toEqual([
-      ['apip.lifecycle.manage-deployment', { artifact_kind: 'graphql-api', operation: 'restore' }],
+      ['apip.lifecycle.deployment-restore-click', { artifact_kind: 'graphql-api' }],
     ]);
   });
 
@@ -352,7 +352,7 @@ describe('GatewayDeployCard — deploying', () => {
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(trackedFeatures()).toEqual([
       [
-        'apip.lifecycle.deploy-api',
+        'apip.lifecycle.api-deploy-click',
         { artifact_kind: 'graphql-api', gateway_hosting: 'self-hosted', gateway_type: 'regular' },
       ],
     ]);
@@ -378,7 +378,7 @@ describe('GatewayDeployCard — deploying', () => {
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(trackedFeatures()).toEqual([
-      ['apip.lifecycle.deploy-api', { artifact_kind: 'graphql-api', gateway_type: 'ai' }],
+      ['apip.lifecycle.api-deploy-click', { artifact_kind: 'graphql-api', gateway_type: 'ai' }],
     ]);
   });
 });

@@ -90,7 +90,7 @@ describe('OrganizationHomePage feature usage', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(deletes.count()).toBe(1));
-    expect(trackedFeatures()).toEqual([['apip.admin.manage-projects', { operation: 'delete' }]]);
+    expect(trackedFeatures()).toEqual([['apip.admin.project-delete-click', {}]]);
   });
 
   it('reports nothing when the deletion is cancelled', async () => {

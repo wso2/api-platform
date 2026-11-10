@@ -71,7 +71,7 @@ describe('PortalPublicationCard', () => {
       await user.click(link);
 
       expect(trackedFeatures()).toEqual([
-        ['apip.lifecycle.open-api-portal', { api_type: apiType }],
+        ['apip.lifecycle.api-portal-open', { api_type: apiType }],
       ]);
     },
   );

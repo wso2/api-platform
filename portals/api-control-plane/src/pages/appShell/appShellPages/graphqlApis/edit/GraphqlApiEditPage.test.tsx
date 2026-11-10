@@ -262,7 +262,7 @@ describe('GraphqlApiEditPage — feature usage', () => {
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(trackedFeatures()).toEqual([
-      ['apip.manage-apis.update-api', { api_type: 'graphql-api', part: 'metadata' }],
+      ['apip.manage-apis.api-update-click', { api_type: 'graphql-api' }],
     ]);
   });
 });

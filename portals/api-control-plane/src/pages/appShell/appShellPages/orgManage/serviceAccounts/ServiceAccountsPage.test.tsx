@@ -106,9 +106,7 @@ beforeEach(() => {
   resetTrackedFeatures();
 });
 
-const serviceAccountUse = (operation: string) => [
-  ['apip.security.service-accounts', { operation }],
-];
+const serviceAccountUse = (action: string) => [[`apip.security.${action}-click`, {}]];
 
 describe('ServiceAccountsPage', () => {
   it('lists accounts with roles, status and last token issued', async () => {
@@ -271,7 +269,7 @@ describe('ServiceAccountsPage', () => {
     await user.click(within(confirm).getByRole('button', { name: 'Regenerate secret' }));
 
     expect(await screen.findByText('Copy the secret now')).toBeInTheDocument();
-    expect(trackedFeatures()).toEqual(serviceAccountUse('regenerate-secret'));
+    expect(trackedFeatures()).toEqual(serviceAccountUse('service-account-secret-regenerate'));
     expect(screen.getByLabelText('Client secret')).toHaveValue(SECRET);
 
     await user.click(screen.getByRole('button', { name: 'Done' }));
@@ -297,7 +295,7 @@ describe('ServiceAccountsPage', () => {
     expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({
       status: 'disabled',
     });
-    expect(trackedFeatures()).toEqual(serviceAccountUse('disable'));
+    expect(trackedFeatures()).toEqual(serviceAccountUse('service-account-disable'));
   });
 
   it('reports nothing when a confirmation is cancelled', async () => {
@@ -334,7 +332,7 @@ describe('ServiceAccountsPage', () => {
     expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({
       status: 'active',
     });
-    expect(trackedFeatures()).toEqual(serviceAccountUse('enable'));
+    expect(trackedFeatures()).toEqual(serviceAccountUse('service-account-enable'));
   });
 
   it('deletes only once the ID is typed', async () => {
@@ -350,7 +348,7 @@ describe('ServiceAccountsPage', () => {
     await user.click(within(confirm).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(requests.calls.some((call) => call.method === 'DELETE')).toBe(true));
-    expect(trackedFeatures()).toEqual(serviceAccountUse('delete'));
+    expect(trackedFeatures()).toEqual(serviceAccountUse('service-account-delete'));
   });
 
   it('gets a token, sending the scopes the roles grant', async () => {
@@ -380,7 +378,7 @@ describe('ServiceAccountsPage', () => {
     const form = new URLSearchParams(requests.calls.find((call) => call.method === 'POST')!.body);
     expect(form.get('client_id')).toBe(ciDeployer.clientId);
     expect(form.get('scope')).toBe('ap:rest_api:read ap:gateway:read');
-    expect(trackedFeatures()).toEqual(serviceAccountUse('issue-test-token'));
+    expect(trackedFeatures()).toEqual(serviceAccountUse('service-account-test-token-get'));
   });
 
   it('says to check the secret when the server rejects the credentials', async () => {
@@ -424,7 +422,7 @@ describe('ServiceAccountsPage', () => {
     expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({
       roles: ['ap_service_account'],
     });
-    expect(trackedFeatures()).toEqual(serviceAccountUse('update'));
+    expect(trackedFeatures()).toEqual(serviceAccountUse('service-account-update'));
   });
 
   it('disables from the edit view with the switch, after a warning', async () => {

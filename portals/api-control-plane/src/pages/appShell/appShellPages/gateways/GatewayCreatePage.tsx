@@ -353,7 +353,7 @@ function GatewayCreatePageContent() {
       version: formState.version || SPEC_DEFAULT_VERSION,
     };
 
-    trackFeature('apip.gateway.register-gateway', {
+    trackFeature('apip.gateway.gateway-register-click', {
       gateway_hosting: REGISTERED_GATEWAY_MODE,
       gateway_type: formState.functionalityType,
     });

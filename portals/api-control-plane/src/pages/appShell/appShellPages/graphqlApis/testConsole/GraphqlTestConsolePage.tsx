@@ -325,14 +325,14 @@ function GraphqlTestConsolePageContent() {
           response = await guardedFetch(...args);
         } catch (error) {
           if (!(error instanceof DOMException && error.name === 'AbortError')) {
-            trackFeature('apip.manage-apis.test-console', {
+            trackFeature('apip.manage-apis.test-console-execute', {
               api_type: 'graphql-api',
               outcome: 'failure',
             });
           }
           throw error;
         }
-        trackFeature('apip.manage-apis.test-console', {
+        trackFeature('apip.manage-apis.test-console-execute', {
           api_type: 'graphql-api',
           outcome: response.status < 400 ? 'success' : 'failure',
         });
