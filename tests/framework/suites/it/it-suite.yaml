@@ -323,6 +323,22 @@ blocks:
 
   # The relayed client certificate header is believed from any connection here, a gateway-wide
   # setting the other mutual TLS blocks must not see.
+  # The fault-flow posture, which is process-level: with handle_upstream_faults on, a failing
+  # response runs through the fault chain instead of the response chain. It cannot be a tag or a
+  # scenario setting, because the gateway has to be started with it - which is why it gets a
+  # block rather than joining an existing one.
+  - name: gateway-faultflow
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-faultflow.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: model-failover-fault-flow
+        features:
+          - features/gateway/ai/model_failover_fault_flow.feature
+
   - name: gateway-mtls-trust-any
     parallel: 1
     components:
