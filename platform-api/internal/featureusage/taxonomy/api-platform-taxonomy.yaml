@@ -96,6 +96,77 @@ features:
   # MANAGE APIS
   # ============================================================
 
+  - code: "apip.manage-apis.api-creation-wizard"
+    name: "API Creation Wizard"
+    description: "Open the console's wizard that creates REST and GraphQL APIs."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-creation-wizard"
+      event_category: "discovery"
+      platforms: ["web"]
+      dimensions:
+        - name: "entry_point"
+          type: "enum"
+          values: ["api-list", "api-list-empty-state", "org-home", "project-quick-actions", "direct"]
+          required: true
+          description: "The control that opened the wizard; direct for a typed URL or a reload."
+      aggregations:
+        - type: "count"
+          label: "API Creation Wizard Opens"
+    sub_features:
+      - code: "apip.manage-apis.api-creation-wizard.select-api-type"
+        name: "API Type Selection"
+        description: "Continue past the wizard's API type step."
+        category: "manage-apis"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.manage-apis.api-creation-wizard.select-api-type"
+          event_category: "engagement"
+          platforms: ["web"]
+          dimensions:
+            - name: "api_type"
+              type: "enum"
+              values: ["rest-api", "graphql-api"]
+              required: true
+          aggregations:
+            - type: "count"
+              label: "API Types Selected"
+      - code: "apip.manage-apis.api-creation-wizard.select-creation-method"
+        name: "API Creation Method Selection"
+        description: "Continue past the wizard's definition step, starting from scratch or from a contract (an OpenAPI document or a GraphQL schema)."
+        category: "manage-apis"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.manage-apis.api-creation-wizard.select-creation-method"
+          event_category: "engagement"
+          platforms: ["web"]
+          dimensions:
+            - name: "api_type"
+              type: "enum"
+              values: ["rest-api", "graphql-api"]
+              required: true
+            - name: "creation_method"
+              type: "enum"
+              values: ["scratch", "contract"]
+              required: true
+              description: "scratch: a backend endpoint (REST) or schema introspection (GraphQL); contract: an imported OpenAPI document or GraphQL schema."
+          aggregations:
+            - type: "count"
+              label: "Creation Methods Selected"
+            - type: "count_distinct"
+              label: "Distinct Creation Methods Used"
+              dimension: "creation_method"
+
   - code: "apip.manage-apis.create-rest-api"
     name: "REST API Creation"
     description: "Create a REST API in the console, with the CLI, or through the Platform API, from scratch or by importing an OpenAPI contract."
@@ -106,42 +177,15 @@ features:
       introduced_in: "0.9.0"
     tracking:
       event_name: "apip.manage-apis.create-rest-api"
-      event_category: "lifecycle"
+      event_category: "adoption"
       platforms: ["web", "api"]
       aggregations:
         - type: "count"
           label: "REST APIs Created"
-    sub_features:
-      - code: "apip.manage-apis.create-rest-api.import-contract"
-        name: "Contract Import"
-        description: "Supply the OpenAPI contract by URL or file upload in the creation wizard."
-        category: "manage-apis"
-        tier: "core"
-        status: "stable"
-        availability:
-          introduced_in: "0.9.0"
-        tracking:
-          event_name: "apip.manage-apis.create-rest-api.import-contract"
-          event_category: "engagement"
-          platforms: ["web"]
-          dimensions:
-            - name: "contract_source"
-              type: "enum"
-              values: ["url", "file"]
-              required: true
-              description: "How the contract was provided."
-            - name: "api_type"
-              type: "enum"
-              values: ["rest-api", "graphql-api"]
-              required: false
-              description: "Which API type the wizard was creating."
-          aggregations:
-            - type: "count"
-              label: "Contracts Imported"
 
   - code: "apip.manage-apis.create-graphql-api"
     name: "GraphQL API Creation"
-    description: "Create a GraphQL API from an SDL schema supplied inline, by URL or file, or discovered by introspecting the backend."
+    description: "Create a GraphQL API from scratch, by introspecting its backend, or from an SDL schema supplied inline, by URL, or as a file."
     category: "manage-apis"
     tier: "core"
     status: "stable"
@@ -149,21 +193,29 @@ features:
       introduced_in: "0.9.0"
     tracking:
       event_name: "apip.manage-apis.create-graphql-api"
-      event_category: "lifecycle"
+      event_category: "adoption"
       platforms: ["web", "api"]
       dimensions:
-        - name: "schema_source"
+        - name: "creation_method"
           type: "enum"
-          values: ["inline", "url", "file", "introspection"]
+          values: ["scratch", "contract"]
           required: true
-          description: "How the schema was supplied."
+          description: "scratch: the schema was introspected from the backend; contract: an SDL schema was supplied."
+        - name: "contract_source"
+          type: "enum"
+          values: ["url", "file", "inline"]
+          required: false
+          description: "How the schema was supplied; sent only when creation_method is contract. The console offers url and file."
       aggregations:
         - type: "count"
           label: "GraphQL APIs Created"
+        - type: "count_distinct"
+          label: "Distinct Creation Methods Used"
+          dimension: "creation_method"
 
   - code: "apip.manage-apis.update-api"
     name: "API Update"
-    description: "Update the metadata or configuration of a REST or GraphQL API."
+    description: "Update a REST or GraphQL API: its details, its backend endpoint, or (REST) its OpenAPI definition."
     category: "manage-apis"
     tier: "core"
     status: "stable"
@@ -178,26 +230,17 @@ features:
           type: "enum"
           values: ["rest-api", "graphql-api"]
           required: true
+        - name: "part"
+          type: "enum"
+          values: ["metadata", "endpoint", "definition"]
+          required: true
+          description: "What was updated: the name, version, context and description; the backend endpoint; or the OpenAPI definition."
       aggregations:
         - type: "count"
           label: "API Updates"
-    sub_features:
-      - code: "apip.manage-apis.update-api.openapi-definition"
-        name: "OpenAPI Definition Update"
-        description: "Replace the OpenAPI definition of an existing REST API."
-        category: "manage-apis"
-        tier: "core"
-        status: "stable"
-        availability:
-          introduced_in: "0.9.0"
-        tracking:
-          event_name: "apip.manage-apis.update-api.openapi-definition"
-          event_category: "lifecycle"
-          platforms: ["web", "api"]
-          dimensions: []
-          aggregations:
-            - type: "count"
-              label: "OpenAPI Definition Updates"
+        - type: "count_distinct"
+          label: "Distinct Parts Updated"
+          dimension: "part"
 
   - code: "apip.manage-apis.delete-api"
     name: "API Deletion"
@@ -266,6 +309,11 @@ features:
           type: "enum"
           values: ["rest-api", "graphql-api", "mcp-proxy"]
           required: false
+        - name: "document_type"
+          type: "enum"
+          values: ["how-to", "samples", "public-forum", "support-forum", "other"]
+          required: false
+          description: "The document's type; a custom name given to an 'other' document is never sent."
       aggregations:
         - type: "count"
           label: "Documentation Changes"
@@ -287,6 +335,10 @@ features:
           type: "enum"
           values: ["upsert", "delete"]
           required: true
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: false
       aggregations:
         - type: "count"
           label: "Thumbnail Changes"
@@ -338,9 +390,31 @@ features:
           type: "enum"
           values: ["success", "failure"]
           required: true
+          description: "success: an HTTP response with a status below 400; failure: a status of 400 or more, or no response."
       aggregations:
         - type: "count"
           label: "Test Console Invocations"
+    sub_features:
+      - code: "apip.manage-apis.test-console.copy-curl"
+        name: "cURL Command Copy"
+        description: "Copy the cURL command built in the test console's cURL view."
+        category: "manage-apis"
+        tier: "core"
+        status: "stable"
+        availability:
+          introduced_in: "0.9.0"
+        tracking:
+          event_name: "apip.manage-apis.test-console.copy-curl"
+          event_category: "engagement"
+          platforms: ["web"]
+          dimensions:
+            - name: "api_type"
+              type: "enum"
+              values: ["rest-api"]
+              required: true
+          aggregations:
+            - type: "count"
+              label: "cURL Commands Copied"
 
   # ============================================================
   # GATEWAY
@@ -361,9 +435,9 @@ features:
       dimensions:
         - name: "gateway_type"
           type: "enum"
-          values: ["regular", "ai"]
+          values: ["regular", "ai", "event"]
           required: true
-          description: "Regular or AI gateway."
+          description: "Regular (API), AI, or event gateway."
         - name: "gateway_hosting"
           type: "enum"
           values: ["managed", "self-hosted"]
@@ -398,7 +472,7 @@ features:
           required: true
         - name: "gateway_type"
           type: "enum"
-          values: ["regular", "ai"]
+          values: ["regular", "ai", "event"]
           required: false
       aggregations:
         - type: "count"
@@ -424,6 +498,36 @@ features:
       aggregations:
         - type: "count"
           label: "Token Changes"
+
+  - code: "apip.gateway.copy-setup-command"
+    name: "Gateway Setup Command Copy"
+    description: "Copy a command from a self-hosted gateway's setup instructions in the console."
+    category: "gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.gateway.copy-setup-command"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions:
+        - name: "install_method"
+          type: "enum"
+          values: ["quick-start", "virtual-machine", "docker", "kubernetes"]
+          required: true
+          description: "The installation tab the command was copied from."
+        - name: "setup_step"
+          type: "enum"
+          values: ["check-runtime", "download", "setup", "configure", "start", "install"]
+          required: true
+          description: "The step the command belongs to; install is the Kubernetes Helm command."
+      aggregations:
+        - type: "count"
+          label: "Setup Commands Copied"
+        - type: "count_distinct"
+          label: "Distinct Install Methods Used"
+          dimension: "install_method"
 
   - code: "apip.gateway.download-manifest"
     name: "Gateway Manifest Download"
@@ -502,14 +606,20 @@ features:
       platforms: ["web", "api"]
       dimensions:
         - name: "policy_name"
-          type: "string"
+          type: "enum"
+          values: ["api-key-auth", "basic-auth", "jwt-auth", "mtls-auth", "opaque-token-auth"]
           required: true
-          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+          description: "The WSO2 policy attached, as named in its definition (the policies bundled with the gateway). A custom policy's name is the customer's own text and is not sent."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
           required: false
           description: "The kind of API the policy was attached to."
+        - name: "policy_scope"
+          type: "enum"
+          values: ["api", "operation"]
+          required: false
+          description: "Whether the policy applies to the whole API or to one operation. The console emits the event when the attachment is saved."
       aggregations:
         - type: "count"
           label: "Authentication Policies Applied"
@@ -531,14 +641,20 @@ features:
       platforms: ["web", "api"]
       dimensions:
         - name: "policy_name"
-          type: "string"
+          type: "enum"
+          values: ["backend-jwt", "aws-authentication", "oauth2-generator", "oauth2-token-exchange"]
           required: true
-          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+          description: "The WSO2 policy attached, as named in its definition (the policies bundled with the gateway). A custom policy's name is the customer's own text and is not sent."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
           required: false
           description: "The kind of API the policy was attached to."
+        - name: "policy_scope"
+          type: "enum"
+          values: ["api", "operation"]
+          required: false
+          description: "Whether the policy applies to the whole API or to one operation. The console emits the event when the attachment is saved."
       aggregations:
         - type: "count"
           label: "Backend Authentication Policies Applied"
@@ -564,6 +680,11 @@ features:
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
           required: false
           description: "The kind of API the policy was attached to."
+        - name: "policy_scope"
+          type: "enum"
+          values: ["api", "operation"]
+          required: false
+          description: "Whether the policy applies to the whole API or to one operation. The console emits the event when the attachment is saved."
       aggregations:
         - type: "count"
           label: "Subscription Validation Applied"
@@ -582,14 +703,20 @@ features:
       platforms: ["web", "api"]
       dimensions:
         - name: "policy_name"
-          type: "string"
+          type: "enum"
+          values: ["basic-ratelimit", "advanced-ratelimit"]
           required: true
-          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+          description: "The WSO2 policy attached, as named in its definition (the policies bundled with the gateway). A custom policy's name is the customer's own text and is not sent."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
           required: false
           description: "The kind of API the policy was attached to."
+        - name: "policy_scope"
+          type: "enum"
+          values: ["api", "operation"]
+          required: false
+          description: "Whether the policy applies to the whole API or to one operation. The console emits the event when the attachment is saved."
       aggregations:
         - type: "count"
           label: "Rate Limit Policies Applied"
@@ -611,14 +738,20 @@ features:
       platforms: ["web", "api"]
       dimensions:
         - name: "policy_name"
-          type: "string"
+          type: "enum"
+          values: ["dynamic-endpoint", "redirect"]
           required: true
-          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+          description: "The WSO2 policy attached, as named in its definition (the policies bundled with the gateway). A custom policy's name is the customer's own text and is not sent."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
           required: false
           description: "The kind of API the policy was attached to."
+        - name: "policy_scope"
+          type: "enum"
+          values: ["api", "operation"]
+          required: false
+          description: "Whether the policy applies to the whole API or to one operation. The console emits the event when the attachment is saved."
       aggregations:
         - type: "count"
           label: "Routing Policies Applied"
@@ -640,14 +773,20 @@ features:
       platforms: ["web", "api"]
       dimensions:
         - name: "policy_name"
-          type: "string"
+          type: "enum"
+          values: ["set-headers", "remove-headers", "request-rewrite", "host-rewrite", "json-xml-mediator", "respond"]
           required: true
-          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+          description: "The WSO2 policy attached, as named in its definition (the policies bundled with the gateway). A custom policy's name is the customer's own text and is not sent."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
           required: false
           description: "The kind of API the policy was attached to."
+        - name: "policy_scope"
+          type: "enum"
+          values: ["api", "operation"]
+          required: false
+          description: "Whether the policy applies to the whole API or to one operation. The console emits the event when the attachment is saved."
       aggregations:
         - type: "count"
           label: "Transformation Policies Applied"
@@ -669,14 +808,20 @@ features:
       platforms: ["web", "api"]
       dimensions:
         - name: "policy_name"
-          type: "string"
+          type: "enum"
+          values: ["json-schema-guardrail", "regex-guardrail", "content-length-guardrail", "url-guardrail", "word-count-guardrail", "sentence-count-guardrail"]
           required: true
-          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+          description: "The WSO2 policy attached, as named in its definition (the policies bundled with the gateway). A custom policy's name is the customer's own text and is not sent."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
           required: false
           description: "The kind of API the policy was attached to."
+        - name: "policy_scope"
+          type: "enum"
+          values: ["api", "operation"]
+          required: false
+          description: "Whether the policy applies to the whole API or to one operation. The console emits the event when the attachment is saved."
       aggregations:
         - type: "count"
           label: "Validation Policies Applied"
@@ -702,6 +847,11 @@ features:
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
           required: false
           description: "The kind of API the policy was attached to."
+        - name: "policy_scope"
+          type: "enum"
+          values: ["api", "operation"]
+          required: false
+          description: "Whether the policy applies to the whole API or to one operation. The console emits the event when the attachment is saved."
       aggregations:
         - type: "count"
           label: "CORS Policies Applied"
@@ -720,14 +870,20 @@ features:
       platforms: ["web", "api"]
       dimensions:
         - name: "policy_name"
-          type: "string"
+          type: "enum"
+          values: ["interceptor-service", "log-message"]
           required: true
-          description: "Name of the policy as declared in its definition. An open set: custom policies can be added."
+          description: "The WSO2 policy attached, as named in its definition (the policies bundled with the gateway). A custom policy's name is the customer's own text and is not sent."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
           required: false
           description: "The kind of API the policy was attached to."
+        - name: "policy_scope"
+          type: "enum"
+          values: ["api", "operation"]
+          required: false
+          description: "Whether the policy applies to the whole API or to one operation. The console emits the event when the attachment is saved."
       aggregations:
         - type: "count"
           label: "Interception Policies Applied"
@@ -753,6 +909,11 @@ features:
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
           required: false
           description: "The kind of API the policy was attached to."
+        - name: "policy_scope"
+          type: "enum"
+          values: ["api", "operation"]
+          required: false
+          description: "Whether the policy applies to the whole API or to one operation. The console emits the event when the attachment is saved."
       aggregations:
         - type: "count"
           label: "Analytics Filters Applied"
@@ -790,7 +951,12 @@ features:
       event_name: "apip.policies.browse-policies"
       event_category: "discovery"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: false
+          description: "The kind of API whose policies page the catalogue was opened on."
       aggregations:
         - type: "count"
           label: "Policy Hub Browsing Sessions"
@@ -893,7 +1059,7 @@ features:
 
   - code: "apip.security.service-accounts"
     name: "Service Accounts"
-    description: "Create, update, or delete a service account, or regenerate its secret."
+    description: "Create, update, enable, disable, or delete a service account, regenerate its secret, or issue a test token with its credentials."
     category: "security"
     tier: "core"
     status: "stable"
@@ -906,7 +1072,7 @@ features:
       dimensions:
         - name: "operation"
           type: "enum"
-          values: ["create", "update", "delete", "regenerate-secret"]
+          values: ["create", "update", "enable", "disable", "delete", "regenerate-secret", "issue-test-token"]
           required: true
       aggregations:
         - type: "count"
@@ -1002,7 +1168,7 @@ features:
           required: true
         - name: "gateway_type"
           type: "enum"
-          values: ["regular", "ai"]
+          values: ["regular", "ai", "event"]
           required: true
         - name: "gateway_hosting"
           type: "enum"
@@ -1018,67 +1184,34 @@ features:
         - type: "count_distinct"
           label: "Distinct Gateway Types Deployed To"
           dimension: "gateway_type"
-    sub_features:
-      - code: "apip.lifecycle.deploy-api.undeploy"
-        name: "Artifact Undeploy"
-        description: "Remove a deployment from a gateway."
-        category: "lifecycle"
-        tier: "core"
-        status: "stable"
-        availability:
-          introduced_in: "0.9.0"
-        tracking:
-          event_name: "apip.lifecycle.deploy-api.undeploy"
-          event_category: "lifecycle"
-          platforms: ["web", "api"]
-          dimensions:
-            - name: "artifact_kind"
-              type: "enum"
-              values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
-              required: true
-          aggregations:
-            - type: "count"
-              label: "Undeployments"
-      - code: "apip.lifecycle.deploy-api.restore"
-        name: "Deployment Restore"
-        description: "Redeploy an earlier deployment."
-        category: "lifecycle"
-        tier: "core"
-        status: "stable"
-        availability:
-          introduced_in: "0.9.0"
-        tracking:
-          event_name: "apip.lifecycle.deploy-api.restore"
-          event_category: "lifecycle"
-          platforms: ["web", "api"]
-          dimensions:
-            - name: "artifact_kind"
-              type: "enum"
-              values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
-              required: true
-          aggregations:
-            - type: "count"
-              label: "Deployment Restores"
-      - code: "apip.lifecycle.deploy-api.delete"
-        name: "Deployment Deletion"
-        description: "Delete a deployment record."
-        category: "lifecycle"
-        tier: "core"
-        status: "stable"
-        availability:
-          introduced_in: "0.9.0"
-        tracking:
-          event_name: "apip.lifecycle.deploy-api.delete"
-          event_category: "lifecycle"
-          platforms: ["web", "api"]
-          dimensions:
-            - name: "artifact_kind"
-              type: "enum"
-              values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
-              required: true
-          aggregations:
-            - type: "count"
-              label: "Deployment Deletions"
+
+  - code: "apip.lifecycle.manage-deployment"
+    name: "Deployment Management"
+    description: "Undeploy a deployment from a gateway, restore (redeploy) an earlier deployment, or delete a deployment record."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.manage-deployment"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: true
+        - name: "operation"
+          type: "enum"
+          values: ["undeploy", "restore", "delete"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Deployment Operations"
+        - type: "count_distinct"
+          label: "Distinct Deployment Operations"
+          dimension: "operation"
 
   - code: "apip.lifecycle.view-deployment-history"
     name: "Deployment History View"
@@ -1092,7 +1225,11 @@ features:
       event_name: "apip.lifecycle.view-deployment-history"
       event_category: "discovery"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          required: false
       aggregations:
         - type: "count"
           label: "Deployment History Views"
@@ -1117,47 +1254,31 @@ features:
       aggregations:
         - type: "count"
           label: "APIs Published"
-    sub_features:
-      - code: "apip.lifecycle.publish-api.unpublish"
-        name: "API Unpublish"
-        description: "Remove a published API from the API Portal."
-        category: "lifecycle"
-        tier: "core"
-        status: "stable"
-        availability:
-          introduced_in: "0.9.0"
-        tracking:
-          event_name: "apip.lifecycle.publish-api.unpublish"
-          event_category: "lifecycle"
-          platforms: ["web", "api"]
-          dimensions:
-            - name: "api_type"
-              type: "enum"
-              values: ["rest-api", "graphql-api", "mcp-proxy"]
-              required: true
-          aggregations:
-            - type: "count"
-              label: "APIs Unpublished"
-      - code: "apip.lifecycle.publish-api.deprecate"
-        name: "API Deprecation"
-        description: "Mark a published API as deprecated in the API Portal."
-        category: "lifecycle"
-        tier: "core"
-        status: "stable"
-        availability:
-          introduced_in: "0.9.0"
-        tracking:
-          event_name: "apip.lifecycle.publish-api.deprecate"
-          event_category: "lifecycle"
-          platforms: ["web", "api"]
-          dimensions:
-            - name: "api_type"
-              type: "enum"
-              values: ["rest-api", "graphql-api", "mcp-proxy"]
-              required: true
-          aggregations:
-            - type: "count"
-              label: "APIs Deprecated"
+
+  - code: "apip.lifecycle.manage-publication"
+    name: "Publication Management"
+    description: "Unpublish an API from the API Portal, or mark it as deprecated there."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.manage-publication"
+      event_category: "lifecycle"
+      platforms: ["web", "api"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "mcp-proxy"]
+          required: true
+        - name: "operation"
+          type: "enum"
+          values: ["unpublish", "deprecate"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Publication Changes"
 
   - code: "apip.lifecycle.publication-draft"
     name: "Publication Draft"
@@ -1176,13 +1297,18 @@ features:
           type: "enum"
           values: ["metadata", "definition", "landing-page", "thumbnail"]
           required: true
+          description: "The part saved. One Save Draft emits one event per part it saves."
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "mcp-proxy"]
+          required: false
       aggregations:
         - type: "count"
           label: "Publication Drafts Saved"
 
   - code: "apip.lifecycle.open-api-portal"
     name: "API Portal Opened"
-    description: "Open the organization's API Portal from the console."
+    description: "Open a published API's page in the API Portal from the console."
     category: "lifecycle"
     tier: "core"
     status: "stable"
@@ -1192,7 +1318,11 @@ features:
       event_name: "apip.lifecycle.open-api-portal"
       event_category: "engagement"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "mcp-proxy"]
+          required: false
       aggregations:
         - type: "count"
           label: "API Portal Opens"
@@ -1973,7 +2103,7 @@ features:
 
   - code: "apip.monetization.subscription-plan-management"
     name: "Subscription Plan Management"
-    description: "Create, update, or delete a subscription plan."
+    description: "Create, update, activate, deactivate, or delete a subscription plan."
     category: "monetization"
     tier: "core"
     status: "stable"
@@ -1986,7 +2116,7 @@ features:
       dimensions:
         - name: "operation"
           type: "enum"
-          values: ["create", "update", "delete"]
+          values: ["create", "update", "activate", "deactivate", "delete"]
           required: true
       aggregations:
         - type: "count"
