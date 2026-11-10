@@ -1165,6 +1165,8 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.serviceRequestUntilBodyNotContains)
 	sc.Step(`^I resolve the "([^"]*)" service( host)? URL at "([^"]*)" and store it as "([^"]*)"$`,
 		g.resolveServiceURLAndStore)
+	sc.Step(`^I resolve the "([^"]*)" service path at "([^"]*)" and store it as "([^"]*)"$`,
+		g.resolveServicePathAndStore)
 	sc.Step(`^I register the "([^"]*)" "([^"]*)" for cleanup$`, g.registerAdminResourceForCleanup)
 	sc.Step(`^the "([^"]*)" service logs should contain "([^"]*)"$`, g.serviceLogsContain)
 	sc.Step(`^the "([^"]*)" service logs should not contain "([^"]*)"$`, g.serviceLogsNotContain)
@@ -1668,8 +1670,12 @@ var serviceEndpoints = map[string]struct {
 	"mcp-scripted": {component: "testbench", endpoint: "mcp-scripted"},
 	// The Stripe and Moesif services the API Portal bills through; their /test endpoints act
 	// as the customer and as the provider.
-	"stripe": {component: "testbench", endpoint: "stripe", partitioned: true},
-	"moesif": {component: "testbench", endpoint: "moesif", partitioned: true},
+	// The scripted fault injector an upstream sits behind: a scenario stores a sequence of
+	// statuses and delays, then points a route at it. Block-partitioned, so the address a
+	// route must name is resolved rather than written into a feature.
+	"fault-injection": {component: "testbench", endpoint: "fault-injection", partitioned: true},
+	"stripe":          {component: "testbench", endpoint: "stripe", partitioned: true},
+	"moesif":          {component: "testbench", endpoint: "moesif", partitioned: true},
 	// The streamable-HTTP MCP server, addressed directly by clients that discover its tools.
 	"mcp": {component: "testbench", endpoint: "mcp"},
 	// Metrics live on a DIFFERENT compose service from the one tests normally address —
@@ -1693,20 +1699,11 @@ func (g *Gateway) serviceURL(ctx context.Context, service, path string) (string,
 	if err != nil {
 		return "", err
 	}
-	resolved, err := stepscommon.Expand(ctx, path)
+	suffix, err := g.servicePath(ctx, service, path)
 	if err != nil {
 		return "", err
 	}
-	if resolved != "" && !strings.HasPrefix(resolved, "/") {
-		resolved = "/" + resolved
-	}
-	if spec.partitioned {
-		if g.topo.Block == nil {
-			return "", fmt.Errorf("service %q requires a block partition, but the topology has no block", service)
-		}
-		resolved = "/" + g.topo.Block.PartitionKey() + resolved
-	}
-	return base + g.serviceBasePath(service, spec.basePath) + resolved, nil
+	return base + suffix, nil
 }
 
 // serviceUpstreamURL resolves a service address for a request originating inside the
@@ -1725,6 +1722,20 @@ func (g *Gateway) serviceUpstreamURL(ctx context.Context, service, path string) 
 	if err != nil {
 		return "", err
 	}
+	suffix, err := g.servicePath(ctx, service, path)
+	if err != nil {
+		return "", err
+	}
+	return base + suffix, nil
+}
+
+// servicePath resolves the path a service is addressed on: its API base path and, for a
+// block-partitioned service, the partition segment a feature cannot know in advance.
+func (g *Gateway) servicePath(ctx context.Context, service, path string) (string, error) {
+	spec, ok := serviceEndpoints[service]
+	if !ok {
+		return "", fmt.Errorf("unknown service %q: this suite addresses %v", service, sortedServiceNames())
+	}
 	resolved, err := stepscommon.Expand(ctx, path)
 	if err != nil {
 		return "", err
@@ -1738,7 +1749,7 @@ func (g *Gateway) serviceUpstreamURL(ctx context.Context, service, path string) 
 		}
 		resolved = "/" + g.topo.Block.PartitionKey() + resolved
 	}
-	return base + g.serviceBasePath(service, spec.basePath) + resolved, nil
+	return g.serviceBasePath(service, spec.basePath) + resolved, nil
 }
 
 func (g *Gateway) serviceBasePath(service, defaultPath string) string {
@@ -1771,6 +1782,22 @@ func (g *Gateway) resolveServiceURLAndStore(ctx context.Context, service, host, 
 		return fmt.Errorf("cannot store a resolved service URL with an empty key")
 	}
 	return tcontext.Set(ctx, key, url)
+}
+
+// resolveServicePathAndStore stores a service's PATH rather than its full URL, for a product
+// field that rejects a URL carrying one. An upstream definition takes the host in its url and
+// the path in its basePath, so a route pointed at a block-partitioned service needs the
+// partition segment on its own.
+func (g *Gateway) resolveServicePathAndStore(ctx context.Context, service, path, key string) error {
+	resolved, err := g.servicePath(ctx, service, path)
+	if err != nil {
+		return err
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return fmt.Errorf("cannot store a resolved service path with an empty key")
+	}
+	return tcontext.Set(ctx, key, resolved)
 }
 
 // adminResourceKinds maps the resource-kind names features use for the generic cleanup

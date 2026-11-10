@@ -292,6 +292,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I generate a UUID and store it as "([^"]*)"$`, b.generateUUID)
 	sc.Step(`^I send a "([^"]*)" request( over HTTPS)? to "([^"]*)"$`, b.sendRequestOnListener)
 	sc.Step(`^I send (\d+) "([^"]*)" requests to "([^"]*)"$`, b.sendRepeated)
+	sc.Step(`^I send (\d+) "([^"]*)" requests to "([^"]*)" with body:$`, b.sendRepeatedWithBody)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with body:$`, b.sendRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with a JSON body of (\d+) bytes$`, b.sendSizedJSONBody)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, b.sendUntilStatus)
@@ -513,11 +514,21 @@ func (b *Base) sendRequestWithHeaders(
 // counted rate-limit scenarios check: n requests to exhaust a quota, then the status of the nth.
 // Any header the scenario set applies to every one of them, like a single send.
 func (b *Base) sendRepeated(ctx context.Context, n int, method, path string) error {
+	return b.sendRepeatedWithBody(ctx, n, method, path, nil)
+}
+
+// sendRepeatedWithBody sends the same request n times, with a body when one is given, and
+// publishes the last response. A health rule that grades a target over a window of requests
+// needs the window driven rather than one request sent, and the requests have to carry the
+// body the policy reads the model from.
+func (b *Base) sendRepeatedWithBody(
+	ctx context.Context, n int, method, path string, body *godog.DocString,
+) error {
 	if n <= 0 {
 		return fmt.Errorf("the request count must be positive, got %d", n)
 	}
 	for i := 0; i < n; i++ {
-		if err := b.sendRequest(ctx, method, path); err != nil {
+		if err := b.sendRequestWithBody(ctx, method, path, body); err != nil {
 			return fmt.Errorf("request %d of %d: %w", i+1, n, err)
 		}
 	}

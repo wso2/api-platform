@@ -493,6 +493,9 @@ blocks:
       - name: model-failover-error-surface
         features:
           - features/gateway/ai/model_failover_error_surface.feature
+      - name: model-failover-health-grading
+        features:
+          - features/gateway/ai/model_failover_health_grading.feature
       - name: upstream-url-validation
         tags: "gateway-version>=1.2.0"
         features:
