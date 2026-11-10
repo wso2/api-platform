@@ -17,10 +17,10 @@
  */
 
 // Package aws provides the testbench's AWS services. The AWS service, on port 80, plays the AWS
-// endpoints the gateway's AWS Authentication policy reaches, and verifies AWS Signature Version 4
-// (SigV4) request signatures independently of the AWS SDK the gateway uses. The Bedrock service,
-// on port 3006, plays the Bedrock Runtime ApplyGuardrail API the AWS Bedrock Guardrail policy
-// calls.
+// endpoints the gateway's AWS Authentication policy reaches. The Bedrock service, on port 3006,
+// plays the Bedrock Runtime ApplyGuardrail API the AWS Bedrock Guardrail policy calls. Both
+// verify AWS Signature Version 4 (SigV4) request signatures independently of the AWS SDK the
+// gateway uses.
 //
 // The first two segments of a request path to the AWS service name the AWS service and region
 // being addressed, as an AWS endpoint's host name does:
@@ -73,12 +73,31 @@
 // Any other role is assumed normally.
 //
 // The Bedrock service (bedrock.go) listens on its own port, which the gateway runtime reaches
-// through AWS_ENDPOINT_URL_BEDROCK_RUNTIME as http://testbench:3006. It decides ApplyGuardrail from
-// the text it is given and does not verify signatures: text naming violence, hate or illegal
-// content is blocked (GUARDRAIL_INTERVENED); email addresses at example.com are masked ("mask-"
-// addresses, restorable) or redacted; text asking to simulate an error gets 500; anything else
-// passes (NONE) and is echoed back, as Bedrock always returns the text in outputs[0]. It keeps no
-// state either.
+// through AWS_ENDPOINT_URL_BEDROCK_RUNTIME as http://testbench:3006. It plays Bedrock Runtime in
+// us-east-1. Like Bedrock, it first verifies the request's signature, for service "bedrock" in
+// us-east-1, against the fixture and STS-issued credentials and two more key pairs only it
+// accepts, AKIAIOSFODNN7TEST / testsecretaccesskeytestsecretaccesskey1 and test-access-key /
+// test-secret-key. Where Bedrock uses another code than the shared verifier, it answers with
+// Bedrock's: UnrecognizedClientException for an unknown key, ExpiredTokenException for an expired
+// token and InvalidSignatureException for a signature that does not match. It then looks up the
+// guardrail: the account has only test-guardrail-id, at versions DRAFT and 1, and any other
+// identifier or version gets 404 ResourceNotFoundException.
+// It then decides ApplyGuardrail from the text it is given, reporting every policy that matches in
+// one assessment:
+//
+//	violence, hate, illegal        content filter VIOLENCE, blocked
+//	investment advice              denied topic "Investment Advice", blocked
+//	contraband, secret recipe      custom words, blocked; version 1 blocks only "contraband"
+//	email at example.com, phone    PII (EMAIL, PHONE, US_SOCIAL_SECURITY_NUMBER), anonymized:
+//	555-123-4567, SSN 123-45-6789  "mask-" addresses get a restorable placeholder, others "*****"
+//	simulate … error               500 InternalServerException
+//	simulate … outage              503 ServiceUnavailableException
+//	simulate … unresponsive        held without an answer until the caller gives up, or for at
+//	                               most 25 seconds, then 503 ServiceUnavailableException
+//
+// Matching ignores case. Blocked text is answered with the guardrail's blocked message; text that
+// matches nothing passes (NONE) and is echoed back, as Bedrock always returns the text in
+// outputs[0]. It keeps no state either.
 //
 // The fixture credentials are:
 //
