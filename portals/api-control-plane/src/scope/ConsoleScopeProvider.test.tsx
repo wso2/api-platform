@@ -203,4 +203,18 @@ describe('ConsoleScopeProvider and the organization picker after a refused switc
     expect(exchangeOrgToken.mock.calls.filter(([handle]) => handle === 'org-stale')).toHaveLength(1);
     expect(screen.getByText('Switching organization')).toBeInTheDocument();
   });
+
+  it('stops at the empty state once every listed organization refused the switch', async () => {
+    server.use(
+      collection('/organizations', [
+        anOrganization({ id: 'org-stale', displayName: 'Stale' }),
+        anOrganization({ id: 'org-b', displayName: 'Org B' }),
+      ]),
+    );
+    const exchangeOrgToken = vi.fn().mockRejectedValue(new OrganizationSwitchError('forbidden'));
+    renderWithPicker(makeAuthState({ canSwitchOrganization: true, exchangeOrgToken, organizations: [STALE, OTHER] }));
+
+    expect(await screen.findByText('No organizations found')).toBeInTheDocument();
+    expect(exchangeOrgToken.mock.calls.map(([handle]) => handle).sort()).toEqual(['org-b', 'org-stale']);
+  });
 });

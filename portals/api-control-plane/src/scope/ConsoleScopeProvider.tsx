@@ -49,7 +49,7 @@ export {
  * Route state the organization picker reads: the organization the session was
  * refused, so the picker never lands the user on it again.
  */
-export type OrganizationPickerState = { rejectedOrganization?: string };
+export type OrganizationPickerState = { rejectedOrganizations?: string[] };
 
 const messages = defineMessages({
   switching: {
@@ -272,7 +272,8 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     // Membership is the identity provider's to decide here: an organization the
     // session can't move into is foreign, whatever the Platform API lists.
     if (switchError instanceof OrganizationSwitchError && switchError.reason === 'forbidden') {
-      const state: OrganizationPickerState = { rejectedOrganization: params.orgHandle };
+      const refused = (location.state as OrganizationPickerState | null)?.rejectedOrganizations ?? [];
+      const state: OrganizationPickerState = { rejectedOrganizations: [...refused, params.orgHandle] };
       return <Navigate to={routes.organizations} replace state={state} />;
     }
     if (switchError) {
