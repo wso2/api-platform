@@ -1,0 +1,48 @@
+# Example 1: plan with conditions. Built-in types (request-count, tool-call-count,
+# token-count, event-count) take limit windows; custom conditions take free-form
+# key-values. The gateway-controller validates the params and derives the legacy
+# throttle fields from the request-count condition.
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: SubscriptionPlan
+metadata:
+  name: gold-plan
+spec:
+  planName: Gold
+  status: ACTIVE
+  conditions:
+    - id: requests
+      type: request-count
+      params:
+        limits:
+          - count: 1000
+            timeAmount: 1
+            timeUnit: HOUR
+          - count: 10000
+            timeAmount: 1
+            timeUnit: DAY
+        onExceed: reject
+    - id: tokens
+      type: token-count
+      params:
+        limits:
+          - count: 50000
+            timeUnit: DAY
+        tokenType: total
+        onExceed: reject
+    - id: region
+      type: custom
+      params:
+        zone: eu
+---
+# Example 2: legacy throttle fields, still supported. Do not combine them with
+# conditions; the CRD rejects a plan that sets both.
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: SubscriptionPlan
+metadata:
+  name: bronze-plan
+spec:
+  planName: Bronze
+  status: ACTIVE
+  stopOnQuotaReach: true
+  throttleLimitCount: 1000
+  throttleLimitUnit: Min

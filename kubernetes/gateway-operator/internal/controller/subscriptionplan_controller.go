@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"log/slog"
@@ -113,6 +114,7 @@ func (a *subscriptionPlanAdapter) Deploy(ctx context.Context, _ client.Client, g
 			StopOnQuotaReach:   cr.Spec.StopOnQuotaReach,
 			ThrottleLimitCount: cr.Spec.ThrottleLimitCount,
 			ThrottleLimitUnit:  cr.Spec.ThrottleLimitUnit,
+			Conditions:         planConditions(cr.Spec.Conditions),
 		}
 		if cr.Spec.ExpiryTime != nil {
 			t := cr.Spec.ExpiryTime.Time
@@ -133,6 +135,14 @@ func (a *subscriptionPlanAdapter) Deploy(ctx context.Context, _ client.Client, g
 		ThrottleLimitCount: cr.Spec.ThrottleLimitCount,
 		ThrottleLimitUnit:  cr.Spec.ThrottleLimitUnit,
 	}
+	// The gateway keeps conditions a PUT leaves out, so send [] when the CR has
+	// no conditions and no legacy throttle limit to clear removed ones.
+	if conditions := planConditions(cr.Spec.Conditions); len(conditions) > 0 || !hasLegacyThrottleLimit(cr.Spec) {
+		if conditions == nil {
+			conditions = []gatewayclient.SubscriptionPlanCondition{}
+		}
+		updatePayload.Conditions = &conditions
+	}
 	if cr.Spec.ExpiryTime != nil {
 		t := cr.Spec.ExpiryTime.Time
 		updatePayload.ExpiryTime = (*time.Time)(&t)
@@ -149,4 +159,26 @@ func (a *subscriptionPlanAdapter) Delete(ctx context.Context, gatewayEndpoint st
 		return nil
 	}
 	return gatewayclient.DeleteSubscriptionPlan(ctx, gatewayEndpoint, cr.Status.Id, authFn)
+}
+
+// hasLegacyThrottleLimit reports whether the spec sets the legacy throttle
+// fields, which the gateway does not accept together with conditions.
+func hasLegacyThrottleLimit(spec apiv1.SubscriptionPlanSpec) bool {
+	return spec.ThrottleLimitCount != nil || spec.ThrottleLimitUnit != nil
+}
+
+// planConditions maps the CR conditions to the management-API shape.
+func planConditions(in []apiv1.SubscriptionPlanCondition) []gatewayclient.SubscriptionPlanCondition {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]gatewayclient.SubscriptionPlanCondition, 0, len(in))
+	for _, c := range in {
+		params := json.RawMessage("{}")
+		if c.Params != nil && len(c.Params.Raw) > 0 {
+			params = json.RawMessage(c.Params.Raw)
+		}
+		out = append(out, gatewayclient.SubscriptionPlanCondition{Id: c.Id, Type: c.Type, Params: params})
+	}
+	return out
 }

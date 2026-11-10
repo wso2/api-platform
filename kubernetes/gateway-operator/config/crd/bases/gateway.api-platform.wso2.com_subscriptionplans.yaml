@@ -55,6 +55,49 @@ spec:
               billingPlan:
                 description: BillingPlan is an optional billing plan identifier.
                 type: string
+              conditions:
+                description: |-
+                  Conditions are the plan's limits and custom conditions. When set, the
+                  gateway derives the legacy throttle fields from the request-count
+                  condition, so leave throttleLimitCount/throttleLimitUnit unset.
+                items:
+                  description: |-
+                    SubscriptionPlanCondition is one condition of a subscription plan. The
+                    gateway-controller checks the params and the per-type rules (one condition
+                    of each built-in type, fixed ids, 1-10 limit windows).
+                  properties:
+                    id:
+                      description: |-
+                        Id names the condition. Built-in types have fixed ids (requests,
+                        tool-calls, tokens, events) and may omit it; custom conditions need one.
+                      maxLength: 63
+                      type: string
+                    params:
+                      description: |-
+                        Params holds the condition's settings. Built-in types take
+                        {"limits": [{"count", "timeAmount", "timeUnit"}], "onExceed"} (token-count
+                        also takes "tokenType"); custom conditions take free-form key-values.
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    type:
+                      description: Type is the condition type.
+                      enum:
+                      - request-count
+                      - tool-call-count
+                      - token-count
+                      - event-count
+                      - custom
+                      type: string
+                  required:
+                  - params
+                  - type
+                  type: object
+                  x-kubernetes-validations:
+                  - message: a custom condition needs an id
+                    rule: self.type != 'custom' || has(self.id)
+                maxItems: 20
+                type: array
+                x-kubernetes-list-type: atomic
               expiryTime:
                 description: ExpiryTime is the optional plan expiry.
                 format: date-time
@@ -91,6 +134,10 @@ spec:
             required:
             - planName
             type: object
+            x-kubernetes-validations:
+            - message: set conditions or throttleLimitCount/throttleLimitUnit, not
+                both
+              rule: '!has(self.conditions) || (!has(self.throttleLimitCount) && !has(self.throttleLimitUnit))'
           status:
             description: |-
               ResourceStatus carries the controller-managed lifecycle fields shared by
@@ -216,6 +263,49 @@ spec:
               billingPlan:
                 description: BillingPlan is an optional billing plan identifier.
                 type: string
+              conditions:
+                description: |-
+                  Conditions are the plan's limits and custom conditions. When set, the
+                  gateway derives the legacy throttle fields from the request-count
+                  condition, so leave throttleLimitCount/throttleLimitUnit unset.
+                items:
+                  description: |-
+                    SubscriptionPlanCondition is one condition of a subscription plan. The
+                    gateway-controller checks the params and the per-type rules (one condition
+                    of each built-in type, fixed ids, 1-10 limit windows).
+                  properties:
+                    id:
+                      description: |-
+                        Id names the condition. Built-in types have fixed ids (requests,
+                        tool-calls, tokens, events) and may omit it; custom conditions need one.
+                      maxLength: 63
+                      type: string
+                    params:
+                      description: |-
+                        Params holds the condition's settings. Built-in types take
+                        {"limits": [{"count", "timeAmount", "timeUnit"}], "onExceed"} (token-count
+                        also takes "tokenType"); custom conditions take free-form key-values.
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                    type:
+                      description: Type is the condition type.
+                      enum:
+                      - request-count
+                      - tool-call-count
+                      - token-count
+                      - event-count
+                      - custom
+                      type: string
+                  required:
+                  - params
+                  - type
+                  type: object
+                  x-kubernetes-validations:
+                  - message: a custom condition needs an id
+                    rule: self.type != 'custom' || has(self.id)
+                maxItems: 20
+                type: array
+                x-kubernetes-list-type: atomic
               expiryTime:
                 description: ExpiryTime is the optional plan expiry.
                 format: date-time
@@ -252,6 +342,10 @@ spec:
             required:
             - planName
             type: object
+            x-kubernetes-validations:
+            - message: set conditions or throttleLimitCount/throttleLimitUnit, not
+                both
+              rule: '!has(self.conditions) || (!has(self.throttleLimitCount) && !has(self.throttleLimitUnit))'
           status:
             description: |-
               ResourceStatus carries the controller-managed lifecycle fields shared by

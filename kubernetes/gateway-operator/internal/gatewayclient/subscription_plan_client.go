@@ -27,6 +27,13 @@ import (
 	"time"
 )
 
+// SubscriptionPlanCondition mirrors the management-API SubscriptionPlanCondition.
+type SubscriptionPlanCondition struct {
+	Id     string          `json:"id,omitempty"`
+	Type   string          `json:"type"`
+	Params json.RawMessage `json:"params"`
+}
+
 // SubscriptionPlanCreatePayload mirrors the management-API
 // SubscriptionPlanCreateRequest. Pointer fields are omitted when nil so the
 // gateway-controller fills in defaults.
@@ -38,6 +45,8 @@ type SubscriptionPlanCreatePayload struct {
 	StopOnQuotaReach   *bool      `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int64     `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  *string    `json:"throttleLimitUnit,omitempty"`
+
+	Conditions []SubscriptionPlanCondition `json:"conditions,omitempty"`
 }
 
 // SubscriptionPlanUpdatePayload mirrors SubscriptionPlanUpdateRequest.
@@ -49,6 +58,10 @@ type SubscriptionPlanUpdatePayload struct {
 	StopOnQuotaReach   *bool      `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int64     `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  *string    `json:"throttleLimitUnit,omitempty"`
+
+	// Conditions replaces the plan's conditions when non-nil; an empty list
+	// removes them all.
+	Conditions *[]SubscriptionPlanCondition `json:"conditions,omitempty"`
 }
 
 // SubscriptionPlanResponse captures the gateway-issued fields returned from
