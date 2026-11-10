@@ -248,3 +248,150 @@ Feature: Model failover core behaviour
     Then the response should be successful
     When I delete the LLM provider "${CTX:deadTwoName}"
     Then the response should be successful
+
+  Scenario: Targets naming providers that are not deployed here change nothing
+    # Every target names a provider this environment does not have. The deployment must still
+    # be ACCEPTED and the operation must behave exactly as if the policy were not attached:
+    # failover must never be the policy that blocks a GitOps rollout because one environment
+    # carries a provider another does not.
+    Given I generate a unique resource name from "failover-inert" and store it as "inertName"
+    And I generate a unique value from "failover-inert" and store it as "inertDisplayName"
+    And I generate a unique API version from "failover-inert" and store it as "inertVersion"
+    And I generate a unique API context from "/failover-inert" and store it as "inertContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}            |
+      | name               | ${CTX:inertName}                     |
+      | displayName        | ${CTX:inertDisplayName}              |
+      | version            | ${CTX:inertVersion}                  |
+      | template           | openai                               |
+      | spec.context       | ${CTX:inertContext}                  |
+      | spec.upstream.url  | http://testbench:3000/inert-upstream |
+      | accessControl.mode | allow_all                            |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "failover-inertproxy" and store it as "inertProxy"
+    And I generate a unique value from "failover-inertproxy" and store it as "inertProxyDisplayName"
+    And I generate a unique API version from "failover-inertproxy" and store it as "inertProxyVersion"
+    And I generate a unique API context from "/failover-inertproxy" and store it as "inertProxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion    | ${CTX:gatewaySpecVersion}                                                                                                                                               |
+      | name          | ${CTX:inertProxy}                                                                                                                                                       |
+      | displayName   | ${CTX:inertProxyDisplayName}                                                                                                                                            |
+      | version       | ${CTX:inertProxyVersion}                                                                                                                                                |
+      | context       | ${CTX:inertProxyContext}                                                                                                                                                |
+      | provider.id   | ${CTX:inertName}                                                                                                                                                        |
+      | spec.policies | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","provider":"provider-that-does-not-exist","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"another-missing-provider"}]}]}}]}] |
+    Then the response should be successful
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:inertProxyContext}/chat/completions" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/inert-upstream"
+    # One attempt: the policy resolved nothing, so nothing failed over and the request went to
+    # the proxy's own configured upstream. Asserted as a COUNT rather than as the header's
+    # absence - see the step's own reasoning for why absence is not a property this operation
+    # controls.
+    And the response should report one upstream attempt
+
+    When I delete the LLM proxy "${CTX:inertProxy}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:inertName}"
+    Then the response should be successful
+
+  Scenario: A chain shorter than the attempt budget ends at its last target, reaching no other
+    # Four resolvable (model, provider) members exist across TWO chains, so the attempt budget
+    # is four. A request for gpt-4o publishes a chain of TWO - its own target and the one
+    # fallback written for it. A chain written for one target is never borrowed for another, so
+    # the spare chain widens the budget while contributing no groups. This is about what the
+    # surplus two attempts do: nothing.
+    Given I generate a unique resource name from "failover-ovr-primary" and store it as "ovrPrimary"
+    And I generate a unique API version from "failover-ovr-primary" and store it as "ovrPrimaryVersion"
+    And I generate a unique API context from "/failover-ovr-primary" and store it as "ovrPrimaryContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                              |
+      | name               | ${CTX:ovrPrimary}                                      |
+      | displayName        | ${CTX:ovrPrimary}                                      |
+      | version            | ${CTX:ovrPrimaryVersion}                               |
+      | template           | openai                                                 |
+      | spec.context       | ${CTX:ovrPrimaryContext}                               |
+      | spec.upstream.url  | http://failover-ovr-dead-a:9080/overrun-dead-a         |
+      | accessControl.mode | allow_all                                              |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "failover-ovr-fallback" and store it as "ovrFallback"
+    And I generate a unique API version from "failover-ovr-fallback" and store it as "ovrFallbackVersion"
+    And I generate a unique API context from "/failover-ovr-fallback" and store it as "ovrFallbackContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                      |
+      | name               | ${CTX:ovrFallback}                             |
+      | displayName        | ${CTX:ovrFallback}                             |
+      | version            | ${CTX:ovrFallbackVersion}                      |
+      | template           | openai                                         |
+      | spec.context       | ${CTX:ovrFallbackContext}                      |
+      | spec.upstream.url  | http://failover-ovr-dead-b:9080/overrun-dead-b |
+      | accessControl.mode | allow_all                                      |
+    Then the response should be successful
+
+    # The spare is HEALTHY and belongs to a chain this request never selects. If a surplus
+    # attempt escaped the published groups it would land here and answer 200, so its silence
+    # is the measurement.
+    Given I generate a unique resource name from "failover-ovr-spare" and store it as "ovrSpare"
+    And I generate a unique API version from "failover-ovr-spare" and store it as "ovrSpareVersion"
+    And I generate a unique API context from "/failover-ovr-spare" and store it as "ovrSpareContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                    |
+      | name               | ${CTX:ovrSpare}                              |
+      | displayName        | ${CTX:ovrSpare}                              |
+      | version            | ${CTX:ovrSpareVersion}                       |
+      | template           | openai                                       |
+      | spec.context       | ${CTX:ovrSpareContext}                       |
+      | spec.upstream.url  | http://testbench:3000/overrun-spare-upstream |
+      | accessControl.mode | allow_all                                    |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "failover-overrun" and store it as "overrunProxy"
+    And I generate a unique API version from "failover-overrun" and store it as "overrunVersion"
+    And I generate a unique API context from "/failover-overrun" and store it as "overrunContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                     | ${CTX:overrunProxy}                                                                                                                                                    |
+      | displayName              | ${CTX:overrunProxy}                                                                                                                                                    |
+      | version                  | ${CTX:overrunVersion}                                                                                                                                                  |
+      | context                  | ${CTX:overrunContext}                                                                                                                                                  |
+      | provider.id              | ${CTX:ovrPrimary}                                                                                                                                                      |
+      | spec.additionalProviders | [{"id":"${CTX:ovrFallback}","as":"ovr-fallback"},{"id":"${CTX:ovrSpare}","as":"ovr-spare"}]                                                                             |
+      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"ovr-fallback"}]},{"model":"mistral-large","fallbacks":[{"model":"mistral-small","provider":"ovr-spare"}]}]}}]}] |
+    Then the response should be successful
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:overrunContext}/chat/completions" until status 503 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    # Exhaustion, not a 200. A surplus attempt that escaped the published groups would have
+    # found the healthy spare and answered successfully, so the status alone carries most of
+    # this scenario's weight.
+    Then the response status code should be 503
+    And the response body should contain "failover_exhausted"
+    # The direct form of the same claim: the spare's upstream was never dialled.
+    And the "gateway-runtime" log since the latest request should not contain "/overrun-spare-upstream"
+    # The attempt sequence pinned exactly - each published group dialled ONCE against a budget
+    # that allowed four. The search string is the router's own access line rather than the bare
+    # upstream path, and that is load-bearing: a single attempt writes the path TWICE, once in
+    # the policy engine's structured entry and once in the router's access line, so counting the
+    # path reports two for one attempt. An earlier version of this scenario asserted "at least
+    # 2 times" against the path and passed while observing nothing at all.
+    And the "gateway-runtime" log since the latest request should contain "POST ${CTX:ovrPrimaryContext}/chat/completions HTTP/1.1" exactly 1 times
+    And the "gateway-runtime" log since the latest request should contain "POST ${CTX:ovrFallbackContext}/chat/completions HTTP/1.1" exactly 1 times
+
+    When I delete the LLM proxy "${CTX:overrunProxy}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:ovrPrimary}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:ovrFallback}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:ovrSpare}"
+    Then the response should be successful

@@ -53,6 +53,10 @@ func (g *Gateway) registerMTLSObservabilitySteps(sc *godog.ScenarioContext) {
 
 	sc.Step(`^the "([^"]*)" access log `+sinceLatestPhrase+` should show a line for "([^"]*)" with:$`, g.accessLogShowsLine)
 	sc.Step(`^the "([^"]*)" log `+sinceLatestPhrase+` should contain "(.*)"$`, g.logSinceLatestRequestContains)
+	sc.Step(`^the "([^"]*)" log `+sinceLatestPhrase+` should not contain "(.*)"$`,
+		g.logSinceLatestRequestNotContains)
+	sc.Step(`^the "([^"]*)" log `+sinceLatestPhrase+` should contain "(.*)" exactly (\d+) times$`,
+		g.logSinceLatestRequestContainsExactly)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have the user id of fixture "([^"]*)"$`, g.analyticsUserIDOfFixture)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should not have metadata field "([^"]*)"$`, g.analyticsMetadataFieldAbsent)
 	sc.Step(`^the response should contain metric "([^"]*)" with labels (\{.*\}) and value (\S+)$`, g.metricSampleHasValue)
@@ -185,6 +189,70 @@ func (g *Gateway) logSinceLatestRequestContains(ctx context.Context, service, te
 			}
 			return nil
 		})
+}
+
+// logSinceLatestRequestNotContains asserts a service's log has NOT shown text since the latest
+// request.
+//
+// It reads once instead of polling, and that is the whole difference from the positive form.
+// Waiting for an absence cannot succeed: the first read already satisfies it, so a poll would
+// return immediately and report nothing more than the positive form would have. What makes this
+// meaningful is the caller's ordering - the request under test has completed before the step
+// runs, so the log has already been written if it was going to be.
+func (g *Gateway) logSinceLatestRequestNotContains(ctx context.Context, service, text string) error {
+	unwanted, err := stepscommon.Expand(ctx, strings.ReplaceAll(text, `\"`, `"`))
+	if err != nil {
+		return err
+	}
+	logs, err := g.logSinceLatestRequest(ctx, service)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(logs, unwanted) {
+		return fmt.Errorf("the %q log shows %q since the latest request, and must not", service, unwanted)
+	}
+	return nil
+}
+
+// logSinceLatestRequestContainsExactly asserts text appears a precise number of times.
+//
+// The count is the point, not a tightening of the positive form. An assertion that a line
+// appears "at least once" passes on the first occurrence and never observes whether a repeat
+// happened - which is exactly how a predecessor of this step passed while measuring nothing,
+// against a string that a single upstream attempt writes TWICE (once by the policy engine,
+// once by the router's access log). A caller asserting on attempts therefore has to count, and
+// has to match a string written once per attempt.
+//
+// Polls until the count REACHES want, then fails if it has gone past: a log is append-only and
+// asynchronous, so too few may simply be too early, while too many can never become correct by
+// waiting.
+func (g *Gateway) logSinceLatestRequestContainsExactly(ctx context.Context, service, text string, want int) error {
+	wanted, err := stepscommon.Expand(ctx, strings.ReplaceAll(text, `\"`, `"`))
+	if err != nil {
+		return err
+	}
+	var last int
+	err = awaitReadState(ctx, fmt.Sprintf("waiting for the %q log to show %q exactly %d times after the latest request", service, wanted, want),
+		func(ctx context.Context) error {
+			logs, readErr := g.logSinceLatestRequest(ctx, service)
+			if readErr != nil {
+				return readErr
+			}
+			last = strings.Count(logs, wanted)
+			if last < want {
+				return tolerated("the %q log has shown %q %d times since the latest request, want %d",
+					service, wanted, last, want)
+			}
+			return nil
+		})
+	if err != nil {
+		return err
+	}
+	if last != want {
+		return fmt.Errorf("the %q log shows %q %d times since the latest request, want exactly %d",
+			service, wanted, last, want)
+	}
+	return nil
 }
 
 // logExpectation is one thing an access log line must show.
