@@ -35,11 +35,11 @@ Two kinds of usage go into the taxonomy:
 
 | #   | Decision                                                                                                                                                                                                                                                                |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Track from the browser with `moesif-browser-js`, as the Bijira console does, using the publishable key (Collector Application Id) of the WSO2 Moesif application. No Moesif Events Proxy, no backend endpoint, no on-prem database in the first cut.                    |
-| 2   | Off unless a deployment enables it: a runtime-config flag plus the key. On-prem leaves both unset and never downloads the SDK.                                                                                                                                          |
+| 1   | Track from the browser with no Moesif SDK: the console builds Moesif actions itself and posts batches to `/v1/actions/batch` on a same-origin gateway session route, which forwards them with the user's token to the in-cluster `moesif-collector` (the payload shape agent-manager uses). No backend endpoint, no on-prem database, no retry in the first cut. |
+| 2   | Off unless a deployment enables it: a runtime-config flag plus the collector path. On-prem leaves both unset and nothing is sent.                                                                                                                              |
 | 3   | The tracking path must not depend on Platform API, so the API Portal (which can run without it) can reuse it later.                                                                                                                                                     |
 | 4   | Send IDs, codes and enums only: no names, emails, org/project/API handles, typed values, query strings or IPs in the payload.                                                                                                                                           |
-| 5   | The SDK always sends the full page URL, which carries handles. Every SDK request passes one PII filter that rebuilds it from an allowlist (URL reduced to its route template). If the filter can't be installed, nothing is sent.                                       |
+| 5   | Every action is built from an allowlist: the page URL, which carries handles, is reduced to its route template; IDs are sent only as UUIDs; metadata comes from the registry.                                                                                           |
 | 6   | The "feature used" event for API creation fires on the Create click, not on server success.                                                                                                                                                                             |
 | 7   | The user ID is the token's `sub`; the company ID is the organization UUID. Both are sent only if they are UUIDs.                                                                                                                                                        |
 | 8   | One feature per UI action, as the API creation wizard does (open → type → method → create). A dimension only describes a variant of the same action (REST or GraphQL, gateway type).                                                                                    |
@@ -51,6 +51,7 @@ Two kinds of usage go into the taxonomy:
 | 14  | For endpoint tracking, a policy save is just the `api-update` endpoint event; the capability detail lives in the UI features.                                                                                                                                           |
 | 15  | Tests must never produce usage data.                                                                                                                                                                                                                                    |
 | 16  | UI actions and endpoint features are both in the taxonomy: the UI shows how far users get, the endpoint whether the call worked. A UI action that triggers a tracked endpoint ends in `-click`; the endpoint feature has the bare name and is reported by Platform API. |
+| 17  | The Moesif Application ID never reaches the browser. The collector adds it per environment from the secret `moesif-app-id-wso2-cloud-collector`; the browser sends no Moesif header at all. No environment setting, and no IDs in git. |
 
 ---
 
@@ -61,26 +62,34 @@ Two kinds of usage go into the taxonomy:
 ```mermaid
 flowchart LR
   click["UI action<br/>(click, step, copy)"] --> hook["useTrackFeature()"]
-  hook --> sdk["moesif-browser-js<br/>(loaded on first use)"]
-  sdk --> filter["PII filter"]
-  filter -->|"IDs, codes, enums"| moesif[("Moesif")]
-  filter -.->|"anything else"| drop["dropped"]
+  hook --> build["buildAction()<br/>(allowlist)"]
+  build --> queue["queue<br/>(5 s or 20 actions)"]
+  queue -->|"POST /v1/actions/batch<br/>same origin"| route["gateway session route"]
+  route -->|"user's token"| collector["moesif-collector<br/>(internal gateway)"]
+  collector -->|"+ Application ID"| moesif[("Moesif")]
 ```
 
 - **Registry:** `src/featureUsage/taxonomy.ts` lists every code the console can
   emit, with its name, category, tier, event category and enum dimensions. A
-  call with an unknown code or an out-of-enum value doesn't compile, and the
-  filter drops it at runtime.
+  call with an unknown code or an out-of-enum value doesn't compile, and
+  `featureMetadata` drops an out-of-enum value at runtime.
 - **Hook:** `useTrackFeature()` attaches the signed-in user (`sub`) and
   organization ID. It never throws and does nothing when tracking is off.
-- **SDK:** `moesif-browser-js` 1.10.2, pinned, imported lazily on the first
-  tracked action. Batching every 5 s or 20 actions; referrer, UTM and `gclid`
-  capture off; API-call capture never started.
-- **PII filter:** wraps the SDK's internal `_executeRequest`, the one function
-  every send path ends in, and rebuilds each payload from an allowlist: the URL
-  becomes its route template (from `src/routes/paths.ts`), IDs survive only as
-  UUIDs, metadata is rebuilt from the registry, and every other Moesif route is
-  dropped. A contract test runs the real SDK to prove it.
+- **Action builder (`actions.ts`):** builds each action in the Collection API
+  shape (`action_name`, `request.time`, `request.uri`,
+  `request.user_agent_string`, `user_id`, `company_id`, `session_token`,
+  `metadata`). The URL becomes its route template (from `src/routes/paths.ts`)
+  with no query string or fragment; IDs are kept only if they are UUIDs.
+- **Client (`collector.ts`):** queues actions and posts them every 5 s or 20
+  actions, and when the page is hidden or closed, to
+  `featureUsageCollectorPath/v1/actions/batch` with `fetch` (`keepalive`,
+  same-origin credentials). A failed batch is dropped; nothing is retried. The
+  session token is a UUID per tab, kept in `sessionStorage`.
+- **Collector route:** in `wso2cloud-deployment`, the `RestApi`
+  `/_api/api-management/feature-usage` uses the console's `oauth2-session-proxy`
+  and forwards `POST /v1/actions/batch` (the only operation it allows) to
+  `${internal_gateway_url}/moesif-collector`. That route checks the token and
+  sets `X-Moesif-Application-Id` from the environment's secret.
 - **When a UI action fires:** on the click that commits it, after client-side
   validation, once per click. Cancel, typing, navigation, search and view
   toggles report nothing.
@@ -98,8 +107,8 @@ from the status, as agent-manager's `growthanalytics.Track` middleware does.
 
 | Where               | Setting                                                                                                                                                                                                                               |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| WSO2 Cloud (no BFF) | `featureUsageTrackingEnabled: true` and `moesifPublishableKey` in `api-platform.env.config.js`; add `https://api.moesif.net` to any `connect-src` CSP                                                                                 |
-| BFF-served          | `[api_control_plane.feature_usage]` `enabled` and `moesif_publishable_key` (env `APIP_ACP_FEATURE_USAGE_ENABLED`, `APIP_ACP_FEATURE_USAGE_MOESIF_PUBLISHABLE_KEY`); off by default; the BFF refuses to start if enabled without a key |
+| WSO2 Cloud (no BFF) | In the `apip-console` binding's `api-platform.env.config.js`: `featureUsageTrackingEnabled` (from `apip_console_feature_usage_enabled`, default `false`) and `featureUsageCollectorPath: <proxy context>/feature-usage`; plus the collector `RestApi` route |
+| On-prem, BFF-served | Off; the BFF emits neither key                                                                                                                                                                                                       |
 
 Setup steps, verification and dashboards are in `src/featureUsage/README.md`.
 
@@ -239,11 +248,10 @@ the secret operations and the subscription operations.
 
 | Area               | Files                                                                                                                                                                                                                                                               |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tracking module    | `src/featureUsage/`: `taxonomy.ts` (registry), `useTrackFeature.ts` (hook), `moesif.ts` (lazy SDK, identify, track), `piiFilter.ts` (allowlist), `policies.ts` (policy name → capability), `moesif-browser-js.d.ts`, `README.md`                                    |
-| Configuration      | `src/config/runtime.ts`; BFF `internal/config` (`[feature_usage]`, runtime-config output, startup validation); `configs/config.toml`                                                                                                                                |
+| Tracking module    | `src/featureUsage/`: `taxonomy.ts` (registry), `useTrackFeature.ts` (hook), `actions.ts` (action builder, URL masking), `collector.ts` (enable switch, queue, batched send), `policies.ts` (policy name → capability), `README.md`                                    |
+| Configuration      | `src/config/runtime.ts` (`featureUsageTrackingEnabled`, `featureUsageCollectorPath`); deployment changes in `wso2cloud-deployment` (collector route, runtime config)                                                                                              |
 | User ID            | `src/contexts/auth` and BFF `internal/session`: the session user carries `id` (`sub`); shared fixture `testdata/claim-mapping-cases.json`                                                                                                                           |
 | Instrumented pages | API creation wizard and its entry points; API list, edit, overview (endpoint, keys, thumbnail); definition, documents and policies; test console (REST, GraphQL, cURL); deploy; portal publishing; gateways; projects, service accounts, meters, subscription plans |
-| Dependency         | `moesif-browser-js` 1.10.2 (Apache-2.0), pinned                                                                                                                                                                                                                     |
 
 ### 5.2 Tests, and why none of them sends usage data
 
@@ -253,17 +261,14 @@ as a separate effort.
 
 | Kind              | Files                                                                                                                                                                                | What they check                                                                                                                                                             |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Module unit tests | `featureUsage/taxonomy.test.ts`, `moesif.test.ts`, `piiFilter.test.ts`, `config/runtime.test.ts`, `apis/create/entryPoint.test.ts`, `develop/policies/newlyAttachedPolicies.test.ts` | code conventions, policy mapping, metadata building, the enable switch, identify, URL masking and the allowlist, runtime-config parsing, entry-point state, the policy diff |
-| SDK contract test | `featureUsage/moesif.sdk.test.ts`                                                                                                                                                    | the real SDK behind the filter: what reaches the network has no handles, query strings or names                                                                             |
+| Module unit tests | `featureUsage/taxonomy.test.ts`, `actions.test.ts`, `collector.test.ts`, `config/runtime.test.ts`, `apis/create/entryPoint.test.ts`, `develop/policies/newlyAttachedPolicies.test.ts` | code conventions, policy mapping, metadata building, the enable switch, batching and the send, URL masking and the action builder, runtime-config parsing, entry-point state, the policy diff |
 
 No test sends anything to Moesif:
 
 - **Off by default.** Tracking is off unless the runtime config enables it, and
-  no test environment sets the flag or a real key.
-- **Module tests.** The tests that switch tracking on mock `moesif-browser-js`
-  entirely.
-- **The contract test.** It is the only one using the real SDK, with a fake key.
-  Its requests are intercepted in-process by MSW.
+  no test environment sets the flag or a collector path.
+- **Module tests.** The tests that switch tracking on replace `fetch` with a
+  mock, so nothing leaves the process.
 - **MSW backstop.** The test server fails any request it doesn't expect
   (`onUnhandledRequest: 'error'`), so a request to the real Moesif would fail
   the test, not reach it.
@@ -271,11 +276,10 @@ No test sends anything to Moesif:
 ### 5.3 Verification
 
 - **Static checks:** typecheck clean; ESLint clean on the changed files.
-- **Tests:** the console suite passes (2,916 tests); the one failure,
-  `PortalPublishPage — while a publish runs`, also fails on the base commit.
-- **BFF:** `go vet` and `go test ./...` pass.
-- **Build and i18n:** the production build passes (the SDK is a separate 55 KB
-  chunk); the i18n catalog is unchanged.
+- **Tests:** 2,881 console tests pass; the 3 failures (two `GraphqlPublishPage`
+  one-click Publish tests and one `AppHeader` switcher test) fail the same way
+  on the base commit.
+- **Build and i18n:** the production build passes; the i18n catalog is unchanged.
 
 ---
 
@@ -285,8 +289,8 @@ No test sends anything to Moesif:
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Endpoint invocation tracking | Emitted by Platform API in a separate pull request; this one only defines the features (§4.2)                                                                                      |
 | Pages WSO2 Cloud replaces    | The Gateways and Deploy pages are cloud-plugin pages in WSO2 Cloud; their tracking needs the plugins to report too                                                                 |
-| Ad blockers                  | Block `api.moesif.net`; those users aren't counted                                                                                                                                 |
-| No excluded-orgs list        | Internal and test orgs are counted; use a separate Moesif application outside production                                                                                           |
+| No retry                     | A batch that fails (collector down, session expired) is dropped; a persistent queue with retry can come later                                                                       |
+| No excluded-orgs list        | Internal and test orgs in production are counted; each environment already reports to its own Moesif application                                                                   |
 | IDs only                     | Moesif shows UUIDs, not names                                                                                                                                                      |
 | `rest-api-create` dimensions | The YAML entry has none; under the endpoint rule (§4.2) the request carries none, so the console's UI event keeps scratch/contract on `api-creation-wizard-creation-method-select` |
 | API Portal                   | To reuse the module                                                                                                                                                                |

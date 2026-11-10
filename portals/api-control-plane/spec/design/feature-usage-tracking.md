@@ -10,7 +10,7 @@
 ## 1. Summary
 
 The API Platform UIs report which features people use, as Moesif **actions**
-named by their [feature-taxonomy](#appendix-a-taxonomy-additions) code. Every
+named by their [feature-taxonomy](#appendix-a-taxonomy-changes) code. Every
 UI step of a feature is one action, so a Moesif funnel can order the steps and
 show where users stop.
 

@@ -84,13 +84,6 @@ func buildRuntimeConfig(cfg *Config) map[string]string {
 		}
 	}
 
-	// Feature-usage tracking. Emitted only when enabled: absent keys keep the
-	// SPA from loading the Moesif SDK at all, the default for every deployment.
-	if cfg.FeatureUsage.Enabled {
-		out["featureUsageTrackingEnabled"] = "true"
-		out["moesifPublishableKey"] = cfg.FeatureUsage.MoesifPublishableKey
-	}
-
 	// disableFeatures is a deny-list: absent (nothing disabled) is the default,
 	// so every page stays on until a deployment names it.
 	if v, ok := runtimeValue(cfg.DisableFeatures); ok {

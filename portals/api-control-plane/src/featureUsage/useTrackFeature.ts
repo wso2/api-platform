@@ -19,7 +19,7 @@
 import { useCallback } from 'react';
 
 import { useAuth } from '@/contexts/auth/AuthProvider';
-import { trackFeatureUsage } from './moesif';
+import { trackFeatureUsage } from './collector';
 import type { ApiPlatformFeatureCode, FeatureDimensionArgs } from './taxonomy';
 
 export type TrackFeature = <C extends ApiPlatformFeatureCode>(

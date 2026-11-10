@@ -87,18 +87,6 @@ channel        = "LTS"
 controlplane_host = '{{ env "APIP_ACP_GATEWAY_CONTROLPLANE_HOST" "" }}'
 
 
-[api_control_plane.feature_usage]
-
-# Feature-usage tracking: the console publishes which features are used to
-# Moesif, from the browser. Off by default, so an on-prem install reports
-# nothing. The BFF only hands these values to the SPA.
-enabled                = '{{ env "APIP_ACP_FEATURE_USAGE_ENABLED" "false" }}'
-# Publishable (collector) Application ID of the Moesif application. It is
-# published in the runtime config the browser loads: a write-only key, never a
-# management one.
-moesif_publishable_key = '{{ env "APIP_ACP_FEATURE_USAGE_MOESIF_PUBLISHABLE_KEY" "" }}'
-
-
 [api_control_plane.session]
 
 # Local dev runs the BFF over plain HTTP (no cert generation set up for this

@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { apiCreationEntry, readApiCreationEntryPoint } from './entryPoint';
+import { apiCreationEntry, readApiCreationEntryPoint, withoutApiCreationEntry } from './entryPoint';
 
 describe('API creation entry point', () => {
   it('round-trips through router state', () => {
@@ -39,5 +39,21 @@ describe('API creation entry point', () => {
     ['a non-string value', { apiCreationEntryPoint: 42 }],
   ])('reads %s as a direct entry', (_name, state) => {
     expect(readApiCreationEntryPoint(state)).toBe('direct');
+  });
+
+  it('drops the entry point once read, so a reload of the wizard reads as direct', () => {
+    const state = apiCreationEntry('api-list').state;
+
+    expect(withoutApiCreationEntry(state)).toBeNull();
+    expect(readApiCreationEntryPoint(withoutApiCreationEntry(state))).toBe('direct');
+  });
+
+  it('keeps any other router state, and leaves state without an entry point as it is', () => {
+    expect(withoutApiCreationEntry({ ...apiCreationEntry('org-home').state, from: '/x' })).toEqual({
+      from: '/x',
+    });
+    const other = { from: '/somewhere' };
+    expect(withoutApiCreationEntry(other)).toBe(other);
+    expect(withoutApiCreationEntry(null)).toBeNull();
   });
 });

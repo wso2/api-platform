@@ -53,7 +53,7 @@ type CopyButtonProps = {
   label?: string;
   /** Renders as a labelled button rather than an icon-only one. */
   variant?: 'icon' | 'button';
-  /** Called on each click, before the clipboard write. */
+  /** Called after each successful copy; never before the clipboard write. */
   onCopy?: () => void;
 };
 
@@ -92,13 +92,18 @@ export function CopyButton({ getValue, label, onCopy, variant = 'icon' }: CopyBu
     // A retry starts from the resting state, so the previous outcome never
     // outlives the attempt that produced it.
     window.clearTimeout(resetTimer.current);
-    onCopy?.();
     try {
       await navigator.clipboard.writeText(getValue());
-      setStatus('copied');
-      resetTimer.current = window.setTimeout(() => setStatus('idle'), COPIED_FEEDBACK_MS);
     } catch {
       setStatus('failed');
+      return;
+    }
+    setStatus('copied');
+    resetTimer.current = window.setTimeout(() => setStatus('idle'), COPIED_FEEDBACK_MS);
+    try {
+      onCopy?.();
+    } catch {
+      // The copy already happened; a failing callback must not undo its feedback.
     }
   };
 

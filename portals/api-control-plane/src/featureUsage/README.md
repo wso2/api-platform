@@ -6,28 +6,34 @@ of a feature is one action, so a Moesif funnel can line the steps up and show
 where users drop off.
 
 It is **off unless a deployment turns it on**. An on-prem install sends nothing,
-and doesn't even download the Moesif SDK.
+and builds no actions.
 
 ```mermaid
 flowchart LR
   click["UI step<br/>(click, open, Continue)"] --> hook["useTrackFeature()"]
-  hook --> sdk["moesif-browser-js<br/>(loaded on first use)"]
-  sdk --> filter["PII filter<br/>(piiFilter.ts)"]
-  filter -->|"IDs, codes, enums"| moesif[("Moesif<br/>api.moesif.net")]
-  filter -.->|"anything else"| drop["dropped"]
+  hook --> build["buildAction()<br/>(actions.ts, allowlist)"]
+  build --> queue["queue<br/>(collector.ts, 5 s or 20 actions)"]
+  queue -->|"POST /v1/actions/batch<br/>same origin, session cookie"| route["gateway session route<br/>/_api/api-management/feature-usage"]
+  route -->|"user's token"| collector["moesif-collector<br/>(internal gateway)"]
+  collector -->|"+ X-Moesif-Application-Id"| moesif[("Moesif")]
 ```
 
-This is the first cut. It publishes straight from the browser with
-`moesif-browser-js`. The longer-term design (a
-backend endpoint, the Moesif Events Proxy, an on-prem store) is in
+The console uses no Moesif SDK. It builds each action itself from an allowlist,
+in the shape Moesif's Collection API expects (the same shape agent-manager
+sends), and posts batches to a same-origin gateway route. That route swaps the
+session cookie for the user's token and forwards to the in-cluster Moesif
+collector, which adds the environment's Application ID. The browser never talks
+to Moesif and never holds an Application ID.
+
+This is the first cut. The longer-term design (a backend endpoint, an on-prem
+store) is in
 [`spec/design/feature-usage-tracking.md`](../../spec/design/feature-usage-tracking.md).
 
 - [Set it up on WSO2 Cloud](#set-it-up-on-wso2-cloud)
-- [Deployments served by the BFF (on-prem)](#deployments-served-by-the-bff-on-prem)
+- [On-prem and BFF-served deployments](#on-prem-and-bff-served-deployments)
 - [Configuration reference](#configuration-reference)
 - [What is sent](#what-is-sent)
 - [Add tracking to a feature](#add-tracking-to-a-feature)
-- [Upgrade moesif-browser-js](#upgrade-moesif-browser-js)
 - [Known limitations](#known-limitations)
 - [Files](#files)
 
@@ -35,65 +41,75 @@ backend endpoint, the Moesif Events Proxy, an on-prem store) is in
 
 ## Set it up on WSO2 Cloud
 
-In WSO2 Cloud the console runs without the BFF, behind the API Platform gateway
-(`authMode: 'external'`). It reads its settings from `window.__RUNTIME_CONFIG__`
-in `api-platform.env.config.js`, which the cloud deployment serves per
-environment. Turning tracking on is a change to that file, not a rebuild.
+In WSO2 Cloud the console runs without the BFF, as static files behind the
+control-plane gateway (`authMode: 'external'`). The gateway's
+`oauth2-session-proxy` routes handle sign-in and every API call. The console reads
+its settings from `window.__RUNTIME_CONFIG__` in `api-platform.env.config.js`,
+which the `apip-console` release binding in `wso2cloud-deployment` mounts per
+environment.
 
-### 1. Get the Moesif publishable key
+### 1. The Moesif Application ID: nothing to do in the console
 
-All WSO2 products publish to one WSO2 Moesif account, with a dashboard per
-product. In that account, open the Moesif application that should receive API
-Platform's actions, then go to the account menu → **API Keys** and copy the
-**Collector Application Id**. It's a long token that starts with `eyJ`.
+Each environment (dev, stage, prod) has its own Moesif application. Its ID is
+the secret `moesif-app-id-wso2-cloud-collector` in that environment's secret
+store, set through Terraform in the environment's branch of
+`wso2cloud-deployment`. Flux substitutes it as
+`${moesif_application_id_wso2_cloud_collector}` into the `moesif-collector-api`
+release binding, which sends it as `X-Moesif-Application-Id` on every request
+it forwards to Moesif.
 
-The Collector Application Id can only _write_ events. It is meant to be public:
-it ends up in a script every visitor downloads. Never use a Management API key
-here.
+The `main` branch stays one template, and each environment's secret supplies its
+own ID. No environment setting is needed, and the IDs are never committed to
+git. Platform API's endpoint events use the same collector, so UI and endpoint
+actions land in the same application.
 
-> **Use a separate key outside production.** The console has no list of orgs to
-> leave out yet (see [Known limitations](#known-limitations)). Point dev and
-> staging at a separate Moesif application, or leave tracking off there, so test
-> traffic stays out of the production dashboards.
+### 2. Add the gateway session route
 
-### 2. Add two keys to the runtime config
+In `wso2cloud-deployment`, add a `RestApi` to
+`controlplane/common/init/layer-3/gateway-bff/api-management/proxy-api-management-restapi.yaml`,
+next to the billing, cloud and marketing-consent routes:
 
-Add these to the environment's `api-platform.env.config.js`, next to the keys
-already there:
+- **Context:** `${apip_console_proxy_context:=/_api/api-management}/feature-usage`,
+  the same value as `featureUsageCollectorPath` below, so the two always match.
+- **Upstream:** `${internal_gateway_url}/moesif-collector`.
+- **Policy:** the same `oauth2-session-proxy` as the other api-management
+  routes.
+- **Operations:** `POST /v1/actions/batch` only.
+
+The route needs a signed-in session, so nobody else can write to the Moesif
+application. It allows only the one Moesif route the console uses.
+
+### 3. Add two keys to the runtime config
+
+In the `apip-console` release binding, add these to `api-platform.env.config.js`:
 
 ```js
 window.__RUNTIME_CONFIG__ = {
-  // …existing keys (authMode, appBasePath, platformApiBaseUrl, …)
-  featureUsageTrackingEnabled: true,
-  moesifPublishableKey: '<Collector Application Id>',
+  // …existing keys (authMode, platformApiBaseUrl, …)
+  featureUsageTrackingEnabled: '${apip_console_feature_usage_enabled:=false}',
+  featureUsageCollectorPath: '${apip_console_proxy_context:=/_api/api-management}/feature-usage',
 };
 ```
 
-Both are required. With only one of them set, tracking stays off.
+Then set `apip_console_feature_usage_enabled: "true"` in an environment
+branch's `developer-domain.yaml` to turn tracking on there.
 
-### 3. Let the browser reach Moesif
-
-The SDK posts to `https://api.moesif.net` from the user's browser. The SDK
-itself is a chunk of the console's own bundle, served from the console's
-origin.
-
-- If the gateway or CDN in front of the console sets a `Content-Security-Policy`
-  with `connect-src`, add `https://api.moesif.net` to it. Otherwise the browser
-  blocks every request, and nothing shows up in Moesif. The BFF's own policy is
-  `frame-ancestors 'self'` only, so it needs no change.
-- The console needs no proxy, gateway route or backend change.
+Both keys are required, so with only one set, tracking stays off. The collector
+path must be a plain same-origin path. A full URL, or a `//host` one, is
+ignored, which turns tracking off rather than sending data elsewhere.
 
 ### 4. Check that it works
 
 In the browser:
 
-1. Sign in to the console, open DevTools → **Network** and filter on `moesif`.
+1. Sign in to the console, open DevTools → **Network** and filter on
+   `feature-usage`.
 2. Open the API creation wizard (**APIs → Create**).
-3. On the first tracked step, the browser sends `POST /v1/companies` and
-   `POST /v1/users`. It sends these once per user and organization, not on every
-   page load.
-4. Within 5 seconds (or after 20 actions), it sends `POST /v1/actions/batch`.
-   Check its payload:
+3. Within 5 seconds of the first tracked step (or after 20 actions, or when you
+   leave the page), the browser sends
+   `POST /_api/api-management/feature-usage/v1/actions/batch`. Check it:
+   - the request goes to the console's own origin, never `api.moesif.net`;
+   - there's no `X-Moesif-Application-Id` header;
    - `action_name` is `apip.manage-apis.api-creation-wizard-open`;
    - `request.uri` is a route template such as
      `https://<console>/organizations/:orgHandle/projects/:projectHandler/apis/new`,
@@ -103,16 +119,19 @@ In the browser:
 
 In Moesif:
 
-5. Open the live event log, show **Actions**, and filter on an action name that
-   starts with `apip.` (or `metadata.initiating_product` = `apip`). The actions
-   should arrive within a minute.
+4. Open the environment's Moesif application, open the live event log, show
+   **Actions**, and filter on an action name that starts with `apip.` (or
+   `metadata.initiating_product` = `apip`). The actions should arrive within a
+   minute.
 
-If nothing is sent at all, check, in order:
+If nothing is sent at all, check both keys in DevTools
+(`window.__RUNTIME_CONFIG__`). If the requests fail:
 
-- both keys are set (in DevTools, `window.__RUNTIME_CONFIG__`);
-- the CSP lets the browser reach Moesif (look for a blocked request in the
-  Console tab);
-- an ad blocker isn't blocking `api.moesif.net`.
+- **401:** the session cookie didn't reach the route. Check the route's `cookie`
+  settings match the other api-management routes.
+- **401 or 403 from the collector:** the collector didn't accept the user's
+  token. Its route trusts the `PlatformIDPKeyManager` issuer.
+- **404:** the route isn't deployed.
 
 Tracking never shows an error to the user, so these are the only signs.
 
@@ -121,87 +140,66 @@ Tracking never shows an error to the user, so these are the only signs.
 Every action carries the same metadata, so one filter selects API Platform:
 `metadata.initiating_product = apip`. For the first feature:
 
-| Moesif view              | Set-up                                                                                                                                                                                                                           |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| REST API creation funnel | Funnel, in this order: `apip.manage-apis.api-creation-wizard-open` → `apip.manage-apis.api-creation-wizard-api-type-select` → `apip.manage-apis.api-creation-wizard-creation-method-select` → `apip.manage-apis.rest-api-create` |
-| Where users start        | Segment `apip.manage-apis.api-creation-wizard-open` by `metadata.entry_point`                                                                                                                                                    |
-| Scratch vs. contract     | Segment `apip.manage-apis.rest-api-create` by `metadata.creation_method`                                                                                                                                                         |
-| Adoption across features | Filter `metadata.event_category = adoption`, group by `action_name`                                                                                                                                                              |
+| Moesif view              | Set-up                                                                                                                                                                                                                                 |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REST API creation funnel | Funnel, in this order: `apip.manage-apis.api-creation-wizard-open` → `apip.manage-apis.api-creation-wizard-api-type-select` → `apip.manage-apis.api-creation-wizard-creation-method-select` → `apip.manage-apis.rest-api-create-click` |
+| Where users start        | Segment `apip.manage-apis.api-creation-wizard-open` by `metadata.entry_point`                                                                                                                                                          |
+| Scratch vs. contract     | Segment `apip.manage-apis.rest-api-create-click` by `metadata.creation_method`                                                                                                                                                         |
+| Use across features      | Filter `metadata.event_category = engagement`, group by `action_name`                                                                                                                                                                  |
+
+Whether the creation then worked is the endpoint feature `apip.manage-apis.rest-api-create`, which Platform API reports as an API event with an `outcome`.
 
 Users and companies show up in Moesif as UUIDs: the Thunder user ID (`sub`) and
 the organization ID (the `ouId` claim). The console never sends names.
 
 ### Turning it off
 
-Set `featureUsageTrackingEnabled: false`, or remove the key. The next page load
-sends nothing and doesn't download the SDK.
+Set `apip_console_feature_usage_enabled` back to `"false"`. The next page load
+sends nothing.
 
 ---
 
-## Deployments served by the BFF (on-prem)
+## On-prem and BFF-served deployments
 
-When the BFF serves the console (`basic` or `oidc` auth), it generates the
-runtime config itself. Tracking is off by default:
-
-```toml
-[api_control_plane.feature_usage]
-enabled                = '{{ env "APIP_ACP_FEATURE_USAGE_ENABLED" "false" }}'
-moesif_publishable_key = '{{ env "APIP_ACP_FEATURE_USAGE_MOESIF_PUBLISHABLE_KEY" "" }}'
-```
-
-- With `enabled = false` (the default), the BFF leaves both keys out of the
-  runtime config.
-- With `enabled = true` and no key, the BFF refuses to start:
-  `[feature_usage] enabled = true requires moesif_publishable_key`.
-- In basic mode the user's `sub` is their username, not a UUID. The console only
-  sends UUIDs, so those users are tracked by organization only.
-
-On-prem installs are not meant to send data to WSO2's Moesif. The setting exists
-for BFF-served deployments that WSO2 runs itself.
+Tracking is off. The BFF doesn't emit either key, and there's no collector route
+for it to point at, so the console sends nothing.
 
 ---
 
 ## Configuration reference
 
-| Runtime config key (`window.__RUNTIME_CONFIG__`) | Also read as                     | Build-time fallback                   | Default | Meaning                              |
-| ------------------------------------------------ | -------------------------------- | ------------------------------------- | ------- | ------------------------------------ |
-| `featureUsageTrackingEnabled`                    | `FEATURE_USAGE_TRACKING_ENABLED` | `VITE_FEATURE_USAGE_TRACKING_ENABLED` | off     | `true` or `'true'` turns tracking on |
-| `moesifPublishableKey`                           | `MOESIF_PUBLISHABLE_KEY`         | `VITE_MOESIF_PUBLISHABLE_KEY`         | empty   | Moesif Collector Application Id      |
+| Runtime config key (`window.__RUNTIME_CONFIG__`) | Also read as                     | Build-time fallback                   | Default | Meaning                                                                            |
+| ------------------------------------------------ | -------------------------------- | ------------------------------------- | ------- | ---------------------------------------------------------------------------------- |
+| `featureUsageTrackingEnabled`                    | `FEATURE_USAGE_TRACKING_ENABLED` | `VITE_FEATURE_USAGE_TRACKING_ENABLED` | off     | `true` or `'true'` turns tracking on                                               |
+| `featureUsageCollectorPath`                      | `FEATURE_USAGE_COLLECTOR_PATH`   | `VITE_FEATURE_USAGE_COLLECTOR_PATH`   | empty   | Same-origin path of the collector route, e.g. `/_api/api-management/feature-usage` |
 
-Tracking is on only when the flag is true **and** the key is not blank. The
-build-time values apply only when the runtime config doesn't set the key. A
-runtime `false` doesn't override a build-time `true`, so don't set the `VITE_`
-values in a build that ships. For local development, put them in `.env.local`,
-with the key of a _non-production_ Moesif application.
+Tracking is on only when the flag is true **and** the collector path is a valid
+same-origin path. The build-time values apply only when the runtime config
+doesn't set the key. A runtime `false` doesn't override a build-time `true`, so
+don't set the `VITE_` values in a build that ships.
 
 ---
 
 ## What is sent
 
-Every request the SDK makes goes through `piiFilter.ts` first. The filter
-doesn't delete known-bad fields; it **rebuilds** each payload from an allowlist.
-A field a future SDK version starts sending is therefore dropped by default.
+`actions.ts` builds every action from an allowlist. Nothing a page or the browser
+adds is passed through; a field is sent only if it's in this table.
 
-| Field                                             | Value                                                                                                                                                                         |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `action_name`                                     | A code from `taxonomy.ts`. An action whose name isn't in the registry is dropped.                                                                                             |
-| `request.uri`                                     | The page URL reduced to its route template: org, project and API handles become `:orgHandle`, `:projectHandler` and `:apiHandler`. The query string and fragment are removed. |
-| `request.time`                                    | When the step happened                                                                                                                                                        |
-| `request.user_agent_string`                       | The browser's user agent, which Moesif uses for browser and OS breakdowns                                                                                                     |
-| `request.verb`                                    | Always `GET`                                                                                                                                                                  |
-| `user_id`                                         | The IdP user ID (`sub`), only if it is a UUID                                                                                                                                 |
-| `company_id`                                      | The organization ID, only if it is a UUID                                                                                                                                     |
-| `anonymous_id`, `session_token`, `transaction_id` | UUIDs the SDK generates                                                                                                                                                       |
-| `metadata`                                        | The feature's declared dimensions, plus `action`, `category`, `tier`, `event_category`, `initiating_product: apip` and `platform: web`                                        |
+| Field                       | Value                                                                                                                                                                         |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `action_name`               | A code from `taxonomy.ts`. A code missing from the registry doesn't compile.                                                                                                  |
+| `request.uri`               | The page URL reduced to its route template: org, project and API handles become `:orgHandle`, `:projectHandler` and `:apiHandler`. The query string and fragment are removed. |
+| `request.time`              | When the step happened                                                                                                                                                        |
+| `request.user_agent_string` | The browser's user agent, which Moesif uses for browser and OS breakdowns                                                                                                     |
+| `user_id`                   | The IdP user ID (`sub`), only if it is a UUID                                                                                                                                 |
+| `company_id`                | The organization ID, only if it is a UUID                                                                                                                                     |
+| `session_token`             | A UUID per browser tab session, kept in `sessionStorage`                                                                                                                      |
+| `metadata`                  | The feature's declared dimensions, plus `action`, `category`, `tier`, `event_category`, `initiating_product: apip` and `platform: web`                                        |
 
 The browser **never sends** names, emails, org, project or API handles, anything
 the user typed, query strings, fragments, the referrer, or UTM or `gclid`
-campaign data. User and company updates carry their IDs only. Every other Moesif
-route the SDK could call, including API-call capture (`/v1/events`), is
-dropped.
-
-If the filter can't be installed (for example, after an SDK upgrade that renamed
-its internals), tracking turns itself off instead of sending unfiltered data.
+campaign data. It sends to one Moesif route, `/v1/actions/batch`; there are no
+user or company updates and no API-call capture.
 
 ---
 
@@ -227,13 +225,13 @@ with the taxonomy owners first. Its rules:
   order them (`api-creation-wizard-open` → `…-api-type-select` → …).
 - **`event_category`** says what the step means:
 
-  | Value         | Use it for                                   | Example          |
-  | ------------- | -------------------------------------------- | ---------------- |
-  | `discovery`   | The user found or opened the feature         | Wizard opened    |
-  | `engagement`  | A step inside the feature                    | API type chosen  |
-  | `adoption`    | The user did what the feature is for         | Create clicked   |
-  | `abandonment` | The user explicitly backed out               | Wizard cancelled |
-  | `lifecycle`   | A later change to something the feature made | API deleted      |
+  | Value         | Use it for                                                                | Example                         |
+  | ------------- | ------------------------------------------------------------------------- | ------------------------------- |
+  | `discovery`   | The user found or opened the feature                                      | Wizard opened                   |
+  | `engagement`  | A step inside the feature, or its commit click                            | API type chosen, Create clicked |
+  | `adoption`    | The feature's work was done (endpoint features, reported by Platform API) | API created                     |
+  | `abandonment` | The user explicitly backed out                                            | Wizard cancelled                |
+  | `lifecycle`   | A later change to something the feature made                              | API deleted                     |
 
 - **Dimensions** are enums. Give each value a stable, lower-case, hyphenated
   name (`rest-api`, `api-list-empty-state`).
@@ -259,8 +257,7 @@ Copy the entry into `API_PLATFORM_FEATURES`:
 
 A feature with no required dimension can be called as `trackFeature(code)`.
 
-A code missing from this registry can't be tracked. The call doesn't compile,
-and the filter would drop it anyway.
+A code missing from this registry can't be tracked: the call doesn't compile.
 
 ### 3. Call `useTrackFeature()` at the right moment
 
@@ -287,10 +284,10 @@ When to fire:
 | --------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | Discovery (open)      | Once, when the page or dialog opens                                                             | A `useEffect` with a `useRef` guard, because effects re-run in StrictMode and when their dependencies change (see `openReported` in the wizard) |
 | Engagement (a choice) | When the user moves past the step, with what they chose, including a default they never changed | The wizard's `continueFromSource`. "Start from scratch" is the default tab, so most users never click it.                                       |
-| Adoption (the goal)   | On the click that commits the work, before the request                                          | `onGeneralFormSumit`. It counts intent: a server rejection still counts, and a retry is not a new use.                                          |
+| Commit (the click)    | On the click that commits the work, before the request                                          | `onGeneralFormSumit`. It counts intent: a server rejection still counts, and a retry is not a new use.                                          |
 
 Don't fire in render, in a query, or in a mutation's `onSuccess`. Don't call
-`trackFeatureUsage` from `moesif.ts` directly; the hook is the only entry point
+`trackFeatureUsage` from `collector.ts` directly; the hook is the only entry point
 for UI code.
 
 **If several places open the feature,** add an `entry_point` dimension. Pass the
@@ -299,22 +296,21 @@ a reload. `apis/create/entryPoint.ts` does this for the wizard, and the pages
 that link to it call `navigate(routes.newApi(…), apiCreationEntry('api-list'))`.
 
 **Dimensions are enums only, by design.** `FeatureDimensions<C>` rejects any
-other value at compile time, and the filter drops values outside the enum at
-runtime. So an API name, a URL or a typed value can't reach Moesif. If a feature
+other value at compile time, and `featureMetadata` drops values outside the
+enum at runtime. So an API name, a URL or a typed value can't reach Moesif. If a feature
 genuinely needs another kind of value, check it against the data rules first,
-then change `FeatureSpec`, `featureMetadata` and the filter together.
+then change `FeatureSpec` and `featureMetadata` together.
 
 ### 4. Testing
 
 The console's unit tests cover the tracking module itself (`src/featureUsage`:
-the registry, the PII filter, the SDK wrapper and a contract test against the
-real SDK). Page unit tests don't assert tracking: which events a page reports
+the registry, the action builder and the batching client). Page unit tests don't assert tracking: which events a page reports
 belongs in the browser-driven UI suite (`tests/framework/suites/ui`), which is
 a separate effort.
 
 ### URLs are covered for you
 
-The filter builds its route templates from `routes` in `src/routes/paths.ts`. A
+`actions.ts` builds its route templates from `routes` in `src/routes/paths.ts`. A
 page added the usual way (a `routes.*` builder, see the `apicp-ui` skill) is
 masked with no change here. A URL that matches no template keeps only segments
 known to be static and masks the rest as `:id`.
@@ -329,35 +325,14 @@ known to be static and masks the rest as `:id`.
 
 ---
 
-## Upgrade moesif-browser-js
-
-The PII filter wraps the SDK's internal `_executeRequest`, the single function
-every send path ends in (direct, batched, consent-queued and the flush when the
-page is hidden). That's why the version is pinned exactly (`"1.10.2"`, no
-caret). To upgrade:
-
-1. Read the new version's source. Every network write must still go through
-   `_executeRequest(url, data, options, callback)`, and `track()` must still be
-   the only way an action is built.
-2. Check that option validation still accepts a `function` expression for
-   `skip`. 1.10.2 matches functions against `/^\s*\bfunction\b/`, so an arrow
-   function throws and turns tracking off.
-3. Run `src/featureUsage/moesif.sdk.test.ts`. It runs the _real_ SDK and asserts
-   what reaches the network: no handles, no query string, IDs only.
-4. Follow `.claude/rules/js-dependency-management.md` (npm audit, license,
-   lockfile).
-
----
-
 ## Known limitations
 
-| Limitation                                                   | Effect                                                                               | Way out                                                       |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| Ad blockers and privacy browsers block `api.moesif.net`      | Those users aren't counted                                                           | The Moesif Events Proxy design in the spec                    |
-| No list of orgs to leave out                                 | Internal and test orgs are counted                                                   | Separate Moesif applications per environment, or add the list |
-| Moesif sees the browser's IP address                         | Any direct browser request exposes it at the network level; the payload carries none | The proxy design in the spec                                  |
-| IDs only                                                     | Moesif dashboards show UUIDs, not user or org names                                  | Server-side enrichment                                        |
-| Identity is sent on the first tracked action, not at sign-in | A user who never reaches a tracked step never appears in Moesif                      | Intended                                                      |
+| Limitation                                                   | Effect                                                                 | Way out                                                         |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------------- |
+| A batch that fails is dropped                                | Actions are lost when the collector is down or the session has expired | A persistent queue with retry                                   |
+| No list of orgs to leave out                                 | Internal and test orgs in production are counted                       | Add the list (each environment already has its own application) |
+| IDs only                                                     | Moesif dashboards show UUIDs, not user or org names                    | Server-side enrichment                                          |
+| Identity is sent on the first tracked action, not at sign-in | A user who never reaches a tracked step never appears in Moesif        | Intended                                                        |
 
 ---
 
@@ -435,15 +410,13 @@ cloud plugins report them too.
 
 ## Files
 
-| File                     | Role                                                                          |
-| ------------------------ | ----------------------------------------------------------------------------- |
-| `index.ts`               | The public surface: `useTrackFeature`, `API_PLATFORM_FEATURES` and the types  |
-| `taxonomy.ts`            | The registry of trackable features, and `featureMetadata`                     |
-| `policies.ts`            | `trackPolicyAttachment`: a policy name to its capability feature              |
-| `useTrackFeature.ts`     | The hook UI code calls; attaches the user and organization                    |
-| `moesif.ts`              | Loads and initialises the SDK lazily, installs the filter, identifies, tracks |
-| `piiFilter.ts`           | The allowlist every outgoing request is rebuilt from                          |
-| `moesif-browser-js.d.ts` | Types for the parts of the SDK used here                                      |
-| `*.test.ts`              | Unit tests, plus `moesif.sdk.test.ts`, the contract test against the real SDK |
-| `src/config/runtime.ts`  | `featureUsageTrackingEnabled`, `moesifPublishableKey`                         |
-| `bff/internal/config`    | The BFF's `[feature_usage]` section and its runtime-config output             |
+| File                    | Role                                                                         |
+| ----------------------- | ---------------------------------------------------------------------------- |
+| `index.ts`              | The public surface: `useTrackFeature`, `API_PLATFORM_FEATURES` and the types |
+| `taxonomy.ts`           | The registry of trackable features, and `featureMetadata`                    |
+| `policies.ts`           | `trackPolicyAttachment`: a policy name to its capability feature             |
+| `useTrackFeature.ts`    | The hook UI code calls; attaches the user and organization                   |
+| `actions.ts`            | Builds each action from the allowlist; masks page URLs to route templates    |
+| `collector.ts`          | The enable switch, the queue, and the batched send to the collector route    |
+| `*.test.ts`             | Unit tests                                                                   |
+| `src/config/runtime.ts` | `featureUsageTrackingEnabled`, `featureUsageCollectorPath`                   |

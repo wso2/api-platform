@@ -71,9 +71,6 @@ type Config struct {
 
 	SanitizeHTMLDocs SanitizeHTMLDocsConfig `koanf:"sanitize_html_docs"`
 
-	// FeatureUsage is the console's feature-usage tracking ([feature_usage]).
-	FeatureUsage FeatureUsageConfig `koanf:"feature_usage"`
-
 	// DisableFeatures names the console features this deployment hides, e.g.
 	// ["metrics", "meters"]. Each hidden feature leaves the sidebar and its page
 	// answers "not found". Empty or unset leaves every feature on. Passed to the
@@ -147,19 +144,6 @@ type SanitizeHTMLDocsConfig struct {
 	Enabled                     any `koanf:"enabled"`
 	AdditionalAllowedTags       any `koanf:"additional_allowed_tags"`
 	AdditionalAllowedAttributes any `koanf:"additional_allowed_attributes"`
-}
-
-// FeatureUsageConfig is [feature_usage]: whether the console publishes feature
-// usage to Moesif from the browser, and with which publishable key. The BFF only
-// passes these to the SPA through the runtime config; it sends nothing itself.
-// Off by default, so an on-prem install reports nothing.
-type FeatureUsageConfig struct {
-	Enabled bool `koanf:"enabled"`
-	// MoesifPublishableKey is the publishable (collector) Application ID of the
-	// Moesif application that receives the actions. It ends up in the public
-	// runtime config, so it must be a write-only collector ID, never a
-	// management key.
-	MoesifPublishableKey string `koanf:"moesif_publishable_key"`
 }
 
 // ServerConfig is [api_control_plane.server]: two independent listeners,
@@ -543,7 +527,6 @@ func (c *Config) normalize() {
 		c.PolicyHub.BaseURL = defaultPolicyHubBaseURL
 	}
 	c.Gateway.ControlPlaneHost = strings.TrimRight(strings.TrimSpace(c.Gateway.ControlPlaneHost), "/")
-	c.FeatureUsage.MoesifPublishableKey = strings.TrimSpace(c.FeatureUsage.MoesifPublishableKey)
 
 	c.ControlPlane.URL = strings.TrimRight(c.ControlPlane.URL, "/")
 	c.ControlPlane.PortalBasePath = strings.TrimRight(c.ControlPlane.PortalBasePath, "/")
@@ -682,11 +665,6 @@ func (c *Config) validate() error {
 		if gv.Channel != "STS" && gv.Channel != "LTS" {
 			return fmt.Errorf("[[gateway_versions]] entry %d has invalid channel %q: must be \"STS\" or \"LTS\"", i, gv.Channel)
 		}
-	}
-	// Enabled without a key would silently report nothing, indistinguishable
-	// from "off" until someone looks at an empty dashboard.
-	if c.FeatureUsage.Enabled && c.FeatureUsage.MoesifPublishableKey == "" {
-		return fmt.Errorf("[feature_usage] enabled = true requires moesif_publishable_key")
 	}
 	if h := c.Gateway.ControlPlaneHost; h != "" && !validControlPlaneHost(h) {
 		return fmt.Errorf("[gateway] controlplane_host %q is invalid: must be host[:port][/path] with no scheme, e.g. \"cp.example.com:443\"", h)

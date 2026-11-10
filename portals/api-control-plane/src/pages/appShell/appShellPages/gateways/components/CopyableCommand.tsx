@@ -39,7 +39,7 @@ const COPIED_FEEDBACK_MS = 1500;
 
 /**
  * A shell command block with a copy-to-clipboard button in its corner.
- * `onCopy` runs after each copy attempt, whether or not the clipboard took it.
+ * `onCopy` runs after each successful copy; a write the clipboard refused is not one.
  */
 export function CopyableCommand({ code, onCopy }: { code: string; onCopy?: () => void }) {
   const intl = useIntl();
@@ -57,12 +57,12 @@ export function CopyableCommand({ code, onCopy }: { code: string; onCopy?: () =>
       setCopied(true);
       window.clearTimeout(resetTimer.current);
       resetTimer.current = window.setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+      onCopy?.();
     } catch {
       // No clipboard permission (or no clipboard at all, over plain HTTP). The
       // command is still on screen and selectable, so there is nothing useful
       // to report; an error toast here would only interrupt.
     }
-    onCopy?.();
   };
 
   return (

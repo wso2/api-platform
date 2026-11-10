@@ -51,7 +51,7 @@ import { API_TYPES } from './uiConfig';
 // import { ApiDesignerBanner } from './components/ApiDesignerBanner';
 import type { ApiError } from '@/api/core/errors';
 import { useTrackFeature, type FeatureDimensions } from '@/featureUsage';
-import { readApiCreationEntryPoint } from './entryPoint';
+import { readApiCreationEntryPoint, withoutApiCreationEntry } from './entryPoint';
 
 const CONFIGURE_FORM_ID = 'api-creation-configure-form';
 
@@ -184,6 +184,7 @@ const ApiCreationWizardContent = () => {
    */
   const trackFeature = useTrackFeature();
   const location = useLocation();
+  const navigate = useNavigate();
   /**
    * Mirrors DefineApiPanel's approach, reported on mount as well as on change:
    * "Start from scratch" is the default tab, so a user who never clicks it
@@ -199,7 +200,15 @@ const ApiCreationWizardContent = () => {
     trackFeature('apip.manage-apis.api-creation-wizard-open', {
       entry_point: readApiCreationEntryPoint(location.state),
     });
-  }, [location.state, trackFeature]);
+    // Consumed: drop it from history so a reload reports `direct`.
+    const remaining = withoutApiCreationEntry(location.state);
+    if (remaining !== location.state) {
+      navigate(`${location.pathname}${location.search}${location.hash}`, {
+        replace: true,
+        state: remaining,
+      });
+    }
+  }, [location, navigate, trackFeature]);
 
   /**
    * The chosen type's own name, translated. `apiType` is already the entry from
@@ -274,7 +283,6 @@ const ApiCreationWizardContent = () => {
     setStep('configure');
   };
 
-  const navigate = useNavigate();
   // `handlesErrors`: a rejection this screen puts back on the form must not
   // also arrive as a snackbar that has faded by the time the user looks up.
   const importOpenApiMutation = useImportOpenApi({ handlesErrors: true });

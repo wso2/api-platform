@@ -19,14 +19,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { routes, SELECT_SCOPE_SEGMENT } from '@/routes/paths';
-import { filterMoesifRequest, maskPath, maskUri } from './piiFilter';
+import { buildAction, maskPath, maskUri, type ActionContext } from './actions';
 
 const ORG = 'b3e1c2d4-7f6a-4e5b-9c8d-0a1b2c3d4e5f';
 const USER = '0193e7a2-4c5d-7e6f-8a9b-0c1d2e3f4a5b';
-const ANON = '5c6d7e8f-9a0b-4c1d-8e2f-3a4b5c6d7e8f';
-const TX = '5f0c8a9e-3b1d-4c6e-9a2f-1d7e4b8c0a11';
+const SESSION = '5c6d7e8f-9a0b-4c1d-8e2f-3a4b5c6d7e8f';
 const ORIGIN = 'https://console.example.com';
-const HOST = 'https://api.moesif.net';
 
 describe('maskPath', () => {
   it.each([
@@ -72,38 +70,24 @@ describe('maskUri', () => {
   });
 });
 
-describe('filterMoesifRequest', () => {
-  /** An action as moesif-browser-js builds it, plus fields that must not survive. */
-  const sdkAction = (overrides: Record<string, unknown> = {}) => ({
-    action_name: 'apip.manage-apis.rest-api-create-click',
-    anonymous_id: ANON,
-    company_id: ORG,
-    email: 'alice@example.com',
-    metadata: {
-      action: 'REST API Creation Click',
-      apiName: 'Payments API',
-      category: 'manage-apis',
-      creation_method: 'scratch',
-      event_category: 'engagement',
-      initiating_product: 'apip',
-      platform: 'web',
-      tier: 'core',
-    },
-    request: {
-      ip_address: '203.0.113.7',
-      uri: `${ORIGIN}${routes.newApi('acme-corp', 'payments')}?q=secret`,
-      user_agent_string: 'Mozilla/5.0',
-      verb: 'GET',
-    },
-    transaction_id: TX,
-    user_id: USER,
-    ...overrides,
-  });
+describe('buildAction', () => {
+  const context: ActionContext = {
+    pageUrl: `${ORIGIN}${routes.newApi('acme-corp', 'payments')}?q=secret#step-2`,
+    sessionToken: SESSION,
+    time: new Date('2026-11-10T09:30:00.000Z'),
+    userAgent: 'Mozilla/5.0',
+  };
 
-  it('rebuilds an action from the allowlist only', () => {
-    expect(filterMoesifRequest(`${HOST}/v1/actions`, sdkAction())).toEqual({
+  it('builds the action from the taxonomy, with the page reduced to its route template', () => {
+    expect(
+      buildAction(
+        'apip.manage-apis.rest-api-create-click',
+        { creation_method: 'scratch' },
+        { companyId: ORG, userId: USER },
+        context,
+      ),
+    ).toEqual({
       action_name: 'apip.manage-apis.rest-api-create-click',
-      anonymous_id: ANON,
       company_id: ORG,
       metadata: {
         action: 'REST API Creation Click',
@@ -115,51 +99,54 @@ describe('filterMoesifRequest', () => {
         tier: 'core',
       },
       request: {
+        time: '2026-11-10T09:30:00.000Z',
         uri: `${ORIGIN}${routes.newApi()}`,
         user_agent_string: 'Mozilla/5.0',
-        verb: 'GET',
       },
-      transaction_id: TX,
+      session_token: SESSION,
       user_id: USER,
     });
   });
 
-  it('filters each action of a batch and drops the ones that are not ours', () => {
-    const filtered = filterMoesifRequest(`${HOST}/v1/actions/batch`, [
-      sdkAction(),
-      sdkAction({ action_name: 'Some-Other-Event' }),
-    ]) as unknown[];
-
-    expect(filtered).toHaveLength(1);
-    expect(JSON.stringify(filtered)).not.toMatch(
-      /acme-corp|payments|secret|alice|Payments API|203\.0/,
+  it('keeps only the dimensions the feature declares, and only values in their enums', () => {
+    const { metadata } = buildAction(
+      'apip.manage-apis.rest-api-create-click',
+      { apiName: 'Payments API', creation_method: 'Payments API' } as never,
+      {},
+      context,
     );
+
+    expect(metadata).not.toHaveProperty('apiName');
+    expect(metadata).not.toHaveProperty('creation_method');
   });
 
-  it('drops a dimension value outside its enum', () => {
-    const filtered = filterMoesifRequest(
-      `${HOST}/v1/actions`,
-      sdkAction({ metadata: { creation_method: 'Payments API' } }),
-    ) as { metadata: Record<string, unknown> };
+  it('leaves out IDs that are not UUIDs, and fields it does not have', () => {
+    const action = buildAction(
+      'apip.manage-apis.rest-api-create-click',
+      { creation_method: 'scratch' },
+      { companyId: 'acme-corp', userId: 'alice@example.com' },
+      { pageUrl: context.pageUrl, sessionToken: 'not-a-uuid', time: context.time },
+    );
 
-    expect(filtered.metadata).not.toHaveProperty('creation_method');
+    expect(action).not.toHaveProperty('company_id');
+    expect(action).not.toHaveProperty('user_id');
+    expect(action).not.toHaveProperty('session_token');
+    expect(action.request).not.toHaveProperty('user_agent_string');
+    expect(JSON.stringify(action)).not.toMatch(/acme-corp|payments|secret|alice|step-2/);
   });
 
-  it.each([
-    [
-      'an action that is not in the taxonomy',
-      '/v1/actions',
-      { action_name: 'Landing-SignIn-Viewed' },
-    ],
-    ['a batch with nothing left in it', '/v1/actions/batch', [{ action_name: 'x' }]],
-    [
-      'a captured API call',
-      '/v1/events',
-      { request: { uri: `${ORIGIN}/proxy/api/v0.9/rest-apis` } },
-    ],
-    ['a captured API call batch', '/v1/events/batch', []],
-    ['an unknown route', '/v1/somewhere', {}],
-  ])('drops %s', (_name, path, data) => {
-    expect(filterMoesifRequest(`${HOST}${path}`, data)).toBeNull();
+  it('keeps the deployment’s base path in the page URL', () => {
+    const { request } = buildAction(
+      'apip.manage-apis.rest-api-create-click',
+      { creation_method: 'scratch' },
+      {},
+      {
+        ...context,
+        basePath: '/console',
+        pageUrl: `${ORIGIN}/console${routes.organizationHome('acme-corp')}`,
+      },
+    );
+
+    expect(request.uri).toBe(`${ORIGIN}/console${routes.organizationHome()}`);
   });
 });

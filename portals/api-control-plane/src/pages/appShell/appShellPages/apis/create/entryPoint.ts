@@ -49,3 +49,15 @@ export function readApiCreationEntryPoint(state: unknown): ApiCreationEntryPoint
   }
   return 'direct';
 }
+
+/**
+ * Router state without the entry point, so a reload of the wizard reports
+ * `direct` instead of the control that opened it the first time: the browser
+ * keeps history state across a reload. Other state is kept as it is.
+ */
+export function withoutApiCreationEntry(state: unknown): unknown {
+  if (typeof state !== 'object' || state === null || !(STATE_KEY in state)) return state;
+  const rest = { ...(state as Record<string, unknown>) };
+  delete rest[STATE_KEY];
+  return Object.keys(rest).length > 0 ? rest : null;
+}
