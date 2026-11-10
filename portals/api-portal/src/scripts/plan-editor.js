@@ -336,7 +336,7 @@
     else if (e.key === 'ArrowUp') { e.preventDefault(); (items[i - 1] || items[items.length - 1]).focus(); }
   });
 
-  /* Shows the plan's conditions, closed; a plan saved before conditions has its request limits as one. */
+  /* Shows the plan's conditions, closed; a plan saved before conditions has its request, event and total token limits as conditions. */
   function fillConditions(conditions) {
     list.innerHTML = '';
     (conditions || []).forEach(function (c) {

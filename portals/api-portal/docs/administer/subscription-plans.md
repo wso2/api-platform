@@ -9,7 +9,7 @@ A plan's limits are its conditions:
 - Tokens (`token-count`), for AI APIs
 - Custom conditions, key-value settings that a policy reads
 
-A plan saved before conditions shows its request limits as a request-count condition and its event limits as an event-count condition.
+A plan saved before conditions shows its request limits as a request-count condition, its event limits as an event-count condition and its total token limits as a token-count condition counting total tokens. Bandwidth limits have no condition type; they are not shown, and saving the plan leaves them stored as they are.
 
 ## Default Plans
 

@@ -282,7 +282,8 @@ const upgraded = () => upgradedResults || (upgradedResults = runProbe('upgraded'
         ('l3', 'plan-legacy', '${P}', 'REQUEST_COUNT', NULL, 1, -1),
         ('l4', 'plan-legacy', '${P}', 'EVENT_COUNT', 'MINUTE', 1, 9),
         ('l5', 'plan-legacy', '${P}', 'EVENT_COUNT', 'HOUR', 1, 900),
-        ('l6', 'plan-legacy', '${P}', 'BANDWIDTH', 'DAY', 1, 1);
+        ('l6', 'plan-legacy', '${P}', 'BANDWIDTH', 'DAY', 1, 1),
+        ('l7', 'plan-legacy', '${P}', 'TOTAL_TOKEN_COUNT', 'DAY', 1, 100000);
     INSERT INTO subscription_plans (uuid, org_uuid, portal_id, handle, display_name, ref_id, created_by, updated_by)
         VALUES ('plan-async', '${ORG}', '${P}', 'async', 'Async', 'async', 'test', 'test');
     INSERT INTO subscription_plan_limits (uuid, plan_uuid, portal_id, limit_type, time_unit, time_amount, limit_count) VALUES
@@ -325,20 +326,22 @@ test('the plan events carry the conditions, and limits for subscribers that pred
     ]);
 });
 
-test('a plan saved before conditions reads its request and event limits as request-count and event-count conditions, shortest first', () => {
+test('a plan saved before conditions reads its request, event and total token limits as conditions, shortest first', () => {
     const r = upgraded();
     assert.equal(r.legacy.status, 200);
     // The unlimited limit and the bandwidth limit have no condition.
     assert.deepEqual(r.legacy.body.conditions, [
         requests([w(100, 1, 'MINUTE'), w(5000, 1, 'DAY')]),
         events([w(9, 1, 'MINUTE'), w(900, 1, 'HOUR')]),
+        { id: 'tokens', type: 'token-count', params: { limits: [w(100000, 1, 'DAY')], onExceed: 'reject', tokenType: 'total' } },
     ]);
+    // `limits` stays the request and event limits older clients read.
     assert.deepEqual(r.legacy.body.limits, [
         requestLimit(100, 'MINUTE'), requestLimit(5000, 'DAY'), eventLimit(9, 'MINUTE'), eventLimit(900, 'HOUR'),
     ]);
-    assert.equal(r.legacyRowsBefore.length, 6);
+    assert.equal(r.legacyRowsBefore.length, 7);
     assert.deepEqual(r.legacyRenamed.body.conditions, r.legacy.body.conditions);
-    assert.equal(r.legacyRowsAfterRename.length, 6);
+    assert.equal(r.legacyRowsAfterRename.length, 7);
     assert.deepEqual(r.async.body.conditions, [events([w(50, 1, 'MINUTE')])]);
     assert.deepEqual(r.async.body.limits, [eventLimit(50, 'MINUTE')]);
 });
@@ -369,11 +372,16 @@ test('limits sent alone set both the request-count and event-count conditions, a
     assert.deepEqual(r.eventsRequestsOnly.body.conditions, [requests([w(5, 1, 'MINUTE')]), { id: 'region', type: 'custom', params: { zone: 'eu' } }]);
 });
 
-test('saving the limits of a plan saved before conditions moves it to conditions', () => {
+test('saving the limits of a plan saved before conditions moves it to conditions, keeping its bandwidth row', () => {
     const r = upgraded();
-    assert.deepEqual(r.legacySaved.body.conditions, [requests([w(40, 1, 'HOUR')])]);
-    assert.deepEqual(r.legacyConditionRows, ['requests']);
-    assert.deepEqual(r.legacyRowsAfterSave, []);
+    // Request limits alone replace the request and event limits; the token limit stays.
+    assert.deepEqual(r.legacySaved.body.conditions, [
+        requests([w(40, 1, 'HOUR')]),
+        { id: 'tokens', type: 'token-count', params: { limits: [w(100000, 1, 'DAY')], onExceed: 'reject', tokenType: 'total' } },
+    ]);
+    assert.deepEqual(r.legacyConditionRows, ['requests', 'tokens']);
+    // A bandwidth limit has no condition; its row is left as it was.
+    assert.deepEqual(r.legacyRowsAfterSave, [['BANDWIDTH', 1]]);
 });
 
 test('limits sent alone become the request-count condition; unlimited limits are left out', () => {

@@ -23,8 +23,10 @@ const assert = require('node:assert');
 const {
     normalizeConditions, windowsFromLimits, limitCondition, withCondition, conditionsFromLimits,
     legacyLimitsFromConditions, displayLimits, conditionChips, limitLines,
+    conditionsFromStoredLimits, storedLimitsFromConditions,
 } = require('./subscriptionPlanConditions');
 const { ValidationError } = require('./errors/customErrors');
+const constants = require('./constants');
 
 const w = (count, timeAmount, timeUnit) => ({ count, timeAmount, timeUnit });
 const limitsOf = (type, ...windows) => ({ type, params: { limits: windows } });
@@ -162,7 +164,7 @@ test('limits sent alone set the request-count and event-count conditions, and ke
     assert.deepEqual(conditionsFromLimits([requests, events, tools], [both[1]]),
         [limitCondition('request-count', [w(10, 1, 'MINUTE')], 'allow'), tools]);
     assert.deepEqual(conditionsFromLimits([requests, events, tools], []), [tools]);
-    // The default AsyncUnlimited plan: an unlimited event limit is no condition.
+    // An AsyncUnlimited plan saved before conditions: an unlimited event limit is no condition.
     assert.deepEqual(conditionsFromLimits([], [{ limitType: 'EVENT_COUNT', timeUnit: null, timeAmount: 1, limitCount: -1 }]), []);
 });
 
@@ -231,4 +233,42 @@ test('plan cards list every limit as subscribers read it', () => {
         { text: '1,000,000 completion tokens / month', allow: false },
     ]);
     assert.deepEqual(limitLines(undefined), []);
+});
+
+test('the default plans are valid conditions, stored as written', () => {
+    const plans = Object.fromEntries(constants.DEFAULT_SUBSCRIPTION_PLANS.map((p) => [p.handle, p.conditions]));
+    for (const [handle, conditions] of Object.entries(plans)) {
+        assert.deepEqual(normalizeConditions(conditions), conditions, handle);
+    }
+    assert.deepEqual(plans.Bronze, [limitCondition('request-count', [w(1000, 1, 'MINUTE')])]);
+    assert.deepEqual(plans.Silver, [limitCondition('request-count', [w(2000, 1, 'MINUTE')])]);
+    assert.deepEqual(plans.Gold, [limitCondition('request-count', [w(5000, 1, 'MINUTE')])]);
+    assert.deepEqual(plans.Unlimited, []);
+    assert.deepEqual(plans.AsyncUnlimited, []);
+});
+
+test('stored limits of earlier releases: TOTAL_TOKEN_COUNT is a total token-count condition, BANDWIDTH none', () => {
+    const rows = [
+        { limit_type: 'REQUEST_COUNT', limit_count: 100, time_unit: 'MINUTE', time_amount: 1 },
+        { limit_type: 'BANDWIDTH', limit_count: 1024, time_unit: 'MONTH', time_amount: 1 },
+        { limit_type: 'TOTAL_TOKEN_COUNT', limit_count: 100000, time_unit: 'DAY', time_amount: 1 },
+        { limit_type: 'TOTAL_TOKEN_COUNT', limit_count: -1, time_unit: null, time_amount: 1 },
+    ];
+    const tokens = { id: 'tokens', type: 'token-count', params: { limits: [w(100000, 1, 'DAY')], onExceed: 'reject', tokenType: 'total' } };
+    assert.deepEqual(conditionsFromStoredLimits(rows), [limitCondition('request-count', [w(100, 1, 'MINUTE')]), tokens]);
+    assert.deepEqual(normalizeConditions([tokens]), [tokens]);
+    assert.deepEqual(conditionsFromStoredLimits([rows[1]]), []);
+    // Limits sent alone by older clients still set only the request-count and event-count conditions.
+    assert.deepEqual(conditionsFromLimits([], rows), [limitCondition('request-count', [w(100, 1, 'MINUTE')])]);
+});
+
+test('a database not upgraded yet keeps request, event and total token limits, nothing else', () => {
+    const tokens = (tokenType) => ({ id: 'tokens', type: 'token-count', params: { limits: [w(5, 1, 'DAY')], onExceed: 'reject', tokenType } });
+    assert.deepEqual(storedLimitsFromConditions([limitCondition('event-count', [w(3, 1, 'HOUR')]), tokens('total')]), [
+        { limitType: 'EVENT_COUNT', limitCount: 3, timeUnit: 'HOUR', timeAmount: 1 },
+        { limitType: 'TOTAL_TOKEN_COUNT', limitCount: 5, timeUnit: 'DAY', timeAmount: 1 },
+    ]);
+    assert.equal(storedLimitsFromConditions([tokens('prompt')]), null);
+    assert.equal(storedLimitsFromConditions([limitCondition('request-count', [w(1, 1, 'DAY')], 'allow')]), null);
+    assert.equal(storedLimitsFromConditions([{ id: 'tool-calls', type: 'tool-call-count', params: { limits: [w(1, 1, 'DAY')] } }]), null);
 });

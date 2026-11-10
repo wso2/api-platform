@@ -114,16 +114,20 @@ const toCondition = (row) => ({
 
 const WINDOW_MINUTES = { MINUTE: 1, HOUR: 60, DAY: 24 * 60, MONTH: 31 * 24 * 60 };
 
+// The subscription_plan_limits rows that hold conditions. Other rows (BANDWIDTH) are left as they are.
+const STORED_LIMIT_TYPES = Object.values(planConditions.STORED_LIMIT_TYPES);
+const STORED_LIMIT_TYPES_SQL = STORED_LIMIT_TYPES.map((t) => `'${t}'`).join(', ');
+
 /**
- * Reads the REQUEST_COUNT and EVENT_COUNT rows of plans saved before conditions as each plan's
- * request-count and event-count conditions.
+ * Reads the REQUEST_COUNT, EVENT_COUNT and TOTAL_TOKEN_COUNT rows of plans saved before conditions as
+ * each plan's request-count, event-count and token-count (total) conditions.
  */
 const loadLegacyLimits = async (plans, exec) => {
   const ids = [...new Set(plans.map((p) => p.uuid))];
   if (ids.length === 0) return;
   const rows = await exec.query(
     `SELECT plan_uuid, limit_type, time_unit, time_amount, limit_count FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE}
-     WHERE limit_type IN ('REQUEST_COUNT', 'EVENT_COUNT') AND plan_uuid IN (${inPlaceholders(ids.length)}) AND portal_id = ?`,
+     WHERE limit_type IN (${STORED_LIMIT_TYPES_SQL}) AND plan_uuid IN (${inPlaceholders(ids.length)}) AND portal_id = ?`,
     [...ids, getPortalId()]
   );
   const grouped = groupBy(rows, 'plan_uuid');
@@ -131,7 +135,7 @@ const loadLegacyLimits = async (plans, exec) => {
     // Old rows carry no order of their own: shortest window first.
     const length = (l) => (WINDOW_MINUTES[String(l.time_unit).toUpperCase()] || 0) * (Number(l.time_amount) || 1);
     const limits = [...(grouped.get(plan.uuid) || [])].sort((a, b) => length(a) - length(b));
-    plan.conditions = planConditions.conditionsFromLimits([], limits);
+    plan.conditions = planConditions.conditionsFromStoredLimits(limits);
   }
 };
 
@@ -166,20 +170,25 @@ const attachConditions = async (plans, t) => {
   return plans;
 };
 
+/** Deletes the plan's subscription_plan_limits rows that hold conditions, keeping any others (BANDWIDTH). */
+const deleteStoredLimits = (planId, exec) => exec.execute(
+  `DELETE FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid = ? AND portal_id = ? AND limit_type IN (${STORED_LIMIT_TYPES_SQL})`,
+  [planId, getPortalId()]
+);
+
 /**
- * Stores the request-count and event-count conditions in subscription_plan_limits, as REQUEST_COUNT
- * and EVENT_COUNT rows, for a database not upgraded yet.
+ * Stores the request-count, event-count and total token-count conditions in subscription_plan_limits,
+ * as REQUEST_COUNT, EVENT_COUNT and TOTAL_TOKEN_COUNT rows, for a database not upgraded yet.
  */
 const saveLegacyLimits = async (planId, conditions, schema, exec) => {
   // subscription_plan_limits keeps neither other condition types nor onExceed: allow.
-  const { REQUEST_COUNT, EVENT_COUNT } = planConditions.TYPE;
-  if (!schema.legacyLimits || conditions.some((c) => ![REQUEST_COUNT, EVENT_COUNT].includes(c.type)
-      || c.params?.onExceed === 'allow')) {
+  const rows = planConditions.storedLimitsFromConditions(conditions);
+  if (!schema.legacyLimits || !rows) {
     throw new CustomError(503, 'Service Unavailable',
       'The database has no subscription_plan_conditions table; run this release\'s database schema script to store this plan\'s conditions.');
   }
-  await exec.execute(`DELETE FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid = ? AND portal_id = ?`, [planId, getPortalId()]);
-  for (const l of planConditions.legacyLimitsFromConditions(conditions)) {
+  await deleteStoredLimits(planId, exec);
+  for (const l of rows) {
     await exec.execute(
       `INSERT INTO ${SUBSCRIPTION_PLAN_LIMITS_TABLE} (uuid, portal_id, plan_uuid, limit_type, time_unit, time_amount, limit_count)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -225,7 +234,7 @@ const savePlanDetails = async (planId, plan, isNew, t) => {
     );
   }
   if (schema.legacyLimits) {
-    await exec.execute(`DELETE FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid = ? AND portal_id = ?`, [planId, getPortalId()]);
+    await deleteStoredLimits(planId, exec);
   }
 };
 

@@ -50,6 +50,9 @@ const CUSTOM_ID_PATTERN = /^[a-z][a-z0-9-]{0,62}$/;
 const WINDOW_MINUTES = { MINUTE: 1, HOUR: 60, DAY: 24 * 60 };
 // The conditions older clients send and read as `limits`, and the limit type of each.
 const LEGACY_LIMIT_TYPES = Object.freeze({ [TYPE.REQUEST_COUNT]: 'REQUEST_COUNT', [TYPE.EVENT_COUNT]: 'EVENT_COUNT' });
+// The limit type of each condition kept in subscription_plan_limits by earlier releases: also the
+// TOTAL_TOKEN_COUNT limits, a token-count condition counting total tokens.
+const STORED_LIMIT_TYPES = Object.freeze({ ...LEGACY_LIMIT_TYPES, [TYPE.TOKEN_COUNT]: 'TOTAL_TOKEN_COUNT' });
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isBuiltInId = (id) => Object.values(BUILT_IN_IDS).includes(id);
@@ -200,8 +203,8 @@ function normalizeConditions(conditions) {
 }
 
 /**
- * The windows of a plan's limits (DAO rows or request limits) for a request-count or event-count
- * condition: its REQUEST_COUNT or EVENT_COUNT limits. Unit-less limits are per minute. Unlimited,
+ * The windows of a plan's limits (DAO rows or request limits) for a request-count, event-count or
+ * token-count condition: its REQUEST_COUNT, EVENT_COUNT or TOTAL_TOKEN_COUNT limits. Unit-less limits are per minute. Unlimited,
  * unsupported and repeated-length limits are left out, and at most ten are kept.
  */
 function windowsFromLimits(limits, type = TYPE.REQUEST_COUNT) {
@@ -210,7 +213,7 @@ function windowsFromLimits(limits, type = TYPE.REQUEST_COUNT) {
     for (const l of limits || []) {
         const limitType = String(l.limit_type ?? l.limitType ?? 'REQUEST_COUNT').toUpperCase();
         const count = Number(l.limit_count ?? l.limitCount);
-        if (limitType !== LEGACY_LIMIT_TYPES[type] || !Number.isInteger(count) || count < 1) continue;
+        if (limitType !== STORED_LIMIT_TYPES[type] || !Number.isInteger(count) || count < 1) continue;
         // A stored limit with no unit came from the YAML shorthand (requestCount, eventCount), which is per minute.
         const unit = String(l.time_unit ?? l.timeUnit ?? '').trim().toUpperCase() || 'MINUTE';
         if (!TIME_UNITS.includes(unit)) continue;
@@ -251,6 +254,33 @@ function conditionsFromLimits(current, limits) {
         conditions = withCondition(conditions, type, limitCondition(type, windowsFromLimits(limits, type), onExceed));
     }
     return conditions;
+}
+
+/**
+ * The conditions of a plan saved before conditions, from its subscription_plan_limits rows: request-count,
+ * event-count and a total token-count. Other limit types (BANDWIDTH) have no condition.
+ */
+function conditionsFromStoredLimits(limits) {
+    const tokens = limitCondition(TYPE.TOKEN_COUNT, windowsFromLimits(limits, TYPE.TOKEN_COUNT));
+    const conditions = conditionsFromLimits([], limits);
+    if (tokens) conditions.push({ ...tokens, params: { ...tokens.params, tokenType: 'total' } });
+    return conditions;
+}
+
+/**
+ * The subscription_plan_limits rows that hold a plan's conditions in a database not upgraded yet, or
+ * null when a condition can't be kept there (another type, a token type other than total, or onExceed: allow).
+ */
+function storedLimitsFromConditions(conditions) {
+    const storable = (c) => STORED_LIMIT_TYPES[c.type] && c.params?.onExceed !== 'allow'
+        && (c.type !== TYPE.TOKEN_COUNT || (c.params?.tokenType ?? 'total') === 'total');
+    if (!conditions.every(storable)) return null;
+    return conditions.flatMap((c) => c.params.limits.map((w) => ({
+        limitType: STORED_LIMIT_TYPES[c.type],
+        limitCount: w.count,
+        timeUnit: w.timeUnit,
+        timeAmount: w.timeAmount,
+    })));
 }
 
 /** The REQUEST_COUNT and EVENT_COUNT limits that mirror a plan's request-count and event-count conditions. */
@@ -333,10 +363,13 @@ module.exports = {
     displayLimits,
     TYPE,
     BUILT_IN_IDS,
+    STORED_LIMIT_TYPES,
     normalizeConditions,
     windowsFromLimits,
     limitCondition,
     withCondition,
     conditionsFromLimits,
+    conditionsFromStoredLimits,
+    storedLimitsFromConditions,
     legacyLimitsFromConditions,
 };
