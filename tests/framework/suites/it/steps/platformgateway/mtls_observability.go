@@ -171,7 +171,13 @@ func (g *Gateway) logSinceLatestRequest(ctx context.Context, service string) (st
 // logSinceLatestRequestContains waits until the service logs the text after the latest request.
 // Escaped quotes in the text stand for quotes.
 func (g *Gateway) logSinceLatestRequestContains(ctx context.Context, service, text string) error {
-	want, err := stepscommon.Expand(ctx, strings.ReplaceAll(text, `\"`, `"`))
+	return g.awaitLogSinceLatestRequest(ctx, service, strings.ReplaceAll(text, `\"`, `"`))
+}
+
+// awaitLogSinceLatestRequest waits until the service logs the expanded text after the latest
+// request.
+func (g *Gateway) awaitLogSinceLatestRequest(ctx context.Context, service, text string) error {
+	want, err := stepscommon.Expand(ctx, text)
 	if err != nil {
 		return err
 	}
@@ -194,7 +200,7 @@ func (g *Gateway) logSinceLatestRequestContainsDocString(ctx context.Context, se
 	if text == nil || strings.TrimSpace(text.Content) == "" {
 		return fmt.Errorf("the %q log step needs a doc string with the text the log must contain", service)
 	}
-	return g.logSinceLatestRequestContains(ctx, service, strings.TrimSpace(text.Content))
+	return g.awaitLogSinceLatestRequest(ctx, service, strings.TrimSpace(text.Content))
 }
 
 // logExpectation is one thing an access log line must show.
