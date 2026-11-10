@@ -111,9 +111,12 @@ func (p *HTTPPortalPublisher) SyncPlans(ctx context.Context, portal *model.APIPo
 	if err != nil {
 		return created, err
 	}
-	var missing, changed []*model.SubscriptionPlan
+	var missing, changed, adopted []*model.SubscriptionPlan
 	for _, plan := range sync.Plans {
 		portalCopy, ok := listed[plan.Handle]
+		if ok && adoptPortalEventLimit(plan, portalCopy) {
+			adopted = append(adopted, plan)
+		}
 		switch {
 		case !ok:
 			missing = append(missing, plan)
@@ -146,7 +149,61 @@ func (p *HTTPPortalPublisher) SyncPlans(ctx context.Context, portal *model.APIPo
 			return PlanSyncResult{}, p.undoAfter(ctx, portal, created, err)
 		}
 	}
+	created.EventLimitsAdopted = adopted
 	return created, nil
+}
+
+// adoptPortalEventLimit gives a plan saved before conditions the event-count condition of the portal's
+// copy, so the sync doesn't remove it there. Releases before conditions kept only a plan's request limit
+// here and dropped the event limits the portal sent; the portal's copy still has them. Such a plan has
+// only its old request limit (LegacyLimits) or, when it had none, no conditions. A plan with other
+// conditions keeps its own: without event-count, it has none. It reports whether the plan took one.
+func adoptPortalEventLimit(plan *model.SubscriptionPlan, portalCopy *portalListedPlan) bool {
+	if !(plan.LegacyLimits || len(plan.Conditions) == 0) ||
+		model.FindCondition(plan.Conditions, model.ConditionTypeEventCount) != nil {
+		return false
+	}
+	var events *model.SubscriptionPlanCondition
+	if portalCopy.Conditions != nil {
+		events = model.FindCondition(*portalCopy.Conditions, model.ConditionTypeEventCount)
+	} else if windows := portalEventWindows(portalCopy.Limits); len(windows) > 0 {
+		c := model.NewLimitCondition(model.ConditionTypeEventCount, windows, true)
+		events = &c
+	}
+	if events == nil {
+		return false
+	}
+	conditions, err := normalizeConditions(append(append([]model.SubscriptionPlanCondition{}, plan.Conditions...), *events))
+	if err != nil {
+		return false
+	}
+	plan.Conditions = conditions
+	return true
+}
+
+// portalEventWindows maps a portal copy's EVENT_COUNT limits to event-count windows, as the portal's
+// plan events are read: no time unit is per MINUTE; unlimited, unsupported and repeated-length limits are
+// skipped, and at most ten are kept.
+func portalEventWindows(limits []portalPlanLimit) []model.ConditionWindow {
+	var windows []model.ConditionWindow
+	seen := map[string]bool{}
+	for _, l := range limits {
+		if !strings.EqualFold(strings.TrimSpace(l.LimitType), constants.LimitTypeEventCount) || l.LimitCount < 1 {
+			continue
+		}
+		unit := strings.ToUpper(strings.TrimSpace(l.TimeUnit))
+		if unit == "" {
+			unit = constants.ThrottleLimitUnitMinute
+		}
+		amount := max(l.TimeAmount, 1)
+		key := model.WindowKey(amount, unit)
+		if !constants.ValidThrottleLimitUnits[unit] || seen[key] || len(windows) == 10 {
+			continue
+		}
+		seen[key] = true
+		windows = append(windows, model.ConditionWindow{Count: l.LimitCount, TimeAmount: amount, TimeUnit: unit})
+	}
+	return windows
 }
 
 // findPortalPlans pages through the portal's plans and returns its copies of plans, by handle. It

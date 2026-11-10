@@ -944,3 +944,93 @@ func TestSyncPlans_ComparesConditionsWhenListed(t *testing.T) {
 		t.Fatalf("want only silver updated, got %+v", pp.updated)
 	}
 }
+
+// eventsOf returns the windows of the plan's event-count condition, or nil.
+func eventsOf(t *testing.T, plan *model.SubscriptionPlan) []model.ConditionWindow {
+	t.Helper()
+	c := model.FindCondition(plan.Conditions, model.ConditionTypeEventCount)
+	if c == nil {
+		return nil
+	}
+	var params model.ConditionLimits
+	if err := json.Unmarshal(c.Params, &params); err != nil {
+		t.Fatalf("event-count params: %v", err)
+	}
+	return params.Limits
+}
+
+func syncPlansResult(t *testing.T, pp *planPortal, plans []*model.SubscriptionPlan) PlanSyncResult {
+	t.Helper()
+	srv := pp.serve(t)
+	p := newTestHTTPPortalPublisher(t, "test-shared-key")
+	result, err := p.SyncPlans(context.Background(), &model.APIPortal{URL: srv.URL}, PlanSync{Plans: plans})
+	if err != nil {
+		t.Fatalf("SyncPlans: %v", err)
+	}
+	return result
+}
+
+// Releases before conditions kept only a plan's request limit here and dropped its event limits. The
+// sync takes them from the portal's copy instead of removing them there, and names the plan to save.
+func TestSyncPlans_APlanSavedBeforeConditionsTakesThePortalsEventLimits(t *testing.T) {
+	events := map[string]any{"limitType": "EVENT_COUNT", "limitCount": 500, "timeUnit": "MINUTE", "timeAmount": 1}
+	pp := &planPortal{
+		handles: []string{"gold", "async"},
+		listed: map[string]map[string]any{
+			// A portal that predates conditions lists only limits.
+			"gold": {"id": "gold", "displayName": "Gold", "limits": append(listedLimit(1000, "MINUTE"), events)},
+			// One that lists conditions: an event-only plan, which had no limit here at all.
+			"async": {"id": "async", "displayName": "Async", "limits": []any{events}, "conditions": []any{map[string]any{
+				"id": "events", "type": "event-count", "params": map[string]any{
+					"limits": []any{map[string]any{"count": 500, "timeAmount": 1, "timeUnit": "MINUTE"}}, "onExceed": "allow"}}}},
+		},
+	}
+	gold := limitedPlan("gold", "Gold", 1000, "MINUTE")
+	gold.LegacyLimits = true
+	async := testPlan("async")
+	async.Name = "Async"
+
+	result := syncPlansResult(t, pp, []*model.SubscriptionPlan{gold, async})
+
+	if len(pp.updated) != 0 {
+		t.Fatalf("the portal's event limits must not be removed, got updates %+v", pp.updated)
+	}
+	if len(result.EventLimitsAdopted) != 2 || result.EventLimitsAdopted[0] != gold || result.EventLimitsAdopted[1] != async {
+		t.Fatalf("adopted = %+v, want gold and async", result.EventLimitsAdopted)
+	}
+	want := []model.ConditionWindow{{Count: 500, TimeAmount: 1, TimeUnit: "MINUTE"}}
+	if got := eventsOf(t, gold); len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("gold events = %+v, want %+v", got, want)
+	}
+	if model.FindCondition(gold.Conditions, model.ConditionTypeRequestCount) == nil {
+		t.Fatalf("gold lost its request limit: %+v", gold.Conditions)
+	}
+	if got := eventsOf(t, async); len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("async events = %+v, want %+v", got, want)
+	}
+	var params model.ConditionLimits
+	_ = json.Unmarshal(model.FindCondition(async.Conditions, model.ConditionTypeEventCount).Params, &params)
+	if params.OnExceed != model.ConditionOnExceedAllow {
+		t.Fatalf("async onExceed = %q, want the portal's allow", params.OnExceed)
+	}
+}
+
+// A plan saved with conditions keeps its own: without an event-count condition it has no event limit,
+// and the portal's copy is updated to match.
+func TestSyncPlans_APlanSavedWithConditionsKeepsItsOwnEventLimits(t *testing.T) {
+	events := map[string]any{"limitType": "EVENT_COUNT", "limitCount": 500, "timeUnit": "MINUTE", "timeAmount": 1}
+	pp := &planPortal{
+		handles: []string{"gold"},
+		listed:  map[string]map[string]any{"gold": {"id": "gold", "displayName": "Gold", "limits": append(listedLimit(1000, "MINUTE"), events)}},
+	}
+	gold := limitedPlan("gold", "Gold", 1000, "MINUTE")
+
+	result := syncPlansResult(t, pp, []*model.SubscriptionPlan{gold})
+
+	if len(result.EventLimitsAdopted) != 0 || eventsOf(t, gold) != nil {
+		t.Fatalf("a plan saved with conditions took the portal's event limit: %+v", gold.Conditions)
+	}
+	if len(pp.updated) != 1 || len(pp.updated[0][0].Limits) != 1 || pp.updated[0][0].Limits[0].LimitType != "REQUEST_COUNT" {
+		t.Fatalf("want the copy updated to the request limit only, got %+v", pp.updated)
+	}
+}

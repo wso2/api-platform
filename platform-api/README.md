@@ -88,6 +88,12 @@ password = '{{ env "DB_PASSWORD" }}'   # or '{{ file "/secrets/platform-api/db_p
 ssl_mode = "disable"
 ```
 
+SQLite databases are created and upgraded on startup. A PostgreSQL or SQL Server database is not:
+on every upgrade, re-run the matching schema script (`internal/database/schema.postgres.sql` or
+`internal/database/schema.sqlserver.sql`) before starting the new release. The scripts are safe to
+re-run. Until then, the release can't store what the old schema has no place for, such as a
+subscription plan's conditions.
+
 ```bash
 cd platform-api
 go run ./cmd/main.go -config config/config.toml

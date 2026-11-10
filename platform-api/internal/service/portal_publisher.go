@@ -106,6 +106,9 @@ type PlanSync struct {
 type PlanSyncResult struct {
 	Plans  []string
 	Meters []string
+	// EventLimitsAdopted are the plans saved before conditions that took the event-count condition
+	// of the portal's copy (adoptPortalEventLimit), to be saved here.
+	EventLimitsAdopted []*model.SubscriptionPlan
 }
 
 // PortalMeterConflictError signals that the API Portal already has a meter with

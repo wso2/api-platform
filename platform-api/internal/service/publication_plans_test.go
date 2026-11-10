@@ -31,8 +31,15 @@ import (
 
 type publicationPlanRepo struct {
 	repository.SubscriptionPlanRepository
-	plans map[string]*model.SubscriptionPlan
-	err   error
+	plans     map[string]*model.SubscriptionPlan
+	err       error
+	updated   []*model.SubscriptionPlan
+	updateErr error
+}
+
+func (f *publicationPlanRepo) Update(plan *model.SubscriptionPlan) error {
+	f.updated = append(f.updated, plan)
+	return f.updateErr
 }
 
 func (f *publicationPlanRepo) GetByHandles(handles []string, _ string) (map[string]*model.SubscriptionPlan, error) {
@@ -50,15 +57,19 @@ func (f *publicationPlanRepo) GetByHandles(handles []string, _ string) (map[stri
 
 type planSyncPublisher struct {
 	PortalPublisher
-	err   error
-	calls int
-	got   []*model.SubscriptionPlan
+	err     error
+	calls   int
+	got     []*model.SubscriptionPlan
+	adopted []*model.SubscriptionPlan
 }
 
 func (f *planSyncPublisher) SyncPlans(_ context.Context, _ *model.APIPortal, sync PlanSync) (PlanSyncResult, error) {
 	f.calls++
 	f.got = sync.Plans
-	return PlanSyncResult{}, f.err
+	if f.err != nil {
+		return PlanSyncResult{}, f.err
+	}
+	return PlanSyncResult{EventLimitsAdopted: f.adopted}, nil
 }
 
 func (f *planSyncPublisher) UndoPlanSync(_ context.Context, _ *model.APIPortal, _ PlanSyncResult) error {
@@ -181,6 +192,20 @@ func TestSyncPortalPlans(t *testing.T) {
 		}
 		if pub.calls != 1 || len(pub.got) != 2 || pub.got[0].Handle != "silver" || pub.got[1].Handle != "gold" {
 			t.Fatalf("got %d calls, plans %v", pub.calls, pub.got)
+		}
+	})
+
+	t.Run("saves the plans that took the portal's event limits; a failed save doesn't stop the publish", func(t *testing.T) {
+		for _, updateErr := range []error{nil, errors.New("database unavailable")} {
+			repo := publicationTestPlans()
+			repo.updateErr = updateErr
+			pub := &planSyncPublisher{adopted: []*model.SubscriptionPlan{plans[1]}}
+			if _, err := newPublicationPlanService(repo, pub).syncPortalPlans(context.Background(), portal, "org", plans); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(repo.updated) != 1 || repo.updated[0] != plans[1] {
+				t.Fatalf("saved %v, want only gold", repo.updated)
+			}
 		}
 	})
 
