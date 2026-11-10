@@ -468,7 +468,7 @@ endif
 
 .PHONY: clean-dist
 clean-dist: ## Remove distribution staging dir and zip (binary and product zips are left alone; their targets replace their own)
-	@find target -maxdepth 1 -name 'wso2apip-api-portal-*' ! -name 'wso2apip-api-portal-binary-*' -exec rm -rf {} + 2>/dev/null || true
+	@find -H target -maxdepth 1 -name 'wso2apip-api-portal-*' ! -name 'wso2apip-api-portal-binary-*' -exec rm -rf {} + 2>/dev/null || true
 
 # Clean Targets
 # `clean` also removes the binary zip and the folders the binary, image and product
