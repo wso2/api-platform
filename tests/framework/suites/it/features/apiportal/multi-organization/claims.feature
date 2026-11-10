@@ -144,6 +144,7 @@ Feature: API Portal multi-organization organization claims
 
     # Concurrent first use of a new organization provisions it exactly once
     Given I generate a unique resource name from "race" and store it as "race"
+    And the API Portal "api-portal-multi-organization" organization with IDP reference "${CTX:race}" is removed after the scenario
     And I mint an API Portal IDP token stored as "token" with claims:
       | sub      | racer             |
       | org_id   | ${CTX:race}       |
@@ -154,6 +155,7 @@ Feature: API Portal multi-organization organization claims
 
     # A later token with new organization names leaves the provisioned names unchanged
     Given I generate a unique resource name from "renamed" and store it as "renamed"
+    And the API Portal "api-portal-multi-organization" organization with IDP reference "${CTX:renamed}" is removed after the scenario
     And I mint an API Portal IDP token stored as "first" with claims:
       | sub        | r1                    |
       | org_id     | ${CTX:renamed}        |

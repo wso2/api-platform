@@ -197,7 +197,8 @@ Feature: APIs are created and updated from artifact ZIPs through the API Portal 
     Then the response status code should be 403
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 404
-    When I send an authenticated API Portal "PUT" artifact upload "valid" request to "/apis/${CTX:missingId}" as "publisher"
-    Then the response status code should be 404
     When I send an authenticated API Portal "POST" artifact upload "valid" request to "/apis" as "publisher"
     Then the response status code should be 201
+    # The artifact's own API exists now, so only the URL's missing target can answer 404.
+    When I send an authenticated API Portal "PUT" artifact upload "valid" request to "/apis/${CTX:missingId}" as "publisher"
+    Then the response status code should be 404

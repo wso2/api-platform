@@ -101,9 +101,6 @@ blocks:
       - name: discovery
         features:
           - features/apiportal/ai/discovery.feature
-      - name: organizations
-        features:
-          - features/apiportal/organizations/organizations.feature
       - name: organization-isolation
         features:
           - features/apiportal/organizations/organization_isolation.feature
@@ -157,6 +154,9 @@ blocks:
       - name: organization-webhooks
         features:
           - features/apiportal/organizations/organization_webhooks.feature
+      - name: organizations
+        features:
+          - features/apiportal/organizations/organizations.feature
 
   # The portal authorizes requests by scope (api-portal-auth-scope.toml), a portal-wide mode.
   - name: api-portal-auth-scope

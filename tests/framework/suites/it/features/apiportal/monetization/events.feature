@@ -47,7 +47,7 @@ Feature: The API Portal reports its meters and priced plans to webhook subscribe
     Then the JSON response field "data.handle" should be "${CTX:meterId}"
     And the JSON response field "data.display_name" should be "Event calls ${CTX:meterId}"
     And the JSON response field "data.type" should be "REQUEST_COUNT"
-    And the JSON response field "data.type_key" should be "null"
+    And the JSON response field "data.type_key" should be null
     And the JSON response field "data.filter_fields[0].field" should be "Status"
     And the JSON response field "data.filter_fields[0].event_key" should be "response.status"
 

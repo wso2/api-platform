@@ -542,6 +542,8 @@ Feature: API workflows are managed per view and shown to people and agents by th
     When I send an authenticated API Portal "PUT" request to "/views/${CTX:viewId}/api-workflows/${CTX:workflowId}" as "publisher" with JSON values:
       | id | bad id |
     Then the response status code should be 400
+    When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}/api-workflows/${CTX:workflowId}" as "publisher"
+    Then I store the JSON response field "apiWorkflowDefinition" as "originalDefinition"
     When I send an authenticated API Portal "PUT" request to "/views/${CTX:viewId}/api-workflows/${CTX:workflowId}" as "publisher" with JSON values:
       | apiWorkflowDefinition | {not: [valid |
     Then the response status code should be 400
@@ -555,6 +557,7 @@ Feature: API workflows are managed per view and shown to people and agents by th
     And the JSON response field "status" should be "PUBLISHED"
     And the JSON response field "agentVisibility" should be "VISIBLE"
     And the JSON response field "contentType" should be "ARAZZO"
+    And the JSON response field "apiWorkflowDefinition" should be "${CTX:originalDefinition}"
     When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}/api-workflows/${CTX:otherWorkflowId}" as "publisher"
     Then the JSON response field "displayName" should be "Other Workflow"
     When I send an authenticated API Portal "PUT" request to "/views/${CTX:viewId}/api-workflows/${CTX:missingWorkflowId}" as "publisher" with JSON values:

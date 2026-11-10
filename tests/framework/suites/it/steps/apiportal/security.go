@@ -71,6 +71,7 @@ func (s *Steps) registerSecuritySteps(sc *godog.ScenarioContext) {
 // sendSessionRequestWithBadCSRF signs the role in and sends a session-authenticated write whose
 // CSRF token is either left out or replaced by a well-formed value the session never issued.
 func (s *Steps) sendSessionRequestWithBadCSRF(ctx context.Context, method, path, role, mode string, table *godog.Table) error {
+	tcontext.Remove(ctx, httpx.ResponseKey)
 	path, err := stepscommon.Expand(ctx, path)
 	if err != nil {
 		return err
@@ -94,14 +95,14 @@ func (s *Steps) sendSessionRequestWithBadCSRF(ctx context.Context, method, path,
 	if mode == "an invalid" {
 		headers["X-CSRF-Token"] = forgedCSRFToken(csrf)
 	}
-	response, err := s.client.Do(ctx, httpx.Request{
+	_, err = s.portalFunnel().Send(ctx, httpx.Request{
 		Method: strings.ToUpper(method), URL: portalPublicURL(base, path), Headers: headers,
 		Body: payload, ContentType: "application/json",
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("API Portal session %s %s: %w", method, path, err)
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
 // forgedCSRFToken returns a token of the issued token's shape that differs from it in every
@@ -124,13 +125,14 @@ func forgedCSRFToken(issued string) string {
 // openLoginPage opens the default view's login page without a session, as a browser does before
 // signing in, and keeps the cookies it sets for the login that follows.
 func (s *Steps) openLoginPage(ctx context.Context) error {
+	tcontext.Remove(ctx, httpx.ResponseKey)
 	base, err := s.portalBase()
 	if err != nil {
 		return err
 	}
-	response, err := s.client.Do(ctx, httpx.Request{
+	response, err := s.portalFunnel().Send(ctx, httpx.Request{
 		Method: http.MethodGet, URL: base + "/api-portal/" + orgHandle + "/views/default/login",
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("API Portal login page: %w", err)
 	}
@@ -138,12 +140,13 @@ func (s *Steps) openLoginPage(ctx context.Context) error {
 	if err := tcontext.Set(ctx, preLoginSessionKey, cookie); err != nil {
 		return err
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
 // submitFileLoginInPreLoginSession posts the login form with the cookies the login page set, so the
 // portal sees a login inside an existing session. The resulting cookies replace the stored session.
 func (s *Steps) submitFileLoginInPreLoginSession(ctx context.Context, role string) error {
+	tcontext.Remove(ctx, httpx.ResponseKey)
 	credentials, err := portalActor(role)
 	if err != nil {
 		return err
@@ -160,13 +163,13 @@ func (s *Steps) submitFileLoginInPreLoginSession(ctx context.Context, role strin
 		return err
 	}
 	form := url.Values{"username": {credentials.Username}, "password": {credentials.Password}}.Encode()
-	response, err := s.client.Do(ctx, httpx.Request{
+	response, err := s.portalFunnel().Send(ctx, httpx.Request{
 		Method:      http.MethodPost,
 		URL:         base + "/api-portal/" + orgHandle + "/views/default/login",
 		Headers:     map[string]string{"Cookie": preLogin},
 		Body:        []byte(form),
 		ContentType: "application/x-www-form-urlencoded",
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("API Portal file login: %w", err)
 	}
@@ -174,7 +177,7 @@ func (s *Steps) submitFileLoginInPreLoginSession(ctx context.Context, role strin
 		mergeCookieHeader(preLogin, response.Headers.Values("Set-Cookie"))); err != nil {
 		return err
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
 // sessionCookieRotated asserts the session id after login is not the one the login page issued
@@ -210,8 +213,8 @@ func cookieValue(header, name string) string {
 }
 
 // responseCookieAttribute asserts an attribute of a cookie the published response sets. The
-// attribute is a name ("HttpOnly", "SameSite") or name=value ("Path=/api-portal"); both match
-// case-insensitively.
+// attribute is a name ("HttpOnly", "SameSite") or name=value ("Path=/api-portal"). Names match
+// case-insensitively, as do values other than Path, which browsers compare case-sensitively.
 func (s *Steps) responseCookieAttribute(ctx context.Context, name, want, attribute string) error {
 	response, err := httpx.Published(ctx)
 	if err != nil {
@@ -243,11 +246,20 @@ func cookieHasAttribute(setCookie, attribute string) bool {
 		if !strings.EqualFold(strings.TrimSpace(name), wantName) {
 			continue
 		}
-		if !withValue || strings.EqualFold(strings.TrimSpace(value), strings.TrimSpace(wantValue)) {
+		if !withValue || cookieAttributeValueMatches(wantName, strings.TrimSpace(value), strings.TrimSpace(wantValue)) {
 			return true
 		}
 	}
 	return false
+}
+
+// cookieAttributeValueMatches compares an attribute value by the rules for that attribute. RFC 6265
+// path-matching is case-sensitive, so a Path differing only in case is a different path.
+func cookieAttributeValueMatches(attribute, got, want string) bool {
+	if strings.EqualFold(attribute, "Path") {
+		return got == want
+	}
+	return strings.EqualFold(got, want)
 }
 
 // sendUnauthenticatedWithHeader sends a request with no credentials and one extra header.
@@ -280,6 +292,8 @@ func (s *Steps) sendWithForgedToken(ctx context.Context, method, path, variant, 
 	return s.sendPortalWithHeaders(ctx, method, path, "", nil, map[string]string{"Authorization": "Bearer " + forged})
 }
 
+// forgeToken derives the named variant from a real token, returning an error for a token that is
+// not a compact JWS with JSON object header and claims, or for an unknown variant.
 func forgeToken(token, variant string, now time.Time) (string, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
@@ -289,8 +303,14 @@ func forgeToken(token, variant string, now time.Time) (string, error) {
 	if err := decodeSegment(parts[0], &header); err != nil {
 		return "", fmt.Errorf("decoding the token header: %w", err)
 	}
+	if header == nil {
+		return "", fmt.Errorf("the token header must be a JSON object")
+	}
 	if err := decodeSegment(parts[1], &claims); err != nil {
 		return "", fmt.Errorf("decoding the token claims: %w", err)
+	}
+	if claims == nil {
+		return "", fmt.Errorf("the token claims must be a JSON object")
 	}
 	cp := shared.ControlPlaneCrypto()
 	switch variant {
@@ -341,6 +361,7 @@ func forgeToken(token, variant string, now time.Time) (string, error) {
 	}
 }
 
+// decodeSegment decodes one base64url JWS segment holding JSON into out.
 func decodeSegment(segment string, out any) error {
 	raw, err := base64.RawURLEncoding.DecodeString(segment)
 	if err != nil {
@@ -349,6 +370,7 @@ func decodeSegment(segment string, out any) error {
 	return json.Unmarshal(raw, out)
 }
 
+// encodeSegment encodes a value as one base64url JSON JWS segment.
 func encodeSegment(value any) (string, error) {
 	raw, err := json.Marshal(value)
 	if err != nil {
@@ -357,6 +379,7 @@ func encodeSegment(value any) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
+// signingInput returns the header.claims text a JWS signature covers.
 func signingInput(header, claims map[string]any) (string, error) {
 	h, err := encodeSegment(header)
 	if err != nil {

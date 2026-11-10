@@ -376,6 +376,8 @@ Feature: Publishing an API to an API Portal through the control plane
     Then the response status code should be 200
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/apis.md"
     Then the response body should contain "${CTX:apiHandle}"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/llms.txt"
+    Then the response body should contain "${CTX:apiHandle}"
     When I unpublish the "RestApi" "${CTX:apiHandle}" from the API Portal "${CTX:portalHandle}" through the control plane
     Then the response status code should be 204
     And the API Portal should not list the API "${CTX:apiHandle}"

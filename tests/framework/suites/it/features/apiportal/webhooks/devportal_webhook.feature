@@ -154,7 +154,7 @@ Feature: Credentials issued in the API Portal authorize gateway invocation via w
     Then the response status code should be 401
 
   @APIP-053 @type:negative @type:security
-  Scenario: The control plane processes only signed, recent, known API Portal events, and each one once
+  Scenario: The control plane processes only signed, recent, known API Portal events, and a redelivered event changes nothing
     # The control plane processes only API Portal events signed with its secret within the replay window
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
@@ -235,7 +235,7 @@ Feature: Credentials issued in the API Portal authorize gateway invocation via w
     When I send a "GET" request to the control plane at "/meters/${CTX:foreignMeter}"
     Then the response status code should be 404
 
-    # The same API Portal event delivered twice is processed once
+    # An API Portal event delivered twice is handled idempotently: one meter, with the event's values
     Given I generate a unique resource name from "receiver-replayed-meter" and store it as "meterId"
     And the control plane meter "${CTX:meterId}" is registered for cleanup
     When the API Portal sends the "meter.created" event to the control plane signed with data:

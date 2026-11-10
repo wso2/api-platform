@@ -40,7 +40,7 @@ Feature: Meters in the API Portal
     Then the response status code should be 201
     And the JSON response field "id" should be "${CTX:meterId}"
     And the JSON response field "type" should be "REQUEST_COUNT"
-    And the JSON response field "typeKey" should be "null"
+    And the JSON response field "typeKey" should be null
     And the JSON response field "planCount" should be 0
     And the JSON response field "filterFields[0].field" should be "Status code"
 
@@ -56,7 +56,7 @@ Feature: Meters in the API Portal
     When I send an authenticated API Portal "GET" request to "/meters/${CTX:meterId}" as "admin"
     Then the response status code should be 200
     And the JSON response field "displayName" should be "All calls ${CTX:meterId}"
-    And the JSON response field "description" should be "null"
+    And the JSON response field "description" should be null
     And the JSON response array field "filterFields" should have 0 items
 
     When I send an authenticated API Portal "DELETE" request to "/meters/${CTX:meterId}" as "admin"
@@ -111,6 +111,16 @@ Feature: Meters in the API Portal
 
   @APIP-040 @type:negative @type:security
   Scenario: Invalid meters are refused, a priced meter is locked, and only administrators can define meters
+    # A meter that sets the read-only plan count is refused
+    Given I generate a unique resource name from "portal-plan-count-meter" and store it as "meterId"
+    And I register API Portal resource "${CTX:meterId}" at "/meters" for cleanup
+    When I send an authenticated API Portal "POST" request to "/meters" as "admin" with JSON values:
+      | id          | ${CTX:meterId} |
+      | displayName | Calls          |
+      | type        | REQUEST_COUNT  |
+      | planCount   | 3              |
+    Then the response status code should be 400
+
     # A meter that counts tokens without a type key is refused with the reason and nothing is stored
     Given I generate a unique resource name from "portal-refused-meter" and store it as "meterId"
     When I send an authenticated API Portal "POST" request to "/meters" as "admin" with JSON values:

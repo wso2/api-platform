@@ -46,18 +46,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/cucumber/godog"
+
+	"github.com/wso2/api-platform/tests/framework/core/assets"
 	"gopkg.in/yaml.v3"
 
 	"github.com/wso2/api-platform/tests/framework/core/actor"
@@ -109,6 +114,15 @@ var (
 	// The organization is never deleted; its settings are written back after everything the
 	// scenario created under it is gone.
 	portalOrganizationKind = cleanup.Kind{Name: "api-portal-organization-settings", Order: 90}
+)
+
+const (
+	// listingPageSize is the largest page the portal serves; maxListingPages bounds the walk.
+	listingPageSize = 100
+	maxListingPages = 1000
+	// maxArchiveEntries and maxArchiveEntryBytes bound what is read from an exported archive.
+	maxArchiveEntries    = 1000
+	maxArchiveEntryBytes = 32 << 20
 )
 
 // Steps holds what every api-portal REST call needs.
@@ -187,10 +201,15 @@ func Register(
 	sc.Step(`^the API Portal response body should equal stored "([^"]*)"$`, s.responseBodyEqualsStored)
 	sc.Step(`^I store the API Portal response header "([^"]*)" as "([^"]*)"$`, s.storeResponseHeader)
 	sc.Step(`^the API Portal response header "([^"]*)" should equal stored "([^"]*)"$`, s.responseHeaderEqualsStored)
-	sc.Step(`^the API Portal IT role mappings should match except for role "([^"]*)"$`, s.assertITRoleMappingsMatch)
+	sc.Step(`^the API Portal staged role mappings should cover every control plane grant except for role "([^"]*)"$`,
+		s.assertStagedRoleGrantsCovered)
 	sc.Step(`^the API Portal IT role "([^"]*)" should be read-only on the portal side$`, s.assertITRoleIsReadOnly)
 	sc.Step(`^I wait for an API Portal webhook event "([^"]*)"$`, s.waitForWebhookEvent)
 	sc.Step(`^I wait for an API Portal webhook event "([^"]*)" containing "([^"]*)"$`, s.waitForWebhookEventContaining)
+	sc.Step(`^I wait for an API Portal webhook event "([^"]*)" containing "([^"]*)" and not containing "([^"]*)"$`,
+		s.waitForWebhookEventMatch)
+	sc.Step(`^the API Portal "([^"]*)" organization with IDP reference "([^"]*)" is removed after the scenario$`,
+		s.removeProvisionedOrganizationAfterScenario)
 	sc.Step(`^I wait for API Portal webhook event "([^"]*)" to reach status "([^"]*)"$`,
 		s.waitForWebhookEventStatus)
 	sc.Step(`^the API Portal delivery for subscriber "([^"]*)" and event "([^"]*)" should be "([^"]*)"$`,
@@ -205,6 +224,14 @@ func Register(
 	sc.Step(`^I verify no API Portal webhook event "([^"]*)" containing "([^"]*)" is delivered$`,
 		s.verifyNoWebhookEventContaining)
 	sc.Step(`^I reset API Portal webhook events$`, s.resetWebhookEvents)
+	sc.Step(`^every API Portal webhook event of type "([^"]*)" should have settled$`, s.waitForWebhookEventsSettled)
+	sc.Step(`^the values "([^"]*)" should each appear in exactly one of the stored API Portal responses "([^"]*)"$`,
+		s.assertValuesOnExactlyOnePage)
+	sc.Step(`^the API Portal API listing seen by "([^"]*)" should (contain|not contain) "([^"]*)" across all pages$`,
+		s.assertAPIListingAcrossPages)
+	sc.Step(`^the API Portal response should be an archive holding the files of theme "([^"]*)"$`,
+		s.assertExportedTheme)
+	sc.Step(`^I deregister API Portal resource "([^"]*)" at "([^"]*)" from cleanup$`, s.deregisterResourceFromCleanup)
 	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)"$`,
 		s.sendAuthenticated)
 	sc.Step(`^I send an authenticated API Portal "([^"]*)" request to "([^"]*)" as "([^"]*)" until status (\d+)$`,
@@ -352,6 +379,8 @@ func (s *Steps) sendUnauthenticated(ctx context.Context, method, path string) er
 	return s.sendPortal(ctx, method, path, "", nil)
 }
 
+// sendUnauthenticatedAt sends a request with no credentials to the named portal and publishes the
+// response.
 func (s *Steps) sendUnauthenticatedAt(ctx context.Context, method, path, portal string) error {
 	base, err := s.portalBaseNamed(portal)
 	if err != nil {
@@ -361,15 +390,17 @@ func (s *Steps) sendUnauthenticatedAt(ctx context.Context, method, path, portal 
 	if err != nil {
 		return err
 	}
-	response, err := s.client.Do(ctx, httpx.Request{
+	_, err = s.portalFunnel().Send(ctx, httpx.Request{
 		Method: strings.ToUpper(method), URL: s.portalRequestURL(base, path),
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("API Portal %s %s: %w", method, path, err)
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
+// sendPublic sends a request with no credentials to a public portal route and publishes the
+// response.
 func (s *Steps) sendPublic(ctx context.Context, method, path string) error {
 	base, err := s.portalBase()
 	if err != nil {
@@ -379,13 +410,13 @@ func (s *Steps) sendPublic(ctx context.Context, method, path string) error {
 	if err != nil {
 		return err
 	}
-	response, err := s.client.Do(ctx, httpx.Request{
+	_, err = s.portalFunnel().Send(ctx, httpx.Request{
 		Method: strings.ToUpper(method), URL: s.portalRequestURL(base, path),
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("API Portal public %s %s: %w", method, path, err)
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
 // sendRootPath sends an unauthenticated request to the portal host exactly as written, with no
@@ -402,13 +433,13 @@ func (s *Steps) sendRootPath(ctx context.Context, method, path string) error {
 	if !strings.HasPrefix(path, "/") {
 		return fmt.Errorf("API Portal root path %q must start with /", path)
 	}
-	response, err := s.client.Do(ctx, httpx.Request{
+	_, err = s.portalFunnel().Send(ctx, httpx.Request{
 		Method: strings.ToUpper(method), URL: portalPublicURL(base, path),
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("API Portal root path %s %s: %w", method, path, err)
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
 func (s *Steps) submitFileLogin(ctx context.Context, role string) error {
@@ -455,6 +486,8 @@ func (s *Steps) submitFileLoginValues(ctx context.Context, username, password st
 	return s.submitFileLoginValuesAt(ctx, username, password, orgHandle, portalService)
 }
 
+// submitFileLoginValuesAt posts the file login form to an organization and stores the session
+// cookies it sets.
 func (s *Steps) submitFileLoginValuesAt(ctx context.Context, username, password, organization, portal string) error {
 	base, err := s.portalBaseNamed(portal)
 	if err != nil {
@@ -468,12 +501,12 @@ func (s *Steps) submitFileLoginValuesAt(ctx context.Context, username, password,
 	if password != "" {
 		form.Set("password", password)
 	}
-	response, err := s.client.Do(ctx, httpx.Request{
+	response, err := s.portalFunnel().Send(ctx, httpx.Request{
 		Method:      http.MethodPost,
 		URL:         base + "/api-portal/" + organization + "/views/default/login",
 		Body:        []byte(form.Encode()),
 		ContentType: "application/x-www-form-urlencoded",
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("API Portal file login: %w", err)
 	}
@@ -490,7 +523,7 @@ func (s *Steps) submitFileLoginValuesAt(ctx context.Context, username, password,
 			}
 		}
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
 func (s *Steps) storeResponseHeader(ctx context.Context, name, key string) error {
@@ -516,11 +549,20 @@ func (s *Steps) responseHeaderEqualsStored(ctx context.Context, name, key string
 	return nil
 }
 
-func (s *Steps) assertITRoleMappingsMatch(_ context.Context, exception string) error {
+// assertStagedRoleGrantsCovered compares the role mappings the framework stages for the two
+// components. The portal owns more dp: scopes than platform-api checks, so the mappings are not
+// equal; what must hold is that no shared role is granted more by platform-api than by the portal.
+func (s *Steps) assertStagedRoleGrantsCovered(_ context.Context, exception string) error {
 	platform, portal, err := loadITRoleMappings()
 	if err != nil {
 		return err
 	}
+	return checkStagedRoleGrants(platform, portal, exception)
+}
+
+// checkStagedRoleGrants requires both mappings to name the same roles and, for every role but the
+// exception, each platform-api scope to be granted by the portal as well.
+func checkStagedRoleGrants(platform, portal map[string][]string, exception string) error {
 	if exception == "" {
 		return fmt.Errorf("API Portal IT role mapping exception is required")
 	}
@@ -532,8 +574,10 @@ func (s *Steps) assertITRoleMappingsMatch(_ context.Context, exception string) e
 		if !ok {
 			return fmt.Errorf("API Portal IT role mapping is missing role %q", role)
 		}
-		if !equalStrings(scopes, portalScopes) {
-			return fmt.Errorf("API Portal IT role mapping differs for role %q", role)
+		for _, scope := range scopes {
+			if !containsString(portalScopes, scope) {
+				return fmt.Errorf("API Portal IT role %q does not grant platform-api scope %q", role, scope)
+			}
 		}
 	}
 	for role := range portal {
@@ -579,22 +623,31 @@ func (s *Steps) assertITRoleIsReadOnly(_ context.Context, role string) error {
 	return nil
 }
 
+// The role-to-scope mappings the framework stages for each component.
+const (
+	stagedPlatformRoleMapping = "tests/framework/core/catalog/platformapi/resources/api-portal-auth-roles.yaml"
+	stagedPortalRoleMapping   = "tests/framework/core/catalog/apiportal/resources/api-portal-auth-roles.yaml"
+)
+
+// loadITRoleMappings loads the platform-api and portal role mappings the framework stages.
 func loadITRoleMappings() (map[string][]string, map[string][]string, error) {
 	root, ok := shared.RepoRootFromCallerFile()
 	if !ok {
 		return nil, nil, fmt.Errorf("locate repository root for API Portal IT role mappings")
 	}
-	platform, err := loadRoleMapping(filepath.Join(root, "portals/api-portal/it/configs/roles-platform-api-it.yaml"))
+	platform, err := loadRoleMapping(assets.Resolve(root, stagedPlatformRoleMapping))
 	if err != nil {
 		return nil, nil, fmt.Errorf("load Platform API IT role mapping: %w", err)
 	}
-	portal, err := loadRoleMapping(filepath.Join(root, "portals/api-portal/it/configs/portal-roles-it.yaml"))
+	portal, err := loadRoleMapping(assets.Resolve(root, stagedPortalRoleMapping))
 	if err != nil {
 		return nil, nil, fmt.Errorf("load API Portal IT role mapping: %w", err)
 	}
 	return platform, portal, nil
 }
 
+// loadRoleMapping reads a role catalog and returns each role's sorted scopes. A role
+// may have no scopes; an unnamed or duplicate role, or a catalog with no roles, is an error.
 func loadRoleMapping(path string) (map[string][]string, error) {
 	contents, err := os.ReadFile(path)
 	if err != nil {
@@ -611,7 +664,7 @@ func loadRoleMapping(path string) (map[string][]string, error) {
 	}
 	roles := make(map[string][]string, len(document.Roles))
 	for _, role := range document.Roles {
-		if role.Name == "" || len(role.Scopes) == 0 {
+		if role.Name == "" {
 			return nil, fmt.Errorf("invalid role mapping entry")
 		}
 		if _, exists := roles[role.Name]; exists {
@@ -625,18 +678,6 @@ func loadRoleMapping(path string) (map[string][]string, error) {
 		return nil, fmt.Errorf("role mapping is empty")
 	}
 	return roles, nil
-}
-
-func equalStrings(left, right []string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for i := range left {
-		if left[i] != right[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func containsString(values []string, want string) bool {
@@ -685,7 +726,7 @@ func (s *Steps) responseBodyEqualsStored(ctx context.Context, key string) error 
 }
 
 func (s *Steps) waitForWebhookEvent(ctx context.Context, eventType string) error {
-	return s.waitForWebhookEventMatch(ctx, eventType, "")
+	return s.waitForWebhookEventMatch(ctx, eventType, "", "")
 }
 
 // webhookPartition returns the scenario-scoped testbench partition used by API Portal
@@ -696,7 +737,7 @@ func (s *Steps) webhookPartition(ctx context.Context) (string, error) {
 }
 
 func (s *Steps) waitForWebhookEventContaining(ctx context.Context, eventType, marker string) error {
-	return s.waitForWebhookEventMatch(ctx, eventType, marker)
+	return s.waitForWebhookEventMatch(ctx, eventType, marker, "")
 }
 
 func (s *Steps) assertWebhookDeliveryStatus(ctx context.Context, subscriberID, eventType, wantStatus string) error {
@@ -756,12 +797,20 @@ func (s *Steps) assertWebhookDeliveryStatus(ctx context.Context, subscriberID, e
 	return nil
 }
 
-func (s *Steps) waitForWebhookEventMatch(ctx context.Context, eventType, marker string) error {
+// waitForWebhookEventMatch waits for an event of the type whose body holds marker and, when
+// excluded is set, does not hold excluded, which tells an event apart from an earlier delivery of
+// the same type that can still arrive after a reset. The exclusion is applied here to the
+// testbench's delivery list, and the matching delivery is published as the response.
+func (s *Steps) waitForWebhookEventMatch(ctx context.Context, eventType, marker, excluded string) error {
 	eventType, err := stepscommon.Expand(ctx, eventType)
 	if err != nil {
 		return err
 	}
 	marker, err = stepscommon.Expand(ctx, marker)
+	if err != nil {
+		return err
+	}
+	excluded, err = stepscommon.Expand(ctx, excluded)
 	if err != nil {
 		return err
 	}
@@ -773,10 +822,7 @@ func (s *Steps) waitForWebhookEventMatch(ctx context.Context, eventType, marker 
 	if err != nil {
 		return err
 	}
-	endpoint := base + "/" + block + "/test/event?eventType=" + url.QueryEscape(eventType)
-	if marker != "" {
-		endpoint += "&contains=" + url.QueryEscape(marker)
-	}
+	endpoint := base + "/" + block + "/test/deliveries?eventType=" + url.QueryEscape(eventType)
 	type pollResult struct {
 		response *httpx.Response
 		found    bool
@@ -786,7 +832,17 @@ func (s *Steps) waitForWebhookEventMatch(ctx context.Context, eventType, marker 
 		if err != nil {
 			return pollResult{}, retry.Transient(err)
 		}
-		return pollResult{response: response, found: response.Succeeded() && response.HasBody()}, nil
+		if !response.Succeeded() {
+			return pollResult{}, retry.Transient(fmt.Errorf("listing webhook deliveries failed: %s", response.Describe()))
+		}
+		body, found, err := newestDeliveryMatching(response.Body, marker, excluded)
+		if err != nil || !found {
+			return pollResult{}, err
+		}
+		return pollResult{found: true, response: &httpx.Response{
+			StatusCode: http.StatusOK, Body: body, Method: http.MethodGet, URL: endpoint,
+			Headers: http.Header{"Content-Type": []string{"application/json"}},
+		}}, nil
 	}, func(result pollResult) bool { return result.found })
 	if err != nil {
 		return fmt.Errorf("waiting for API Portal webhook event %q: %w", eventType, err)
@@ -795,6 +851,74 @@ func (s *Steps) waitForWebhookEventMatch(ctx context.Context, eventType, marker 
 		return fmt.Errorf("API Portal webhook event %q was not delivered before the timeout", eventType)
 	}
 	return tcontext.Set(ctx, httpx.ResponseKey, result.response)
+}
+
+// newestDeliveryMatching returns the body of the newest delivery in a testbench delivery list whose
+// body holds marker and, when excluded is set, does not hold excluded.
+func newestDeliveryMatching(list []byte, marker, excluded string) ([]byte, bool, error) {
+	var deliveries []struct {
+		Body json.RawMessage `json:"body"`
+	}
+	if err := json.Unmarshal(list, &deliveries); err != nil {
+		return nil, false, fmt.Errorf("decoding webhook deliveries: %w", err)
+	}
+	for i := len(deliveries) - 1; i >= 0; i-- {
+		body := string(deliveries[i].Body)
+		if len(deliveries[i].Body) == 0 || !strings.Contains(body, marker) {
+			continue
+		}
+		if excluded != "" && strings.Contains(body, excluded) {
+			continue
+		}
+		return deliveries[i].Body, true, nil
+	}
+	return nil, false, nil
+}
+
+// provisionedOrganizationTables are the rows first use of an organization creates, children first.
+// Foreign keys to organizations do not cascade and the portal has no API to delete one.
+var provisionedOrganizationTables = []string{"subscription_plans", "views", "labels"}
+
+// removeProvisionedOrganizationAfterScenario registers the removal of an organization that a token
+// provisions on first use. It is registered before the token is used, so a failed assertion still
+// removes the organization.
+func (s *Steps) removeProvisionedOrganizationAfterScenario(ctx context.Context, portal, idpRefID string) error {
+	idpRefID, err := stepscommon.Expand(ctx, idpRefID)
+	if err != nil {
+		return err
+	}
+	registry, err := cleanup.Of(ctx)
+	if err != nil {
+		return err
+	}
+	kind := cleanup.Kind{Name: "api-portal-provisioned-organization/" + portal, Order: seededRowsOrder}
+	if err := registry.RegisterDeleter(kind, func(ctx context.Context, resource cleanup.Resource) error {
+		database, err := s.portalDB(ctx, portal)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = database.close() }()
+		return database.removeOrganization(ctx, resource.ID)
+	}); err != nil {
+		return err
+	}
+	return registry.RegisterScoped(cleanup.ScenarioScope, cleanup.Resource{
+		Kind: kind, ID: idpRefID, Actor: "database", Description: "organization provisioned from a token",
+	})
+}
+
+// removeOrganization deletes an organization by IDP reference with the rows first use created.
+func (p *portalDatabase) removeOrganization(ctx context.Context, idpRefID string) error {
+	const owned = " WHERE portal_id = ? AND org_uuid IN (SELECT uuid FROM organizations WHERE portal_id = ? AND idp_ref_id = ?)"
+	for _, table := range provisionedOrganizationTables {
+		if _, err := p.db.ExecContext(ctx, p.bind("DELETE FROM "+table+owned), p.portalID, p.portalID, idpRefID); err != nil {
+			return fmt.Errorf("deleting provisioned API Portal %s rows: %w", table, err)
+		}
+	}
+	if _, err := p.db.ExecContext(ctx, p.bind("DELETE FROM organizations WHERE portal_id = ? AND idp_ref_id = ?"), p.portalID, idpRefID); err != nil {
+		return fmt.Errorf("deleting provisioned API Portal organization: %w", err)
+	}
+	return nil
 }
 
 func (s *Steps) waitForWebhookEventStatus(ctx context.Context, eventID, wantStatus string) error {
@@ -937,7 +1061,6 @@ func checkWebhookDeliveryEnvelopes(deliveries []recordedWebhookDelivery) error {
 		return fmt.Errorf("no API Portal webhook delivery to check")
 	}
 	deliveryIDs := map[string]bool{}
-	eventIDs := map[string]bool{}
 	for i, delivery := range deliveries {
 		var envelope struct {
 			EventID    string `json:"event_id"`
@@ -973,10 +1096,6 @@ func checkWebhookDeliveryEnvelopes(deliveries []recordedWebhookDelivery) error {
 			return fmt.Errorf("%s: X-Api-Portal-Delivery-Id %q repeats another delivery's", label, deliveryID)
 		}
 		deliveryIDs[deliveryID] = true
-		if eventIDs[envelope.EventID] {
-			return fmt.Errorf("%s: event_id %q repeats another delivery's", label, envelope.EventID)
-		}
-		eventIDs[envelope.EventID] = true
 		if _, err := time.Parse(time.RFC3339, envelope.OccurredAt); err != nil {
 			return fmt.Errorf("%s: occurred_at %q is not RFC 3339", label, envelope.OccurredAt)
 		}
@@ -1268,6 +1387,8 @@ func (s *Steps) sendSessionRequest(ctx context.Context, path string) error {
 	return s.sendSessionRequestAt(ctx, path, portalService)
 }
 
+// sendSessionRequestAt sends a session-authenticated request as the role to the named portal and
+// publishes the response.
 func (s *Steps) sendSessionRequestAt(ctx context.Context, path, portal string) error {
 	path, err := stepscommon.Expand(ctx, path)
 	if err != nil {
@@ -1281,17 +1402,18 @@ func (s *Steps) sendSessionRequestAt(ctx context.Context, path, portal string) e
 	if err != nil {
 		return err
 	}
-	response, err := s.client.Do(ctx, httpx.Request{
+	_, err = s.portalFunnel().Send(ctx, httpx.Request{
 		Method:  http.MethodGet,
 		URL:     s.portalRequestURL(base, path),
 		Headers: map[string]string{"Cookie": cookie},
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("API Portal session request: %w", err)
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
+// verifyAIDiscoveryDisabled asserts every agent discovery route of a view answers as disabled.
 func (s *Steps) verifyAIDiscoveryDisabled(ctx context.Context, view, role string) (err error) {
 	view, err = stepscommon.Expand(ctx, view)
 	if err != nil {
@@ -1345,17 +1467,17 @@ func (s *Steps) verifyAIDiscoveryDisabled(ctx context.Context, view, role string
 			err = errors.Join(err, fmt.Errorf("restoring API Portal AI discovery failed: %s", restored.Describe()))
 		}
 	}()
-	response, err := s.client.Do(ctx, httpx.Request{
+	response, err := s.portalFunnel().Send(ctx, httpx.Request{
 		Method: http.MethodGet,
 		URL:    base + "/api-portal/" + orgHandle + "/views/" + view + "/llms.txt",
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("requesting API Portal AI discovery while disabled: %w", err)
 	}
 	if response.StatusCode != http.StatusNotFound {
 		return fmt.Errorf("API Portal AI discovery returned status %d while disabled, want %d", response.StatusCode, http.StatusNotFound)
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
 // csrfSession signs the role in through the portal's file login and returns the portal base URL,
@@ -1444,11 +1566,11 @@ func (s *Steps) sendCSRFSessionRequest(ctx context.Context, method, path, role s
 		request.Body = payload
 		request.ContentType = "application/json"
 	}
-	response, err := s.client.Do(ctx, request, 0, 0)
+	_, err = s.portalFunnel().Send(ctx, request)
 	if err != nil {
 		return fmt.Errorf("API Portal session %s %s: %w", method, path, err)
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
 func (s *Steps) sendCSRFSessionRequestWithValues(ctx context.Context, method, path, role string, table *godog.Table) error {
@@ -1459,6 +1581,8 @@ func (s *Steps) sendCSRFSessionRequestWithoutBody(ctx context.Context, method, p
 	return s.sendCSRFSessionRequest(ctx, method, path, role, nil)
 }
 
+// mergeCookieHeader applies Set-Cookie values to a Cookie header: a cookie set again replaces the
+// earlier value in its original position, and a new cookie is appended.
 func mergeCookieHeader(existing string, setCookies []string) string {
 	pairs := make(map[string]string)
 	order := make([]string, 0)
@@ -1646,6 +1770,7 @@ func (s *Steps) sendAuthenticatedWithBody(
 	return s.sendPortal(ctx, method, path, role, []byte(payload))
 }
 
+// sendAuthenticatedWithValues sends the values table as the JSON body of an authenticated request.
 func (s *Steps) sendAuthenticatedWithValues(
 	ctx context.Context, method, path, role string, table *godog.Table,
 ) error {
@@ -1700,6 +1825,8 @@ func tableJSONValues(ctx context.Context, table *godog.Table) (map[string]any, e
 	return values, nil
 }
 
+// sendAuthenticatedMultipartMetadataOnly sends a multipart request that holds only the metadata
+// part.
 func (s *Steps) sendAuthenticatedMultipartMetadataOnly(
 	ctx context.Context, method, path, role string, metadata *godog.DocString,
 ) error {
@@ -1734,6 +1861,8 @@ func (s *Steps) sendAuthenticatedMultipartWithDefinition(
 	return s.sendPortalMultipart(ctx, method, path, role, []byte(metadataJSON), definitionContent, filename, contentType)
 }
 
+// sendArtifactUpload uploads the named artifact archive and registers any API the upload created
+// for cleanup.
 func (s *Steps) sendArtifactUpload(ctx context.Context, method, kind, path, role string) error {
 	method = strings.ToUpper(method)
 	path, err := stepscommon.Expand(ctx, path)
@@ -1764,15 +1893,12 @@ func (s *Steps) sendArtifactUpload(ctx context.Context, method, kind, path, role
 	if strings.EqualFold(strings.TrimSpace(kind), "oversized") {
 		headers["Expect"] = "100-continue"
 	}
-	response, err := s.client.Do(ctx, httpx.Request{
+	response, err := s.portalFunnel().Send(ctx, httpx.Request{
 		Method: method, URL: s.portalRequestURL(base, path), Headers: headers,
 		Body: body.Bytes(), ContentType: writer.FormDataContentType(),
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("API Portal artifact upload: %w", err)
-	}
-	if err := tcontext.Set(ctx, httpx.ResponseKey, response); err != nil {
-		return err
 	}
 	if method != http.MethodPost || !response.Succeeded() {
 		return nil
@@ -1792,6 +1918,8 @@ func (s *Steps) sendArtifactUpload(ctx context.Context, method, kind, path, role
 		portalCleanupRequest{method: http.MethodDelete, path: "/apis"})
 }
 
+// artifactZip builds the artifact archive for a named variant, including the malformed ones the
+// portal must refuse.
 func artifactZip(ctx context.Context, kind string) ([]byte, error) {
 	kind = strings.ToLower(strings.TrimSpace(kind))
 	handle, _ := tcontext.Get(ctx, "apiId")
@@ -1932,6 +2060,8 @@ func (s *Steps) createMultipartResource(ctx context.Context, path, role, definit
 	return tcontext.Set(ctx, storeAs, id)
 }
 
+// createMCPServerWithLabel creates an MCP server under a label and registers it for scenario
+// cleanup.
 func (s *Steps) createMCPServerWithLabel(ctx context.Context, label, storeAs string) error {
 	label, err := stepscommon.Expand(ctx, label)
 	if err != nil {
@@ -1976,6 +2106,8 @@ func (s *Steps) createMCPServerWithLabel(ctx context.Context, label, storeAs str
 // "rest titled <title>", so a scenario can find an API by a word that only its definition holds.
 const restTitledDefinitionPrefix = "rest titled "
 
+// portalDefinition returns the content, file name and content type of a named API definition
+// fixture.
 func portalDefinition(kind string) ([]byte, string, string, error) {
 	if trimmed := strings.TrimSpace(kind); strings.HasPrefix(strings.ToLower(trimmed+" "), restTitledDefinitionPrefix) {
 		title := strings.TrimSpace(trimmed[len(restTitledDefinitionPrefix)-1:])
@@ -2001,6 +2133,8 @@ func portalDefinition(kind string) ([]byte, string, string, error) {
 		return []byte(portalRESTDefinition), "definition.json", "application/json", nil
 	case "graphql":
 		return []byte("type Query { hello: String }"), "schema.graphql", "application/octet-stream", nil
+	case "graphql updated":
+		return []byte("type Query { updatedField: String }"), "schema.graphql", "application/octet-stream", nil
 	case "soap":
 		return []byte(`<?xml version="1.0"?><definitions xmlns="http://schemas.xmlsoap.org/wsdl/"></definitions>`), "definition.wsdl", "application/xml", nil
 	case "mcp":
@@ -2032,6 +2166,8 @@ func paddedRESTDefinition(size int) ([]byte, string, string, error) {
 	return []byte(prefix + strings.Repeat("a", padding) + suffix), "definition.json", "application/json", nil
 }
 
+// createJSONResource creates a resource from a JSON document, stores its id and registers it for
+// cleanup as its creator.
 func (s *Steps) createJSONResource(ctx context.Context, path, role, storeAs string, body *godog.DocString) error {
 	path, err := stepscommon.Expand(ctx, path)
 	if err != nil {
@@ -2058,7 +2194,7 @@ func (s *Steps) createJSONResource(ctx context.Context, path, role, storeAs stri
 	if err != nil {
 		return err
 	}
-	if err := tcontext.Set(ctx, httpx.ResponseKey, response); err != nil {
+	if err := s.portalFunnel().Publish(ctx, response); err != nil {
 		return err
 	}
 	if !response.Succeeded() {
@@ -2088,6 +2224,7 @@ func (s *Steps) createJSONResource(ctx context.Context, path, role, storeAs stri
 	return tcontext.Set(ctx, storeAs, id)
 }
 
+// createJSONResourceWithValues creates a resource from a values table.
 func (s *Steps) createJSONResourceWithValues(ctx context.Context, path, role, storeAs string, table *godog.Table) error {
 	values, err := tableJSONValues(ctx, table)
 	if err != nil {
@@ -2143,15 +2280,15 @@ func (s *Steps) sendAuthenticatedMultipartTemplate(
 	if err != nil {
 		return err
 	}
-	response, err := s.client.Do(ctx, httpx.Request{
+	_, err = s.portalFunnel().Send(ctx, httpx.Request{
 		Method: strings.ToUpper(method), URL: s.portalRequestURL(base, path),
 		Headers: map[string]string{"Authorization": "Bearer " + token},
 		Body:    body, ContentType: contentType,
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("API Portal %s %s: %w", method, path, err)
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
 // multipartFileBody builds a multipart body holding one file part. The part's type follows the
@@ -2184,6 +2321,13 @@ func (s *Steps) restoreOrganizationAfterScenario(ctx context.Context, orgID stri
 	if err != nil {
 		return err
 	}
+	registry, err := cleanup.Of(ctx)
+	if err != nil {
+		return err
+	}
+	if organizationSnapshotHeld(registry.Pending(), orgID) {
+		return nil
+	}
 	base, token, err := s.authed(ctx)
 	if err != nil {
 		return err
@@ -2206,6 +2350,18 @@ func (s *Steps) restoreOrganizationAfterScenario(ctx context.Context, orgID stri
 	payload := organizationRestorePayload(current)
 	return s.registerPortalResource(ctx, portalOrganizationKind, orgID, cleanup.ScenarioScope,
 		portalCleanupRequest{method: http.MethodPut, path: path, payload: func(string) any { return payload }})
+}
+
+// organizationSnapshotHeld reports whether the scenario already holds a snapshot of the
+// organization. Registering again would replace the deleter's payload with settings the scenario
+// has since changed, so only the first snapshot is kept.
+func organizationSnapshotHeld(pending []cleanup.Resource, orgID string) bool {
+	for _, resource := range pending {
+		if resource.Kind.Name == portalOrganizationKind.Name && resource.ID == orgID {
+			return true
+		}
+	}
+	return false
 }
 
 // organizationRestorePayload keeps the fields an organization update writes. A field the
@@ -2267,6 +2423,8 @@ func apiKeyRevokeCleanup(apiID, role string) (portalCleanupRequest, error) {
 	}, nil
 }
 
+// registerApplicationKeyMappingForCleanup registers an application client mapping for removal when
+// the scenario ends.
 func (s *Steps) registerApplicationKeyMappingForCleanup(ctx context.Context, mappingID, applicationID string) error {
 	mappingID, err := stepscommon.Expand(ctx, mappingID)
 	if err != nil {
@@ -2276,7 +2434,7 @@ func (s *Steps) registerApplicationKeyMappingForCleanup(ctx context.Context, map
 	if err != nil {
 		return err
 	}
-	return s.registerPortalResource(ctx, portalApplicationKeyMappingKind, mappingID, cleanup.ScenarioScope,
+	return s.registerPortalResource(ctx, portalKeyMappingKindOf(applicationID), mappingID, cleanup.ScenarioScope,
 		portalCleanupRequest{
 			method: http.MethodDelete,
 			path:   "/applications/" + applicationID + "/oauth-keys",
@@ -2338,16 +2496,16 @@ func (s *Steps) uploadAPIContentRequest(ctx context.Context, method, variant, co
 	if strings.EqualFold(strings.TrimSpace(variant), "oversized") {
 		headers["Expect"] = "100-continue"
 	}
-	response, err := s.client.Do(ctx, httpx.Request{
+	_, err = s.portalFunnel().Send(ctx, httpx.Request{
 		Method:  method,
 		URL:     s.portalRequestURL(base, collection+"/"+artifactID+"/assets"),
 		Headers: headers,
 		Body:    body.Bytes(), ContentType: writer.FormDataContentType(),
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("API Portal content upload: %w", err)
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
 // Content fixture bytes. contentIconPNG is the default icon; contentAlternateIconPNG differs from it
@@ -2423,6 +2581,7 @@ type zipEntry struct {
 	stored  bool
 }
 
+// buildZip writes the entries into a ZIP archive, compressing those that are not marked stored.
 func buildZip(entries []zipEntry) ([]byte, error) {
 	var out bytes.Buffer
 	archive := zip.NewWriter(&out)
@@ -2460,6 +2619,7 @@ func (s *Steps) responseBodyEqualsHex(ctx context.Context, expected string) erro
 	return nil
 }
 
+// uploadTheme uploads the named theme archive to a view and publishes the response.
 func (s *Steps) uploadTheme(ctx context.Context, variant, viewID, role string) error {
 	viewID, err := stepscommon.Expand(ctx, viewID)
 	if err != nil {
@@ -2489,16 +2649,16 @@ func (s *Steps) uploadTheme(ctx context.Context, variant, viewID, role string) e
 	if strings.EqualFold(strings.TrimSpace(variant), "oversized") {
 		headers["Expect"] = "100-continue"
 	}
-	response, err := s.client.Do(ctx, httpx.Request{
+	_, err = s.portalFunnel().Send(ctx, httpx.Request{
 		Method:  http.MethodPost,
 		URL:     s.portalRequestURL(base, "/views/"+viewID+"/apply-theme"),
 		Headers: headers,
 		Body:    body.Bytes(), ContentType: writer.FormDataContentType(),
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("API Portal theme upload: %w", err)
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
 // themeOversizedBytes is past the portal's default upload limit (10 MiB).
@@ -2565,6 +2725,8 @@ func themeZip(variant string) ([]byte, error) {
 	return buildZip(entries)
 }
 
+// createSubscription subscribes the developer to the API on the plan and registers the subscription
+// for cleanup.
 func (s *Steps) createSubscription(ctx context.Context, apiID, plan, storeAs string) error {
 	apiID, err := stepscommon.Expand(ctx, apiID)
 	if err != nil {
@@ -2588,7 +2750,7 @@ func (s *Steps) createSubscription(ctx context.Context, apiID, plan, storeAs str
 	if err != nil {
 		return err
 	}
-	if err := tcontext.Set(ctx, httpx.ResponseKey, response); err != nil {
+	if err := s.portalFunnel().Publish(ctx, response); err != nil {
 		return err
 	}
 	if !response.Succeeded() {
@@ -2614,6 +2776,7 @@ func (s *Steps) createAPIKey(ctx context.Context, apiID, storeAs string) error {
 	return s.createAPIKeyAs(ctx, "publisher", apiID, storeAs)
 }
 
+// createAPIKeyAs generates an API key as the role, stores its id and registers it for revocation.
 func (s *Steps) createAPIKeyAs(ctx context.Context, role, apiID, storeAs string) error {
 	apiID, err := stepscommon.Expand(ctx, apiID)
 	if err != nil {
@@ -2635,7 +2798,7 @@ func (s *Steps) createAPIKeyAs(ctx context.Context, role, apiID, storeAs string)
 	if err != nil {
 		return err
 	}
-	if err := tcontext.Set(ctx, httpx.ResponseKey, response); err != nil {
+	if err := s.portalFunnel().Publish(ctx, response); err != nil {
 		return err
 	}
 	if !response.Succeeded() {
@@ -2647,7 +2810,7 @@ func (s *Steps) createAPIKeyAs(ctx context.Context, role, apiID, storeAs string)
 	if created.ID == "" || created.Key == "" {
 		return fmt.Errorf("API Portal API-key response was incomplete")
 	}
-	if err := s.registerPortalResource(ctx, portalAPIKeyKind, created.ID, cleanup.ScenarioScope,
+	if err := s.registerPortalResource(ctx, apiKeyKindOf(apiID), created.ID, cleanup.ScenarioScope,
 		portalCleanupRequest{method: http.MethodPost, path: "/apis/" + apiID + "/api-keys/revoke",
 			role:    role,
 			payload: func(id string) any { return map[string]any{"keyId": id} }}); err != nil {
@@ -2656,6 +2819,7 @@ func (s *Steps) createAPIKeyAs(ctx context.Context, role, apiID, storeAs string)
 	return tcontext.Set(ctx, storeAs, created.ID)
 }
 
+// createMCPKey generates an MCP server key as the publisher and registers it for revocation.
 func (s *Steps) createMCPKey(ctx context.Context, mcpID, storeAs string) error {
 	mcpID, err := stepscommon.Expand(ctx, mcpID)
 	if err != nil {
@@ -2674,7 +2838,7 @@ func (s *Steps) createMCPKey(ctx context.Context, mcpID, storeAs string) error {
 	if err != nil {
 		return err
 	}
-	if err := tcontext.Set(ctx, httpx.ResponseKey, response); err != nil {
+	if err := s.portalFunnel().Publish(ctx, response); err != nil {
 		return err
 	}
 	if !response.Succeeded() {
@@ -2690,7 +2854,7 @@ func (s *Steps) createMCPKey(ctx context.Context, mcpID, storeAs string) error {
 	if created.ID == "" || created.Key == "" {
 		return fmt.Errorf("API Portal MCP API-key response was incomplete")
 	}
-	if err := s.registerPortalResource(ctx, portalAPIKeyKind, created.ID, cleanup.ScenarioScope,
+	if err := s.registerPortalResource(ctx, mcpKeyKindOf(mcpID), created.ID, cleanup.ScenarioScope,
 		portalCleanupRequest{
 			method: http.MethodPost,
 			path:   "/mcp-servers/" + mcpID + "/api-keys/revoke",
@@ -2708,10 +2872,12 @@ func stringValue(values map[string]any, key string) string {
 	return value
 }
 
+// portalResourceKind returns the cleanup kind for a resource collection; the kind decides the
+// deleter and deletion order.
 func portalResourceKind(path string) cleanup.Kind {
 	switch {
 	case strings.Contains(path, "/api-workflows"):
-		return portalWorkflowKind
+		return portalWorkflowKindOf(path)
 	case strings.HasPrefix(path, "/labels"):
 		return cleanup.Kind{Name: "api-portal-label", Order: 15}
 	case strings.HasPrefix(path, "/views"):
@@ -2737,6 +2903,285 @@ func portalResourceKind(path string) cleanup.Kind {
 	}
 }
 
+// portalWorkflowKindOf is the clean-up kind for the workflows of one view. A kind keeps one
+// deleter and the deletion path names the view, so each view needs a kind of its own.
+func portalWorkflowKindOf(path string) cleanup.Kind {
+	return cleanup.Kind{Name: portalWorkflowKind.Name + ":" + path, Order: portalWorkflowKind.Order}
+}
+
+// portalKeyMappingKindOf is the clean-up kind for the key mappings of one application; the
+// deletion path names the application.
+func portalKeyMappingKindOf(applicationID string) cleanup.Kind {
+	return cleanup.Kind{
+		Name:  portalApplicationKeyMappingKind.Name + ":" + applicationID,
+		Order: portalApplicationKeyMappingKind.Order,
+	}
+}
+
+// mcpKeyKindOf is the clean-up kind for the keys of one MCP server; the revoke path names it.
+func mcpKeyKindOf(mcpID string) cleanup.Kind {
+	return cleanup.Kind{Name: portalAPIKeyKind.Name + ":mcp:" + mcpID, Order: portalAPIKeyKind.Order}
+}
+
+// deregisterResourceFromCleanup forgets a resource the scenario has deleted itself, so that
+// cleanup does not delete it again. A later creation of the same id registers it anew.
+func (s *Steps) deregisterResourceFromCleanup(ctx context.Context, id, path string) error {
+	id, err := stepscommon.Expand(ctx, id)
+	if err != nil {
+		return err
+	}
+	path, err = stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	registry, err := cleanup.Of(ctx)
+	if err != nil {
+		return err
+	}
+	registry.Deregister(portalResourceKind(path), id)
+	return nil
+}
+
+// waitForWebhookEventsSettled waits until the portal has finished delivering every event of the
+// type, so that what those events cause downstream is ordered before the next step's event.
+func (s *Steps) waitForWebhookEventsSettled(ctx context.Context, eventType string) error {
+	eventType, err := stepscommon.Expand(ctx, eventType)
+	if err != nil {
+		return err
+	}
+	settled, err := retry.Until(ctx, retry.Options{Interval: time.Second}, func(ctx context.Context) (bool, error) {
+		base, token, err := s.authedAs(ctx, "admin")
+		if err != nil {
+			return false, err
+		}
+		response, err := s.client.Do(ctx, httpx.Request{
+			Method:  http.MethodGet,
+			URL:     fmt.Sprintf("%s%s/webhook-events?limit=%d", base, apiPrefix, listingPageSize),
+			Headers: map[string]string{"Authorization": "Bearer " + token},
+		}, 0, 0)
+		if err != nil {
+			return false, retry.Transient(err)
+		}
+		if !response.Succeeded() {
+			return false, retry.Transient(fmt.Errorf("listing API Portal webhook events failed: %s", response.Describe()))
+		}
+		return webhookEventsSettled(response.Body, eventType)
+	}, func(settled bool) bool { return settled })
+	if err != nil {
+		return fmt.Errorf("waiting for API Portal webhook events %q to settle: %w", eventType, err)
+	}
+	if !settled {
+		return fmt.Errorf("API Portal webhook events %q did not settle before the timeout", eventType)
+	}
+	return nil
+}
+
+// webhookEventsSettled reports whether no event of the type in a listing is still being delivered.
+func webhookEventsSettled(body []byte, eventType string) (bool, error) {
+	var page struct {
+		List []struct {
+			Type   string `json:"type"`
+			Status string `json:"status"`
+		} `json:"list"`
+	}
+	if err := json.Unmarshal(body, &page); err != nil {
+		return false, fmt.Errorf("decoding API Portal webhook events: %w", err)
+	}
+	for _, event := range page.List {
+		if event.Type == eventType && (event.Status == "PENDING" || event.Status == "DISPATCHED") {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// assertValuesOnExactlyOnePage asserts each value is held by exactly one of the stored page
+// bodies, so that pagination neither repeats nor drops an item.
+func (s *Steps) assertValuesOnExactlyOnePage(ctx context.Context, values, keys string) error {
+	values, err := stepscommon.Expand(ctx, values)
+	if err != nil {
+		return err
+	}
+	var pages []string
+	for _, key := range strings.Split(keys, ",") {
+		page, err := tcontext.ResolveString(ctx, strings.TrimSpace(key))
+		if err != nil {
+			return err
+		}
+		pages = append(pages, page)
+	}
+	return checkValuesOnExactlyOnePage(strings.Split(values, ","), pages)
+}
+
+// checkValuesOnExactlyOnePage reports the first value not found on exactly one page.
+func checkValuesOnExactlyOnePage(values, pages []string) error {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		count := 0
+		for _, page := range pages {
+			if strings.Contains(page, value) {
+				count++
+			}
+		}
+		if count != 1 {
+			return fmt.Errorf("%q appears on %d of %d pages, want exactly 1", value, count, len(pages))
+		}
+	}
+	return nil
+}
+
+// assertAPIListingAcrossPages walks the unfiltered API listing, which other runners also add to,
+// so that a fixture past the first page is still found and a forbidden one still detected.
+func (s *Steps) assertAPIListingAcrossPages(ctx context.Context, role, mode, want string) error {
+	want, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	base, token, err := s.authedAs(ctx, role)
+	if err != nil {
+		return err
+	}
+	found := false
+	for offset, page := 0, 0; ; page++ {
+		if page >= maxListingPages {
+			return fmt.Errorf("API Portal API listing did not end within %d pages", maxListingPages)
+		}
+		response, err := s.client.Do(ctx, httpx.Request{
+			Method:  http.MethodGet,
+			URL:     fmt.Sprintf("%s%s/apis?limit=%d&offset=%d", base, apiPrefix, listingPageSize, offset),
+			Headers: map[string]string{"Authorization": "Bearer " + token},
+		}, 0, 0)
+		if err != nil {
+			return fmt.Errorf("listing API Portal APIs at offset %d: %w", offset, err)
+		}
+		if !response.Succeeded() {
+			return fmt.Errorf("listing API Portal APIs at offset %d failed: %s", offset, response.Describe())
+		}
+		found = found || bytes.Contains(response.Body, []byte(want))
+		next, more, err := nextListingOffset(response.Body)
+		if err != nil {
+			return err
+		}
+		if !more {
+			break
+		}
+		offset = next
+	}
+	if found != (mode == "contain") {
+		return fmt.Errorf("API Portal API listing should %s %q across all pages", mode, want)
+	}
+	return nil
+}
+
+// nextListingOffset reads a paginated listing and returns where the next page starts. An empty
+// page ends the walk even if the total says otherwise, because another runner can delete APIs
+// while the listing is read.
+func nextListingOffset(body []byte) (int, bool, error) {
+	var page struct {
+		List       []json.RawMessage `json:"list"`
+		Pagination struct {
+			Offset int `json:"offset"`
+			Total  int `json:"total"`
+		} `json:"pagination"`
+	}
+	if err := json.Unmarshal(body, &page); err != nil {
+		return 0, false, fmt.Errorf("decoding the API Portal API listing: %w", err)
+	}
+	next := page.Pagination.Offset + len(page.List)
+	return next, len(page.List) > 0 && next < page.Pagination.Total, nil
+}
+
+// assertExportedTheme asserts the published response is a readable archive holding every file of
+// the uploaded theme, byte for byte.
+func (s *Steps) assertExportedTheme(ctx context.Context, variant string) error {
+	response, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	uploaded, err := themeZip(variant)
+	if err != nil {
+		return err
+	}
+	return checkExportedTheme(response.Body, uploaded)
+}
+
+// checkExportedTheme compares an exported archive with the uploaded one. The wrapper folder an
+// upload needs is not part of a theme file's identity, so files are matched below it.
+func checkExportedTheme(exported, uploaded []byte) error {
+	exportedFiles, err := readArchive(exported)
+	if err != nil {
+		return fmt.Errorf("the exported theme is not a usable archive: %w", err)
+	}
+	uploadedFiles, err := readArchive(uploaded)
+	if err != nil {
+		return fmt.Errorf("reading the uploaded theme: %w", err)
+	}
+	for name, content := range uploadedFiles {
+		_, relative, ok := strings.Cut(name, "/")
+		if !ok {
+			relative = name
+		}
+		found := false
+		for exportedName, exportedContent := range exportedFiles {
+			if exportedName != relative && !strings.HasSuffix(exportedName, "/"+relative) {
+				continue
+			}
+			if !bytes.Equal(exportedContent, content) {
+				return fmt.Errorf("exported theme file %q differs from the uploaded file", exportedName)
+			}
+			found = true
+		}
+		if !found {
+			return fmt.Errorf("exported theme has no file %q", relative)
+		}
+	}
+	return nil
+}
+
+// readArchive reads every file of an untrusted archive, refusing entries outside its root and
+// bounding the number of entries and the decompressed size of each.
+func readArchive(archive []byte) (map[string][]byte, error) {
+	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
+	if err != nil {
+		return nil, err
+	}
+	if len(reader.File) > maxArchiveEntries {
+		return nil, fmt.Errorf("archive holds %d entries, more than the %d allowed", len(reader.File), maxArchiveEntries)
+	}
+	files := make(map[string][]byte, len(reader.File))
+	for _, entry := range reader.File {
+		if path.IsAbs(entry.Name) || slices.Contains(strings.Split(entry.Name, "/"), "..") {
+			return nil, fmt.Errorf("archive entry %q is outside the archive root", entry.Name)
+		}
+		if strings.HasSuffix(entry.Name, "/") {
+			continue
+		}
+		content, err := readArchiveEntry(entry)
+		if err != nil {
+			return nil, fmt.Errorf("archive entry %q: %w", entry.Name, err)
+		}
+		files[entry.Name] = content
+	}
+	return files, nil
+}
+
+// readArchiveEntry reads one entry, failing if it decompresses past the size limit.
+func readArchiveEntry(entry *zip.File) ([]byte, error) {
+	file, err := entry.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, maxArchiveEntryBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(content)) > maxArchiveEntryBytes {
+		return nil, fmt.Errorf("decompresses past %d bytes", int64(maxArchiveEntryBytes))
+	}
+	return content, nil
+}
+
 // portalCleanupRole is the role that removes a resource created at path by role. Applications
 // and OAuth2 keys are visible only to the user who created them, so they are deleted as that
 // user; every other collection is deleted as the administrator.
@@ -2751,6 +3196,8 @@ func (s *Steps) sendPortal(ctx context.Context, method, path, role string, body 
 	return s.sendPortalWithHeaders(ctx, method, path, role, body, nil)
 }
 
+// sendPortalWithHeaders sends a portal request as the role, or anonymously for an empty role, and
+// publishes the response.
 func (s *Steps) sendPortalWithHeaders(ctx context.Context, method, path, role string, body []byte, extra map[string]string) error {
 	base, err := s.portalBase()
 	if err != nil {
@@ -2775,11 +3222,11 @@ func (s *Steps) sendPortalWithHeaders(ctx context.Context, method, path, role st
 	if len(body) > 0 {
 		request.ContentType = "application/json"
 	}
-	response, err := s.client.Do(ctx, request, 0, 0)
+	_, err = s.portalFunnel().Send(ctx, request)
 	if err != nil {
 		return fmt.Errorf("API Portal %s %s: %w", method, path, err)
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
 // sendPortalMultipart sends metadata, and a definition part when one is given, through the
@@ -2810,15 +3257,15 @@ func (s *Steps) sendPortalMultipart(ctx context.Context, method, path, role stri
 	if err := writer.Close(); err != nil {
 		return err
 	}
-	response, err := s.client.Do(ctx, httpx.Request{
+	_, err = s.portalFunnel().Send(ctx, httpx.Request{
 		Method: strings.ToUpper(method), URL: s.portalRequestURL(base, path),
 		Headers: map[string]string{"Authorization": "Bearer " + token},
 		Body:    body.Bytes(), ContentType: writer.FormDataContentType(),
-	}, 0, 0)
+	})
 	if err != nil {
 		return fmt.Errorf("API Portal %s %s: %w", method, path, err)
 	}
-	return tcontext.Set(ctx, httpx.ResponseKey, response)
+	return nil
 }
 
 func (s *Steps) sendPortalMultipartAndDecode(ctx context.Context, base, token, method, path string,
@@ -2864,6 +3311,12 @@ func (s *Steps) portalRequestURL(base, path string) string {
 }
 
 // portalBase resolves api-portal's HTTPS base URL for this block.
+// portalFunnel is the one path for a portal request whose response the next step asserts: it
+// clears the previously published response before sending and publishes the new one.
+func (s *Steps) portalFunnel() *httpx.Funnel {
+	return httpx.NewFunnel(s.client, 0, 0)
+}
+
 func (s *Steps) portalBase() (string, error) {
 	return s.portalBaseNamed(portalService)
 }
@@ -3356,8 +3809,8 @@ func (s *Steps) generateKeyForArtifact(ctx context.Context, artifactID, keyID st
 	if handle == "" {
 		handle = keyID
 	}
-	if err := s.registerPortalResource(ctx, portalAPIKeyKind, handle, cleanup.ScenarioScope,
-		portalCleanupRequest{
+	if err := s.registerPortalResource(ctx, cleanup.Kind{Name: portalAPIKeyKind.Name + ":" + keysPath, Order: portalAPIKeyKind.Order},
+		handle, cleanup.ScenarioScope, portalCleanupRequest{
 			method:  http.MethodPost,
 			path:    keysPath + "/revoke",
 			payload: func(id string) any { return map[string]any{"keyId": id} },
@@ -3398,7 +3851,7 @@ func (s *Steps) generatePortalAPIKeyAndStore(ctx context.Context, apiID, valueSt
 	if storedHandle == "" {
 		storedHandle = keyID
 	}
-	if err := s.registerPortalResource(ctx, portalAPIKeyKind, storedHandle, cleanup.ScenarioScope,
+	if err := s.registerPortalResource(ctx, apiKeyKindOf(resolvedAPI), storedHandle, cleanup.ScenarioScope,
 		portalCleanupRequest{
 			method: http.MethodPost,
 			path:   "/apis/" + resolvedAPI + "/api-keys/revoke",

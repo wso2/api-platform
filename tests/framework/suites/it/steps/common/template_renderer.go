@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/cucumber/godog"
@@ -94,6 +95,8 @@ func isCanonicalResourceTemplate(name string) bool {
 	return strings.HasPrefix(clean, "resources/templates/")
 }
 
+// renderCanonicalTemplate substitutes the placeholders of a canonical template, then applies the
+// remaining values as field overrides.
 func renderCanonicalTemplate(ctx context.Context, content []byte, table *godog.Table) (string, error) {
 	values, err := templateValues(table)
 	if err != nil {
@@ -112,11 +115,11 @@ func renderCanonicalTemplate(ctx context.Context, content []byte, table *godog.T
 	if err := replaceCanonicalPlaceholders(ctx, document.Content[0], values, used); err != nil {
 		return "", err
 	}
-	for key, value := range values {
+	for _, key := range parentFirstFieldPaths(values) {
 		if used[key] {
 			continue
 		}
-		if err := setCanonicalField(ctx, document.Content[0], key, value); err != nil {
+		if err := setCanonicalField(ctx, document.Content[0], key, values[key]); err != nil {
 			return "", err
 		}
 	}
@@ -131,6 +134,23 @@ func renderCanonicalTemplate(ctx context.Context, content []byte, table *godog.T
 		return "", fmt.Errorf("close canonical template encoder: %w", err)
 	}
 	return out.String(), nil
+}
+
+// parentFirstFieldPaths orders field paths so that a parent override is applied before the child
+// overrides inside it; map iteration would otherwise let the parent discard them at random.
+func parentFirstFieldPaths(values map[string]string) []string {
+	paths := make([]string, 0, len(values))
+	for path := range values {
+		paths = append(paths, path)
+	}
+	sort.Slice(paths, func(i, j int) bool {
+		di, dj := strings.Count(paths[i], "."), strings.Count(paths[j], ".")
+		if di != dj {
+			return di < dj
+		}
+		return paths[i] < paths[j]
+	})
+	return paths
 }
 
 func replaceCanonicalPlaceholders(

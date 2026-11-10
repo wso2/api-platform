@@ -84,6 +84,7 @@ Feature: Users sign in to the API Portal with file-based credentials
 
     # A session write with no CSRF token is refused and stores nothing
     Given I generate a unique resource name from "portal-csrf-label" and store it as "labelId"
+    And I register API Portal resource "${CTX:labelId}" at "/labels" for cleanup
     When I send an API Portal session "POST" request to "/api-portal/api/v0.9/labels" as "admin" with no CSRF token and JSON values:
       | id          | ${CTX:labelId} |
       | displayName | CSRF Label     |
@@ -95,10 +96,10 @@ Feature: Users sign in to the API Portal with file-based credentials
       | id          | ${CTX:labelId} |
       | displayName | CSRF Label     |
     Then the response status code should be 201
-    And I register API Portal resource "${CTX:labelId}" at "/labels" for cleanup
 
     # A session write with an invalid CSRF token is refused and stores nothing
     Given I generate a unique resource name from "portal-csrf-label" and store it as "labelId"
+    And I register API Portal resource "${CTX:labelId}" at "/labels" for cleanup
     When I send an API Portal session "POST" request to "/api-portal/api/v0.9/labels" as "admin" with an invalid CSRF token and JSON values:
       | id          | ${CTX:labelId} |
       | displayName | CSRF Label     |
@@ -110,7 +111,6 @@ Feature: Users sign in to the API Portal with file-based credentials
       | id          | ${CTX:labelId} |
       | displayName | CSRF Label     |
     Then the response status code should be 201
-    And I register API Portal resource "${CTX:labelId}" at "/labels" for cleanup
 
   @APIP-032 @type:security
   Scenario: Bearer tokens that are missing or forged are refused with the generic credential failure

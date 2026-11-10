@@ -121,6 +121,13 @@ Feature: A view's LLM instructions and AI discovery shape what agents read
       | name   | ${CTX:apiId}       |
       | labels | ["${CTX:labelId}"] |
     And the response status code should be 201
+    And I generate a unique resource name from "portal-ai-off-mcp" and store it as "mcpId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" at "/mcp-servers" as "publisher" with definition "mcp" with values:
+      | id     | ${CTX:mcpId}       |
+      | name   | ${CTX:mcpId}       |
+      | type   | MCP                |
+      | labels | ["${CTX:labelId}"] |
+    And the response status code should be 201
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}"
     Then the response status code should be 200
     And the response body should contain "dp-badge--ai"
@@ -138,6 +145,10 @@ Feature: A view's LLM instructions and AI discovery shape what agents read
     Then the response status code should be 404
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.json"
     Then the response status code should be 404
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/mcp/${CTX:mcpId}/docs/specification.json"
+    Then the response status code should be 404
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api-workflows.md"
+    Then the response status code should be 404
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}"
     Then the response status code should be 200
     And the response body should not contain "dp-badge--ai"
@@ -150,6 +161,10 @@ Feature: A view's LLM instructions and AI discovery shape what agents read
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:otherViewId}/api/${CTX:apiId}.md"
     Then the response status code should be 200
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:otherViewId}/api/${CTX:apiId}/docs/specification.json"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:otherViewId}/mcp/${CTX:mcpId}/docs/specification.json"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:otherViewId}/api-workflows.md"
     Then the response status code should be 200
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:otherViewId}/api/${CTX:apiId}"
     Then the response status code should be 200

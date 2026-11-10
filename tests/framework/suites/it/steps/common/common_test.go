@@ -307,6 +307,11 @@ func TestRenderCanonicalTemplateSupportsOptionalTypedFields(t *testing.T) {
 	require.Equal(t, "6s", resilience["timeout"])
 }
 
+func TestParentFirstFieldPathsAppliesParentsBeforeChildren(t *testing.T) {
+	require.Equal(t, []string{"a", "z", "a.b", "a.b.c"},
+		parentFirstFieldPaths(map[string]string{"a.b.c": "", "a.b": "", "z": "", "a": ""}))
+}
+
 func TestRenderCanonicalTemplateOmitsUnspecifiedOptionalFields(t *testing.T) {
 	table := templateTable(
 		"apiVersion", "gateway.api-platform.wso2.com/v1",
@@ -394,6 +399,8 @@ func TestAgentTemplateRendersNestedOverrides(t *testing.T) {
 		"a nested override sits beside the templated transports")
 }
 
+// TestCanonicalResourceTemplates keeps the template catalogue limited to the supported resource
+// kinds.
 func TestCanonicalResourceTemplates(t *testing.T) {
 	_, source, _, ok := runtime.Caller(0)
 	require.True(t, ok)
@@ -548,6 +555,7 @@ func TestResourceTemplatePath(t *testing.T) {
 	require.ErrorContains(t, err, "escapes")
 }
 
+// TestYAMLToJSONKeepsTypedScalars ensures scalars keep the types YAML resolved.
 func TestYAMLToJSONKeepsTypedScalars(t *testing.T) {
 	got, err := YAMLToJSON([]byte("protocol: a2a\na2a:\n  protocolVersion: \"1.0\"\n  operationConfigs:\n    transports:\n      - protocolBinding: JSONRPC\nrewriteUrls: false\n"))
 	require.NoError(t, err)
@@ -559,6 +567,7 @@ func TestYAMLToJSONKeepsTypedScalars(t *testing.T) {
 	}
 }
 
+// TestRenderResourceTemplateJSON covers rendering a template to JSON and its failure cases.
 func TestRenderResourceTemplateJSON(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "resources", "templates")

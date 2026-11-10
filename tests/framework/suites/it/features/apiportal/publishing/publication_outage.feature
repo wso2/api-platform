@@ -65,3 +65,8 @@ Feature: Publishing while the API Portal is unavailable
     And the publication of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" should have status "PUBLISHED"
     When I start the API Portal and wait until it is ready
     Then the API Portal should list the API "${CTX:apiHandle}" with status "PUBLISHED"
+
+    # The same deprecation succeeds once the API Portal is back
+    When I deprecate the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
+    Then the response status code should be 200
+    And the API Portal should list the API "${CTX:apiHandle}" with status "DEPRECATED"

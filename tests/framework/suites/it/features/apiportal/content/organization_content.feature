@@ -48,7 +48,7 @@ Feature: A view's theme is applied, exported and reset through the API Portal RE
     When I send an authenticated API Portal "GET" request to "/views/${CTX:viewId}/export-theme" as "admin"
     Then the response status code should be 200
     And the response header "Content-Type" should contain "application/zip"
-    And the response body should contain "brand-mark.png"
+    And the API Portal response should be an archive holding the files of theme "default"
 
     When I upload API Portal theme "old" for view "${CTX:viewId}" as "admin"
     Then the response status code should be 200

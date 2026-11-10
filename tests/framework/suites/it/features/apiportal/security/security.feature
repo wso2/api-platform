@@ -124,9 +124,9 @@ Feature: API Portal hardening: headers, error bodies, upload limits and outbound
     # together they show the route works and that only the address decides the refusal.
     Given I generate a unique resource name from "portal-tryout" and store it as "apiId"
     When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
-      | id                   | ${CTX:apiId}                  |
-      | name                 | ${CTX:apiId}                  |
-      | endPoints.sandboxURL | http://169.254.169.254/latest |
+      | id                   | ${CTX:apiId}                             |
+      | name                 | ${CTX:apiId}                             |
+      | endPoints.sandboxURL | http://127.0.0.1:9243/api-portal/health |
     Then the response status code should be 201
     When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/https://backend.example.invalid/ping"
     Then the response status code should be 403
@@ -134,6 +134,10 @@ Feature: API Portal hardening: headers, error bodies, upload limits and outbound
     When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/https://backend.example.invalid/ping" with header "Sec-Fetch-Site" set to "same-origin"
     Then the response status code should be 502
     And the JSON response field "error" should be "bad_gateway"
+    # A public target the API never registered is refused, whatever its address
+    When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/https://unregistered.example.invalid/ping" with header "Sec-Fetch-Site" set to "same-origin"
+    Then the response status code should be 422
+    And the JSON response field "error" should be "invalid_request"
     When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/tryout-proxy/http://127.0.0.1:9243/api-portal/health" with header "Sec-Fetch-Site" set to "same-origin"
     Then the response status code should be 422
     And the JSON response field "error" should be "invalid_request"

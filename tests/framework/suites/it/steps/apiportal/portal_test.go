@@ -46,6 +46,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -409,7 +410,9 @@ func TestPortalResourceKindGivesEachCollectionItsOwnDeleter(t *testing.T) {
 	require.Less(t, portalResourceKind("/subscriptions").Order, portalSubscriptionPlanKind.Order)
 	// An OAuth2 key is removed before the key manager that issued it.
 	require.Less(t, portalOAuth2KeyKind.Order, portalResourceKind("/key-managers").Order)
-	require.Equal(t, portalWorkflowKind, portalResourceKind("/views/partners/api-workflows"))
+	// Each view's workflows get a deleter of their own: the deletion path names the view.
+	require.Equal(t, portalWorkflowKind.Order, portalResourceKind("/views/partners/api-workflows").Order)
+	require.NotEqual(t, portalResourceKind("/views/partners/api-workflows"), portalResourceKind("/views/others/api-workflows"))
 	require.Equal(t, "api-portal-view", portalResourceKind("/views").Name)
 	// A workflow is removed before the view it belongs to.
 	require.Less(t, portalWorkflowKind.Order, portalResourceKind("/views").Order)
@@ -574,6 +577,66 @@ func TestCreateApplicationWithTokenRemovesItWithTheSameToken(t *testing.T) {
 	require.ErrorContains(t, s.createApplicationWithToken(ctx, portalService, "missing", "other"), "unavailable")
 }
 
+// TestCleanupDeletesEachResourceAsItsOwnCreator guards the single deleter a kind keeps: it must
+// take the role from each resource, not from whichever registration came last.
+func TestCleanupDeletesEachResourceAsItsOwnCreator(t *testing.T) {
+	serve := func(certPEM, keyPEM []byte, handler http.HandlerFunc) int {
+		cert, err := tls.X509KeyPair(certPEM, keyPEM)
+		require.NoError(t, err)
+		server := httptest.NewUnstartedServer(handler)
+		server.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
+		server.StartTLS()
+		t.Cleanup(server.Close)
+		address, err := url.Parse(server.URL)
+		require.NoError(t, err)
+		port, err := strconv.Atoi(address.Port())
+		require.NoError(t, err)
+		return port
+	}
+	developer, err := portalActor("developer")
+	require.NoError(t, err)
+	deleted := map[string]string{}
+	var mu sync.Mutex
+	portalPair := shared.APIPortalTLS()
+	portalPort := serve(portalPair.CertPEM, portalPair.PrivateKeyPEM, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		deleted[strings.TrimPrefix(r.URL.Path, apiPrefix+"/applications/")] = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	})
+	crypto := shared.ControlPlaneCrypto()
+	controlPlanePort := serve(crypto["certs/cert.pem"], crypto["certs/key.pem"], func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		token := "other-token"
+		if strings.Contains(string(body), developer.Username) {
+			token = "developer-token"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"token": token})
+	})
+	set := components.NewSet()
+	for name, port := range map[string]struct {
+		internal, published int
+	}{portalService: {9543, portalPort}, "platform-api": {9243, controlPlanePort}} {
+		definition := &components.Definition{Name: name, Alias: name,
+			Endpoints: []components.Endpoint{{Name: "https", Port: port.internal, Scheme: "https"}}}
+		inst, err := components.NewInstance(definition, 0, 1, "127.0.0.1", map[int]int{port.internal: port.published})
+		require.NoError(t, err)
+		require.NoError(t, set.Add(inst))
+	}
+	s := &Steps{topo: &runtime.Topology{Block: &topology.ResolvedBlock{Name: "owners"}, Instances: set}, client: newPortalClient()}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	reg := cleanup.NewRegistry(slog.Default())
+	require.NoError(t, cleanup.Install(ctx, reg))
+
+	for id, role := range map[string]string{"dev-app": "developer", "pub-app": "publisher"} {
+		require.NoError(t, s.registerPortalResource(ctx, portalApplicationKind, id, cleanup.ScenarioScope,
+			portalCleanupRequest{method: http.MethodDelete, path: "/applications", role: role}))
+	}
+	require.NoError(t, reg.Sweep(ctx))
+	require.Equal(t, map[string]string{"dev-app": "Bearer developer-token", "pub-app": "Bearer other-token"}, deleted)
+}
+
 func TestPayCheckoutEndsTheSubscriptionAtCleanupEvenWhenStripesEventIsRefused(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -646,6 +709,7 @@ func TestRenderAPIMetadataFromTheCanonicalTemplate(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestWithoutNullFields covers removing null fields at each depth and refusing a non-object.
 func TestWithoutNullFields(t *testing.T) {
 	got, err := withoutNullFields([]byte(`{"a":null,"b":{"c":null,"d":1},"e":[{"f":null,"g":"h"}],"i":""}`))
 	require.NoError(t, err)
@@ -657,6 +721,7 @@ func TestWithoutNullFields(t *testing.T) {
 	}
 }
 
+// TestAPIDefinitionPart covers the default, named and omitted definition choices.
 func TestAPIDefinitionPart(t *testing.T) {
 	ctx := context.Background()
 	for _, tc := range []struct {
@@ -678,6 +743,7 @@ func TestAPIDefinitionPart(t *testing.T) {
 	}
 }
 
+// TestCreatedAPIID covers the reported and requested id sources and the case with neither.
 func TestCreatedAPIID(t *testing.T) {
 	metadata := []byte(`{"id":"requested"}`)
 	for _, tc := range []struct {
@@ -688,7 +754,7 @@ func TestCreatedAPIID(t *testing.T) {
 		{name: "no reported id", body: `{}`, metadata: string(metadata), want: "requested"},
 		{name: "empty body", body: ``, metadata: string(metadata), want: "requested"},
 		{name: "no id anywhere", body: `{}`, metadata: `{}`, wantErr: true},
-		{name: "malformed body", body: `{`, metadata: string(metadata), wantErr: true},
+		{name: "no id in malformed body or metadata", body: `{`, metadata: `{}`, wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := createdAPIID([]byte(tc.body), []byte(tc.metadata))
@@ -698,6 +764,18 @@ func TestCreatedAPIID(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// TestCreatedAPIIDKeepsTheRequestedIDWhenTheResponseCannotBeDecoded keeps an accepted API
+// registrable when its response is unusable.
+func TestCreatedAPIIDKeepsTheRequestedIDWhenTheResponseCannotBeDecoded(t *testing.T) {
+	for name, body := range map[string]string{"malformed": `{`, "non-string id": `{"id":7}`} {
+		t.Run(name, func(t *testing.T) {
+			id, err := createdAPIID([]byte(body), []byte(`{"id":"requested"}`))
+			require.Error(t, err)
+			require.Equal(t, "requested", id)
 		})
 	}
 }
@@ -717,6 +795,7 @@ func TestPublishedResponse(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestTableJSONValues covers the typed values and malformed rows of a values table.
 func TestTableJSONValues(t *testing.T) {
 	values, err := tableJSONValues(context.Background(), claimsTable(t,
 		"displayName", "Orders",
@@ -750,6 +829,7 @@ func TestTableJSONValues(t *testing.T) {
 	}
 }
 
+// TestAPICollection covers the collections a template step may name and refuses any other.
 func TestAPICollection(t *testing.T) {
 	for _, tc := range []struct {
 		given, want string
@@ -779,6 +859,7 @@ func artifactContext(t *testing.T) context.Context {
 	return ctx
 }
 
+// artifactEntries returns the entries of a generated artifact archive by name.
 func artifactEntries(t *testing.T, archive []byte) map[string]*zip.File {
 	t.Helper()
 	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
@@ -806,6 +887,7 @@ func TestArtifactZipRequiresAnAPIID(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestArtifactZipUnsafeAndInvalidKinds covers the archive shapes the portal must refuse.
 func TestArtifactZipUnsafeAndInvalidKinds(t *testing.T) {
 	ctx := artifactContext(t)
 	for _, tc := range []struct {
@@ -870,6 +952,8 @@ func TestPortalDefinitionTitledREST(t *testing.T) {
 	require.Equal(t, portalRESTDefinition, string(content))
 }
 
+// TestPortalPublicURLKeepsThePathAsWritten ensures a route under test reaches the portal without
+// normalization.
 func TestPortalPublicURLKeepsThePathAsWritten(t *testing.T) {
 	base := "https://portal.test"
 	for _, path := range []string{"/health", "/api-portal/health", "/nope", "/api/v0.9/apis", "/api-portal/default/views/default"} {
@@ -880,6 +964,7 @@ func TestPortalPublicURLKeepsThePathAsWritten(t *testing.T) {
 	require.Equal(t, base+"/health", steps.portalRequestURL(base, "/health"))
 }
 
+// zipEntryNames returns the entry names of a generated archive.
 func zipEntryNames(t *testing.T, archive []byte) []string {
 	t.Helper()
 	names := make([]string, 0)
@@ -890,6 +975,7 @@ func zipEntryNames(t *testing.T, archive []byte) []string {
 	return names
 }
 
+// TestContentZipVariants covers the entries each content archive variant holds.
 func TestContentZipVariants(t *testing.T) {
 	for _, tc := range []struct {
 		variant string
@@ -943,6 +1029,7 @@ func TestContentZipRejectsAnUnknownVariant(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestThemeZipVariants covers the entries each theme archive variant holds.
 func TestThemeZipVariants(t *testing.T) {
 	themed := []string{"theme/images/brand-mark.png", "theme/styles/main.css"}
 	for _, tc := range []struct {
@@ -986,6 +1073,7 @@ func TestThemeZipRejectsAnUnknownVariant(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestCSRFToken covers reading the token from a Cookie header, including missing and malformed ones.
 func TestCSRFToken(t *testing.T) {
 	token, err := csrfToken("connect.sid=s%3Aabc; XSRF-TOKEN=a%2Bb%3Dc")
 	require.NoError(t, err)
@@ -1163,12 +1251,134 @@ func TestCookieHasAttribute(t *testing.T) {
 	require.False(t, cookieHasAttribute("", "HttpOnly"))
 }
 
+func TestCookieHasAttributeComparesPathCaseSensitively(t *testing.T) {
+	require.True(t, cookieHasAttribute("sid=1; Path=/api-portal", "path=/api-portal"))
+	require.False(t, cookieHasAttribute("sid=1; Path=/API-PORTAL", "Path=/api-portal"))
+	require.True(t, cookieHasAttribute("sid=1; SameSite=lax", "SameSite=Lax"))
+}
+
+// TestForgeTokenRejectsNullSegments guards against a panic on a JWT segment holding JSON null.
+func TestForgeTokenRejectsNullSegments(t *testing.T) {
+	null := base64.RawURLEncoding.EncodeToString([]byte("null"))
+	object := base64.RawURLEncoding.EncodeToString([]byte("{}"))
+	for name, token := range map[string]string{
+		"header": null + "." + object + ".sig",
+		"claims": object + "." + null + ".sig",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := forgeToken(token, "expired", time.Now())
+			require.ErrorContains(t, err, "must be a JSON object")
+		})
+	}
+}
+
+func TestOrganizationSnapshotHeldKeepsTheFirstSnapshot(t *testing.T) {
+	pending := []cleanup.Resource{{Kind: portalOrganizationKind, ID: "default"}, {Kind: portalAPIKind, ID: "other"}}
+	require.True(t, organizationSnapshotHeld(pending, "default"))
+	require.False(t, organizationSnapshotHeld(pending, "other"))
+	require.False(t, organizationSnapshotHeld(nil, "default"))
+}
+
+func TestCheckStagedRoleGrants(t *testing.T) {
+	platform := map[string][]string{"admin": {"a"}, "narrow": {"x"}}
+	portal := map[string][]string{"admin": {"a", "b"}, "narrow": {"y"}}
+	require.NoError(t, checkStagedRoleGrants(platform, portal, "narrow"))
+	require.ErrorContains(t, checkStagedRoleGrants(platform, portal, "admin"), "does not grant")
+	require.ErrorContains(t, checkStagedRoleGrants(platform, portal, ""), "exception is required")
+	require.ErrorContains(t, checkStagedRoleGrants(
+		map[string][]string{"admin": {"a"}, "narrow": {"x"}, "extra": {"z"}}, portal, "narrow"), "missing role")
+}
+
+func TestNextListingOffset(t *testing.T) {
+	next, more, err := nextListingOffset([]byte(`{"list":[{},{}],"pagination":{"offset":100,"total":103}}`))
+	require.NoError(t, err)
+	require.True(t, more)
+	require.Equal(t, 102, next)
+	_, more, err = nextListingOffset([]byte(`{"list":[{}],"pagination":{"offset":2,"total":3}}`))
+	require.NoError(t, err)
+	require.False(t, more)
+	_, more, err = nextListingOffset([]byte(`{"list":[],"pagination":{"offset":0,"total":3}}`))
+	require.NoError(t, err)
+	require.False(t, more)
+	_, _, err = nextListingOffset([]byte(`not json`))
+	require.Error(t, err)
+}
+
+func TestNewestDeliveryMatching(t *testing.T) {
+	list := []byte(`[
+		{"headers":{},"body":{"event_type":"apikey.updated","id":"key-1","state":"associated"}},
+		{"headers":{},"body":{"event_type":"apikey.updated","id":"key-1","state":"dissociated"}},
+		{"headers":{},"body":{"event_type":"apikey.updated","id":"key-1","state":"associated","late":true}},
+		{"headers":{},"body":{"event_type":"apikey.updated","id":"key-2","state":"dissociated"}}
+	]`)
+
+	body, found, err := newestDeliveryMatching(list, "key-1", "associated\"")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Contains(t, string(body), `"dissociated"`, "a late copy of the excluded event must be skipped")
+
+	body, found, err = newestDeliveryMatching(list, "key-1", "")
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Contains(t, string(body), `"late":true`, "without an exclusion the newest match wins")
+
+	_, found, err = newestDeliveryMatching(list, "key-3", "")
+	require.NoError(t, err)
+	require.False(t, found)
+
+	_, found, err = newestDeliveryMatching([]byte(`[]`), "key-1", "")
+	require.NoError(t, err)
+	require.False(t, found)
+
+	_, _, err = newestDeliveryMatching([]byte(`{"not":"a list"}`), "key-1", "")
+	require.Error(t, err)
+}
+
+func TestWebhookEventsSettled(t *testing.T) {
+	body := []byte(`{"list":[{"type":"a","status":"ALL_DELIVERED"},{"type":"b","status":"PENDING"}]}`)
+	settled, err := webhookEventsSettled(body, "a")
+	require.NoError(t, err)
+	require.True(t, settled)
+	settled, err = webhookEventsSettled(body, "b")
+	require.NoError(t, err)
+	require.False(t, settled)
+	_, err = webhookEventsSettled([]byte("not json"), "a")
+	require.Error(t, err)
+}
+
+func TestCheckValuesOnExactlyOnePage(t *testing.T) {
+	pages := []string{"one two", "three"}
+	require.NoError(t, checkValuesOnExactlyOnePage([]string{"one", " two", "three"}, pages))
+	require.ErrorContains(t, checkValuesOnExactlyOnePage([]string{"four"}, pages), "on 0 of 2")
+	require.ErrorContains(t, checkValuesOnExactlyOnePage([]string{"t"}, []string{"t", "t"}), "on 2 of 2")
+}
+
+func TestCheckExportedTheme(t *testing.T) {
+	uploaded, err := buildZip([]zipEntry{{name: "theme/styles/main.css", content: []byte("a")}})
+	require.NoError(t, err)
+	same, err := buildZip([]zipEntry{{name: "styles/main.css", content: []byte("a")}})
+	require.NoError(t, err)
+	require.NoError(t, checkExportedTheme(same, uploaded))
+	changed, err := buildZip([]zipEntry{{name: "styles/main.css", content: []byte("b")}})
+	require.NoError(t, err)
+	require.ErrorContains(t, checkExportedTheme(changed, uploaded), "differs")
+	missing, err := buildZip([]zipEntry{{name: "styles/other.css", content: []byte("a")}})
+	require.NoError(t, err)
+	require.ErrorContains(t, checkExportedTheme(missing, uploaded), "has no file")
+	require.ErrorContains(t, checkExportedTheme([]byte("not a zip"), uploaded), "not a usable archive")
+	escaping, err := buildZip([]zipEntry{{name: "../evil", content: []byte("a")}})
+	require.NoError(t, err)
+	require.ErrorContains(t, checkExportedTheme(escaping, uploaded), "outside the archive root")
+}
+
 func TestCookieValue(t *testing.T) {
 	require.Equal(t, "s%3Aabc", cookieValue("XSRF-TOKEN=x; connect.sid=s%3Aabc", "connect.sid"))
 	require.Equal(t, "", cookieValue("XSRF-TOKEN=x", "connect.sid"))
 	require.Equal(t, "", cookieValue("", "connect.sid"))
 }
 
+// TestForgedCSRFTokenDiffersInEveryPosition ensures the forged token is wrong everywhere, not only
+// in part.
 func TestForgedCSRFTokenDiffersInEveryPosition(t *testing.T) {
 	issued := "AbAcA-_9"
 	forged := forgedCSRFToken(issued)
@@ -1179,6 +1389,8 @@ func TestForgedCSRFTokenDiffersInEveryPosition(t *testing.T) {
 	require.NotEmpty(t, forgedCSRFToken(""))
 }
 
+// TestUploadBoundaryFixturesStraddleTheLimit keeps the near-limit and oversized fixtures on either
+// side of the limit.
 func TestUploadBoundaryFixturesStraddleTheLimit(t *testing.T) {
 	const limit = 10 << 20
 	near, _, _, err := portalDefinition("rest near-limit")
@@ -1224,6 +1436,8 @@ func webhookDeliveryFixture(eventType, eventID, deliveryID string) recordedWebho
 	}
 }
 
+// TestCheckWebhookDeliveryEnvelopes covers each way a delivery envelope or its headers can be
+// invalid.
 func TestCheckWebhookDeliveryEnvelopes(t *testing.T) {
 	valid := []recordedWebhookDelivery{
 		webhookDeliveryFixture("application.created", "evt-1", "dlv-1"),
@@ -1272,10 +1486,6 @@ func TestCheckWebhookDeliveryEnvelopes(t *testing.T) {
 			webhookDeliveryFixture("application.created", "evt-1", "dlv-1"),
 			webhookDeliveryFixture("application.updated", "evt-2", "dlv-1"),
 		}, "repeats another delivery's"},
-		"repeated event id": {[]recordedWebhookDelivery{
-			webhookDeliveryFixture("application.created", "evt-1", "dlv-1"),
-			webhookDeliveryFixture("application.created", "evt-1", "dlv-2"),
-		}, "event_id \"evt-1\" repeats"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -1292,6 +1502,13 @@ func TestCheckWebhookDeliveryEnvelopes(t *testing.T) {
 		}
 	})
 	require.NoError(t, checkWebhookDeliveryEnvelopes(lower))
+}
+
+func TestCheckWebhookDeliveryEnvelopesAcceptsFanOutOfOneEvent(t *testing.T) {
+	require.NoError(t, checkWebhookDeliveryEnvelopes([]recordedWebhookDelivery{
+		webhookDeliveryFixture("application.created", "evt-1", "dlv-1"),
+		webhookDeliveryFixture("application.created", "evt-1", "dlv-2"),
+	}))
 }
 
 func TestDeliveriesContainingFiltersByMarker(t *testing.T) {

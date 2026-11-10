@@ -87,7 +87,7 @@ Feature: Buying a flat rate plan in the API Portal
     When I send an authenticated API Portal "GET" request to "/checkout-sessions/${CTX:checkoutId}" as "developer"
     Then the response status code should be 200
     And the JSON response field "status" should be "OPEN"
-    And the JSON response field "subscriptionId" should be "null"
+    And the JSON response field "subscriptionId" should be null
 
     When the checkout "${CTX:checkoutId}" is paid in Stripe by "developer" and the subscription is stored as "subscriptionId"
     Then the JSON response field "status" should be "COMPLETED"
@@ -98,7 +98,7 @@ Feature: Buying a flat rate plan in the API Portal
     And the JSON response field "status" should be "ACTIVE"
     And the JSON response field "billingStatus" should be "ACTIVE"
     And the JSON response field "byUsage" should be false
-    And the JSON response field "endsAt" should be "null"
+    And the JSON response field "endsAt" should be null
     And the JSON response field "currentPeriod.end" should not equal "null"
 
     # One subscription per API: a second checkout is refused.

@@ -157,6 +157,7 @@ Feature: AI agents discover a view's APIs, MCP servers and specifications withou
     And the response status code should be 201
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.json"
     Then the response status code should be 200
+    And the response body should contain "openapi"
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.graphql"
     Then the response status code should be 404
 
@@ -179,6 +180,7 @@ Feature: AI agents discover a view's APIs, MCP servers and specifications withou
     And the response status code should be 201
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.json"
     Then the response status code should be 200
+    And the response body should contain "openapi"
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.xml"
     Then the response status code should be 404
 
@@ -201,6 +203,7 @@ Feature: AI agents discover a view's APIs, MCP servers and specifications withou
     And the response status code should be 201
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.json"
     Then the response status code should be 200
+    And the response body should contain "openapi"
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.graphql"
     Then the response status code should be 404
 
@@ -223,6 +226,7 @@ Feature: AI agents discover a view's APIs, MCP servers and specifications withou
     And the response status code should be 201
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.graphql"
     Then the response status code should be 200
+    And the response body should contain "type Query"
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.json"
     Then the response status code should be 404
 
@@ -245,6 +249,7 @@ Feature: AI agents discover a view's APIs, MCP servers and specifications withou
     And the response status code should be 201
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.xml"
     Then the response status code should be 200
+    And the response body should contain "schemas.xmlsoap.org/wsdl"
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/${CTX:viewId}/api/${CTX:apiId}/docs/specification.json"
     Then the response status code should be 404
 

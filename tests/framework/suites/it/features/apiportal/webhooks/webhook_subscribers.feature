@@ -65,6 +65,17 @@ Feature: Webhook subscribers are managed through the API Portal REST API
     And the JSON response field "events[0]" should be "subscription.*"
     And the JSON response field "hasSecret" should be true
 
+    # The kept secret is the original one: a later delivery is signed with it.
+    When I send an authenticated API Portal "PUT" request to "/webhook-subscribers/${CTX:subscriberId}" as "admin" with JSON values:
+      | displayName | Credential Subscriber                                         |
+      | targetUrl   | http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook |
+      | events      | ["apikey.*"]                                                  |
+    Then the response status code should be 200
+    Given a REST API is created in the API Portal and stored as "apiId"
+    And a "developer" API key for API "${CTX:apiId}" is generated and stored as "keyId"
+    When I wait for an API Portal webhook event "apikey.generated" containing "${CTX:keyId}"
+    Then the API Portal webhook delivery "apikey.generated" containing "${CTX:keyId}" should have a valid signature using secret "${CTX:secretValue}"
+
     When I send an authenticated API Portal "DELETE" request to "/webhook-subscribers/${CTX:subscriberId}" as "admin"
     Then the response status code should be 204
     When I send an authenticated API Portal "GET" request to "/webhook-subscribers/${CTX:subscriberId}" as "admin"

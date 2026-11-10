@@ -134,14 +134,14 @@ Feature: GraphQL, SOAP, WebSocket and WebSub APIs are managed through the API Po
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=API_DEFINITION&fileName=missing.graphql" as "publisher"
     Then the response status code should be 404
 
-    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with definition "graphql" with values:
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with definition "graphql updated" with values:
       | id   | ${CTX:apiId} |
       | name | ${CTX:apiId} |
       | type | GRAPHQL      |
     Then the response status code should be 200
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=API_DEFINITION&fileName=definition.graphql" as "publisher"
     Then the response status code should be 200
-    And the response body should contain "type Query"
+    And the response body should contain "updatedField"
 
     # A GraphQL API without a definition is refused and stores nothing
     Given I generate a unique resource name from "portal-graphql-no-definition" and store it as "apiId"

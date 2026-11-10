@@ -114,7 +114,7 @@ Feature: Subscription changes are delivered to webhook subscribers, with the tok
     And I send an authenticated API Portal "PUT" request to "/subscriptions/${CTX:subscriptionId}" as "developer" with JSON values:
       | status | ACTIVE |
     Then the response status code should be 200
-    When I wait for an API Portal webhook event "subscription.updated" containing "${CTX:subscriptionId}"
+    When I wait for an API Portal webhook event "subscription.updated" containing "${CTX:subscriptionId}" and not containing "INACTIVE"
     Then the JSON response field "data.status" should be "ACTIVE"
     And the API Portal delivery for subscriber "${CTX:subscriberId}" and event "subscription.updated" should be "DELIVERED"
     When I send an authenticated API Portal "GET" request to "/subscriptions/${CTX:subscriptionId}" as "developer"

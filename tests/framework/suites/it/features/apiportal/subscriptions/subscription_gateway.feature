@@ -168,6 +168,8 @@ Feature: The gateway enforces the subscriptions and API keys held in the API Por
 
     When I send an authenticated API Portal "DELETE" request to "/applications/${CTX:apiHandle}-app" as "admin"
     Then the response status code should be 200
+    # The primary key's unlink is delivered before the barrier key's revocation is sent after it.
+    And every API Portal webhook event of type "apikey.application_updated" should have settled
     When the API key "${CTX:barrierKeyHandle}" for API "${CTX:apiHandle}" is revoked in the API Portal
     And I set header "API-Key" to "${CTX:barrierKeyValue}"
     And I set header "Subscription-Key" to "${CTX:subscriptionToken}"

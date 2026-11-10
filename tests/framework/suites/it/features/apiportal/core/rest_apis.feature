@@ -49,6 +49,14 @@ Feature: REST APIs are managed through the API Portal REST API
       | version | v1.0               |
       | tags    | ["${CTX:tag}"]     |
     And the response status code should be 201
+    And I generate a unique resource name from "portal-rest-version-decoy" and store it as "versionDecoyId"
+    And I generate a unique resource name from "portal-rest-other-tag" and store it as "otherTag"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id      | ${CTX:versionDecoyId} |
+      | name    | ${CTX:versionDecoyId} |
+      | version | v2.0                  |
+      | tags    | ["${CTX:otherTag}"]   |
+    And the response status code should be 201
 
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 200
@@ -64,6 +72,7 @@ Feature: REST APIs are managed through the API Portal REST API
     Then the response status code should be 200
     And the response body should contain "${CTX:apiId}"
     And the response body should not contain "${CTX:decoyId}"
+    And the response body should not contain "${CTX:versionDecoyId}"
     When I send an authenticated API Portal "GET" request to "/apis?query=${CTX:apiId}" as "publisher"
     Then the response status code should be 200
     And the response body should contain "${CTX:apiId}"

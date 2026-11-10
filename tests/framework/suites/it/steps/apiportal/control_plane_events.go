@@ -215,6 +215,8 @@ func signControlPlaneEvent(secret string, body []byte, at time.Time) string {
 	return "t=" + timestamp + ",v1=" + hex.EncodeToString(mac.Sum(nil))
 }
 
+// randomControlPlaneEventID returns a fresh event id, so that a replay check is the only source of
+// a repeated id.
 func randomControlPlaneEventID() (string, error) {
 	raw := make([]byte, 16)
 	if _, err := rand.Read(raw); err != nil {

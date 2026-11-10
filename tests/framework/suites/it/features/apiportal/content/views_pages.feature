@@ -57,10 +57,8 @@ Feature: A view serves exactly the API pages its labels allow
     And the response body should contain "${CTX:apiId}"
     And the response body should not contain "${CTX:otherApiId}"
     # Listing without a view covers the APIs every view shows, so an API with no labels is in none.
-    When I send an authenticated API Portal "GET" request to "/apis" as "publisher"
-    Then the response status code should be 200
-    And the response body should contain "${CTX:apiId}"
-    And the response body should not contain "${CTX:otherApiId}"
+    Then the API Portal API listing seen by "publisher" should contain "${CTX:apiId}" across all pages
+    And the API Portal API listing seen by "publisher" should not contain "${CTX:otherApiId}" across all pages
     When I send an authenticated API Portal "GET" request to "/apis?name=${CTX:otherApiId}" as "publisher"
     Then the response status code should be 200
     And the response body should contain "${CTX:otherApiId}"

@@ -183,11 +183,12 @@ Feature: API key changes are delivered to webhook subscribers, with the key only
     When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/dissociate" as "developer" with JSON values:
       | keyId | ${CTX:keyId} |
     Then the response status code should be 204
-    When I wait for an API Portal webhook event "apikey.application_updated" containing "${CTX:keyId}"
-    Then the JSON response field "data.application" should be "null"
+    When I wait for an API Portal webhook event "apikey.application_updated" containing "${CTX:keyId}" and not containing "${CTX:appId}"
+    Then the JSON response field "data.application" should be null
 
     # A key that is no longer linked has nothing to unlink, so a second unlink reports nothing.
     And I reset API Portal webhook events
     When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/dissociate" as "developer" with JSON values:
       | keyId | ${CTX:keyId} |
+    Then the response status code should be 204
     And I verify no API Portal webhook event "apikey.application_updated" containing "${CTX:keyId}" is delivered

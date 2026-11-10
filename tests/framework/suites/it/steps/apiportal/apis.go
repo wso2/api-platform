@@ -21,6 +21,7 @@ package apiportal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -82,12 +83,13 @@ func (s *Steps) createAPIFromTemplate(ctx context.Context, template, collection,
 		// A refused create stores nothing; the steps that follow assert the refusal.
 		return nil
 	}
-	id, err := createdAPIID(response.Body, metadata)
-	if err != nil {
-		return err
+	id, decodeErr := createdAPIID(response.Body, metadata)
+	if id == "" {
+		return decodeErr
 	}
-	return s.registerPortalResource(ctx, kind, id, cleanup.ScenarioScope,
-		portalCleanupRequest{method: http.MethodDelete, path: collection})
+	// An API the portal accepted is registered even when its response could not be decoded.
+	return errors.Join(decodeErr, s.registerPortalResource(ctx, kind, id, cleanup.ScenarioScope,
+		portalCleanupRequest{method: http.MethodDelete, path: collection}))
 }
 
 // updateAPIFromTemplate PUTs the rendered metadata and definition over the named API in the named
@@ -125,6 +127,8 @@ func apiCollection(collection string) (string, cleanup.Kind, error) {
 	return collection, kind, nil
 }
 
+// renderAPIMetadata renders the template with the values table and drops the fields a null value
+// left out.
 func (s *Steps) renderAPIMetadata(ctx context.Context, template string, table *godog.Table) ([]byte, error) {
 	rendered, err := stepscommon.RenderResourceTemplateJSON(ctx, s.featureRoot, template, table)
 	if err != nil {
@@ -133,6 +137,7 @@ func (s *Steps) renderAPIMetadata(ctx context.Context, template string, table *g
 	return withoutNullFields(rendered)
 }
 
+// sendAPIMultipart sends the metadata with the named definition as a multipart API request.
 func (s *Steps) sendAPIMultipart(ctx context.Context, method, path, role, definition string, metadata []byte) error {
 	content, filename, contentType, err := apiDefinitionPart(ctx, definition)
 	if err != nil {
@@ -171,6 +176,7 @@ func withoutNullFields(document []byte) ([]byte, error) {
 	return encoded, nil
 }
 
+// dropNulls removes null-valued object fields from a decoded JSON value, at any depth.
 func dropNulls(value any) any {
 	switch typed := value.(type) {
 	case map[string]any:
@@ -192,15 +198,18 @@ func dropNulls(value any) any {
 	}
 }
 
-// createdAPIID returns the id the portal reports for a created API, falling back to the id
-// the request sent.
+// createdAPIID returns the id the portal reports for a created API, falling back to the id the
+// request sent. A response that cannot be decoded is an error, but the requested id is still
+// returned with it so that the caller can register the API for cleanup.
 func createdAPIID(body, metadata []byte) (string, error) {
 	var created struct {
 		ID string `json:"id"`
 	}
+	var decodeErr error
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &created); err != nil {
-			return "", fmt.Errorf("decoding the created API Portal API: %w", err)
+			decodeErr = fmt.Errorf("decoding the created API Portal API: %w", err)
+			created.ID = ""
 		}
 	}
 	if created.ID != "" {
@@ -210,14 +219,16 @@ func createdAPIID(body, metadata []byte) (string, error) {
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(metadata, &requested); err != nil {
-		return "", fmt.Errorf("decoding API Portal metadata: %w", err)
+		return "", errors.Join(decodeErr, fmt.Errorf("decoding API Portal metadata: %w", err))
 	}
 	if requested.ID == "" {
-		return "", fmt.Errorf("the API Portal created an API without reporting its id")
+		return "", errors.Join(decodeErr, fmt.Errorf("the API Portal created an API without reporting its id"))
 	}
-	return requested.ID, nil
+	return requested.ID, decodeErr
 }
 
+// publishedResponse returns the response the last request step published, refusing a missing or
+// mistyped one.
 func publishedResponse(ctx context.Context) (*httpx.Response, error) {
 	value, ok := tcontext.Get(ctx, httpx.ResponseKey)
 	if !ok {

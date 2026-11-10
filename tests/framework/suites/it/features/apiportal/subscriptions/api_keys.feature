@@ -66,55 +66,59 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
 
     # A key with an ISO time with an offset is issued with that expiry
     Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name from "portal-iso-key" and store it as "isoKeyId"
     When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON body:
       """
-      {"id": "iso-offset-key", "expiresAt": "2035-01-01T05:30:00+05:30"}
+      {"id": "${CTX:isoKeyId}", "expiresAt": "2035-01-01T05:30:00+05:30"}
       """
-    And I register API Portal API key "iso-offset-key" of API "${CTX:apiId}" owned by "developer" for cleanup
+    And I register API Portal API key "${CTX:isoKeyId}" of API "${CTX:apiId}" owned by "developer" for cleanup
     Then the response status code should be 201
     And the JSON response should have field "key"
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
-    Then the JSON response array "list" item with "id" equal to "iso-offset-key" should have "status" equal to "ACTIVE"
-    And the JSON response array "list" item with "id" equal to "iso-offset-key" should have "expiresAt" equal to "2035-01-01T00:00:00.000Z"
+    Then the JSON response array "list" item with "id" equal to "${CTX:isoKeyId}" should have "status" equal to "ACTIVE"
+    And the JSON response array "list" item with "id" equal to "${CTX:isoKeyId}" should have "expiresAt" equal to "2035-01-01T00:00:00.000Z"
 
     # A key with an expiry in epoch seconds is issued with that expiry
     Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name from "portal-seconds-key" and store it as "secondsKeyId"
     When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON body:
       """
-      {"id": "epoch-seconds-key", "expiresAt": 2051222400}
+      {"id": "${CTX:secondsKeyId}", "expiresAt": 2051222400}
       """
-    And I register API Portal API key "epoch-seconds-key" of API "${CTX:apiId}" owned by "developer" for cleanup
+    And I register API Portal API key "${CTX:secondsKeyId}" of API "${CTX:apiId}" owned by "developer" for cleanup
     Then the response status code should be 201
     And the JSON response should have field "key"
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
-    Then the JSON response array "list" item with "id" equal to "epoch-seconds-key" should have "status" equal to "ACTIVE"
-    And the JSON response array "list" item with "id" equal to "epoch-seconds-key" should have "expiresAt" equal to "2035-01-01T00:00:00.000Z"
+    Then the JSON response array "list" item with "id" equal to "${CTX:secondsKeyId}" should have "status" equal to "ACTIVE"
+    And the JSON response array "list" item with "id" equal to "${CTX:secondsKeyId}" should have "expiresAt" equal to "2035-01-01T00:00:00.000Z"
 
     # A key with an expiry in epoch millis is issued with that expiry
     Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name from "portal-millis-key" and store it as "millisKeyId"
     When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON body:
       """
-      {"id": "epoch-millis-key", "expiresAt": 2051222400000}
+      {"id": "${CTX:millisKeyId}", "expiresAt": 2051222400000}
       """
-    And I register API Portal API key "epoch-millis-key" of API "${CTX:apiId}" owned by "developer" for cleanup
+    And I register API Portal API key "${CTX:millisKeyId}" of API "${CTX:apiId}" owned by "developer" for cleanup
     Then the response status code should be 201
     And the JSON response should have field "key"
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
-    Then the JSON response array "list" item with "id" equal to "epoch-millis-key" should have "status" equal to "ACTIVE"
-    And the JSON response array "list" item with "id" equal to "epoch-millis-key" should have "expiresAt" equal to "2035-01-01T00:00:00.000Z"
+    Then the JSON response array "list" item with "id" equal to "${CTX:millisKeyId}" should have "status" equal to "ACTIVE"
+    And the JSON response array "list" item with "id" equal to "${CTX:millisKeyId}" should have "expiresAt" equal to "2035-01-01T00:00:00.000Z"
 
     # A key with the longest id, 128 letters is issued with that expiry
     Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name of 128 characters from "portal-api-key" and store it as "boundaryKeyId"
     When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON body:
       """
-      {"id": "k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde", "expiresAt": "2035-01-01T00:00:00Z"}
+      {"id": "${CTX:boundaryKeyId}", "expiresAt": "2035-01-01T00:00:00Z"}
       """
-    And I register API Portal API key "k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde" of API "${CTX:apiId}" owned by "developer" for cleanup
+    And I register API Portal API key "${CTX:boundaryKeyId}" of API "${CTX:apiId}" owned by "developer" for cleanup
     Then the response status code should be 201
     And the JSON response should have field "key"
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
-    Then the JSON response array "list" item with "id" equal to "k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde" should have "status" equal to "ACTIVE"
-    And the JSON response array "list" item with "id" equal to "k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde" should have "expiresAt" equal to "2035-01-01T00:00:00.000Z"
+    Then the JSON response array "list" item with "id" equal to "${CTX:boundaryKeyId}" should have "status" equal to "ACTIVE"
+    And the JSON response array "list" item with "id" equal to "${CTX:boundaryKeyId}" should have "expiresAt" equal to "2035-01-01T00:00:00.000Z"
 
     # A key without an expiry never expires, and both key listings page through their results
     Given a REST API is created in the API Portal and stored as "apiId"
@@ -148,10 +152,11 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
   Scenario: Invalid API keys are refused, and a key is linked to an application until it is revoked
     # A key whose id has a space and capitals is refused and no key is issued
     Given a REST API is created in the API Portal and stored as "apiId"
+    And I generate a unique resource name from "portal-bad-key" and store it as "badKeySuffix"
     When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON values:
-      | id        | Bad Id        |
+      | id        | Bad ${CTX:badKeySuffix} |
       | expiresAt | 2035-01-01T00:00:00Z |
-    And I register API Portal API key "Bad Id" of API "${CTX:apiId}" owned by "developer" for cleanup
+    And I register API Portal API key "Bad ${CTX:badKeySuffix}" of API "${CTX:apiId}" owned by "developer" for cleanup
     Then the response status code should be 400
     And the JSON response field "key" should not exist
     And the response body should not contain "stack"
@@ -161,10 +166,11 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
 
     # A key whose id is 129 characters is refused and no key is issued
     Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name of 129 characters from "portal-api-key" and store it as "longKeyId"
     When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON values:
-      | id        | k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdex        |
+      | id        | ${CTX:longKeyId}        |
       | expiresAt | 2035-01-01T00:00:00Z |
-    And I register API Portal API key "k0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdex" of API "${CTX:apiId}" owned by "developer" for cleanup
+    And I register API Portal API key "${CTX:longKeyId}" of API "${CTX:apiId}" owned by "developer" for cleanup
     Then the response status code should be 400
     And the JSON response field "key" should not exist
     And the response body should not contain "stack"
@@ -174,10 +180,11 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
 
     # A key whose expiry has no time zone is refused and no key is issued
     Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name from "portal-${CTX:noZoneKeyId}" and store it as "noZoneKeyId"
     When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON values:
-      | id        | no-zone-key        |
+      | id        | ${CTX:noZoneKeyId}        |
       | expiresAt | 2035-01-01T00:00:00 |
-    And I register API Portal API key "no-zone-key" of API "${CTX:apiId}" owned by "developer" for cleanup
+    And I register API Portal API key "${CTX:noZoneKeyId}" of API "${CTX:apiId}" owned by "developer" for cleanup
     Then the response status code should be 400
     And the JSON response field "key" should not exist
     And the response body should not contain "stack"
@@ -187,10 +194,11 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
 
     # A key whose expiry is after the year 2100 is refused and no key is issued
     Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name from "portal-${CTX:lateKeyId}" and store it as "lateKeyId"
     When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/generate" as "developer" with JSON values:
-      | id        | late-key        |
+      | id        | ${CTX:lateKeyId}        |
       | expiresAt | 2101-01-01T00:00:00Z |
-    And I register API Portal API key "late-key" of API "${CTX:apiId}" owned by "developer" for cleanup
+    And I register API Portal API key "${CTX:lateKeyId}" of API "${CTX:apiId}" owned by "developer" for cleanup
     Then the response status code should be 400
     And the JSON response field "key" should not exist
     And the response body should not contain "stack"
@@ -213,6 +221,8 @@ Feature: API keys are generated, rotated and revoked through the API Portal REST
       | keyId | ${CTX:missingKeyId} |
     Then the response status code should be 404
     When I send an authenticated API Portal "GET" request to "/api-keys?limit=0" as "publisher"
+    Then the response status code should be 400
+    When I send an authenticated API Portal "GET" request to "/api-keys?status=BOGUS" as "publisher"
     Then the response status code should be 400
     When I send an authenticated API Portal "GET" request to "/api-keys?limit=100" as "publisher"
     Then the response status code should be 200

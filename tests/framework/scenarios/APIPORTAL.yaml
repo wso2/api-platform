@@ -117,7 +117,8 @@ scenarios:
     ui:
       status: planned
     it:
-      status: automated
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/4142
       refs:
         - feature: suites/it/features/apiportal/content/views_labels_advanced.feature
           scenario: "An administrator manages a view's labels and handle, within its deletion and access rules"
@@ -173,7 +174,10 @@ scenarios:
     ui:
       status: planned
     it:
-      status: automated
+      status: known-issue
+      issue:
+        - https://github.com/wso2/api-platform/issues/4143
+        - https://github.com/wso2/api-platform/issues/3164
       refs:
         - feature: suites/it/features/apiportal/applications/key_managers.feature
           scenario: "An administrator manages a key manager, reads its discovery metadata and controls its token issuance"
@@ -235,7 +239,8 @@ scenarios:
     ui:
       status: planned
     it:
-      status: automated
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3610
       refs:
         - feature: suites/it/features/apiportal/ai/mcp_servers.feature
           scenario: "The registry listing pages and searches under both paths, and only publishers can change it"
@@ -247,7 +252,8 @@ scenarios:
     ui:
       status: planned
     it:
-      status: automated
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3111
       refs:
         - feature: suites/it/features/apiportal/ai/workflows.feature
           scenario: "A publisher manages an API workflow, its agent visibility, its Arazzo document and its prompt"

@@ -79,14 +79,17 @@ Feature: Deleting an application unlinks its credentials without revoking them
     And I reset API Portal webhook events
     When I send an authenticated API Portal "DELETE" request to "/applications/${CTX:appId}" as "developer"
     Then the response status code should be 200
+    And I deregister API Portal resource "${CTX:appId}" at "/applications" from cleanup
 
     # Each key is unlinked once, and reported with no application.
-    When I wait for an API Portal webhook event "apikey.application_updated" containing "${CTX:firstKeyId}"
+    When I wait for an API Portal webhook event "apikey.application_updated" containing "${CTX:firstKeyId}" and not containing "${CTX:appId}"
     Then the JSON response field "data.handle" should be "${CTX:firstKeyId}"
-    And the JSON response field "data.application" should be "null"
-    When I wait for an API Portal webhook event "apikey.application_updated" containing "${CTX:secondKeyId}"
+    And the JSON response field "data.application" should be null
+    When I wait for an API Portal webhook event "apikey.application_updated" containing "${CTX:secondKeyId}" and not containing "${CTX:appId}"
     Then the JSON response field "data.handle" should be "${CTX:secondKeyId}"
-    And the JSON response field "data.application" should be "null"
+    And the JSON response field "data.application" should be null
+    And the API Portal webhook deliveries containing "${CTX:firstKeyId}" should be 1, each carrying its event headers and envelope
+    And the API Portal webhook deliveries containing "${CTX:secondKeyId}" should be 1, each carrying its event headers and envelope
 
     # The keys stay active and unlinked.
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"

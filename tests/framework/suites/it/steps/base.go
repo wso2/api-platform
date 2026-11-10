@@ -244,6 +244,7 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the response should not contain echoed header "([^"]*)"$`, b.echoedHeaderAbsent)
 	sc.Step(`^the JSON response should have field "([^"]*)"$`, b.jsonFieldExists)
 	sc.Step(`^the JSON response field "([^"]*)" should not exist$`, b.jsonFieldAbsent)
+	sc.Step(`^the JSON response field "([^"]*)" should be null$`, b.jsonFieldIsNull)
 	sc.Step(`^the JSON response field "([^"]*)" should be (\d+)$`, b.jsonFieldIsNumber)
 	sc.Step(`^the JSON response field "([^"]*)" should be (true|false)$`, b.jsonFieldIsBool)
 	sc.Step(`^the JSON response field "([^"]*)" should be "([^"]*)"$`, b.jsonFieldIs)
@@ -285,6 +286,8 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 		b.generateUniqueValue)
 	sc.Step(`^I generate a unique API version from "([^"]*)" and store it as "([^"]*)"$`,
 		b.generateUniqueAPIVersion)
+	sc.Step(`^I generate a unique resource name of (\d+) characters from "([^"]*)" and store it as "([^"]*)"$`,
+		b.generateUniqueResourceNameOfLength)
 	sc.Step(`^I generate a unique resource name from "([^"]*)" and store it as "([^"]*)"$`,
 		b.generateUniqueResourceName)
 	sc.Step(`^I generate a unique API context from "([^"]*)" and store it as "([^"]*)"$`,
@@ -1038,6 +1041,26 @@ func (b *Base) jsonFieldAbsent(ctx context.Context, field string) error {
 	if v, ok := traverseJSON(data, field); ok {
 		return fmt.Errorf("expected field %q to be absent, but it is present with value %v (%s)",
 			field, v, resp.Describe())
+	}
+	return nil
+}
+
+// jsonFieldIsNull asserts the field is present and holds JSON null, which the text "null" does not.
+func (b *Base) jsonFieldIsNull(ctx context.Context, field string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(resp.Body, &doc); err != nil {
+		return fmt.Errorf("response is not a JSON object: %w (%s)", err, resp.Describe())
+	}
+	got, present := traverseJSON(doc, field)
+	if !present {
+		return fmt.Errorf("JSON field %q is absent from %s", field, resp.Describe())
+	}
+	if got != nil {
+		return fmt.Errorf("JSON field %q is %v (%T), want null", field, got, got)
 	}
 	return nil
 }
@@ -1995,6 +2018,37 @@ func (b *Base) generateUniqueAPIVersion(ctx context.Context, base, key string) e
 
 func (b *Base) generateUniqueResourceName(ctx context.Context, base, key string) error {
 	return stepscommon.GenerateResourceAndStore(ctx, base, key)
+}
+
+// generateUniqueResourceNameOfLength stores a unique DNS-style name padded to exactly length
+// characters, for boundary cases where the length is what is under test.
+func (b *Base) generateUniqueResourceNameOfLength(ctx context.Context, length int, base, key string) error {
+	local, ok := tcontext.LocalOf(ctx)
+	if !ok || local == nil {
+		return fmt.Errorf("cannot store generated value %q without runner context", key)
+	}
+	if err := stepscommon.GenerateResourceAndStore(ctx, base, key); err != nil {
+		return err
+	}
+	value, err := stepscommon.StoredValue(ctx, key)
+	if err != nil {
+		return err
+	}
+	padded, err := padToLength(value, length)
+	if err != nil {
+		return err
+	}
+	local.Set(strings.TrimSpace(key), padded)
+	return nil
+}
+
+// padToLength extends value with 'a' to exactly length characters. A value already longer is an
+// error rather than a truncation, which would lose its uniqueness.
+func padToLength(value string, length int) (string, error) {
+	if len(value) > length {
+		return "", fmt.Errorf("unique name %q is longer than the %d characters requested", value, length)
+	}
+	return value + strings.Repeat("a", length-len(value)), nil
 }
 
 func (b *Base) generateUniqueContext(ctx context.Context, base, key string) error {

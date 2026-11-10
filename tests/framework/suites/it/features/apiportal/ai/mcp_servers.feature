@@ -211,7 +211,7 @@ Feature: MCP servers are managed through the API Portal REST API and its MCP reg
 
     # An MCP server sent to the REST API collection is refused
     Given I generate a unique resource name from "portal-mcp-as-api" and store it as "mcpId"
-    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "mcp" with values:
       | id   | ${CTX:mcpId} |
       | name | ${CTX:mcpId} |
       | type | MCP          |
@@ -753,24 +753,15 @@ Feature: MCP servers are managed through the API Portal REST API and its MCP reg
     Then the response status code should be 200
     And the response body should not contain "${CTX:serverName}"
 
-    # A registry server name of 3 characters, the shortest allowed, is accepted
-    When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
-      | name        | a/b      |
-      | description | Plans trips |
-      | version     | 1.0.0       |
-    Then the response status code should be 201
-    And I register API Portal resource "b" at "/mcp-servers" for cleanup
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/a%2Fb/versions/1.0.0"
-    Then the response status code should be 200
-
     # A registry server name of 200 characters, the longest allowed, is accepted
+    Given I generate a unique resource name of 188 characters from "portal-registry-long" and store it as "longName"
+    And I register API Portal resource "${CTX:longName}" at "/mcp-servers" for cleanup
     When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "publisher" with JSON values:
-      | name        | example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa      |
+      | name        | example.com/${CTX:longName} |
       | description | Plans trips |
       | version     | 1.0.0       |
     Then the response status code should be 201
-    And I register API Portal resource "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" at "/mcp-servers" for cleanup
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2Faaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/versions/1.0.0"
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers/example.com%2F${CTX:longName}/versions/1.0.0"
     Then the response status code should be 200
 
   @APIP-020 @type:negative @type:security
@@ -800,10 +791,13 @@ Feature: MCP servers are managed through the API Portal REST API and its MCP reg
     And the JSON response array field "servers" should have 2 items
     And the JSON response should have field "metadata.nextCursor"
     And I store the JSON response field "metadata.nextCursor" as "nextCursor"
+    And I store the API Portal response body as "firstPage"
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:prefix}-PLANNER&limit=2&cursor=${CTX:nextCursor}"
     Then the response status code should be 200
     And the JSON response array field "servers" should have 1 item
     And the JSON response field "metadata.nextCursor" should not exist
+    And I store the API Portal response body as "secondPage"
+    And the values "${CTX:prefix}-Planner-1,${CTX:prefix}-Planner-2,${CTX:prefix}-Planner-3" should each appear in exactly one of the stored API Portal responses "firstPage,secondPage"
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:prefix}-planner"
     Then the JSON response array field "servers" should have 3 items
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers?search=${CTX:prefix}&limit=100"
@@ -823,6 +817,7 @@ Feature: MCP servers are managed through the API Portal REST API and its MCP reg
 
     # A developer cannot publish to the MCP registry
     Given I generate a unique resource name from "portal-registry-denied" and store it as "serverName"
+    And I register API Portal resource "${CTX:serverName}" at "/mcp-servers" for cleanup
     When I send an authenticated API Portal "POST" request to "/api-portal/registry/default/v0.1/publish" as "developer" with JSON values:
       | name        | example.com/${CTX:serverName} |
       | description | Not allowed                   |

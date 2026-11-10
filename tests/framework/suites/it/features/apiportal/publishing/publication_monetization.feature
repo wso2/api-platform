@@ -285,6 +285,7 @@ Feature: Publishing priced plans to an API Portal
     When I send a "GET" request to the control plane at "/subscription-plans/${CTX:planHandle}"
     Then the response status code should be 200
     And the JSON response field "displayName" should be "${CTX:planHandle}"
+    And the JSON response field "limits[0].limitCount" should be 10000
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planHandle}" as "admin"
     Then the response status code should be 200
     And the JSON response field "limits[0].limitCount" should be 10000
