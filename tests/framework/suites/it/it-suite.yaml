@@ -872,6 +872,9 @@ blocks:
       - name: model-failover-inert
         features:
           - features/gateway/ai/model_failover_inert.feature
+      - name: model-failover-accounting
+        features:
+          - features/gateway/ai/model_failover_accounting.feature
 
   - name: backend-timeout
     parallel: 2
