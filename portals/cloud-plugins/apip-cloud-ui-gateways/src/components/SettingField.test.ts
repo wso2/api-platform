@@ -22,12 +22,14 @@ import { isTomlBlock } from './SettingField';
 
 describe('isTomlBlock', () => {
   it('is a toml string, or a string from a platform that predates format', () => {
+    // Both are gateway.config_toml, which the drawer leaves out.
     expect(isTomlBlock({ path: 'a', type: 'string', format: 'toml' })).toBe(true);
     expect(isTomlBlock({ path: 'a', type: 'string' })).toBe(true);
   });
 
   it('is not a header value or any other type', () => {
     expect(isTomlBlock({ path: 'a', type: 'string', format: 'header-value' })).toBe(false);
+    expect(isTomlBlock({ path: 'a', type: 'string', format: 'text' })).toBe(false);
     expect(isTomlBlock({ path: 'a', type: 'boolean' })).toBe(false);
   });
 });

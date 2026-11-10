@@ -84,11 +84,12 @@ Feature: APIP cloud managed gateway configuration
     And I find an active APIP gateway
     And the active APIP gateway's configuration should be readable
     When I write each of these gateway configuration values separately:
-      | path                                                             | value       | message                                               |
-      | gateway.config.router.http_listener.server_header_transformation | REPLACE     | must be one of Overwrite, Add if absent, Pass through |
-      | gateway.config.router.http_listener.server_header_transformation | "Overwrite" | must be one of Overwrite, Add if absent, Pass through |
-      | gateway.config.router.upstream.tls.minimum_protocol_version      | TLS1_1      | must be one of TLS 1.2, TLS 1.3                       |
-      | gateway.config.router.upstream.tls.minimum_protocol_version      | "TLS 1.3"   | must be one of TLS 1.2, TLS 1.3                       |
+      | path                                                               | value        | message                                               |
+      | gateway.config.router.http_listener.server_header_transformation   | REPLACE      | must be one of Overwrite, Add if absent, Pass through |
+      | gateway.config.router.http_listener.server_header_transformation   | "Overwrite"  | must be one of Overwrite, Add if absent, Pass through |
+      | gateway.config.router.upstream.tls.minimum_protocol_version        | TLS1_1       | must be one of TLS 1.2, TLS 1.3                       |
+      | gateway.config.router.upstream.tls.minimum_protocol_version        | "TLS 1.3"    | must be one of TLS 1.2, TLS 1.3                       |
+      | gateway.config.policy_configurations.jwtauth_v1.errormessageformat | "Plain text" | must be one of JSON, Plain text, Minimal              |
     Then every one of those writes should have been refused as invalid
 
   @TC_APIP_GWCFG_025 @ID_APIP_GATEWAY_CONFIG_017
@@ -123,25 +124,27 @@ Feature: APIP cloud managed gateway configuration
     Given I obtain an APIP cloud console token
     And I find an active APIP gateway
     And the active APIP gateway's configuration should be readable
-    When I write the gateway configuration path "gateway.config_toml" with a string of 8193 characters
+    When I write the gateway configuration path "gateway.config.policy_configurations.jwtauth_v1.errormessage" with a string of 257 characters
     Then the cloud API response status code should be 400
     And the cloud API error code should be "invalid_request"
-    And the cloud API response body should contain "gateway.config_toml"
-    And the cloud API response body should contain "must be between 0 and 8192 characters"
+    And the cloud API response body should contain "gateway.config.policy_configurations.jwtauth_v1.errormessage"
+    And the cloud API response body should contain "must be between 1 and 256 characters"
 
   @TC_APIP_GWCFG_016 @ID_APIP_GATEWAY_CONFIG_014
-  Scenario: Raw TOML with control characters or line separators is refused
+  Scenario: Text with control characters, line separators or line breaks is refused
     Given I obtain an APIP cloud console token
     And I find an active APIP gateway
     And the active APIP gateway's configuration should be readable
     When I write each of these gateway configuration values separately:
-      | path                | value      | message                                                |
-      | gateway.config_toml | "a\u0000b" | must not contain control characters or line separators |
-      | gateway.config_toml | "a\u0007b" | must not contain control characters or line separators |
-      | gateway.config_toml | "a\u001bb" | must not contain control characters or line separators |
-      | gateway.config_toml | "a\u007fb" | must not contain control characters or line separators |
-      | gateway.config_toml | "a\u2028b" | must not contain control characters or line separators |
-      | gateway.config_toml | "a\u2029b" | must not contain control characters or line separators |
+      | path                                                         | value      | message                                                |
+      | gateway.config.policy_configurations.jwtauth_v1.errormessage | "a\u0000b" | must not contain control characters or line separators |
+      | gateway.config.policy_configurations.jwtauth_v1.errormessage | "a\u0007b" | must not contain control characters or line separators |
+      | gateway.config.policy_configurations.jwtauth_v1.errormessage | "a\u001bb" | must not contain control characters or line separators |
+      | gateway.config.policy_configurations.jwtauth_v1.errormessage | "a\u007fb" | must not contain control characters or line separators |
+      | gateway.config.policy_configurations.jwtauth_v1.errormessage | "a\u2028b" | must not contain control characters or line separators |
+      | gateway.config.policy_configurations.jwtauth_v1.errormessage | "a\u2029b" | must not contain control characters or line separators |
+      | gateway.config.policy_configurations.jwtauth_v1.errormessage | "a\u0009b"     | must be one line, without tabs                         |
+      | gateway.config.policy_configurations.jwtauth_v1.errormessage | "a\u000ab"     | must be one line, without tabs                         |
     Then every one of those writes should have been refused as invalid
 
   @TC_APIP_GWCFG_023 @ID_APIP_GATEWAY_CONFIG_015
@@ -155,4 +158,21 @@ Feature: APIP cloud managed gateway configuration
       | gateway.gatewayRuntime.deployment.resources.limits.cpu                       | "1"   | is not an editable gateway setting |
       | gateway.config.router.upstream.timeouts.connect                              | "5s"  | is not an editable gateway setting |
       | gateway.config.policy_configurations.llm_cost_ratelimit_v1.cost_scale_factor | 1     | is not an editable gateway setting |
+      | gateway.config_toml                                                          | "[a]" | is not an editable gateway setting |
+      | gateway.config.policy_configurations.jwtauth_v1.onfailurestatuscode          | 403   | is not an editable gateway setting |
+      | gateway.config.policy_configurations.jwtauth_v1.keymanagers                  | []    | is not an editable gateway setting |
+    Then every one of those writes should have been refused as invalid
+
+  @TC_APIP_GWCFG_027 @ID_APIP_GATEWAY_CONFIG_019
+  Scenario: A JWT duration setting refuses a value outside its bounds
+    Given I obtain an APIP cloud console token
+    And I find an active APIP gateway
+    And the active APIP gateway's configuration should be readable
+    When I write each of these gateway configuration values separately:
+      | path                                                          | value  | message                         |
+      | gateway.config.policy_configurations.jwtauth_v1.leeway        | "10m"  | must be between 0s and 5m       |
+      | gateway.config.policy_configurations.jwtauth_v1.jwkscachettl  | "30s"  | must be between 1m and 24h      |
+      | gateway.config.policy_configurations.jwtauth_v1.tokencachettl | "2h"   | must be between 30s and 1h      |
+      | gateway.config.policy_configurations.jwtauth_v1.leeway        | "soon" | must be a duration such as "5m" |
+      | gateway.config.policy_configurations.jwtauth_v1.tokencaching  | "on"   | must be true or false           |
     Then every one of those writes should have been refused as invalid

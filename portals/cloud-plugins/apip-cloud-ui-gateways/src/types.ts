@@ -194,10 +194,11 @@ export type EditableField = {
    */
   labels?: Record<string, string>;
   /**
-   * What a `string` holds: `toml` is a multi-line block (a text area),
-   * `header-value` one HTTP header value (a single-line input).
+   * What a `string` holds: `text` is one line in any script, `header-value`
+   * one HTTP header value. `toml` (or no format) is gateway.config_toml from a
+   * platform that still offers it; the console no longer edits raw TOML.
    */
-  format?: 'toml' | 'header-value';
+  format?: 'text' | 'header-value' | 'toml';
   /**
    * Inclusive bounds. STRINGS for every type — `Number('50m')` is `NaN`. For
    * `string`, `max` is a length in characters and `min` is absent.

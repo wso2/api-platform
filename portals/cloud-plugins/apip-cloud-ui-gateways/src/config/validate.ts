@@ -150,6 +150,9 @@ export function validateFieldValue(
       if (UNRENDERABLE.test(value)) {
         return 'Must not contain control characters or line separators';
       }
+      if (field.format === 'text' && /[\t\n\r]/.test(value)) {
+        return 'Must be one line, without tabs';
+      }
       if (field.format === 'header-value') {
         // The platform's checkHeaderValue: printable ASCII, no surrounding space.
         if (!/^[\x20-\x7e]*$/.test(value)) return 'Must be printable ASCII';

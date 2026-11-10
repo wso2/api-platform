@@ -91,9 +91,11 @@ const MEMORY_LIMIT: EditableField = {
   type: 'quantity',
 };
 
-const CONFIG_TOML: EditableField = {
-  max: '8192',
-  path: 'gateway.config_toml',
+const ERROR_MESSAGE: EditableField = {
+  format: 'text',
+  max: '256',
+  min: '1',
+  path: 'gateway.config.policy_configurations.jwtauth_v1.errormessage',
   type: 'string',
 };
 
@@ -207,21 +209,23 @@ describe('validateFieldValue', () => {
   });
 
   it('counts the string field in code points, not bytes', () => {
-    const ascii = 'a'.repeat(8192);
-    expect(validateFieldValue(CONFIG_TOML, ascii)).toBeNull();
-    expect(validateFieldValue(CONFIG_TOML, `${ascii}a`)).toBe(
-      'Must be between 0 and 8192 characters'
+    const ascii = 'a'.repeat(256);
+    expect(validateFieldValue(ERROR_MESSAGE, ascii)).toBeNull();
+    expect(validateFieldValue(ERROR_MESSAGE, `${ascii}a`)).toBe(
+      'Must be between 1 and 256 characters'
     );
 
-    // 8192 astral characters are 16384 UTF-16 units and 32768 bytes, and are
-    // 8192 characters to the person who typed them.
-    const astral = '\u{1F600}'.repeat(8192);
-    expect(astral.length).toBe(16384);
-    expect(validateFieldValue(CONFIG_TOML, astral)).toBeNull();
+    // 256 astral characters are 512 UTF-16 units and 1024 bytes, and are 256
+    // characters to the person who typed them.
+    const astral = '\u{1F600}'.repeat(256);
+    expect(astral.length).toBe(512);
+    expect(validateFieldValue(ERROR_MESSAGE, astral)).toBeNull();
   });
 
-  it('clears the string field with an empty value', () => {
-    expect(validateFieldValue(CONFIG_TOML, '')).toBeNull();
+  it('refuses an empty value below the declared minimum', () => {
+    expect(validateFieldValue(ERROR_MESSAGE, '')).toBe(
+      'Must be between 1 and 256 characters'
+    );
   });
 
   it('refuses the characters the values document cannot carry', () => {
@@ -246,18 +250,21 @@ describe('validateFieldValue', () => {
       lineSeparator,
       paragraphSeparator,
     ]) {
-      expect(validateFieldValue(CONFIG_TOML, `[a]\nb = "${character}"`)).toBe(
-        refused
+      expect(validateFieldValue(ERROR_MESSAGE, `a${character}b`)).toBe(refused);
+    }
+  });
+
+  it('holds text to one line, in any script', () => {
+    expect(validateFieldValue(ERROR_MESSAGE, '認証に失敗しました')).toBeNull();
+    for (const value of ['a\tb', 'a\nb', 'a\rb']) {
+      expect(validateFieldValue(ERROR_MESSAGE, value)).toBe(
+        'Must be one line, without tabs'
       );
     }
   });
 
-  it('allows tab, newline and carriage return, which a TOML block needs', () => {
-    expect(validateFieldValue(CONFIG_TOML, '[a]\r\n\tb = 1\n')).toBeNull();
-  });
-
   it('refuses a non-string for the string field', () => {
-    expect(validateFieldValue(CONFIG_TOML, 42)).toBe(
+    expect(validateFieldValue(ERROR_MESSAGE, 42)).toBe(
       'Must be a string'
     );
   });
@@ -281,7 +288,7 @@ const configuration = (
     CPU_REQUEST,
     MEMORY_REQUEST,
     MEMORY_LIMIT,
-    CONFIG_TOML,
+    ERROR_MESSAGE,
   ],
   id: 'wc-org-development-apip-default-gw',
   status: { phase: 'healthy' },

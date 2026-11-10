@@ -58,15 +58,15 @@ export type SettingFieldProps = {
  * for something that only matters while typing, and the message that arrives
  * when a value is actually out of range states them anyway.
  *
- * A `toml` string is not handled here: its copy is an operational warning
- * rather than a description, so it keeps persistent text and its own component
- * (`TomlField`). Every other string is one line.
+ * Every string is one line. A TOML block is not rendered at all (see
+ * `isTomlBlock`).
  */
 
 /**
- * Whether a field is a TOML block, which `TomlField` renders. A string with no
- * `format` is one too: it is how a platform that predates `format` sends
- * gateway.config_toml.
+ * Whether a field is gateway.config_toml from a platform that still offers it,
+ * as `toml` or, before `format` existed, with none. The console does not show
+ * it: raw TOML could repoint the gateway's database, and the platform is
+ * withdrawing it.
  */
 export const isTomlBlock = (field: EditableField): boolean =>
   field.type === 'string' && (field.format ?? 'toml') === 'toml';

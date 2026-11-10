@@ -47,7 +47,6 @@ import type {
 } from '../types';
 import ConfigStatusBar from './ConfigStatusBar';
 import SettingField, { isTomlBlock } from './SettingField';
-import TomlField from './TomlField';
 
 export type GatewaySettingsDrawerProps = {
   open: boolean;
@@ -308,7 +307,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   // The platform lists a group's fields together and in the order to show
   // them, so each run of one group is a section under its heading.
   const sections: { group?: string; fields: EditableField[] }[] = [];
-  for (const field of config?.editable ?? []) {
+  for (const field of config?.editable.filter((f) => !isTomlBlock(f)) ?? []) {
     const last = sections[sections.length - 1];
     if (last && last.group === field.group) last.fields.push(field);
     else sections.push({ group: field.group, fields: [field] });
@@ -416,20 +415,16 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
                   {section.group}
                 </Typography>
               ) : null}
-              {section.fields.map((field) => {
-                // A TOML block carries its own warnings and character budget.
-                const Field = isTomlBlock(field) ? TomlField : SettingField;
-                return (
-                  <Field
-                    key={field.path}
-                    field={field}
-                    value={currentValue(field)}
-                    error={errors[field.path]}
-                    readOnly={saving || !canWrite}
-                    onChange={(value) => setDraft(field.path, value)}
-                  />
-                );
-              })}
+              {section.fields.map((field) => (
+                <SettingField
+                  key={field.path}
+                  field={field}
+                  value={currentValue(field)}
+                  error={errors[field.path]}
+                  readOnly={saving || !canWrite}
+                  onChange={(value) => setDraft(field.path, value)}
+                />
+              ))}
             </Box>
           ))}
         </Box>
