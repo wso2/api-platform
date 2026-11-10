@@ -496,6 +496,9 @@ blocks:
       - name: model-failover-health-grading
         features:
           - features/gateway/ai/model_failover_health_grading.feature
+      - name: model-failover-steering
+        features:
+          - features/gateway/ai/model_failover_steering.feature
       - name: upstream-url-validation
         tags: "gateway-version>=1.2.0"
         features:
