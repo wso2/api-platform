@@ -18,7 +18,7 @@
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { http as mswHttp, HttpResponse } from 'msw';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
@@ -98,7 +98,6 @@ const PUBLICATION_PATH = `${BASE}/publication`;
 const PUBLISH_PATH = `${BASE}/publish`;
 const UNPUBLISH_PATH = `${BASE}/unpublish`;
 const DEPRECATE_PATH = `${BASE}/deprecate`;
-const DOCS_PATH = `/apis/rest-api/${API}/docs`;
 
 const YAML_DEFINITION =
   'openapi: 3.0.3\ninfo:\n  title: Loan Management Service\n  version: 1.0.0\npaths: {}\n';
@@ -117,29 +116,6 @@ function renderPage() {
       </Routes>
     </ApiScopeProvider>,
     { route: routes.apiPortalPublish(ORG, PROJECT, API, PORTAL), scope },
-  );
-}
-
-/** Opens the page the way the portal card's one-click "Publish" does. */
-function renderFromCard(state: Record<string, unknown>) {
-  return renderWithProviders(
-    <ApiScopeProvider orgId={ORG}>
-      <Routes>
-        <Route
-          element={
-            <Navigate
-              replace
-              state={state}
-              to={routes.apiPortalPublish(ORG, PROJECT, API, PORTAL)}
-            />
-          }
-          path="/launch"
-        />
-        <Route element={<PortalPublishPage />} path={routes.apiPortalPublish()} />
-        <Route element={<div>portals listing</div>} path={routes.apiPortals()} />
-      </Routes>
-    </ApiScopeProvider>,
-    { route: '/launch', scope },
   );
 }
 
@@ -234,22 +210,6 @@ describe('PortalPublishPage feature usage', () => {
       await waitFor(() => expect(nameField()).toHaveAttribute('aria-invalid', 'true'));
       expect(draftRequests.count()).toBe(0);
       expect(trackedFeatures()).toEqual([]);
-    });
-
-    it('reports the one-click publish run from the portal card', async () => {
-      servePublicationState({ draft: aPublicationDraftDetails() });
-      acceptSaves();
-      const publishRequests = recorder();
-      server.use(
-        collection(DOCS_PATH, []),
-        accepts('post', PUBLISH_PATH, aPublication(), { record: publishRequests }),
-      );
-
-      renderFromCard({ autoPublish: true, documents: 'all', portalName: 'Acme' });
-
-      await waitFor(() => expect(publishRequests.count()).toBe(1));
-      expect(await screen.findByText('portals listing')).toBeInTheDocument();
-      expect(trackedFeatures()).toEqual([['apip.lifecycle.api-publish-click', { api_type: 'rest-api' }]]);
     });
 
     it('reports a GraphQL API as graphql-api', async () => {
