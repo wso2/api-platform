@@ -53,8 +53,11 @@ Feature: What the client sees when a chain cannot serve the request
       | spec.operations          | [{"method":"POST","path":"/chat/completions","policies":[{"name":"model-failover","version":"v0","params":{"suspendDuration":0,"statusCodes":[400],"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"secondary"}]}]}}]}] |
     Then the response should be successful
 
+    # Polled on the body as well as the status: a cold-start 503 on the way to readiness
+    # carries no body, and a status-only poll would stop on one and then assert against a
+    # response the policy never produced.
     When I set header "Content-Type" to "application/json"
-    And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat/completions" until status 503 with body:
+    And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat/completions" until status 503 and the response body contains "failover_exhausted" with body:
       """
       {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
       """
@@ -90,16 +93,16 @@ Feature: What the client sees when a chain cannot serve the request
       | spec.displayName         | ${CTX:apiName}                                                                                                                                                         |
       | spec.version             | ${CTX:apiVersion}                                                                                                                                                      |
       | spec.context             | ${CTX:apiContext}/$version                                                                                                                                             |
-      | spec.upstreamDefinitions | [{"name":"primary","basePath":"/status/allsusp-primary","upstreams":[{"url":"http://testbench:3002"}]},{"name":"secondary","basePath":"/status/allsusp-secondary","upstreams":[{"url":"http://testbench:3002"}]}] |
-      | spec.upstream.main.ref   | primary                                                                                                                                                                |
-      | spec.operations          | [{"method":"POST","path":"/chat/completions","policies":[{"name":"model-failover","version":"v0","params":{"suspendAfterFailures":1,"suspendDuration":120,"statusCodes":[400],"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"secondary"}]}]}}]}] |
+      | spec.upstreamDefinitions | [{"name":"allsusp-lead","basePath":"/status/allsusp-primary","upstreams":[{"url":"http://testbench:3002"}]},{"name":"allsusp-next","basePath":"/status/allsusp-secondary","upstreams":[{"url":"http://testbench:3002"}]}] |
+      | spec.upstream.main.ref   | allsusp-lead                                                                                                                                                           |
+      | spec.operations          | [{"method":"POST","path":"/chat/completions","policies":[{"name":"model-failover","version":"v0","params":{"suspendAfterFailures":1,"suspendDuration":120,"statusCodes":[400],"targets":[{"model":"gpt-4o","provider":"allsusp-lead","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"allsusp-next"}]}]}}]}] |
     Then the response should be successful
 
     # The first request walks the whole chain and fails it. Both members are graded - the
     # first from the attempt count, the second from the response in hand - so one request is
     # enough to put the entire chain out of rotation.
     When I set header "Content-Type" to "application/json"
-    And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat/completions" until status 503 with body:
+    And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat/completions" until status 503 and the response body contains "failover_exhausted" with body:
       """
       {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
       """
@@ -123,12 +126,12 @@ Feature: What the client sees when a chain cannot serve the request
     # Had the request been dispatched to the suspended primary, this is the body that would
     # have come back.
     And the response body should not contain "status code must be 200-599"
-    # THE discriminator. This line is written only on the request-phase path, before
-    # anything is dispatched...
-    And the "gateway-runtime" log since the latest request should contain "every target is suspended; nothing was attempted"
-    # ...and this one only after a chain has actually been walked and spent. Its absence is
-    # what rules out the request having been attempted again.
-    And the "gateway-runtime" log since the latest request should not contain "every target in the chain failed"
+    # THE discriminator, read off the record's target lists rather than its message. A
+    # refusal skips every member and attempts none; a walked chain fails them instead. Both
+    # strings carry this scenario's own provider names, which matters because the runtime log
+    # is shared by every runner on this gateway and a message alone is not attributable.
+    And the "gateway-runtime" log since the latest request should contain "skipped_targets=allsusp-lead:gpt-4o,allsusp-next:claude-sonnet-4-5-20250929"
+    And the "gateway-runtime" log since the latest request should not contain "failed_targets=allsusp-lead:gpt-4o"
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful

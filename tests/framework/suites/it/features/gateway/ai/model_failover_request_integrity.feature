@@ -94,7 +94,6 @@ Feature: What a re-attempted request carries, and what it must not
       | provider.id   | ${CTX:sharedName}                                                                                                                                                      |
       | spec.policies | [{"name":"set-headers","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"request":{"headers":[{"name":"x-xapi-b-marker","value":"${CTX:markerB}"}]}}}]}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     # Drive API A first, so its per-attempt chain is live before B is observed.
     When I set header "Content-Type" to "application/json"
@@ -189,7 +188,6 @@ Feature: What a re-attempted request carries, and what it must not
       | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive"}]                                                                                                                               |
       | spec.policies            | [{"name":"pii-masking-regex","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+[.][a-zA-Z]{2,}"}],"jsonPath":"","redactPII":true}}]},{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     When I set header "Content-Type" to "application/json"
     And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until status 200 with body:

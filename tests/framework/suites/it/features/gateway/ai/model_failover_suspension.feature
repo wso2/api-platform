@@ -75,7 +75,6 @@ Feature: Taking a failing target out of rotation, and putting it back
       | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive"}]                                                                                                                               |
       | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     # Poll on the attempt count, not on 200, so the request this stops at is necessarily the
     # one that paid the failed attempt and was rescued - the failure that suspends the
@@ -168,7 +167,6 @@ Feature: Taking a failing target out of rotation, and putting it back
       | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive"}]                                                                                                                               |
       | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":5,"suspendAfterFailures":1,"maxSuspendMultiplier":1,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     # The failure that suspends it.
     When I set header "Content-Type" to "application/json"

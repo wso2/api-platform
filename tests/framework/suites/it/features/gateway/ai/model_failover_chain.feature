@@ -93,7 +93,6 @@ Feature: Walking a failover chain
       | spec.additionalProviders | [{"id":"${CTX:secondName}","as":"second"},{"id":"${CTX:thirdName}","as":"third"}]                                                                                      |
       | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"second"},{"model":"command-r","provider":"third"}]}]}}]}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     # THREE attempts, and the third target's response. Two would mean the chain gave up
     # after one failure; a 503 would mean it never reached the third at all.
@@ -161,7 +160,6 @@ Feature: Walking a failover chain
       | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive"}]                                                                                                                               |
       | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     When I set header "Content-Type" to "application/json"
     And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until status 200 with body:
@@ -239,7 +237,6 @@ Feature: Walking a failover chain
       | spec.additionalProviders | [{"id":"${CTX:regionBName}","as":"region-b"}]                                                                                                                          |
       | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"gpt-4o","provider":"region-b"}]}]}}]}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     # Two attempts, answered by region B's OWN endpoint. One attempt would mean the second
     # entry was folded into the first and the chain had nowhere to go.

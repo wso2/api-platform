@@ -25,7 +25,11 @@ Feature: The two degradations a consecutive-failure rule never sees
   be able to tell a hard outage from a slow decline.
 
   Both degraded targets are the testbench fault injector, which answers a stored sequence of
-  statuses and delays and then forwards cleanly. A scripted sequence rather than a weighted
+  statuses and delays and then forwards cleanly. Each assertion names the provider as well as
+  the reason: the runtime log is shared by every runner on this gateway, and a suspension line
+  carrying only a reason could have been written by any of them. That is also why each leading
+  target names its provider explicitly rather than defaulting to the route's main upstream -
+  an unnamed target is logged with an empty provider, which identifies nothing. A scripted sequence rather than a weighted
   random one: the old fixture drew at random, so the shape of a run was never the same twice
   and a scenario could only assert what it got on average.
 
@@ -64,7 +68,7 @@ Feature: The two degradations a consecutive-failure rule never sees
       | spec.context             | ${CTX:apiContext}/$version                                                                                                                                             |
       | spec.upstreamDefinitions | [{"name":"flaky","basePath":"${CTX:flakyPath}","upstreams":[{"url":"http://testbench:3026"}]},{"name":"alive","basePath":"/rate-alive","upstreams":[{"url":"http://testbench:3000"}]}]                |
       | spec.upstream.main.ref   | flaky                                                                                                                                                                  |
-      | spec.operations          | [{"method":"POST","path":"/chat/completions","policies":[{"name":"model-failover","version":"v0","params":{"suspendAfterFailures":100,"suspendDuration":120,"errorRatePercent":20,"minimumRequests":10,"windowSeconds":120,"statusCodes":[503],"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
+      | spec.operations          | [{"method":"POST","path":"/chat/completions","policies":[{"name":"model-failover","version":"v0","params":{"suspendAfterFailures":100,"suspendDuration":120,"errorRatePercent":20,"minimumRequests":10,"windowSeconds":120,"statusCodes":[503],"targets":[{"model":"gpt-4o","provider":"flaky","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
 
     When I set header "Content-Type" to "application/json"
@@ -77,8 +81,8 @@ Feature: The two degradations a consecutive-failure rule never sees
       {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
       """
     # Suspended, and the record names WHICH criterion did it.
-    Then the "gateway-runtime" log since the latest request should contain "reason=error_rate"
-    And the "gateway-runtime" log since the latest request should not contain "reason=consecutive_failures"
+    Then the "gateway-runtime" log since the latest request should contain "provider=flaky reason=error_rate"
+    And the "gateway-runtime" log since the latest request should not contain "provider=flaky reason=consecutive_failures"
 
     # The effect, not just the record: traffic has moved off the flaky target, so the
     # fallback's own base path now appears in the response.
@@ -123,7 +127,7 @@ Feature: The two degradations a consecutive-failure rule never sees
       | spec.context             | ${CTX:apiContext}/$version                                                                                                                                             |
       | spec.upstreamDefinitions | [{"name":"slow","basePath":"${CTX:slowPath}","upstreams":[{"url":"http://testbench:3026"}]},{"name":"alive","basePath":"/latency-alive","upstreams":[{"url":"http://testbench:3000"}]}]               |
       | spec.upstream.main.ref   | slow                                                                                                                                                                   |
-      | spec.operations          | [{"method":"POST","path":"/chat/completions","policies":[{"name":"model-failover","version":"v0","params":{"suspendDuration":120,"errorRatePercent":0,"p95LatencyMs":200,"minimumRequests":10,"windowSeconds":120,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
+      | spec.operations          | [{"method":"POST","path":"/chat/completions","policies":[{"name":"model-failover","version":"v0","params":{"suspendDuration":120,"errorRatePercent":0,"p95LatencyMs":200,"minimumRequests":10,"windowSeconds":120,"targets":[{"model":"gpt-4o","provider":"slow","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
 
     When I set header "Content-Type" to "application/json"
@@ -138,9 +142,9 @@ Feature: The two degradations a consecutive-failure rule never sees
     # Suspended on the percentile, with no failure anywhere in the run. This is the
     # assertion that would not have been reachable before: the rule was only ever evaluated
     # when something failed, and nothing here does.
-    Then the "gateway-runtime" log since the latest request should contain "reason=latency_p95"
-    And the "gateway-runtime" log since the latest request should not contain "reason=consecutive_failures"
-    And the "gateway-runtime" log since the latest request should not contain "reason=error_rate"
+    Then the "gateway-runtime" log since the latest request should contain "provider=slow reason=latency_p95"
+    And the "gateway-runtime" log since the latest request should not contain "provider=slow reason=consecutive_failures"
+    And the "gateway-runtime" log since the latest request should not contain "provider=slow reason=error_rate"
 
     # Traffic has moved to the fast target.
     When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat/completions" with body:

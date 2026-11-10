@@ -23,7 +23,8 @@ Feature: Failover layered over a routing policy
   traverses it.
 
   A rotation advances its cursor once per CLIENT request, so every request a scenario makes -
-  including the ones it makes only to wait - moves the rotation on. That shapes how these
+  including the ones it makes only to wait for the deployment to become reachable - moves the
+  rotation on. That shapes how these
   scenarios are written. Polling is used once per scenario, to reach a known state, and after
   that each measured request is sent individually; and because the number of polls is not
   knowable in advance, nothing downstream of a poll may assert an absolute rotation position.
@@ -85,7 +86,6 @@ Feature: Failover layered over a routing policy
       | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive-provider"}]                                                                                                                      |
       | spec.policies            | [{"name":"model-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"models":[{"model":"gpt-4o"},{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}}]},{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o"}]}}]}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     # The three turns below assert the ALTERNATION, not absolute attempt counts, and that is a
     # correction rather than a weakening. The claim this scenario exists to make is that the
@@ -190,7 +190,6 @@ Feature: Failover layered over a routing policy
       | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive-provider"}]                                                                                                                      |
       | spec.policies            | [{"name":"model-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"models":[{"model":"gpt-4o"},{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}}]},{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o"}]}}]}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     # Poll on the attempt count rather than on 200, because the event this scenario turns on is
     # not "the proxy is serving" but "the dead target has now been attempted and has failed" -
@@ -296,7 +295,6 @@ Feature: Failover layered over a routing policy
       | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive-provider"}]                                                                                                                      |
       | spec.policies            | [{"name":"model-weighted-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"models":[{"model":"gpt-4o","weight":1}]}}]},{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}]}}]}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     # There is no rotation here, so polling costs this scenario nothing and the attempt count
     # can be asserted outright. A 200 is only reachable through the fallback: the lead target
@@ -365,7 +363,6 @@ Feature: Failover layered over a routing policy
       | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive-provider"}]                                                                                                                      |
       | spec.policies            | [{"name":"model-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"models":[{"model":"gpt-4o"},{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}}]}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     # Reaching the state under test needs the dead target to have been nominated once with the
     # route live, and the request that does so is not identifiable in advance: the first

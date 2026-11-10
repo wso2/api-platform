@@ -129,7 +129,6 @@ Feature: A failure after the response has started
       | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive"}]                                                                                                                               |
       | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     # Reaching the truncating target is polled on the cut-off itself rather than on a status,
     # because the status is 200 either way. Every poll before the route is live gets a 404 or
@@ -215,7 +214,6 @@ Feature: A failure after the response has started
       | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive"}]                                                                                                                               |
       | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     # Same streaming shape as the truncating provider, delivered whole.
     When I set header "Content-Type" to "application/json"
@@ -296,7 +294,6 @@ Feature: A failure after the response has started
       | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive"}]                                                                                                                               |
       | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":2,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
-    And I wait for policy snapshot sync
 
     # Failure 1 of 2: a truncation. One attempt, no rescue, the client wears it. Polled on
     # the cut-off, so the first counted failure is the first request that reached the target.
