@@ -19,7 +19,7 @@
 import { Button, PageContent, PageTitle, Stack, Typography } from '@wso2/oxygen-ui';
 import { useEffect, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { useOrganizations } from '@/api/resources/organizations';
 import { AppPage } from '@/components/AppPage';
@@ -27,6 +27,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useAuth } from '@/contexts/auth/AuthProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import type { OrganizationPickerState } from '@/scope/ConsoleScopeProvider';
 
 /**
  * Message ids are keyed by the *component*, not by this file: five unrelated
@@ -147,13 +148,22 @@ export function OrganizationRedirectPage() {
 
 function OrganizationRedirect() {
   const intl = useIntl();
-  const { user } = useAuth();
+  const { canSwitchOrganization, user } = useAuth();
+  const location = useLocation();
+  // An organization the session was just refused is never picked again, or the
+  // picker and the refusal would send the user back and forth.
+  const rejected = (location.state as OrganizationPickerState | null)?.rejectedOrganization;
+  const sessionHandle = user?.org?.handle;
+  // Where the session switches organizations, its own organization needs no
+  // switch, so it is the one place the user can always land.
+  const sessionLanding =
+    canSwitchOrganization && sessionHandle && sessionHandle !== rejected ? sessionHandle : undefined;
   const organizationsQuery = useOrganizations();
-  const organizations = organizationsQuery.data?.list;
+  const organizations = organizationsQuery.data?.list?.filter((item) => item.id !== rejected);
   // The session's own organization first: opening another one moves the session.
   const organization =
-    organizations?.find((item) => item.id === user?.org?.handle) ?? organizations?.[0];
-  const settled = organizationsQuery.isPending || Boolean(organization);
+    organizations?.find((item) => item.id === sessionHandle) ?? organizations?.[0];
+  const settled = Boolean(sessionLanding) || organizationsQuery.isPending || Boolean(organization);
   const [attempt, setAttempt] = useState(0);
   const { refetch } = organizationsQuery;
 
@@ -169,6 +179,10 @@ function OrganizationRedirect() {
     }, PROVISIONING_INTERVAL_MS);
     return () => clearTimeout(timer);
   }, [attempt, refetch, settled]);
+
+  if (sessionLanding) {
+    return <Navigate to={routes.organizationHome(sessionLanding)} replace />;
+  }
 
   if (organizationsQuery.isPending) {
     return <LoadingState label={intl.formatMessage(organizationRedirectMessages.loading)} />;

@@ -25,7 +25,8 @@ import { anOrganization, collection } from '../test/msw';
 import { OrganizationSwitchError, type AuthState } from '../contexts/auth/authTypes';
 import { authStatePresets, makeAuthState } from '../test/mockAuthState';
 import { server } from '../test/server';
-import { renderWithProviders, screen } from '../test/utils';
+import { renderWithProviders, screen, waitFor } from '../test/utils';
+import { OrganizationRedirectPage } from '../pages/appShell/appShellPages/system/SystemPages';
 import { ConsoleScopeProvider, useConsoleScope } from './ConsoleScopeProvider';
 
 function OrganizationProbe() {
@@ -135,5 +136,71 @@ describe('ConsoleScopeProvider organization switching', () => {
 
     expect(await screen.findByText('Unable to switch organization')).toBeInTheDocument();
     expect(screen.queryByText(/^org-b:/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ConsoleScopeProvider and the organization picker after a refused switch', () => {
+  const STALE = { id: 'ou-stale', handle: 'org-stale', name: 'Stale' };
+  const OTHER = { id: 'ou-b', handle: 'org-b', name: 'Org B' };
+
+  function renderWithPicker(authState: AuthState) {
+    return renderWithProviders(
+      <Routes>
+        <Route
+          element={
+            <ConsoleScopeProvider>
+              <Outlet />
+            </ConsoleScopeProvider>
+          }
+        >
+          <Route path={routes.organizations} element={<OrganizationRedirectPage />} />
+          <Route path={routes.organizationHome()} element={<OrganizationProbe />} />
+        </Route>
+      </Routes>,
+      { route: routes.organizations, authState },
+    );
+  }
+
+  beforeEach(() => {
+    resetHttpClient();
+    server.use(collection('/projects', []));
+  });
+
+  // The Platform API still lists an organization the user can no longer use and
+  // not yet the session's own: the picker must not keep choosing the stale one.
+  it("lands on the session's own organization, which needs no switch", async () => {
+    server.use(collection('/organizations', [anOrganization({ id: 'org-stale', displayName: 'Stale' })]));
+    const exchangeOrgToken = vi.fn().mockRejectedValue(new OrganizationSwitchError('forbidden'));
+    renderWithPicker(
+      makeAuthState({
+        canSwitchOrganization: true,
+        exchangeOrgToken,
+        organizations: [STALE, OTHER],
+        user: { name: 'Test User', email: 'test.user@example.com', org: { id: 'ou-a', handle: 'org-a', name: 'Org A' } },
+      }),
+    );
+
+    expect(await screen.findByText(/^org-a:/)).toBeInTheDocument();
+    expect(exchangeOrgToken).not.toHaveBeenCalled();
+  });
+
+  it('never picks an organization the session was refused again', async () => {
+    server.use(
+      collection('/organizations', [
+        anOrganization({ id: 'org-stale', displayName: 'Stale' }),
+        anOrganization({ id: 'org-b', displayName: 'Org B' }),
+      ]),
+    );
+    const exchangeOrgToken = vi.fn((handle: string) =>
+      handle === 'org-stale'
+        ? Promise.reject(new OrganizationSwitchError('forbidden'))
+        : new Promise<boolean>(() => {}),
+    );
+    // No organization claim, so there is no session organization to fall back on.
+    renderWithPicker(makeAuthState({ canSwitchOrganization: true, exchangeOrgToken, organizations: [STALE, OTHER] }));
+
+    await waitFor(() => expect(exchangeOrgToken).toHaveBeenCalledWith('org-b'));
+    expect(exchangeOrgToken.mock.calls.filter(([handle]) => handle === 'org-stale')).toHaveLength(1);
+    expect(screen.getByText('Switching organization')).toBeInTheDocument();
   });
 });

@@ -45,6 +45,12 @@ export {
   type ConsoleScope,
 } from './ConsoleScopeContext';
 
+/**
+ * Route state the organization picker reads: the organization the session was
+ * refused, so the picker never lands the user on it again.
+ */
+export type OrganizationPickerState = { rejectedOrganization?: string };
+
 const messages = defineMessages({
   switching: {
     id: 'apiControlPlane.scope.ConsoleScopeProvider.switching',
@@ -266,7 +272,8 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     // Membership is the identity provider's to decide here: an organization the
     // session can't move into is foreign, whatever the Platform API lists.
     if (switchError instanceof OrganizationSwitchError && switchError.reason === 'forbidden') {
-      return <Navigate to={routes.organizations} replace />;
+      const state: OrganizationPickerState = { rejectedOrganization: params.orgHandle };
+      return <Navigate to={routes.organizations} replace state={state} />;
     }
     if (switchError) {
       return (
