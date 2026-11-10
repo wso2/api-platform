@@ -19,9 +19,12 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -178,4 +181,95 @@ func TestSubscriptionPlanDeploy_GatewayWithoutConditionsSupport(t *testing.T) {
 	// Plans without conditions keep working on such a gateway.
 	_, err = adapter.Deploy(context.Background(), nil, srv.URL, legacyPlan(), nil)
 	require.NoError(t, err)
+}
+
+// fakePlanGateway keeps the plans it was sent, lists them on GET, and can refuse
+// deletes; keepsConditions says whether it supports plan conditions.
+type fakePlanGateway struct {
+	keepsConditions bool
+	deleteStatus    int
+	plans           map[string]map[string]any // id -> stored plan
+	posts, puts     int
+}
+
+func (g *fakePlanGateway) serve(t *testing.T) *httptest.Server {
+	t.Helper()
+	if g.plans == nil {
+		g.plans = map[string]map[string]any{}
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := ""
+		if !strings.HasSuffix(r.URL.Path, "/subscription-plans") {
+			id = path.Base(r.URL.Path)
+		}
+		switch r.Method {
+		case http.MethodGet:
+			list := []any{}
+			for _, p := range g.plans {
+				list = append(list, p)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"subscriptionPlans": list})
+			return
+		case http.MethodDelete:
+			if g.deleteStatus != 0 {
+				w.WriteHeader(g.deleteStatus)
+				return
+			}
+			delete(g.plans, id)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		body := map[string]any{}
+		raw, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(raw, &body))
+		if r.Method == http.MethodPost {
+			g.posts++
+			id = fmt.Sprintf("plan-%d", len(g.plans)+1)
+			w.WriteHeader(http.StatusCreated)
+		} else {
+			g.puts++
+		}
+		stored := map[string]any{"id": id, "planName": body["planName"]}
+		if g.keepsConditions && body["conditions"] != nil {
+			stored["conditions"] = body["conditions"]
+		}
+		g.plans[id] = stored
+		_ = json.NewEncoder(w).Encode(stored)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// When the plan made without its conditions can't be removed, the next reconcile
+// finds it by name; it must update and check it, not report it as deployed.
+func TestSubscriptionPlanDeploy_FailedCleanupThenRetryIsNotProgrammed(t *testing.T) {
+	g := &fakePlanGateway{deleteStatus: http.StatusInternalServerError}
+	srv := g.serve(t)
+	adapter := &subscriptionPlanAdapter{}
+
+	_, err := adapter.Deploy(context.Background(), nil, srv.URL, planWithConditions(), nil)
+	require.ErrorContains(t, err, "did not store the plan's conditions")
+	require.ErrorContains(t, err, "removing the plan it created also failed")
+	require.Len(t, g.plans, 1)
+
+	_, err = adapter.Deploy(context.Background(), nil, srv.URL, planWithConditions(), nil)
+	require.ErrorContains(t, err, "did not store the plan's conditions")
+	require.Equal(t, 1, g.posts, "the retry must not create a second plan")
+	require.Equal(t, 1, g.puts, "the retry must update the plan it found")
+}
+
+// A plan found by name gets the CR's spec, on a gateway that supports conditions.
+func TestSubscriptionPlanDeploy_RecoveredPlanIsUpdated(t *testing.T) {
+	g := &fakePlanGateway{keepsConditions: true, plans: map[string]map[string]any{
+		"plan-7": {"id": "plan-7", "planName": "Gold"},
+	}}
+	srv := g.serve(t)
+
+	res, err := (&subscriptionPlanAdapter{}).Deploy(context.Background(), nil, srv.URL, planWithConditions(), nil)
+	require.NoError(t, err)
+	require.Equal(t, "plan-7", res.Id)
+	require.Equal(t, 0, g.posts)
+	require.Equal(t, 1, g.puts)
+	require.Equal(t, wantConditions, g.plans["plan-7"]["conditions"])
 }

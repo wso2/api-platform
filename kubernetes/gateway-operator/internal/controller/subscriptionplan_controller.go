@@ -98,16 +98,21 @@ func (a *subscriptionPlanAdapter) GatewaySelectionKey(obj client.Object) (string
 func (a *subscriptionPlanAdapter) Deploy(ctx context.Context, _ client.Client, gatewayEndpoint string, obj client.Object, authFn gatewayclient.AuthHeaderFunc) (DeployResult, error) {
 	cr := obj.(*apiv1.SubscriptionPlan)
 
-	if cr.Status.Id == "" {
+	planID := cr.Status.Id
+	if planID == "" {
 		// Recover when the plan exists in the gateway but status.id was never
 		// persisted (optimistic-lock / ordering races). Listing by planName
 		// avoids skipping forever in the "already Programmed" reconcile path.
-		if recoverID, err := gatewayclient.FindSubscriptionPlanIDByPlanName(ctx, gatewayEndpoint, cr.Spec.PlanName, authFn); err != nil {
+		// A recovered plan is updated below like any other, so it gets the CR's
+		// spec and its conditions are checked before the plan counts as deployed.
+		recoverID, err := gatewayclient.FindSubscriptionPlanIDByPlanName(ctx, gatewayEndpoint, cr.Spec.PlanName, authFn)
+		if err != nil {
 			return DeployResult{}, err
-		} else if recoverID != "" {
-			return DeployResult{Id: recoverID}, nil
 		}
+		planID = recoverID
+	}
 
+	if planID == "" {
 		payload := gatewayclient.SubscriptionPlanCreatePayload{
 			PlanName:           cr.Spec.PlanName,
 			BillingPlan:        cr.Spec.BillingPlan,
@@ -126,8 +131,8 @@ func (a *subscriptionPlanAdapter) Deploy(ctx context.Context, _ client.Client, g
 			return DeployResult{}, err
 		}
 		if err := checkConditionsStored(payload.Conditions, resp); err != nil {
-			// Remove the plan the gateway made without its conditions, so a later reconcile does
-			// not find it by name and take it as done.
+			// Remove the plan the gateway made without its conditions. If that fails, a later
+			// reconcile finds it by name and updates it, which runs this check again.
 			if delErr := gatewayclient.DeleteSubscriptionPlan(ctx, gatewayEndpoint, resp.Id, authFn); delErr != nil {
 				return DeployResult{}, fmt.Errorf("%w; removing the plan it created also failed: %v", err, delErr)
 			}
@@ -156,7 +161,7 @@ func (a *subscriptionPlanAdapter) Deploy(ctx context.Context, _ client.Client, g
 		t := cr.Spec.ExpiryTime.Time
 		updatePayload.ExpiryTime = (*time.Time)(&t)
 	}
-	resp, err := gatewayclient.UpdateSubscriptionPlan(ctx, gatewayEndpoint, cr.Status.Id, updatePayload, authFn)
+	resp, err := gatewayclient.UpdateSubscriptionPlan(ctx, gatewayEndpoint, planID, updatePayload, authFn)
 	if err != nil {
 		return DeployResult{}, err
 	}
@@ -165,7 +170,7 @@ func (a *subscriptionPlanAdapter) Deploy(ctx context.Context, _ client.Client, g
 			return DeployResult{}, err
 		}
 	}
-	return DeployResult{Id: cr.Status.Id}, nil
+	return DeployResult{Id: planID}, nil
 }
 
 func (a *subscriptionPlanAdapter) Delete(ctx context.Context, gatewayEndpoint string, obj client.Object, authFn gatewayclient.AuthHeaderFunc) error {
