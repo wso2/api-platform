@@ -18,10 +18,10 @@
 
 /** The WSO2 Cloud platforms the switcher knows, in display order. */
 export const PLATFORM_CATALOG = [
-  { id: "agent-manager", name: "Agent Manager" },
-  { id: "api-platform", name: "API Platform" },
-  { id: "integration-platform", name: "Integration Platform" },
-  { id: "identity-platform", name: "Identity Platform" },
+  { id: "agent-manager", name: "Agent Management" },
+  { id: "api-platform", name: "API Management" },
+  { id: "identity-platform", name: "Identity & Access Management" },
+  { id: "integration-platform", name: "Integration" },
   { id: "web-app-hosting", name: "Web App Hosting" },
   { id: "api-analytics", name: "API Analytics" },
 ] as const;

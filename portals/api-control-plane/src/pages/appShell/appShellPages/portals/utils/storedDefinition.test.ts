@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { readStoredDefinition, reformatDefinition } from './storedDefinition';
+import { readStoredDefinition, reformatDefinition, sameDefinition } from './storedDefinition';
 
 const COMPACT_JSON = '{"openapi":"3.0.3","info":{"title":"Loans"}}';
 const PRETTY_JSON = '{\n  "openapi": "3.0.3",\n  "info": {\n    "title": "Loans"\n  }\n}';
@@ -60,5 +60,43 @@ describe('reformatDefinition', () => {
   it('leaves text that cannot be read as it is', () => {
     const broken = '{ "openapi": ';
     expect(reformatDefinition({ format: 'json', text: broken }, 'yaml')).toBe(broken);
+  });
+});
+
+describe('sameDefinition', () => {
+  const json = (text: string) => ({ format: 'json' as const, text });
+  const yaml = (text: string) => ({ format: 'yaml' as const, text });
+  const sdl = (text: string) => ({ format: 'graphql' as const, text });
+  const WITH_PATH =
+    'openapi: 3.0.3\ninfo:\n  title: Loans\npaths:\n  /loans:\n    get:\n      parameters:\n        - name: limit\n          in: query\n';
+
+  it('counts the same OpenAPI written as YAML and as JSON as equal', () => {
+    expect(sameDefinition(yaml(YAML), json(COMPACT_JSON))).toBe(true);
+  });
+
+  it('ignores how the JSON is indented', () => {
+    expect(sameDefinition(json(PRETTY_JSON), json(COMPACT_JSON))).toBe(true);
+  });
+
+  it('counts an added path as a change', () => {
+    expect(sameDefinition(yaml(YAML), yaml(WITH_PATH))).toBe(false);
+  });
+
+  it('counts a changed parameter as a change', () => {
+    expect(
+      sameDefinition(yaml(WITH_PATH), yaml(WITH_PATH.replace('in: query', 'in: header'))),
+    ).toBe(false);
+  });
+
+  it('ignores blank space around a GraphQL schema', () => {
+    expect(
+      sameDefinition(sdl('type Query { loans: [Loan] }'), sdl('type Query { loans: [Loan] }\n')),
+    ).toBe(true);
+  });
+
+  it('counts a changed GraphQL type as a change', () => {
+    expect(
+      sameDefinition(sdl('type Query { loans: [Loan] }'), sdl('type Query { loans: [Loan!] }')),
+    ).toBe(false);
   });
 });
