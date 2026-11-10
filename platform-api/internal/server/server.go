@@ -745,7 +745,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// The MCP server checks scopes per tool.
 	// The feature-usage reporter is built last (below); the MCP server looks it
-	// up on every tool call, as the REST handlers do.
+	// up on every tool call, as the feature-usage middleware does.
 	var featureUsage featureusage.Reporter
 	var mcpWrap func(http.Handler) http.Handler
 	if cfg.MCPServer.Enabled {
@@ -822,7 +822,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// Build the middleware chain that wraps the mux.
 	// Order: [plugin preChain] → CORS → auth → org resolver → scope enforcer →
-	//        read-only guard (TEMP-READ-ONLY-MODE) → [plugin postChain] → mux
+	//        read-only guard (TEMP-READ-ONLY-MODE) → [plugin postChain] →
+	//        feature usage → mux
 	var chain []func(http.Handler) http.Handler
 
 	// Plugin "before" middleware — outermost, before CORS/auth. No authenticated
@@ -948,6 +949,23 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		chain = append(chain, mw)
 	}
 
+	// Feature usage — innermost, directly around the mux: every call to a REST
+	// API operation bound in featureusage/bindings.go is reported. It reads the
+	// organization this chain resolved, and the form a handler parsed on the
+	// same request. The reporter is built last (below) and looked up per call.
+	if cfg.FeatureUsage.Enabled && cfg.FeatureUsage.Configured() {
+		usageIndex, err := newFeatureUsageIndex(cfg.OpenAPISpecPath, mux, slogger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize feature usage reporting: %w", err)
+		}
+		chain = append(chain, featureusage.Middleware(featureusage.MiddlewareConfig{
+			Reporter: func() featureusage.Reporter { return featureUsage },
+			Index:    usageIndex,
+			Routes:   mux,
+			Identity: featureUsageIdentity,
+		}))
+	}
+
 	slogger.Info("WebSocket manager initialized",
 		slog.Int("maxConnections", cfg.Listeners.WebSocket.MaxConnections),
 		slog.Int("heartbeatTimeout", cfg.Listeners.WebSocket.ConnectionTimeout),
@@ -967,7 +985,6 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize feature usage reporting: %w", err)
 	}
-	apiHandler.SetFeatureUsageReporter(featureUsage)
 
 	startupOK = true
 	built = true
@@ -1442,4 +1459,32 @@ func newAPIInvokeHandler(cfg *config.GatewayRelay, apiService *service.APIServic
 	}
 	slogger.Info("Gateway relay ready", "egress", policy.Describe())
 	return handler.NewAPIInvokeHandler(apiService, relay, cfg.MaxRequestBytes, cfg.RequestTimeout, slogger), nil
+}
+
+// newFeatureUsageIndex resolves the REST API operations bound in
+// featureusage/bindings.go to the routes mux serves, using the OpenAPI
+// document at specPath for their paths.
+func newFeatureUsageIndex(specPath string, mux *http.ServeMux, logger *slog.Logger) (*featureusage.RouteIndex, error) {
+	spec, err := os.ReadFile(specPath)
+	if err != nil {
+		return nil, fmt.Errorf("read the OpenAPI document %q: %w", specPath, err)
+	}
+	tax, err := featureusage.DefaultTaxonomy()
+	if err != nil {
+		return nil, fmt.Errorf("embedded taxonomy: %w", err)
+	}
+	index, err := featureusage.NewRouteIndex(spec, mux, tax, logger)
+	if err != nil {
+		return nil, err
+	}
+	logger.Info("Feature usage: reporting calls to bound REST API operations", slog.Int("routes", index.Len()))
+	return index, nil
+}
+
+// featureUsageIdentity returns the platform organization and the acting
+// user's subject from the authenticated request context.
+func featureUsageIdentity(r *http.Request) (orgUUID, actorSubject string) {
+	orgUUID, _ = middleware.GetOrganizationFromRequest(r)
+	actorSubject, _ = middleware.GetActorIdentityFromRequest(r)
+	return orgUUID, actorSubject
 }

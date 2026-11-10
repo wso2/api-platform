@@ -263,6 +263,7 @@ func (a *oaAudit) Record(action, resourceUUID, resourceType, orgUUID, performedB
 
 type oaEnv struct {
 	mux          *http.ServeMux
+	handler      http.Handler // mux wrapped with the feature-usage middleware, when set
 	apiRepo      *oaAPIRepo
 	projectRepo  *oaProjectRepo
 	docRepo      *docHRepo
@@ -293,7 +294,6 @@ func newOAEnv(t *testing.T) *oaEnv {
 
 	env.mux = http.NewServeMux()
 	apiHandler := NewAPIHandler(apiService, identitySvc, apiDocumentService, logger, &config.Server{})
-	apiHandler.SetFeatureUsageReporter(env.usage)
 	apiHandler.RegisterRoutes(env.mux)
 	return env
 }
@@ -351,7 +351,11 @@ func (e *oaEnv) do(t *testing.T, method, target, org, user string, body io.Reade
 		req = middleware.WithUserID(req, user)
 	}
 	rec := httptest.NewRecorder()
-	e.mux.ServeHTTP(rec, req)
+	var h http.Handler = e.mux
+	if e.handler != nil {
+		h = e.handler
+	}
+	h.ServeHTTP(rec, req)
 	return rec
 }
 

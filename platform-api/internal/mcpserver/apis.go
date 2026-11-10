@@ -359,21 +359,19 @@ func str(o object, key string) string {
 	return ""
 }
 
-// reportCreation reports a REST API created with create_api as the same
-// feature as the REST creation routes (apip.manage-apis.rest-api-create),
-// successful or failed. The event names the endpoint actually called, POST
-// /api/v0.9/mcp, so MCP creations stay distinguishable from REST ones, and
-// carries the status the REST route would have answered: the MCP response
-// itself is a 200 even when the tool fails. A failure the model caused before
+// reportCreation reports a REST API created with create_api as the REST
+// operation it does the job of (CreateRESTAPI), so it counts as whatever
+// feature featureusage's bindings bind that operation to, successful or
+// failed. The event names the endpoint actually called, POST /api/v0.9/mcp,
+// so MCP creations stay distinguishable from REST ones, and carries the
+// status the REST route would have answered: the MCP response itself is a 200
+// even when the tool fails. A failure the model caused before
 // the tool ran (a scope it lacks) is not reported, as on the REST routes.
 func (s *Server) reportCreation(t *apiType, c caller, err error, started time.Time) {
 	if s.featureUsage == nil || t.name != "rest-api" {
 		return
 	}
-	call := featureusage.NewCall()
-	call.SetOrganization(c.org)
-	call.SetActor(c.subject)
-	featureusage.RecordCall(s.featureUsage(), featureusage.FeatureCreateRESTAPI, call,
+	featureusage.RecordOperation(s.featureUsage(), "CreateRESTAPI", c.org, c.subject,
 		http.MethodPost, Path, statusOf(err), started)
 }
 

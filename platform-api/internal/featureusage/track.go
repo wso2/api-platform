@@ -18,97 +18,163 @@
 package featureusage
 
 import (
-	"context"
-	"maps"
+	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-// Call collects what a handler learns about one tracked REST API call: whose
-// call it is, what it created, and the feature's dimensions. The handler
-// records facts as it learns them, and Track reports the call once the
-// response is written — with the status actually sent, so a failed call is
-// reported as a failure.
+// MiddlewareConfig configures Middleware.
+type MiddlewareConfig struct {
+	// Reporter returns the reporter, looked up on every call so the
+	// middleware can be installed before the reporter exists. nil or Noop
+	// leaves every request untouched.
+	Reporter func() Reporter
+	// Index holds the bound routes. A nil index binds nothing.
+	Index *RouteIndex
+	// Routes resolves the route pattern a request will match: the mux the
+	// middleware wraps.
+	Routes RouteResolver
+	// Identity returns the platform organization UUID the request acts in
+	// and the acting user's identity-provider subject, both from the
+	// authenticated request context (never from request input). A request
+	// with no organization is not reported: it cannot be attributed.
+	Identity func(r *http.Request) (orgUUID, actorSubject string)
+}
+
+// Middleware reports every call to a bound route (see bindings.go) as one
+// occurrence of its feature: successful or failed, with the status the caller
+// received and the dimensions its binding reads from the request.
 //
-// Every method is safe on a nil *Call, which is what CallFrom returns for an
-// untracked request, so a handler records facts without checking.
-type Call struct {
-	mu           sync.Mutex
-	orgUUID      string
-	actorSubject string
-	resourceUUID string
-	dimensions   map[string]any
-}
+// Install it innermost, directly around the mux, after authentication and
+// organization resolution: it reads the organization from the request
+// context, and it reads forms from the same *http.Request the handler parsed.
+// A route a plugin decorates with a copied request still reports the call, but
+// without the dimensions read from its form.
+//
+// Nothing about the request changes for the handler, except that for a
+// binding that reads the JSON body, the body is read through a tee that keeps
+// up to maxCapturedBody bytes of what the handler reads.
+func Middleware(cfg MiddlewareConfig) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		if cfg.Index.Len() == 0 || cfg.Reporter == nil || cfg.Routes == nil || cfg.Identity == nil {
+			return next
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rep := cfg.Reporter()
+			if _, off := rep.(noop); rep == nil || off {
+				next.ServeHTTP(w, r)
+				return
+			}
+			route := cfg.Index.lookup(cfg.Routes, r)
+			if route == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			orgUUID, actor := cfg.Identity(r)
+			if orgUUID == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
 
-type callKey struct{}
+			started := time.Now()
+			var body *capturedBody
+			if route.captureJSON && r.Body != nil && r.Body != http.NoBody {
+				body = &capturedBody{ReadCloser: r.Body}
+				r.Body = body
+			}
+			sw := &statusWriter{ResponseWriter: w}
+			next.ServeHTTP(sw, r)
 
-// CallFrom returns the call Track is tracking for ctx, or nil.
-func CallFrom(ctx context.Context) *Call {
-	c, _ := ctx.Value(callKey{}).(*Call)
-	return c
-}
-
-// SetOrganization records the platform organization UUID the call acts in.
-// A call with no organization is not reported: it cannot be attributed.
-func (c *Call) SetOrganization(orgUUID string) {
-	c.set(func() { c.orgUUID = orgUUID })
-}
-
-// SetActor records the acting user's identity-provider subject, as the
-// request authenticated it. It is read from the request, not looked up, so
-// recording it never delays the response.
-func (c *Call) SetActor(subject string) {
-	c.set(func() { c.actorSubject = subject })
-}
-
-// SetResource records the UUID of what a successful call created. It seeds
-// the event's deduplication key; it is never sent.
-func (c *Call) SetResource(resourceUUID string) {
-	c.set(func() { c.resourceUUID = resourceUUID })
-}
-
-// SetDimension records one taxonomy dimension. The taxonomy check happens
-// when the call is reported, so an undeclared name or value drops the event.
-func (c *Call) SetDimension(name string, value any) {
-	c.set(func() { c.dimensions[name] = value })
-}
-
-func (c *Call) set(apply func()) {
-	if c == nil {
-		return
+			status := sw.status
+			if status == 0 {
+				status = http.StatusOK // nothing written: net/http sends 200
+			}
+			rep.Record(Occurrence{
+				Feature:      route.feature.Code,
+				OrgUUID:      orgUUID,
+				ActorSubject: actor,
+				// Every call is its own occurrence; the ID only lets a
+				// redelivered event be deduplicated.
+				OccurrenceID: uuid.NewString(),
+				Invocation: Invocation{
+					Method:      r.Method,
+					URI:         reportedOrigin + route.path,
+					Status:      status,
+					RequestTime: started,
+				},
+				Dimensions: route.dimensions(viewOf(r, route.path, body)),
+			})
+		})
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	apply()
 }
 
-// occurrence builds the occurrence for the finished call, or reports false
-// when the call never reached an organization.
-func (c *Call) occurrence(feature string, inv Invocation) (Occurrence, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.orgUUID == "" {
-		return Occurrence{}, false
+// dimensions resolves the binding's dimensions for a served request. A value
+// the taxonomy does not accept is left out; a required dimension left out
+// makes the reporter drop the event, with the dimension named in the log.
+func (br *boundRoute) dimensions(v *requestView) map[string]any {
+	dims := make(map[string]any, len(br.binding.Set)+len(br.binding.From))
+	for name, value := range br.binding.Set {
+		dims[name] = value
 	}
-	// A created resource identifies a successful call for good; a failed call
-	// has no such identity, so it gets its own random one, which keeps two
-	// distinct failures from being deduplicated into one.
-	occurrenceID := c.resourceUUID
-	if occurrenceID == "" || inv.Status < 200 || inv.Status > 299 {
-		occurrenceID = uuid.NewString()
+	for name, src := range br.binding.From {
+		value, ok := src.resolve(v)
+		if ok && br.feature.Dimensions[name].accepts(value) {
+			dims[name] = value
+		}
 	}
-	return Occurrence{
-		Feature:      feature,
-		OrgUUID:      c.orgUUID,
-		ActorSubject: c.actorSubject,
-		OccurrenceID: occurrenceID,
-		Invocation:   inv,
-		Dimensions:   maps.Clone(c.dimensions),
-	}, true
+	return dims
+}
+
+// viewOf collects what a source may read from a served request: its path
+// parameters, the form the handler parsed, if any, and the JSON body it read.
+func viewOf(r *http.Request, routePath string, body *capturedBody) *requestView {
+	v := &requestView{pathValues: pathParamsFor(routePath, r.URL.EscapedPath())}
+	switch {
+	case r.MultipartForm != nil:
+		v.form = &formView{values: r.MultipartForm.Value, files: r.MultipartForm.File}
+	case r.PostForm != nil:
+		v.form = &formView{values: r.PostForm}
+	}
+	if body != nil {
+		v.body = body.captured()
+	}
+	return v
+}
+
+// maxCapturedBody is how much of a JSON request body is kept for a binding
+// that reads it. The JSON bodies bound today are small objects; a larger body
+// leaves its dimensions unknown rather than being buffered.
+const maxCapturedBody = 64 << 10
+
+// capturedBody keeps a copy of what the handler reads from the request body,
+// up to maxCapturedBody bytes.
+type capturedBody struct {
+	io.ReadCloser
+	buf      []byte
+	overflow bool
+}
+
+func (c *capturedBody) Read(p []byte) (int, error) {
+	n, err := c.ReadCloser.Read(p)
+	if n > 0 && !c.overflow {
+		if len(c.buf)+n > maxCapturedBody {
+			c.overflow, c.buf = true, nil
+		} else {
+			c.buf = append(c.buf, p[:n]...)
+		}
+	}
+	return n, err
+}
+
+// captured returns what was read, or nil when nothing was or it overflowed.
+func (c *capturedBody) captured() []byte {
+	if c.overflow || len(c.buf) == 0 {
+		return nil
+	}
+	return c.buf
 }
 
 // statusWriter remembers the final status a handler sent.
@@ -138,67 +204,43 @@ func (s *statusWriter) Write(b []byte) (int, error) {
 // Unwrap lets http.ResponseController reach the underlying writer.
 func (s *statusWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
-// Track wraps the handler of a REST API route so that every call it serves is
-// reported as one event of feature — success or failure, with the status the
-// call answered with. dimensions are the route's fixed taxonomy dimensions
-// (nil for a feature that has none); next records what it learns about the
-// call through CallFrom(r.Context()).
+// RecordOperation reports work that did the job of the bound REST API
+// operation op without going through its route, such as an MCP tool call. The
+// event names the endpoint actually invoked: method and route, the route as a
+// template path (for an MCP tool, POST /api/v0.9/mcp). status is the HTTP
+// status the same work answers with on op's route, so a failure is reported
+// as one even when the endpoint itself answered 200. Only the binding's Set
+// dimensions apply, since there is no REST request to read.
 //
-// reporter is looked up on every call, so the route can be registered before
-// the reporter exists. When it is nil or reporting is off, next is served
-// untouched. Register Track outside any error-mapping middleware, so the
-// status it sees is the one the caller received.
-func Track(reporter func() Reporter, feature string, dimensions map[string]any, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rep := reporter()
-		if _, off := rep.(noop); rep == nil || off {
-			next.ServeHTTP(w, r)
-			return
-		}
-		started := time.Now()
-		call := &Call{dimensions: maps.Clone(dimensions)}
-		if call.dimensions == nil {
-			call.dimensions = map[string]any{}
-		}
-		sw := &statusWriter{ResponseWriter: w}
-		next.ServeHTTP(sw, r.WithContext(context.WithValue(r.Context(), callKey{}, call)))
-
-		status := sw.status
-		if status == 0 {
-			status = http.StatusOK // nothing written: net/http sends 200
-		}
-		// A request that matched no route pattern has no template to report,
-		// and its raw path is never sent instead.
-		inv, ok := InvocationFromRequest(r, status, started)
-		if !ok {
-			return
-		}
-		if o, ok := call.occurrence(feature, inv); ok {
-			rep.Record(o)
-		}
+// Nothing is reported when rep is nil or off, op is not bound, route is not a
+// template path, or there is no organization.
+func RecordOperation(rep Reporter, op, orgUUID, actorSubject, method, route string, status int, started time.Time) {
+	if _, off := rep.(noop); rep == nil || off || orgUUID == "" || !strings.HasPrefix(route, "/") {
+		return
+	}
+	b, ok := bindingByOp[op]
+	if !ok {
+		return
+	}
+	dims := make(map[string]any, len(b.Set))
+	for name, value := range b.Set {
+		dims[name] = value
+	}
+	rep.Record(Occurrence{
+		Feature:      b.Feature,
+		OrgUUID:      orgUUID,
+		ActorSubject: actorSubject,
+		OccurrenceID: uuid.NewString(),
+		Invocation:   Invocation{Method: method, URI: reportedOrigin + route, Status: status, RequestTime: started},
+		Dimensions:   dims,
 	})
 }
 
-// NewCall returns an empty Call for work that does not go through a tracked
-// route, such as an MCP tool call. Report it with RecordCall once the work is
-// done.
-func NewCall() *Call {
-	return &Call{dimensions: map[string]any{}}
-}
-
-// RecordCall reports call as one occurrence of feature, for work that did not
-// go through a tracked route. method and route name the endpoint that was
-// invoked, route as its template (for an MCP tool, POST /api/v0.9/mcp), and
-// status is the HTTP status the same work answers with on its REST route, so
-// a failure is reported as one even when the endpoint itself answered 200.
-// Nothing is reported when rep is nil or off, when route is not a template
-// path, or when the call has no organization.
-func RecordCall(rep Reporter, feature string, call *Call, method, route string, status int, started time.Time) {
-	if _, off := rep.(noop); rep == nil || off || call == nil || !strings.HasPrefix(route, "/") {
-		return
+// bindingByOp indexes bindings by operation.
+var bindingByOp = func() map[string]Binding {
+	out := make(map[string]Binding, len(bindings))
+	for _, b := range bindings {
+		out[b.Op] = b
 	}
-	inv := Invocation{Method: method, URI: reportedOrigin + route, Status: status, RequestTime: started}
-	if o, ok := call.occurrence(feature, inv); ok {
-		rep.Record(o)
-	}
-}
+	return out
+}()

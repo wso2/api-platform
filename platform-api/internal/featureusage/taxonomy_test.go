@@ -41,9 +41,9 @@ func TestCreateRESTAPIMatchesTaxonomy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, ok := tax.Feature(FeatureCreateRESTAPI)
+	f, ok := tax.Feature(featureRESTAPICreate)
 	if !ok {
-		t.Fatalf("%s is not in the taxonomy", FeatureCreateRESTAPI)
+		t.Fatalf("%s is not in the taxonomy", featureRESTAPICreate)
 	}
 	if f.EventName != f.Code || f.Name != "REST API Creation" || f.Category != "manage-apis" ||
 		f.Tier != "core" || f.EventCategory != "adoption" || !f.Platforms[PlatformAPI] || f.Platforms[PlatformWeb] {

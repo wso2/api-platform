@@ -85,6 +85,7 @@ var (
 type Feature struct {
 	Code          string
 	Name          string
+	Description   string
 	Category      string
 	Tier          string
 	Status        string
@@ -136,6 +137,7 @@ type taxonomyDocument struct {
 type featureDocument struct {
 	Code        string            `yaml:"code"`
 	Name        string            `yaml:"name"`
+	Description string            `yaml:"description"`
 	Category    string            `yaml:"category"`
 	Tier        string            `yaml:"tier"`
 	Status      string            `yaml:"status"`
@@ -217,6 +219,7 @@ func (t *Taxonomy) buildFeature(fd featureDocument) (*Feature, error) {
 	f := &Feature{
 		Code:          fd.Code,
 		Name:          fd.Name,
+		Description:   fd.Description,
 		Category:      fd.Category,
 		Tier:          fd.Tier,
 		Status:        fd.Status,

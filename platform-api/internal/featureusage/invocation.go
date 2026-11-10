@@ -57,43 +57,6 @@ var allowedVerbs = map[string]bool{
 	http.MethodPatch: true, http.MethodDelete: true,
 }
 
-// InvocationFromRequest describes r, answered with status, as an Invocation.
-// The path is the route pattern the request matched (so a path parameter
-// appears as its template, e.g. {restApiId}, never as a value) and the query
-// is dropped. started is when the handler began serving r.
-//
-// ok is false when r matched no route pattern (it did not go through a
-// ServeMux): the request's own path may carry values, so it is never sent in
-// place of a template and the call is not reported.
-func InvocationFromRequest(r *http.Request, status int, started time.Time) (inv Invocation, ok bool) {
-	path, ok := routePath(r)
-	if !ok {
-		return Invocation{}, false
-	}
-	return Invocation{
-		Method:      r.Method,
-		URI:         reportedOrigin + path,
-		Status:      status,
-		RequestTime: started,
-	}, true
-}
-
-// routePath returns the path of the route pattern r matched, or false when it
-// matched none.
-func routePath(r *http.Request) (string, bool) {
-	pattern := r.Pattern
-	if i := strings.IndexByte(pattern, ' '); i >= 0 {
-		pattern = pattern[i+1:] // drop the "POST " method prefix
-	}
-	if i := strings.IndexByte(pattern, '/'); i > 0 {
-		pattern = pattern[i:] // drop a host prefix
-	}
-	if strings.HasPrefix(pattern, "/") {
-		return pattern, true
-	}
-	return "", false
-}
-
 // normalize checks inv and returns it ready to send: an upper-case verb, a
 // URI with only what Moesif needs, a real HTTP status, and UTC times.
 func (inv Invocation) normalize(now time.Time) (Invocation, error) {

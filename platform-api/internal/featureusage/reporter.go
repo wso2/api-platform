@@ -25,8 +25,8 @@
 //
 // The proxy only authenticates and forwards; it validates and sanitizes
 // nothing. So everything that decides what leaves the process happens here,
-// before an event is queued: the feature must be on this package's allowlist
-// and in the embedded taxonomy as tracked from the API, every dimension must
+// before an event is queued: the feature must be bound to a REST API operation
+// (bindings.go) and in the embedded taxonomy as tracked from the API, every dimension must
 // be declared by it with a value of the declared type (enum members, booleans,
 // or codes), the call is described only by verb, route template and status,
 // and the organization and user are sent only as canonical UUIDs. A rejected
@@ -128,8 +128,8 @@ type Publisher struct {
 	workers    sync.WaitGroup
 }
 
-// NewPublisher validates opts, checks every allowlisted feature against the
-// taxonomy, and starts the delivery workers.
+// NewPublisher validates opts, checks every bound feature (bindings.go)
+// against the taxonomy, and starts the delivery workers.
 func NewPublisher(opts Options) (*Publisher, error) {
 	switch {
 	case opts.HTTPClient == nil, opts.Tokens == nil, opts.Attributor == nil, opts.Logger == nil:
@@ -155,6 +155,9 @@ func NewPublisher(opts Options) (*Publisher, error) {
 		}
 	}
 	if err := checkEnabledFeatures(tax, enabledFeatures); err != nil {
+		return nil, err
+	}
+	if err := checkBindings(tax, bindings); err != nil {
 		return nil, err
 	}
 
@@ -190,7 +193,7 @@ func NewPublisher(opts Options) (*Publisher, error) {
 	return p, nil
 }
 
-// checkEnabledFeatures makes an allowlisted code that the taxonomy does not
+// checkEnabledFeatures makes a reported code that the taxonomy does not
 // define, defines under a different event name, or does not track from the
 // API a startup error, not a silent stream of rejections.
 func checkEnabledFeatures(tax *Taxonomy, enabled map[string]bool) error {
@@ -397,6 +400,7 @@ func NewFromConfig(cfg config.FeatureUsage, attributor Attributor, logger *slog.
 	logger.Info("Feature usage reporting enabled",
 		slog.String("party", logParty),
 		slog.Int("features", len(enabledFeatures)),
+		slog.Int("operations", len(bindings)),
 		slog.String("environment", cfg.Environment),
 		slog.Bool("plaintextCollector", strings.HasPrefix(strings.ToLower(strings.TrimSpace(cfg.CollectorURL)), "http://")))
 	return publisher, nil

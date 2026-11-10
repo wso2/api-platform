@@ -48,10 +48,10 @@ type Occurrence struct {
 	// ("sa:..."), an email-shaped or a federated numeric subject never is.
 	// Empty for a system occurrence.
 	ActorSubject string
-	// OccurrenceID identifies this occurrence: the UUID of what a successful
-	// call created, or a random ID for a failed one. It is never sent as is:
-	// it is hashed together with the feature code into transaction_id, which
-	// Moesif deduplicates on.
+	// OccurrenceID identifies this occurrence: a random ID per call. It is
+	// never sent as is: it is hashed together with the feature code into
+	// transaction_id, which Moesif deduplicates on, so a redelivered event is
+	// counted once.
 	OccurrenceID string
 	// Invocation is the REST API call the occurrence happened in.
 	Invocation Invocation
@@ -91,7 +91,7 @@ type validatedEvent struct {
 	metadata      map[string]any
 }
 
-// validate checks o against the taxonomy and the producer's allowlist, and
+// validate checks o against the taxonomy and the features bindings.go reports, and
 // builds the metadata the event will carry. It does no I/O, so it runs on the
 // caller's goroutine and an invalid occurrence is never queued.
 func validate(tax *Taxonomy, enabled map[string]bool, o Occurrence, now time.Time) (*validatedEvent, error) {

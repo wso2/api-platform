@@ -15,11 +15,11 @@
  *
  */
 
-// Feature-usage reporting for REST API creation: one
-// apip.manage-apis.rest-api-create event per call to a REST API creation route
-// (POST /rest-apis, POST /rest-apis/import-openapi), successful or failed,
-// described only by the endpoint invocation: the route, the status, the
-// caller and the organization.
+// Feature-usage reporting through the real handlers: the featureusage
+// middleware wraps the handlers' mux the way the server wraps it, with the
+// bindings in featureusage/bindings.go and resources/openapi.yaml. These tests
+// show one event per call, successful or failed, and that dimensions read
+// from a form are the ones the handler itself parsed.
 
 package handler
 
@@ -27,15 +27,21 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/featureusage"
+	"github.com/wso2/api-platform/platform-api/internal/middleware"
 )
 
 // recordingUsage is a featureusage.Reporter that keeps what it is given.
@@ -68,6 +74,47 @@ func (r *recordingUsage) onlyOccurrence(t *testing.T) featureusage.Occurrence {
 	return got[0]
 }
 
+var openAPIDocument = sync.OnceValues(func() ([]byte, error) {
+	return os.ReadFile("../../resources/openapi.yaml")
+})
+
+// withFeatureUsage wraps mux in the feature-usage middleware as the server
+// does, reporting to rep.
+func withFeatureUsage(t *testing.T, mux *http.ServeMux, rep featureusage.Reporter) http.Handler {
+	t.Helper()
+	spec, err := openAPIDocument()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tax, err := featureusage.DefaultTaxonomy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	index, err := featureusage.NewRouteIndex(spec, mux, tax, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return featureusage.Middleware(featureusage.MiddlewareConfig{
+		Reporter: func() featureusage.Reporter { return rep },
+		Index:    index,
+		Routes:   mux,
+		Identity: func(r *http.Request) (string, string) {
+			org, _ := middleware.GetOrganizationFromRequest(r)
+			actor, _ := middleware.GetActorIdentityFromRequest(r)
+			return org, actor
+		},
+	})(mux)
+}
+
+// newTrackedOAEnv is the OpenAPI handler environment with reporting on.
+func newTrackedOAEnv(t *testing.T) *oaEnv {
+	env := newOAEnv(t)
+	env.handler = withFeatureUsage(t, env.mux, env.usage)
+	return env
+}
+
+const featureRESTAPICreate = "apip.manage-apis.rest-api-create"
+
 // wantEvent is what one reported creation call should look like.
 type wantEvent struct {
 	route  string
@@ -78,10 +125,11 @@ type wantEvent struct {
 func assertEvent(t *testing.T, env *oaEnv, want wantEvent, before time.Time) {
 	t.Helper()
 	o := env.usage.onlyOccurrence(t)
-	if o.Feature != featureusage.FeatureCreateRESTAPI || o.OrgUUID != oaOrg {
+	if o.Feature != featureRESTAPICreate || o.OrgUUID != oaOrg {
 		t.Errorf("unexpected occurrence: %+v", o)
 	}
-	// The event is the endpoint invocation only: no feature dimensions.
+	// rest-api-create declares no dimensions but outcome, which the reporter
+	// derives from the status.
 	if len(o.Dimensions) != 0 {
 		t.Errorf("dimensions = %v, want none", o.Dimensions)
 	}
@@ -92,10 +140,8 @@ func assertEvent(t *testing.T, env *oaEnv, want wantEvent, before time.Time) {
 	if inv.RequestTime.Before(before) || inv.RequestTime.After(time.Now()) {
 		t.Errorf("request time %s is not when the call was received", inv.RequestTime)
 	}
-	// A successful creation is identified by the API it created; a failed
-	// call gets its own random ID.
-	if succeeded := want.status >= 200 && want.status < 300; succeeded != (o.OccurrenceID == oaAPIUUID) {
-		t.Errorf("occurrence ID = %q for status %d", o.OccurrenceID, want.status)
+	if _, err := uuid.Parse(o.OccurrenceID); err != nil {
+		t.Errorf("occurrence ID = %q, want a random UUID", o.OccurrenceID)
 	}
 }
 
@@ -106,7 +152,7 @@ func importAPI(t *testing.T, env *oaEnv) int {
 }
 
 func TestImportOpenAPI_ReportsACreation(t *testing.T) {
-	env := newOAEnv(t)
+	env := newTrackedOAEnv(t)
 	before := time.Now()
 	if code := importAPI(t, env); code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201", code)
@@ -117,7 +163,7 @@ func TestImportOpenAPI_ReportsACreation(t *testing.T) {
 // A rejected import is reported as the failure the caller saw, and the
 // validation error the caller gets is unchanged.
 func TestImportOpenAPI_ReportsARejectedImport(t *testing.T) {
-	env := newOAEnv(t)
+	env := newTrackedOAEnv(t)
 	before := time.Now()
 	fields := []oaFormField{
 		{"version", oaVersion}, {"context", oaContext}, {"projectId", oaProjectHand},
@@ -135,7 +181,7 @@ func TestImportOpenAPI_ReportsARejectedImport(t *testing.T) {
 
 // A rolled-back create is reported as the failure the caller saw.
 func TestImportOpenAPI_ReportsARollbackAsAFailure(t *testing.T) {
-	env := newOAEnv(t)
+	env := newTrackedOAEnv(t)
 	env.docRepo.createErr = errors.New("disk full")
 	env.docRepo.upsertErr = errors.New("disk full")
 	before := time.Now()
@@ -147,7 +193,7 @@ func TestImportOpenAPI_ReportsARollbackAsAFailure(t *testing.T) {
 }
 
 func TestImportOpenAPI_ReportsAFailedCreate(t *testing.T) {
-	env := newOAEnv(t)
+	env := newTrackedOAEnv(t)
 	fields := fullImportFields()
 	for i := range fields {
 		if fields[i].name == "projectId" {
@@ -165,7 +211,7 @@ func TestImportOpenAPI_ReportsAFailedCreate(t *testing.T) {
 
 // A call with no organization cannot be attributed and is not reported.
 func TestImportOpenAPI_CallWithoutAnOrganizationIsNotReported(t *testing.T) {
-	env := newOAEnv(t)
+	env := newTrackedOAEnv(t)
 	body, ct := oaImportBody(fullImportFields(), "orders.yaml", []byte(validOpenAPI))
 	rec := env.do(t, http.MethodPost, importPath, "", "alice", bytes.NewReader(body), ct)
 	if rec.Code != http.StatusUnauthorized {
@@ -184,7 +230,7 @@ func createJSON(project, upstream string) string {
 }
 
 func TestCreateAPI_ReportsACreation(t *testing.T) {
-	env := newOAEnv(t)
+	env := newTrackedOAEnv(t)
 	before := time.Now()
 	rec := env.do(t, http.MethodPost, createPath+"?trace=alice", oaOrg, "alice",
 		strings.NewReader(createJSON(oaProjectHand, oaMainUpstream)), "application/json")
@@ -206,7 +252,7 @@ func TestCreateAPI_ReportsFailures(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			env := newOAEnv(t)
+			env := newTrackedOAEnv(t)
 			before := time.Now()
 			rec := env.do(t, http.MethodPost, createPath, oaOrg, "alice", strings.NewReader(tc.body), "application/json")
 			if rec.Code != tc.status {
@@ -215,4 +261,92 @@ func TestCreateAPI_ReportsFailures(t *testing.T) {
 			assertEvent(t, env, wantEvent{createPath, tc.status}, before)
 		})
 	}
+}
+
+// Validation reports whether the contract came as a file or a URL, never the
+// URL itself.
+func TestValidateOpenAPI_IsReportedAsAContractValidation(t *testing.T) {
+	env := newTrackedOAEnv(t)
+	body, ct := oaImportBody(nil, "orders.yaml", []byte(validOpenAPI))
+	rec := env.do(t, http.MethodPost, constants.APIBasePath+"/rest-apis/validate-openapi", oaOrg, "alice", bytes.NewReader(body), ct)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	o := env.usage.onlyOccurrence(t)
+	if o.Feature != "apip.manage-apis.api-contract-validate" ||
+		o.Dimensions["contract_type"] != "openapi" || o.Dimensions["contract_source"] != "file" {
+		t.Errorf("unexpected occurrence: %+v", o)
+	}
+}
+
+// The document handler parses the form; the middleware reads the document
+// type from that same parsed form, in the taxonomy's spelling whatever case
+// the caller used. A type the API rejects is free text: the failed call is
+// reported without it, never with the text as typed.
+func TestCreateDocument_ReportsTheDocumentType(t *testing.T) {
+	tests := map[string]struct {
+		docType string
+		status  int
+		want    map[string]any
+	}{
+		"canonical":    {"SupportForum", http.StatusCreated, map[string]any{"api_type": "rest-api", "document_type": "support-forum"}},
+		"lower case":   {"howto", http.StatusCreated, map[string]any{"api_type": "rest-api", "document_type": "how-to"}},
+		"unknown type": {"Runbook for alice", http.StatusBadRequest, map[string]any{"api_type": "rest-api"}},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			env := newDocHEnv(t, nil)
+			usage := &recordingUsage{}
+			handler := withFeatureUsage(t, env.mux, usage)
+			body, ct := docHForm(t, map[string]string{
+				"type": tc.docType, "displayName": "Getting Started", "inlineContent": "# Hello",
+			})
+			req := middleware.WithOrganization(httptestRequest(http.MethodPost, docHDocsBase, body, ct), docHOrg)
+			rec := serve(handler, req)
+			if rec.Code != tc.status {
+				t.Fatalf("status = %d, want %d; body: %s", rec.Code, tc.status, rec.Body.String())
+			}
+			o := usage.onlyOccurrence(t)
+			if o.Feature != "apip.manage-apis.api-document-create" || o.Invocation.Status != tc.status {
+				t.Errorf("unexpected occurrence: %+v", o)
+			}
+			if len(o.Dimensions) != len(tc.want) {
+				t.Errorf("dimensions = %v, want %v", o.Dimensions, tc.want)
+			}
+			for k, v := range tc.want {
+				if o.Dimensions[k] != v {
+					t.Errorf("dimensions = %v, want %v", o.Dimensions, tc.want)
+				}
+			}
+			if o.Invocation.URI != "https://platform-api/api/v0.9/apis/{apiType}/{apiId}/docs" {
+				t.Errorf("URI = %q, want the route template", o.Invocation.URI)
+			}
+		})
+	}
+}
+
+func TestDeleteThumbnail_ReportsTheAPIType(t *testing.T) {
+	env := newDocHEnv(t, nil)
+	usage := &recordingUsage{}
+	handler := withFeatureUsage(t, env.mux, usage)
+	req := middleware.WithOrganization(httptestRequest(http.MethodDelete, docHThumbPath, nil, ""), docHOrg)
+	serve(handler, req)
+	o := usage.onlyOccurrence(t)
+	if o.Feature != "apip.manage-apis.api-thumbnail-remove" || o.Dimensions["api_type"] != "rest-api" {
+		t.Errorf("unexpected occurrence: %+v", o)
+	}
+}
+
+func httptestRequest(method, target string, body io.Reader, contentType string) *http.Request {
+	req := httptest.NewRequest(method, target, body)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	return req
+}
+
+func serve(h http.Handler, req *http.Request) *httptest.ResponseRecorder {
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
 }

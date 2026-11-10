@@ -217,7 +217,7 @@ func TestPublisherSendsAnAPIEvent(t *testing.T) {
 
 	// The same metadata keys as Agent Manager's API events, and nothing else.
 	metadata, _ := body["metadata"].(map[string]any)
-	wantMetadata := map[string]any{"growth_action": FeatureCreateRESTAPI, "platform": "WSO2 API Platform",
+	wantMetadata := map[string]any{"growth_action": featureRESTAPICreate, "platform": "WSO2 API Platform",
 		"source": "api", "environment": "production", "outcome": "success"}
 	if !reflect.DeepEqual(metadata, wantMetadata) {
 		t.Errorf("metadata = %v, want exactly %v", metadata, wantMetadata)

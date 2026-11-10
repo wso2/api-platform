@@ -19,8 +19,6 @@ package featureusage
 
 import (
 	"errors"
-	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -48,7 +46,7 @@ func validInvocation() Invocation {
 
 func validCreation() Occurrence {
 	return Occurrence{
-		Feature:      FeatureCreateRESTAPI,
+		Feature:      featureRESTAPICreate,
 		OrgUUID:      testOrgUUID,
 		ActorSubject: testUserUUID,
 		OccurrenceID: testAPIUUID,
@@ -74,7 +72,7 @@ func TestValidateBuildsTaxonomyMetadata(t *testing.T) {
 	// The keys Agent Manager's API events carry, and nothing else: the
 	// feature has no dimensions, so the event is the endpoint invocation.
 	want := map[string]any{
-		"growth_action": FeatureCreateRESTAPI,
+		"growth_action": featureRESTAPICreate,
 		"platform":      "WSO2 API Platform",
 		"source":        "api",
 		"outcome":       "success",
@@ -325,55 +323,5 @@ features:
 	}
 	if err := checkEnabledFeatures(tax, map[string]bool{o.Feature: true}); err == nil {
 		t.Fatal("allowlisting a web-only feature must be a startup error")
-	}
-}
-
-// The reported URI is the route template under a fixed host: neither the
-// Host header nor X-Forwarded-Proto, both set by whoever sends the request,
-// nor any path value or query reaches the event.
-func TestInvocationFromRequest(t *testing.T) {
-	started := time.Now()
-	var got Invocation
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/v0.9/rest-apis/{restApiId}/x", func(w http.ResponseWriter, r *http.Request) {
-		var ok bool
-		if got, ok = InvocationFromRequest(r, http.StatusCreated, started); !ok {
-			t.Error("a request matched by a route pattern must be reportable")
-		}
-	})
-
-	const wantURI = "https://platform-api/api/v0.9/rest-apis/{restApiId}/x"
-	for name, host := range map[string]string{
-		"a public hostname":      "platform-api.example.com",
-		"an IP address and port": "10.0.0.7:9243",
-		"an IPv6 address":        "[::1]:9243",
-		"caller-chosen text":     "alice-smith.example.com",
-		"a host that is no host": "alice smith@evil",
-	} {
-		t.Run(name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/api/v0.9/rest-apis/orders-api-by-alice/x?owner=alice", nil)
-			req.Host = host
-			req.Header.Set("X-Forwarded-Proto", "http")
-			mux.ServeHTTP(httptest.NewRecorder(), req)
-
-			if got.URI != wantURI {
-				t.Errorf("URI = %q, want %q", got.URI, wantURI)
-			}
-			if got.Method != http.MethodPost || got.Status != http.StatusCreated || !got.RequestTime.Equal(started) {
-				t.Errorf("invocation = %+v", got)
-			}
-			if _, err := got.normalize(time.Now()); err != nil {
-				t.Errorf("a request-derived invocation failed validation: %v", err)
-			}
-		})
-	}
-}
-
-// A request that matched no route pattern is not reported: its raw path may
-// carry values, so it is never sent in place of a template.
-func TestInvocationFromRequestWithoutARoutePattern(t *testing.T) {
-	r := httptest.NewRequest(http.MethodPost, "/api/v0.9/rest-apis/orders-api-by-alice/x", nil)
-	if inv, ok := InvocationFromRequest(r, http.StatusCreated, time.Now()); ok || inv.URI != "" {
-		t.Fatalf("InvocationFromRequest = %+v, %v; want nothing for a request with no route pattern", inv, ok)
 	}
 }

@@ -33,7 +33,6 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
-	"github.com/wso2/api-platform/platform-api/internal/featureusage"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
@@ -47,7 +46,6 @@ type APIHandler struct {
 	apiDocumentService *service.APIDocumentService
 	slogger      *slog.Logger
 	cfg          *config.Server
-	featureUsage featureusage.Reporter
 }
 
 func NewAPIHandler(apiService *service.APIService, identity *service.IdentityService, apiDocumentService *service.APIDocumentService, slogger *slog.Logger,cfg *config.Server) *APIHandler {
@@ -57,31 +55,6 @@ func NewAPIHandler(apiService *service.APIService, identity *service.IdentitySer
 		apiDocumentService: apiDocumentService,
 		slogger:      slogger,
 		cfg:          cfg,
-	}
-}
-
-// SetFeatureUsageReporter injects the reporter that records each call to a
-// REST API creation route (apip.manage-apis.rest-api-create) as a Moesif API
-// event, successful or failed. Without one, nothing is recorded.
-func (h *APIHandler) SetFeatureUsageReporter(r featureusage.Reporter) {
-	h.featureUsage = r
-}
-
-// trackCreation reports every call next serves as one REST API creation event,
-// with the status the caller received. The reporter is looked up per call, so
-// routes can be registered before it is injected.
-func (h *APIHandler) trackCreation(next http.Handler) http.Handler {
-	return featureusage.Track(func() featureusage.Reporter { return h.featureUsage },
-		featureusage.FeatureCreateRESTAPI, nil, next)
-}
-
-// attributeCall records the caller on a tracked call before any validation, so
-// a rejected request is attributed too. The identity-provider subject is read
-// from the authenticated request, with no lookup, so it never delays the
-// response; a request without one leaves the event without a user.
-func attributeCall(r *http.Request, usage *featureusage.Call) {
-	if subject, ok := middleware.GetActorIdentityFromRequest(r); ok {
-		usage.SetActor(subject)
 	}
 }
 
@@ -100,10 +73,6 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 		return apperror.Unauthorized.New().
 			WithLogMessage("organization claim not found in token")
 	}
-	// Feature usage: this call is reported whatever its outcome (trackCreation).
-	usage := featureusage.CallFrom(r.Context())
-	usage.SetOrganization(orgId)
-	attributeCall(r, usage)
 
 	var req api.CreateRESTAPIRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -135,11 +104,10 @@ func (h *APIHandler) CreateAPI(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	apiResponse, artifactUUID, err := h.apiService.CreateAPI(&req, orgId, createdBy)
+	apiResponse, _, err := h.apiService.CreateAPI(&req, orgId, createdBy)
 	if err != nil {
 		return serviceError(err, fmt.Sprintf("failed to create API in org %s", orgId))
 	}
-	usage.SetResource(artifactUUID)
 
 	setLocation(w, "rest-apis", strOrEmpty(apiResponse.Id))
 	httputil.WriteJSON(w, http.StatusCreated, apiResponse)
@@ -364,10 +332,6 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	if !exists {
 		return apperror.Unauthorized.New().WithLogMessage("organization claim not found in token")
 	}
-	// Feature usage: this call is reported whatever its outcome (trackCreation).
-	usage := featureusage.CallFrom(r.Context())
-	usage.SetOrganization(orgId)
-	attributeCall(r, usage)
 
 	maxBytes := h.getOpenAPISpecMaxBytes()
 	if err := h.parseSpecMultipartForm(w, r, maxBytes); err != nil {
@@ -445,7 +409,6 @@ func (h *APIHandler) ImportOpenAPI(w http.ResponseWriter, r *http.Request) error
 	if err != nil {
 		return serviceError(err, "failed to create API in org "+orgId)
 	}
-	usage.SetResource(artifactUUID)
 
 	// Persist the spec document
 	// If this fails, rollback the API creation
@@ -716,8 +679,8 @@ func (h *APIHandler) RegisterRoutes(mux router.Router) {
 	h.slogger.Debug("Registering REST API routes")
 	base := constants.APIBasePath + "/rest-apis"
 	mux.HandleFunc("POST "+base+"/validate-openapi", middleware.MapErrors(h.slogger, h.ValidateOpenAPI))
-	mux.Handle("POST "+base+"/import-openapi", h.trackCreation(middleware.MapErrors(h.slogger, h.ImportOpenAPI)))
-	mux.Handle("POST "+base, h.trackCreation(middleware.MapErrors(h.slogger, h.CreateAPI)))
+	mux.HandleFunc("POST "+base+"/import-openapi", middleware.MapErrors(h.slogger, h.ImportOpenAPI))
+	mux.HandleFunc("POST "+base, middleware.MapErrors(h.slogger, h.CreateAPI))
 	mux.HandleFunc("GET "+base, middleware.MapErrors(h.slogger, h.ListAPIs))
 	mux.HandleFunc("GET "+base+"/versions", middleware.MapErrors(h.slogger, h.ListAPIVersions))
 	mux.HandleFunc("GET "+base+"/{restApiId}", middleware.MapErrors(h.slogger, h.GetAPI))
