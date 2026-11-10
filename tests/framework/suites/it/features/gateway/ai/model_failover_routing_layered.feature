@@ -22,11 +22,13 @@ Feature: Failover layered over a routing policy
   fails. The routing policy publishes an ordered ranking once per client request, and failover
   traverses it.
 
-  Every scenario here sends each request individually rather than polling, and that is
-  load-bearing rather than stylistic: a rotation advances its cursor once per client request,
-  so a polling send would consume turns and the alternation these scenarios measure would stop
-  meaning anything. Propagation is awaited with the policy-snapshot sync, which reaches the
-  policy engine directly and sends nothing through the gateway.
+  A rotation advances its cursor once per CLIENT request, so every request a scenario makes -
+  including the ones it makes only to wait - moves the rotation on. That shapes how these
+  scenarios are written. Polling is used once per scenario, to reach a known state, and after
+  that each measured request is sent individually; and because the number of polls is not
+  knowable in advance, nothing downstream of a poll may assert an absolute rotation position.
+  What is asserted instead is the RELATIONSHIP between successive responses, which holds from
+  whatever position the polling left the cursor in.
 
   Background:
     Given the gateway services are running
@@ -129,6 +131,293 @@ Feature: Failover layered over a routing policy
     Then the response status code should be 200
     And the response body should contain "/alive-upstream"
     And the response header "x-envoy-attempt-count" should be "${CTX:turnOneAttempts}"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:deadName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:aliveName}"
+    Then the response should be successful
+
+  Scenario: A suspended target is skipped without costing an attempt
+    # The routing policy never learns that failover suspended a target, and is not supposed to:
+    # failover's health is private per-instance state, published to nobody. So the rotation goes
+    # on nominating the dead target, and failover drops it when it resolves the chain. A drop at
+    # resolution time costs no upstream attempt, which is what separates it from attempting the
+    # target and failing over.
+    Given I generate a unique resource name from "layered-susp-dead" and store it as "deadName"
+    And I generate a unique API version from "layered-susp-dead" and store it as "deadVersion"
+    And I generate a unique API context from "/layered-susp-dead" and store it as "deadContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                     |
+      | name               | ${CTX:deadName}                               |
+      | displayName        | ${CTX:deadName}                               |
+      | version            | ${CTX:deadVersion}                            |
+      | template           | openai                                        |
+      | spec.context       | ${CTX:deadContext}                            |
+      | spec.upstream.url  | http://layered-nonexistent:9080/dead-upstream |
+      | accessControl.mode | allow_all                                     |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "layered-susp-alive" and store it as "aliveName"
+    And I generate a unique API version from "layered-susp-alive" and store it as "aliveVersion"
+    And I generate a unique API context from "/layered-susp-alive" and store it as "aliveContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}            |
+      | name               | ${CTX:aliveName}                     |
+      | displayName        | ${CTX:aliveName}                     |
+      | version            | ${CTX:aliveVersion}                  |
+      | template           | openai                               |
+      | spec.context       | ${CTX:aliveContext}                  |
+      | spec.upstream.url  | http://testbench:3000/alive-upstream |
+      | accessControl.mode | allow_all                            |
+    Then the response should be successful
+
+    # One failure suspends, for a window far longer than the scenario, so it cannot expire
+    # mid-run and turn a genuine skip into a coincidence. The ROUTING policy's own
+    # suspendDuration stays 0 - it must keep nominating the dead target, or the skip under test
+    # never gets exercised and the scenario would pass on the wrong mechanism.
+    Given I generate a unique resource name from "layered-suspend" and store it as "proxyName"
+    And I generate a unique API version from "layered-suspend" and store it as "proxyVersion"
+    And I generate a unique API context from "/layered-suspend" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                     | ${CTX:proxyName}                                                                                                                                                       |
+      | displayName              | ${CTX:proxyName}                                                                                                                                                       |
+      | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
+      | context                  | ${CTX:proxyContext}                                                                                                                                                    |
+      | provider.id              | ${CTX:deadName}                                                                                                                                                        |
+      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive-provider"}]                                                                                                                      |
+      | spec.policies            | [{"name":"model-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"models":[{"model":"gpt-4o"},{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}}]},{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o"}]}}]}] |
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    # Poll on the attempt count rather than on 200, because the event this scenario turns on is
+    # not "the proxy is serving" but "the dead target has now been attempted and has failed" -
+    # which is the failure that suspends it. A 200 poll could stop on a turn that led with the
+    # live target, leaving nothing suspended and the assertions below measuring nothing.
+    # Two attempts can only mean the dead target led, failed, and was failed over from.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until header "x-envoy-attempt-count" is "2" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # The dead target is now suspended. The rotation has a period of two, so these three
+    # consecutive requests cover both of its positions at least once - including the turn that
+    # nominates the suspended target. Every one of them must cost a single attempt.
+    #
+    # This is the assertion that separates the two possible designs. Were the suspension
+    # ignored, the nominated turn would attempt the dead target and report two; were the skip
+    # implemented as a failed attempt rather than a removal, it would also report two. Only a
+    # removal at chain-resolution time reports one.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/alive-upstream"
+    And the response header "x-envoy-attempt-count" should be "1"
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/alive-upstream"
+    And the response header "x-envoy-attempt-count" should be "1"
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/alive-upstream"
+    And the response header "x-envoy-attempt-count" should be "1"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:deadName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:aliveName}"
+    Then the response should be successful
+
+  Scenario: A non-adopting routing policy composes via its single selection
+    # model-weighted-round-robin publishes only the single-selection key. It has not adopted
+    # the ordered-preference contract and is not required to - that is the compatibility
+    # guarantee the whole design rests on, that no existing routing policy has to change for
+    # failover to work. Failover must read that lone selection as a one-element ranking and
+    # continue into its OWN configured chain from there.
+    Given I generate a unique resource name from "layered-na-dead" and store it as "deadName"
+    And I generate a unique API version from "layered-na-dead" and store it as "deadVersion"
+    And I generate a unique API context from "/layered-na-dead" and store it as "deadContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                     |
+      | name               | ${CTX:deadName}                               |
+      | displayName        | ${CTX:deadName}                               |
+      | version            | ${CTX:deadVersion}                            |
+      | template           | openai                                        |
+      | spec.context       | ${CTX:deadContext}                            |
+      | spec.upstream.url  | http://layered-nonexistent:9080/dead-upstream |
+      | accessControl.mode | allow_all                                     |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "layered-na-alive" and store it as "aliveName"
+    And I generate a unique API version from "layered-na-alive" and store it as "aliveVersion"
+    And I generate a unique API context from "/layered-na-alive" and store it as "aliveContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}            |
+      | name               | ${CTX:aliveName}                     |
+      | displayName        | ${CTX:aliveName}                     |
+      | version            | ${CTX:aliveVersion}                  |
+      | template           | openai                               |
+      | spec.context       | ${CTX:aliveContext}                  |
+      | spec.upstream.url  | http://testbench:3000/alive-upstream |
+      | accessControl.mode | allow_all                            |
+    Then the response should be successful
+
+    # Every unit of weight sits on the dead target, so the single selection is gpt-4o on every
+    # request and the routing policy contributes no second option at all. Any success therefore
+    # has to have come from failover's own fallback list and from nowhere else.
+    Given I generate a unique resource name from "layered-nonadopting" and store it as "proxyName"
+    And I generate a unique API version from "layered-nonadopting" and store it as "proxyVersion"
+    And I generate a unique API context from "/layered-nonadopting" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                     | ${CTX:proxyName}                                                                                                                                                       |
+      | displayName              | ${CTX:proxyName}                                                                                                                                                       |
+      | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
+      | context                  | ${CTX:proxyContext}                                                                                                                                                    |
+      | provider.id              | ${CTX:deadName}                                                                                                                                                        |
+      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive-provider"}]                                                                                                                      |
+      | spec.policies            | [{"name":"model-weighted-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"models":[{"model":"gpt-4o","weight":1}]}}]},{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}]}}]}] |
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    # There is no rotation here, so polling costs this scenario nothing and the attempt count
+    # can be asserted outright. A 200 is only reachable through the fallback: the lead target
+    # is dead on every request and suspension is off, so the leading attempt always fails.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/alive-upstream"
+    And the response header "x-envoy-attempt-count" should be "2"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:deadName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:aliveName}"
+    Then the response should be successful
+
+  Scenario: A routing policy without failover keeps its own suspension
+    # Teaching model-round-robin to publish an ordered ranking must change nothing for a
+    # deployment that does not use failover. Its own suspendDuration still governs, exactly as
+    # it did before this feature existed, and no part of failover is involved in reaching that
+    # outcome - because failover is not attached to this operation at all.
+    Given I generate a unique resource name from "layered-solo-dead" and store it as "deadName"
+    And I generate a unique API version from "layered-solo-dead" and store it as "deadVersion"
+    And I generate a unique API context from "/layered-solo-dead" and store it as "deadContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                     |
+      | name               | ${CTX:deadName}                               |
+      | displayName        | ${CTX:deadName}                               |
+      | version            | ${CTX:deadVersion}                            |
+      | template           | openai                                        |
+      | spec.context       | ${CTX:deadContext}                            |
+      | spec.upstream.url  | http://layered-nonexistent:9080/dead-upstream |
+      | accessControl.mode | allow_all                                     |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "layered-solo-alive" and store it as "aliveName"
+    And I generate a unique API version from "layered-solo-alive" and store it as "aliveVersion"
+    And I generate a unique API context from "/layered-solo-alive" and store it as "aliveContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}            |
+      | name               | ${CTX:aliveName}                     |
+      | displayName        | ${CTX:aliveName}                     |
+      | version            | ${CTX:aliveVersion}                  |
+      | template           | openai                               |
+      | spec.context       | ${CTX:aliveContext}                  |
+      | spec.upstream.url  | http://testbench:3000/alive-upstream |
+      | accessControl.mode | allow_all                            |
+    Then the response should be successful
+
+    # No model-failover on this operation. One failure must withdraw the dead target under the
+    # routing policy's OWN suspendDuration, held long enough that it cannot lapse mid-scenario.
+    Given I generate a unique resource name from "layered-solo" and store it as "proxyName"
+    And I generate a unique API version from "layered-solo" and store it as "proxyVersion"
+    And I generate a unique API context from "/layered-solo" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                     | ${CTX:proxyName}                                                                                                                                                       |
+      | displayName              | ${CTX:proxyName}                                                                                                                                                       |
+      | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
+      | context                  | ${CTX:proxyContext}                                                                                                                                                    |
+      | provider.id              | ${CTX:deadName}                                                                                                                                                        |
+      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive-provider"}]                                                                                                                      |
+      | spec.policies            | [{"name":"model-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"models":[{"model":"gpt-4o"},{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}}]}] |
+    Then the response should be successful
+    And I wait for policy snapshot sync
+
+    # Reaching the state under test needs the dead target to have been nominated once with the
+    # route live, and the request that does so is not identifiable in advance: the first
+    # success may land on either rotation position, and whichever polls preceded it are not
+    # countable. So the run below is deliberately unasserted - it exists to guarantee that both
+    # positions of a two-entry rotation have been visited by the time the assertions start.
+    #
+    # The 503 the dead turn produces is not asserted either, for the same reason it cannot be
+    # located. It is still required: without a failure there is nothing to suspend, and the
+    # three assertions that follow could not all hold.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    When I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    When I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+
+    # The dead target is withdrawn, so all three of these land on the live one. Three
+    # consecutive requests over a two-entry rotation cover the withdrawn target's turn at least
+    # once; were the suspension not honoured, that turn would answer 503 instead.
+    #
+    # No attempt-count assertion anywhere in this scenario, deliberately. The controller asks
+    # for the count header on a virtual host only when one of its routes carries failover, so a
+    # proxy without it emits none - asserting on it would test the absence of the feature
+    # rather than this scenario's subject.
+    When I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/alive-upstream"
+
+    When I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/alive-upstream"
+
+    When I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/alive-upstream"
 
     When I delete the LLM proxy "${CTX:proxyName}"
     Then the response should be successful
