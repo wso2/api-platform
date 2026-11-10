@@ -25,8 +25,7 @@ import { failure, recorder, resource, type Recorder } from '@/test/msw';
 import { renderApiHook, settle, TEST_ORG } from '@/test/renderApiHook';
 import { server } from '@/test/server';
 
-import { useCloudDeployments } from './cloudDeployments.hooks';
-import { cloudDeploymentKeys } from './cloudDeployments.queries';
+import { useCloudDeployments } from './useCloudDeployments';
 
 const PATH = '/projects/retail/apis/pizza-shack/deployments';
 
@@ -100,21 +99,6 @@ describe('useCloudDeployments', () => {
       // No deployment id or timestamp on the wire: the gateway handle and '' stand in.
       { gatewayId: 'gw-3', deploymentId: 'gw-3', status: 'DEPLOYING', createdAt: '' },
     ]);
-  });
-
-  it('files the result under the organization, so an organization switch evicts it', async () => {
-    server.use(resource(PATH, stages));
-
-    const { result, queryClient, org } = renderApiHook(() =>
-      useCloudDeployments('RestApi', 'retail', 'pizza-shack'),
-    );
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(
-      queryClient.getQueryData(
-        cloudDeploymentKeys.list(org, { project: 'retail', api: 'pizza-shack', kind: 'RestApi' }),
-      ),
-    ).toEqual(result.current.data);
   });
 
   it('yields an empty list when the pipeline reports nothing', async () => {

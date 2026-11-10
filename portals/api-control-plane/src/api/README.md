@@ -10,13 +10,6 @@ Every backend call is typed from `platform-api/resources/openapi.yaml`. Componen
 > normalizes every response, because the wire is untyped. Read the header of
 > `resources/policyHub/policyHub.endpoints.ts` before copying anything from it —
 > it is an exception with reasons, not a second pattern.
->
-> **`resources/cloudDeployments` is not spec-derived either.** Its route
-> (`/projects/{p}/apis/{a}/deployments`) exists only behind the WSO2 Cloud
-> pipeline, so it has no `operationId`: its wire types are hand-written and
-> normalized into `Deployment`, and its call carries no `operationName`. Unlike
-> the Policy Hub it does go through `core/http`. The reasons are in the header of
-> `resources/cloudDeployments/cloudDeployments.endpoints.ts`.
 
 ## Layers
 

@@ -19,7 +19,6 @@
 import { useMemo } from 'react';
 import { AppPage } from '@/components/AppPage';
 import { REST_API_TYPE } from '@/api/resources/apiPublications';
-import { useCloudDeployments } from '@/api/resources/cloudDeployments';
 import { useRestApi } from '@/api/resources/restApis';
 import type { Gateway } from '@/api/resources/gateways';
 import { useDeployments } from '@/api/resources/restApis/deployments';
@@ -30,6 +29,7 @@ import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { ApiOverviewHeader } from './ApiOverviewHeader';
 import { OverviewTab } from './OverviewTab';
 import { ProgressBanner } from './ProgressBanner';
+import { useCloudDeployments } from './useCloudDeployments';
 import { useCan } from '@/permissions/useCan';
 import { PAGE_API_DEPLOY_SLOT } from '@/extensions';
 
