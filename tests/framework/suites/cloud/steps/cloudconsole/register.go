@@ -217,7 +217,6 @@ func (s *Steps) registerGatewayConfigSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I read the configuration of the active APIP gateway$`, s.readGatewayConfiguration)
 	sc.Step(`^the active APIP gateway's configuration should be readable$`, s.awaitConfigurationReadable)
 	sc.Step(`^the gateway configuration should be a valid document$`, s.assertConfigurationDocument)
-	sc.Step(`^I write the gateway configuration with:$`, s.writeGatewayConfiguration)
 	sc.Step(`^I write the gateway configuration path "([^"]*)" with a string of (\d+) characters$`, s.writeLongString)
 	sc.Step(`^I write each of these gateway configuration values separately:$`, s.writeEachValue)
 	sc.Step(`^every one of those writes should have been refused as invalid$`, s.assertEveryWriteRejected)

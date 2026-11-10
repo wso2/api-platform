@@ -192,6 +192,12 @@ export type EditableField = {
    */
   min?: string;
   max?: string;
+  /**
+   * What the gateway runs with while the path is absent from `values`, in the
+   * type a write takes. Display only: it is never part of `values` and is never
+   * sent back. Absent where the platform publishes none.
+   */
+  default?: string | number | boolean;
 };
 
 /**

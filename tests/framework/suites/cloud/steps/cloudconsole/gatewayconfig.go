@@ -63,19 +63,6 @@ func parseConfigCell(raw string) any {
 	return raw
 }
 
-// configValuesFromTable reads a path-and-value table into the values of a configuration patch.
-func configValuesFromTable(table *godog.Table) (map[string]any, error) {
-	raw, err := tableValues(table)
-	if err != nil {
-		return nil, err
-	}
-	values := make(map[string]any, len(raw))
-	for path, cell := range raw {
-		values[path] = parseConfigCell(cell)
-	}
-	return values, nil
-}
-
 // attemptSpecs reads a table with a path and a value column and an optional message column.
 func attemptSpecs(table *godog.Table) ([]configAttempt, []any, error) {
 	if table == nil || len(table.Rows) < 2 {
@@ -291,21 +278,6 @@ func (s *Steps) assertConfigurationDocument(ctx context.Context) error {
 		return fmt.Errorf("%w (%s)", err, response.Describe())
 	}
 	return nil
-}
-
-// writeGatewayConfiguration writes the settings of a table to the synthetic gateway and
-// publishes the response without requiring success.
-func (s *Steps) writeGatewayConfiguration(ctx context.Context, table *godog.Table) error {
-	id, err := requiredValue(ctx, keyGatewayID)
-	if err != nil {
-		return err
-	}
-	values, err := configValuesFromTable(table)
-	if err != nil {
-		return err
-	}
-	_, err = s.doAuthenticated(ctx, http.MethodPut, configurationPath(id), map[string]any{"values": values})
-	return err
 }
 
 // writeLongString writes a string of the given length to one setting and publishes the response.

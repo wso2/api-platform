@@ -29,6 +29,7 @@ import {
 } from '@wso2/oxygen-ui';
 import { X } from '@wso2/oxygen-ui-icons-react';
 import { readConfiguration, writeConfiguration } from '../config/api';
+import { isChange, shownValue } from '../config/defaults';
 import { isApplying } from '../config/status';
 import {
   fieldForServerMessage,
@@ -38,7 +39,12 @@ import {
 } from '../config/validate';
 import type { AIWorkspaceHostPort } from '../hostPort';
 import { NO_PERMISSION_TOOLTIP } from '../permissions';
-import type { ConfigValues, Gateway, GatewayConfiguration } from '../types';
+import type {
+  ConfigValues,
+  EditableField,
+  Gateway,
+  GatewayConfiguration,
+} from '../types';
 import ConfigStatusBar from './ConfigStatusBar';
 import SettingField from './SettingField';
 import TomlField from './TomlField';
@@ -186,21 +192,18 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
     return () => clearInterval(timer);
   }, [gatewayId, load, open]);
 
-  /** Edits that actually differ from what is stored — editing a field back to its original un-dirties it. */
+  /**
+   * Edits that actually differ from what is stored — editing a field back to its
+   * original un-dirties it. On an unset field, clearing the input or picking the
+   * default is not an edit either (see `isChange`).
+   */
   const patch = useMemo<ConfigValues>(() => {
     if (!config) return {};
+    const fields = new Map(config.editable.map((field) => [field.path, field]));
     return Object.fromEntries(
       Object.entries(drafts).filter(([path, value]) => {
-        // Typing into a field the platform carries NO value for and then
-        // clearing it again is not an edit. The stored value reads back
-        // `undefined` while an emptied input reads `''`, so a plain `!==`
-        // called that a change and left the form permanently dirty — with a
-        // validation error under a field the user had just put back the way
-        // they found it. There is no "unset" operation on the endpoint: an
-        // empty input on an unset field means the chart default still stands,
-        // which is exactly the state before the typing.
-        if (!(path in config.values)) return value !== '' && value !== undefined;
-        return value !== config.values[path];
+        const field = fields.get(path);
+        return field ? isChange(field, config.values, value) : false;
       })
     );
   }, [config, drafts]);
@@ -306,8 +309,8 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   // partitioned out of the flat list and rendered by `TomlField`.
   const listed = config?.editable.filter((field) => field.type !== 'string') ?? [];
   const freeText = config?.editable.filter((field) => field.type === 'string') ?? [];
-  const currentValue = (path: string): unknown =>
-    path in drafts ? drafts[path] : config?.values[path];
+  const currentValue = (field: EditableField): unknown =>
+    config ? shownValue(field, config.values, drafts) : undefined;
 
   return (
     <Drawer anchor="right" open={open} onClose={onClose}>
@@ -402,7 +405,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
             <SettingField
               key={field.path}
               field={field}
-              value={currentValue(field.path)}
+              value={currentValue(field)}
               error={errors[field.path]}
               readOnly={saving || !canWrite}
               onChange={(value) => setDraft(field.path, value)}
@@ -413,7 +416,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
             <TomlField
               key={field.path}
               field={field}
-              value={currentValue(field.path)}
+              value={currentValue(field)}
               error={errors[field.path]}
               readOnly={saving || !canWrite}
               onChange={(value) => setDraft(field.path, value)}

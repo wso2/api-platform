@@ -34,11 +34,19 @@ Feature: APIP cloud managed gateway configuration
     And I find an active APIP gateway
     And the active APIP gateway's configuration should be readable
     When I write each of these gateway configuration values separately:
-      | path                                            | value                                           | message                            |
-      | gateway.config.not.an.editable.setting          | 1                                               | is not an editable gateway setting |
-      | gateway.config.controller.storage.postgres.host | "db.invalid"                                    | is not an editable gateway setting |
-      | gatewayId                                       | "another-gateway"                               | is not an editable gateway setting |
-      | gateway.config                                  | {"controller": {"logging": {"level": "debug"}}} | is not an editable gateway setting |
+      | path                                                                      | value                                           | message                            |
+      | gateway.config.not.an.editable.setting                                    | 1                                               | is not an editable gateway setting |
+      | gateway.config.controller.storage.postgres.host                           | "db.invalid"                                    | is not an editable gateway setting |
+      | gatewayId                                                                 | "another-gateway"                               | is not an editable gateway setting |
+      | gateway.config                                                            | {"controller": {"logging": {"level": "debug"}}} | is not an editable gateway setting |
+      | gateway.config.policy_configurations.ratelimit_v1.memory.max_entries      | 30000                                           | is not an editable gateway setting |
+      | gateway.config.policy_configurations.ratelimit_v1.memory.cleanup_interval | "10m"                                           | is not an editable gateway setting |
+      | gateway.controller.deployment.replicaCount                                | 2                                               | is not an editable gateway setting |
+      | gateway.gatewayRuntime.deployment.replicaCount                            | 2                                               | is not an editable gateway setting |
+      | gateway.controller.deployment.resources.requests.cpu                      | "100m"                                          | is not an editable gateway setting |
+      | gateway.controller.deployment.resources.requests.memory                   | "256Mi"                                         | is not an editable gateway setting |
+      | gateway.controller.deployment.resources.limits.cpu                        | "500m"                                          | is not an editable gateway setting |
+      | gateway.controller.deployment.resources.limits.memory                     | "512Mi"                                         | is not an editable gateway setting |
     Then every one of those writes should have been refused as invalid
 
   @TC_APIP_GWCFG_004 @ID_APIP_GATEWAY_CONFIG_003
@@ -66,88 +74,6 @@ Feature: APIP cloud managed gateway configuration
       | gateway.config.router.access_logs.enabled | 1      | must be true or false |
     Then every one of those writes should have been refused as invalid
 
-  @TC_APIP_GWCFG_006 @ID_APIP_GATEWAY_CONFIG_005
-  Scenario: An integer setting refuses a value below its minimum
-    Given I obtain an APIP cloud console token
-    And I find an active APIP gateway
-    And the active APIP gateway's configuration should be readable
-    When I write each of these gateway configuration values separately:
-      | path                                                                 | value | message                          |
-      | gateway.config.policy_configurations.ratelimit_v1.memory.max_entries | 999   | must be between 1000 and 1000000 |
-      | gateway.config.policy_configurations.ratelimit_v1.memory.max_entries | 0     | must be between 1000 and 1000000 |
-      | gateway.config.policy_configurations.ratelimit_v1.memory.max_entries | -1    | must be between 1000 and 1000000 |
-      | gateway.controller.deployment.replicaCount                           | 0     | must be between 1 and 5          |
-      | gateway.gatewayRuntime.deployment.replicaCount                       | 0     | must be between 1 and 5          |
-    Then every one of those writes should have been refused as invalid
-
-  @TC_APIP_GWCFG_007 @ID_APIP_GATEWAY_CONFIG_006
-  Scenario: An integer setting refuses a value above its maximum
-    Given I obtain an APIP cloud console token
-    And I find an active APIP gateway
-    And the active APIP gateway's configuration should be readable
-    When I write each of these gateway configuration values separately:
-      | path                                                                 | value   | message                          |
-      | gateway.config.policy_configurations.ratelimit_v1.memory.max_entries | 1000001 | must be between 1000 and 1000000 |
-      | gateway.controller.deployment.replicaCount                           | 6       | must be between 1 and 5          |
-      | gateway.gatewayRuntime.deployment.replicaCount                       | 6       | must be between 1 and 5          |
-      | gateway.gatewayRuntime.deployment.replicaCount                       | 100     | must be between 1 and 5          |
-    Then every one of those writes should have been refused as invalid
-
-  @TC_APIP_GWCFG_008 @ID_APIP_GATEWAY_CONFIG_007
-  Scenario: A duration setting refuses a value that is not a duration
-    Given I obtain an APIP cloud console token
-    And I find an active APIP gateway
-    And the active APIP gateway's configuration should be readable
-    When I write each of these gateway configuration values separately:
-      | path                                                                      | value    | message                         |
-      | gateway.config.policy_configurations.ratelimit_v1.memory.cleanup_interval | soon     | must be a duration such as "5m" |
-      | gateway.config.policy_configurations.ratelimit_v1.memory.cleanup_interval | "5"      | must be a duration such as "5m" |
-      | gateway.config.policy_configurations.ratelimit_v1.memory.cleanup_interval | 5        | must be a duration such as "5m" |
-      | gateway.config.policy_configurations.ratelimit_v1.memory.cleanup_interval | 1 minute | must be a duration such as "5m" |
-    Then every one of those writes should have been refused as invalid
-
-  @TC_APIP_GWCFG_009 @ID_APIP_GATEWAY_CONFIG_008
-  Scenario: A duration setting refuses a value outside its bounds
-    Given I obtain an APIP cloud console token
-    And I find an active APIP gateway
-    And the active APIP gateway's configuration should be readable
-    When I write each of these gateway configuration values separately:
-      | path                                                                      | value | message                    |
-      | gateway.config.policy_configurations.ratelimit_v1.memory.cleanup_interval | 29s   | must be between 30s and 1h |
-      | gateway.config.policy_configurations.ratelimit_v1.memory.cleanup_interval | 1h1s  | must be between 30s and 1h |
-      | gateway.config.policy_configurations.ratelimit_v1.memory.cleanup_interval | 0s    | must be between 30s and 1h |
-      | gateway.config.policy_configurations.ratelimit_v1.memory.cleanup_interval | -5m   | must be between 30s and 1h |
-    Then every one of those writes should have been refused as invalid
-
-  @TC_APIP_GWCFG_010 @ID_APIP_GATEWAY_CONFIG_009
-  Scenario: A quantity setting refuses a value that is not a Kubernetes quantity
-    Given I obtain an APIP cloud console token
-    And I find an active APIP gateway
-    And the active APIP gateway's configuration should be readable
-    When I write each of these gateway configuration values separately:
-      | path                                                    | value            | message                    |
-      | gateway.controller.deployment.resources.requests.cpu    | lots             | must be a quantity such as |
-      | gateway.controller.deployment.resources.requests.cpu    | 12 cores         | must be a quantity such as |
-      | gateway.controller.deployment.resources.limits.cpu      | 500x             | must be a quantity such as |
-      | gateway.controller.deployment.resources.requests.memory | 12               | must be a quantity such as |
-      | gateway.controller.deployment.resources.limits.memory   | "lots of memory" | must be a quantity such as |
-    Then every one of those writes should have been refused as invalid
-
-  @TC_APIP_GWCFG_011 @ID_APIP_GATEWAY_CONFIG_010
-  Scenario: A quantity setting refuses a value outside its bounds
-    Given I obtain an APIP cloud console token
-    And I find an active APIP gateway
-    And the active APIP gateway's configuration should be readable
-    When I write each of these gateway configuration values separately:
-      | path                                                    | value  | message                       |
-      | gateway.controller.deployment.resources.requests.cpu    | "10m"  | must be between 50m and 4     |
-      | gateway.controller.deployment.resources.requests.cpu    | "5"    | must be between 50m and 4     |
-      | gateway.controller.deployment.resources.requests.cpu    | "0"    | must be greater than zero     |
-      | gateway.controller.deployment.resources.limits.cpu      | "-1"   | must be greater than zero     |
-      | gateway.controller.deployment.resources.requests.memory | "64Mi" | must be between 128Mi and 8Gi |
-      | gateway.controller.deployment.resources.limits.memory   | "9Gi"  | must be between 128Mi and 8Gi |
-    Then every one of those writes should have been refused as invalid
-
   @TC_APIP_GWCFG_012 @ID_APIP_GATEWAY_CONFIG_011
   Scenario: A string setting refuses a value longer than its character maximum
     Given I obtain an APIP cloud console token
@@ -158,30 +84,6 @@ Feature: APIP cloud managed gateway configuration
     And the cloud API error code should be "invalid_request"
     And the cloud API response body should contain "gateway.config_toml"
     And the cloud API response body should contain "must be between 0 and 8192 characters"
-
-  @TC_APIP_GWCFG_013 @ID_APIP_GATEWAY_CONFIG_012
-  Scenario: A CPU request above the CPU limit is refused by the cross-field constraint
-    Given I obtain an APIP cloud console token
-    And I find an active APIP gateway
-    And the active APIP gateway's configuration should be readable
-    When I write the gateway configuration with:
-      | gateway.controller.deployment.resources.requests.cpu | "2" |
-      | gateway.controller.deployment.resources.limits.cpu   | "1" |
-    Then the cloud API response status code should be 400
-    And the cloud API error code should be "invalid_request"
-    And the cloud API response body should contain "request"
-
-  @TC_APIP_GWCFG_014 @ID_APIP_GATEWAY_CONFIG_013
-  Scenario: A memory request above the memory limit is refused
-    Given I obtain an APIP cloud console token
-    And I find an active APIP gateway
-    And the active APIP gateway's configuration should be readable
-    When I write the gateway configuration with:
-      | gateway.controller.deployment.resources.requests.memory | "2Gi" |
-      | gateway.controller.deployment.resources.limits.memory   | "1Gi" |
-    Then the cloud API response status code should be 400
-    And the cloud API error code should be "invalid_request"
-    And the cloud API response body should contain "request"
 
   @TC_APIP_GWCFG_016 @ID_APIP_GATEWAY_CONFIG_014
   Scenario: Raw TOML with control characters or line separators is refused

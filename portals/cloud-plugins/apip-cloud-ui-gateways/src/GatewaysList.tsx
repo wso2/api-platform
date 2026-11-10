@@ -104,19 +104,26 @@ const AddGatewayButton: FC<{
  * exists — a full quota must still leave its gateways configurable. The span
  * is required for the same reason as above: a disabled MUI control sets
  * `pointer-events: none`, so a Tooltip on it never fires.
+ *
+ * `unavailable` disables it for a reason that belongs to the gateway rather
+ * than the user, such as one still being provisioned. A missing scope or a
+ * read-only organization outranks it: those last longer, so they are what the
+ * user needs to hear.
  */
 const WhenWritable: FC<{
   port: AIWorkspaceHostPort;
   /** Whether the user holds the scope this control needs; `false` disables it. */
   allowed?: boolean;
+  /** Why the gateway cannot take this action right now; set, it disables the control. */
+  unavailable?: string;
   children: ReactElement<{ disabled?: boolean }>;
-}> = ({ port, allowed = true, children }) => {
+}> = ({ port, allowed = true, unavailable, children }) => {
   const limits = port.resourceLimits;
   const reason = !allowed
     ? NO_PERMISSION_TOOLTIP
     : limits?.readOnly
       ? (limits.readOnlyMessage ?? '')
-      : null;
+      : (unavailable ?? null);
   if (reason === null) return children;
   return (
     <Tooltip title={reason}>
@@ -126,6 +133,13 @@ const WhenWritable: FC<{
     </Tooltip>
   );
 };
+
+/** Tooltip for an action that waits until a gateway has finished provisioning. */
+const PROVISIONING_TOOLTIP = 'Available once the gateway finishes provisioning.';
+
+/** Why `gateway` cannot be edited or configured yet, or `undefined` when it can. */
+const provisioningReason = (gateway: Gateway): string | undefined =>
+  gateway.status === 'provisioning' ? PROVISIONING_TOOLTIP : undefined;
 
 export type GatewaysListProps = {
   gateways: Gateway[];
@@ -482,11 +496,14 @@ const GatewaysList: FC<GatewaysListProps> = ({
   };
 
   // A gateway being deleted is on its way out: there is nothing left to edit,
-  // configure or delete again. Each action is also wrapped so its tooltip can say
-  // why it is disabled — a disabled button fires no events.
+  // configure or delete again. One still being provisioned has no configuration
+  // to read or edit yet, so Edit and Configure wait for it; Delete does not, so a
+  // provisioning that never finishes can still be removed. Each action is also
+  // wrapped so its tooltip can say why it is disabled — a disabled button fires
+  // no events.
   const renderActions = (gateway: Gateway) => (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-      <WhenWritable port={port} allowed={canUpdate}>
+      <WhenWritable port={port} allowed={canUpdate} unavailable={provisioningReason(gateway)}>
         <IconButton
           size="small"
           onClick={() => onEditClick(gateway.id)}
@@ -497,7 +514,11 @@ const GatewaysList: FC<GatewaysListProps> = ({
         </IconButton>
       </WhenWritable>
       {gateway.hosting === 'managed' ? (
-        <WhenWritable port={port} allowed={canReadConfiguration}>
+        <WhenWritable
+          port={port}
+          allowed={canReadConfiguration}
+          unavailable={provisioningReason(gateway)}
+        >
           <IconButton
             size="small"
             onClick={() => setSettingsGateway(gateway)}
