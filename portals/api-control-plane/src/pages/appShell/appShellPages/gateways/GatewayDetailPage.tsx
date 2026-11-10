@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Box, PageTitle, Stack, Tab, Tabs } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link, useParams } from 'react-router-dom';
@@ -25,6 +25,7 @@ import { AppPage } from '@/components/AppPage';
 import { useGateway } from '@/api/resources/gateways';
 import { ErrorState, LoadingState } from '@/components/StateViews';
 import { runtimeConfig } from '@/config/runtime';
+import { useTrackFeature } from '@/featureUsage';
 import { routes } from '@/routes/paths';
 import { GatewayDetailHeader } from './components/GatewayDetailHeader';
 import { GatewayGetStartedPanel } from './components/GatewayGetStartedPanel';
@@ -91,6 +92,17 @@ function GatewayDetailPageContent() {
   // reappear, then held in state so closing it this time takes effect at once.
   const [bannerDismissed, setBannerDismissed] = useState(() => isSetupBannerDismissed(gatewayId));
   const [tab, setTab] = useState<GatewayTab>('configurations');
+  const trackFeature = useTrackFeature();
+  // The Policies tab is reported once per visit, the first time it is opened.
+  const policiesReported = useRef(false);
+
+  const changeTab = (next: GatewayTab) => {
+    if (next === 'policies' && !policiesReported.current) {
+      policiesReported.current = true;
+      trackFeature('apip.policies.view-gateway-policies');
+    }
+    setTab(next);
+  };
 
   const dismissBanner = () => {
     dismissSetupBanner(gatewayId);
@@ -135,7 +147,7 @@ function GatewayDetailPageContent() {
 
         <Box>
           <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-            <Tabs onChange={(_event, next: GatewayTab) => setTab(next)} value={tab}>
+            <Tabs onChange={(_event, next: GatewayTab) => changeTab(next)} value={tab}>
               <Tab label={intl.formatMessage(messages.tabConfigurations)} value="configurations" />
               <Tab label={intl.formatMessage(messages.tabPolicies)} value="policies" />
             </Tabs>

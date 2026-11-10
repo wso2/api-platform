@@ -61,6 +61,7 @@ import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } fro
 
 import { useCreateMeter, useUpdateMeter, type Meter, type MeterBody } from '@/api/resources/meters';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import {
   DEFAULT_TOKEN_KEY,
   MAX_METER_FIELDS,
@@ -472,6 +473,7 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
   const { notify } = useNotifications();
   const createMutation = useCreateMeter();
   const updateMutation = useUpdateMeter();
+  const trackFeature = useTrackFeature();
   const isEdit = meter !== null;
   const mutation = isEdit ? updateMutation : createMutation;
 
@@ -653,6 +655,7 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
       );
 
     if (isEdit && meter?.id) {
+      trackFeature('apip.monetization.meter-management', { operation: 'update' });
       updateMutation.mutate(
         { body, meterId: meter.id },
         {
@@ -665,6 +668,7 @@ export function MeterFormDialog({ open, meter, readOnly = false, onClose }: Mete
       );
       return;
     }
+    trackFeature('apip.monetization.meter-management', { operation: 'create' });
     createMutation.mutate(body, {
       onError,
       onSuccess: () => {

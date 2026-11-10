@@ -18,7 +18,7 @@
 
 import { http, HttpResponse } from 'msw';
 import { Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
@@ -29,6 +29,7 @@ import {
   collection,
   failure,
   manyRestApis,
+  noContent,
   recorder,
   type GraphQLApiFixture,
   type RestApiFixture,
@@ -38,7 +39,10 @@ import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { routes } from '@/routes/paths';
 import { makeConsoleScope } from '@/test/mockScope';
+import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { ApiList } from './ApiList';
+
+vi.mock('@/featureUsage/moesif');
 import { ApiListPage } from './ApiListPage';
 
 const ORG = 'api-platform-demo';
@@ -596,5 +600,55 @@ describe('ApiList — when the list fails to load', () => {
 
     expect(await screen.findByText('type statistics')).toBeInTheDocument();
     expect(screen.queryByText('Orders API')).not.toBeInTheDocument();
+  });
+});
+
+describe('ApiListPage — feature usage', () => {
+  beforeEach(() => {
+    resetTrackedFeatures();
+    server.use(
+      noContent('delete', '/rest-apis/:restApiId', { record: requests }),
+      noContent('delete', '/graphql-apis/:graphqlApiId', { record: requests }),
+    );
+  });
+
+  it.each([
+    {
+      apiType: 'rest-api',
+      graphql: [],
+      kind: 'REST',
+      rest: [aRestApi({ displayName: 'Orders API', id: 'orders-api' })],
+    },
+    {
+      apiType: 'graphql-api',
+      graphql: [aGraphQLApi({ displayName: 'Orders API', id: 'orders-api' })],
+      kind: 'GraphQL',
+      rest: [],
+    },
+  ])(
+    'reports deleting a $kind API once the delete is confirmed',
+    async ({ apiType, graphql, rest }) => {
+      server.use(collection('/rest-apis', rest), collection('/graphql-apis', graphql));
+      const { user } = renderPage();
+
+      await user.click(await screen.findByRole('button', { name: 'Delete Orders API' }));
+      const dialog = screen.getByRole('dialog');
+      await user.type(within(dialog).getByRole('textbox'), 'Orders API');
+      await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+      await waitFor(() => expect(requests.count()).toBe(1));
+      expect(trackedFeatures()).toEqual([['apip.manage-apis.delete-api', { api_type: apiType }]]);
+    },
+  );
+
+  it('reports nothing when the delete is cancelled', async () => {
+    server.use(collection('/rest-apis', apiFixtures));
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Delete Orders API' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trackedFeatures()).toEqual([]);
   });
 });

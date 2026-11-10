@@ -25,6 +25,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useUpdateRestApi, type RestApi } from '@/api/resources/restApis';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { isValidUrl } from '../utils/developEdit';
 import { useActionPermission } from '@/permissions/useCan';
 import type { PermissionOperation } from '@/permissions';
@@ -57,13 +58,15 @@ const messages = defineMessages({
   notEditable: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notEditable',
     defaultMessage: 'This endpoint cannot be edited here.',
-    description: 'Tooltip on the disabled Edit endpoint button when no more specific reason applies.',
+    description:
+      'Tooltip on the disabled Edit endpoint button when no more specific reason applies.',
   },
   gatewayManaged: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.gatewayManaged',
     defaultMessage:
       'This API was created from a gateway, so its endpoint is managed by the gateway and cannot be edited here.',
-    description: 'Tooltip on the disabled Edit endpoint button of a read-only (gateway-created) API.',
+    description:
+      'Tooltip on the disabled Edit endpoint button of a read-only (gateway-created) API.',
   },
   notConfigured: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.overview.EndpointsPanel.notConfigured',
@@ -309,21 +312,23 @@ export function EndpointCard({
 /** A REST API's backend endpoint: the shared card over REST's update. */
 export function EndpointsPanel({ api }: { api: RestApi }) {
   const updateApi = useUpdateRestApi();
+  const trackFeature = useTrackFeature();
 
   return (
     <EndpointCard
       editable={!api.readOnly}
       editOperation="UpdateRESTAPI"
       gatewayManaged={api.readOnly === true}
-      onSave={(endpointUrl) =>
-        updateApi.mutateAsync({
+      onSave={(endpointUrl) => {
+        trackFeature('apip.manage-apis.update-api', { api_type: 'rest-api', part: 'endpoint' });
+        return updateApi.mutateAsync({
           restApiId: api.id ?? '',
           body: {
             ...api,
             upstream: { ...api.upstream, main: { ...api.upstream?.main, url: endpointUrl } },
           },
-        })
-      }
+        });
+      }}
       saving={updateApi.isPending}
       url={api.upstream?.main?.url}
     />

@@ -15,7 +15,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
@@ -29,10 +29,13 @@ import {
   recorder,
   type Recorder,
 } from '@/test/msw';
+import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { server } from '@/test/server';
 import { makeConsoleScope } from '@/test/mockScope';
 import { renderWithProviders, screen, userEvent, waitFor, within } from '@/test/utils';
 import { MetersPage } from './MetersPage';
+
+vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 
@@ -105,6 +108,7 @@ function renderPage() {
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+  resetTrackedFeatures();
 });
 
 describe('MetersPage', () => {
@@ -163,6 +167,9 @@ describe('MetersPage', () => {
       filterFields: [],
       type: 'REQUEST_COUNT',
     });
+    expect(trackedFeatures()).toEqual([
+      ['apip.monetization.meter-management', { operation: 'create' }],
+    ]);
   });
 
   it("gives a token meter a Token key under its type, required, pre-filled and saved as the meter's event key", { timeout: 15_000 }, async () => {
@@ -498,6 +505,9 @@ describe('MetersPage', () => {
       type: 'TOKENS',
       typeKey: 'usage.outputTokens',
     });
+    expect(trackedFeatures()).toEqual([
+      ['apip.monetization.meter-management', { operation: 'update' }],
+    ]);
   });
 
   it("shows the server's reason for refusing a new meter", async () => {
@@ -538,6 +548,22 @@ describe('MetersPage', () => {
 
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(requests.count()).toBe(1);
+    // The confirmed intent counts, whatever the server answers.
+    expect(trackedFeatures()).toEqual([
+      ['apip.monetization.meter-management', { operation: 'delete' }],
+    ]);
+  });
+
+  it('reports no deletion when the confirmation is cancelled', async () => {
+    server.use(collection('/meters', [aMeter()]), collection('/subscription-plans', []));
+    renderPage();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+
+    await user.click(await screen.findByRole('button', { name: 'Delete Successful calls' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trackedFeatures()).toEqual([]);
   });
 
   it('says a priced meter is in use instead of deleting it, without reading its plans, and sends no delete', async () => {

@@ -16,23 +16,33 @@
  * under the License.
  */
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { aPublicationSummary } from '@/test/msw';
+import type { PublishableApiType } from '@/api/resources/apiPublications';
+import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
+import { aPublicationSummary, type PublicationSummaryFixture } from '@/test/msw';
 import { renderWithProviders, screen } from '@/test/utils';
-import { restPublishTarget } from '../publishTarget';
+import { graphqlPublishTarget, restPublishTarget } from '../publishTarget';
 import { PortalPublicationCard } from './PortalPublicationCard';
 
-const renderCard = (publishDeniedTooltip?: string) =>
+vi.mock('@/featureUsage/moesif');
+
+beforeEach(() => resetTrackedFeatures());
+
+const renderCard = (
+  publishDeniedTooltip?: string,
+  publication: PublicationSummaryFixture = aPublicationSummary(),
+  apiType: PublishableApiType = 'rest-api',
+) =>
   renderWithProviders(
     <PortalPublicationCard
       oneClickPublishAllowed
       onPublish={() => {}}
       orgHandle="acme"
-      publication={aPublicationSummary()}
+      publication={publication}
       publishDeniedTooltip={publishDeniedTooltip}
       publishing={false}
-      target={restPublishTarget('acme', 'shop', 'pets')}
+      target={(apiType === 'rest-api' ? restPublishTarget : graphqlPublishTarget)('acme', 'shop', 'pets')}
     />,
   );
 
@@ -49,4 +59,20 @@ describe('PortalPublicationCard', () => {
     expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled();
     expect(screen.getByRole('button', { name: /more/i })).toBeDisabled();
   });
+
+  it.each(['rest-api', 'graphql-api'] as const)(
+    'reports opening the %s listing on the portal from View in Portal',
+    async (apiType) => {
+      const { user } = renderCard(undefined, aPublicationSummary({ status: 'PUBLISHED' }), apiType);
+
+      const link = screen.getByRole('link', { name: 'View in Portal' });
+      // Stops jsdom from attempting the new-tab navigation; the click itself is what is counted.
+      link.addEventListener('click', (event) => event.preventDefault());
+      await user.click(link);
+
+      expect(trackedFeatures()).toEqual([
+        ['apip.lifecycle.open-api-portal', { api_type: apiType }],
+      ]);
+    },
+  );
 });

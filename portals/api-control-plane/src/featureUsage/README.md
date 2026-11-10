@@ -121,12 +121,12 @@ Tracking never shows an error to the user, so these are the only signs.
 Every action carries the same metadata, so one filter selects API Platform:
 `metadata.initiating_product = apip`. For the first feature:
 
-| Moesif view              | Set-up                                                                                                                                                                                                                  |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| REST API creation funnel | Funnel, in this order: `apip.manage-apis.api-creation-wizard` → `apip.manage-apis.api-creation-wizard.select-api-type` → `apip.manage-apis.create-rest-api.select-creation-method` → `apip.manage-apis.create-rest-api` |
-| Where users start        | Segment `apip.manage-apis.api-creation-wizard` by `metadata.entry_point`                                                                                                                                                |
-| Scratch vs. contract     | Segment `apip.manage-apis.create-rest-api` by `metadata.creation_method`                                                                                                                                                |
-| Adoption across features | Filter `metadata.event_category = adoption`, group by `action_name`                                                                                                                                                     |
+| Moesif view              | Set-up                                                                                                                                                                                                                      |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| REST API creation funnel | Funnel, in this order: `apip.manage-apis.api-creation-wizard` → `apip.manage-apis.api-creation-wizard.select-api-type` → `apip.manage-apis.api-creation-wizard.select-creation-method` → `apip.manage-apis.create-rest-api` |
+| Where users start        | Segment `apip.manage-apis.api-creation-wizard` by `metadata.entry_point`                                                                                                                                                    |
+| Scratch vs. contract     | Segment `apip.manage-apis.create-rest-api` by `metadata.creation_method`                                                                                                                                                    |
+| Adoption across features | Filter `metadata.event_category = adoption`, group by `action_name`                                                                                                                                                         |
 
 Users and companies show up in Moesif as UUIDs: the Thunder user ID (`sub`) and
 the organization ID (the `ouId` claim). The console never sends names.
@@ -248,9 +248,12 @@ Copy the entry into `API_PLATFORM_FEATURES`:
   category: 'manage-apis',         // taxonomy `category`
   tier: 'core',
   eventCategory: 'lifecycle',
-  dimensions: { api_type: ['rest-api', 'graphql-api'] },
+  // required(): every emission carries it; optional(): sent only when it applies.
+  dimensions: { api_type: required(['rest-api', 'graphql-api']) },
 },
 ```
+
+A feature with no required dimension can be called as `trackFeature(code)`.
 
 A code missing from this registry can't be tracked. The call doesn't compile,
 and the filter would drop it anyway.
@@ -297,9 +300,16 @@ runtime. So an API name, a URL or a typed value can't reach Moesif. If a feature
 genuinely needs another kind of value, check it against the data rules first,
 then change `FeatureSpec`, `featureMetadata` and the filter together.
 
-### 4. Test the funnel
+### 4. Test it
 
-Copy `ApiCreationWizard.featureUsage.test.tsx`:
+For one control, use the helper in `src/test/featureUsage.ts`: add
+`vi.mock('@/featureUsage/moesif');` to the test file, call
+`resetTrackedFeatures()` in `beforeEach`, drive the real UI to the commit, and
+assert `expect(trackedFeatures()).toEqual([[code, dimensions]])`. Also check
+that Cancel reports nothing.
+
+For a multi-step funnel through the SDK, copy
+`ApiCreationWizard.featureUsage.test.tsx`:
 
 - mock `moesif-browser-js` with a fake that **includes `_executeRequest`**.
   Without it, the PII filter can't install and tracking stays off;
@@ -348,30 +358,89 @@ caret). To upgrade:
 
 ## Known limitations
 
-| Limitation                                                   | Effect                                                                               | Way out                                                             |
-|--------------------------------------------------------------| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| Ad blockers and privacy browsers block `api.moesif.net`      | Those users aren't counted                                                           | The Moesif Events Proxy design in the spec                          |
-| No list of orgs to leave out                                 | Internal and test orgs are counted                                                   | Separate Moesif applications per environment, or add the list       |
-| Moesif sees the browser's IP address                         | Any direct browser request exposes it at the network level; the payload carries none | The proxy design in the spec                                        |
-| IDs only                                                     | Moesif dashboards show UUIDs, not user or org names                                  | Server-side enrichment                                              |
-| Identity is sent on the first tracked action, not at sign-in | A user who never reaches a tracked step never appears in Moesif                      | Intended                                                            |
+| Limitation                                                   | Effect                                                                               | Way out                                                       |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| Ad blockers and privacy browsers block `api.moesif.net`      | Those users aren't counted                                                           | The Moesif Events Proxy design in the spec                    |
+| No list of orgs to leave out                                 | Internal and test orgs are counted                                                   | Separate Moesif applications per environment, or add the list |
+| Moesif sees the browser's IP address                         | Any direct browser request exposes it at the network level; the payload carries none | The proxy design in the spec                                  |
+| IDs only                                                     | Moesif dashboards show UUIDs, not user or org names                                  | Server-side enrichment                                        |
+| Identity is sent on the first tracked action, not at sign-in | A user who never reaches a tracked step never appears in Moesif                      | Intended                                                      |
 
-Instrumented so far: the API creation wizard. The REST path (scratch and
-contract) is tracked end to end. The GraphQL path is tracked up to the type
-choice.
+---
+
+## What the console tracks
+
+Every feature below fires on the click that commits it (after client-side
+validation, before the request), once per click. Cancel, typing, navigation,
+search and view toggles report nothing.
+
+| Area         | Code                                                      | Fires on                                                             | Dimensions                                          |
+| ------------ | --------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------- |
+| API creation | `apip.manage-apis.api-creation-wizard`                    | wizard opens                                                         | `entry_point`                                       |
+|              | `…api-creation-wizard.select-api-type`                    | Continue on the type step                                            | `api_type`                                          |
+|              | `…api-creation-wizard.select-creation-method`             | Continue on the definition step                                      | `api_type`, `creation_method`                       |
+|              | `apip.manage-apis.create-rest-api` / `create-graphql-api` | Create                                                               | `creation_method`, `contract_source`?               |
+| APIs         | `apip.manage-apis.update-api`                             | Save on the edit page, endpoint drawer, or "Update API" (definition) | `api_type`, `part`                                  |
+|              | `apip.manage-apis.delete-api`                             | delete confirm                                                       | `api_type`                                          |
+|              | `apip.manage-apis.api-thumbnail`                          | upload / remove confirm                                              | `operation`, `api_type`?                            |
+|              | `apip.manage-apis.api-documentation`                      | Create, Save, delete confirm                                         | `operation`, `api_type`?, `document_type`?          |
+| Test         | `apip.manage-apis.test-console`                           | Execute (REST) / run (GraphQL), after the response                   | `api_type`, `call_mode`?, `outcome`                 |
+|              | `apip.manage-apis.test-console.copy-curl`                 | Copy command (cURL view)                                             | `api_type`                                          |
+| Keys         | `apip.security.api-key-issuance`                          | Create key; Get Test API Key / Issue a new key                       | `artifact_kind`, `key_purpose`                      |
+|              | `apip.security.api-key-management`                        | revoke confirm                                                       | `artifact_kind`, `operation`                        |
+| Policies     | `apip.policies.<capability>` (10 codes)                   | Save changes, once per newly attached policy                         | `artifact_kind`?, `policy_scope`?, `policy_name`    |
+|              | `apip.policies.browse-policies`                           | Policy Hub catalogue shown                                           | `artifact_kind`?                                    |
+| Deploy       | `apip.lifecycle.deploy-api`                               | Deploy                                                               | `artifact_kind`, `gateway_type`, `gateway_hosting`? |
+|              | `apip.lifecycle.manage-deployment`                        | Stop, Redeploy, Restore, delete                                      | `artifact_kind`, `operation`                        |
+|              | `apip.lifecycle.view-deployment-history`                  | View More                                                            | `artifact_kind`?                                    |
+| Publish      | `apip.lifecycle.publish-api`                              | Publish / Republish, one-click Publish                               | `api_type`                                          |
+|              | `apip.lifecycle.manage-publication`                       | unpublish / deprecate confirm                                        | `api_type`, `operation`                             |
+|              | `apip.lifecycle.publication-draft`                        | Save Draft, once per part saved                                      | `draft_part`, `api_type`?                           |
+|              | `apip.lifecycle.open-api-portal`                          | View in Portal                                                       | `api_type`?                                         |
+| Gateways     | `apip.gateway.register-gateway`                           | Provision gateway                                                    | `gateway_type`, `gateway_hosting`?                  |
+|              | `apip.gateway.manage-gateway`                             | Save (name, description)                                             | `operation`, `gateway_type`?                        |
+|              | `apip.gateway.gateway-token`                              | Generate new token confirm                                           | `operation`                                         |
+|              | `apip.gateway.copy-setup-command`                         | any copy button in the setup steps                                   | `install_method`, `setup_step`                      |
+|              | `apip.policies.view-gateway-policies`                     | Policies tab, first open per visit                                   | —                                                   |
+| Organization | `apip.admin.manage-projects`                              | Create; delete confirm                                               | `operation`                                         |
+|              | `apip.security.service-accounts`                          | create, edit, enable, disable, regenerate, delete, Get token         | `operation`                                         |
+|              | `apip.monetization.meter-management`                      | Add, Save, delete confirm                                            | `operation`                                         |
+|              | `apip.monetization.subscription-plan-management`          | Add, Save, status switch, delete confirm                             | `operation`                                         |
+
+`?` marks an optional dimension. `taxonomy.ts` lists every value.
+
+**Policies.** The console doesn't know a policy's category, so
+`trackPolicyAttachment` (`policies.ts`) maps the policy name to its capability
+feature (`api-key-auth` → `apip.policies.client-authentication`). Only the WSO2
+policies bundled with the gateway are mapped; a custom, AI or MCP policy is not
+reported, because its name could be the customer's own text.
+
+**Not tracked, deliberately:** navigation (open an API, breadcrumbs, the
+sidebar), search boxes, list/grid toggles, copy buttons for a URL or key,
+documentation links, and the test key minted automatically on page load.
+
+**Pages WSO2 Cloud replaces.** In the cloud build, the Gateways pages and both
+Deploy pages are cloud-plugin pages (`page.gateways`, `page.apiDeploy`,
+`page.graphqlApiDeploy`). The built-in pages above are tracked, but in WSO2
+Cloud `register-gateway`, `manage-gateway`, `gateway-token`,
+`copy-setup-command`, `view-gateway-policies`, `deploy-api`,
+`manage-deployment` and `view-deployment-history` only appear once the cloud
+plugins report them too.
 
 ---
 
 ## Files
 
-| File                     | Role                                                                          |
-| ------------------------ | ----------------------------------------------------------------------------- |
-| `index.ts`               | The public surface: `useTrackFeature`, `API_PLATFORM_FEATURES` and the types  |
-| `taxonomy.ts`            | The registry of trackable features, and `featureMetadata`                     |
-| `useTrackFeature.ts`     | The hook UI code calls; attaches the user and organization                    |
-| `moesif.ts`              | Loads and initialises the SDK lazily, installs the filter, identifies, tracks |
-| `piiFilter.ts`           | The allowlist every outgoing request is rebuilt from                          |
-| `moesif-browser-js.d.ts` | Types for the parts of the SDK used here                                      |
-| `*.test.ts`              | Unit tests, plus `moesif.sdk.test.ts`, the contract test against the real SDK |
-| `src/config/runtime.ts`  | `featureUsageTrackingEnabled`, `moesifPublishableKey`                         |
-| `bff/internal/config`    | The BFF's `[feature_usage]` section and its runtime-config output             |
+| File                       | Role                                                                          |
+| -------------------------- | ----------------------------------------------------------------------------- |
+| `index.ts`                 | The public surface: `useTrackFeature`, `API_PLATFORM_FEATURES` and the types  |
+| `taxonomy.ts`              | The registry of trackable features, and `featureMetadata`                     |
+| `policies.ts`              | `trackPolicyAttachment`: a policy name to its capability feature              |
+| `useTrackFeature.ts`       | The hook UI code calls; attaches the user and organization                    |
+| `moesif.ts`                | Loads and initialises the SDK lazily, installs the filter, identifies, tracks |
+| `piiFilter.ts`             | The allowlist every outgoing request is rebuilt from                          |
+| `moesif-browser-js.d.ts`   | Types for the parts of the SDK used here                                      |
+| `*.test.ts`                | Unit tests, plus `moesif.sdk.test.ts`, the contract test against the real SDK |
+| `src/test/featureUsage.ts` | Test helper: `trackedFeatures()`, `resetTrackedFeatures()`                    |
+| `src/config/runtime.ts`    | `featureUsageTrackingEnabled`, `moesifPublishableKey`                         |
+| `bff/internal/config`      | The BFF's `[feature_usage]` section and its runtime-config output             |

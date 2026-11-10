@@ -24,9 +24,14 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import type { Gateway } from '@/api/resources/gateways';
 import type { Deployment } from '@/api/resources/restApis/deployments';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { useFormatters } from '@/i18n/useFormatters';
 import { Can } from '@/permissions/Can';
-import { GatewayDeploymentSelector, type UseDeploymentMutationHook } from './GatewayDeploymentSelector';
+import {
+  GatewayDeploymentSelector,
+  type DeployArtifactKind,
+  type UseDeploymentMutationHook,
+} from './GatewayDeploymentSelector';
 
 /**
  * Explanations for the `statusReason` codes platform-api returns on a failed
@@ -172,6 +177,7 @@ const messages = defineMessages({
 type GatewayDeployEnvCardProps = {
   /** Handle of the API these deployments belong to. */
   apiId: string;
+  artifactKind: DeployArtifactKind;
   gateway: Gateway;
   /** Deployments on this gateway, newest first. */
   deployments: Deployment[];
@@ -195,6 +201,7 @@ type GatewayDeployEnvCardProps = {
  */
 export function GatewayDeployEnvCard({
   apiId,
+  artifactKind,
   gateway,
   deployments,
   currentDeployment,
@@ -209,6 +216,7 @@ export function GatewayDeployEnvCard({
   // that one freezes its locale at import, so it never follows a locale switch.
   const { relativeTime } = useFormatters();
   const { notify } = useNotifications();
+  const trackFeature = useTrackFeature();
   const undeployMutation = useUndeploy();
   const restoreMutation = useRestore();
   const [selectorOpen, setSelectorOpen] = useState(false);
@@ -253,6 +261,10 @@ export function GatewayDeployEnvCard({
   // `onError` is omitted throughout: the query client's `onMutationError`
   // already notifies, so a local handler would only duplicate the toast.
   const handleUndeploy = () => {
+    trackFeature('apip.lifecycle.manage-deployment', {
+      artifact_kind: artifactKind,
+      operation: 'undeploy',
+    });
     undeployMutation.mutate(
       {
         apiId,
@@ -272,6 +284,10 @@ export function GatewayDeployEnvCard({
   };
 
   const handleRedeploy = () => {
+    trackFeature('apip.lifecycle.manage-deployment', {
+      artifact_kind: artifactKind,
+      operation: 'restore',
+    });
     restoreMutation.mutate(
       {
         apiId,
@@ -457,6 +473,7 @@ export function GatewayDeployEnvCard({
 
       <GatewayDeploymentSelector
         apiId={apiId}
+        artifactKind={artifactKind}
         deployments={deployments}
         onClose={() => setSelectorOpen(false)}
         open={selectorOpen}

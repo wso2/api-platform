@@ -40,7 +40,10 @@ import { accepts, failure, recorder, resource, type Recorder } from '@/test/msw'
 import { server } from '@/test/server';
 import { makeConsoleScope } from '@/test/mockScope';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
+import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { DefinitionPanel } from './DefinitionPanel';
+
+vi.mock('@/featureUsage/moesif');
 
 /**
  * Component tests for DefinitionPanel — the API Definition tab on an existing
@@ -83,7 +86,11 @@ function renderPanel() {
     <ApiScopeProvider orgId={ORG} projectId={PROJECT}>
       <DefinitionPanel />
     </ApiScopeProvider>,
-    { scope: makeConsoleScope({ params: { apiHandler: API, orgHandle: ORG, projectHandler: PROJECT } }) },
+    {
+      scope: makeConsoleScope({
+        params: { apiHandler: API, orgHandle: ORG, projectHandler: PROJECT },
+      }),
+    },
   );
 }
 
@@ -253,5 +260,58 @@ describe('DefinitionPanel — view toggles and download', () => {
     // dialog is a browser-only side effect we cannot assert on in jsdom.
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:test/mock');
+  });
+});
+
+describe('DefinitionPanel — feature usage', () => {
+  const EDITED_SPEC = SAMPLE_SPEC.replace('version: 1.0.0', 'version: 2.0.0');
+
+  beforeEach(() => {
+    resetTrackedFeatures();
+    server.use(
+      resource(OPENAPI_PATH, { content: SAMPLE_SPEC }),
+      accepts('post', '/rest-apis/validate-openapi', {
+        content: EDITED_SPEC,
+        errors: [],
+        isValid: true,
+      }),
+      accepts('put', OPENAPI_PATH, { content: EDITED_SPEC }, { record: requests }),
+    );
+  });
+
+  /** Edits the spec and clicks the first Save, which only validates and opens "Update API". */
+  async function openUpdateDialog() {
+    const { user } = renderPanel();
+    await user.click(await screen.findByRole('button', { name: /Edit/i }));
+    // The Monaco editor is mocked as a textarea; a change event stands in for typing.
+    fireEvent.change(await screen.findByRole('textbox', { name: /Definition editor/i }), {
+      target: { value: EDITED_SPEC },
+    });
+    const saveButton = await screen.findByRole('button', { name: /^Save$/i });
+    await waitFor(() => expect(saveButton).not.toBeDisabled());
+    await user.click(saveButton);
+    return { dialog: await screen.findByRole('dialog'), user };
+  }
+
+  it('reports a definition update only when "Update API" is confirmed', async () => {
+    const { dialog, user } = await openUpdateDialog();
+    // The first Save only validated; nothing is committed yet.
+    expect(trackedFeatures()).toEqual([]);
+
+    await user.click(within(dialog).getByRole('button', { name: /^Save$/i }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    expect(trackedFeatures()).toEqual([
+      ['apip.manage-apis.update-api', { api_type: 'rest-api', part: 'definition' }],
+    ]);
+  });
+
+  it('reports nothing when "Update API" is cancelled', async () => {
+    const { dialog, user } = await openUpdateDialog();
+
+    await user.click(within(dialog).getByRole('button', { name: /Cancel/i }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trackedFeatures()).toEqual([]);
   });
 });

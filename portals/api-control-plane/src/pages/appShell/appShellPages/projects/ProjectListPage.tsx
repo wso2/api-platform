@@ -37,6 +37,7 @@ import { useDeleteProject, useProjects } from '@/api/resources/projects';
 import { ProjectsGrid } from './ProjectsGrid';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
@@ -155,6 +156,7 @@ function ProjectListPageContent() {
     sortOrder: 'desc',
   });
   const deleteProjectMutation = useDeleteProject();
+  const trackFeature = useTrackFeature();
 
   const projects = projectsQuery.data?.list ?? [];
   const total = projectsQuery.data?.pagination?.total ?? projects.length;
@@ -172,6 +174,7 @@ function ProjectListPageContent() {
   const confirmDelete = () => {
     if (!toDelete) return;
     const { displayName } = toDelete;
+    trackFeature('apip.admin.manage-projects', { operation: 'delete' });
     deleteProjectMutation.mutate(
       { projectId: toDelete.id },
       {

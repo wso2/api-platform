@@ -26,7 +26,10 @@ import { apiUrl, failure, noContent, recorder, type Recorder } from '@/test/msw'
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { makeAuthState } from '@/test/mockAuthState';
+import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { ApiThumbnailManager } from './ApiThumbnailManager';
+
+vi.mock('@/featureUsage/moesif');
 
 // jsdom has no URL.createObjectURL / URL.revokeObjectURL — install stubs at
 // module scope so React's passive cleanup effects can still revoke a URL
@@ -111,8 +114,9 @@ describe('ApiThumbnailManager — overlay visibility', () => {
   it('exposes the Trash button once a thumbnail is cached', async () => {
     server.resetHandlers();
     server.use(
-      mswHttp.get(apiUrl(PATH), () =>
-        new HttpResponse(PNG_BYTES, { headers: { 'Content-Type': 'image/png' } }),
+      mswHttp.get(
+        apiUrl(PATH),
+        () => new HttpResponse(PNG_BYTES, { headers: { 'Content-Type': 'image/png' } }),
       ),
     );
     renderManager();
@@ -156,9 +160,7 @@ describe('ApiThumbnailManager — upload validation', () => {
     await screen.findByRole('button', { name: /change thumbnail/i });
     await selectFile(new File(['not an image'], 'notes.txt', { type: 'text/plain' }));
 
-    expect(
-      await screen.findByText(/Only JPEG and PNG images are supported/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Only JPEG and PNG images are supported/i)).toBeInTheDocument();
     expect(requests.count()).toBe(0);
   });
 
@@ -170,7 +172,9 @@ describe('ApiThumbnailManager — upload validation', () => {
     // File.size is computed from the Blob parts — a Uint8Array of the right
     // length is all the pre-flight size check inspects; the bytes themselves
     // don't need to be a real image.
-    await selectFile(new File([new Uint8Array(2 * 1024 * 1024)], 'huge.png', { type: 'image/png' }));
+    await selectFile(
+      new File([new Uint8Array(2 * 1024 * 1024)], 'huge.png', { type: 'image/png' }),
+    );
 
     expect(await screen.findByText(/image must be 1 MB or smaller/i)).toBeInTheDocument();
     expect(requests.count()).toBe(0);
@@ -193,8 +197,9 @@ describe('ApiThumbnailManager — delete flow', () => {
   function serveExistingThumbnail() {
     server.resetHandlers();
     server.use(
-      mswHttp.get(apiUrl(PATH), () =>
-        new HttpResponse(PNG_BYTES, { headers: { 'Content-Type': 'image/png' } }),
+      mswHttp.get(
+        apiUrl(PATH),
+        () => new HttpResponse(PNG_BYTES, { headers: { 'Content-Type': 'image/png' } }),
       ),
     );
   }
@@ -234,5 +239,88 @@ describe('ApiThumbnailManager — delete flow', () => {
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(requests.last()?.method).toBe('DELETE');
     expect(await screen.findByText(/Thumbnail removed/i)).toBeInTheDocument();
+  });
+});
+
+describe('ApiThumbnailManager — feature usage', () => {
+  beforeEach(() => resetTrackedFeatures());
+
+  function serveExistingThumbnail() {
+    server.resetHandlers();
+    server.use(
+      mswHttp.get(
+        apiUrl(PATH),
+        () => new HttpResponse(PNG_BYTES, { headers: { 'Content-Type': 'image/png' } }),
+      ),
+    );
+  }
+
+  it('reports an upsert once the picked file passes the client-side check', async () => {
+    server.use(noContent('put', PATH, { record: requests }));
+    renderManager();
+
+    await screen.findByRole('button', { name: /change thumbnail/i });
+    await selectFile(new File([PNG_BYTES], 'icon.png', { type: 'image/png' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    expect(trackedFeatures()).toEqual([
+      ['apip.manage-apis.api-thumbnail', { api_type: 'rest-api', operation: 'upsert' }],
+    ]);
+  });
+
+  it('reports a GraphQL API’s thumbnail under its own API type', async () => {
+    const graphqlPath = `/apis/graphql-api/${API_ID}/thumbnail`;
+    server.use(
+      failure('get', graphqlPath, 404, 'NOT_FOUND'),
+      noContent('put', graphqlPath, { record: requests }),
+    );
+    renderManager({ apiType: 'graphql-api' });
+
+    await screen.findByRole('button', { name: /change thumbnail/i });
+    await selectFile(new File([PNG_BYTES], 'icon.png', { type: 'image/png' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    expect(trackedFeatures()).toEqual([
+      ['apip.manage-apis.api-thumbnail', { api_type: 'graphql-api', operation: 'upsert' }],
+    ]);
+  });
+
+  it('reports nothing for a file the client-side check rejects', async () => {
+    renderManager();
+
+    await screen.findByRole('button', { name: /change thumbnail/i });
+    await selectFile(new File(['not an image'], 'notes.txt', { type: 'text/plain' }));
+
+    expect(await screen.findByText(/Only JPEG and PNG images are supported/i)).toBeInTheDocument();
+    expect(trackedFeatures()).toEqual([]);
+  });
+
+  // The overlay is pointer-events: none until hovered, which jsdom can't
+  // resolve, so the Trash click is fired directly (see the delete flow above).
+  it('reports a delete when the removal is confirmed', async () => {
+    serveExistingThumbnail();
+    server.use(noContent('delete', PATH, { record: requests }));
+    const { user } = renderManager();
+
+    fireEvent.click(await screen.findByRole('button', { name: /remove thumbnail/i }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /^remove$/i }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    expect(trackedFeatures()).toEqual([
+      ['apip.manage-apis.api-thumbnail', { api_type: 'rest-api', operation: 'delete' }],
+    ]);
+  });
+
+  it('reports nothing when the removal is cancelled', async () => {
+    serveExistingThumbnail();
+    const { user } = renderManager();
+
+    fireEvent.click(await screen.findByRole('button', { name: /remove thumbnail/i }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trackedFeatures()).toEqual([]);
   });
 });

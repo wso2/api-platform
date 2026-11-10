@@ -37,6 +37,7 @@ import '@/components/SwaggerSpecViewer/specViewerStyles';
 import './TestConsoleSpecViewer.css';
 
 import { useInvokeRestApiOnGateway } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
+import { useTrackFeature } from '@/featureUsage';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import type { TestCallMode } from '../utils/callMode';
 import { buildConsoleRequest } from '../utils/operationRequest';
@@ -232,15 +233,23 @@ export default function TestConsoleSpecViewer({
    * pinned to whichever gateway was selected at mount.
    */
   const { mutateAsync: invoke } = useInvokeRestApiOnGateway({ orgId: orgHandle });
+  const trackFeature = useTrackFeature();
+  const onExecuted: RelayContext['onExecuted'] = (mode, outcome) =>
+    trackFeature('apip.manage-apis.test-console', {
+      api_type: 'rest-api',
+      call_mode: mode,
+      outcome,
+    });
   const relay = useRef<RelayContext>({
     baseUrl,
     gatewayId,
     intl,
     invoke,
     mode: callMode,
+    onExecuted,
     restApiId,
   });
-  relay.current = { baseUrl, gatewayId, intl, invoke, mode: callMode, restApiId };
+  relay.current = { baseUrl, gatewayId, intl, invoke, mode: callMode, onExecuted, restApiId };
 
   /**
    * Sends try-out requests through the BFF instead of straight at the gateway,

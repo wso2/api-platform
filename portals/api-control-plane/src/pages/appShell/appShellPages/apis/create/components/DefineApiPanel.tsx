@@ -26,7 +26,11 @@ import type { ApiCreationWizardDraftState } from '../types';
 import { extractApiDetails } from '../utils/specDetails';
 import { ApiResourcesPreview } from './ApiResourcesPreview';
 import { BackendEndpointField } from './BackendEndpointField';
-import { ContractSourceForm, type FetchedContract } from './ContractSourceForm';
+import {
+  ContractSourceForm,
+  type ContractSourceKey,
+  type FetchedContract,
+} from './ContractSourceForm';
 import { DefineApproachLayout, type DefineApproach } from './DefineApproachLayout';
 import { ReadyToConnectIllustration } from '@/components/illustrations/ReadyToConnectIllustration';
 
@@ -86,6 +90,11 @@ export type DefineApiPanelProps = {
    * default tab.
    */
   onApproachChange?: (approach: ApproachKey) => void;
+  /**
+   * Where the contract in effect came from (URL or upload), or null while the
+   * scratch approach is selected or no contract has loaded yet.
+   */
+  onContractSourceChange?: (source: ContractSourceKey | null) => void;
   onContinue?: () => void;
 };
 
@@ -111,6 +120,7 @@ export const DefineApiPanel = ({
   initialApiTypeKey,
   onDraftChange,
   onApproachChange,
+  onContractSourceChange,
 }: DefineApiPanelProps) => {
   const intl = useIntl();
   const [approach, setApproach] = useState<ApproachKey>('scratch');
@@ -120,6 +130,11 @@ export const DefineApiPanel = ({
   useEffect(() => {
     onApproachChange?.(approach);
   }, [approach, onApproachChange]);
+
+  const contractSource = approach === 'contract' ? (contract?.values.sourceKey ?? null) : null;
+  useEffect(() => {
+    onContractSourceChange?.(contractSource);
+  }, [contractSource, onContractSourceChange]);
 
   const scratchDraft = useMemo((): ApiCreationWizardDraftState | null => {
     const upstreamUrl = endpointUrl.trim();
@@ -168,7 +183,10 @@ export const DefineApiPanel = ({
       approaches={APPROACHES}
       form={
         approach === 'contract' ? (
-          <ContractSourceForm initialApiTypeKey={initialApiTypeKey} onContractChange={setContract} />
+          <ContractSourceForm
+            initialApiTypeKey={initialApiTypeKey}
+            onContractChange={setContract}
+          />
         ) : (
           <BackendEndpointField
             description={<FormattedMessage {...messages.endpointDescription} />}

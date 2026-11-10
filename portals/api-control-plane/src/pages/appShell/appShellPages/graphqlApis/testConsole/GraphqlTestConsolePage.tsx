@@ -35,6 +35,7 @@ import { GatewayIllustration } from '@/components/illustrations/GatewayIllustrat
 import { useIsDarkScheme } from '@/hooks/useIsDarkScheme';
 import { useNow } from '@/hooks/useNow';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { buildInvokeUrl, gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
@@ -302,14 +303,47 @@ function GraphqlTestConsolePageContent() {
   // applied after it, so a value typed there still overrides the test key.
   const credentialHeaderName = credential && credentialIn === 'header' ? credential.name : '';
   const credentialHeaderValue = credential && credentialIn === 'header' ? credential.value : '';
+  const trackFeature = useTrackFeature();
   const fetcher: Fetcher = useMemo(() => {
-    const baseFetcher = createGraphiQLFetcher({
-      fetch: guardedFetch,
+    const options = {
       headers: credentialHeaderName ? { [credentialHeaderName]: credentialHeaderValue } : {},
       url: invokeUrl,
-    });
-    return (params, opts) => baseFetcher(withValidOperationName(params), opts);
-  }, [credentialHeaderName, credentialHeaderValue, guardedFetch, invokeUrl]);
+    };
+    const baseFetcher = createGraphiQLFetcher({ ...options, fetch: guardedFetch });
+    return (params, opts) => {
+      // GraphiQL fetches the schema through this fetcher too when it has none;
+      // that is not the user running an operation, so it is not counted.
+      if (params.operationName === 'IntrospectionQuery') {
+        return baseFetcher(withValidOperationName(params), opts);
+      }
+      // One fetch per run: its HTTP status decides the outcome, and no
+      // response at all (network, CORS or certificate failure) is a failure.
+      // An aborted run (the user stopped it) is not counted.
+      const reportingFetch: typeof fetch = async (...args) => {
+        let response: Response;
+        try {
+          response = await guardedFetch(...args);
+        } catch (error) {
+          if (!(error instanceof DOMException && error.name === 'AbortError')) {
+            trackFeature('apip.manage-apis.test-console', {
+              api_type: 'graphql-api',
+              outcome: 'failure',
+            });
+          }
+          throw error;
+        }
+        trackFeature('apip.manage-apis.test-console', {
+          api_type: 'graphql-api',
+          outcome: response.status < 400 ? 'success' : 'failure',
+        });
+        return response;
+      };
+      return createGraphiQLFetcher({ ...options, fetch: reportingFetch })(
+        withValidOperationName(params),
+        opts,
+      );
+    };
+  }, [credentialHeaderName, credentialHeaderValue, guardedFetch, invokeUrl, trackFeature]);
 
   if (!graphqlApiHandler || apiQuery.error) {
     return <ErrorState title={intl.formatMessage(messages.apiNotFound)} />;
@@ -393,6 +427,7 @@ function GraphqlTestConsolePageContent() {
           />
           {needsApiKey && (
             <TestKeySection
+              artifactKind="graphql-api"
               error={Boolean(testApiKey.error)}
               keyName={keyName}
               loading={testApiKey.isPending}

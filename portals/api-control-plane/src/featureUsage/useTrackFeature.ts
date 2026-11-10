@@ -20,17 +20,18 @@ import { useCallback } from 'react';
 
 import { useAuth } from '@/contexts/auth/AuthProvider';
 import { trackFeatureUsage } from './moesif';
-import type { ApiPlatformFeatureCode, FeatureDimensions } from './taxonomy';
+import type { ApiPlatformFeatureCode, FeatureDimensionArgs } from './taxonomy';
 
 export type TrackFeature = <C extends ApiPlatformFeatureCode>(
   code: C,
-  dimensions: FeatureDimensions<C>,
+  ...dimensions: FeatureDimensionArgs<C>
 ) => void;
 
 /**
  * Returns `trackFeature(code, dimensions)` for reporting one step of a feature
  * from the taxonomy. Safe to call from any event handler: it never throws, never
- * awaits, and does nothing when tracking is off.
+ * awaits, and does nothing when tracking is off. The dimensions may be left out
+ * for a feature that has no required one.
  *
  * The action is attributed to the signed-in user and organization, read from
  * the session here so no call site has to pass (or can misstate) them.
@@ -41,7 +42,7 @@ export function useTrackFeature(): TrackFeature {
   const companyId = user?.org?.id;
 
   return useCallback<TrackFeature>(
-    (code, dimensions) => trackFeatureUsage(code, dimensions, { companyId, userId }),
+    (code, ...[dimensions]) => trackFeatureUsage(code, dimensions, { companyId, userId }),
     [companyId, userId],
   );
 }

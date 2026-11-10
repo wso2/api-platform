@@ -37,8 +37,11 @@ const messages = defineMessages({
 /** How long the button stays in its confirmed state after a copy. */
 const COPIED_FEEDBACK_MS = 1500;
 
-/** A shell command block with a copy-to-clipboard button in its corner. */
-export function CopyableCommand({ code }: { code: string }) {
+/**
+ * A shell command block with a copy-to-clipboard button in its corner.
+ * `onCopy` runs after each copy attempt, whether or not the clipboard took it.
+ */
+export function CopyableCommand({ code, onCopy }: { code: string; onCopy?: () => void }) {
   const intl = useIntl();
   const [copied, setCopied] = useState(false);
 
@@ -59,6 +62,7 @@ export function CopyableCommand({ code }: { code: string }) {
       // command is still on screen and selectable, so there is nothing useful
       // to report; an error toast here would only interrupt.
     }
+    onCopy?.();
   };
 
   return (

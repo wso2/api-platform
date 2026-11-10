@@ -22,6 +22,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { aDeployment, aGateway, aRestApi, apiUrl, listEnvelope, neverResponds } from '@/test/msw';
+import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { useLocation } from 'react-router-dom';
@@ -46,6 +47,7 @@ import { TestPage } from './TestPage';
  * captured and asserted on explicitly.
  */
 
+vi.mock('@/featureUsage/moesif');
 vi.mock('./console/TestConsoleSpecViewer', () => ({
   // `callMode` is surfaced as an attribute because it is what the page hands
   // the transport: asserting the switch's own highlight would only prove the
@@ -206,6 +208,7 @@ let consoleErrors: string[] = [];
 
 beforeEach(() => {
   mintCalls = 0;
+  resetTrackedFeatures();
   // The call mode persists across visits, so a choice made in one test would
   // otherwise be the starting state of the next.
   window.localStorage.clear();
@@ -610,5 +613,36 @@ describe('TestPage — proxy or direct', () => {
     expect(screen.queryByTestId('spec-viewer')).toBeNull();
     expect(screen.queryByRole('button', { name: /Through proxy/i })).toBeNull();
     expectNoRenderLoop();
+  });
+});
+
+describe('TestPage — feature usage', () => {
+  const testKeyIssued = [
+    'apip.security.api-key-issuance',
+    { artifact_kind: 'rest-api', key_purpose: 'test' },
+  ];
+
+  it('reports test keys the user asks for, not the one minted on load, and cURL copies', async () => {
+    server.use(...pathFor(securedApi({ in: 'header', key: 'X-API-Key' })));
+
+    const { user } = renderPage();
+    await waitFor(() => expect(mintCalls).toBe(1));
+    expect(trackedFeatures()).toEqual([]);
+
+    await user.click(await screen.findByRole('button', { name: 'Get Test API Key' }));
+    await waitFor(() => expect(mintCalls).toBe(2));
+
+    await user.click(screen.getByRole('button', { name: /cURL view/i }));
+    await user.click(await screen.findByRole('tab', { name: /Headers/ }));
+    await user.click(await screen.findByRole('button', { name: 'Issue a new key' }));
+    await waitFor(() => expect(mintCalls).toBe(3));
+
+    await user.click(screen.getByRole('button', { name: 'Copy command' }));
+
+    expect(trackedFeatures()).toEqual([
+      testKeyIssued,
+      testKeyIssued,
+      ['apip.manage-apis.test-console.copy-curl', { api_type: 'rest-api' }],
+    ]);
   });
 });

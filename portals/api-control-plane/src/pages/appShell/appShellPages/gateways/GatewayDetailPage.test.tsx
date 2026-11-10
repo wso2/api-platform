@@ -17,11 +17,12 @@
  */
 
 import { Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { runtimeConfig } from '@/config/runtime';
+import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import {
   aGateway,
   accepts,
@@ -32,8 +33,10 @@ import {
 } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
-import { renderWithProviders, screen, waitFor } from '@/test/utils';
+import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { GatewayDetailPage } from './GatewayDetailPage';
+
+vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 const GATEWAY_ID = 'default-gw';
@@ -83,6 +86,7 @@ beforeEach(() => {
   tokenRotations = recorder();
   manifestReads = recorder();
   resetHttpClient();
+  resetTrackedFeatures();
   // The banner's dismissal outlives a reload by design, so a test that closes
   // it would otherwise leak into the next one.
   window.localStorage.clear();
@@ -129,9 +133,7 @@ describe('GatewayDetailPage', () => {
       // Syntax highlighting splits each command across spans, so the commands
       // are matched on the rendered text rather than one element's.
       const text = container.textContent ?? '';
-      expect(text).toContain(
-        'releases/download/gateway/v1.2.0/wso2apip-api-gateway-1.2.0.zip',
-      );
+      expect(text).toContain('releases/download/gateway/v1.2.0/wso2apip-api-gateway-1.2.0.zip');
       expect(text).toContain('./wso2apip-api-gateway-1.2.0/scripts/setup.sh');
       expect(text).toContain('cd wso2apip-api-gateway-1.2.0');
       expect(text).not.toContain('configs/keys.env');
@@ -325,5 +327,152 @@ describe('GatewayDetailPage', () => {
 
     expect(await screen.findByText('No gateway manifest found')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
+  });
+
+  describe('feature usage', () => {
+    const renameTo = async (user: ReturnType<typeof renderPage>['user'], name: string) => {
+      await user.click(await screen.findByRole('button', { name: 'Edit name and description' }));
+      const field = screen.getByRole('textbox', { name: /Name/ });
+      await user.clear(field);
+      await user.type(field, name);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+    };
+
+    it('reports a saved edit with the gateway type', async () => {
+      server.use(
+        resource('/gateways/:gatewayId', gateway({ functionalityType: 'event' })),
+        accepts('put', '/gateways/:gatewayId', gateway(), { record: updates }),
+      );
+      const { user } = renderPage();
+
+      await renameTo(user, 'Edge GW');
+
+      await waitFor(() => expect(updates.count()).toBe(1));
+      expect(trackedFeatures()).toEqual([
+        ['apip.gateway.manage-gateway', { gateway_type: 'event', operation: 'update' }],
+      ]);
+    });
+
+    it('reports nothing when Save has nothing to send', async () => {
+      server.use(
+        resource('/gateways/:gatewayId', gateway()),
+        accepts('put', '/gateways/:gatewayId', gateway(), { record: updates }),
+      );
+      const { user } = renderPage();
+
+      await renameTo(user, 'Default GW');
+
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument(),
+      );
+      expect(updates.count()).toBe(0);
+      expect(trackedFeatures()).toEqual([]);
+    });
+
+    it('reports a token rotation once it is confirmed, and nothing when it is cancelled', async () => {
+      server.use(
+        resource('/gateways/:gatewayId', gateway()),
+        accepts(
+          'post',
+          '/gateways/:gatewayId/tokens',
+          { id: 'token-1', token: 'plaintext-token-value' },
+          { record: tokenRotations },
+        ),
+      );
+      const { user } = renderPage();
+
+      await user.click(await screen.findByRole('button', { name: 'Reconfigure' }));
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(trackedFeatures()).toEqual([]);
+
+      await user.click(screen.getByRole('button', { name: 'Reconfigure' }));
+      await user.click(screen.getByRole('button', { name: 'Generate new token' }));
+
+      await waitFor(() => expect(tokenRotations.count()).toBe(1));
+      expect(trackedFeatures()).toEqual([['apip.gateway.gateway-token', { operation: 'rotate' }]]);
+    });
+
+    it('reports the Policies tab the first time it is opened on a visit', async () => {
+      server.use(
+        resource('/gateways/:gatewayId', gateway()),
+        resource('/gateways/:gatewayId/manifest', { policies: [] }),
+      );
+      const { user } = renderPage();
+
+      await user.click(await screen.findByRole('tab', { name: 'Policies' }));
+      await user.click(screen.getByRole('tab', { name: 'Configurations' }));
+      await user.click(screen.getByRole('tab', { name: 'Policies' }));
+
+      expect(trackedFeatures()).toEqual([['apip.policies.view-gateway-policies', {}]]);
+    });
+
+    /** Clicks every copy button on the tab shown, in order. */
+    const copyEach = async (user: ReturnType<typeof renderPage>['user']) => {
+      for (const button of screen.getAllByRole('button', { name: 'Copy command' })) {
+        await user.click(button);
+      }
+    };
+
+    const copied = (installMethod: string, ...steps: string[]) =>
+      steps.map((step) => [
+        'apip.gateway.copy-setup-command',
+        { install_method: installMethod, setup_step: step },
+      ]);
+
+    it('reports each copied setup command with its install path and step', async () => {
+      server.use(
+        resource('/gateways/:gatewayId', gateway()),
+        accepts('post', '/gateways/:gatewayId/tokens', { id: 'token-1', token: 'new-token' }),
+      );
+      const { user } = renderPage();
+
+      // Quick Start, before a token exists: download, then the two start commands.
+      await screen.findByRole('button', { name: 'Reconfigure' });
+      await copyEach(user);
+      expect(trackedFeatures()).toEqual(copied('quick-start', 'download', 'start', 'start'));
+
+      // A token adds the configure command.
+      await user.click(screen.getByRole('button', { name: 'Reconfigure' }));
+      await user.click(screen.getByRole('button', { name: 'Generate new token' }));
+      await waitFor(() =>
+        expect(screen.getAllByRole('button', { name: 'Copy command' })).toHaveLength(4),
+      );
+
+      for (const [tab, installMethod, steps] of [
+        [
+          'Virtual Machine',
+          'virtual-machine',
+          ['check-runtime', 'download', 'configure', 'start', 'start'],
+        ],
+        ['Docker', 'docker', ['download', 'configure', 'start', 'start']],
+        ['Kubernetes', 'kubernetes', ['install']],
+      ] as const) {
+        resetTrackedFeatures();
+        await user.click(screen.getByRole('tab', { name: tab }));
+        await copyEach(user);
+        expect(trackedFeatures()).toEqual(copied(installMethod, ...steps));
+      }
+    });
+
+    it('reports the setup script of a release that has one', async () => {
+      const configuredCatalog = runtimeConfig.gatewayVersions;
+      runtimeConfig.gatewayVersions = [
+        { channel: 'LTS', latestVersion: 'v1.2.0', type: 'regular', version: '1.2' },
+      ];
+      try {
+        server.use(resource('/gateways/:gatewayId', gateway({ version: '1.2' })));
+        const { user } = renderPage();
+
+        await screen.findByText('Step 2: Set up the Gateway');
+        await copyEach(user);
+
+        expect(trackedFeatures()).toEqual(
+          copied('quick-start', 'download', 'setup', 'start', 'start'),
+        );
+      } finally {
+        runtimeConfig.gatewayVersions = configuredCatalog;
+      }
+    });
   });
 });

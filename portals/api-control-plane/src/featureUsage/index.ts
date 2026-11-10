@@ -17,8 +17,13 @@
  */
 
 export { useTrackFeature, type TrackFeature } from './useTrackFeature';
+export { trackPolicyAttachment, type PolicyAttachmentContext } from './policies';
 export {
   API_PLATFORM_FEATURES,
+  asApiType,
+  dimensionValues,
+  policyFeatureOf,
   type ApiPlatformFeatureCode,
   type FeatureDimensions,
+  type PolicyFeatureCode,
 } from './taxonomy';

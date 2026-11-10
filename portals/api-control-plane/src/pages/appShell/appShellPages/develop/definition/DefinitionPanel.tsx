@@ -56,6 +56,7 @@ import {
 } from '@/api/resources/restApis';
 import { MonitorIllustration } from '@/components/illustrations/MonitorIllustration';
 import { ErrorState, LoadingState } from '@/components/StateViews';
+import { useTrackFeature } from '@/featureUsage';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { useFormatters } from '@/i18n/useFormatters';
 import { OperationsList } from './OperationsList';
@@ -165,7 +166,8 @@ const messages = defineMessages({
   },
   urlImportInvalidSpec: {
     id: 'develop.definition.DefinitionPanel.urlImportInvalidSpec',
-    defaultMessage: 'Not a valid OpenAPI definition. Please provide a URL to a valid OpenAPI 3.x specification.',
+    defaultMessage:
+      'Not a valid OpenAPI definition. Please provide a URL to a valid OpenAPI 3.x specification.',
   },
   dialogParseError: {
     id: 'develop.definition.DefinitionPanel.dialogParseError',
@@ -344,10 +346,7 @@ function classifyImportFailure(
     if (err.status === 413 || err.code === 'PAYLOAD_TOO_LARGE') {
       return messages.dialogSpecTooLarge;
     }
-    if (
-      typeof err.message === 'string' &&
-      err.message.includes(SPEC_TOO_LARGE_MESSAGE_MARKER)
-    ) {
+    if (typeof err.message === 'string' && err.message.includes(SPEC_TOO_LARGE_MESSAGE_MARKER)) {
       return messages.dialogSpecTooLarge;
     }
   }
@@ -367,6 +366,7 @@ export function DefinitionPanel() {
   const apiQuery = useRestApi(restApiId);
   const putOpenApi = usePutRestApiOpenApi();
   const validateSpec = useValidateOpenApiSpec();
+  const trackFeature = useTrackFeature();
 
   const openApiError = openApiQuery.error as ApiError | null;
   const openApiData = openApiQuery.data as OpenAPIContent | undefined;
@@ -615,6 +615,7 @@ export function DefinitionPanel() {
     const file = new File([blob], fileName, { type: mimeType });
     const formData = new FormData();
     formData.append('file', file);
+    trackFeature('apip.manage-apis.update-api', { api_type: 'rest-api', part: 'definition' });
     putOpenApi.mutate({ restApiId, formData }, { onSuccess: () => setIsEditing(false) });
   };
 
@@ -1051,15 +1052,21 @@ export function DefinitionPanel() {
             {showSaveBar && (
               <Box sx={{ borderColor: 'divider', borderTop: '1px solid', flexShrink: 0 }}>
                 {saveValidationErrors !== null && saveValidationErrors.length > 0 && (
-                  <Alert severity="error" sx={{borderRadius: 0, m: 0, '& .MuiAlert-message': { flex: 1, minWidth: 0 }}}>
+                  <Alert
+                    severity="error"
+                    sx={{ borderRadius: 0, m: 0, '& .MuiAlert-message': { flex: 1, minWidth: 0 } }}
+                  >
                     <FormattedMessage {...messages.saveSpecInvalid} />
-                      <Box component="ul" sx={{ m: 0, pl: 2.5,  maxHeight: 100, mt: 0.5, overflowY: 'auto' }}>
-                        {saveValidationErrors.map((msg, i) => (
-                          <Typography component="li" key={i} variant="body2">
-                            {msg}
-                          </Typography>
-                        ))}
-                      </Box>
+                    <Box
+                      component="ul"
+                      sx={{ m: 0, pl: 2.5, maxHeight: 100, mt: 0.5, overflowY: 'auto' }}
+                    >
+                      {saveValidationErrors.map((msg, i) => (
+                        <Typography component="li" key={i} variant="body2">
+                          {msg}
+                        </Typography>
+                      ))}
+                    </Box>
                   </Alert>
                 )}
                 <Box

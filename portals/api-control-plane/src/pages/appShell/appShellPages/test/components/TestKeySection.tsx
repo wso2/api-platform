@@ -20,6 +20,7 @@ import { Box, Button, CircularProgress, Stack, Typography } from '@wso2/oxygen-u
 import { LucideKeyRound, RefreshCw } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
+import { useTrackFeature, type FeatureDimensions } from '@/featureUsage';
 import type { ApiKeyLocation } from '../utils/apiKeyAuth';
 import { SecretValue } from './SecretValue';
 
@@ -72,6 +73,8 @@ const messages = defineMessages({
 });
 
 type TestKeySectionProps = {
+  /** The kind of API under test, for usage analytics. */
+  artifactKind: FeatureDimensions<'apip.security.api-key-issuance'>['artifact_kind'];
   error?: boolean;
   /** Name of the header or query parameter carrying the key. */
   keyName: string;
@@ -93,6 +96,7 @@ type TestKeySectionProps = {
  * The key is minted on first render; see `utils/useTestApiKey`.
  */
 export function TestKeySection({
+  artifactKind,
   error,
   keyName,
   loading,
@@ -103,6 +107,7 @@ export function TestKeySection({
   value,
 }: TestKeySectionProps) {
   const intl = useIntl();
+  const trackFeature = useTrackFeature();
 
   const expired = remainingMs === 0;
   const minutes = Math.floor(remainingMs / 60_000);
@@ -170,7 +175,15 @@ export function TestKeySection({
               actions={
                 <Button
                   disabled={regenerating}
-                  onClick={onRegenerate}
+                  onClick={() => {
+                    // Only this click counts: the key minted on page load is
+                    // not something the user asked for.
+                    trackFeature('apip.security.api-key-issuance', {
+                      artifact_kind: artifactKind,
+                      key_purpose: 'test',
+                    });
+                    onRegenerate();
+                  }}
                   size="small"
                   startIcon={
                     regenerating ? <CircularProgress size={14} /> : <RefreshCw size={16} />

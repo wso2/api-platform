@@ -38,6 +38,7 @@ import { useNavigate } from 'react-router-dom';
 
 import type { PublicationSummaryItem } from '@/api/resources/apiPublications';
 import devportalLogoUrl from '@/assets/icons/devportal-logo.png';
+import { useTrackFeature } from '@/featureUsage';
 import { useFormatters } from '@/i18n/useFormatters';
 import { hairline } from '@/theme/receipes';
 import type { PublishTarget } from '../publishTarget';
@@ -165,6 +166,7 @@ export function PortalPublicationCard({
 }: PortalPublicationCardProps) {
   const intl = useIntl();
   const { relativeTime } = useFormatters();
+  const trackFeature = useTrackFeature();
   const nameId = useId();
   const name = publication.apiPortalName || publication.apiPortalId || '';
   const status = publicationStatusMeta(publication.status);
@@ -312,6 +314,7 @@ export function PortalPublicationCard({
             disabled={!viewInPortalHref}
             endIcon={<ExternalLink size={16} />}
             href={viewInPortalHref}
+            onClick={() => trackFeature('apip.lifecycle.open-api-portal', { api_type: target.apiType })}
             rel="noopener noreferrer"
             size="small"
             sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}

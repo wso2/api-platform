@@ -40,6 +40,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ImportApiIllustration } from '@/components/illustrations/ImportApiIllustration';
 import { useNotifications } from '@/components/Notifications';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
+import { useTrackFeature } from '@/featureUsage';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { routes } from '@/routes/paths';
 import { preloadApiCreationWizard } from '@/routes/preloadApiCreate';
@@ -159,6 +160,7 @@ export function ApiList({
   const deleteRestApiMutation = useDeleteRestApi();
   const deleteGraphQLApiMutation = useDeleteGraphQLApi();
   const { notify } = useNotifications();
+  const trackFeature = useTrackFeature();
 
   const [search, setSearch] = useState('');
   const [view, setView] = useState<ViewMode>('list');
@@ -264,12 +266,16 @@ export function ApiList({
   const isFirstRun = total === 0 && !isSearching;
 
   useEffect(() => {
-    if (page > lastPage) setPaging((current) => ({ ...current, [view]: { ...current[view], page: lastPage } }));
+    if (page > lastPage)
+      setPaging((current) => ({ ...current, [view]: { ...current[view], page: lastPage } }));
   }, [page, lastPage, view]);
 
   const confirmDelete = () => {
     if (!toDelete?.id) return;
     const { apiType, displayName, id } = toDelete;
+    trackFeature('apip.manage-apis.delete-api', {
+      api_type: apiType === 'graphql' ? 'graphql-api' : 'rest-api',
+    });
     const onSettled = {
       onSuccess: () => {
         notify(intl.formatMessage(messages.deleteSucceeded, { name: displayName }), 'success');

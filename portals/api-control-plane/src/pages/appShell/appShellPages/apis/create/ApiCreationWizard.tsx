@@ -21,6 +21,7 @@ import { ArrowRight } from '@wso2/oxygen-ui-icons-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import { useLocation, useNavigate } from 'react-router-dom';
+import type { ContractSourceKey } from './components/ContractSourceForm';
 import { DefineApiPanel, type RestApproachKey } from './components/DefineApiPanel';
 import { GeneralCreateApiForm } from './components/GeneralCreateApiForm';
 import { GraphqlConfigureForm } from './components/graphql/GraphqlConfigureForm';
@@ -31,6 +32,7 @@ import {
   GeneralApiCreationFormState,
   GraphqlApiCreationFormState,
   GraphqlCreationWizardDraftState,
+  type GraphqlSchemaSource,
 } from './types';
 import { ApiTypeSelector } from './components/ApiTypeSelector';
 import type { ApiCreationStepKey } from './components/ApiCreationSteps';
@@ -60,6 +62,26 @@ type TaxonomyApiType =
 const TAXONOMY_API_TYPES: Readonly<Record<string, TaxonomyApiType>> = {
   graphql: 'graphql-api',
   rest: 'rest-api',
+};
+
+type CreationDimensions = FeatureDimensions<'apip.manage-apis.create-graphql-api'>;
+
+/** The taxonomy's contract source; one the console doesn't offer is left out. */
+const taxonomyContractSource = (
+  source: string | null | undefined,
+): CreationDimensions['contract_source'] =>
+  source === 'url' || source === 'file' ? source : undefined;
+
+/**
+ * How a GraphQL API is being created, in the same terms as REST: "Start from
+ * scratch" introspects the backend, "Start with a schema" imports a contract.
+ */
+const graphqlCreationDimensions = (
+  schemaSource: GraphqlSchemaSource | undefined,
+): CreationDimensions | null => {
+  if (schemaSource === undefined) return null;
+  if (schemaSource === 'introspection') return { creation_method: 'scratch' };
+  return { contract_source: taxonomyContractSource(schemaSource), creation_method: 'contract' };
 };
 
 const messages = defineMessages({
@@ -153,10 +175,10 @@ const ApiCreationWizardContent = () => {
   /*
    * Feature usage: one Moesif action per screen the user moves past, so a
    * funnel can order them and show where users stop.
-   *   1. apip.manage-apis.api-creation-wizard                      (opened)
-   *   2. apip.manage-apis.api-creation-wizard.select-api-type      (type chosen)
-   *   3. apip.manage-apis.create-rest-api.select-creation-method   (scratch or contract)
-   *   4. apip.manage-apis.create-rest-api                          (Create clicked)
+   *   1. apip.manage-apis.api-creation-wizard                          (opened)
+   *   2. apip.manage-apis.api-creation-wizard.select-api-type          (type chosen)
+   *   3. apip.manage-apis.api-creation-wizard.select-creation-method   (scratch or contract)
+   *   4. apip.manage-apis.create-rest-api / create-graphql-api         (Create clicked)
    * Form fields are not reported: edits are noise, and their values are
    * customer text that must not reach analytics.
    */
@@ -168,6 +190,7 @@ const ApiCreationWizardContent = () => {
    * still has to be counted as having chosen it.
    */
   const [restApproach, setRestApproach] = useState<RestApproachKey | null>(null);
+  const [restContractSource, setRestContractSource] = useState<ContractSourceKey | null>(null);
   const openReported = useRef(false);
   useEffect(() => {
     // Once per visit, however often identity or route state re-render this.
@@ -224,12 +247,20 @@ const ApiCreationWizardContent = () => {
   const continueFromSource = () => {
     if (isGraphql) {
       if (graphqlSourceDraft === null) return;
+      const creation = graphqlCreationDimensions(graphqlSourceDraft.schemaSource);
+      if (creation) {
+        trackFeature('apip.manage-apis.api-creation-wizard.select-creation-method', {
+          api_type: 'graphql-api',
+          creation_method: creation.creation_method,
+        });
+      }
       setGraphqlPrefilledData(graphqlSourceDraft);
       setGraphqlSubmittedValues(null);
     } else {
       if (sourceDraft === null) return;
       if (restApproach) {
-        trackFeature('apip.manage-apis.create-rest-api.select-creation-method', {
+        trackFeature('apip.manage-apis.api-creation-wizard.select-creation-method', {
+          api_type: 'rest-api',
           creation_method: restApproach,
         });
       }
@@ -325,7 +356,11 @@ const ApiCreationWizardContent = () => {
     // the server's answer: the product decision for this feature. Retry on the
     // progress screen is not a new use.
     if (restApproach) {
-      trackFeature('apip.manage-apis.create-rest-api', { creation_method: restApproach });
+      trackFeature('apip.manage-apis.create-rest-api', {
+        contract_source:
+          restApproach === 'contract' ? taxonomyContractSource(restContractSource) : undefined,
+        creation_method: restApproach,
+      });
     }
     setSubmittedValues(finalData);
     setCreationStarted(true);
@@ -389,6 +424,9 @@ const ApiCreationWizardContent = () => {
 
   const onGraphqlFormSubmit = (finalData: GraphqlApiCreationFormState) => {
     if (!activeScope.projectHandler) return;
+    // On the Create click, as for REST; Retry on the progress screen is not a new use.
+    const creation = graphqlCreationDimensions(finalData.schemaSource);
+    if (creation) trackFeature('apip.manage-apis.create-graphql-api', creation);
 
     setGraphqlSubmittedValues(finalData);
     setGraphqlCreationStarted(true);
@@ -510,6 +548,7 @@ const ApiCreationWizardContent = () => {
                     <DefineApiPanel
                       initialApiTypeKey={apiType?.key}
                       onApproachChange={setRestApproach}
+                      onContractSourceChange={setRestContractSource}
                       onDraftChange={setSourceDraft}
                     />
                   )}
@@ -598,7 +637,10 @@ const ApiCreationWizardContent = () => {
                   type="submit"
                   variant="contained"
                 >
-                  {intl.formatMessage({ id: 'api.create.generalForm.action.create', defaultMessage: 'Create' })}
+                  {intl.formatMessage({
+                    id: 'api.create.generalForm.action.create',
+                    defaultMessage: 'Create',
+                  })}
                 </Button>
               ) : (
                 <Button

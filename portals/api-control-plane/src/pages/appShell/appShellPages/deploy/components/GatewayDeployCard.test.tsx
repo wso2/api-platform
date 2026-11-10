@@ -35,6 +35,7 @@ import {
   type DeploymentFixture,
   type Recorder,
 } from '@/test/msw';
+import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { GatewayDeployCard, type UseDeployMutationHook } from './GatewayDeployCard';
@@ -83,6 +84,8 @@ const useDeleteForCard: UseDeploymentMutationHook = () => {
   };
 };
 
+vi.mock('@/featureUsage/moesif');
+
 const ORG = 'api-platform-demo';
 const API = 'countries-graphql-api';
 const GATEWAY_ID = 'edge-gateway';
@@ -94,15 +97,21 @@ let requests: Recorder;
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+  resetTrackedFeatures();
 });
 
-const renderCard = (deployments: DeploymentFixture[], onToggleExpand = vi.fn()) =>
+const renderCard = (
+  deployments: DeploymentFixture[],
+  onToggleExpand = vi.fn(),
+  onGateway: typeof gateway = gateway,
+) =>
   renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
       <GatewayDeployCard
         apiId={API}
+        artifactKind="graphql-api"
         deployments={deployments}
-        gateway={gateway}
+        gateway={onGateway}
         isExpanded
         onRefresh={vi.fn()}
         onToggleExpand={onToggleExpand}
@@ -142,6 +151,9 @@ describe('GatewayDeployCard — a live deployment', () => {
       `/graphql-apis/${API}/deployments/deployment-live/undeploy`,
     );
     expect(requests.last()?.url.searchParams.get('gatewayId')).toBe(GATEWAY_ID);
+    expect(trackedFeatures()).toEqual([
+      ['apip.lifecycle.manage-deployment', { artifact_kind: 'graphql-api', operation: 'undeploy' }],
+    ]);
   });
 });
 
@@ -174,6 +186,9 @@ describe('GatewayDeployCard — a failed deployment', () => {
       `/graphql-apis/${API}/deployments/deployment-failed/restore`,
     );
     expect(requests.last()?.url.searchParams.get('gatewayId')).toBe(GATEWAY_ID);
+    expect(trackedFeatures()).toEqual([
+      ['apip.lifecycle.manage-deployment', { artifact_kind: 'graphql-api', operation: 'restore' }],
+    ]);
   });
 });
 
@@ -222,6 +237,9 @@ describe('GatewayDeployCard — deployment history', () => {
     await user.click(screen.getByRole('button', { name: 'View More' }));
 
     expect(await screen.findByText('Edge_Gateway_2026-01-01_1')).toBeInTheDocument();
+    expect(trackedFeatures()).toEqual([
+      ['apip.lifecycle.view-deployment-history', { artifact_kind: 'graphql-api' }],
+    ]);
   });
 
   it('deletes a settled deployment record from the full history drawer', async () => {
@@ -240,6 +258,10 @@ describe('GatewayDeployCard — deployment history', () => {
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(requests.last()?.url.pathname).toContain(`/graphql-apis/${API}/deployments/d1`);
+    expect(trackedFeatures()).toEqual([
+      ['apip.lifecycle.view-deployment-history', { artifact_kind: 'graphql-api' }],
+      ['apip.lifecycle.manage-deployment', { artifact_kind: 'graphql-api', operation: 'delete' }],
+    ]);
   });
 
   it('never offers to delete the currently-live deployment', () => {
@@ -289,6 +311,9 @@ describe('GatewayDeployCard — restoring an older deployment', () => {
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(requests.last()?.url.pathname).toContain(`/graphql-apis/${API}/deployments/older/restore`);
     expect(requests.last()?.url.searchParams.get('gatewayId')).toBe(GATEWAY_ID);
+    expect(trackedFeatures()).toEqual([
+      ['apip.lifecycle.manage-deployment', { artifact_kind: 'graphql-api', operation: 'restore' }],
+    ]);
   });
 
   it('never lets the currently-deployed entry itself be re-selected for restore', async () => {
@@ -300,5 +325,60 @@ describe('GatewayDeployCard — restoring an older deployment', () => {
     await user.click(screen.getByRole('radio', { name: /Current/ }));
 
     expect(screen.getByRole('button', { name: 'Restore' })).toBeDisabled();
+  });
+});
+
+describe('GatewayDeployCard — deploying', () => {
+  const deployed = aDeployment({ deploymentId: 'new', gatewayId: GATEWAY_ID, status: 'DEPLOYING' });
+
+  it('reports a Deploy with the gateway’s type and hosting', async () => {
+    server.use(
+      accepts('post', '/graphql-apis/:graphqlApiId/deployments', deployed, { record: requests }),
+    );
+    const { user } = renderCard(
+      [],
+      vi.fn(),
+      aGateway({
+        displayName: 'Edge Gateway',
+        functionalityType: 'regular',
+        id: GATEWAY_ID,
+        isActive: true,
+        properties: { gatewayMode: 'self-hosted' },
+      }),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Deploy' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    expect(trackedFeatures()).toEqual([
+      [
+        'apip.lifecycle.deploy-api',
+        { artifact_kind: 'graphql-api', gateway_hosting: 'self-hosted', gateway_type: 'regular' },
+      ],
+    ]);
+  });
+
+  it('leaves out a hosting mode it does not recognise', async () => {
+    server.use(
+      accepts('post', '/graphql-apis/:graphqlApiId/deployments', deployed, { record: requests }),
+    );
+    const { user } = renderCard(
+      [],
+      vi.fn(),
+      aGateway({
+        displayName: 'Edge Gateway',
+        functionalityType: 'ai',
+        id: GATEWAY_ID,
+        isActive: true,
+        properties: { gatewayMode: 'hybrid' },
+      }),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Deploy' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    expect(trackedFeatures()).toEqual([
+      ['apip.lifecycle.deploy-api', { artifact_kind: 'graphql-api', gateway_type: 'ai' }],
+    ]);
   });
 });

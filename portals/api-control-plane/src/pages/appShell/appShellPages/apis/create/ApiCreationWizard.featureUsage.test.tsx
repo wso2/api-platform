@@ -51,6 +51,8 @@ const sdk = vi.hoisted(() => {
   return client;
 });
 vi.mock('moesif-browser-js', () => ({ default: sdk }));
+// The contract preview's swagger-ui bundles its own React; it isn't what is measured here.
+vi.mock('@/components/SwaggerSpecViewer', () => ({ default: () => null }));
 
 const scope = makeConsoleScope();
 const path = '/organizations/api-platform-demo/projects/retail-apis/apis/new';
@@ -137,7 +139,10 @@ describe('ApiCreationWizard — feature usage', () => {
     expect(tracked()).toEqual([
       ['apip.manage-apis.api-creation-wizard', { entry_point: 'api-list' }],
       ['apip.manage-apis.api-creation-wizard.select-api-type', { api_type: 'rest-api' }],
-      ['apip.manage-apis.create-rest-api.select-creation-method', { creation_method: 'scratch' }],
+      [
+        'apip.manage-apis.api-creation-wizard.select-creation-method',
+        { api_type: 'rest-api', creation_method: 'scratch' },
+      ],
       ['apip.manage-apis.create-rest-api', { creation_method: 'scratch' }],
     ]);
     expect(createRequests.count()).toBe(1);
@@ -193,5 +198,91 @@ describe('ApiCreationWizard — feature usage', () => {
     await waitFor(() =>
       expect(tracked().map(([action]) => action)).toContain('apip.manage-apis.create-rest-api'),
     );
+  });
+});
+
+describe('ApiCreationWizard — feature usage, other paths', () => {
+  const ORDERS_SPEC = [
+    'openapi: 3.0.0',
+    'info:',
+    '  title: Orders',
+    "  version: '1.0'",
+    'servers:',
+    '  - url: https://orders.example.com',
+    'paths:',
+    '  /orders:',
+    '    get:',
+    '      responses:',
+    "        '200':",
+    '          description: ok',
+  ].join('\n');
+
+  it('reports a REST API imported from a contract URL, with its source', async () => {
+    server.use(
+      accepts('post', '/rest-apis/validate-openapi', {
+        content: ORDERS_SPEC,
+        errors: [],
+        isValid: true,
+      }),
+      accepts('post', '/rest-apis/import-openapi', { id: 'orders' }),
+    );
+    const { user } = renderWithProviders(<ApiCreationWizard />, { authState, route: path, scope });
+
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: /Start with a contract/ }));
+    await user.type(
+      screen.getByLabelText(/URL for API Contract/),
+      'https://example.com/orders.yaml',
+    );
+    await user.tab();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(await screen.findByRole('button', { name: 'Create' }));
+
+    await waitFor(() =>
+      expect(tracked().map(([action]) => action)).toContain('apip.manage-apis.create-rest-api'),
+    );
+    expect(tracked().slice(2)).toEqual([
+      [
+        'apip.manage-apis.api-creation-wizard.select-creation-method',
+        { api_type: 'rest-api', creation_method: 'contract' },
+      ],
+      ['apip.manage-apis.create-rest-api', { contract_source: 'url', creation_method: 'contract' }],
+    ]);
+    // Nothing the user supplied rides along: not the URL, not the title.
+    expect(JSON.stringify(sdk.track.mock.calls)).not.toMatch(/example\.com|Orders/);
+  });
+
+  it('reports a GraphQL API created from scratch, in the same terms as REST', async () => {
+    server.use(
+      accepts('post', '/graphql-apis/validate-schema', { resolved: false }),
+      accepts('post', '/graphql-apis', {
+        context: '/backend/v1.0.0',
+        displayName: 'Backend',
+        id: 'backend',
+        upstream: { main: { url: 'https://backend.example.com/graphql' } },
+      }),
+    );
+    const { user } = renderWithProviders(<ApiCreationWizard />, { authState, route: path, scope });
+
+    await user.click(screen.getByRole('button', { name: /GraphQL API/ }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: /Start from scratch/ }));
+    await user.type(screen.getByLabelText(/Endpoint URL/), 'https://backend.example.com/graphql');
+    await screen.findByText(/introspection may be disabled/);
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(await screen.findByRole('button', { name: 'Create' }));
+
+    await waitFor(() =>
+      expect(tracked().map(([action]) => action)).toContain('apip.manage-apis.create-graphql-api'),
+    );
+    expect(tracked().slice(1)).toEqual([
+      ['apip.manage-apis.api-creation-wizard.select-api-type', { api_type: 'graphql-api' }],
+      [
+        'apip.manage-apis.api-creation-wizard.select-creation-method',
+        { api_type: 'graphql-api', creation_method: 'scratch' },
+      ],
+      ['apip.manage-apis.create-graphql-api', { creation_method: 'scratch' }],
+    ]);
   });
 });

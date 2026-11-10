@@ -24,6 +24,7 @@ import { AppPage } from '@/components/AppPage';
 import { useRestApi, useUpdateRestApi, type RestApi } from '@/api/resources/restApis';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
+import { useTrackFeature } from '@/featureUsage';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { EditApiForm, type ApiBasicInfoFormValues } from './components/EditApiForm';
@@ -103,6 +104,7 @@ function ApiEditPageContent() {
 
   const apiQuery = useRestApi(params.apiHandler);
   const updateApi = useUpdateRestApi();
+  const trackFeature = useTrackFeature();
 
   const detailPath = routes.api(
     params.orgHandle ?? '',
@@ -132,6 +134,7 @@ function ApiEditPageContent() {
   }
 
   const save = (values: ApiBasicInfoFormValues) => {
+    trackFeature('apip.manage-apis.update-api', { api_type: 'rest-api', part: 'metadata' });
     updateApi.mutate(
       { restApiId, body: toUpdateBody(api, values) },
       {

@@ -23,8 +23,12 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Deployment } from '@/api/resources/restApis/deployments';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { GatewayDeploymentRow } from './components/GatewayDeploymentRow';
-import type { UseDeploymentMutationHook } from './components/GatewayDeploymentSelector';
+import type {
+  DeployArtifactKind,
+  UseDeploymentMutationHook,
+} from './components/GatewayDeploymentSelector';
 
 const messages = defineMessages({
   title: {
@@ -53,6 +57,7 @@ const messages = defineMessages({
 type GatewayDeploymentHistoryProps = {
   /** Handle of the API these deployments belong to. */
   apiId: string;
+  artifactKind: DeployArtifactKind;
   /** Deployments on this gateway, newest first. */
   deployments: Deployment[];
   onRefresh: () => void;
@@ -70,6 +75,7 @@ type GatewayDeploymentHistoryProps = {
  */
 export function GatewayDeploymentHistory({
   apiId,
+  artifactKind,
   deployments,
   onRefresh,
   refreshing,
@@ -78,13 +84,19 @@ export function GatewayDeploymentHistory({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const intl = useIntl();
   const { notify } = useNotifications();
+  const trackFeature = useTrackFeature();
   const deleteMutation = useDelete();
 
   if (deployments.length === 0) return null;
 
   const currentDeploymentId = deployments[0]?.deploymentId ?? null;
 
+  // The drawer rows' delete icon is the only caller.
   const handleDelete = (deployment: Deployment) => {
+    trackFeature('apip.lifecycle.manage-deployment', {
+      artifact_kind: artifactKind,
+      operation: 'delete',
+    });
     deleteMutation.mutate(
       { apiId, deploymentId: deployment.deploymentId, gatewayId: deployment.gatewayId },
       // No `onError`: the query client's `onMutationError` already notifies.
@@ -142,7 +154,16 @@ export function GatewayDeploymentHistory({
             textAlign: 'center',
           }}
         >
-          <Button color="primary" onClick={() => setDrawerOpen(true)} variant="text">
+          <Button
+            color="primary"
+            onClick={() => {
+              trackFeature('apip.lifecycle.view-deployment-history', {
+                artifact_kind: artifactKind,
+              });
+              setDrawerOpen(true);
+            }}
+            variant="text"
+          >
             <FormattedMessage {...messages.viewMore} />
           </Button>
         </Box>

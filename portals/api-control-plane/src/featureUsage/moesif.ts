@@ -187,7 +187,7 @@ function identify(client: MoesifClient, identity: FeatureUsageIdentity): void {
  */
 export function trackFeatureUsage<C extends ApiPlatformFeatureCode>(
   code: C,
-  dimensions: FeatureDimensions<C>,
+  dimensions: FeatureDimensions<C> | undefined,
   identity: FeatureUsageIdentity,
 ): void {
   if (!isFeatureUsageTrackingEnabled()) return;

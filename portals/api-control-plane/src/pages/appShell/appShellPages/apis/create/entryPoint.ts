@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { API_PLATFORM_FEATURES, type FeatureDimensions } from '@/featureUsage';
+import { dimensionValues, type FeatureDimensions } from '@/featureUsage';
 
 /**
  * Which control opened the API creation wizard, reported with the wizard's
@@ -28,8 +28,7 @@ export type ApiCreationEntryPoint =
 
 const STATE_KEY = 'apiCreationEntryPoint';
 
-const ENTRY_POINTS: readonly string[] =
-  API_PLATFORM_FEATURES['apip.manage-apis.api-creation-wizard'].dimensions.entry_point;
+const ENTRY_POINTS = dimensionValues('apip.manage-apis.api-creation-wizard', 'entry_point');
 
 /**
  * Navigation options for a control that opens the wizard:

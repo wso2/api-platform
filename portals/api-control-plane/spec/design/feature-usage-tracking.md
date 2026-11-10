@@ -447,83 +447,34 @@ batching and flushing stay as they are.
    - Report format.
    - Exactly what leaves the customer's site.
 
-## Appendix A: taxonomy additions
+## Appendix A: taxonomy changes
 
-Proposed for `api-platform-taxonomy.yaml`, in the template's shape. Codes are
-permanent once data exists.
+The console's features were checked against its pages (every button, link and
+dialog that commits an action), and `api-platform-taxonomy.yaml` was updated to
+match. `src/featureUsage/taxonomy.ts` is the console's copy: every code it can
+emit, with only the enum values its UI can produce. Its names, event
+categories, required flags and values were checked against the YAML; the YAML
+is not in this repository, so a change to either must be copied to the other.
 
-```yaml
-- code: 'apip.manage-apis.api-creation-wizard'
-  name: 'API Creation Wizard'
-  description: 'Open the wizard that creates REST and GraphQL APIs.'
-  category: 'manage-apis'
-  tier: 'core'
-  status: 'stable'
-  availability:
-    introduced_in: '0.9.0'
-  tracking:
-    event_name: 'apip.manage-apis.api-creation-wizard'
-    event_category: 'discovery'
-    platforms: ['web']
-    dimensions:
-      - name: 'entry_point'
-        type: 'enum'
-        values: ['api-list', 'api-list-empty-state', 'org-home', 'project-quick-actions', 'direct']
-        required: true
-        description: 'The control that opened the wizard; direct for a typed URL or a reload.'
-    aggregations:
-      - type: 'count'
-        label: 'API Creation Wizard Opens'
-  sub_features:
-    - code: 'apip.manage-apis.api-creation-wizard.select-api-type'
-      name: 'API Type Selection'
-      description: "Continue past the wizard's API type step."
-      category: 'manage-apis'
-      tier: 'core'
-      status: 'stable'
-      availability:
-        introduced_in: '0.9.0'
-      tracking:
-        event_name: 'apip.manage-apis.api-creation-wizard.select-api-type'
-        event_category: 'engagement'
-        platforms: ['web']
-        dimensions:
-          - name: 'api_type'
-            type: 'enum'
-            values: ['rest-api', 'graphql-api']
-            required: true
-        aggregations:
-          - type: 'count'
-            label: 'API Types Selected'
+Codes are permanent once data exists, so these changes were made before any
+data was collected.
 
-# Existing feature. event_category changes from "lifecycle" to "adoption",
-# because the console emits it on the user's Create click rather than as a
-# system-level artifact event. One sub-feature is added.
-- code: 'apip.manage-apis.create-rest-api'
-  tracking:
-    event_category: 'adoption'
-  sub_features:
-    - code: 'apip.manage-apis.create-rest-api.select-creation-method'
-      name: 'REST API Creation Method Selection'
-      description: "Continue past the wizard's definition step with Start from scratch or Start with a contract selected."
-      category: 'manage-apis'
-      tier: 'core'
-      status: 'stable'
-      availability:
-        introduced_in: '0.9.0'
-      tracking:
-        event_name: 'apip.manage-apis.create-rest-api.select-creation-method'
-        event_category: 'engagement'
-        platforms: ['web']
-        dimensions:
-          - name: 'creation_method'
-            type: 'enum'
-            values: ['scratch', 'contract']
-            required: true
-        aggregations:
-          - type: 'count'
-            label: 'REST API Creation Methods Selected'
-```
+| Change | Why |
+| --- | --- |
+| Added `apip.manage-apis.api-creation-wizard` (discovery) with sub-features `.select-api-type` and `.select-creation-method` | One funnel for the wizard, for REST and GraphQL alike. `select-creation-method` replaces the earlier `create-rest-api.select-creation-method`. |
+| `create-rest-api`, `create-graphql-api`: event category `lifecycle` → `adoption`; both carry `creation_method` (`scratch`/`contract`) and an optional `contract_source` | The console emits them on the user's Create click. One vocabulary across API types: GraphQL's `schema_source` becomes `creation_method` (introspection = scratch) plus `contract_source`. |
+| Removed sub-feature `create-rest-api.import-contract` | Folded into `create-rest-api.contract_source`: the import is a variant of creation, not a separate goal. |
+| `update-api`: new `part` dimension (`metadata`/`endpoint`/`definition`); removed sub-feature `update-api.openapi-definition` | Three console entry points into one goal; the definition update is now `part: definition`. |
+| `deploy-api` sub-features `undeploy`/`restore`/`delete` → one `apip.lifecycle.manage-deployment` with `operation` | Same pattern as `manage-gateway` and the other `operation` features. |
+| `publish-api` sub-features `unpublish`/`deprecate` → one `apip.lifecycle.manage-publication` with `operation` | Same. |
+| Policy features: `policy_name` from free `string` to an enum of the WSO2 policies bundled with the gateway; new optional `policy_scope` (`api`/`operation`) | A custom policy's name is customer text, which the data rules forbid. The console maps a policy name to its capability feature. |
+| Added `apip.gateway.copy-setup-command` and `apip.manage-apis.test-console.copy-curl` | Real console features with no taxonomy entry: which install method gateway users follow, and the test console's cURL view. |
+| Extended enums: `gateway_type` + `event`; `service-accounts.operation` + `enable`, `disable`, `issue-test-token`; `subscription-plan-management.operation` + `activate`, `deactivate` | Values the console's UI produces. |
+| Optional dimensions added: `api_type` on `api-thumbnail`, `publication-draft`, `open-api-portal`; `document_type` on `api-documentation`; `artifact_kind` on `browse-policies` and `view-deployment-history` | Lets every API-level feature be split by API type. |
+
+Taxonomy features the console has no UI for (for example gateway deletion,
+token revocation, secrets, builds, contract validation as a separate step) are
+unchanged; other surfaces (CLI, API, API Portal, cloud plugins) may emit them.
 
 ## Appendix B: references
 

@@ -21,6 +21,7 @@ import { Box, Button, CodeBlock, Stack, Typography } from '@wso2/oxygen-ui';
 import { Eye, EyeOff } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
+import { useTrackFeature } from '@/featureUsage';
 import { CopyButton } from './CopyButton';
 import { curlSummary, toCurl } from '../utils/toCurl';
 import type { ConsoleRequest } from '../../utils/types';
@@ -88,6 +89,7 @@ type CurlCommandPanelProps = {
  */
 export function CurlCommandPanel({ request }: CurlCommandPanelProps) {
   const intl = useIntl();
+  const trackFeature = useTrackFeature();
   const [revealed, setRevealed] = useState(false);
 
   const summary = useMemo(() => curlSummary(request), [request]);
@@ -158,6 +160,9 @@ export function CurlCommandPanel({ request }: CurlCommandPanelProps) {
           <CopyButton
             getValue={() => toCurl(request, { revealSecrets: true })}
             label={intl.formatMessage(messages.copyCommand)}
+            onCopy={() =>
+              trackFeature('apip.manage-apis.test-console.copy-curl', { api_type: 'rest-api' })
+            }
           />
         </Box>
       </Box>

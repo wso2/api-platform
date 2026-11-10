@@ -17,15 +17,18 @@
  */
 
 import { Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { routes } from '@/routes/paths';
+import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { accepts, aProject, failure, recorder, type Recorder } from '@/test/msw';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { ProjectCreatePage } from './ProjectCreatePage';
+
+vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 
@@ -34,6 +37,7 @@ let requests: Recorder;
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+  resetTrackedFeatures();
 });
 
 /** The create needs `ApiScopeContext` for its organization, so the scope provider is mounted. */
@@ -56,6 +60,14 @@ describe('ProjectCreatePage', () => {
     expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
   });
 
+  it('reports nothing when Enter submits a name that is only spaces', async () => {
+    const { user } = setup();
+
+    await user.type(screen.getByLabelText(/Name/), '   {Enter}');
+
+    expect(trackedFeatures()).toEqual([]);
+  });
+
   it('creates a project with name + description, then opens its home', async () => {
     server.use(accepts('post', '/projects', aProject({ id: 'billing' }), { record: requests }));
     const { user } = setup();
@@ -70,6 +82,7 @@ describe('ProjectCreatePage', () => {
       id: 'billing',
       description: 'Invoices',
     });
+    expect(trackedFeatures()).toEqual([['apip.admin.manage-projects', { operation: 'create' }]]);
     await screen.findByText('Project home');
   });
 

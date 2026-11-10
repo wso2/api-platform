@@ -54,6 +54,7 @@ import {
   type SubscriptionPlan,
 } from '@/api/resources/subscriptionPlans';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { popupPaperSx } from '@/theme/receipes';
 import { PlanPricingSection } from './PlanPricingSection';
 import {
@@ -366,6 +367,7 @@ export function SubscriptionPlanFormDialog({
   const { notify } = useNotifications();
   const createMutation = useCreateSubscriptionPlan();
   const updateMutation = useUpdateSubscriptionPlan();
+  const trackFeature = useTrackFeature();
   // Whether the organization has a meter at all, for adding a usage price; the prices' meters are
   // read by id, and a price's meter is found by searching (MeterPicker).
   const anyMeterQuery = useMeters({ limit: 1 });
@@ -485,6 +487,7 @@ export function SubscriptionPlanFormDialog({
     const expiryTime = form.expiryDate ? toExpiryTime(form.expiryDate) : undefined;
 
     if (isEdit && plan) {
+      trackFeature('apip.monetization.subscription-plan-management', { operation: 'update' });
       updateMutation.mutate(
         {
           // The editable fields only: a body with pricing is refused, and the
@@ -514,6 +517,7 @@ export function SubscriptionPlanFormDialog({
     }
 
     // A paid plan is created with its pricing in the one request.
+    trackFeature('apip.monetization.subscription-plan-management', { operation: 'create' });
     createMutation.mutate(
       {
         displayName: trimmedName,

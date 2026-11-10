@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
@@ -31,10 +31,13 @@ import {
   type Recorder,
   type SubscriptionPlanFixture,
 } from '@/test/msw';
+import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { server } from '@/test/server';
 import { makeConsoleScope } from '@/test/mockScope';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { SubscriptionPlansPage } from './SubscriptionPlansPage';
+
+vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 const PLANS = '/subscription-plans';
@@ -90,6 +93,7 @@ function renderPage() {
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+  resetTrackedFeatures();
   // The plan dialog's Paid plan section lists the organization's meters.
   server.use(collection('/meters', []));
 });
@@ -247,6 +251,33 @@ describe('SubscriptionPlansPage', () => {
       id: 'bronze',
       status: 'INACTIVE',
     });
+    expect(trackedFeatures()).toEqual([
+      ['apip.monetization.subscription-plan-management', { operation: 'deactivate' }],
+    ]);
+  });
+
+  it('reports an activation when an inactive plan is switched on', async () => {
+    server.use(
+      collection(PLANS, plans, { record: requests }),
+      accepts(
+        'put',
+        `${PLANS}/gold`,
+        aSubscriptionPlan({ displayName: 'Gold', id: 'gold', status: 'ACTIVE' }),
+        { record: requests },
+      ),
+    );
+    const { user } = renderPage();
+
+    await screen.findByText('Gold');
+    await user.click(screen.getByRole('checkbox', { name: 'Gold, inactive' }));
+
+    await waitFor(() => expect(requests.calls.some((call) => call.method === 'PUT')).toBe(true));
+    expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toMatchObject({
+      status: 'ACTIVE',
+    });
+    expect(trackedFeatures()).toEqual([
+      ['apip.monetization.subscription-plan-management', { operation: 'activate' }],
+    ]);
   });
 
   it('opens the edit dialog only from the pencil icon, not the row itself', async () => {
@@ -286,6 +317,21 @@ describe('SubscriptionPlansPage', () => {
     // The dialog closes from the mutation's own onSuccess, a tick after the
     // request itself resolves — not necessarily settled by the line above.
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trackedFeatures()).toEqual([
+      ['apip.monetization.subscription-plan-management', { operation: 'delete' }],
+    ]);
+  });
+
+  it('reports no deletion when the confirmation is cancelled', async () => {
+    server.use(collection(PLANS, plans, { record: requests }), planRead(plans[0]));
+    const { user } = renderPage();
+
+    await screen.findByText('Bronze');
+    await user.click(screen.getByRole('button', { name: 'Delete Bronze' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(trackedFeatures()).toEqual([]);
   });
 
   it.each([

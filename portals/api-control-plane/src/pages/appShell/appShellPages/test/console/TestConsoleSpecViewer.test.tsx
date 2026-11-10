@@ -18,6 +18,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import TestConsoleSpecViewer from './TestConsoleSpecViewer';
 import type { KeyValueRow } from '../utils/types';
@@ -65,6 +66,7 @@ vi.mock('swagger-ui-react', () => ({
 }));
 
 vi.mock('swagger-ui-react/swagger-ui.css', () => ({}));
+vi.mock('@/featureUsage/moesif');
 
 const spec = {
   openapi: '3.0.1',
@@ -109,6 +111,7 @@ const keyRow = (value: string): KeyValueRow[] => [
 ];
 
 beforeEach(() => {
+  resetTrackedFeatures();
   captured = {};
   specIdentities = [];
 });
@@ -431,5 +434,65 @@ describe('TestConsoleSpecViewer', () => {
     const specPlugin = (built[0].statePlugins as { spec: Record<string, unknown> }).spec;
     expect(Object.keys(specPlugin)).toEqual(['wrapActions']);
     expect(Object.keys(specPlugin.wrapActions as object)).toEqual(['executeRequest']);
+  });
+});
+
+describe('TestConsoleSpecViewer — feature usage', () => {
+  type Execute = (request: Record<string, unknown>) => Promise<unknown>;
+  type Thunk = (system: { fn: { execute: Execute } }) => Promise<void>;
+
+  /** swagger-ui's own `executeRequest`: one `fn.execute`, its rejection swallowed to be shown. */
+  const swaggerExecuteRequest =
+    (payload: Record<string, unknown>) => (system: { fn: { execute: Execute } }) =>
+      system.fn
+        .execute(payload)
+        .then(() => undefined)
+        .catch(() => undefined);
+
+  /** Clicks Execute through the captured relay plugin, against `execute` as swagger-client. */
+  const clickExecute = async (execute: Execute) => {
+    const plugins = (captured.plugins ?? []) as Array<() => Record<string, unknown>>;
+    const spec = (plugins[0]().statePlugins as { spec: { wrapActions: Record<string, unknown> } })
+      .spec;
+    const wrap = spec.wrapActions.executeRequest as (
+      original: typeof swaggerExecuteRequest,
+    ) => (payload: Record<string, unknown>) => Thunk;
+    await wrap(swaggerExecuteRequest)({ method: 'get', pathName: '/pets' })({ fn: { execute } });
+  };
+
+  it('reports each Execute once, with its call mode and outcome', async () => {
+    const view = (callMode: 'proxy' | 'direct') => (
+      <TestConsoleSpecViewer
+        {...relayProps}
+        baseUrl="https://gw.example.com"
+        callMode={callMode}
+        extraHeaders={[]}
+        spec={spec}
+      />
+    );
+    const { rerender } = renderWithProviders(view('proxy'));
+
+    await clickExecute(async () => ({ status: 200 }));
+    await clickExecute(() =>
+      Promise.reject(Object.assign(new Error('Not Found'), { status: 404 })),
+    );
+    // The relay failed, so no gateway response came back at all.
+    await clickExecute(() => Promise.reject(new Error('The portal could not reach this gateway.')));
+
+    rerender(view('direct'));
+    await clickExecute(async () => ({ status: 201 }));
+    await clickExecute(() => Promise.reject(new TypeError('Failed to fetch')));
+
+    const consoleUse = (callMode: string, outcome: string) => [
+      'apip.manage-apis.test-console',
+      { api_type: 'rest-api', call_mode: callMode, outcome },
+    ];
+    expect(trackedFeatures()).toEqual([
+      consoleUse('proxy', 'success'),
+      consoleUse('proxy', 'failure'),
+      consoleUse('proxy', 'failure'),
+      consoleUse('direct', 'success'),
+      consoleUse('direct', 'failure'),
+    ]);
   });
 });

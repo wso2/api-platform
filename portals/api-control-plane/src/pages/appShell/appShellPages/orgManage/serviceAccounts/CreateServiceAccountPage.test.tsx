@@ -17,7 +17,7 @@
  */
 
 import { useLocation } from 'react-router-dom';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
@@ -30,11 +30,14 @@ import {
   recorder,
   type Recorder,
 } from '@/test/msw';
+import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { CreateServiceAccountPage } from './CreateServiceAccountPage';
 import { clearCredentials, peekCredentials } from './createdCredentials';
+
+vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 const FORM_TIMEOUT = 15_000;
@@ -69,6 +72,7 @@ function renderPage() {
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+  resetTrackedFeatures();
   server.use(collection('/roles', roles));
 });
 
@@ -147,6 +151,9 @@ describe('CreateServiceAccountPage', () => {
         displayName: 'CI deployer',
         roles: ['ap_service_account'],
       });
+      expect(trackedFeatures()).toEqual([
+        ['apip.security.service-accounts', { operation: 'create' }],
+      ]);
       await waitFor(() =>
         expect(screen.getByTestId('location')).toHaveTextContent(
           `/organizations/${ORG}/service-accounts/created`,

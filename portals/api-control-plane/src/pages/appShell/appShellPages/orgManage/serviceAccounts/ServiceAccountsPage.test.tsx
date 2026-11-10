@@ -36,11 +36,14 @@ import {
   resource,
   type Recorder,
 } from '@/test/msw';
+import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { makeAuthState } from '@/test/mockAuthState';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { ServiceAccountsPage } from './ServiceAccountsPage';
+
+vi.mock('@/featureUsage/moesif');
 
 const ORG = 'api-platform-demo';
 /** The create tests type through a whole form, which outruns 5s under a full-suite load. */
@@ -100,7 +103,12 @@ const useAccounts = (accounts = [ciDeployer, nightly]) =>
 beforeEach(() => {
   requests = recorder();
   resetHttpClient();
+  resetTrackedFeatures();
 });
+
+const serviceAccountUse = (operation: string) => [
+  ['apip.security.service-accounts', { operation }],
+];
 
 describe('ServiceAccountsPage', () => {
   it('lists accounts with roles, status and last token issued', async () => {
@@ -259,9 +267,11 @@ describe('ServiceAccountsPage', () => {
     expect(
       within(confirm).getByText(/stops working immediately, with no overlap/),
     ).toBeInTheDocument();
+    expect(trackedFeatures()).toEqual([]);
     await user.click(within(confirm).getByRole('button', { name: 'Regenerate secret' }));
 
     expect(await screen.findByText('Copy the secret now')).toBeInTheDocument();
+    expect(trackedFeatures()).toEqual(serviceAccountUse('regenerate-secret'));
     expect(screen.getByLabelText('Client secret')).toHaveValue(SECRET);
 
     await user.click(screen.getByRole('button', { name: 'Done' }));
@@ -287,6 +297,44 @@ describe('ServiceAccountsPage', () => {
     expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({
       status: 'disabled',
     });
+    expect(trackedFeatures()).toEqual(serviceAccountUse('disable'));
+  });
+
+  it('reports nothing when a confirmation is cancelled', async () => {
+    useAccounts();
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for CI deployer' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Disable' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(requests.calls.some((call) => call.method === 'PUT')).toBe(false);
+    expect(trackedFeatures()).toEqual([]);
+  });
+
+  it('enables a disabled account from its actions menu', async () => {
+    useAccounts();
+    server.use(
+      accepts(
+        'put',
+        '/service-accounts/nightly',
+        { ...nightly, status: 'active' },
+        {
+          record: requests,
+        },
+      ),
+    );
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for Nightly report' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Enable' }));
+
+    await waitFor(() => expect(requests.calls.some((call) => call.method === 'PUT')).toBe(true));
+    expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({
+      status: 'active',
+    });
+    expect(trackedFeatures()).toEqual(serviceAccountUse('enable'));
   });
 
   it('deletes only once the ID is typed', async () => {
@@ -302,6 +350,7 @@ describe('ServiceAccountsPage', () => {
     await user.click(within(confirm).getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(requests.calls.some((call) => call.method === 'DELETE')).toBe(true));
+    expect(trackedFeatures()).toEqual(serviceAccountUse('delete'));
   });
 
   it('gets a token, sending the scopes the roles grant', async () => {
@@ -331,6 +380,7 @@ describe('ServiceAccountsPage', () => {
     const form = new URLSearchParams(requests.calls.find((call) => call.method === 'POST')!.body);
     expect(form.get('client_id')).toBe(ciDeployer.clientId);
     expect(form.get('scope')).toBe('ap:rest_api:read ap:gateway:read');
+    expect(trackedFeatures()).toEqual(serviceAccountUse('issue-test-token'));
   });
 
   it('says to check the secret when the server rejects the credentials', async () => {
@@ -374,6 +424,7 @@ describe('ServiceAccountsPage', () => {
     expect(JSON.parse(requests.calls.find((call) => call.method === 'PUT')!.body)).toEqual({
       roles: ['ap_service_account'],
     });
+    expect(trackedFeatures()).toEqual(serviceAccountUse('update'));
   });
 
   it('disables from the edit view with the switch, after a warning', async () => {

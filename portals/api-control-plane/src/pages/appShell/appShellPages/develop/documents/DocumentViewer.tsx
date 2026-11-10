@@ -30,10 +30,12 @@ import {
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
+import { useTrackFeature } from '@/featureUsage';
 import { Can } from '@/permissions';
 import { isErrorCode } from '@/api/core/errors';
 import { DocumentBody } from './DocumentBody';
 import { DocumentCard } from './DocumentCard';
+import { documentationApiType, documentationDocumentType } from './documentFeatureUsage';
 
 const messages = defineMessages({
   loading: {
@@ -97,6 +99,7 @@ export function DocumentViewer({
   // Starts the body request with the metadata's; `DocumentBody` reads the same cache entry.
   useApiDocumentContent(apiType, apiHandle, docId);
   const deleteMutation = useDeleteApiDocument();
+  const trackFeature = useTrackFeature();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (documentQuery.isPending) {
@@ -118,7 +121,12 @@ export function DocumentViewer({
 
   const document = documentQuery.data;
 
-  const confirmDelete = () =>
+  const confirmDelete = () => {
+    trackFeature('apip.manage-apis.api-documentation', {
+      api_type: documentationApiType(apiType),
+      document_type: documentationDocumentType(document.type),
+      operation: 'delete',
+    });
     deleteMutation.mutate(
       { apiId: apiHandle, apiType, docId },
       {
@@ -129,6 +137,7 @@ export function DocumentViewer({
         },
       },
     );
+  };
 
   return (
     <>
@@ -137,7 +146,11 @@ export function DocumentViewer({
           <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
             <Can do="UpdateAPIDocument" denied="hide">
               <Tooltip title={intl.formatMessage(messages.edit)}>
-                <IconButton aria-label={intl.formatMessage(messages.edit)} onClick={onEdit} size="small">
+                <IconButton
+                  aria-label={intl.formatMessage(messages.edit)}
+                  onClick={onEdit}
+                  size="small"
+                >
                   <Pencil size={18} />
                 </IconButton>
               </Tooltip>

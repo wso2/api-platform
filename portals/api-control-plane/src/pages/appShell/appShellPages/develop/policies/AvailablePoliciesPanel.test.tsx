@@ -21,9 +21,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetHttpClient } from '@/api/core/http';
 import { runtimeConfig } from '@/config/runtime';
+import { resetTrackedFeatures, trackedFeatures } from '@/test/featureUsage';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { AvailablePoliciesPanel } from './AvailablePoliciesPanel';
+
+vi.mock('@/featureUsage/moesif');
 
 // The hub is a different origin from the page, so jsdom enforces CORS on the reply.
 const cors = { 'Access-Control-Allow-Origin': '*' };
@@ -65,6 +68,7 @@ let observerCallbacks: ObserverCallback[] = [];
 
 beforeEach(() => {
   resetHttpClient();
+  resetTrackedFeatures();
   observerCallbacks = [];
   // jsdom's AbortSignal is not the one undici's fetch accepts, so the signal React
   // Query hands the hub request is dropped here; MSW still answers the request.
@@ -95,7 +99,9 @@ afterEach(() => {
 describe('AvailablePoliciesPanel', () => {
   it('shows placeholder cards while loading, then the policies, with no paging buttons', async () => {
     serveCatalog([]);
-    const { container } = renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    const { container } = renderWithProviders(
+      <AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />,
+    );
 
     expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument();
     expect(await screen.findByText('Policy 01')).toBeInTheDocument();
@@ -107,7 +113,7 @@ describe('AvailablePoliciesPanel', () => {
   it('loads the next page when the end of the list scrolls into view', async () => {
     const requests: URLSearchParams[] = [];
     serveCatalog(requests);
-    renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    renderWithProviders(<AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />);
 
     await screen.findByText('Policy 20');
     expect(screen.queryByText('Policy 21')).not.toBeInTheDocument();
@@ -121,7 +127,9 @@ describe('AvailablePoliciesPanel', () => {
   it('asks the hub to search the whole catalog once typing settles', async () => {
     const requests: URLSearchParams[] = [];
     serveCatalog(requests);
-    const { user } = renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    const { user } = renderWithProviders(
+      <AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />,
+    );
     await screen.findByText('Policy 01');
 
     await user.type(screen.getByPlaceholderText('Search policies'), 'jwt');
@@ -153,7 +161,9 @@ describe('AvailablePoliciesPanel', () => {
         );
       }),
     );
-    const { user } = renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    const { user } = renderWithProviders(
+      <AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />,
+    );
     await screen.findByText('Policy 20');
 
     observerCallbacks.at(-1)?.([{ isIntersecting: true }]);
@@ -183,10 +193,25 @@ describe('AvailablePoliciesPanel', () => {
             );
       }),
     );
-    const { user } = renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    const { user } = renderWithProviders(
+      <AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />,
+    );
 
     await user.click(await screen.findByRole('button', { name: 'Retry' }));
 
     expect(await screen.findByText('Policy 01')).toBeInTheDocument();
+  });
+
+  it('reports opening the catalog once per mount, with the kind of API', async () => {
+    serveCatalog([]);
+    const { rerender } = renderWithProviders(
+      <AvailablePoliciesPanel artifactKind="graphql-api" onSelect={vi.fn()} />,
+    );
+    await screen.findByText('Policy 01');
+    rerender(<AvailablePoliciesPanel artifactKind="graphql-api" disabled onSelect={vi.fn()} />);
+
+    expect(trackedFeatures()).toEqual([
+      ['apip.policies.browse-policies', { artifact_kind: 'graphql-api' }],
+    ]);
   });
 });

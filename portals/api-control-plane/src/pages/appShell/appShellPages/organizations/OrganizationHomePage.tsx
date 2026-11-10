@@ -52,6 +52,7 @@ import { useRestApiCounts } from '@/api/resources/restApis';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
+import { useTrackFeature } from '@/featureUsage';
 import { routes } from '@/routes/paths';
 import { apiCreationEntry } from '../apis/create/entryPoint';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
@@ -308,6 +309,7 @@ function OrganizationHomePageContent() {
   const gatewaysQuery = useGateways({ limit: 100 });
   const portalsQuery = useApiPortals();
   const deleteProjectMutation = useDeleteProject();
+  const trackFeature = useTrackFeature();
   const restApiCountsQuery = useRestApiCounts(projects.map((project) => project.id));
   const graphqlApiCountsQuery = useGraphQLApiCounts(projects.map((project) => project.id));
   const apiCountsPending = restApiCountsQuery.isPending || graphqlApiCountsQuery.isPending;
@@ -351,6 +353,7 @@ function OrganizationHomePageContent() {
   const confirmDeleteProject = () => {
     if (!projectToDelete) return;
     const { displayName, id } = projectToDelete;
+    trackFeature('apip.admin.manage-projects', { operation: 'delete' });
     deleteProjectMutation.mutate(
       { projectId: id },
       {

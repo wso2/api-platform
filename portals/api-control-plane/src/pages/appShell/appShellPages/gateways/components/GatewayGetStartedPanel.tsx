@@ -38,6 +38,7 @@ import helmIconUrl from '@/assets/icons/helm.svg';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
 import type { GatewayVersionEntry } from '@/config/runtime';
+import { useTrackFeature, type FeatureDimensions } from '@/featureUsage';
 import { gatewayEndpoint } from '../utils/gatewayDisplay';
 import { environmentForGateway } from '../utils/gatewayEnvironments';
 import {
@@ -168,8 +169,7 @@ const messages = defineMessages({
   },
   startRunSetupScript: {
     id: 'gateways.detail.GetStarted.start.runSetupScript',
-    defaultMessage:
-      '2. Run this command to start the gateway using the api-platform.env file:',
+    defaultMessage: '2. Run this command to start the gateway using the api-platform.env file:',
     description: 'api-platform.env is a file name — keep it exactly as written.',
   },
   stepConfigure: {
@@ -242,6 +242,16 @@ const messages = defineMessages({
 
 /** Which install path the panel is showing. */
 type SetupTab = 'quickStart' | 'virtualMachine' | 'docker' | 'kubernetes';
+
+type SetupCommandDimensions = FeatureDimensions<'apip.gateway.copy-setup-command'>;
+
+/** How feature usage names each install path. */
+const INSTALL_METHOD: Record<SetupTab, SetupCommandDimensions['install_method']> = {
+  docker: 'docker',
+  kubernetes: 'kubernetes',
+  quickStart: 'quick-start',
+  virtualMachine: 'virtual-machine',
+};
 
 /** Icon size shared by every tab label. */
 const TAB_ICON_SIZE = 18;
@@ -375,6 +385,7 @@ export function GatewayGetStartedPanel({
   const intl = useIntl();
   const { notify } = useNotifications();
   const rotateToken = useRotateGatewayToken(gatewayId);
+  const trackFeature = useTrackFeature();
 
   const [tab, setTab] = useState<SetupTab>('quickStart');
   const [token, setToken] = useState<string>();
@@ -388,6 +399,7 @@ export function GatewayGetStartedPanel({
 
   const reconfigure = () => {
     setConfirmOpen(false);
+    trackFeature('apip.gateway.gateway-token', { operation: 'rotate' });
     rotateToken.mutate(undefined, {
       onSuccess: (result) => {
         setToken(result.token);
@@ -395,6 +407,13 @@ export function GatewayGetStartedPanel({
       },
     });
   };
+
+  /** Reports a copied setup command as the step it belongs to, on the path shown. */
+  const reportCopy = (setupStep: SetupCommandDimensions['setup_step']) => () =>
+    trackFeature('apip.gateway.copy-setup-command', {
+      install_method: INSTALL_METHOD[tab],
+      setup_step: setupStep,
+    });
 
   /**
    * The configure step is the same on every path: the same warning, the same
@@ -426,7 +445,9 @@ export function GatewayGetStartedPanel({
           <FormattedMessage {...messages.tokenOnce} />
         </Alert>
       )}
-      {token && showEnvFile && <CopyableCommand code={configureCommand(target, token)} />}
+      {token && showEnvFile && (
+        <CopyableCommand code={configureCommand(target, token)} onCopy={reportCopy('configure')} />
+      )}
     </SetupStep>
   );
 
@@ -498,7 +519,7 @@ export function GatewayGetStartedPanel({
               <Typography color="text.secondary" variant="body2">
                 <FormattedMessage {...messages.runtimeIntro} />
               </Typography>
-              <CopyableCommand code={runtimeCheckCommand()} />
+              <CopyableCommand code={runtimeCheckCommand()} onCopy={reportCopy('check-runtime')} />
             </Stack>
           )}
 
@@ -509,7 +530,10 @@ export function GatewayGetStartedPanel({
                 <Typography color="text.secondary" variant="body2">
                   <FormattedMessage {...messages.chartIntro} />
                 </Typography>
-                <CopyableCommand code={helmInstallCommand(target, gatewayId, tokenValue)} />
+                <CopyableCommand
+                  code={helmInstallCommand(target, gatewayId, tokenValue)}
+                  onCopy={reportCopy('install')}
+                />
               </SetupStep>
             </>
           ) : (
@@ -518,7 +542,7 @@ export function GatewayGetStartedPanel({
                 <Typography color="text.secondary" variant="body2">
                   <FormattedMessage {...messages.downloadIntro} />
                 </Typography>
-                <CopyableCommand code={downloadCommand(target)} />
+                <CopyableCommand code={downloadCommand(target)} onCopy={reportCopy('download')} />
               </SetupStep>
 
               {/* From 1.2 on, the archive's setup script writes the env file
@@ -531,7 +555,10 @@ export function GatewayGetStartedPanel({
                     <Typography color="text.secondary" variant="body2">
                       <FormattedMessage {...messages.setupIntro} />
                     </Typography>
-                    <CopyableCommand code={setupScriptCommand(target)} />
+                    <CopyableCommand
+                      code={setupScriptCommand(target)}
+                      onCopy={reportCopy('setup')}
+                    />
                   </SetupStep>
 
                   {configureStep(
@@ -544,11 +571,14 @@ export function GatewayGetStartedPanel({
                     <Typography color="text.secondary" variant="body2">
                       <FormattedMessage {...messages.startEnter} />
                     </Typography>
-                    <CopyableCommand code={enterDirectoryCommand(target)} />
+                    <CopyableCommand
+                      code={enterDirectoryCommand(target)}
+                      onCopy={reportCopy('start')}
+                    />
                     <Typography color="text.secondary" variant="body2">
                       <FormattedMessage {...messages.startRunSetupScript} />
                     </Typography>
-                    <CopyableCommand code={startCommand(target)} />
+                    <CopyableCommand code={startCommand(target)} onCopy={reportCopy('start')} />
                   </SetupStep>
                 </>
               ) : (
@@ -559,11 +589,14 @@ export function GatewayGetStartedPanel({
                     <Typography color="text.secondary" variant="body2">
                       <FormattedMessage {...messages.startEnter} />
                     </Typography>
-                    <CopyableCommand code={enterDirectoryCommand(target)} />
+                    <CopyableCommand
+                      code={enterDirectoryCommand(target)}
+                      onCopy={reportCopy('start')}
+                    />
                     <Typography color="text.secondary" variant="body2">
                       <FormattedMessage {...messages.startRun} />
                     </Typography>
-                    <CopyableCommand code={startCommand(target)} />
+                    <CopyableCommand code={startCommand(target)} onCopy={reportCopy('start')} />
                   </SetupStep>
                 </>
               )}

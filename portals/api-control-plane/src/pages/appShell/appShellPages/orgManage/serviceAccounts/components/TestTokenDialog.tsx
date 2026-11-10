@@ -44,6 +44,7 @@ import {
   type ServiceAccount,
   type ServiceAccountTokenResponse,
 } from '@/api/resources/serviceAccounts';
+import { useTrackFeature } from '@/featureUsage';
 import { tokenUseCurl } from '../serviceAccountCurl';
 import { SecretField } from './SecretField';
 
@@ -159,6 +160,7 @@ export function TestTokenDialog({
 }: TestTokenDialogProps) {
   const intl = useIntl();
   const mutation = useIssueServiceAccountToken();
+  const trackFeature = useTrackFeature();
   const [secret, setSecret] = useState(initialSecret);
   const [issued, setIssued] = useState<Issued | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -191,6 +193,7 @@ export function TestTokenDialog({
     if (!secret || !scopesReady || mutation.isPending) return;
     // A failed retry must not leave the previous token on screen.
     setIssued(null);
+    trackFeature('apip.security.service-accounts', { operation: 'issue-test-token' });
     mutation.mutate(
       {
         client_id: account.clientId,

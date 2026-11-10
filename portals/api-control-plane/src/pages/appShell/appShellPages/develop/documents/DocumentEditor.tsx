@@ -51,8 +51,10 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { MarkdownView } from '@/components/MarkdownView';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
+import { useTrackFeature } from '@/featureUsage';
 import { segmentedSwitchSx } from '@/theme/receipes';
 import { isTextContent } from './documentContent';
+import { documentationApiType, documentationDocumentType } from './documentFeatureUsage';
 import {
   DEFAULT_DOCUMENT_TYPE,
   DOCUMENT_TYPES,
@@ -181,12 +183,14 @@ const messages = defineMessages({
   leaveYes: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveYes',
     defaultMessage: 'Yes',
-    description: 'Answers "Are you sure you want to leave?": leaves the form and discards unsaved changes.',
+    description:
+      'Answers "Are you sure you want to leave?": leaves the form and discards unsaved changes.',
   },
   leaveNo: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.leaveNo',
     defaultMessage: 'No',
-    description: 'Answers "Are you sure you want to leave?": stays on the form with the changes kept.',
+    description:
+      'Answers "Are you sure you want to leave?": stays on the form with the changes kept.',
   },
   cancel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.documents.DocumentEditor.cancel',
@@ -325,6 +329,7 @@ function DocumentForm({
   const { notify } = useNotifications();
   const createMutation = useCreateApiDocument();
   const updateMutation = useUpdateApiDocument();
+  const trackFeature = useTrackFeature();
   const typeLabelId = useId();
   const nameId = useId();
   const contentId = useId();
@@ -396,6 +401,11 @@ function DocumentForm({
     if (!valid || saving) return;
 
     if (!existing) {
+      trackFeature('apip.manage-apis.api-documentation', {
+        api_type: documentationApiType(apiType),
+        document_type: documentationDocumentType(type),
+        operation: 'create',
+      });
       createMutation.mutate(
         {
           apiId: apiHandle,
@@ -425,6 +435,11 @@ function DocumentForm({
       otherTypeName: existingIsCustomType ? existing.type : undefined,
       inlineContent: contentChanged ? content : undefined,
     };
+    trackFeature('apip.manage-apis.api-documentation', {
+      api_type: documentationApiType(apiType),
+      document_type: documentationDocumentType(body.type),
+      operation: 'update',
+    });
     updateMutation.mutate(
       { apiId: apiHandle, apiType, body, docId: existing.id },
       {
