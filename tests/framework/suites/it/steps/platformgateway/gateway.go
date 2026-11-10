@@ -1149,6 +1149,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		`^I create (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) with configuration:$`,
 		g.createResource)
 	sc.Step(`^I create API with JSON configuration:$`, g.createJSONAPI)
+	sc.Step(`^the response should report one upstream attempt$`, g.responseReportsOneUpstreamAttempt)
 	g.registerResourceTemplateSteps(sc)
 	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`,
 		g.getResource)
