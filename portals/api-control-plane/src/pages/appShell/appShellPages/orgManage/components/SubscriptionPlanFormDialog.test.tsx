@@ -1236,6 +1236,41 @@ describe('SubscriptionPlanFormDialog conditions', () => {
     expect(requests.count()).toBe(0);
   });
 
+  it('refuses a count past what a number holds exactly, rather than rounding it', async () => {
+    const { user } = setup();
+
+    await user.type(screen.getByLabelText(/Plan name/), 'Gold');
+    await addCondition(user, 'Request count');
+    const requestCount = card('Request count');
+    await user.type(within(requestCount).getByLabelText('Count'), '9007199254740993');
+    await user.tab();
+
+    expect(
+      within(requestCount).getByText('Enter a whole number of at most 9,007,199,254,740,991.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add plan' })).toBeDisabled();
+    expect(requests.count()).toBe(0);
+  });
+
+  it('sends a custom key named __proto__ as a key of its own', async () => {
+    server.use(accepts('post', PLANS, aSubscriptionPlan(), { record: requests }));
+    const { user } = setup();
+
+    await user.type(screen.getByLabelText(/Plan name/), 'Gold');
+    await addCondition(user, 'Custom');
+    const custom = card('Custom');
+    await user.type(within(custom).getByLabelText(/^ID/), 'tier');
+    await user.type(within(custom).getByLabelText('Key'), '__proto__');
+    await user.type(within(custom).getByLabelText('Value'), 'gold');
+    await user.click(screen.getByRole('button', { name: 'Add plan' }));
+
+    await waitFor(() => expect(requests.count()).toBe(1));
+    const raw = requests.last()!.body;
+    expect(raw).toContain('{"id":"tier","params":{"__proto__":"gold"},"type":"custom"}');
+    const params = JSON.parse(raw).conditions[0].params as Record<string, unknown>;
+    expect(Object.keys(params)).toEqual(['__proto__']);
+  });
+
   it("checks a custom condition's ID and keys as the Platform API does", async () => {
     const { user } = setup();
 

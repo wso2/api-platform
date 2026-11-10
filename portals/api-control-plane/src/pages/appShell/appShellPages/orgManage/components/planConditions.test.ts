@@ -22,6 +22,8 @@ import {
   checkConditions,
   draftsFromConditions,
   fieldKeys,
+  isBuiltInType,
+  MAX_WHOLE_NUMBER,
   newCondition,
   newPair,
   newWindow,
@@ -107,6 +109,84 @@ describe('checkConditions', () => {
         ]),
       ])[0],
     ).toMatch(/pairKeyTaken$/);
+  });
+});
+
+describe('checkConditions: whole numbers past what a number holds exactly', () => {
+  it('refuses a count or window length that is not a safe integer, rather than rounding it', () => {
+    const draft = requestCount([{ timeUnit: 'MINUTE' }]);
+    draft.windows[0].count = '9007199254740993';
+    draft.windows[0].timeAmount = '9007199254740993';
+    const check = checkConditions([draft]);
+    expect(check.body).toBeNull();
+    const count = check.errors.get(fieldKeys.count(draft.key, draft.windows[0].key));
+    const amount = check.errors.get(fieldKeys.amount(draft.key, draft.windows[0].key));
+    for (const error of [count, amount]) {
+      expect(error?.message.id).toMatch(/numberTooLarge$/);
+      expect(error?.values).toEqual({ max: MAX_WHOLE_NUMBER });
+    }
+  });
+
+  it('takes the largest safe integer as it is', () => {
+    const draft = requestCount([{ timeUnit: 'MONTH' }]);
+    draft.windows[0].count = String(MAX_WHOLE_NUMBER);
+    draft.windows[0].timeAmount = String(MAX_WHOLE_NUMBER);
+    expect(checkConditions([draft]).body?.[0].params).toMatchObject({
+      limits: [{ count: MAX_WHOLE_NUMBER, timeAmount: MAX_WHOLE_NUMBER, timeUnit: 'MONTH' }],
+    });
+  });
+
+  it('keeps apart two windows whose length in minutes is past the exact range', () => {
+    const big = Math.floor(MAX_WHOLE_NUMBER / 60);
+    const draft = requestCount([
+      { count: 1, timeAmount: big, timeUnit: 'HOUR' },
+      { count: 2, timeAmount: big - 1, timeUnit: 'HOUR' },
+    ]);
+    expect(checkConditions([draft]).body).not.toBeNull();
+  });
+});
+
+describe('checkConditions: custom values', () => {
+  it('sends an untouched saved value as it was, spaces and all, rather than typing it', () => {
+    const [tier] = draftsFromConditions([
+      { id: 'tier', params: { flag: ' true ', code: '007' }, type: 'custom' },
+    ]);
+    expect(checkConditions([tier]).body?.[0].params).toEqual({ code: '007', flag: ' true ' });
+
+    // Once edited, the value is typed from the text as usual.
+    tier.pairs[0].value = 'true';
+    expect(checkConditions([tier]).body?.[0].params).toEqual({ code: '007', flag: true });
+  });
+
+  it('keeps a key named __proto__ as a key of its own, through to the JSON sent', () => {
+    const draft = custom('tier', [
+      ['__proto__', 'gold'],
+      ['constructor', '1'],
+    ]);
+    const check = checkConditions([draft]);
+    expect(check.errors.size).toBe(0);
+    const params = check.body![0].params as Record<string, unknown>;
+    expect(Object.keys(params)).toEqual(['__proto__', 'constructor']);
+    expect(JSON.stringify(check.body)).toBe(
+      '[{"id":"tier","params":{"__proto__":"gold","constructor":1},"type":"custom"}]',
+    );
+  });
+
+  it('refuses a __proto__ key used twice', () => {
+    expect(
+      messageIds([
+        custom('tier', [
+          ['__proto__', '1'],
+          ['__proto__', '2'],
+        ]),
+      ])[0],
+    ).toMatch(/pairKeyTaken$/);
+  });
+
+  it('does not take a custom type or ID named after an Object property for a built-in one', () => {
+    expect(isBuiltInType('constructor')).toBe(false);
+    expect(isBuiltInType('__proto__')).toBe(false);
+    expect(isBuiltInType('request-count')).toBe(true);
   });
 });
 

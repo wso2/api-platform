@@ -21,7 +21,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/subscriptionPlans';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
-import { requiredPolicies } from '../../develop/policies/planPolicies';
+import { requiredPolicies, unenforcedConditionTypes } from '../../develop/policies/planPolicies';
 import { toggleSelection, type DeletedSelection, type DraftFormValues } from '../utils/publicationForm';
 import { PlanCard } from './PlanCard';
 import { RequiredPoliciesNote } from './RequiredPoliciesNote';
@@ -184,7 +184,11 @@ export function SubscriptionPlansTab({
         )}
       </Box>
 
-      <RequiredPoliciesNote apiName={apiName} missing={missingPolicies} />
+      <RequiredPoliciesNote
+        apiName={apiName}
+        missing={missingPolicies}
+        unenforced={unenforcedConditionTypes(selectedPlans)}
+      />
 
       <Box
         sx={{

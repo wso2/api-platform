@@ -110,11 +110,12 @@ describe('PlanCard', () => {
 
   it('shows when a plan expires in a chip after its name', () => {
     renderWithProviders(
-      <PlanCard displayName="Plan" expiryTime="2027-03-31T00:00:00Z" selected={false} />,
+      // Midday UTC: the same calendar day in every time zone from UTC-11 to UTC+11.
+      <PlanCard displayName="Plan" expiryTime="2027-03-31T12:00:00Z" selected={false} />,
     );
 
     const [chip] = chipsOf(screen.getByRole('checkbox', { name: /Plan/ }));
-    expect(chip).toHaveTextContent(/^Expires .*2027/);
+    expect(chip).toHaveTextContent(/^Expires Mar 31, 2027$/);
     expect(screen.getByText('Plan').nextElementSibling).toBe(chip);
   });
 

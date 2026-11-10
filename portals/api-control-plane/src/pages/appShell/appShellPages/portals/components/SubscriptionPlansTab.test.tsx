@@ -182,7 +182,35 @@ describe('SubscriptionPlansTab', () => {
       );
       expect(note()).toHaveTextContent('subscription-validation');
       expect(note()).toHaveTextContent(
-        'You can publish now. Nothing breaks: subscribers can see the plans and subscribe, and the plan conditions apply once the API is deployed with this policy.',
+        'You can publish now. Nothing breaks: subscribers can see the plans and subscribe, and their subscriptions and request limits are checked once the API is deployed with this policy.',
+      );
+      // Gold holds no condition no policy enforces, so the note promises nothing more.
+      expect(note()).not.toHaveTextContent('no policy that enforces them yet');
+    });
+
+    it('says which conditions of the selected plans no policy enforces yet', async () => {
+      const window1k = { limits: [{ count: 1000, timeAmount: 1, timeUnit: 'HOUR' }], onExceed: 'reject' };
+      const platinum = aSubscriptionPlan({
+        conditions: [
+          { id: 'requests', params: window1k, type: 'request-count' },
+          { id: 'events', params: window1k, type: 'event-count' },
+          { id: 'tokens', params: { ...window1k, tokenType: 'total' }, type: 'token-count' },
+          { id: 'region', params: { zone: 'eu' }, type: 'custom' },
+        ],
+        displayName: 'Platinum',
+        id: 'platinum',
+      });
+      server.use(collection(PLANS_PATH, [bronze, platinum]));
+
+      renderTab({
+        apiName: 'Cat Facts API',
+        attachedPolicies: new Set(['jwt-auth']),
+        values: values({ subscriptionPlanIds: ['bronze', 'platinum'] }),
+      });
+
+      await screen.findByText('Platinum');
+      expect(note()).toHaveTextContent(
+        'Event count, Token count, and Custom conditions have no policy that enforces them yet.',
       );
     });
 

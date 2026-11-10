@@ -210,8 +210,10 @@ const combinePublishedPlans = (results: UseQueryResult<Publication>[]) => ({
   isPending: results.some((result) => result.isPending),
   planIds: [
     ...new Set(
+      // A listing whose latest read failed keeps the data of the read before: a listing
+      // unpublished since (404) would still list plans it no longer offers, so it counts for none.
       results.flatMap((result) =>
-        (result.data?.subscriptionPlans ?? [])
+        (result.error ? [] : (result.data?.subscriptionPlans ?? []))
           .filter((plan) => plan.sourceStatus !== 'DELETED')
           .map((plan) => plan.id),
       ),
@@ -223,7 +225,8 @@ const combinePublishedPlans = (results: UseQueryResult<Publication>[]) => ({
  * The subscription plans an API offers: those its live listings (published or deprecated) hold
  * on any API Portal, once each, leaving out plans deleted since. Plans are chosen when the API is
  * published, so this is the set subscribers can pick from. A listing unpublished between the two
- * reads (404) is skipped; any other failure is `error`.
+ * reads (404) is skipped, even when an earlier read of it is still cached; any other failure is
+ * `error`.
  */
 export const useApiPublishedPlanIds = (
   apiType: string | undefined,

@@ -54,7 +54,7 @@ import { getDraggedPolicy, type PolicyScope, scopeId } from './policyDnd';
 import { PolicyConfigDrawer, type PolicyRef } from './PolicyConfigDrawer';
 import { PoliciesPageTitle } from './PoliciesPageTitle';
 import { PlanPolicyNotes } from './PlanPolicyNotes';
-import { attachedPolicyNames } from './planPolicies';
+import { policyAttachment } from './planPolicies';
 import { ReadOnlyPoliciesNotice } from './ReadOnlyPoliciesNotice';
 
 const messages = defineMessages({
@@ -358,7 +358,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   };
 
   // As edited, so a policy dropped above shows in the plan notes straight away.
-  const attached = attachedPolicyNames({ operations, policies: apiPolicies });
+  const { attached, partial } = policyAttachment({ operations, policies: apiPolicies });
 
   const targetLabel =
     scope === null
@@ -552,7 +552,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
           </Card>
 
           {/* What the plans this API offers need from the policies above: notes, no actions. */}
-          <PlanPolicyNotes apiHandle={api.id} attached={attached} />
+          <PlanPolicyNotes apiHandle={api.id} attached={attached} partial={partial} />
         </Box>
 
         {/* RIGHT: Available Policies (drag source). Shown disabled, not hidden,

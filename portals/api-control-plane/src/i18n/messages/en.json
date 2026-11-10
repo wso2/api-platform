@@ -2115,7 +2115,7 @@
     "description": "Version chip on a catalog entry. {version} is backend data; keep the \"v\" prefix if it reads naturally."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.hint": {
-    "defaultMessage": "For the plans this API offers. A plan condition applies only where a policy enforces it. You pick the plans when you publish to the API Portal."
+    "defaultMessage": "For the plans this API offers. A plan condition applies only where a policy enforces it. You pick the plans when you publish to the API Portal. This reflects the policies on this page; changes apply once you save and deploy the API."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.loadError": {
     "defaultMessage": "Unable to load the subscription plans this API offers."
@@ -2141,6 +2141,10 @@
     "defaultMessage": "Not enforced. Attach {policy} and redeploy.",
     "description": "{policy} is the name of the policy that would enforce the condition."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.notePartial": {
+    "defaultMessage": "Not enforced. {policy} is attached to some resources only. Attach it to the API or to every resource and redeploy.",
+    "description": "{policy} is the name of the policy that enforces the condition, or subscription-validation."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.statusEnforced": {
     "defaultMessage": "Enforced"
   },
@@ -2161,6 +2165,10 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.validationMissing": {
     "defaultMessage": "Attach {policy} first. Without it no plan, condition or subscription is checked.",
+    "description": "{policy} is a policy name (subscription-validation); do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.validationPartial": {
+    "defaultMessage": "{policy} is attached to some resources only, so subscriptions are not checked on the others. Attach it to the API or to every resource and redeploy.",
     "description": "{policy} is a policy name (subscription-validation); do not translate it."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PoliciesPage.loadError": {
@@ -2977,6 +2985,9 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.noWindows": {
     "defaultMessage": "Add at least one limit, or remove the condition."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.numberTooLarge": {
+    "defaultMessage": "Enter a whole number of at most {max, number}."
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.pairKeyMissing": {
     "defaultMessage": "Each value needs a key."
@@ -4157,7 +4168,12 @@
     "description": "Lead-in to a list of policy names. {apiName} is the API display name, user-supplied. <b> sets the instruction in bold."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.RequiredPoliciesNote.publishAnyway": {
-    "defaultMessage": "You can publish now. Nothing breaks: subscribers can see the plans and subscribe, and the plan conditions apply once the API is deployed with {count, plural, one {this policy} other {these policies}}."
+    "defaultMessage": "You can publish now. Nothing breaks: subscribers can see the plans and subscribe, and their subscriptions and request limits are checked once the API is deployed with {count, plural, one {this policy} other {these policies}}.",
+    "description": "Only promise what subscription-validation enforces: subscriptions and the request-count condition."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.RequiredPoliciesNote.unenforced": {
+    "defaultMessage": "{types} conditions have no policy that enforces them yet.",
+    "description": "{types} is a list of plan condition type names, such as \"Token count and Event count\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLabel": {
     "defaultMessage": "API definition ({format})",

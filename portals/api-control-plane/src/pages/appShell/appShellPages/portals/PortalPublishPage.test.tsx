@@ -508,6 +508,15 @@ describe('PortalPublishPage', () => {
       [{ name: 'list', request: { method: 'GET', path: '/loans', policies: [{ name: 'subscription-validation', version: 'v1' }] } }],
       false,
     ],
+    [
+      'has subscription-validation on some resources only',
+      [],
+      [
+        { name: 'list', request: { method: 'GET', path: '/loans', policies: [{ name: 'subscription-validation', version: 'v1' }] } },
+        { name: 'create', request: { method: 'POST', path: '/loans', policies: [] } },
+      ],
+      true,
+    ],
   ] as const)(
     'Subscription Plans: the cards show name and description, and the policy note shows only when missing (API %s)',
     async (_case, policies, operations, warns) => {

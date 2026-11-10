@@ -51,11 +51,16 @@ export const CONDITION_POLICIES: {
   customById: {},
 };
 
+/** Whether `record` has `key` as its own property, so `constructor` or `__proto__` is not found
+ * on its prototype. */
+const hasOwn = (record: object, key: string) => Object.prototype.hasOwnProperty.call(record, key);
+
 /** The policy that enforces a condition, or `null` when none does yet. */
-export const enforcerOf = (condition: { type: string; id?: string }): string | null =>
-  isBuiltInType(condition.type)
-    ? CONDITION_POLICIES.builtIn[condition.type]
-    : (CONDITION_POLICIES.customById[condition.id ?? ''] ?? null);
+export const enforcerOf = (condition: { type: string; id?: string }): string | null => {
+  if (isBuiltInType(condition.type)) return CONDITION_POLICIES.builtIn[condition.type];
+  const id = condition.id ?? '';
+  return hasOwn(CONDITION_POLICIES.customById, id) ? CONDITION_POLICIES.customById[id] : null;
+};
 
 /** What an API carries its policies in: its own list, and (a REST API) each operation's. */
 type PolicyHolder = {
@@ -63,16 +68,42 @@ type PolicyHolder = {
   operations?: { request?: { policies?: Policy[] }; policies?: Policy[] }[];
 };
 
-/** The names of every policy attached to an API, globally or on any operation. */
-export const attachedPolicyNames = (api: PolicyHolder): Set<string> =>
-  new Set([
-    ...(api.policies ?? []).map((policy) => policy.name),
-    ...(api.operations ?? []).flatMap((operation) =>
-      [...(operation.request?.policies ?? []), ...(operation.policies ?? [])].map(
-        (policy) => policy.name,
+/** Where an API's policies apply, as far as the plans are concerned. */
+export type PolicyAttachment = {
+  /** Policies on the API itself, or on every one of its operations: they see every request. */
+  attached: Set<string>;
+  /** Policies on some operations only: requests to the others pass without them. */
+  partial: Set<string>;
+};
+
+/**
+ * Which policies apply to every request of an API and which to some only. A policy counts as
+ * attached when it is on the API (global) or on each of its operations; on some operations
+ * only, a plan condition it enforces is not enforced on the rest, so it is `partial`.
+ */
+export const policyAttachment = (api: PolicyHolder): PolicyAttachment => {
+  const global = new Set((api.policies ?? []).map((policy) => policy.name));
+  const perOperation = (api.operations ?? []).map(
+    (operation) =>
+      new Set(
+        [...(operation.request?.policies ?? []), ...(operation.policies ?? [])].map(
+          (policy) => policy.name,
+        ),
       ),
-    ),
-  ]);
+  );
+  const attached = new Set(global);
+  const partial = new Set<string>();
+  for (const name of new Set(perOperation.flatMap((names) => [...names]))) {
+    if (global.has(name)) continue;
+    if (perOperation.every((names) => names.has(name))) attached.add(name);
+    else partial.add(name);
+  }
+  return { attached, partial };
+};
+
+/** The names of the policies that apply to every request of an API (see `policyAttachment`). */
+export const attachedPolicyNames = (api: PolicyHolder): Set<string> =>
+  policyAttachment(api).attached;
 
 /**
  * The policies an API needs for these plans to be enforced: subscription-validation always, then
@@ -103,11 +134,15 @@ export type EnforcementRow = {
   /** The policy that enforces it, if any does. */
   policy: string | null;
   status: EnforcementStatus;
+  /** Not enforced because its policy, or subscription-validation, is on some resources only. */
+  partial: boolean;
 };
 
 export type PlanEnforcement = {
   /** subscription-validation is not attached, so nothing of the plans is checked. */
   validationMissing: boolean;
+  /** subscription-validation is on some resources only, so the others are not checked. */
+  validationPartial: boolean;
   /** Built-in types in the API Portal's order, then custom IDs in the order the plans list them. */
   rows: EnforcementRow[];
   enforced: number;
@@ -116,25 +151,31 @@ export type PlanEnforcement = {
 /**
  * What the plans an API offers need from its attached policies: one row per built-in condition
  * type any plan holds, then one per custom condition ID. A condition counts as enforced only
- * while subscription-validation is attached too, since nothing is checked without it.
+ * while subscription-validation is attached too, since nothing is checked without it, and only
+ * when both apply to every request: a policy on some resources only (`partial`) does not count.
  */
 export const planEnforcement = (
   plans: readonly Pick<SubscriptionPlan, 'conditions'>[],
   attached: ReadonlySet<string>,
+  partial: ReadonlySet<string> = new Set(),
 ): PlanEnforcement => {
-  const validationMissing = !attached.has(SUBSCRIPTION_VALIDATION);
+  const validationAttached = attached.has(SUBSCRIPTION_VALIDATION);
+  const validationPartial = !validationAttached && partial.has(SUBSCRIPTION_VALIDATION);
+  const validationMissing = !validationAttached && !validationPartial;
   const conditions = plans.flatMap((plan) => plan.conditions ?? []);
-  const statusOf = (policy: string | null): EnforcementStatus => {
-    if (!policy) return 'noPolicy';
-    return attached.has(policy) && !validationMissing ? 'enforced' : 'notEnforced';
+  const rowOf = (type: EnforcementRow['type'], id: string, policy: string | null): EnforcementRow => {
+    if (!policy) return { id, partial: false, policy, status: 'noPolicy', type };
+    if (attached.has(policy) && validationAttached) {
+      return { id, partial: false, policy, status: 'enforced', type };
+    }
+    const isPartial =
+      (attached.has(policy) || partial.has(policy)) && (validationAttached || validationPartial);
+    return { id, partial: isPartial, policy, status: 'notEnforced', type };
   };
 
   const builtInRows = BUILT_IN_TYPES.filter((type) =>
     conditions.some((condition) => condition.type === type),
-  ).map((type): EnforcementRow => {
-    const policy = CONDITION_POLICIES.builtIn[type];
-    return { id: BUILT_IN_IDS[type], policy, status: statusOf(policy), type };
-  });
+  ).map((type) => rowOf(type, BUILT_IN_IDS[type], CONDITION_POLICIES.builtIn[type]));
   const customIds = [
     ...new Set(
       conditions
@@ -142,14 +183,31 @@ export const planEnforcement = (
         .map((condition) => condition.id!),
     ),
   ];
-  const customRows = customIds.map((id): EnforcementRow => {
-    const policy = enforcerOf({ id, type: 'custom' });
-    return { id, policy, status: statusOf(policy), type: 'custom' };
-  });
+  const customRows = customIds.map((id) =>
+    rowOf('custom', id, enforcerOf({ id, type: 'custom' })),
+  );
   const rows = [...builtInRows, ...customRows];
   return {
     enforced: rows.filter((row) => row.status === 'enforced').length,
     rows,
     validationMissing,
+    validationPartial,
   };
+};
+
+/**
+ * The condition types (and `custom`) the plans hold that no policy enforces yet, once each, in
+ * the API Portal's order with `custom` last.
+ */
+export const unenforcedConditionTypes = (
+  plans: readonly Pick<SubscriptionPlan, 'conditions'>[],
+): (BuiltInType | 'custom')[] => {
+  const unenforced = plans
+    .flatMap((plan) => plan.conditions ?? [])
+    .filter((condition) => enforcerOf(condition) === null);
+  return [...BUILT_IN_TYPES, 'custom' as const].filter((type) =>
+    unenforced.some((condition) =>
+      type === 'custom' ? !isBuiltInType(condition.type) : condition.type === type,
+    ),
+  );
 };

@@ -60,6 +60,12 @@ const messages = defineMessages({
       'Attach {policy} first. Without it no plan, condition or subscription is checked.',
     description: '{policy} is a policy name (subscription-validation); do not translate it.',
   },
+  validationPartial: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.validationPartial',
+    defaultMessage:
+      '{policy} is attached to some resources only, so subscriptions are not checked on the others. Attach it to the API or to every resource and redeploy.',
+    description: '{policy} is a policy name (subscription-validation); do not translate it.',
+  },
   statusEnforced: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.statusEnforced',
     defaultMessage: 'Enforced',
@@ -82,6 +88,13 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotEnforced',
     defaultMessage: 'Not enforced. Attach {policy} and redeploy.',
     description: '{policy} is the name of the policy that would enforce the condition.',
+  },
+  notePartial: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.notePartial',
+    defaultMessage:
+      'Not enforced. {policy} is attached to some resources only. Attach it to the API or to every resource and redeploy.',
+    description:
+      '{policy} is the name of the policy that enforces the condition, or subscription-validation.',
   },
   noteNoPolicy: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNoPolicy',
@@ -109,7 +122,7 @@ const messages = defineMessages({
   hint: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.hint',
     defaultMessage:
-      'For the plans this API offers. A plan condition applies only where a policy enforces it. You pick the plans when you publish to the API Portal.',
+      'For the plans this API offers. A plan condition applies only where a policy enforces it. You pick the plans when you publish to the API Portal. This reflects the policies on this page; changes apply once you save and deploy the API.',
   },
 });
 
@@ -128,12 +141,14 @@ const STATUS: Record<
 
 const noteOf = (row: EnforcementRow): MessageDescriptor => {
   if (row.status === 'enforced') return messages.noteEnforced;
-  if (row.status === 'notEnforced') return messages.noteNotEnforced;
+  if (row.status === 'notEnforced') {
+    return row.partial ? messages.notePartial : messages.noteNotEnforced;
+  }
   return row.type === 'custom' ? messages.noteNoReader : messages.noteNoPolicy;
 };
 
 /** One condition: its name and ID, whether it is enforced, and why. */
-function NoteRow({ row }: { row: EnforcementRow }) {
+function NoteRow({ row, validationPartial }: { row: EnforcementRow; validationPartial: boolean }) {
   const intl = useIntl();
   const status = STATUS[row.status];
   return (
@@ -170,7 +185,10 @@ function NoteRow({ row }: { row: EnforcementRow }) {
         sx={{ justifySelf: { sm: 'end', xs: 'start' } }}
       />
       <SecondaryText sx={{ gridColumn: '1 / -1' }} variant="body2">
-        <FormattedMessage {...noteOf(row)} values={{ policy: row.policy }} />
+        <FormattedMessage
+          {...noteOf(row)}
+          values={{ policy: row.partial && validationPartial ? SUBSCRIPTION_VALIDATION : row.policy }}
+        />
       </SecondaryText>
     </Box>
   );
@@ -180,17 +198,20 @@ function NoteRow({ row }: { row: EnforcementRow }) {
  * "Required by subscription plans": what the plans this API offers need from its policies, as
  * notes only — attaching a policy is done in the panels above. The plans are those the API's live
  * listings hold on any API Portal, since plans are chosen when the API is published. `attached`
- * is every policy on the API, global or on a resource, as currently edited.
+ * holds the policies on the API itself or on every resource, and `partial` those on some resources
+ * only, as currently edited (see `policyAttachment`).
  */
 export function PlanPolicyNotes({
   apiHandle,
   apiType = REST_API_TYPE,
   attached,
+  partial,
 }: {
   apiHandle: string | undefined;
   /** The API's `{apiType}` on the publication endpoints. */
   apiType?: PublishableApiType;
   attached: ReadonlySet<string>;
+  partial?: ReadonlySet<string>;
 }) {
   const published = useApiPublishedPlanIds(apiType, apiHandle);
   const plansQuery = useAllSubscriptionPlans();
@@ -199,7 +220,7 @@ export function PlanPolicyNotes({
   const error = published.error ?? plansQuery.error;
   const planIds = new Set(published.planIds);
   const plans = (plansQuery.data?.list ?? []).filter((plan) => plan.id && planIds.has(plan.id));
-  const enforcement = planEnforcement(plans, attached);
+  const enforcement = planEnforcement(plans, attached, partial);
   const { rows } = enforcement;
   const ready = !isPending && !error;
   const anyNotEnforced = rows.some((row) => row.status === 'notEnforced');
@@ -236,10 +257,28 @@ export function PlanPolicyNotes({
             />
           </Alert>
         )}
+        {enforcement.validationPartial && (
+          <Alert icon={<TriangleAlert size={18} />} severity="warning">
+            <FormattedMessage
+              {...messages.validationPartial}
+              values={{
+                policy: (
+                  <Box component="code" sx={{ fontFamily: 'monospace' }}>
+                    {SUBSCRIPTION_VALIDATION}
+                  </Box>
+                ),
+              }}
+            />
+          </Alert>
+        )}
         {rows.length > 0 ? (
           <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }}>
             {rows.map((row) => (
-              <NoteRow key={`${row.type}:${row.id}`} row={row} />
+              <NoteRow
+                key={`${row.type}:${row.id}`}
+                row={row}
+                validationPartial={enforcement.validationPartial}
+              />
             ))}
           </Box>
         ) : (

@@ -29,7 +29,7 @@ import {
   resource,
 } from '@/test/msw';
 import { server } from '@/test/server';
-import { renderWithProviders, screen } from '@/test/utils';
+import { act, makeTestQueryClient, renderWithProviders, screen, waitFor } from '@/test/utils';
 import { PlanPolicyNotes } from './PlanPolicyNotes';
 
 const ORG = 'api-platform-demo';
@@ -88,11 +88,16 @@ const serveOffered = () =>
     collection('/subscription-plans', [gold, silver, bronze]),
   );
 
-const renderNotes = (attached: string[]) =>
+const renderNotes = (
+  attached: string[],
+  partial: string[] = [],
+  queryClient = makeTestQueryClient(),
+) =>
   renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
-      <PlanPolicyNotes apiHandle={API} attached={new Set(attached)} />
+      <PlanPolicyNotes apiHandle={API} attached={new Set(attached)} partial={new Set(partial)} />
     </ApiScopeProvider>,
+    { queryClient },
   );
 
 /** The notes row of one condition ID. */
@@ -136,7 +141,7 @@ describe('PlanPolicyNotes', () => {
     expect(screen.getByText('1 of 4 enforced')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'For the plans this API offers. A plan condition applies only where a policy enforces it. You pick the plans when you publish to the API Portal.',
+        'For the plans this API offers. A plan condition applies only where a policy enforces it. You pick the plans when you publish to the API Portal. This reflects the policies on this page; changes apply once you save and deploy the API.',
       ),
     ).toBeInTheDocument();
   });
@@ -154,6 +159,42 @@ describe('PlanPolicyNotes', () => {
       'Not enforced. Attach subscription-validation and redeploy.',
     );
     expect(screen.getByText('0 of 4 enforced')).toBeInTheDocument();
+  });
+
+  it('marks request-count not enforced while subscription-validation is on some resources only', async () => {
+    serveOffered();
+
+    renderNotes(['jwt-auth'], ['subscription-validation']);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'subscription-validation is attached to some resources only, so subscriptions are not checked on the others. Attach it to the API or to every resource and redeploy.',
+    );
+    expect(rowOf('requests')).toHaveTextContent(
+      'Not enforced. subscription-validation is attached to some resources only. Attach it to the API or to every resource and redeploy.',
+    );
+    expect(screen.queryByText(/Attach subscription-validation first/)).not.toBeInTheDocument();
+    expect(screen.getByText('0 of 4 enforced')).toBeInTheDocument();
+  });
+
+  it('drops the plans of a listing unpublished since it was last read', async () => {
+    serveOffered();
+    const queryClient = makeTestQueryClient();
+    renderNotes(['subscription-validation'], [], queryClient);
+    expect(await screen.findByText('tokens')).toBeInTheDocument();
+
+    // portal-a (gold: tokens, business-hours) is unpublished; only its listing is read again.
+    server.use(failure('get', publicationPath('portal-a'), 404, 'PUBLICATION_NOT_FOUND'));
+    await act(() =>
+      queryClient.refetchQueries({
+        predicate: (query) =>
+          query.queryKey.includes('publication') && JSON.stringify(query.queryKey).includes('portal-a'),
+      }),
+    );
+
+    await waitFor(() => expect(screen.queryByText('tokens')).not.toBeInTheDocument());
+    expect(screen.queryByText('business-hours')).not.toBeInTheDocument();
+    expect(rowOf('requests')).toHaveTextContent('Enforced');
+    expect(screen.queryByText('Unable to load the subscription plans this API offers.')).not.toBeInTheDocument();
   });
 
   it('offers notes only: no button to add or attach anything', async () => {
@@ -207,6 +248,31 @@ describe('PlanPolicyNotes', () => {
     );
 
     renderNotes([]);
+
+    expect(
+      await screen.findByText('Unable to load the subscription plans this API offers.'),
+    ).toBeInTheDocument();
+  });
+
+  it('skips a listing unpublished since the summary (404) and keeps the others', async () => {
+    serveOffered();
+    server.use(failure('get', publicationPath('portal-a'), 404, 'PUBLICATION_NOT_FOUND'));
+
+    renderNotes(['subscription-validation']);
+
+    expect(await screen.findByText('tool-calls')).toBeInTheDocument();
+    expect(screen.queryByText('tokens')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unable to load the subscription plans this API offers.')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [403, 'FORBIDDEN'],
+    [500, 'INTERNAL_ERROR'],
+  ])('says so when one listing cannot be read (%i), even though the others can', async (status, code) => {
+    serveOffered();
+    server.use(failure('get', publicationPath('portal-a'), status, code));
+
+    renderNotes(['subscription-validation']);
 
     expect(
       await screen.findByText('Unable to load the subscription plans this API offers.'),

@@ -19,7 +19,10 @@
 import { Alert, Box, Typography } from '@wso2/oxygen-ui';
 import { TriangleAlert } from '@wso2/oxygen-ui-icons-react';
 import type { ReactNode } from 'react';
-import { defineMessages, FormattedMessage } from 'react-intl';
+import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+
+import type { BuiltInType } from '../../orgManage/components/planConditions';
+import { conditionTypeName } from '../../orgManage/components/PlanConditionsEditor';
 
 const messages = defineMessages({
   attach: {
@@ -32,7 +35,16 @@ const messages = defineMessages({
   publishAnyway: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.RequiredPoliciesNote.publishAnyway',
     defaultMessage:
-      'You can publish now. Nothing breaks: subscribers can see the plans and subscribe, and the plan conditions apply once the API is deployed with {count, plural, one {this policy} other {these policies}}.',
+      'You can publish now. Nothing breaks: subscribers can see the plans and subscribe, and their subscriptions and request limits are checked once the API is deployed with {count, plural, one {this policy} other {these policies}}.',
+    description:
+      'Only promise what subscription-validation enforces: subscriptions and the request-count condition.',
+  },
+  unenforced: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.RequiredPoliciesNote.unenforced',
+    defaultMessage:
+      '{types} conditions have no policy that enforces them yet.',
+    description:
+      '{types} is a list of plan condition type names, such as "Token count and Event count".',
   },
 });
 
@@ -41,15 +53,19 @@ const bold = (chunks: ReactNode[]) => <strong>{chunks}</strong>;
 /**
  * The policies the selected plans need but the API does not have yet. Publishing does not wait
  * for them: the person who deploys the API may not be the one who publishes it. Rendered only
- * when something is missing; a complete API gets no note at all.
+ * when something is missing; a complete API gets no note at all. `unenforced` lists the condition
+ * types the plans hold that no policy enforces yet, so the note does not promise them.
  */
 export function RequiredPoliciesNote({
   apiName,
   missing,
+  unenforced = [],
 }: {
   apiName: string;
   missing: readonly string[];
+  unenforced?: readonly (BuiltInType | 'custom')[];
 }) {
+  const intl = useIntl();
   if (missing.length === 0) return null;
   const count = missing.length;
   return (
@@ -69,6 +85,19 @@ export function RequiredPoliciesNote({
       <Typography color="text.secondary" variant="body2">
         <FormattedMessage {...messages.publishAnyway} values={{ count }} />
       </Typography>
+      {unenforced.length > 0 && (
+        <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
+          <FormattedMessage
+            {...messages.unenforced}
+            values={{
+              types: intl.formatList(
+                unenforced.map((type) => conditionTypeName(intl, type)),
+                { type: 'conjunction' },
+              ),
+            }}
+          />
+        </Typography>
+      )}
     </Alert>
   );
 }
