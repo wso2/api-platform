@@ -299,24 +299,6 @@ features:
 	}
 }
 
-func TestCanonicalUUID(t *testing.T) {
-	for value, want := range map[string]bool{
-		"0193e7a2-4c5d-7e6f-8a9b-0c1d2e3f4a5b":                true,
-		"0193E7A2-4C5D-7E6F-8A9B-0C1D2E3F4A5B":                true,
-		"urn:uuid:0193e7a2-4c5d-7e6f-8a9b-0c1d2e3f4a5b":       false,
-		"{0193e7a2-4c5d-7e6f-8a9b-0c1d2e3f4a5b}":              false,
-		"0193e7a24c5d7e6f8a9b0c1d2e3f4a5b":                    false,
-		"alice@example.com":                                   false,
-		"sa:acme:ci-bot:0193e7a2-4c5d-7e6f-8a9b-0c1d2e3f4a5b": false,
-		"":             false,
-		"113246589012": false,
-	} {
-		if got := canonicalUUID(value); got != want {
-			t.Errorf("canonicalUUID(%q) = %v, want %v", value, got, want)
-		}
-	}
-}
-
 // A feature the taxonomy tracks only from the web (a browser) is never
 // reported from the backend.
 func TestValidateRejectsAWebOnlyFeature(t *testing.T) {

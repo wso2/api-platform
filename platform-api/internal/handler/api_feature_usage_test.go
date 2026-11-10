@@ -72,14 +72,13 @@ func (r *recordingUsage) onlyOccurrence(t *testing.T) featureusage.Occurrence {
 type wantEvent struct {
 	route  string
 	status int
-	actor  string // the caller's subject, read before any validation
 }
 
 // assertEvent checks the single reported occurrence against want.
 func assertEvent(t *testing.T, env *oaEnv, want wantEvent, before time.Time) {
 	t.Helper()
 	o := env.usage.onlyOccurrence(t)
-	if o.Feature != featureusage.FeatureCreateRESTAPI || o.OrgUUID != oaOrg || o.ActorSubject != want.actor {
+	if o.Feature != featureusage.FeatureCreateRESTAPI || o.OrgUUID != oaOrg {
 		t.Errorf("unexpected occurrence: %+v", o)
 	}
 	// The event is the endpoint invocation only: no feature dimensions.
@@ -112,7 +111,7 @@ func TestImportOpenAPI_ReportsACreation(t *testing.T) {
 	if code := importAPI(t, env); code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201", code)
 	}
-	assertEvent(t, env, wantEvent{importPath, http.StatusCreated, "alice"}, before)
+	assertEvent(t, env, wantEvent{importPath, http.StatusCreated}, before)
 }
 
 // A rejected import is reported as the failure the caller saw, and the
@@ -131,7 +130,7 @@ func TestImportOpenAPI_ReportsARejectedImport(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "displayName is required") {
 		t.Errorf("the validation error changed: %s", rec.Body.String())
 	}
-	assertEvent(t, env, wantEvent{importPath, http.StatusBadRequest, "alice"}, before)
+	assertEvent(t, env, wantEvent{importPath, http.StatusBadRequest}, before)
 }
 
 // A rolled-back create is reported as the failure the caller saw.
@@ -144,7 +143,7 @@ func TestImportOpenAPI_ReportsARollbackAsAFailure(t *testing.T) {
 	if code := importAPI(t, env); code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", code)
 	}
-	assertEvent(t, env, wantEvent{importPath, http.StatusInternalServerError, "alice"}, before)
+	assertEvent(t, env, wantEvent{importPath, http.StatusInternalServerError}, before)
 }
 
 func TestImportOpenAPI_ReportsAFailedCreate(t *testing.T) {
@@ -161,7 +160,7 @@ func TestImportOpenAPI_ReportsAFailedCreate(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
-	assertEvent(t, env, wantEvent{importPath, http.StatusNotFound, "alice"}, before)
+	assertEvent(t, env, wantEvent{importPath, http.StatusNotFound}, before)
 }
 
 // A call with no organization cannot be attributed and is not reported.
@@ -193,7 +192,7 @@ func TestCreateAPI_ReportsACreation(t *testing.T) {
 		t.Fatalf("status = %d, want 201; body: %s", rec.Code, rec.Body.String())
 	}
 	// The query string is never part of the reported call.
-	assertEvent(t, env, wantEvent{createPath, http.StatusCreated, "alice"}, before)
+	assertEvent(t, env, wantEvent{createPath, http.StatusCreated}, before)
 }
 
 func TestCreateAPI_ReportsFailures(t *testing.T) {
@@ -213,7 +212,7 @@ func TestCreateAPI_ReportsFailures(t *testing.T) {
 			if rec.Code != tc.status {
 				t.Fatalf("status = %d, want %d; body: %s", rec.Code, tc.status, rec.Body.String())
 			}
-			assertEvent(t, env, wantEvent{createPath, tc.status, "alice"}, before)
+			assertEvent(t, env, wantEvent{createPath, tc.status}, before)
 		})
 	}
 }

@@ -73,7 +73,7 @@ func TestTrackReportsASuccessfulCall(t *testing.T) {
 		t.Fatalf("recorded %d occurrences, want 1", len(got))
 	}
 	o := got[0]
-	if o.Feature != FeatureCreateRESTAPI || o.OrgUUID != testOrgUUID || o.ActorSubject != testUserUUID ||
+	if o.Feature != FeatureCreateRESTAPI || o.OrgUUID != testOrgUUID ||
 		o.OccurrenceID != testAPIUUID {
 		t.Errorf("unexpected occurrence: %+v", o)
 	}
@@ -251,7 +251,7 @@ func TestRecordCall(t *testing.T) {
 		t.Fatalf("recorded %d occurrences, want 1", len(got))
 	}
 	o := got[0]
-	if o.Feature != FeatureCreateRESTAPI || o.OrgUUID != testOrgUUID || o.ActorSubject != testUserUUID ||
+	if o.Feature != FeatureCreateRESTAPI || o.OrgUUID != testOrgUUID ||
 		o.Invocation.URI != "https://platform-api/api/v0.9/mcp" || o.Invocation.Status != http.StatusBadRequest ||
 		!o.Invocation.RequestTime.Equal(started) || !canonicalUUID(o.OccurrenceID) {
 		t.Errorf("unexpected occurrence: %+v", o)

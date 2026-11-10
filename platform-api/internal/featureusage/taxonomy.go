@@ -28,7 +28,7 @@ import (
 
 // taxonomyYAML is the API Platform feature taxonomy, embedded byte-for-byte
 // from the product's taxonomy document. It is the source of truth for every
-// action name, metadata value and dimension this package sends: an occurrence
+// feature code, metadata value and dimension this package sends: an occurrence
 // is checked against it before it can leave the process, because the Moesif
 // collector proxy forwards whatever it is given and validates nothing.
 //

@@ -125,7 +125,7 @@ func deliverOne(t *testing.T, cfg config.FeatureUsage) string {
 }
 
 // The full path a deployment takes: client-credentials token from the IdP,
-// then the action posted with it through the shared, SSRF-guarded client.
+// then the event posted with it through the shared, SSRF-guarded client.
 func TestNewFromConfigDeliversThroughTheSharedClient(t *testing.T) {
 	initSharedClient(t)
 	wr := newWiring(t)
@@ -166,7 +166,7 @@ func TestNewFromConfigRefusesMetadataAddresses(t *testing.T) {
 	wr := newWiring(t)
 	logs := deliverOne(t, wr.config("http://169.254.169.254/moesif-collector"))
 	if !strings.Contains(logs, "REPORT_DROPPED") {
-		t.Errorf("want the action dropped, got: %s", logs)
+		t.Errorf("want the event dropped, got: %s", logs)
 	}
 	if strings.Contains(logs, "169.254.169.254") {
 		t.Errorf("the drop log should not echo the dialed address: %s", logs)

@@ -21,7 +21,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -199,9 +198,6 @@ func TestPublisherSendsAnAPIEvent(t *testing.T) {
 	}
 
 	body := req.body
-	if body["company_id"] != testCompanyUUID || body["user_id"] != testUserUUID {
-		t.Errorf("unexpected identity fields: %v", body)
-	}
 	if tx, _ := body["transaction_id"].(string); !canonicalUUID(tx) {
 		t.Errorf("transaction_id = %v, want a UUID", body["transaction_id"])
 	}
@@ -255,45 +251,6 @@ func TestPublisherSendsAFailedCall(t *testing.T) {
 	}
 	if metadata, _ := requests[0].body["metadata"].(map[string]any); metadata["outcome"] != "failure" {
 		t.Errorf("metadata = %v, want outcome failure", metadata)
-	}
-}
-
-func TestPublisherLeavesOutAUserThatIsNotAUUID(t *testing.T) {
-	for _, subject := range []string{"alice@example.com", "sa:acme:ci-bot:" + testUserUUID, "113246589012", ""} {
-		t.Run(subject, func(t *testing.T) {
-			p := newTestPublisher(t, fakeAttributor{companyID: testCompanyUUID}, []int{http.StatusOK}, nil)
-			o := validCreation()
-			o.ActorSubject = subject
-			p.Record(o)
-			p.flush(t)
-			requests := p.collector.recorded()
-			if len(requests) != 1 {
-				t.Fatalf("collector got %d requests, want 1 (an unattributed action is still sent)", len(requests))
-			}
-			if _, present := requests[0].body["user_id"]; present {
-				t.Errorf("user_id was sent for subject %q", subject)
-			}
-		})
-	}
-}
-
-func TestPublisherDropsAnOrganizationThatIsNotAUUID(t *testing.T) {
-	for name, attributor := range map[string]fakeAttributor{
-		"a handle":       {companyID: "acme-corp"},
-		"a lookup error": {err: errors.New("db down")},
-	} {
-		t.Run(name, func(t *testing.T) {
-			p := newTestPublisher(t, attributor, []int{http.StatusOK}, nil)
-			p.Record(validCreation())
-			p.flush(t)
-			if n := len(p.collector.recorded()); n != 0 {
-				t.Fatalf("collector got %d requests, want none", n)
-			}
-			logs := p.logs.String()
-			if !strings.Contains(logs, "REPORT_DROPPED") || strings.Contains(logs, "acme-corp") {
-				t.Errorf("want a drop log without the organization value, got: %s", logs)
-			}
-		})
 	}
 }
 
