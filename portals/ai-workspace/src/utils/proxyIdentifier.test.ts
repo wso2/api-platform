@@ -23,7 +23,9 @@ import {
   createWithUniqueId,
   buildProxyContext,
   nextProxyIdAfterFailure,
+  PROXY_NAME_ID_ERROR,
   proxyIdWithCounter,
+  proxyNameError,
   resolveUniqueProxyId,
   toProxyId,
 } from './proxyIdentifier';
@@ -268,5 +270,41 @@ describe('createWithUniqueId for agent proxies', () => {
       })
     ).rejects.toBeDefined();
     expect(calls).toBe(1);
+  });
+});
+
+describe('proxyNameError', () => {
+  it('is silent for a usable name and for one still empty', () => {
+    expect(proxyNameError('OpenAI Proxy')).toBeUndefined();
+    expect(proxyNameError('')).toBeUndefined();
+    expect(proxyNameError('   ')).toBeUndefined();
+  });
+
+  it('explains a name that has nothing an identifier can be built from', () => {
+    expect(proxyNameError('!!!')).toBe(PROXY_NAME_ID_ERROR);
+    expect(proxyNameError('代理')).toBe(PROXY_NAME_ID_ERROR);
+    expect(proxyNameError('Прокси')).toBe(PROXY_NAME_ID_ERROR);
+  });
+
+  it('accepts a name that mixes in at least one letter or digit', () => {
+    expect(proxyNameError('代理 v2')).toBeUndefined();
+  });
+});
+
+describe('createWithUniqueId with an unusable name', () => {
+  it('refuses to call create at all', async () => {
+    let calls = 0;
+    await expect(
+      createWithUniqueId({
+        displayName: '!!!',
+        takenCode: MCP_PROXY_ID_TAKEN_CODE,
+        exists: taken(),
+        create: async () => {
+          calls += 1;
+          return 'x';
+        },
+      })
+    ).rejects.toThrow(PROXY_NAME_ID_ERROR);
+    expect(calls).toBe(0);
   });
 });

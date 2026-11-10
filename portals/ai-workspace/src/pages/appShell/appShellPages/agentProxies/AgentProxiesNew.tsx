@@ -52,6 +52,7 @@ import {
   AGENT_PROXY_ID_TAKEN_CODE,
   buildProxyContext,
   createWithUniqueId,
+  proxyNameError,
   toProxyId,
 } from '../../../../utils/proxyIdentifier';
 import type {
@@ -200,6 +201,7 @@ export default function AgentProxiesNew(): React.JSX.Element {
 
   const computedContext = buildProxyContext(effectiveProjectSlug, toProxyId(agentName));
   const agentContext = agentContextOverride ?? computedContext;
+  const nameValidationError = proxyNameError(agentName);
   const versionValidationError =
     agentVersion.trim() && !AGENT_VERSION_PATTERN.test(agentVersion.trim())
       ? AGENT_VERSION_ERROR
@@ -279,7 +281,12 @@ export default function AgentProxiesNew(): React.JSX.Element {
   };
 
   const handleCreate = async () => {
-    if (!effectiveProject?.id || versionValidationError || targetValidationError)
+    if (
+      !effectiveProject?.id ||
+      nameValidationError ||
+      versionValidationError ||
+      targetValidationError
+    )
       return;
 
     const transports: A2ATransport[] = AGENT_TRANSPORT_OPTIONS.filter(
@@ -362,6 +369,7 @@ export default function AgentProxiesNew(): React.JSX.Element {
     isCreating ||
     !canCreateAgentProxy ||
     !agentName.trim() ||
+    Boolean(nameValidationError) ||
     !agentVersion.trim() ||
     Boolean(versionValidationError) ||
     !agentTarget.trim() ||
@@ -453,6 +461,7 @@ export default function AgentProxiesNew(): React.JSX.Element {
             setTransportPaths((prev) => ({ ...prev, [binding]: path }))
           }
           fieldErrors={{
+            name: nameValidationError,
             version: versionValidationError,
             target: targetValidationError,
           }}

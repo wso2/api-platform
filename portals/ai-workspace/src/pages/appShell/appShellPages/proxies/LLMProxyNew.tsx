@@ -102,6 +102,7 @@ import { buildApiKeyResourceName } from '../../../../utils/apiKeyNaming';
 import {
   buildProxyContext,
   nextProxyIdAfterFailure,
+  proxyNameError,
   toProxyId,
   type ProxyIdChoice,
 } from '../../../../utils/proxyIdentifier';
@@ -888,12 +889,14 @@ function LLMProxyNewContent({
   const isSelectedProviderApiKeyReady =
     !selectedProviderRequiresApiKey || isGeneratedKeyReady || isManualKeyReady;
 
+  const nameIdError = proxyNameError(formState.name);
   const isCreateProxyDisabled =
     // A provider described but not yet added is not on the list Create reads.
     // Creating anyway would quietly make a proxy without it, and without
     // saying so — the entered credential and translator simply gone.
     isProviderFormOpen ||
     !formState.name.trim() ||
+    Boolean(nameIdError) ||
     !formState.providerId ||
     !effectiveProject?.id ||
     !providerDetail ||
@@ -911,6 +914,7 @@ function LLMProxyNewContent({
         : 'Finish editing the open provider before creating.';
     }
     if (!formState.name.trim()) return 'Enter a name for the proxy.';
+    if (nameIdError) return nameIdError;
     if (!formState.providerId) return 'Select an LLM provider.';
     if (!effectiveProject?.id) return 'Select a project.';
     if (!providerDetail) return 'Loading the selected provider details.';
@@ -1911,8 +1915,8 @@ function LLMProxyNewContent({
                   }));
                   setFieldErrors((prev) => ({ ...prev, name: undefined }));
                 }}
-                error={Boolean(fieldErrors.name)}
-                helperText={fieldErrors.name}
+                error={Boolean(fieldErrors.name ?? nameIdError)}
+                helperText={fieldErrors.name ?? nameIdError}
                 data-cyid="proxy-name-input"
               />
             </FormControl>

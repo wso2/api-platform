@@ -36,6 +36,19 @@ const MAX_ID_COUNTER = 99;
 /** Derive a URL-safe identifier from a display name. */
 export const toProxyId = (name: string): string => toSlug(name);
 
+/** Shown when a display name has nothing the identifier can be built from. */
+export const PROXY_NAME_ID_ERROR =
+  'Use at least one letter or number (a-z, 0-9) in the name.';
+
+/**
+ * The validation message for a display name that cannot produce an identifier
+ * (for example one written only in non-Latin letters or symbols), or undefined
+ * when the name is fine or still empty. An empty name is left to the form's own
+ * required-field handling.
+ */
+export const proxyNameError = (name: string): string | undefined =>
+  name.trim() && !toProxyId(name) ? PROXY_NAME_ID_ERROR : undefined;
+
 /** The context a proxy is served under by default: /<project>/<id>. */
 export const buildProxyContext = (projectSlug: string, proxyId: string): string =>
   projectSlug ? `/${projectSlug}/${proxyId}` : `/${proxyId}`;
@@ -132,6 +145,7 @@ export const createWithUniqueId = async <T>(args: {
 }): Promise<{ result: T; choice: ProxyIdChoice }> => {
   const { displayName, create, exists, takenCode, onLookupError } = args;
   let choice: ProxyIdChoice = { id: toProxyId(displayName), n: 1 };
+  if (!choice.id) throw new Error(PROXY_NAME_ID_ERROR);
   for (let attempt = 0; ; attempt += 1) {
     try {
       return { result: await create(choice), choice };

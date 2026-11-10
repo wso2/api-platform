@@ -72,6 +72,7 @@ import {
   MCP_PROXY_ID_TAKEN_CODE,
   buildProxyContext,
   createWithUniqueId,
+  proxyNameError,
   toProxyId,
 } from '../../../../utils/proxyIdentifier';
 import { useResourceLimits } from '../../../../hooks/useResourceLimits';
@@ -86,6 +87,14 @@ const FIELD_NAME_MAP: Record<string, 'name' | 'version' | 'description' | 'conte
 };
 
 const SAMPLE_MCP_SERVER_URL = 'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-prod.e1-us-east-azure.choreoapis.dev/godzilla/mcp-everything-server/v1.0/mcp';
+
+/** Raised when the upstream auth credential could not be stored as a secret. */
+class SecretEncryptionError extends Error {
+  constructor(cause: unknown) {
+    super('Failed to encrypt upstream auth credential', { cause });
+    this.name = 'SecretEncryptionError';
+  }
+}
 
 export const MCP_VERSION_PATTERN = /^v?\d+(\.\d+)?(\.\d+)?$/;
 export const MCP_VERSION_ERROR = 'Enter a valid version (e.g., v1.0)';
@@ -236,27 +245,27 @@ export default function ExternalServersNew(): JSX.Element {
   const handleCreate = async () => {
     if (!effectiveProject?.id || !MCP_VERSION_PATTERN.test(serverVersion.trim())) return;
 
-    // Encrypt the upstream auth value as a secret so the plaintext credential is
-    // never stored in the MCP server config. Skip if already a placeholder.
-    let resolvedAuthValue = authHeaderValue.trim();
-    if (authHeaderName.trim() && resolvedAuthValue && !resolvedAuthValue.includes('{{ secret ')) {
+    // The upstream auth value is stored as a secret, never as plaintext in the MCP
+    // server config. The secret is minted per create attempt: the BFF deletes every
+    // secret a failed create referenced, so an attempt retried under a new
+    // identifier must not reuse the previous attempt's secret. Skipped when the
+    // value is already a placeholder.
+    const resolveAuthValue = async (): Promise<string> => {
+      const plain = authHeaderValue.trim();
+      if (!authHeaderName.trim() || !plain || plain.includes('{{ secret ')) return plain;
       try {
-        const secretHandle = generateSecretHandle();
-        const secretResponse = await createSecret(
-          {
-            id: secretHandle,
-            displayName: `${serverName.trim()} upstream auth`,
-            description: `Auto-generated secret for MCP server ${serverName.trim()}`,
-            value: resolvedAuthValue,
-            type: 'GENERIC',
-          },
-        );
-        resolvedAuthValue = buildSecretPlaceholder(secretResponse.id);
+        const secretResponse = await createSecret({
+          id: generateSecretHandle(),
+          displayName: `${serverName.trim()} upstream auth`,
+          description: `Auto-generated secret for MCP server ${serverName.trim()}`,
+          value: plain,
+          type: 'GENERIC',
+        });
+        return buildSecretPlaceholder(secretResponse.id);
       } catch (err) {
-        showSnackbar('Failed to encrypt upstream auth credential', 'error');
-        return;
+        throw new SecretEncryptionError(err);
       }
-    }
+    };
 
     // Trimmed and de-duplicated because this is relayed verbatim from whatever the
     // upstream reported, and the API stores it without validating anything.
@@ -268,7 +277,7 @@ export default function ExternalServersNew(): JSX.Element {
       )
     );
 
-    const payload: CreateMCPServerRequest = {
+    const buildPayload = (resolvedAuthValue: string): CreateMCPServerRequest => ({
       id: toProxyId(serverName),
       displayName: serverName.trim(),
       description: serverDescription.trim() || undefined,
@@ -318,7 +327,7 @@ export default function ExternalServersNew(): JSX.Element {
           arguments: prompt.arguments,
         })),
       },
-    };
+    });
 
     try {
       setIsCreating(true);
@@ -331,10 +340,10 @@ export default function ExternalServersNew(): JSX.Element {
         exists: (candidate) => mcpProxiesApis.mcpProxyExists(candidate, PLATFORM_API_BASE_URL),
         onLookupError: (lookupError) =>
           logger.warn('Could not look up a free MCP proxy identifier', { lookupError }),
-        create: (attempt) =>
+        create: async (attempt) =>
           mcpProxiesApis.createMCPServer(
             {
-              ...payload,
+              ...buildPayload(await resolveAuthValue()),
               id: attempt.id,
               context:
                 serverContextOverride ?? buildProxyContext(effectiveProjectSlug, attempt.id),
@@ -357,6 +366,10 @@ export default function ExternalServersNew(): JSX.Element {
         )
       );
     } catch (err) {
+      if (err instanceof SecretEncryptionError) {
+        showSnackbar('Failed to encrypt upstream auth credential', 'error');
+        return;
+      }
       const backendFieldErrors = getFieldErrors(err);
       const mappedErrors: Record<string, string> = {};
       let hasUnmapped = false;
@@ -389,8 +402,10 @@ export default function ExternalServersNew(): JSX.Element {
     serverVersion.trim() && !MCP_VERSION_PATTERN.test(serverVersion.trim())
       ? MCP_VERSION_ERROR
       : undefined;
+  const nameValidationError = proxyNameError(serverName);
   const formFieldErrors = {
     ...createFieldErrors,
+    name: nameValidationError ?? createFieldErrors.name,
     version: versionValidationError ?? createFieldErrors.version,
   };
 
@@ -398,6 +413,7 @@ export default function ExternalServersNew(): JSX.Element {
     isCreating ||
     !canCreateMcpProxy ||
     !serverName.trim() ||
+    Boolean(nameValidationError) ||
     !serverVersion.trim() ||
     Boolean(versionValidationError) ||
     !serverTarget.trim();

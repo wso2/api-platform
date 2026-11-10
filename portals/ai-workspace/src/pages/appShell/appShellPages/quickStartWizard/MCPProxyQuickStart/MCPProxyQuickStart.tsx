@@ -29,6 +29,7 @@ import {
   MCP_PROXY_ID_TAKEN_CODE,
   buildProxyContext,
   createWithUniqueId,
+  proxyNameError,
   toProxyId,
 } from '../../../../../utils/proxyIdentifier';
 import {
@@ -196,8 +197,10 @@ function MCPProxyQuickStartInner({
   const computedContext = buildProxyContext(effectiveProjectSlug, toProxyId(serverName));
   const serverContext = serverContextOverride ?? computedContext;
 
+  const nameValidationError = proxyNameError(serverName);
   const isStep2Valid =
     Boolean(serverName.trim()) &&
+    !nameValidationError &&
     Boolean(serverVersion.trim()) &&
     Boolean(serverTarget.trim()) &&
     Boolean(selectedProjectId);
@@ -396,6 +399,12 @@ function MCPProxyQuickStartInner({
         serverId = created.id;
         setCreatedServerId(serverId);
         if (choice.id !== toProxyId(serverName)) {
+          // The proxy was created under a suffixed context. Show it as the
+          // context so a later save (after a failed deploy) keeps it instead of
+          // recomputing the plain one, which belongs to the other proxy.
+          if (serverContextOverride === null) {
+            setServerContextOverride(buildProxyContext(effectiveProjectSlug, choice.id));
+          }
           showSnackbar(
             `A proxy named "${toProxyId(serverName)}" already exists, so this one was created as "${choice.id}".`,
             'info'
@@ -543,6 +552,7 @@ function MCPProxyQuickStartInner({
         selectedProjectId={selectedProjectId}
         onProjectChange={setSelectedProjectId}
         serverName={serverName}
+        nameError={nameValidationError}
         serverVersion={serverVersion}
         serverDescription={serverDescription}
         serverContext={serverContext}
