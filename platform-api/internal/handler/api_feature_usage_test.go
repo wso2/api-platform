@@ -16,7 +16,7 @@
  */
 
 // Feature-usage reporting for REST API creation: one
-// apip.manage-apis.create-rest-api event per call to a REST API creation route
+// apip.manage-apis.rest-api-create event per call to a REST API creation route
 // (POST /rest-apis, POST /rest-apis/import-openapi), successful or failed,
 // described only by the endpoint invocation: the route, the status, the
 // caller and the organization.

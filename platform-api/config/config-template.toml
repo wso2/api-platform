@@ -754,10 +754,12 @@ audience = ""
 # Feature usage: report backend feature usage to WSO2 Cloud's Moesif collector
 # proxy as Moesif API events (POST {collector_url}/v1/events): one event per
 # call to a REST API route that serves an allowlisted feature from the API
-# Platform feature taxonomy (today: apip.manage-apis.create-rest-api, from
-# POST /rest-apis and POST /rest-apis/import-openapi). Failed calls are
-# reported too, with the status they answered (response.status), so a
-# dashboard counts creations by filtering on 2xx. Calls rejected before they
+# Platform feature taxonomy (today: apip.manage-apis.rest-api-create, from
+# POST /rest-apis, POST /rest-apis/import-openapi and the MCP server's
+# create_api tool, reported under /api/v0.9/mcp). Failed calls are
+# reported too, with the status they answered (response.status) and, for a
+# feature whose taxonomy entry declares it, metadata.outcome ("success" for a
+# 2xx, "failure" otherwise), so a dashboard counts creations by either. Calls rejected before they
 # reach the route — authentication, authorization, read-only mode — are not.
 # The feature code is sent as metadata.growth_action.
 #

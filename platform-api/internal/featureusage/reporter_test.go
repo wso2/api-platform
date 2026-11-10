@@ -222,7 +222,7 @@ func TestPublisherSendsAnAPIEvent(t *testing.T) {
 	// The same metadata keys as Agent Manager's API events, and nothing else.
 	metadata, _ := body["metadata"].(map[string]any)
 	wantMetadata := map[string]any{"growth_action": FeatureCreateRESTAPI, "platform": "WSO2 API Platform",
-		"source": "api", "environment": "production"}
+		"source": "api", "environment": "production", "outcome": "success"}
 	if !reflect.DeepEqual(metadata, wantMetadata) {
 		t.Errorf("metadata = %v, want exactly %v", metadata, wantMetadata)
 	}
@@ -252,6 +252,9 @@ func TestPublisherSendsAFailedCall(t *testing.T) {
 	}
 	if response, _ := requests[0].body["response"].(map[string]any); response["status"] != float64(http.StatusConflict) {
 		t.Errorf("response = %v, want status 409", response)
+	}
+	if metadata, _ := requests[0].body["metadata"].(map[string]any); metadata["outcome"] != "failure" {
+		t.Errorf("metadata = %v, want outcome failure", metadata)
 	}
 }
 

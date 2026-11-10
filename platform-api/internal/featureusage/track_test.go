@@ -235,3 +235,45 @@ func TestTrackSkipsARequestWithoutARoutePattern(t *testing.T) {
 		t.Fatalf("recorded %d occurrences for a request with no route pattern", n)
 	}
 }
+
+// RecordCall reports work done outside a tracked route under the route that
+// was invoked, with the status the same work answers with on its REST route.
+func TestRecordCall(t *testing.T) {
+	rep := &capture{}
+	started := time.Now()
+	call := NewCall()
+	call.SetOrganization(testOrgUUID)
+	call.SetActor(testUserUUID)
+	RecordCall(rep, FeatureCreateRESTAPI, call, http.MethodPost, "/api/v0.9/mcp", http.StatusBadRequest, started)
+
+	got := rep.all()
+	if len(got) != 1 {
+		t.Fatalf("recorded %d occurrences, want 1", len(got))
+	}
+	o := got[0]
+	if o.Feature != FeatureCreateRESTAPI || o.OrgUUID != testOrgUUID || o.ActorSubject != testUserUUID ||
+		o.Invocation.URI != "https://platform-api/api/v0.9/mcp" || o.Invocation.Status != http.StatusBadRequest ||
+		!o.Invocation.RequestTime.Equal(started) || !canonicalUUID(o.OccurrenceID) {
+		t.Errorf("unexpected occurrence: %+v", o)
+	}
+	event, err := validate(mustTaxonomy(t), enabledFeatures, o, time.Now())
+	if err != nil {
+		t.Fatalf("a recorded call failed validation: %v", err)
+	}
+	if event.metadata["outcome"] != "failure" {
+		t.Errorf("outcome = %v, want failure for status 400", event.metadata["outcome"])
+	}
+}
+
+func TestRecordCallReportsNothingWithoutWhatItNeeds(t *testing.T) {
+	withOrg := func() *Call { c := NewCall(); c.SetOrganization(testOrgUUID); return c }
+	rep := &capture{}
+	RecordCall(rep, FeatureCreateRESTAPI, NewCall(), http.MethodPost, "/api/v0.9/mcp", 201, time.Now())    // no organization
+	RecordCall(rep, FeatureCreateRESTAPI, withOrg(), http.MethodPost, "api/v0.9/mcp", 201, time.Now())     // not a template path
+	RecordCall(rep, FeatureCreateRESTAPI, nil, http.MethodPost, "/api/v0.9/mcp", 201, time.Now())          // no call
+	RecordCall(nil, FeatureCreateRESTAPI, withOrg(), http.MethodPost, "/api/v0.9/mcp", 201, time.Now())    // no reporter
+	RecordCall(Noop(), FeatureCreateRESTAPI, withOrg(), http.MethodPost, "/api/v0.9/mcp", 201, time.Now()) // reporting off
+	if n := len(rep.all()); n != 0 {
+		t.Fatalf("recorded %d occurrences, want none", n)
+	}
+}

@@ -74,7 +74,10 @@ var reservedMetadataKeys = map[string]bool{
 var (
 	featureCodePattern   = regexp.MustCompile(`^[a-z0-9]+(\.[a-z0-9]+(-[a-z0-9]+)*)+$`)
 	dimensionNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
-	enumValuePattern     = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+	// An enum value is a lowercase code, hyphen- or underscore-separated; the
+	// underscore admits protocol literals such as the OAuth grant type
+	// "client_credentials".
+	enumValuePattern = regexp.MustCompile(`^[a-z0-9]+([-_][a-z0-9]+)*$`)
 )
 
 // Feature is one taxonomy entry (a feature or a sub-feature), reduced to what

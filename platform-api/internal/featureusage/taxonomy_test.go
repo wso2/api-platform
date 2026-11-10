@@ -32,9 +32,10 @@ func TestEmbeddedTaxonomyParses(t *testing.T) {
 	}
 }
 
-// REST API creation is reported as an endpoint invocation only, so its
-// taxonomy entry declares no dimensions: a required one would get every event
-// dropped, and an optional one would be a promise nothing keeps.
+// REST API creation is reported by Platform API as an endpoint invocation:
+// its taxonomy entry is API-only and declares one dimension, outcome, which
+// the reporter derives from the status. Any other dimension would have to come
+// from the request, and none is declared.
 func TestCreateRESTAPIMatchesTaxonomy(t *testing.T) {
 	tax, err := DefaultTaxonomy()
 	if err != nil {
@@ -45,11 +46,16 @@ func TestCreateRESTAPIMatchesTaxonomy(t *testing.T) {
 		t.Fatalf("%s is not in the taxonomy", FeatureCreateRESTAPI)
 	}
 	if f.EventName != f.Code || f.Name != "REST API Creation" || f.Category != "manage-apis" ||
-		f.Tier != "core" || f.EventCategory != "lifecycle" || !f.Platforms[PlatformAPI] {
+		f.Tier != "core" || f.EventCategory != "adoption" || !f.Platforms[PlatformAPI] || f.Platforms[PlatformWeb] {
 		t.Errorf("unexpected taxonomy entry: %+v", f)
 	}
-	if len(f.Dimensions) != 0 {
-		t.Errorf("dimensions = %v, want none", f.Dimensions)
+	if len(f.Dimensions) != 1 {
+		t.Fatalf("dimensions = %v, want only outcome", f.Dimensions)
+	}
+	outcome, ok := f.Dimensions[dimOutcome]
+	if !ok || outcome.Type != DimensionEnum || !outcome.Required ||
+		len(outcome.Values) != 2 || !outcome.Values["success"] || !outcome.Values["failure"] {
+		t.Errorf("outcome = %+v, want a required enum of success and failure", outcome)
 	}
 }
 
@@ -79,6 +85,8 @@ func TestParseTaxonomyRejectsMalformedDocuments(t *testing.T) {
 		"unsupported type":        header + feature("apip.x.y", "        - name: \"n\"\n          type: \"integer\"\n"),
 		"enum without values":     header + feature("apip.x.y", "        - name: \"n\"\n          type: \"enum\"\n"),
 		"malformed enum value":    header + feature("apip.x.y", "        - name: \"n\"\n          type: \"enum\"\n          values: [\"Has Space\"]\n"),
+		"upper-case enum value":   header + feature("apip.x.y", "        - name: \"n\"\n          type: \"enum\"\n          values: [\"Client_Credentials\"]\n"),
+		"enum value with a dot":   header + feature("apip.x.y", "        - name: \"n\"\n          type: \"enum\"\n          values: [\"a.b\"]\n"),
 		"duplicate code":          header + feature("apip.x.y", "        []\n") + feature("apip.x.y", "        []\n"),
 		"code outside product":    header + feature("other.x.y", "        []\n"),
 		"malformed code":          header + feature("apip.X_Y", "        []\n"),

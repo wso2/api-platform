@@ -744,6 +744,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	cfg.Auth.SkipPaths = append(cfg.Auth.SkipPaths, wiring.authSkipPaths...)
 
 	// The MCP server checks scopes per tool.
+	// The feature-usage reporter is built last (below); the MCP server looks it
+	// up on every tool call, as the REST handlers do.
+	var featureUsage featureusage.Reporter
 	var mcpWrap func(http.Handler) http.Handler
 	if cfg.MCPServer.Enabled {
 		var mcpSkipPaths []string
@@ -757,6 +760,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			Identity:    identityService,
 			Logger:      slogger,
 			PluginTools: wiring.mcpTools,
+			FeatureUsage: func() featureusage.Reporter {
+				return featureUsage
+			},
 
 			LLMProviders:           llmProviderService,
 			LLMProviderDeployments: llmProviderDeploymentService,
@@ -956,7 +962,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// running; no request is served before Start, so nothing is missed. It
 	// comes before the success markers below, so a failure here still stops
 	// the plugins and releases what startServing acquired.
-	featureUsage, err := featureusage.NewFromConfig(cfg.FeatureUsage,
+	featureUsage, err = featureusage.NewFromConfig(cfg.FeatureUsage,
 		service.NewFeatureUsageAttributor(orgRepo), slogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize feature usage reporting: %w", err)

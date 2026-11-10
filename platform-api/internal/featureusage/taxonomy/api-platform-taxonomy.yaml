@@ -96,8 +96,8 @@ features:
   # MANAGE APIS
   # ============================================================
 
-  - code: "apip.manage-apis.api-creation-wizard"
-    name: "API Creation Wizard"
+  - code: "apip.manage-apis.api-creation-wizard-open"
+    name: "API Creation Wizard Open"
     description: "Open the console's wizard that creates REST and GraphQL APIs."
     category: "manage-apis"
     tier: "core"
@@ -105,7 +105,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.manage-apis.api-creation-wizard"
+      event_name: "apip.manage-apis.api-creation-wizard-open"
       event_category: "discovery"
       platforms: ["web"]
       dimensions:
@@ -113,235 +113,626 @@ features:
           type: "enum"
           values: ["api-list", "api-list-empty-state", "org-home", "project-quick-actions", "direct"]
           required: true
-          description: "The control that opened the wizard; direct for a typed URL or a reload."
       aggregations:
         - type: "count"
-          label: "API Creation Wizard Opens"
-    sub_features:
-      - code: "apip.manage-apis.api-creation-wizard.select-api-type"
-        name: "API Type Selection"
-        description: "Continue past the wizard's API type step."
-        category: "manage-apis"
-        tier: "core"
-        status: "stable"
-        availability:
-          introduced_in: "0.9.0"
-        tracking:
-          event_name: "apip.manage-apis.api-creation-wizard.select-api-type"
-          event_category: "engagement"
-          platforms: ["web"]
-          dimensions:
-            - name: "api_type"
-              type: "enum"
-              values: ["rest-api", "graphql-api"]
-              required: true
-          aggregations:
-            - type: "count"
-              label: "API Types Selected"
-      - code: "apip.manage-apis.api-creation-wizard.select-creation-method"
-        name: "API Creation Method Selection"
-        description: "Continue past the wizard's definition step, starting from scratch or from a contract (an OpenAPI document or a GraphQL schema)."
-        category: "manage-apis"
-        tier: "core"
-        status: "stable"
-        availability:
-          introduced_in: "0.9.0"
-        tracking:
-          event_name: "apip.manage-apis.api-creation-wizard.select-creation-method"
-          event_category: "engagement"
-          platforms: ["web"]
-          dimensions:
-            - name: "api_type"
-              type: "enum"
-              values: ["rest-api", "graphql-api"]
-              required: true
-            - name: "creation_method"
-              type: "enum"
-              values: ["scratch", "contract"]
-              required: true
-              description: "scratch: a backend endpoint (REST) or schema introspection (GraphQL); contract: an imported OpenAPI document or GraphQL schema."
-          aggregations:
-            - type: "count"
-              label: "Creation Methods Selected"
-            - type: "count_distinct"
-              label: "Distinct Creation Methods Used"
-              dimension: "creation_method"
+          label: "API Creation Wizard Open"
 
-  - code: "apip.manage-apis.create-rest-api"
-    name: "REST API Creation"
-    description: "Create a REST API in the console, with the CLI, or through the Platform API, from scratch or by importing an OpenAPI contract."
+  - code: "apip.manage-apis.api-creation-wizard-api-type-select"
+    name: "API Type Selection"
+    description: "Continue past the wizard's API type step."
     category: "manage-apis"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.manage-apis.create-rest-api"
-      event_category: "adoption"
-      platforms: ["web", "api"]
-      aggregations:
-        - type: "count"
-          label: "REST APIs Created"
-
-  - code: "apip.manage-apis.create-graphql-api"
-    name: "GraphQL API Creation"
-    description: "Create a GraphQL API from scratch, by introspecting its backend, or from an SDL schema supplied inline, by URL, or as a file."
-    category: "manage-apis"
-    tier: "core"
-    status: "stable"
-    availability:
-      introduced_in: "0.9.0"
-    tracking:
-      event_name: "apip.manage-apis.create-graphql-api"
-      event_category: "adoption"
-      platforms: ["web", "api"]
+      event_name: "apip.manage-apis.api-creation-wizard-api-type-select"
+      event_category: "engagement"
+      platforms: ["web"]
       dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "API Type Selection"
+
+  - code: "apip.manage-apis.api-creation-wizard-creation-method-select"
+    name: "API Creation Method Selection"
+    description: "Continue past the wizard's definition step, starting from scratch or from a contract (an OpenAPI document or a GraphQL schema)."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-creation-wizard-creation-method-select"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
         - name: "creation_method"
           type: "enum"
           values: ["scratch", "contract"]
           required: true
-          description: "scratch: the schema was introspected from the backend; contract: an SDL schema was supplied."
+      aggregations:
+        - type: "count"
+          label: "API Creation Method Selection"
+
+  - code: "apip.manage-apis.rest-api-create"
+    name: "REST API Creation"
+    description: "Create a REST API, from a definition (POST /rest-apis, CreateRESTAPI), by importing an OpenAPI document (POST /rest-apis/import-openapi, ImportOpenAPI), or with the MCP server's create_api tool. Emitted by Platform API."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.rest-api-create"
+      event_category: "adoption"
+      platforms: ["api"]
+      dimensions:
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "REST API Creation"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.manage-apis.rest-api-create-click"
+    name: "REST API Creation Click"
+    description: "Click Create in the wizard for a REST API, from scratch or from an imported OpenAPI contract. Emitted by the console."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.rest-api-create-click"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions:
         - name: "contract_source"
           type: "enum"
-          values: ["url", "file", "inline"]
+          values: ["url", "file"]
           required: false
-          description: "How the schema was supplied; sent only when creation_method is contract. The console offers url and file."
+        - name: "creation_method"
+          type: "enum"
+          values: ["scratch", "contract"]
+          required: true
       aggregations:
         - type: "count"
-          label: "GraphQL APIs Created"
-        - type: "count_distinct"
-          label: "Distinct Creation Methods Used"
-          dimension: "creation_method"
+          label: "REST API Creation Click"
 
-  - code: "apip.manage-apis.update-api"
-    name: "API Update"
-    description: "Update a REST or GraphQL API: its details, its backend endpoint, or (REST) its OpenAPI definition."
+  - code: "apip.manage-apis.graphql-api-create"
+    name: "GraphQL API Creation"
+    description: "Create a GraphQL API (POST /graphql-apis, CreateGraphQLAPI). Emitted by Platform API."
     category: "manage-apis"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.manage-apis.update-api"
-      event_category: "lifecycle"
-      platforms: ["web", "api"]
+      event_name: "apip.manage-apis.graphql-api-create"
+      event_category: "adoption"
+      platforms: ["api"]
       dimensions:
-        - name: "api_type"
+        - name: "schema_source"
           type: "enum"
-          values: ["rest-api", "graphql-api"]
+          values: ["inline", "url", "file", "introspection"]
           required: true
-        - name: "part"
+          description: "How the schema was supplied (request metadata.schemaSource)."
+        - name: "outcome"
           type: "enum"
-          values: ["metadata", "endpoint", "definition"]
+          values: ["success", "failure"]
           required: true
-          description: "What was updated: the name, version, context and description; the backend endpoint; or the OpenAPI definition."
+          description: "success for a 2xx response, failure otherwise."
       aggregations:
         - type: "count"
-          label: "API Updates"
+          label: "GraphQL API Creation"
         - type: "count_distinct"
-          label: "Distinct Parts Updated"
-          dimension: "part"
+          label: "Outcomes"
+          dimension: "outcome"
 
-  - code: "apip.manage-apis.delete-api"
-    name: "API Deletion"
-    description: "Delete a REST or GraphQL API."
+  - code: "apip.manage-apis.graphql-api-create-click"
+    name: "GraphQL API Creation Click"
+    description: "Click Create in the wizard for a GraphQL API, from scratch (introspecting its backend) or from a supplied SDL schema. Emitted by the console."
     category: "manage-apis"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.manage-apis.delete-api"
-      event_category: "lifecycle"
-      platforms: ["web", "api"]
-      dimensions:
-        - name: "api_type"
-          type: "enum"
-          values: ["rest-api", "graphql-api"]
-          required: true
-      aggregations:
-        - type: "count"
-          label: "APIs Deleted"
-
-  - code: "apip.manage-apis.validate-api-contract"
-    name: "API Contract Validation"
-    description: "Validate an OpenAPI document or GraphQL schema before creating or updating an API."
-    category: "manage-apis"
-    tier: "core"
-    status: "stable"
-    availability:
-      introduced_in: "0.9.0"
-    tracking:
-      event_name: "apip.manage-apis.validate-api-contract"
+      event_name: "apip.manage-apis.graphql-api-create-click"
       event_category: "engagement"
-      platforms: ["web", "api"]
+      platforms: ["web"]
+      dimensions:
+        - name: "contract_source"
+          type: "enum"
+          values: ["url", "file"]
+          required: false
+        - name: "creation_method"
+          type: "enum"
+          values: ["scratch", "contract"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "GraphQL API Creation Click"
+
+  - code: "apip.manage-apis.api-update"
+    name: "API Update"
+    description: "Update a REST or GraphQL API, including its policies (PUT /rest-apis/{id}, UpdateRESTAPI; PUT /graphql-apis/{id}, UpdateGraphQLAPI). Emitted by Platform API."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-update"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "API Update"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.manage-apis.api-update-click"
+    name: "API Details Update Click"
+    description: "Save the edited name, version, context and description of a REST or GraphQL API. Emitted by the console."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-update-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "API Details Update Click"
+
+  - code: "apip.manage-apis.api-endpoint-update-click"
+    name: "API Endpoint Update Click"
+    description: "Save a new backend endpoint for a REST or GraphQL API from its overview. Emitted by the console."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-endpoint-update-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "API Endpoint Update Click"
+
+  - code: "apip.manage-apis.api-definition-update"
+    name: "OpenAPI Definition Update"
+    description: "Replace the OpenAPI definition of a REST API (PUT /rest-apis/{id}/openapi, UpdateRESTAPISpec). Emitted by Platform API."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-definition-update"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "OpenAPI Definition Update"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.manage-apis.api-definition-update-click"
+    name: "OpenAPI Definition Update Click"
+    description: "Confirm a replaced or edited OpenAPI definition of a REST API. Emitted by the console."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-definition-update-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "OpenAPI Definition Update Click"
+
+  - code: "apip.manage-apis.api-delete"
+    name: "API Deletion"
+    description: "Delete a REST or GraphQL API (DeleteRESTAPI, DeleteGraphQLAPI). Emitted by Platform API."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-delete"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "API Deletion"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.manage-apis.api-delete-click"
+    name: "API Deletion Click"
+    description: "Confirm the deletion of a REST or GraphQL API. Emitted by the console."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-delete-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "API Deletion Click"
+
+  - code: "apip.manage-apis.api-contract-validate"
+    name: "API Contract Validation"
+    description: "Validate an OpenAPI document or a GraphQL schema (ValidateOpenAPISpec, ValidateGraphQLSchema). Emitted by Platform API."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-contract-validate"
+      event_category: "engagement"
+      platforms: ["api"]
       dimensions:
         - name: "contract_type"
           type: "enum"
           values: ["openapi", "graphql-schema"]
           required: true
-        - name: "is_valid"
-          type: "boolean"
+        - name: "contract_source"
+          type: "enum"
+          values: ["url", "file", "inline", "introspection"]
           required: false
-          description: "Whether the contract passed validation."
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
       aggregations:
         - type: "count"
-          label: "Contract Validations"
+          label: "API Contract Validation"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
 
-  - code: "apip.manage-apis.api-documentation"
-    name: "API Documentation"
-    description: "Add, update, or delete documents attached to an API."
+  - code: "apip.manage-apis.api-document-create"
+    name: "API Document Creation"
+    description: "Create an API document (CreateAPIDocument). Emitted by Platform API."
     category: "manage-apis"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.manage-apis.api-documentation"
+      event_name: "apip.manage-apis.api-document-create"
       event_category: "lifecycle"
-      platforms: ["web", "api"]
+      platforms: ["api"]
       dimensions:
-        - name: "operation"
-          type: "enum"
-          values: ["create", "update", "delete"]
-          required: true
         - name: "api_type"
           type: "enum"
-          values: ["rest-api", "graphql-api", "mcp-proxy"]
+          values: ["rest-api", "graphql-api"]
+          required: true
+        - name: "document_type"
+          type: "enum"
+          values: ["how-to", "samples", "public-forum", "support-forum", "other"]
+          required: false
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "API Document Creation"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.manage-apis.api-document-create-click"
+    name: "API Document Creation Click"
+    description: "Create a document attached to an API. Emitted by the console."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-document-create-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
           required: false
         - name: "document_type"
           type: "enum"
           values: ["how-to", "samples", "public-forum", "support-forum", "other"]
           required: false
-          description: "The document's type; a custom name given to an 'other' document is never sent."
       aggregations:
         - type: "count"
-          label: "Documentation Changes"
+          label: "API Document Creation Click"
 
-  - code: "apip.manage-apis.api-thumbnail"
-    name: "API Thumbnail"
-    description: "Upload, replace, or delete the thumbnail shown for an API."
+  - code: "apip.manage-apis.api-document-update"
+    name: "API Document Update"
+    description: "Update an API document (UpdateAPIDocument). Emitted by Platform API."
     category: "manage-apis"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.manage-apis.api-thumbnail"
+      event_name: "apip.manage-apis.api-document-update"
       event_category: "lifecycle"
-      platforms: ["web", "api"]
+      platforms: ["api"]
       dimensions:
-        - name: "operation"
+        - name: "api_type"
           type: "enum"
-          values: ["upsert", "delete"]
+          values: ["rest-api", "graphql-api"]
           required: true
+        - name: "document_type"
+          type: "enum"
+          values: ["how-to", "samples", "public-forum", "support-forum", "other"]
+          required: false
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "API Document Update"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.manage-apis.api-document-update-click"
+    name: "API Document Update Click"
+    description: "Save changes to a document attached to an API. Emitted by the console."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-document-update-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: false
+        - name: "document_type"
+          type: "enum"
+          values: ["how-to", "samples", "public-forum", "support-forum", "other"]
+          required: false
+      aggregations:
+        - type: "count"
+          label: "API Document Update Click"
+
+  - code: "apip.manage-apis.api-document-delete"
+    name: "API Document Deletion"
+    description: "Delete an API document (DeleteAPIDocument). Emitted by Platform API."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-document-delete"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "API Document Deletion"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.manage-apis.api-document-delete-click"
+    name: "API Document Deletion Click"
+    description: "Confirm the deletion of a document attached to an API. Emitted by the console."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-document-delete-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: false
+        - name: "document_type"
+          type: "enum"
+          values: ["how-to", "samples", "public-forum", "support-forum", "other"]
+          required: false
+      aggregations:
+        - type: "count"
+          label: "API Document Deletion Click"
+
+  - code: "apip.manage-apis.api-thumbnail-upload"
+    name: "API Thumbnail Upload"
+    description: "Upload or replace an API thumbnail (PUT /apis/{apiType}/{id}/thumbnail, UpsertAPIThumbnail). Emitted by Platform API."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-thumbnail-upload"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "API Thumbnail Upload"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.manage-apis.api-thumbnail-upload-click"
+    name: "API Thumbnail Upload Click"
+    description: "Upload or replace the thumbnail shown for an API. Emitted by the console."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-thumbnail-upload-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
           required: false
       aggregations:
         - type: "count"
-          label: "Thumbnail Changes"
+          label: "API Thumbnail Upload Click"
+
+  - code: "apip.manage-apis.api-thumbnail-remove"
+    name: "API Thumbnail Removal"
+    description: "Remove an API thumbnail (DeleteAPIThumbnail). Emitted by Platform API."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-thumbnail-remove"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "API Thumbnail Removal"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.manage-apis.api-thumbnail-remove-click"
+    name: "API Thumbnail Removal Click"
+    description: "Confirm the removal of an API's thumbnail. Emitted by the console."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-thumbnail-remove-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: false
+      aggregations:
+        - type: "count"
+          label: "API Thumbnail Removal Click"
 
   - code: "apip.manage-apis.api-gateway-association"
     name: "API-to-Gateway Association"
@@ -364,8 +755,8 @@ features:
         - type: "count"
           label: "Gateway Associations"
 
-  - code: "apip.manage-apis.test-console"
-    name: "Test Console"
+  - code: "apip.manage-apis.test-console-execute"
+    name: "Test Console Execution"
     description: "Invoke a deployed API from the console's test console, directly from the browser or relayed by the console server."
     category: "manage-apis"
     tier: "core"
@@ -373,7 +764,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.manage-apis.test-console"
+      event_name: "apip.manage-apis.test-console-execute"
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
@@ -394,50 +785,74 @@ features:
       aggregations:
         - type: "count"
           label: "Test Console Invocations"
-    sub_features:
-      - code: "apip.manage-apis.test-console.copy-curl"
-        name: "cURL Command Copy"
-        description: "Copy the cURL command built in the test console's cURL view."
-        category: "manage-apis"
-        tier: "core"
-        status: "stable"
-        availability:
-          introduced_in: "0.9.0"
-        tracking:
-          event_name: "apip.manage-apis.test-console.copy-curl"
-          event_category: "engagement"
-          platforms: ["web"]
-          dimensions:
-            - name: "api_type"
-              type: "enum"
-              values: ["rest-api"]
-              required: true
-          aggregations:
-            - type: "count"
-              label: "cURL Commands Copied"
+
+  - code: "apip.manage-apis.test-console-curl-copy"
+    name: "cURL Command Copy"
+    description: "Copy the cURL command built in the test console's cURL view."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.test-console-curl-copy"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "cURL Command Copy"
+
+  - code: "apip.manage-apis.api-test-invoke"
+    name: "API Test Invocation"
+    description: "Invoke a deployed API through the console's relay (POST /gateway-relay/invoke, InvokeRESTAPIOnGateway). Emitted by Platform API."
+    category: "manage-apis"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.manage-apis.api-test-invoke"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions:
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "API Test Invocation"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
 
   # ============================================================
   # GATEWAY
   # ============================================================
 
-  - code: "apip.gateway.register-gateway"
+  - code: "apip.gateway.gateway-register"
     name: "Gateway Registration"
-    description: "Register a gateway with the control plane so APIs can be deployed to it."
+    description: "Register a gateway (POST /gateways, CreateGateway). Emitted by Platform API."
     category: "gateway"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.gateway.register-gateway"
+      event_name: "apip.gateway.gateway-register"
       event_category: "lifecycle"
-      platforms: ["web", "api"]
+      platforms: ["api"]
       dimensions:
         - name: "gateway_type"
           type: "enum"
           values: ["regular", "ai", "event"]
           required: true
-          description: "Regular (API), AI, or event gateway."
         - name: "gateway_hosting"
           type: "enum"
           values: ["managed", "self-hosted"]
@@ -446,60 +861,136 @@ features:
           type: "boolean"
           required: false
           description: "Whether the gateway was marked critical."
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
       aggregations:
         - type: "count"
-          label: "Gateways Registered"
+          label: "Gateway Registration"
         - type: "count_distinct"
-          label: "Distinct Gateway Types Registered"
-          dimension: "gateway_type"
+          label: "Outcomes"
+          dimension: "outcome"
 
-  - code: "apip.gateway.manage-gateway"
-    name: "Gateway Update & Deletion"
-    description: "Update or delete a registered gateway."
+  - code: "apip.gateway.gateway-register-click"
+    name: "Gateway Registration Click"
+    description: "Provision (register) a gateway with the control plane. Emitted by the console."
     category: "gateway"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.gateway.manage-gateway"
+      event_name: "apip.gateway.gateway-register-click"
       event_category: "lifecycle"
-      platforms: ["web", "api"]
+      platforms: ["web"]
       dimensions:
-        - name: "operation"
+        - name: "gateway_hosting"
           type: "enum"
-          values: ["update", "delete"]
+          values: ["managed", "self-hosted"]
+          required: false
+        - name: "gateway_type"
+          type: "enum"
+          values: ["regular", "ai", "event"]
           required: true
+      aggregations:
+        - type: "count"
+          label: "Gateway Registration Click"
+
+  - code: "apip.gateway.gateway-update"
+    name: "Gateway Update"
+    description: "Update a gateway (PUT /gateways/{id}, UpdateGateway). Emitted by Platform API."
+    category: "gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.gateway.gateway-update"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "gateway_type"
+          type: "enum"
+          values: ["regular", "ai", "event"]
+          required: false
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "Gateway Update"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.gateway.gateway-update-click"
+    name: "Gateway Update Click"
+    description: "Save a gateway's edited name and description. Emitted by the console."
+    category: "gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.gateway.gateway-update-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
         - name: "gateway_type"
           type: "enum"
           values: ["regular", "ai", "event"]
           required: false
       aggregations:
         - type: "count"
-          label: "Gateway Changes"
+          label: "Gateway Update Click"
 
-  - code: "apip.gateway.gateway-token"
-    name: "Gateway Registration Token"
-    description: "Rotate or revoke the token a gateway uses to connect to the control plane."
+  - code: "apip.gateway.gateway-token-regenerate"
+    name: "Gateway Token Regeneration"
+    description: "Rotate a gateway's registration token (rotateGatewayToken). Emitted by Platform API."
     category: "gateway"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.gateway.gateway-token"
+      event_name: "apip.gateway.gateway-token-regenerate"
       event_category: "lifecycle"
-      platforms: ["web", "api"]
+      platforms: ["api"]
       dimensions:
-        - name: "operation"
+        - name: "outcome"
           type: "enum"
-          values: ["rotate", "revoke"]
+          values: ["success", "failure"]
           required: true
+          description: "success for a 2xx response, failure otherwise."
       aggregations:
         - type: "count"
-          label: "Token Changes"
+          label: "Gateway Token Regeneration"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
 
-  - code: "apip.gateway.copy-setup-command"
+  - code: "apip.gateway.gateway-token-regenerate-click"
+    name: "Gateway Token Regeneration Click"
+    description: "Confirm the generation of a new registration token for a gateway, which revokes the old one. Emitted by the console."
+    category: "gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.gateway.gateway-token-regenerate-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Gateway Token Regeneration Click"
+
+  - code: "apip.gateway.gateway-setup-command-copy"
     name: "Gateway Setup Command Copy"
     description: "Copy a command from a self-hosted gateway's setup instructions in the console."
     category: "gateway"
@@ -508,7 +999,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.gateway.copy-setup-command"
+      event_name: "apip.gateway.gateway-setup-command-copy"
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
@@ -592,7 +1083,7 @@ features:
   # POLICIES
   # ============================================================
 
-  - code: "apip.policies.client-authentication"
+  - code: "apip.policies.client-authentication-attach"
     name: "Client Authentication"
     description: "Authenticate API clients with API keys, basic credentials, JWTs, client certificates, or opaque-token introspection."
     category: "policies"
@@ -601,7 +1092,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.policies.client-authentication"
+      event_name: "apip.policies.client-authentication-attach"
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
@@ -627,7 +1118,7 @@ features:
           label: "Distinct Policies Used"
           dimension: "policy_name"
 
-  - code: "apip.policies.backend-authentication"
+  - code: "apip.policies.backend-authentication-attach"
     name: "Backend Authentication"
     description: "Authenticate the gateway to backends with a generated JWT, AWS request signing, OAuth2 client credentials, or token exchange."
     category: "policies"
@@ -636,7 +1127,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.policies.backend-authentication"
+      event_name: "apip.policies.backend-authentication-attach"
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
@@ -662,7 +1153,7 @@ features:
           label: "Distinct Policies Used"
           dimension: "policy_name"
 
-  - code: "apip.policies.access-control"
+  - code: "apip.policies.access-control-attach"
     name: "Subscription Validation"
     description: "Authorize calls by validating the caller's subscription."
     category: "policies"
@@ -671,7 +1162,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.policies.access-control"
+      event_name: "apip.policies.access-control-attach"
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
@@ -689,7 +1180,7 @@ features:
         - type: "count"
           label: "Subscription Validation Applied"
 
-  - code: "apip.policies.rate-limiting"
+  - code: "apip.policies.rate-limiting-attach"
     name: "Rate Limiting"
     description: "Limit request rates with the basic or advanced rate-limit policy."
     category: "policies"
@@ -698,7 +1189,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.policies.rate-limiting"
+      event_name: "apip.policies.rate-limiting-attach"
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
@@ -724,7 +1215,7 @@ features:
           label: "Distinct Policies Used"
           dimension: "policy_name"
 
-  - code: "apip.policies.traffic-routing"
+  - code: "apip.policies.traffic-routing-attach"
     name: "Traffic Routing"
     description: "Route requests to a dynamic endpoint or redirect them."
     category: "policies"
@@ -733,7 +1224,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.policies.traffic-routing"
+      event_name: "apip.policies.traffic-routing-attach"
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
@@ -759,8 +1250,8 @@ features:
           label: "Distinct Policies Used"
           dimension: "policy_name"
 
-  - code: "apip.policies.transformation"
-    name: "Request & Response Transformation"
+  - code: "apip.policies.transformation-attach"
+    name: "Transformation"
     description: "Set or remove headers, rewrite requests and hosts, convert between JSON and XML, or return a fixed response."
     category: "policies"
     tier: "core"
@@ -768,7 +1259,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.policies.transformation"
+      event_name: "apip.policies.transformation-attach"
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
@@ -794,7 +1285,7 @@ features:
           label: "Distinct Policies Used"
           dimension: "policy_name"
 
-  - code: "apip.policies.content-validation"
+  - code: "apip.policies.content-validation-attach"
     name: "Content Validation"
     description: "Validate message content by JSON schema, regular expression, length, URL, word, or sentence count."
     category: "policies"
@@ -803,7 +1294,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.policies.content-validation"
+      event_name: "apip.policies.content-validation-attach"
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
@@ -829,7 +1320,7 @@ features:
           label: "Distinct Policies Used"
           dimension: "policy_name"
 
-  - code: "apip.policies.cors"
+  - code: "apip.policies.cors-attach"
     name: "CORS"
     description: "Apply cross-origin resource sharing rules to an API."
     category: "policies"
@@ -838,7 +1329,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.policies.cors"
+      event_name: "apip.policies.cors-attach"
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
@@ -856,7 +1347,7 @@ features:
         - type: "count"
           label: "CORS Policies Applied"
 
-  - code: "apip.policies.interception"
+  - code: "apip.policies.interception-attach"
     name: "Interception & Logging"
     description: "Call an external interceptor service or log messages as they pass through the gateway."
     category: "policies"
@@ -865,7 +1356,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.policies.interception"
+      event_name: "apip.policies.interception-attach"
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
@@ -891,8 +1382,8 @@ features:
           label: "Distinct Policies Used"
           dimension: "policy_name"
 
-  - code: "apip.policies.analytics-filtering"
-    name: "Analytics Header Filtering"
+  - code: "apip.policies.analytics-filtering-attach"
+    name: "Analytics Filtering"
     description: "Exclude chosen headers from analytics events."
     category: "policies"
     tier: "core"
@@ -900,7 +1391,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.policies.analytics-filtering"
+      event_name: "apip.policies.analytics-filtering-attach"
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
@@ -939,7 +1430,7 @@ features:
         - type: "count"
           label: "Custom Policy Changes"
 
-  - code: "apip.policies.browse-policies"
+  - code: "apip.policies.policy-hub-browse"
     name: "Policy Hub Browsing"
     description: "Browse and search the policies available in the Policy Hub from the console."
     category: "policies"
@@ -948,7 +1439,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.policies.browse-policies"
+      event_name: "apip.policies.policy-hub-browse"
       event_category: "discovery"
       platforms: ["web"]
       dimensions:
@@ -961,7 +1452,7 @@ features:
         - type: "count"
           label: "Policy Hub Browsing Sessions"
 
-  - code: "apip.policies.view-gateway-policies"
+  - code: "apip.policies.gateway-policies-view"
     name: "Gateway Policies View"
     description: "View the policies available on a gateway."
     category: "policies"
@@ -970,7 +1461,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.policies.view-gateway-policies"
+      event_name: "apip.policies.gateway-policies-view"
       event_category: "discovery"
       platforms: ["web"]
       dimensions: []
@@ -982,59 +1473,126 @@ features:
   # SECURITY
   # ============================================================
 
-  - code: "apip.security.api-key-issuance"
-    name: "API Key Issuance"
-    description: "Issue an API key for an API, including the short-lived keys the test console creates."
+  - code: "apip.security.api-key-create"
+    name: "API Key Creation"
+    description: "Create an API key (CreateAPIKey, CreateGraphQLAPIKey). Emitted by Platform API."
     category: "security"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.security.api-key-issuance"
+      event_name: "apip.security.api-key-create"
       event_category: "lifecycle"
-      platforms: ["web", "api"]
+      platforms: ["api"]
       dimensions:
         - name: "artifact_kind"
           type: "enum"
-          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "agent-proxy"]
+          values: ["rest-api", "graphql-api"]
           required: true
-        - name: "key_purpose"
+        - name: "outcome"
           type: "enum"
-          values: ["production", "test"]
+          values: ["success", "failure"]
           required: true
-          description: "Test keys are the console's short-lived keys."
+          description: "success for a 2xx response, failure otherwise."
       aggregations:
         - type: "count"
-          label: "API Keys Issued"
+          label: "API Key Creation"
         - type: "count_distinct"
-          label: "Distinct API Kinds with Keys"
-          dimension: "artifact_kind"
+          label: "Outcomes"
+          dimension: "outcome"
 
-  - code: "apip.security.api-key-management"
-    name: "API Key Update & Revocation"
-    description: "Update or revoke an API key."
+  - code: "apip.security.api-key-create-click"
+    name: "API Key Creation Click"
+    description: "Create an API key for an API. Emitted by the console."
     category: "security"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.security.api-key-management"
+      event_name: "apip.security.api-key-create-click"
       event_category: "lifecycle"
-      platforms: ["web", "api"]
+      platforms: ["web"]
       dimensions:
         - name: "artifact_kind"
           type: "enum"
-          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "agent-proxy"]
-          required: true
-        - name: "operation"
-          type: "enum"
-          values: ["update", "revoke"]
+          values: ["rest-api", "graphql-api"]
           required: true
       aggregations:
         - type: "count"
-          label: "API Key Changes"
+          label: "API Key Creation Click"
+
+  - code: "apip.security.test-api-key-generate-click"
+    name: "Test API Key Generation Click"
+    description: "Get a short-lived test API key in the test console (Get Test API Key, or Issue a new key in the cURL view). The key minted automatically on page load is not counted. Emitted by the console."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.test-api-key-generate-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Test API Key Generation Click"
+
+  - code: "apip.security.api-key-revoke"
+    name: "API Key Revocation"
+    description: "Revoke an API key (RevokeAPIKey, RevokeGraphQLAPIKey). Emitted by Platform API."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.api-key-revoke"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "API Key Revocation"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.security.api-key-revoke-click"
+    name: "API Key Revocation Click"
+    description: "Confirm the revocation of an API key. Emitted by the console."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.api-key-revoke-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "API Key Revocation Click"
 
   - code: "apip.security.secrets-management"
     name: "Secrets Management"
@@ -1057,26 +1615,258 @@ features:
         - type: "count"
           label: "Secret Changes"
 
-  - code: "apip.security.service-accounts"
-    name: "Service Accounts"
-    description: "Create, update, enable, disable, or delete a service account, regenerate its secret, or issue a test token with its credentials."
+  - code: "apip.security.service-account-create"
+    name: "Service Account Creation"
+    description: "Create a service account (createServiceAccount). Emitted by Platform API."
     category: "security"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.security.service-accounts"
+      event_name: "apip.security.service-account-create"
       event_category: "lifecycle"
-      platforms: ["web", "api"]
+      platforms: ["api"]
       dimensions:
-        - name: "operation"
+        - name: "outcome"
           type: "enum"
-          values: ["create", "update", "enable", "disable", "delete", "regenerate-secret", "issue-test-token"]
+          values: ["success", "failure"]
           required: true
+          description: "success for a 2xx response, failure otherwise."
       aggregations:
         - type: "count"
-          label: "Service Account Changes"
+          label: "Service Account Creation"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.security.service-account-create-click"
+    name: "Service Account Creation Click"
+    description: "Create a service account. Emitted by the console."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.service-account-create-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Service Account Creation Click"
+
+  - code: "apip.security.service-account-update"
+    name: "Service Account Update"
+    description: "Update a service account, including enabling or disabling it (updateServiceAccount). Emitted by Platform API."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.service-account-update"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "status"
+          type: "enum"
+          values: ["active", "disabled"]
+          required: false
+          description: "The status in the request, when it sets one."
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "Service Account Update"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.security.service-account-update-click"
+    name: "Service Account Update Click"
+    description: "Save changes to a service account. Emitted by the console."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.service-account-update-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Service Account Update Click"
+
+  - code: "apip.security.service-account-enable-click"
+    name: "Service Account Enabling Click"
+    description: "Enable a disabled service account. Emitted by the console."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.service-account-enable-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Service Account Enabling Click"
+
+  - code: "apip.security.service-account-disable-click"
+    name: "Service Account Disabling Click"
+    description: "Confirm disabling a service account. Emitted by the console."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.service-account-disable-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Service Account Disabling Click"
+
+  - code: "apip.security.service-account-delete"
+    name: "Service Account Deletion"
+    description: "Delete a service account (deleteServiceAccount). Emitted by Platform API."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.service-account-delete"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "Service Account Deletion"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.security.service-account-delete-click"
+    name: "Service Account Deletion Click"
+    description: "Confirm the deletion of a service account. Emitted by the console."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.service-account-delete-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Service Account Deletion Click"
+
+  - code: "apip.security.service-account-secret-regenerate"
+    name: "Service Account Secret Regeneration"
+    description: "Regenerate a service account's secret (regenerateServiceAccountSecret). Emitted by Platform API."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.service-account-secret-regenerate"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "Service Account Secret Regeneration"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.security.service-account-secret-regenerate-click"
+    name: "Service Account Secret Regeneration Click"
+    description: "Confirm the regeneration of a service account's secret. Emitted by the console."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.service-account-secret-regenerate-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Service Account Secret Regeneration Click"
+
+  - code: "apip.security.service-account-test-token-get-click"
+    name: "Service Account Test Token Click"
+    description: "Get a test token with a service account's credentials. Emitted by the console."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.service-account-test-token-get-click"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Service Account Test Token Click"
+
+  - code: "apip.security.service-account-token-issue"
+    name: "Service Account Token Issue"
+    description: "Issue a token with a service account's credentials (issueServiceAccountToken). Emitted by Platform API."
+    category: "security"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.security.service-account-token-issue"
+      event_category: "engagement"
+      platforms: ["api"]
+      dimensions:
+        - name: "grant_type"
+          type: "enum"
+          values: ["client_credentials"]
+          required: true
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "Service Account Token Issue"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
 
   - code: "apip.security.mtls"
     name: "Mutual TLS (mTLS)"
@@ -1149,71 +1939,236 @@ features:
         - type: "count"
           label: "Artifact Builds"
 
-  - code: "apip.lifecycle.deploy-api"
-    name: "Artifact Deployment"
-    description: "Deploy an API or other artifact to a gateway."
+  - code: "apip.lifecycle.api-deploy"
+    name: "API Deployment"
+    description: "Deploy an API to a gateway (DeployAPI, DeployGraphQLAPI). Emitted by Platform API."
     category: "lifecycle"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.lifecycle.deploy-api"
+      event_name: "apip.lifecycle.api-deploy"
       event_category: "adoption"
-      platforms: ["web", "api"]
+      platforms: ["api"]
       dimensions:
         - name: "artifact_kind"
           type: "enum"
-          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          values: ["rest-api", "graphql-api"]
           required: true
-        - name: "gateway_type"
+        - name: "outcome"
           type: "enum"
-          values: ["regular", "ai", "event"]
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "API Deployment"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.lifecycle.api-deploy-click"
+    name: "API Deployment Click"
+    description: "Deploy an API to a gateway. Emitted by the console."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.api-deploy-click"
+      event_category: "engagement"
+      platforms: ["web"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
           required: true
         - name: "gateway_hosting"
           type: "enum"
           values: ["managed", "self-hosted"]
           required: false
-        - name: "has_endpoint_override"
-          type: "boolean"
-          required: false
-          description: "A custom host was supplied for the deployment."
+        - name: "gateway_type"
+          type: "enum"
+          values: ["regular", "ai", "event"]
+          required: true
       aggregations:
         - type: "count"
-          label: "Deployments"
-        - type: "count_distinct"
-          label: "Distinct Gateway Types Deployed To"
-          dimension: "gateway_type"
+          label: "API Deployment Click"
 
-  - code: "apip.lifecycle.manage-deployment"
-    name: "Deployment Management"
-    description: "Undeploy a deployment from a gateway, restore (redeploy) an earlier deployment, or delete a deployment record."
+  - code: "apip.lifecycle.deployment-undeploy"
+    name: "Deployment Undeploy"
+    description: "Undeploy a deployment (UndeployDeployment, UndeployGraphQLAPIDeployment). Emitted by Platform API."
     category: "lifecycle"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.lifecycle.manage-deployment"
+      event_name: "apip.lifecycle.deployment-undeploy"
       event_category: "lifecycle"
-      platforms: ["web", "api"]
+      platforms: ["api"]
       dimensions:
         - name: "artifact_kind"
           type: "enum"
-          values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
+          values: ["rest-api", "graphql-api"]
           required: true
-        - name: "operation"
+        - name: "outcome"
           type: "enum"
-          values: ["undeploy", "restore", "delete"]
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "Deployment Undeploy"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.lifecycle.deployment-undeploy-click"
+    name: "Deployment Stop Click"
+    description: "Stop (undeploy) the current deployment on a gateway. Emitted by the console."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.deployment-undeploy-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
           required: true
       aggregations:
         - type: "count"
-          label: "Deployment Operations"
-        - type: "count_distinct"
-          label: "Distinct Deployment Operations"
-          dimension: "operation"
+          label: "Deployment Stop Click"
 
-  - code: "apip.lifecycle.view-deployment-history"
+  - code: "apip.lifecycle.deployment-redeploy-click"
+    name: "Deployment Redeploy Click"
+    description: "Redeploy a gateway's current deployment after it stopped or failed. Emitted by the console."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.deployment-redeploy-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Deployment Redeploy Click"
+
+  - code: "apip.lifecycle.deployment-restore"
+    name: "Deployment Restore"
+    description: "Restore (redeploy) a deployment (RestoreDeployment, RestoreGraphQLAPIDeployment). Emitted by Platform API."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.deployment-restore"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "Deployment Restore"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.lifecycle.deployment-restore-click"
+    name: "Deployment Restore Click"
+    description: "Restore an earlier deployment chosen from a gateway's deployments. Emitted by the console."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.deployment-restore-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Deployment Restore Click"
+
+  - code: "apip.lifecycle.deployment-delete"
+    name: "Deployment Deletion"
+    description: "Delete a deployment record (DeleteDeployment, DeleteGraphQLAPIDeployment). Emitted by Platform API."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.deployment-delete"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "Deployment Deletion"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.lifecycle.deployment-delete-click"
+    name: "Deployment Deletion Click"
+    description: "Delete a deployment record from the deployment history. Emitted by the console."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.deployment-delete-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "artifact_kind"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Deployment Deletion Click"
+
+  - code: "apip.lifecycle.deployment-history-view"
     name: "Deployment History View"
     description: "View the deployment history of an API."
     category: "lifecycle"
@@ -1222,7 +2177,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.lifecycle.view-deployment-history"
+      event_name: "apip.lifecycle.deployment-history-view"
       event_category: "discovery"
       platforms: ["web"]
       dimensions:
@@ -1234,80 +2189,225 @@ features:
         - type: "count"
           label: "Deployment History Views"
 
-  - code: "apip.lifecycle.publish-api"
+  - code: "apip.lifecycle.api-publish"
     name: "API Publication"
-    description: "Publish an API or MCP server to the API Portal & MCP Hub."
+    description: "Publish an API to an API Portal (publishRestApiToApiPortal, publishGraphQLApiToApiPortal). Emitted by Platform API."
     category: "lifecycle"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.lifecycle.publish-api"
+      event_name: "apip.lifecycle.api-publish"
       event_category: "adoption"
-      platforms: ["web", "api"]
+      platforms: ["api"]
       dimensions:
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api", "mcp-proxy"]
           required: true
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
       aggregations:
         - type: "count"
-          label: "APIs Published"
+          label: "API Publication"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
 
-  - code: "apip.lifecycle.manage-publication"
-    name: "Publication Management"
-    description: "Unpublish an API from the API Portal, or mark it as deprecated there."
+  - code: "apip.lifecycle.api-publish-click"
+    name: "API Publication Click"
+    description: "Publish (or republish) an API to an API Portal. Emitted by the console."
     category: "lifecycle"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.lifecycle.manage-publication"
-      event_category: "lifecycle"
-      platforms: ["web", "api"]
+      event_name: "apip.lifecycle.api-publish-click"
+      event_category: "engagement"
+      platforms: ["web"]
       dimensions:
         - name: "api_type"
           type: "enum"
-          values: ["rest-api", "graphql-api", "mcp-proxy"]
-          required: true
-        - name: "operation"
-          type: "enum"
-          values: ["unpublish", "deprecate"]
+          values: ["rest-api", "graphql-api"]
           required: true
       aggregations:
         - type: "count"
-          label: "Publication Changes"
+          label: "API Publication Click"
 
-  - code: "apip.lifecycle.publication-draft"
-    name: "Publication Draft"
-    description: "Save the metadata, definition, landing page, or thumbnail of a publication before publishing it."
+  - code: "apip.lifecycle.api-unpublish"
+    name: "API Unpublication"
+    description: "Unpublish an API from an API Portal (unpublish*FromApiPortal). Emitted by Platform API."
     category: "lifecycle"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.lifecycle.publication-draft"
+      event_name: "apip.lifecycle.api-unpublish"
       event_category: "lifecycle"
-      platforms: ["web", "api"]
+      platforms: ["api"]
       dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "mcp-proxy"]
+          required: true
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "API Unpublication"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.lifecycle.api-unpublish-click"
+    name: "API Unpublication Click"
+    description: "Confirm unpublishing an API from an API Portal. Emitted by the console."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.api-unpublish-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "API Unpublication Click"
+
+  - code: "apip.lifecycle.api-deprecate"
+    name: "API Deprecation"
+    description: "Deprecate an API on an API Portal (deprecate*OnApiPortal). Emitted by Platform API."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.api-deprecate"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "mcp-proxy"]
+          required: true
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "API Deprecation"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.lifecycle.api-deprecate-click"
+    name: "API Deprecation Click"
+    description: "Confirm marking a published API as deprecated in an API Portal. Emitted by the console."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.api-deprecate-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "API Deprecation Click"
+
+  - code: "apip.lifecycle.publication-draft-save"
+    name: "Publication Draft Save"
+    description: "Save one part of a portal publication draft (saveApiPublicationDraft, …Definition, …Thumbnail, …LandingPage). Emitted by Platform API."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.publication-draft-save"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api", "mcp-proxy"]
+          required: true
         - name: "draft_part"
           type: "enum"
-          values: ["metadata", "definition", "landing-page", "thumbnail"]
+          values: ["metadata", "definition", "thumbnail", "landing-page"]
           required: true
-          description: "The part saved. One Save Draft emits one event per part it saves."
-        - name: "api_type"
+          description: "The part saved, from the request path."
+        - name: "outcome"
           type: "enum"
-          values: ["rest-api", "graphql-api", "mcp-proxy"]
-          required: false
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
       aggregations:
         - type: "count"
-          label: "Publication Drafts Saved"
+          label: "Publication Draft Save"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
 
-  - code: "apip.lifecycle.open-api-portal"
-    name: "API Portal Opened"
+  - code: "apip.lifecycle.publication-draft-save-click"
+    name: "Publication Draft Save Click"
+    description: "Save Draft on an API's portal publication. The details are always saved; the flags say which other parts were saved. Emitted by the console."
+    category: "lifecycle"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.lifecycle.publication-draft-save-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "api_type"
+          type: "enum"
+          values: ["rest-api", "graphql-api"]
+          required: false
+        - name: "definition_saved"
+          type: "enum"
+          values: ["yes", "no"]
+          required: true
+        - name: "landing_page_changed"
+          type: "enum"
+          values: ["yes", "no"]
+          required: true
+        - name: "thumbnail_changed"
+          type: "enum"
+          values: ["yes", "no"]
+          required: true
+      aggregations:
+        - type: "count"
+          label: "Publication Draft Save Click"
+
+  - code: "apip.lifecycle.api-portal-open"
+    name: "API Portal Open"
     description: "Open a published API's page in the API Portal from the console."
     category: "lifecycle"
     tier: "core"
@@ -1315,7 +2415,7 @@ features:
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.lifecycle.open-api-portal"
+      event_name: "apip.lifecycle.api-portal-open"
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
@@ -2101,47 +3201,283 @@ features:
   # MONETIZATION
   # ============================================================
 
-  - code: "apip.monetization.subscription-plan-management"
-    name: "Subscription Plan Management"
-    description: "Create, update, activate, deactivate, or delete a subscription plan."
+  - code: "apip.monetization.subscription-plan-create"
+    name: "Subscription Plan Creation"
+    description: "Create a subscription plan (CreateSubscriptionPlan). Emitted by Platform API."
     category: "monetization"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.monetization.subscription-plan-management"
+      event_name: "apip.monetization.subscription-plan-create"
       event_category: "lifecycle"
-      platforms: ["web", "api"]
+      platforms: ["api"]
       dimensions:
-        - name: "operation"
+        - name: "outcome"
           type: "enum"
-          values: ["create", "update", "activate", "deactivate", "delete"]
+          values: ["success", "failure"]
           required: true
+          description: "success for a 2xx response, failure otherwise."
       aggregations:
         - type: "count"
-          label: "Plan Changes"
+          label: "Subscription Plan Creation"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
 
-  - code: "apip.monetization.meter-management"
-    name: "Meter Management"
-    description: "Create, update, or delete a usage meter."
+  - code: "apip.monetization.subscription-plan-create-click"
+    name: "Subscription Plan Creation Click"
+    description: "Create a subscription plan. Emitted by the console."
     category: "monetization"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.monetization.meter-management"
+      event_name: "apip.monetization.subscription-plan-create-click"
       event_category: "lifecycle"
-      platforms: ["web", "api"]
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Subscription Plan Creation Click"
+
+  - code: "apip.monetization.subscription-plan-update"
+    name: "Subscription Plan Update"
+    description: "Update a subscription plan, including its status (UpdateSubscriptionPlan). Emitted by Platform API."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.subscription-plan-update"
+      event_category: "lifecycle"
+      platforms: ["api"]
       dimensions:
-        - name: "operation"
+        - name: "status"
           type: "enum"
-          values: ["create", "update", "delete"]
+          values: ["active", "inactive"]
+          required: false
+          description: "The status in the request, when it sets one."
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "Subscription Plan Update"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.monetization.subscription-plan-update-click"
+    name: "Subscription Plan Update Click"
+    description: "Save changes to a subscription plan. Emitted by the console."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.subscription-plan-update-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Subscription Plan Update Click"
+
+  - code: "apip.monetization.subscription-plan-status-change-click"
+    name: "Subscription Plan Status Change Click"
+    description: "Switch a subscription plan active or inactive. Emitted by the console."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.subscription-plan-status-change-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions:
+        - name: "status"
+          type: "enum"
+          values: ["active", "inactive"]
           required: true
       aggregations:
         - type: "count"
-          label: "Meter Changes"
+          label: "Subscription Plan Status Change Click"
+
+  - code: "apip.monetization.subscription-plan-delete"
+    name: "Subscription Plan Deletion"
+    description: "Delete a subscription plan (DeleteSubscriptionPlan). Emitted by Platform API."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.subscription-plan-delete"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "Subscription Plan Deletion"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.monetization.subscription-plan-delete-click"
+    name: "Subscription Plan Deletion Click"
+    description: "Confirm the deletion of a subscription plan. Emitted by the console."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.subscription-plan-delete-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Subscription Plan Deletion Click"
+
+  - code: "apip.monetization.meter-create"
+    name: "Meter Creation"
+    description: "Create a usage meter (CreateMeter). Emitted by Platform API."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.meter-create"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "Meter Creation"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.monetization.meter-create-click"
+    name: "Meter Creation Click"
+    description: "Create a usage meter. Emitted by the console."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.meter-create-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Meter Creation Click"
+
+  - code: "apip.monetization.meter-update"
+    name: "Meter Update"
+    description: "Update a usage meter (UpdateMeter). Emitted by Platform API."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.meter-update"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "Meter Update"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.monetization.meter-update-click"
+    name: "Meter Update Click"
+    description: "Save changes to a usage meter. Emitted by the console."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.meter-update-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Meter Update Click"
+
+  - code: "apip.monetization.meter-delete"
+    name: "Meter Deletion"
+    description: "Delete a usage meter (DeleteMeter). Emitted by Platform API."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.meter-delete"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "Meter Deletion"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.monetization.meter-delete-click"
+    name: "Meter Deletion Click"
+    description: "Confirm the deletion of a usage meter. Emitted by the console."
+    category: "monetization"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.monetization.meter-delete-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Meter Deletion Click"
 
   - code: "apip.monetization.billing-configuration"
     name: "Billing Configuration"
@@ -2240,26 +3576,89 @@ features:
         - type: "count"
           label: "Organizations Registered"
 
-  - code: "apip.admin.manage-projects"
-    name: "Project Management"
-    description: "Create, update, or delete a project that groups APIs."
+  - code: "apip.admin.project-create"
+    name: "Project Creation"
+    description: "Create a project (CreateProject). Emitted by Platform API."
     category: "admin"
     tier: "core"
     status: "stable"
     availability:
       introduced_in: "0.9.0"
     tracking:
-      event_name: "apip.admin.manage-projects"
+      event_name: "apip.admin.project-create"
       event_category: "lifecycle"
-      platforms: ["web", "api"]
+      platforms: ["api"]
       dimensions:
-        - name: "operation"
+        - name: "outcome"
           type: "enum"
-          values: ["create", "update", "delete"]
+          values: ["success", "failure"]
           required: true
+          description: "success for a 2xx response, failure otherwise."
       aggregations:
         - type: "count"
-          label: "Project Changes"
+          label: "Project Creation"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.admin.project-create-click"
+    name: "Project Creation Click"
+    description: "Create a project. Emitted by the console."
+    category: "admin"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.admin.project-create-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Project Creation Click"
+
+  - code: "apip.admin.project-delete"
+    name: "Project Deletion"
+    description: "Delete a project (DeleteProject). Emitted by Platform API."
+    category: "admin"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.admin.project-delete"
+      event_category: "lifecycle"
+      platforms: ["api"]
+      dimensions:
+        - name: "outcome"
+          type: "enum"
+          values: ["success", "failure"]
+          required: true
+          description: "success for a 2xx response, failure otherwise."
+      aggregations:
+        - type: "count"
+          label: "Project Deletion"
+        - type: "count_distinct"
+          label: "Outcomes"
+          dimension: "outcome"
+
+  - code: "apip.admin.project-delete-click"
+    name: "Project Deletion Click"
+    description: "Confirm the deletion of a project. Emitted by the console."
+    category: "admin"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.admin.project-delete-click"
+      event_category: "lifecycle"
+      platforms: ["web"]
+      dimensions: []
+      aggregations:
+        - type: "count"
+          label: "Project Deletion Click"
 
   # ============================================================
   # AI GATEWAY

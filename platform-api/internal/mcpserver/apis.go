@@ -20,11 +20,16 @@ package mcpserver
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/featureusage"
+	"github.com/wso2/api-platform/platform-api/pdk"
 )
 
 // The API tools. Each serves every API type in apiTypes; apiType picks one.
@@ -137,7 +142,9 @@ type createAPIIn struct {
 
 func (s *Server) createAPI(ctx context.Context, c caller, in createAPIIn) (apiOut, error) {
 	t := in.apiType()
+	started := time.Now()
 	o, err := s.backend.createAPI(ctx, c, t, in.Payload)
+	s.reportCreation(t, c, err, started)
 	if err != nil {
 		return apiOut{}, err
 	}
@@ -350,4 +357,39 @@ func str(o object, key string) string {
 		return fmt.Sprint(v)
 	}
 	return ""
+}
+
+// reportCreation reports a REST API created with create_api as the same
+// feature as the REST creation routes (apip.manage-apis.rest-api-create),
+// successful or failed. The event names the endpoint actually called, POST
+// /api/v0.9/mcp, so MCP creations stay distinguishable from REST ones, and
+// carries the status the REST route would have answered: the MCP response
+// itself is a 200 even when the tool fails. A failure the model caused before
+// the tool ran (a scope it lacks) is not reported, as on the REST routes.
+func (s *Server) reportCreation(t *apiType, c caller, err error, started time.Time) {
+	if s.featureUsage == nil || t.name != "rest-api" {
+		return
+	}
+	call := featureusage.NewCall()
+	call.SetOrganization(c.org)
+	call.SetActor(c.subject)
+	featureusage.RecordCall(s.featureUsage(), featureusage.FeatureCreateRESTAPI, call,
+		http.MethodPost, Path, statusOf(err), started)
+}
+
+// statusOf is the HTTP status the REST route answers with for err: 201 for a
+// creation, the error's own status for a Platform API error, 500 otherwise.
+func statusOf(err error) int {
+	if err == nil {
+		return http.StatusCreated
+	}
+	var ae *apperror.Error
+	if errors.As(err, &ae) && ae.HTTPStatus != 0 {
+		return ae.HTTPStatus
+	}
+	var ce *pdk.ClientError
+	if errors.As(err, &ce) && ce != nil && ce.Status != 0 {
+		return ce.Status
+	}
+	return http.StatusInternalServerError
 }

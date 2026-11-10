@@ -21,6 +21,7 @@ import (
 	"context"
 	"maps"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -176,4 +177,28 @@ func Track(reporter func() Reporter, feature string, dimensions map[string]any, 
 			rep.Record(o)
 		}
 	})
+}
+
+// NewCall returns an empty Call for work that does not go through a tracked
+// route, such as an MCP tool call. Report it with RecordCall once the work is
+// done.
+func NewCall() *Call {
+	return &Call{dimensions: map[string]any{}}
+}
+
+// RecordCall reports call as one occurrence of feature, for work that did not
+// go through a tracked route. method and route name the endpoint that was
+// invoked, route as its template (for an MCP tool, POST /api/v0.9/mcp), and
+// status is the HTTP status the same work answers with on its REST route, so
+// a failure is reported as one even when the endpoint itself answered 200.
+// Nothing is reported when rep is nil or off, when route is not a template
+// path, or when the call has no organization.
+func RecordCall(rep Reporter, feature string, call *Call, method, route string, status int, started time.Time) {
+	if _, off := rep.(noop); rep == nil || off || call == nil || !strings.HasPrefix(route, "/") {
+		return
+	}
+	inv := Invocation{Method: method, URI: reportedOrigin + route, Status: status, RequestTime: started}
+	if o, ok := call.occurrence(feature, inv); ok {
+		rep.Record(o)
+	}
 }

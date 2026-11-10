@@ -77,6 +77,7 @@ func TestValidateBuildsTaxonomyMetadata(t *testing.T) {
 		"growth_action": FeatureCreateRESTAPI,
 		"platform":      "WSO2 API Platform",
 		"source":        "api",
+		"outcome":       "success",
 	}
 	if !reflect.DeepEqual(event.metadata, want) {
 		t.Errorf("metadata = %v, want %v", event.metadata, want)
@@ -105,6 +106,34 @@ func TestValidateAcceptsFailedCalls(t *testing.T) {
 		if event.invocation.Status != status {
 			t.Errorf("status = %d, want %d", event.invocation.Status, status)
 		}
+		if event.metadata["outcome"] != "failure" {
+			t.Errorf("outcome = %v for status %d, want failure", event.metadata["outcome"], status)
+		}
+	}
+}
+
+// outcome comes from the status alone: a value the occurrence carries is
+// replaced, and a feature that does not declare outcome never gets one.
+func TestOutcomeComesFromTheStatus(t *testing.T) {
+	for status, want := range map[int]string{200: "success", 201: "success", 299: "success", 302: "failure", 400: "failure", 500: "failure"} {
+		o := validCreation()
+		o.Invocation.Status = status
+		o.Dimensions["outcome"] = "success"
+		event, err := validate(mustTaxonomy(t), enabledFeatures, o, time.Now())
+		if err != nil {
+			t.Fatalf("status %d rejected: %v", status, err)
+		}
+		if event.metadata["outcome"] != want {
+			t.Errorf("outcome = %v for status %d, want %s", event.metadata["outcome"], status, want)
+		}
+	}
+	if o := validCreation(); len(o.Dimensions) != 0 {
+		t.Fatal("validCreation must not carry dimensions")
+	}
+	o := validCreation()
+	before := len(o.Dimensions)
+	if _, err := validate(mustTaxonomy(t), enabledFeatures, o, time.Now()); err != nil || len(o.Dimensions) != before {
+		t.Errorf("validate changed the occurrence's own dimensions (err %v)", err)
 	}
 }
 
@@ -212,6 +241,9 @@ features:
 	}
 	if event.metadata["target"] != "gateway" || event.metadata["first_deployment"] != true {
 		t.Errorf("metadata = %v, want the dimensions in it", event.metadata)
+	}
+	if _, present := event.metadata["outcome"]; present {
+		t.Errorf("metadata = %v; a feature that declares no outcome must not get one", event.metadata)
 	}
 	if _, err := validate(tax, enabled, occurrence(map[string]any{"target": "portal"}), time.Now()); err != nil {
 		t.Errorf("an optional dimension must be omittable: %v", err)

@@ -61,7 +61,7 @@ func NewAPIHandler(apiService *service.APIService, identity *service.IdentitySer
 }
 
 // SetFeatureUsageReporter injects the reporter that records each call to a
-// REST API creation route (apip.manage-apis.create-rest-api) as a Moesif API
+// REST API creation route (apip.manage-apis.rest-api-create) as a Moesif API
 // event, successful or failed. Without one, nothing is recorded.
 func (h *APIHandler) SetFeatureUsageReporter(r featureusage.Reporter) {
 	h.featureUsage = r

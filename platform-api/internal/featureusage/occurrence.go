@@ -19,6 +19,7 @@ package featureusage
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 	"time"
 
@@ -35,7 +36,7 @@ import (
 //
 // There is deliberately no field for a name, an email, a handle or free text.
 type Occurrence struct {
-	// Feature is the taxonomy code, e.g. "apip.manage-apis.create-rest-api".
+	// Feature is the taxonomy code, e.g. "apip.manage-apis.rest-api-create".
 	// It is sent as metadata.growth_action.
 	Feature string
 	// OrgUUID is the platform organization UUID. It is mapped to Moesif's
@@ -122,8 +123,9 @@ func validate(tax *Taxonomy, enabled map[string]bool, o Occurrence, now time.Tim
 		return nil, reject("%s", err.Error())
 	}
 
-	metadata := make(map[string]any, len(o.Dimensions)+3)
-	for name, value := range o.Dimensions {
+	dimensions := withOutcome(feature, o.Dimensions, invocation.Status)
+	metadata := make(map[string]any, len(dimensions)+3)
+	for name, value := range dimensions {
 		dim, declared := feature.Dimensions[name]
 		if !declared {
 			return nil, reject("dimension %q is not declared by the taxonomy", name)
@@ -149,7 +151,7 @@ func validate(tax *Taxonomy, enabled map[string]bool, o Occurrence, now time.Tim
 		metadata[name] = value
 	}
 	for name, dim := range feature.Dimensions {
-		if _, present := o.Dimensions[name]; dim.Required && !present {
+		if _, present := dimensions[name]; dim.Required && !present {
 			return nil, reject("required dimension %q is missing", name)
 		}
 	}
@@ -182,4 +184,26 @@ func canonicalUUID(s string) bool {
 	}
 	_, err := uuid.Parse(s)
 	return err == nil
+}
+
+// dimOutcome is the dimension the response decides rather than the request.
+const dimOutcome = "outcome"
+
+// withOutcome returns dims with the outcome dimension set from the call's
+// status when the feature's taxonomy entry declares one: "success" for a 2xx,
+// "failure" otherwise. The status is the only source, so outcome can never
+// disagree with response.status. dims itself is not modified.
+func withOutcome(feature *Feature, dims map[string]any, status int) map[string]any {
+	if _, declared := feature.Dimensions[dimOutcome]; !declared {
+		return dims
+	}
+	out := maps.Clone(dims)
+	if out == nil {
+		out = map[string]any{}
+	}
+	out[dimOutcome] = "failure"
+	if status >= 200 && status <= 299 {
+		out[dimOutcome] = "success"
+	}
+	return out
 }

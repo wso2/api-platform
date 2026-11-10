@@ -19,9 +19,10 @@ package featureusage
 
 // FeatureCreateRESTAPI is the taxonomy code for REST API creation ("REST API
 // Creation"). It is reported once per call to a REST API route that creates
-// an API — POST /rest-apis and POST /rest-apis/import-openapi — whether the
-// call succeeded or failed; the event's response status tells which.
-const FeatureCreateRESTAPI = "apip.manage-apis.create-rest-api"
+// an API — POST /rest-apis and POST /rest-apis/import-openapi — and once per
+// REST API created with the MCP server's create_api tool, whether the
+// creation succeeded or failed; the event's status and outcome tell which.
+const FeatureCreateRESTAPI = "apip.manage-apis.rest-api-create"
 
 // enabledFeatures is the explicit allowlist of taxonomy features this process
 // reports. A code missing from it is refused even if the taxonomy has it, so
