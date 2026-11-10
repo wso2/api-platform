@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import { toSlug } from './slug';
+
 /**
  * The identifier an API key is created under, derived from what it is called.
  *
@@ -25,12 +27,7 @@
  * rather than sending an empty one.
  */
 export const buildApiKeyResourceName = (displayName: string): string => {
-  const normalised = displayName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return normalised || 'api-key';
+  return toSlug(displayName) || 'api-key';
 };
 
 export default buildApiKeyResourceName;

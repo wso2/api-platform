@@ -67,6 +67,13 @@ import ExternalServersCreateForm from './ExternalServersCreateForm';
 import ExternalServersValidationDetails from './ExternalServersValidationDetails';
 import type { EndpointValidationResponse } from './externalServersValidationTypes';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
+import { logger } from '../../../../utils/logger';
+import {
+  MCP_PROXY_ID_TAKEN_CODE,
+  buildProxyContext,
+  createWithUniqueId,
+  toProxyId,
+} from '../../../../utils/proxyIdentifier';
 import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
 // Backend field names (from CreateMCPServerRequest) mapped onto this form's state keys.
@@ -79,14 +86,6 @@ const FIELD_NAME_MAP: Record<string, 'name' | 'version' | 'description' | 'conte
 };
 
 const SAMPLE_MCP_SERVER_URL = 'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-prod.e1-us-east-azure.choreoapis.dev/godzilla/mcp-everything-server/v1.0/mcp';
-
-function generateServerId(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
 
 export const MCP_VERSION_PATTERN = /^v?\d+(\.\d+)?(\.\d+)?$/;
 export const MCP_VERSION_ERROR = 'Enter a valid version (e.g., v1.0)';
@@ -270,7 +269,7 @@ export default function ExternalServersNew(): JSX.Element {
     );
 
     const payload: CreateMCPServerRequest = {
-      id: generateServerId(serverName),
+      id: toProxyId(serverName),
       displayName: serverName.trim(),
       description: serverDescription.trim() || undefined,
       version: normalizeVersion(serverVersion.trim()),
@@ -324,8 +323,32 @@ export default function ExternalServersNew(): JSX.Element {
     try {
       setIsCreating(true);
       setCreateFieldErrors({});
-      const created = await mcpProxiesApis.createMCPServer(payload, PLATFORM_API_BASE_URL);
+      // Names may repeat, identifiers may not: on a clash the create is re-run
+      // under the next free identifier, and the default context follows it.
+      const { result: created, choice } = await createWithUniqueId({
+        displayName: serverName,
+        takenCode: MCP_PROXY_ID_TAKEN_CODE,
+        exists: (candidate) => mcpProxiesApis.mcpProxyExists(candidate, PLATFORM_API_BASE_URL),
+        onLookupError: (lookupError) =>
+          logger.warn('Could not look up a free MCP proxy identifier', { lookupError }),
+        create: (attempt) =>
+          mcpProxiesApis.createMCPServer(
+            {
+              ...payload,
+              id: attempt.id,
+              context:
+                serverContextOverride ?? buildProxyContext(effectiveProjectSlug, attempt.id),
+            },
+            PLATFORM_API_BASE_URL
+          ),
+      });
       showSnackbar('Successfully created MCP Proxy.', 'success');
+      if (choice.id !== toProxyId(serverName)) {
+        showSnackbar(
+          `A proxy named "${toProxyId(serverName)}" already exists, so this one was created as "${choice.id}".`,
+          'info'
+        );
+      }
       navigate(
         buildProjectPath(
           currentOrganization,
@@ -360,9 +383,7 @@ export default function ExternalServersNew(): JSX.Element {
   };
 
   const effectiveProjectSlug = getProjectSlug(effectiveProject);
-  const computedContext = effectiveProjectSlug
-    ? `/${effectiveProjectSlug}/${generateServerId(serverName)}`
-    : `/${generateServerId(serverName)}`;
+  const computedContext = buildProxyContext(effectiveProjectSlug, toProxyId(serverName));
   const serverContext = serverContextOverride ?? computedContext;
   const versionValidationError =
     serverVersion.trim() && !MCP_VERSION_PATTERN.test(serverVersion.trim())

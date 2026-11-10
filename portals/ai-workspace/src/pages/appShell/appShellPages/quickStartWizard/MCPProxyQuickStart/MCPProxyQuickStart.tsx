@@ -24,6 +24,13 @@ import { useMCPServerValidation, MCPServerValidationProvider } from '../../../..
 import { useAppShell } from '../../../../../contexts/AppShellContext';
 import { useAIWorkspaceSnackbar } from '../../../../../hooks/aiWorkspaceSnackbar';
 import { mcpProxiesApis } from '../../../../../apis/MCP/mcpProxiesApis';
+import { logger } from '../../../../../utils/logger';
+import {
+  MCP_PROXY_ID_TAKEN_CODE,
+  buildProxyContext,
+  createWithUniqueId,
+  toProxyId,
+} from '../../../../../utils/proxyIdentifier';
 import {
   deployMCPServer,
   getMCPServerDeployment,
@@ -108,14 +115,6 @@ async function deployMcpServerToGateway(
   };
 }
 
-function generateServerId(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
 function normalizeVersion(version: string): string {
   const stripped = version.replace(/^v/i, '');
   const parts = stripped.split('.');
@@ -194,9 +193,7 @@ function MCPProxyQuickStartInner({
     projectsForCurrentOrganization.find((p) => p.id === selectedProjectId) ?? null;
 
   const effectiveProjectSlug = getProjectSlug(selectedProject);
-  const computedContext = effectiveProjectSlug
-    ? `/${effectiveProjectSlug}/${generateServerId(serverName)}`
-    : `/${generateServerId(serverName)}`;
+  const computedContext = buildProxyContext(effectiveProjectSlug, toProxyId(serverName));
   const serverContext = serverContextOverride ?? computedContext;
 
   const isStep2Valid =
@@ -376,16 +373,34 @@ function MCPProxyQuickStartInner({
           PLATFORM_API_BASE_URL
         );
       } else {
-        const created = await mcpProxiesApis.createMCPServer(
-          {
-            id: generateServerId(serverName),
-            mcpSpecVersion: '2025-06-18',
-            ...commonFields,
-          },
-          PLATFORM_API_BASE_URL
-        );
+        // Names may repeat, identifiers may not: on a clash the create is re-run
+        // under the next free identifier, and the default context follows it.
+        const { result: created, choice } = await createWithUniqueId({
+          displayName: serverName,
+          takenCode: MCP_PROXY_ID_TAKEN_CODE,
+          exists: (candidate) => mcpProxiesApis.mcpProxyExists(candidate, PLATFORM_API_BASE_URL),
+          onLookupError: (lookupError) =>
+            logger.warn('Could not look up a free MCP proxy identifier', { lookupError }),
+          create: (attempt) =>
+            mcpProxiesApis.createMCPServer(
+              {
+                id: attempt.id,
+                mcpSpecVersion: '2025-06-18',
+                ...commonFields,
+                context:
+                  serverContextOverride ?? buildProxyContext(effectiveProjectSlug, attempt.id),
+              },
+              PLATFORM_API_BASE_URL
+            ),
+        });
         serverId = created.id;
         setCreatedServerId(serverId);
+        if (choice.id !== toProxyId(serverName)) {
+          showSnackbar(
+            `A proxy named "${toProxyId(serverName)}" already exists, so this one was created as "${choice.id}".`,
+            'info'
+          );
+        }
       }
       setServerSavedAt(new Date().toISOString());
       if (isNewServer) {

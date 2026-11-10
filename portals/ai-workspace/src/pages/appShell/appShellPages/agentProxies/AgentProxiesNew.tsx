@@ -47,6 +47,13 @@ import { SCOPES } from '../../../../auth/permissions';
 import { PLATFORM_API_BASE_URL } from '../../../../paths';
 import { agentProxiesApis } from '../../../../apis/agent/agentProxiesApis';
 import { getErrorMessage } from '../../../../utils/apiError';
+import { logger } from '../../../../utils/logger';
+import {
+  AGENT_PROXY_ID_TAKEN_CODE,
+  buildProxyContext,
+  createWithUniqueId,
+  toProxyId,
+} from '../../../../utils/proxyIdentifier';
 import type {
   AgentCardDocument,
   A2ATransport,
@@ -71,14 +78,6 @@ export const AGENT_VERSION_PATTERN = /^v\d+\.\d+$/;
 export const AGENT_VERSION_ERROR = 'Enter a valid version (e.g., v1.0)';
 export const AGENT_TARGET_ERROR = 'The provided URL is invalid.';
 const DEFAULT_AGENT_VERSION = 'v1.0';
-
-function generateAgentProxyId(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : '';
@@ -199,9 +198,7 @@ export default function AgentProxiesNew(): React.JSX.Element {
       )
   );
 
-  const computedContext = effectiveProjectSlug
-    ? `/${effectiveProjectSlug}/${generateAgentProxyId(agentName)}`
-    : `/${generateAgentProxyId(agentName)}`;
+  const computedContext = buildProxyContext(effectiveProjectSlug, toProxyId(agentName));
   const agentContext = agentContextOverride ?? computedContext;
   const versionValidationError =
     agentVersion.trim() && !AGENT_VERSION_PATTERN.test(agentVersion.trim())
@@ -295,7 +292,7 @@ export default function AgentProxiesNew(): React.JSX.Element {
 
     // An unset agentCard serves the public card passthrough with URL rewriting.
     const payload: CreateAgentProxyRequest = {
-      id: generateAgentProxyId(agentName),
+      id: toProxyId(agentName),
       displayName: agentName.trim(),
       description: agentDescription.trim() || undefined,
       version: agentVersion.trim(),
@@ -318,13 +315,35 @@ export default function AgentProxiesNew(): React.JSX.Element {
 
     try {
       setIsCreating(true);
-      const created = await createAgentProxy(payload);
+      // Names may repeat, identifiers may not: on a clash the create is re-run
+      // under the next free identifier, and the default context follows it.
+      const { result: created, choice } = await createWithUniqueId({
+        displayName: agentName,
+        takenCode: AGENT_PROXY_ID_TAKEN_CODE,
+        exists: (candidate) =>
+          agentProxiesApis.agentProxyExists(candidate, PLATFORM_API_BASE_URL),
+        onLookupError: (lookupError) =>
+          logger.warn('Could not look up a free Agent Proxy identifier', { lookupError }),
+        create: (attempt) =>
+          createAgentProxy({
+            ...payload,
+            id: attempt.id,
+            context:
+              agentContextOverride ?? buildProxyContext(effectiveProjectSlug, attempt.id),
+          }),
+      });
       showSnackbar('Agent Proxy created successfully.', 'success');
+      if (choice.id !== toProxyId(agentName)) {
+        showSnackbar(
+          `An agent proxy named "${toProxyId(agentName)}" already exists, so this one was created as "${choice.id}".`,
+          'info'
+        );
+      }
       navigate(
         buildProjectPath(
           currentOrganization,
           effectiveProject,
-          `/agent-proxy/${created.id ?? payload.id}`
+          `/agent-proxy/${created.id ?? choice.id}`
         )
       );
     } catch (error) {

@@ -18,6 +18,7 @@
 
 import { get, post, put, del } from '../../clients/choreoApiClient';
 import { logger } from '../../utils/logger';
+import { getHttpStatus } from '../../utils/apiError';
 
 import type {
   AgentProxy,
@@ -277,8 +278,27 @@ export async function revokeAgentProxyAPIKey(
   }
 }
 
+/**
+ * Whether an Agent Proxy with this ID exists. A 404 is the expected answer for
+ * a free ID, so it is not logged as an error; any other failure is rethrown.
+ *
+ * @param agentProxyId - The Agent Proxy ID
+ * @param baseUrl - The APIM base URL
+ */
+export async function agentProxyExists(agentProxyId: string, baseUrl: string): Promise<boolean> {
+  try {
+    await get<AgentProxy>(`/agent-proxies/${encodeURIComponent(agentProxyId)}`, undefined, baseUrl);
+    return true;
+  } catch (error) {
+    if (getHttpStatus(error) === 404) return false;
+    logger.error(`Failed to check Agent Proxy ${agentProxyId}:`, error);
+    throw error;
+  }
+}
+
 export const agentProxiesApis = {
   createAgentProxy,
+  agentProxyExists,
   getAgentProxies,
   getAgentProxy,
   updateAgentProxy,
