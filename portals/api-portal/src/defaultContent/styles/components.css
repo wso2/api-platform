@@ -655,6 +655,10 @@
 /* ── Subscription plans sidebar (shared: API + MCP) ───────────── */
 .aov-plans-wrap { padding: 0; }
 .aov-plans-title { margin: 0 0 0.875rem; font-size: 1.0625rem; font-weight: 700; color: var(--text-strong); }
+.aov-my-subs { margin-top: 1.5rem; }
+.aov-my-subs-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+.aov-my-subs-table th { text-align: left; font-weight: 600; color: var(--text-strong); padding: 0.375rem 0.5rem; border-bottom: 1.5px solid var(--border); }
+.aov-my-subs-table td { padding: 0.5rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .aov-plan-card {
   position: relative;
   overflow: hidden;

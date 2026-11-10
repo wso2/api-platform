@@ -235,6 +235,8 @@ func Register(sc *godog.ScenarioContext, topo *runtime.Topology, client *httpx.C
 	sc.Step(`^the "([^"]*)" API is published to the API Portal offering plan "([^"]*)"$`, s.publishAPI)
 	sc.Step(`^an application subscribed to API "([^"]*)" plan "([^"]*)" is created in the API Portal, the token is stored as "([^"]*)" and the subscription is stored as "([^"]*)"$`,
 		s.subscribeToAPIAndStore)
+	sc.Step(`^an additional subscription to API "([^"]*)" plan "([^"]*)" is created in the API Portal, the token is stored as "([^"]*)" and the subscription is stored as "([^"]*)"$`,
+		s.subscribeAdditionalAndStore)
 	sc.Step(`^an API key for API "([^"]*)" is generated in the API Portal, the value is stored as "([^"]*)" and the handle is stored as "([^"]*)"$`,
 		s.generateAPIKeyAndStore)
 	sc.Step(`^a Portal API key for API "([^"]*)" is generated, the value is stored as "([^"]*)" and the handle is stored as "([^"]*)"$`,
@@ -2768,7 +2770,29 @@ func (s *Steps) subscribeToAPIAndStore(ctx context.Context, apiHandle, planHandl
 		portalCleanupRequest{method: http.MethodDelete, path: "/applications"}); err != nil {
 		return err
 	}
+	return s.createPortalSubscription(ctx, base, token, resolvedAPI, resolvedPlan, tokenStoreAs, subscriptionStoreAs)
+}
 
+// subscribeAdditionalAndStore creates one more subscription to an API the consumer already
+// subscribed to — same plan or another — without recreating the application, so a scenario can
+// hold several subscriptions to one API. Each carries its own token and id.
+func (s *Steps) subscribeAdditionalAndStore(ctx context.Context, apiHandle, planHandle, tokenStoreAs, subscriptionStoreAs string) error {
+	resolvedAPI, err := stepscommon.Expand(ctx, apiHandle)
+	if err != nil {
+		return err
+	}
+	resolvedPlan, err := stepscommon.Expand(ctx, planHandle)
+	if err != nil {
+		return err
+	}
+	base, token, err := s.authed(ctx)
+	if err != nil {
+		return err
+	}
+	return s.createPortalSubscription(ctx, base, token, resolvedAPI, resolvedPlan, tokenStoreAs, subscriptionStoreAs)
+}
+
+func (s *Steps) createPortalSubscription(ctx context.Context, base, token, resolvedAPI, resolvedPlan, tokenStoreAs, subscriptionStoreAs string) error {
 	var created struct {
 		SubscriptionID    string `json:"subscriptionId"`
 		SubscriptionToken string `json:"subscriptionToken"`

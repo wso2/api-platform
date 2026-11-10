@@ -105,7 +105,8 @@ async function handlePlanSubscription(btnElement) {
 
     const existingSubs = window.existingSubscriptions || [];
 
-    if (existingSubs.length === 0) {
+    // Pages that support several subscriptions per API (API landing) always create a new one.
+    if (existingSubs.length === 0 || window.allowMultipleSubscriptions) {
         showSubscribeButtonLoading(btnElement);
         await subscribe(orgId, apiId, planName, planId);
         return;

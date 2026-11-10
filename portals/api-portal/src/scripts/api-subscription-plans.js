@@ -70,17 +70,13 @@
       var _mCopyTimer = null;
       var _regenerateInFlight = false;
 
-      function openManage(policyName) {
-        var subs = window.existingSubscriptions || [];
-        var sub = null;
-        for (var i = 0; i < subs.length; i++) {
-          if ((subs[i].policyName || subs[i].subscriptionPlanName) === policyName) { sub = subs[i]; break; }
-        }
+      function openManage(subscriptionId) {
+        var sub = window.subscriptionState.findSubscription(window.existingSubscriptions, subscriptionId);
         if (!sub) return;
         _sub = sub;
         _revealed = false;
 
-        document.getElementById('apiManagePlanName').textContent = policyName;
+        document.getElementById('apiManagePlanName').textContent = sub.subscriptionPlanName || sub.policyName;
         updateManageStatus(sub.status);
         var meta = (window.__tokenMeta || {})[sub.subscriptionId];
         document.getElementById('apiManageTokenVal').textContent = meta && meta.maskedToken ? meta.maskedToken : '•'.repeat(28);
@@ -206,12 +202,10 @@
             body: JSON.stringify({ status: newStatus }),
           });
           if (resp.ok) {
-            _sub.status = newStatus;
-            (window.existingSubscriptions || []).forEach(function (s) {
-              if (s.subscriptionId === _sub.subscriptionId) s.status = newStatus;
-            });
+            window.subscriptionState.setSubscriptionStatus(window.existingSubscriptions, _sub.subscriptionId, newStatus);
             updateManageStatus(newStatus);
-            updateCardSuspendedState(_sub.policyName || _sub.subscriptionPlanName, newStatus === 'INACTIVE');
+            updateRowStatus(_sub.subscriptionId, newStatus);
+            refreshPlanCards();
           } else {
             var data = await resp.json().catch(function () { return {}; });
             showAlert('Failed to update subscription: ' + (data.description || 'Unknown error'), 'error');
@@ -221,17 +215,25 @@
         }
       }
 
-      function updateCardSuspendedState(planName, isSuspended) {
-        var card = document.querySelector('#subscriptionPlans .aov-plan-card[data-policy-name="' + planName + '"]');
-        if (!card) return;
-        var label = card.querySelector('.api-ribbon-label');
-        if (isSuspended) {
-          card.classList.add('aov-plan-card--suspended');
-          if (label) label.textContent = 'SUSPENDED';
-        } else {
-          card.classList.remove('aov-plan-card--suspended');
-          if (label) label.textContent = 'SUBSCRIBED';
-        }
+      function updateRowStatus(subscriptionId, status) {
+        var row = document.querySelector('#apiSubscriptionsTable tr[data-subscription-id="' + subscriptionId + '"] .api-sub-status');
+        if (!row) return;
+        var isSusp = status === 'INACTIVE';
+        row.textContent = isSusp ? 'Suspended' : 'Active';
+        row.className = 'mc-manage-status-badge api-sub-status ' + (isSusp ? 'mc-manage-status-badge--suspended' : 'mc-manage-status-badge--active');
+      }
+
+      /* A plan card reflects every subscription held on that plan. */
+      function refreshPlanCards() {
+        document.querySelectorAll('#subscriptionPlans .aov-plan-card').forEach(function (card) {
+          var planName = card.dataset.policyName;
+          if (!planName) return;
+          var state = window.subscriptionState.planCardState(planName, window.existingSubscriptions);
+          card.classList.toggle('aov-plan-card--subscribed', state.subscribed);
+          card.classList.toggle('aov-plan-card--suspended', state.suspended);
+          var label = card.querySelector('.api-ribbon-label');
+          if (label) label.textContent = (state.suspended ? 'SUSPENDED' : 'SUBSCRIBED') + (state.count > 1 ? ' ×' + state.count : '');
+        });
       }
 
       /* ── Unsubscribe / plan-switch dialog ── */
@@ -377,23 +379,12 @@
           return _origShowAlert ? _origShowAlert(message, type) : Promise.resolve();
         };
 
-        /* Relabel subscribe buttons to "Switch plan" when a subscription already exists */
-        if ((window.existingSubscriptions || []).length > 0) {
-          document.querySelectorAll('#subscriptionPlans .subscribe-btn').forEach(function (btn) {
-            btn.childNodes.forEach(function (n) { if (n.nodeType === 3) n.textContent = 'Switch plan'; });
-          });
-        }
+        /* Subscribe always creates a new subscription on this page (see handlePlanSubscription). */
+        window.allowMultipleSubscriptions = true;
 
-        /* Mark initially suspended cards */
-        (window.existingSubscriptions || []).forEach(function (sub) {
-          if (sub.status === 'INACTIVE') {
-            updateCardSuspendedState(sub.policyName || sub.subscriptionPlanName, true);
-          }
-        });
-
-        /* View subscription buttons */
-        document.querySelectorAll('#subscriptionPlans .api-view-sub-btn').forEach(function (btn) {
-          btn.addEventListener('click', function () { openManage(btn.dataset.policyName); });
+        /* Manage buttons: one per subscription row */
+        document.querySelectorAll('#apiSubscriptionsTable .api-view-sub-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () { openManage(btn.dataset.subscriptionId); });
         });
 
         /* Manage modal */
@@ -458,18 +449,7 @@
           });
         });
 
-        /* Update subscribed card states from existingSubscriptions */
-        var existing = window.existingSubscriptions || [];
-        var subscribedNames = existing.map(function (s) { return s.policyName || s.subscriptionPlanName; });
-        document.querySelectorAll('#subscriptionPlans .aov-plan-card').forEach(function (card) {
-          var planName = card.dataset.policyName;
-          if (!planName) return;
-          if (subscribedNames.indexOf(planName) !== -1) {
-            card.classList.add('aov-plan-card--subscribed');
-          } else {
-            card.classList.remove('aov-plan-card--subscribed');
-          }
-        });
+        refreshPlanCards();
       }
 
       if (document.readyState === 'complete') {

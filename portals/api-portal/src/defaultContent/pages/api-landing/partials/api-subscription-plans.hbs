@@ -34,16 +34,7 @@
     </div>
     <div class="position-relative">
       {{#if ../isAuthenticated}}
-        {{#if (isCurrentPlan id @root.subscriptions)}}
-        <button type="button"
-          class="dp-btn dp-btn--outline dp-btn--block mcp-view-sub-btn api-view-sub-btn"
-          data-org-id="{{@root.orgId}}"
-          data-api-id="{{../apiMetadata.id}}"
-          data-policy-name="{{id}}"
-          data-display-name="{{displayName}}">
-          <i class="bi bi-eye"></i> View subscription
-        </button>
-        {{else}}
+        {{!-- Always offered: a consumer may hold several subscriptions to the same plan. --}}
         <button id="subscribe-btn-{{id}}" type="button"
           class="dp-btn dp-btn--outline dp-btn--block subscribe-btn"
           data-org-id="{{@root.orgId}}"
@@ -53,7 +44,6 @@
           data-display-name="{{displayName}}"
           onclick="handlePlanSubscription(this)"
           ><span class="aov-plan-spinner"></span>Subscribe</button>
-        {{/if}}
       {{else}}
       {{!-- Unauthenticated Subscribe links to login, which 404s in design mode — disable it there. --}}
       <a class="dp-btn dp-btn--outline dp-btn--block{{#if (designMode)}} design-disabled{{/if}}"
@@ -70,7 +60,29 @@
   </div>
   {{/each}}
 
+  {{#if isAuthenticated}}{{#if subscriptions.length}}
+  <div class="aov-my-subs">
+    <h2 class="aov-plans-title">Your subscriptions</h2>
+    <table id="apiSubscriptionsTable" class="aov-my-subs-table">
+      <thead>
+        <tr><th>Plan</th><th>Status</th><th>Token</th><th></th></tr>
+      </thead>
+      <tbody>
+        {{#each subscriptions}}
+        <tr data-subscription-id="{{subscriptionId}}">
+          <td>{{subscriptionPlanName}}</td>
+          <td><span class="mc-manage-status-badge api-sub-status {{#if (eq status 'INACTIVE')}}mc-manage-status-badge--suspended{{else}}mc-manage-status-badge--active{{/if}}">{{#if (eq status 'INACTIVE')}}Suspended{{else}}Active{{/if}}</span></td>
+          <td><code class="mc-inline-code">{{maskedToken}}</code></td>
+          <td><button type="button" class="api-view-sub-btn dp-btn dp-btn--outline" data-subscription-id="{{subscriptionId}}"><i class="bi bi-gear"></i> Manage</button></td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+  </div>
+  {{/if}}{{/if}}
+
   <script id="existing-subs-data" type="application/json">{{{json subscriptions}}}</script>
+  <script src='{{basePath}}/technical-scripts/subscription-state.js' defer></script>
   <script src='{{basePath}}/technical-scripts/api-subscription-plans.js' defer></script>
 </section>
 

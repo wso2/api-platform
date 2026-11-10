@@ -95,4 +95,55 @@ describe('subscriptions', () => {
         const res = await client.as('developer').post(`/subscriptions/${create.body.subscriptionId}/change-plan`, { planId: 'DoesNotExist' });
         expect(res.status).toBe(400);
     });
+
+    describe('multiple subscriptions to one API', () => {
+        const subscribe = (plan) =>
+            client.as('developer').post('/subscriptions', { artifactId: api.id, subscriptionPlanId: plan });
+
+        it('allows the same consumer to subscribe repeatedly to the same plan, each with its own token', async () => {
+            const first = await subscribe('Gold');
+            const second = await subscribe('Gold');
+            expect(first.status).toBe(201);
+            expect(second.status).toBe(201);
+            expect(second.body.subscriptionId).not.toBe(first.body.subscriptionId);
+            expect(second.body.subscriptionToken).not.toBe(first.body.subscriptionToken);
+        });
+
+        it('allows subscribing to different plans of the same API', async () => {
+            const gold = await subscribe('Gold');
+            const silver = await subscribe('Silver');
+            expect(gold.status).toBe(201);
+            expect(silver.status).toBe(201);
+            expect(silver.body.subscriptionPlanName).toBe('Silver');
+        });
+
+        it('lists every subscription held on the API, including repeated plans', async () => {
+            const created = [await subscribe('Gold'), await subscribe('Silver'), await subscribe('Gold')];
+            const res = await client.as('developer').get(`/subscriptions?artifactId=${api.id}`);
+            expect(res.status).toBe(200);
+            const byId = new Map(res.body.list.map((s) => [s.subscriptionId, s]));
+            expect(byId.size).toBe(3);
+            created.forEach((c) => expect(byId.get(c.body.subscriptionId).subscriptionPlanName).toBe(c.body.subscriptionPlanName));
+        });
+
+        it('keeps subscriptions independent: suspend, regenerate and delete affect only the targeted one', async () => {
+            const a = await subscribe('Gold');
+            const b = await subscribe('Gold');
+            const idA = a.body.subscriptionId;
+            const idB = b.body.subscriptionId;
+
+            const suspend = await client.as('developer').put(`/subscriptions/${idA}`, { status: 'INACTIVE' });
+            expect(suspend.status).toBe(200);
+            expect((await client.as('developer').get(`/subscriptions/${idB}`)).body.status).toBe('ACTIVE');
+
+            const regen = await client.as('developer').post(`/subscriptions/${idA}/regenerate-token`, {});
+            expect(regen.status).toBe(200);
+            expect((await client.as('developer').get(`/subscriptions/${idB}`)).body.subscriptionToken).toBe(b.body.subscriptionToken);
+
+            expect((await client.as('developer').del(`/subscriptions/${idA}`)).status).toBe(200);
+            const remaining = await client.as('developer').get(`/subscriptions/${idB}`);
+            expect(remaining.status).toBe(200);
+            expect(remaining.body.status).toBe('ACTIVE');
+        });
+    });
 });
