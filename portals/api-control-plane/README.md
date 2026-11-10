@@ -147,7 +147,7 @@ target:
 
 ```js
   authOrganizationsUrl: '/api-platform/idp/users/me/ous', // the IdP's API, with the session's token
-  authSwitchOrganizationUrls: ['/api-platform/auth/switch-organization'],
+  authSwitchOrganizationUrls: ['/api-platform/auth/switch'],
 ```
 
 Without both settings, the session stays in the organization it signed in to,

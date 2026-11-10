@@ -657,7 +657,7 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
     const SWITCH_CONFIG = {
       ...SDK_CONFIG,
       authOrganizationsUrl: '/api-platform/idp/users/me/ous',
-      authSwitchOrganizationUrls: '/auth/switch-organization, /api-platform/auth/switch-organization',
+      authSwitchOrganizationUrls: '/auth/switch, /api-platform/auth/switch',
     };
     const ORG_A = { id: 'ou-a', handle: 'org-a', name: 'Org A' };
     const ORG_B = { id: 'ou-b', handle: 'org-b', name: 'Org B' };
@@ -699,8 +699,8 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
       await waitForStatus('authenticated');
     }
 
-    const PARENT_SWITCH = '/auth/switch-organization';
-    const OWN_SWITCH = '/api-platform/auth/switch-organization';
+    const PARENT_SWITCH = '/auth/switch';
+    const OWN_SWITCH = '/api-platform/auth/switch';
 
     /**
      * Each switch is recorded as `<path> <organization id>`, and must name the
