@@ -53,6 +53,7 @@ func (g *Gateway) registerMTLSObservabilitySteps(sc *godog.ScenarioContext) {
 
 	sc.Step(`^the "([^"]*)" access log `+sinceLatestPhrase+` should show a line for "([^"]*)" with:$`, g.accessLogShowsLine)
 	sc.Step(`^the "([^"]*)" log `+sinceLatestPhrase+` should contain "(.*)"$`, g.logSinceLatestRequestContains)
+	sc.Step(`^the "([^"]*)" log `+sinceLatestPhrase+` should contain:$`, g.logSinceLatestRequestContainsDocString)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have the user id of fixture "([^"]*)"$`, g.analyticsUserIDOfFixture)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should not have metadata field "([^"]*)"$`, g.analyticsMetadataFieldAbsent)
 	sc.Step(`^the response should contain metric "([^"]*)" with labels (\{.*\}) and value (\S+)$`, g.metricSampleHasValue)
@@ -185,6 +186,15 @@ func (g *Gateway) logSinceLatestRequestContains(ctx context.Context, service, te
 			}
 			return nil
 		})
+}
+
+// logSinceLatestRequestContainsDocString is logSinceLatestRequestContains with the text in a doc
+// string, so a whole JSON log line can be written without escaping its quotes.
+func (g *Gateway) logSinceLatestRequestContainsDocString(ctx context.Context, service string, text *godog.DocString) error {
+	if text == nil || strings.TrimSpace(text.Content) == "" {
+		return fmt.Errorf("the %q log step needs a doc string with the text the log must contain", service)
+	}
+	return g.logSinceLatestRequestContains(ctx, service, strings.TrimSpace(text.Content))
 }
 
 // logExpectation is one thing an access log line must show.

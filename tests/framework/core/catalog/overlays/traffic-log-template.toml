@@ -1,0 +1,26 @@
+# Traffic logging with an inline JSON template, for
+# suites/it/features/gateway/observability/traffic_log_template.feature.
+# Every value in the template is the same on every run, so a test can compare the whole line.
+
+[collector]
+request_headers = true
+
+[traffic_logging]
+enabled = true
+outputs = ["stdout"]
+exclude_fields = ["http.debug"]
+template = '''
+{
+  "source": "it-traffic-log-template",
+  "api": "$ctx:api.name",
+  "http": {
+    "method": "$ctx:request.method",
+    "status": "$ctx:response.status",
+    "debug": "removed by exclude_fields"
+  },
+  "auth": "$ctx:request.header['authorization']",
+  "user": "$ctx:auth.subject",
+  "typo": "$ctx:request.methd",
+  "fixed": [1.5, true, null, "gw"]
+}
+'''
