@@ -70,6 +70,9 @@ type SubscriptionPlanResponse struct {
 	Id        string `json:"id"`
 	PlanName  string `json:"planName"`
 	GatewayId string `json:"gatewayId"`
+	// ConditionCount is how many conditions the gateway reports for the plan. A gateway that
+	// predates subscription plan conditions ignores them and reports none.
+	ConditionCount int `json:"-"`
 }
 
 func decodeSubscriptionPlanResponseBody(respBody []byte) (SubscriptionPlanResponse, error) {
@@ -78,6 +81,8 @@ func decodeSubscriptionPlanResponseBody(respBody []byte) (SubscriptionPlanRespon
 		PlanId    string `json:"planId"`
 		PlanName  string `json:"planName"`
 		GatewayId string `json:"gatewayId"`
+		// Conditions is decoded loosely: only how many there are matters here.
+		Conditions []json.RawMessage `json:"conditions"`
 	}
 	if err := json.Unmarshal(respBody, &aux); err != nil {
 		return SubscriptionPlanResponse{}, err
@@ -87,9 +92,10 @@ func decodeSubscriptionPlanResponseBody(respBody []byte) (SubscriptionPlanRespon
 		id = strings.TrimSpace(aux.PlanId)
 	}
 	return SubscriptionPlanResponse{
-		Id:        id,
-		PlanName:  aux.PlanName,
-		GatewayId: aux.GatewayId,
+		Id:             id,
+		PlanName:       aux.PlanName,
+		GatewayId:      aux.GatewayId,
+		ConditionCount: len(aux.Conditions),
 	}, nil
 }
 

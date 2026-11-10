@@ -32,10 +32,24 @@ import (
 )
 
 // subscriptionPlanServer records the body of each POST/PUT to /subscription-plans
-// and answers GET with an empty plan list.
+// and answers GET with an empty plan list. It answers with the conditions it was
+// sent, as a gateway that supports them does.
 func subscriptionPlanServer(t *testing.T, bodies *[]map[string]any) *httptest.Server {
+	return gatewayServer(t, bodies, nil, true)
+}
+
+// gatewayServer is subscriptionPlanServer for a gateway that does (keepsConditions)
+// or does not support plan conditions; it records DELETE paths in deletes.
+func gatewayServer(t *testing.T, bodies *[]map[string]any, deletes *[]string, keepsConditions bool) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			if deletes != nil {
+				*deletes = append(*deletes, r.URL.Path)
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		if r.Method == http.MethodGet {
 			_ = json.NewEncoder(w).Encode(map[string]any{"subscriptionPlans": []any{}})
 			return
@@ -48,7 +62,11 @@ func subscriptionPlanServer(t *testing.T, bodies *[]map[string]any) *httptest.Se
 		if r.Method == http.MethodPost {
 			w.WriteHeader(http.StatusCreated)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": "plan-1", "planName": body["planName"]})
+		resp := map[string]any{"id": "plan-1", "planName": body["planName"]}
+		if keepsConditions && body["conditions"] != nil {
+			resp["conditions"] = body["conditions"]
+		}
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	t.Cleanup(srv.Close)
 	return srv
@@ -137,4 +155,27 @@ func TestPlanConditions_EmptyParamsSentAsObject(t *testing.T) {
 	out := planConditions([]apiv1.SubscriptionPlanCondition{{Id: "flag", Type: "custom"}})
 	require.Equal(t, []gatewayclient.SubscriptionPlanCondition{{Id: "flag", Type: "custom", Params: json.RawMessage("{}")}}, out)
 	require.Nil(t, planConditions(nil))
+}
+
+// A gateway that predates plan conditions ignores them. The plan must not be
+// reported as deployed, and a plan it created without them is removed again.
+func TestSubscriptionPlanDeploy_GatewayWithoutConditionsSupport(t *testing.T) {
+	var bodies []map[string]any
+	var deletes []string
+	srv := gatewayServer(t, &bodies, &deletes, false)
+	adapter := &subscriptionPlanAdapter{}
+
+	_, err := adapter.Deploy(context.Background(), nil, srv.URL, planWithConditions(), nil)
+	require.ErrorContains(t, err, "did not store the plan's conditions")
+	require.Len(t, deletes, 1)
+	require.Contains(t, deletes[0], "plan-1")
+
+	cr := planWithConditions()
+	cr.Status.Id = "plan-1"
+	_, err = adapter.Deploy(context.Background(), nil, srv.URL, cr, nil)
+	require.ErrorContains(t, err, "did not store the plan's conditions")
+
+	// Plans without conditions keep working on such a gateway.
+	_, err = adapter.Deploy(context.Background(), nil, srv.URL, legacyPlan(), nil)
+	require.NoError(t, err)
 }

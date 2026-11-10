@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"log/slog"
@@ -124,6 +125,14 @@ func (a *subscriptionPlanAdapter) Deploy(ctx context.Context, _ client.Client, g
 		if err != nil {
 			return DeployResult{}, err
 		}
+		if err := checkConditionsStored(payload.Conditions, resp); err != nil {
+			// Remove the plan the gateway made without its conditions, so a later reconcile does
+			// not find it by name and take it as done.
+			if delErr := gatewayclient.DeleteSubscriptionPlan(ctx, gatewayEndpoint, resp.Id, authFn); delErr != nil {
+				return DeployResult{}, fmt.Errorf("%w; removing the plan it created also failed: %v", err, delErr)
+			}
+			return DeployResult{}, err
+		}
 		return DeployResult{Id: resp.Id}, nil
 	}
 
@@ -147,8 +156,14 @@ func (a *subscriptionPlanAdapter) Deploy(ctx context.Context, _ client.Client, g
 		t := cr.Spec.ExpiryTime.Time
 		updatePayload.ExpiryTime = (*time.Time)(&t)
 	}
-	if _, err := gatewayclient.UpdateSubscriptionPlan(ctx, gatewayEndpoint, cr.Status.Id, updatePayload, authFn); err != nil {
+	resp, err := gatewayclient.UpdateSubscriptionPlan(ctx, gatewayEndpoint, cr.Status.Id, updatePayload, authFn)
+	if err != nil {
 		return DeployResult{}, err
+	}
+	if updatePayload.Conditions != nil {
+		if err := checkConditionsStored(*updatePayload.Conditions, resp); err != nil {
+			return DeployResult{}, err
+		}
 	}
 	return DeployResult{Id: cr.Status.Id}, nil
 }
@@ -159,6 +174,17 @@ func (a *subscriptionPlanAdapter) Delete(ctx context.Context, gatewayEndpoint st
 		return nil
 	}
 	return gatewayclient.DeleteSubscriptionPlan(ctx, gatewayEndpoint, cr.Status.Id, authFn)
+}
+
+// checkConditionsStored refuses a plan whose conditions the gateway did not keep. A gateway that
+// predates subscription plan conditions ignores the field and answers without them, which would
+// otherwise leave the resource Programmed with conditions that are neither stored nor enforced.
+func checkConditionsStored(sent []gatewayclient.SubscriptionPlanCondition, resp *gatewayclient.SubscriptionPlanResponse) error {
+	if len(sent) == 0 || resp == nil || resp.ConditionCount >= len(sent) {
+		return nil
+	}
+	return fmt.Errorf("the gateway did not store the plan's conditions (sent %d, stored %d): "+
+		"it needs a gateway release that supports subscription plan conditions", len(sent), resp.ConditionCount)
 }
 
 // hasLegacyThrottleLimit reports whether the spec sets the legacy throttle
