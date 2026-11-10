@@ -22,4 +22,8 @@ type MetaInfo struct {
 	CorrelationID string `json:"correlationId"`
 	RegionID      string `json:"regionId"`
 	GatewayType   string `json:"gatewayType"`
+	// TraceID and SpanID are the request's trace context in W3C hex, empty when the
+	// request was not traced or not sampled.
+	TraceID string `json:"traceId,omitempty"`
+	SpanID  string `json:"spanId,omitempty"`
 }

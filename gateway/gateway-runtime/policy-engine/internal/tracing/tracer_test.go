@@ -19,8 +19,14 @@
 package tracing
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"log/slog"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -30,6 +36,8 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
 	coltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
@@ -354,6 +362,83 @@ func TestInitTracerConfig_SamplingRates(t *testing.T) {
 			shutdown, err := InitTracer(cfg)
 			require.NoError(t, err)
 			shutdown()
+		})
+	}
+}
+
+func TestNewSampler_FollowsParentDecision(t *testing.T) {
+	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+	childOf := func(flags trace.TraceFlags) context.Context {
+		return trace.ContextWithRemoteSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID:    traceID,
+			SpanID:     spanID,
+			TraceFlags: flags,
+			Remote:     true,
+		}))
+	}
+
+	for _, tc := range []struct {
+		name string
+		rate float64
+	}{
+		{"full_rate", 1.0},
+		{"half_rate", 0.5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sr := tracetest.NewSpanRecorder()
+			tp := sdktrace.NewTracerProvider(sdktrace.WithSampler(newSampler(tc.rate)), sdktrace.WithSpanProcessor(sr))
+			t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+			tracer := tp.Tracer("test")
+
+			_, span := tracer.Start(childOf(0), "unsampled-parent")
+			span.End()
+			assert.Empty(t, sr.Ended(), "a parent with flag 00 must produce no spans")
+
+			_, span = tracer.Start(childOf(trace.FlagsSampled), "sampled-parent")
+			span.End()
+			assert.Len(t, sr.Ended(), 1, "a parent with flag 01 must be recorded")
+		})
+	}
+}
+
+func TestTraceLogHandler(t *testing.T) {
+	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+	withSpan := func(flags trace.TraceFlags) context.Context {
+		return trace.ContextWithSpanContext(context.Background(), trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID:    traceID,
+			SpanID:     spanID,
+			TraceFlags: flags,
+		}))
+	}
+
+	for _, tc := range []struct {
+		name    string
+		log     func(*slog.Logger)
+		stamped bool
+	}{
+		{"error with a sampled span", func(l *slog.Logger) { l.ErrorContext(withSpan(trace.FlagsSampled), "boom") }, true},
+		{"error with an unsampled span", func(l *slog.Logger) { l.ErrorContext(withSpan(0), "boom") }, true},
+		{"error through a derived logger", func(l *slog.Logger) {
+			l.With("component", "test").ErrorContext(withSpan(trace.FlagsSampled), "boom")
+		}, true},
+		{"error without a span", func(l *slog.Logger) { l.Error("boom") }, false},
+		{"warn with a span", func(l *slog.Logger) { l.WarnContext(withSpan(trace.FlagsSampled), "boom") }, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			tc.log(slog.New(NewTraceLogHandler(slog.NewJSONHandler(&buf, nil))))
+
+			var record map[string]any
+			require.NoError(t, json.Unmarshal(buf.Bytes(), &record))
+			if !tc.stamped {
+				assert.NotContains(t, record, "trace_id")
+				assert.NotContains(t, record, "span_id")
+				return
+			}
+			assert.Equal(t, traceID.String(), record["trace_id"])
+			assert.Equal(t, spanID.String(), record["span_id"])
 		})
 	}
 }
@@ -847,4 +932,38 @@ func TestInitTracer_SecureConnectionWithoutCerts(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, shutdown)
 	defer shutdown()
+}
+
+// With protocol "http" the engine exports OTLP/HTTP protobuf to POST /v1/traces.
+func TestNewExporter_HTTP(t *testing.T) {
+	type received struct{ method, path, contentType string }
+	got := make(chan received, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case got <- received{r.Method, r.URL.Path, r.Header.Get("Content-Type")}:
+		default:
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	exporter, err := newExporter(context.Background(), config.TracingConfig{
+		Endpoint: strings.TrimPrefix(srv.URL, "http://"),
+		Protocol: config.TracingProtocolHTTP,
+		Insecure: true,
+	})
+	require.NoError(t, err)
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	_, span := tp.Tracer("test").Start(context.Background(), "op")
+	span.End()
+	require.NoError(t, tp.Shutdown(context.Background()))
+
+	select {
+	case r := <-got:
+		assert.Equal(t, http.MethodPost, r.method)
+		assert.Equal(t, "/v1/traces", r.path)
+		assert.Equal(t, "application/x-protobuf", r.contentType)
+	case <-time.After(5 * time.Second):
+		t.Fatal("no OTLP/HTTP export reached the collector")
+	}
 }

@@ -164,6 +164,7 @@ func (c *ChainExecutor) ExecuteRequestHeaderPolicies(
 		}
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, executionStatus(action)).Inc()
+		recordPolicyDecision(span, action, nil)
 		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
 
 		if span.IsRecording() {
@@ -312,6 +313,7 @@ func (c *ChainExecutor) ExecuteRequestPolicies(ctx context.Context, policyList [
 
 		// Record policy execution metrics
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, executionStatus(action)).Inc()
+		recordPolicyDecision(span, action, nil)
 		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
 
 		// Add execution time attribute
@@ -478,6 +480,7 @@ func (c *ChainExecutor) ExecuteResponseHeaderPolicies(
 		}
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, executionStatus(action)).Inc()
+		recordPolicyDecision(span, action, nil)
 		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
 
 		if span.IsRecording() {
@@ -627,6 +630,7 @@ func (c *ChainExecutor) ExecuteResponsePolicies(ctx context.Context, policyList 
 
 		// Record policy execution metrics
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, executionStatus(action)).Inc()
+		recordPolicyDecision(span, action, nil)
 		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
 
 		// Add execution time attribute
@@ -692,6 +696,9 @@ type StreamingRequestExecutionResult struct {
 // ExecuteStreamingRequestPolicies executes streaming request policies chunk-by-chunk.
 // Policies are executed in forward order (first to last). Each policy sees the
 // (possibly mutated) chunk from the previous policy.
+//
+// spans, when non-nil, holds one span per policy for the whole stream; nil starts and
+// ends a span per call.
 func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 	ctx context.Context,
 	policyList []policy.Policy,
@@ -700,6 +707,7 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 	specs []policy.PolicySpec,
 	api, route string,
 	hasExecutionConditions bool,
+	spans *StreamSpans,
 ) (*StreamingRequestExecutionResult, error) {
 	startTime := time.Now()
 	result := &StreamingRequestExecutionResult{
@@ -713,31 +721,24 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 		spec := specs[i]
 		policyStartTime := time.Now()
 
-		spanCtx, span := c.tracer.Start(ctx, fmt.Sprintf(constants.SpanPolicyRequestFormat, spec.Name),
-			trace.WithSpanKind(trace.SpanKindInternal))
-		if span.IsRecording() {
-			span.SetAttributes(
-				attribute.String(constants.AttrPolicyName, spec.Name),
-				attribute.String(constants.AttrPolicyVersion, spec.Version),
-				attribute.Bool(constants.AttrPolicyEnabled, spec.Enabled),
-			)
-		}
-
+		// A policy that does not take part in the stream gets no span: before this
+		// check came first, every flush minted an empty span per such policy.
 		streamingPol, ok := pol.(policy.StreamingRequestPolicy)
 		if !ok {
-			span.End()
 			continue
 		}
 
 		// Mode()-first: only execute streaming callbacks for policies that explicitly opt into STREAM.
 		if pol.Mode().RequestBodyMode != policy.BodyModeStream {
-			span.End()
 			continue
 		}
 
+		ps := c.startStreamPolicySpan(ctx, spans, i, constants.SpanPolicyRequestFormat, spec)
+		spanCtx, span := ps.ctx, ps.span
+
 		if !spec.Enabled {
 			metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "disabled").Inc()
-			span.End()
+			ps.finish()
 			result.Results = append(result.Results, StreamingRequestPolicyResult{
 				PolicyName: spec.Name, PolicyVersion: spec.Version,
 				Skipped: true, ExecutionTime: time.Since(policyStartTime),
@@ -753,7 +754,7 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 						span.RecordError(err)
 						span.SetStatus(codes.Error, "condition evaluation failed")
 					}
-					span.End()
+					ps.finish()
 					return nil, fmt.Errorf("condition evaluation failed for policy %s:%s: %w", spec.Name, spec.Version, err)
 				}
 				if !conditionMet {
@@ -762,7 +763,7 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 						span.SetAttributes(attribute.String(constants.AttrSkipReason, constants.AttrSkipReasonConditionNotMet))
 					}
 					metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "condition_not_met").Inc()
-					span.End()
+					ps.finish()
 					result.Results = append(result.Results, StreamingRequestPolicyResult{
 						PolicyName: spec.Name, PolicyVersion: spec.Version,
 						Skipped: true, ExecutionTime: time.Since(policyStartTime),
@@ -779,11 +780,10 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 		executionTime := time.Since(policyStartTime)
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, executionStatus(action)).Inc()
+		recordPolicyDecision(span, action, &ps.decision)
 		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
 
-		if span.IsRecording() {
-			span.SetAttributes(attribute.Int64(constants.AttrPolicyExecutionTimeNS, executionTime.Nanoseconds()))
-		}
+		ps.addExecutionTime(executionTime)
 
 		result.Results = append(result.Results, StreamingRequestPolicyResult{
 			PolicyName:    spec.Name,
@@ -802,7 +802,7 @@ func (c *ChainExecutor) ExecuteStreamingRequestPolicies(
 		}
 
 		result.FinalAction = action
-		span.End()
+		ps.finish()
 	}
 
 	result.FinalChunk = currentChunk
@@ -832,6 +832,9 @@ type StreamingResponseExecutionResult struct {
 
 // ExecuteStreamingResponsePolicies executes streaming response policies chunk-by-chunk.
 // Policies are executed in reverse order (last to first), mirroring the buffered response path.
+//
+// spans, when non-nil, holds one span per policy for the whole stream; nil starts and
+// ends a span per call.
 func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 	ctx context.Context,
 	policyList []policy.Policy,
@@ -840,6 +843,7 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 	specs []policy.PolicySpec,
 	api, route string,
 	hasExecutionConditions bool,
+	spans *StreamSpans,
 ) (*StreamingResponseExecutionResult, error) {
 	startTime := time.Now()
 	result := &StreamingResponseExecutionResult{
@@ -853,34 +857,27 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 		spec := specs[i]
 		policyStartTime := time.Now()
 
-		spanCtx, span := c.tracer.Start(ctx, fmt.Sprintf(constants.SpanPolicyResponseFormat, spec.Name),
-			trace.WithSpanKind(trace.SpanKindInternal))
-		if span.IsRecording() {
-			span.SetAttributes(
-				attribute.String(constants.AttrPolicyName, spec.Name),
-				attribute.String(constants.AttrPolicyVersion, spec.Version),
-				attribute.Bool(constants.AttrPolicyEnabled, spec.Enabled),
-			)
-		}
-
+		// A policy that does not take part in the stream gets no span: before this
+		// check came first, every flush minted an empty span per such policy.
 		streamingPol, ok := pol.(policy.StreamingResponsePolicy)
 		if !ok {
-			span.End()
 			continue
 		}
 
 		// Mode()-first: only execute streaming callbacks for policies that explicitly opt into STREAM.
 		if pol.Mode().ResponseBodyMode != policy.BodyModeStream {
-			span.End()
 			continue
 		}
+
+		ps := c.startStreamPolicySpan(ctx, spans, i, constants.SpanPolicyResponseFormat, spec)
+		spanCtx, span := ps.ctx, ps.span
 
 		if !spec.Enabled {
 			if span.IsRecording() {
 				span.SetAttributes(attribute.Bool(constants.AttrPolicySkipped, true))
 			}
 			metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "disabled").Inc()
-			span.End()
+			ps.finish()
 			result.Results = append(result.Results, StreamingResponsePolicyResult{
 				PolicyName: spec.Name, PolicyVersion: spec.Version,
 				Skipped: true, ExecutionTime: time.Since(policyStartTime),
@@ -896,7 +893,7 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 						span.RecordError(err)
 						span.SetStatus(codes.Error, "condition evaluation failed")
 					}
-					span.End()
+					ps.finish()
 					return nil, fmt.Errorf("condition evaluation failed for policy %s:%s: %w", spec.Name, spec.Version, err)
 				}
 				if !conditionMet {
@@ -905,7 +902,7 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 						span.SetAttributes(attribute.String(constants.AttrSkipReason, constants.AttrSkipReasonConditionNotMet))
 					}
 					metrics.PolicySkippedTotal.WithLabelValues(spec.Name, "", "", "condition_not_met").Inc()
-					span.End()
+					ps.finish()
 					result.Results = append(result.Results, StreamingResponsePolicyResult{
 						PolicyName:    spec.Name,
 						PolicyVersion: spec.Version,
@@ -924,11 +921,10 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 		executionTime := time.Since(policyStartTime)
 
 		metrics.PolicyExecutionsTotal.WithLabelValues(spec.Name, spec.Version, api, route, executionStatus(action)).Inc()
+		recordPolicyDecision(span, action, &ps.decision)
 		metrics.PolicyDurationSeconds.WithLabelValues(spec.Name, spec.Version, api, route).Observe(executionTime.Seconds())
 
-		if span.IsRecording() {
-			span.SetAttributes(attribute.Int64(constants.AttrPolicyExecutionTimeNS, executionTime.Nanoseconds()))
-		}
+		ps.addExecutionTime(executionTime)
 
 		result.Results = append(result.Results, StreamingResponsePolicyResult{
 			PolicyName:    spec.Name,
@@ -950,7 +946,7 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 		}
 
 		result.FinalAction = action
-		span.End()
+		ps.finish()
 
 		// Short-circuit: a policy returned TerminateResponseChunk (e.g. guardrail intervened).
 		// Stop executing remaining policies and signal the kernel to close the stream after
@@ -969,6 +965,167 @@ func (c *ChainExecutor) ExecuteStreamingResponsePolicies(
 	result.FinalChunk = currentChunk
 	result.TotalExecutionTime = time.Since(startTime)
 	return result, nil
+}
+
+// ─── Stream spans ────────────────────────────────────────────────────────────
+
+// StreamSpans holds one span per policy for the whole of a streamed body, so a stream
+// of N flushes records one span per policy instead of N. The zero value is not usable;
+// create it with NewStreamSpans and End it once the stream is over.
+type StreamSpans struct {
+	byIndex map[int]*streamPolicySpan
+}
+
+// NewStreamSpans returns an empty set of stream spans.
+func NewStreamSpans() *StreamSpans {
+	return &StreamSpans{byIndex: make(map[int]*streamPolicySpan)}
+}
+
+// End ends every policy span of the stream. Safe to call more than once.
+func (s *StreamSpans) End() {
+	if s == nil {
+		return
+	}
+	for _, ps := range s.byIndex {
+		ps.span.End()
+	}
+	s.byIndex = map[int]*streamPolicySpan{}
+}
+
+// streamPolicySpan is one policy's span, either for a single call or for a stream.
+type streamPolicySpan struct {
+	ctx        context.Context
+	span       trace.Span
+	persistent bool
+	execNS     int64
+	decision   string // the strongest decision so far across the stream
+}
+
+// startStreamPolicySpan returns the span for the policy at index. With spans nil it is a
+// new span that finish ends; otherwise the stream's span for that policy, created on
+// first use and ended by StreamSpans.End.
+func (c *ChainExecutor) startStreamPolicySpan(ctx context.Context, spans *StreamSpans, index int, nameFormat string, spec policy.PolicySpec) *streamPolicySpan {
+	if spans != nil {
+		if ps, ok := spans.byIndex[index]; ok {
+			return ps
+		}
+	}
+	spanCtx, span := c.tracer.Start(ctx, fmt.Sprintf(nameFormat, spec.Name),
+		trace.WithSpanKind(trace.SpanKindInternal))
+	if span.IsRecording() {
+		span.SetAttributes(
+			attribute.String(constants.AttrPolicyName, spec.Name),
+			attribute.String(constants.AttrPolicyVersion, spec.Version),
+			attribute.Bool(constants.AttrPolicyEnabled, spec.Enabled),
+		)
+	}
+	ps := &streamPolicySpan{ctx: spanCtx, span: span, persistent: spans != nil}
+	if spans != nil {
+		spans.byIndex[index] = ps
+	}
+	return ps
+}
+
+// finish ends a per-call span; a stream's span stays open until StreamSpans.End.
+func (ps *streamPolicySpan) finish() {
+	if !ps.persistent {
+		ps.span.End()
+	}
+}
+
+// addExecutionTime records the policy's execution time, summed across a stream.
+func (ps *streamPolicySpan) addExecutionTime(d time.Duration) {
+	ps.execNS += d.Nanoseconds()
+	if ps.span.IsRecording() {
+		ps.span.SetAttributes(attribute.Int64(constants.AttrPolicyExecutionTimeNS, ps.execNS))
+	}
+}
+
+// ─── Policy decisions ────────────────────────────────────────────────────────
+
+// recordPolicyDecision stamps what the policy did with the message on its span, and the
+// guardrail when one denied it. prev, when non-nil, holds the stream's decision so far: a
+// stream's span keeps the strongest decision any chunk produced, deny over modify over
+// allow, rather than whatever the last chunk did.
+func recordPolicyDecision(span trace.Span, action any, prev *string) {
+	if !span.IsRecording() {
+		return
+	}
+	decision, guardrail := policyDecision(action)
+	if prev != nil {
+		if decisionRank[decision] < decisionRank[*prev] {
+			decision = *prev
+		}
+		*prev = decision
+	}
+	span.SetAttributes(attribute.String(constants.AttrPolicyAction, decision))
+	if guardrail != "" {
+		span.SetAttributes(attribute.String(constants.AttrGuardrailName, guardrail))
+	}
+}
+
+var decisionRank = map[string]int{
+	constants.PolicyActionAllow:  0,
+	constants.PolicyActionModify: 1,
+	constants.PolicyActionDeny:   2,
+}
+
+// policyDecision classifies a policy action: deny when the policy answered in place of
+// the upstream, cut the stream short or turned the response into a failure; modify when
+// it changed the message; allow otherwise. Analytics and dynamic metadata alone do not
+// change the message. guardrail is the guardrail that denied it, if one said so.
+func policyDecision(action any) (decision, guardrail string) {
+	switch a := action.(type) {
+	case policy.ImmediateResponse:
+		return constants.PolicyActionDeny, guardrailName(a.Fault, a.AnalyticsMetadata)
+	case policy.TerminateResponseChunk:
+		return constants.PolicyActionDeny, guardrailName(a.Fault, a.AnalyticsMetadata)
+	case policy.DownstreamResponseModifications:
+		if a.IsFault || (a.StatusCode != nil && *a.StatusCode >= 400) {
+			return constants.PolicyActionDeny, guardrailName(a.Fault, a.AnalyticsMetadata)
+		}
+		return modifiedIf(a.Body != nil || a.StatusCode != nil ||
+			headersChanged(a.HeadersToSet, a.HeadersToAppend, a.HeadersToRemove)), ""
+	case policy.UpstreamRequestModifications:
+		return modifiedIf(a.Body != nil || headersChanged(a.HeadersToSet, a.HeadersToAppend, a.HeadersToRemove) ||
+			a.UpstreamName != nil || a.UpstreamSlot != nil || a.Path != nil || a.Host != nil || a.Method != nil ||
+			len(a.QueryParametersToAdd) > 0 || len(a.QueryParametersToRemove) > 0), ""
+	case policy.UpstreamRequestHeaderModifications:
+		return modifiedIf(headersChanged(a.HeadersToSet, a.HeadersToAppend, a.HeadersToRemove) ||
+			a.UpstreamName != nil || a.UpstreamSlot != nil || a.Path != nil || a.Host != nil || a.Method != nil ||
+			len(a.QueryParametersToAdd) > 0 || len(a.QueryParametersToRemove) > 0), ""
+	case policy.DownstreamResponseHeaderModifications:
+		return modifiedIf(headersChanged(a.HeadersToSet, a.HeadersToAppend, a.HeadersToRemove)), ""
+	case policy.ForwardRequestChunk:
+		return modifiedIf(a.Body != nil), ""
+	case policy.ForwardResponseChunk:
+		return modifiedIf(a.Body != nil), ""
+	}
+	return constants.PolicyActionAllow, ""
+}
+
+func modifiedIf(changed bool) string {
+	if changed {
+		return constants.PolicyActionModify
+	}
+	return constants.PolicyActionAllow
+}
+
+func headersChanged(set map[string]string, appendHeaders map[string][]string, remove []string) bool {
+	return len(set) > 0 || len(appendHeaders) > 0 || len(remove) > 0
+}
+
+// guardrailName names the guardrail behind a denial: the fault's own assessment first,
+// then the analytics metadata guardrail policies have long set.
+func guardrailName(fault *policy.FaultDetails, analytics map[string]any) string {
+	if fault != nil && fault.Guardrail != nil && fault.Guardrail.InterveningGuardrail != "" {
+		return fault.Guardrail.InterveningGuardrail
+	}
+	if hit, _ := analytics[constants.GuardrailHitMetadataKey].(bool); hit {
+		name, _ := analytics[constants.GuardrailNameMetadataKey].(string)
+		return name
+	}
+	return ""
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

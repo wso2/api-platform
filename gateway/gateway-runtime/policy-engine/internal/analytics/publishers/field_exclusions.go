@@ -57,6 +57,7 @@ var trafficLogFieldClearers = map[string]func(*TrafficLogEvent){
 	"component":       func(tl *TrafficLogEvent) { tl.Component = "" },
 	"timestamp":       func(tl *TrafficLogEvent) { tl.Timestamp = "" },
 	"correlationId":   func(tl *TrafficLogEvent) { tl.CorrelationID = "" },
+	"traceId":         func(tl *TrafficLogEvent) { tl.TraceID = "" },
 	"status":          func(tl *TrafficLogEvent) { tl.Status = 0 },
 	"api":             func(tl *TrafficLogEvent) { tl.API = nil },
 	"operation":       func(tl *TrafficLogEvent) { tl.Operation = nil },

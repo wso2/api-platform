@@ -40,6 +40,7 @@ type TrafficLogEvent struct {
 	Component     string                   `json:"component,omitempty"`
 	Timestamp     string                   `json:"timestamp,omitempty"`
 	CorrelationID string                   `json:"correlationId,omitempty"`
+	TraceID       string                   `json:"traceId,omitempty"`
 	Status        int                      `json:"status,omitempty"`
 	API           *TrafficLogAPI           `json:"api,omitempty"`
 	Operation     *TrafficLogOperation     `json:"operation,omitempty"`
@@ -121,6 +122,7 @@ func (l *Log) toTrafficLogEvent(event *dto.Event, dir *dto.TrafficLogDirective) 
 
 	if event.MetaInfo != nil {
 		tl.CorrelationID = event.MetaInfo.CorrelationID
+		tl.TraceID = event.MetaInfo.TraceID
 	}
 
 	if event.API != nil {
