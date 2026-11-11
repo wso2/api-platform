@@ -732,6 +732,28 @@ though the routing policy keeps nominating it, and that load spreads across the 
 - **FR-030d**: The isolation in FR-030c MUST be verified by an explicit test: two APIs sharing one
   provider upstream, one with failover attached and one without, where the second API's routing,
   retry count, and response are unchanged from a deployment with no failover anywhere.
+- **FR-030r**: The policy MUST take effect when attached at the **API level** — `globalPolicies` on
+  an `LlmProxy` or `LlmProvider`, `policies` on a `RestApi` — and not only in `operationPolicies`.
+  A chain is keyed by the model the client asked for, never by path, so "fall back from gpt-4o
+  wherever this API serves it" is the ordinary intent; per-operation attachment is the special case,
+  not the base one. An API-level attachment MUST produce, on every generated route, the same route
+  failover configuration, the same per-attempt upstream instance, and the same fault-chain entry
+  that an operation-level attachment produces on the one route it covers. Where both levels attach
+  it, the operation-level entry MUST win for that operation: the route carries one failover
+  configuration, so the two cannot merge the way ordinary chain entries do.
+  **FR-030b's silent-inertness rule does NOT extend to this case.** Inertness is for an environment
+  mismatch — targets that cannot resolve. An API-level attachment is a correctly-formed policy at a
+  supported attachment point, so it either works or is rejected at deployment with a message naming
+  the working attachment point, on the same reasoning `ValidateUpstreamPolicies` already applies to
+  an upstream-level attachment: the authored intent is reasonable on its face and the configuration
+  would otherwise appear to work.
+  **Status 2026-11-11 — unimplemented, and it currently fails in the worst available way.** Measured
+  through the transform pipeline: with `model-failover` at the API level the route's failover
+  configuration is `nil` while the policy is still present in the executing chain, against a
+  populated configuration from the identical policy at operation level. So the policy runs, costs a
+  gRPC round trip per request, and declares `RequiresRequestBody` — which makes every provider on
+  the API buffer request bodies — while performing no failover at all. No validation error, no
+  warning, no telemetry. Tracked as T095.
 
 **Flow attachment and outcome attribution**
 
@@ -930,7 +952,10 @@ though the routing policy keeps nominating it, and that load spreads across the 
   `clusters[def.Name]` for every definition, plus `""` for the primary — and `Target.Provider` is
   already that same name. Measured: an `LlmProxy` with `additionalProviders[{as: chosen}]` resolved
   a steered `Target{Model: gpt-4o, Provider: chosen}` to that upstream's cluster, for a
-  `(provider, model)` pair the control plane never configured as a group.
+  `(provider, model)` pair the control plane never configured as a group. (That measurement was
+  taken against the legacy provider shape and is recorded as it was run; the canonical spelling of
+  the same proxy is `providers: [{id: …, alias: chosen}]`, which normalises to the identical
+  attachment and resolves the same way.)
 
   So a header-steering policy composes the moment it also writes the cross-policy
   `selected_provider` key (FR-023b) — which is the half of the pair every other steering policy in
