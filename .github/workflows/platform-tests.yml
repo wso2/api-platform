@@ -114,6 +114,9 @@ jobs:
           # one of them (-components). A file no rule names, such as shared code, the suite
           # file or this workflow, runs every block, as does a manual run. The whole suite
           # still compiles on every leg, so a broken step fails wherever it is used.
+          # A product's step package maps to that product only when every block that uses its
+          # steps starts the product. steps/platformgateway does not: api-portal-billing calls
+          # its service-request steps without a Gateway, so a change there runs every block.
           # it_label names the products in the integration jobs' titles, so the checks list
           # shows when only part of the suite ran.
           portal='api-portal,api-portal-other-org,api-portal-multi-organization'
@@ -136,7 +139,6 @@ jobs:
               tests/framework/core/catalog/platformgateway/* | \
               tests/framework/suites/it/features/gateway/* | \
               tests/framework/suites/it/features/ai-workspace-gateway/* | \
-              tests/framework/suites/it/steps/platformgateway/* | \
               tests/framework/suites/it/blocks/gateway.yaml)
                 it_components="$it_components,platform-gateway"
                 it_products="$it_products,gateway" ;;

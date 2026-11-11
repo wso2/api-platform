@@ -243,6 +243,7 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 	matchedExclude := map[string]bool{}
 	policyRunnersUsed := false
 	componentFiltered := false
+	componentMatched := false
 
 	for i := range resolved.Blocks {
 		block := cloneBlock(resolved.Blocks[i])
@@ -302,6 +303,7 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 			componentFiltered = true
 			continue
 		}
+		componentMatched = true
 
 		skipped, err := selectGatewayDatabaseCompatibility(&block)
 		if err != nil {
@@ -425,9 +427,10 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 	}
 
 	if len(out.Blocks) == 0 {
-		// A component filter that leaves nothing is a skip: a pull request that changes only
-		// the API Portal has nothing to run on a released Gateway leg.
-		if componentFiltered {
+		// A component filter that matches no block is a skip: a pull request that changes only
+		// the API Portal may have nothing to run on a released Gateway leg. A block that matched
+		// and was then removed for another reason is reported below, not hidden by the skip.
+		if componentFiltered && !componentMatched {
 			return nil, fmt.Errorf("%w: no selected block starts the requested components", ErrNothingToRun)
 		}
 		if len(s.Policies) > 0 {

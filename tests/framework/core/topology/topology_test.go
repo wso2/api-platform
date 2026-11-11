@@ -1762,6 +1762,24 @@ func TestGatewayDatabaseCompatibility(t *testing.T) {
 		}}, selected.SkippedBlocks)
 	})
 
+	t.Run("an incompatible block the component filter kept is not hidden as a skip", func(t *testing.T) {
+		suite := newSuite()
+		suite.Blocks = []ResolvedBlock{
+			suite.Blocks[1], // gateway-core/sqlserver: kept by the filter, then incompatible
+			{
+				Name: "api-portal-core", Source: "api-portal-core",
+				Components: []ResolvedComponent{{Def: &components.Definition{Name: "api-portal"}}},
+				Runners:    []Runner{{Name: "runner", Features: []string{"features/portal.feature"}}},
+			},
+		}
+		_, err := (Selection{
+			GatewayVersion:    "1.1.0",
+			RequireComponents: []string{"platform-gateway"},
+		}).Apply(suite)
+		require.ErrorContains(t, err, "the selection has no compatible blocks")
+		require.NotErrorIs(t, err, ErrNothingToRun)
+	})
+
 	t.Run("a supported release retains every variant", func(t *testing.T) {
 		selected, err := (Selection{GatewayVersion: "1.2.0"}).Apply(newSuite())
 		require.NoError(t, err)
