@@ -929,6 +929,15 @@ blockFiles:
 		}, files, "each block records the file that declares it")
 	})
 
+	t.Run("a block file is recorded in its clean form", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [./blocks/../blocks/one.yaml]\n", map[string]string{
+			"blocks/one.yaml": "blocks:" + block("a"),
+		})
+		r, err := LoadFile(path, testRegistry(t))
+		require.NoError(t, err)
+		require.Equal(t, "blocks/one.yaml", r.Blocks[0].File)
+	})
+
 	t.Run("a block name used in two files is rejected", func(t *testing.T) {
 		path := writeSuite(t, head+"blockFiles: [blocks/one.yaml, blocks/two.yaml]\n", map[string]string{
 			"blocks/one.yaml": "blocks:" + block("a"),
@@ -2355,6 +2364,10 @@ func TestCloudEnvironmentIsRequiredForExternalComponents(t *testing.T) {
 		}},
 	}}}
 	_, err := (Selection{Blocks: []string{"cloud"}}).Apply(suite)
+	require.ErrorContains(t, err, `external component "cloud-console" in block "cloud" requires -cloud-env`)
+
+	// Naming the external component opts in as naming the block does.
+	_, err = (Selection{Components: []string{"cloud-console"}}).Apply(suite)
 	require.ErrorContains(t, err, `external component "cloud-console" in block "cloud" requires -cloud-env`)
 }
 

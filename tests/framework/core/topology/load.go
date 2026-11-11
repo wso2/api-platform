@@ -218,7 +218,8 @@ func LoadFile(path string, registry *components.Registry) (*Resolved, error) {
 	}
 	for i := range resolved.Blocks {
 		if file := declaredIn[resolved.Blocks[i].Source]; file != filepath.Base(path) {
-			resolved.Blocks[i].File = file
+			// Clean and slash-separated, as Git names it: ./blocks/a.yaml is blocks/a.yaml.
+			resolved.Blocks[i].File = filepath.ToSlash(filepath.Clean(file))
 		}
 	}
 	return resolved, nil

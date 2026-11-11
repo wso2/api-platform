@@ -361,10 +361,11 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 			}
 			for _, required := range component.Def.External.RequiredParameters {
 				if strings.TrimSpace(parameters[required]) == "" {
-					if len(include) == 0 {
+					if len(include) == 0 && !slices.Contains(s.Components, component.Def.Name) {
 						// External blocks are opt-in. A normal local suite run must not
 						// require cloud credentials or a target environment merely because
-						// the suite declares the cloud coverage block.
+						// the suite declares the cloud coverage block. Naming the block, or
+						// its external component in -components, opts in.
 						skipExternalBlock = true
 						break
 					}

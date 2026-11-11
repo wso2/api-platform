@@ -251,6 +251,7 @@ func (idx *index) addResource(sel *selection, rel string) bool {
 	return found
 }
 
+// addComponents selects every block that starts one of the named components.
 func (idx *index) addComponents(sel *selection, names []string) {
 	for _, block := range idx.blocks {
 		for _, component := range block.Components {
@@ -262,6 +263,7 @@ func (idx *index) addComponents(sel *selection, names []string) {
 	}
 }
 
+// sourceOf returns the source block of a block variant name.
 func (idx *index) sourceOf(name string) string {
 	for _, block := range idx.blocks {
 		if block.Name == name {
@@ -302,6 +304,7 @@ func (idx *index) label(sel selection) string {
 	return label
 }
 
+// sourceCount is the number of blocks in the suite, before matrix expansion.
 func (idx *index) sourceCount() int {
 	seen := map[string]bool{}
 	for _, block := range idx.blocks {
@@ -317,6 +320,7 @@ type stepPackage struct {
 	patterns   []*regexp.Regexp
 }
 
+// matches reports whether one of the package's patterns matches the step text.
 func (p *stepPackage) matches(step string) bool {
 	for _, pattern := range p.patterns {
 		if pattern.MatchString(step) {
@@ -326,6 +330,7 @@ func (p *stepPackage) matches(step string) bool {
 	return false
 }
 
+// stepPackages are the product step packages, by directory name.
 type stepPackages map[string]*stepPackage
 
 // dependenciesOf returns name and every product step package it imports, directly or not:
@@ -374,6 +379,7 @@ func readStepPackages(dir string) (stepPackages, *stepPackage, error) {
 	return pkgs, shared, nil
 }
 
+// readDir reads every non-test Go file in dir into the package.
 func (p *stepPackage) readDir(dir string) error {
 	files, err := filepath.Glob(filepath.Join(dir, "*.go"))
 	if err != nil {
@@ -390,6 +396,7 @@ func (p *stepPackage) readDir(dir string) error {
 	return nil
 }
 
+// read collects the imports and Step patterns of one Go file.
 func (p *stepPackage) read(file string) error {
 	parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.SkipObjectResolution)
 	if err != nil {
@@ -458,6 +465,7 @@ func featureSteps(text string) []string {
 	return steps
 }
 
+// addTo adds value to the set kept under key.
 func addTo(m map[string]map[string]bool, key, value string) {
 	if m[key] == nil {
 		m[key] = map[string]bool{}

@@ -48,6 +48,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/topology"
 )
 
+// main parses the flags and prints the selection.
 func main() {
 	suite := flag.String("suite", "suites/it/it-suite.yaml", "the integration suite file")
 	suiteDir := flag.String("suite-dir", "tests/framework/suites/it",
@@ -60,6 +61,7 @@ func main() {
 	}
 }
 
+// run loads the suite, reads the changed files from stdin and prints the outputs.
 func run(suite, suiteDir string) error {
 	registry, err := catalog.Registry()
 	if err != nil {
@@ -90,6 +92,7 @@ func run(suite, suiteDir string) error {
 	return nil
 }
 
+// orAll names an empty selection for the log.
 func orAll(blocks string) string {
 	if blocks == "" {
 		return "every block"
