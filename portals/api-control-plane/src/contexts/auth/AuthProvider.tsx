@@ -69,6 +69,8 @@ const UNAVAILABLE: SessionCheck = { status: 'unavailable' };
  * so its 504 normally arrives first; this covers a connection that hangs.
  */
 const SESSION_CHECK_TIMEOUT_MS = 15_000;
+/** How long a switch that gave no answer in time is waited on before it is moved back. */
+const SWITCH_SETTLE_TIMEOUT_MS = 60_000;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -180,6 +182,12 @@ const isOrganization = (value: unknown): value is AuthOrg =>
  * answers them: `{organizationUnits: [{id, handle, name}]}`.
  */
 async function fetchOrganizations(url: string): Promise<AuthOrg[]> {
+  const list = await within(readOrganizations(url).catch(() => undefined), SESSION_CHECK_TIMEOUT_MS, undefined);
+  if (!list) throw new OrganizationSwitchError('unavailable');
+  return list;
+}
+
+async function readOrganizations(url: string): Promise<AuthOrg[]> {
   const response = await fetch(url, { credentials: 'same-origin' });
   if (!response.ok) throw new OrganizationSwitchError('unavailable');
   const body: unknown = await response.json();
@@ -197,20 +205,27 @@ async function fetchOrganizations(url: string): Promise<AuthOrg[]> {
  * Resolves once it has.
  */
 async function requestOrganizationSwitch(url: string, organizationId: string): Promise<void> {
+  const response = await within(sendOrganizationSwitch(url, organizationId), SESSION_CHECK_TIMEOUT_MS, undefined);
+  if (response?.status === 403) throw new OrganizationSwitchError('forbidden');
+  if (!response?.ok) throw new OrganizationSwitchError('unavailable');
+}
+
+/** The switch request itself, settling with its response or undefined, however long it takes. */
+function sendOrganizationSwitch(url: string, organizationId: string): Promise<Response | undefined> {
   const separator = url.includes('?') ? '&' : '?';
-  const send = fetch(`${url}${separator}ouId=${encodeURIComponent(organizationId)}`, {
+  return fetch(`${url}${separator}ouId=${encodeURIComponent(organizationId)}`, {
     method: 'POST',
     credentials: 'same-origin',
     headers: mutatingHeaders,
     body: JSON.stringify({ ouId: organizationId }),
   }).catch(() => undefined);
-  const response = await within(send, SESSION_CHECK_TIMEOUT_MS, undefined);
-  if (response?.status === 403) throw new OrganizationSwitchError('forbidden');
-  if (!response?.ok) throw new OrganizationSwitchError('unavailable');
 }
 
 /** Field for field, so a check that changes nothing doesn't re-render the app. */
 const sameUser = (a?: AuthUser, b?: AuthUser) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Which account a session is, as far as its claims tell. */
+const accountOf = (user?: AuthUser) => (user ? user.email || user.name : undefined);
 
 /**
  * Something in front of the console owns authentication — this portal's BFF,
@@ -247,6 +262,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // The organization the session is in, as the newest check reported it. A ref
   // so a switch can read it the moment the check answers, before a re-render.
   const sessionOrgHandle = useRef<string | undefined>(undefined);
+  const signedInAccount = useRef<string | undefined>(undefined);
 
   /**
    * Takes `url`'s answer and resolves whether the session is alive. Each caller
@@ -265,6 +281,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus((current) => (current === 'authenticated' ? current : 'unavailable'));
       return false;
     }
+    const account = session.status === 'authenticated' ? accountOf(session.user) : undefined;
+    if (account && signedInAccount.current && account !== signedInAccount.current) {
+      // Another account's session: nothing of the previous one may stay on the page.
+      leaving.current = true;
+      window.location.reload();
+      return false;
+    }
+    signedInAccount.current = account;
     sessionOrgHandle.current = session.user?.org?.handle;
     setUser((current) => (sameUser(current, session.user) ? current : session.user));
     setStatus(session.status);
@@ -311,23 +335,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const organizations = await loadOrganizations();
         const target = organizations.find((org) => org.handle === orgHandle);
         if (!target) throw new OrganizationSwitchError('forbidden');
+        // Sessions that moved go back after a failure, so none is left in the other organization.
+        const previous = organizations.find((org) => org.handle === sessionOrgHandle.current);
+        const moveBack = (urls: string[]) =>
+          previous !== undefined &&
+          Promise.all(urls.map((url) => requestOrganizationSwitch(url, previous.id))).then(
+            () => true,
+            () => false,
+          );
         const switched: string[] = [];
-        try {
-          for (const url of contract.switchOrganizationUrls) {
-            await requestOrganizationSwitch(url, target.id);
+        for (const url of contract.switchOrganizationUrls) {
+          const sent = sendOrganizationSwitch(url, target.id);
+          const response = await within(sent, SESSION_CHECK_TIMEOUT_MS, undefined);
+          if (response?.ok) {
             switched.push(url);
+            continue;
           }
-        } catch (error) {
-          // The sessions already moved go back, so none is left in the other organization.
-          const previous = organizations.find((org) => org.handle === sessionOrgHandle.current);
-          const restored =
-            previous !== undefined &&
-            (await Promise.all(switched.map((url) => requestOrganizationSwitch(url, previous.id))).then(
-              () => true,
-              () => false,
-            ));
-          if (switched.length > 0 && !restored) throw new OrganizationSwitchError('unavailable');
-          throw error;
+          if (response?.status === 403) {
+            if (switched.length > 0 && !(await moveBack(switched))) throw new OrganizationSwitchError('unavailable');
+            throw new OrganizationSwitchError('forbidden');
+          }
+          // Without a refusal this session may still move: let its request finish, then move it back too.
+          await within(sent, SWITCH_SETTLE_TIMEOUT_MS, undefined);
+          await moveBack([...switched, url]);
+          throw new OrganizationSwitchError('unavailable');
         }
         // The switched session's claims name its new organization.
         await hydrate();

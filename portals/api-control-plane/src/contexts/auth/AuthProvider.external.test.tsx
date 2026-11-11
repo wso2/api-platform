@@ -568,20 +568,35 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
     // Behind the gateway the session read signs the tab in again through Native SSO, so a
     // session ended elsewhere (a parent console's switch, say) is renewed without a page load.
     it('reads the session before signing out, so an ended session can be renewed in place', async () => {
-      const bob = { isSignedIn: true, user: { sub: '9d2e', name: 'Bob' }, scope: 'openid' };
       const poll = await signInAndPoll(POLLING_CONFIG, [() => HttpResponse.json({ isSignedIn: false })]);
       let reads = 0;
-      server.use(http.get(SDK_CONFIG.authSessionUrl, () => (reads++, HttpResponse.json(bob))));
+      server.use(http.get(SDK_CONFIG.authSessionUrl, () => (reads++, HttpResponse.json(alice))));
       const assign = vi.fn();
-      vi.stubGlobal('location', { ...window.location, assign });
+      const reload = vi.fn();
+      vi.stubGlobal('location', { ...window.location, assign, reload });
 
       vi.advanceTimersByTime(30_000);
 
-      await eventually(() => expect(screen.getByTestId('user').textContent).toBe('Bob'));
+      await eventually(() => expect(reads).toBe(1));
       expect(poll.checks()).toBe(1);
-      expect(reads).toBe(1);
       expect(screen.getByTestId('status').textContent).toBe('authenticated');
+      expect(screen.getByTestId('user').textContent).toBe('Alice');
       expect(assign).not.toHaveBeenCalled();
+      expect(reload).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
+    });
+
+    it('reloads when the session comes back as another account', async () => {
+      const bob = { isSignedIn: true, user: { sub: '9d2e', name: 'Bob' }, scope: 'openid' };
+      await signInAndPoll(POLLING_CONFIG, [() => HttpResponse.json({ isSignedIn: false })]);
+      server.use(http.get(SDK_CONFIG.authSessionUrl, () => HttpResponse.json(bob)));
+      const reload = vi.fn();
+      vi.stubGlobal('location', { ...window.location, reload });
+
+      vi.advanceTimersByTime(30_000);
+
+      await eventually(() => expect(reload).toHaveBeenCalled());
+      expect(screen.getByTestId('user').textContent).toBe('Alice');
       vi.unstubAllGlobals();
     });
 
@@ -793,17 +808,19 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
       expect(switches).toEqual([]);
     });
 
+    // A 403 is a refusal. Any other failure may still have moved the session (a 503 can follow a
+    // stored switch), so that session is moved back too.
     it.each([
-      [403, 'forbidden'],
-      [503, 'unavailable'],
-    ])('reports a %i from a switch as %s, stops there and keeps the session', async (status, reason) => {
+      [403, 'forbidden', [`${PARENT_SWITCH} ou-b`]],
+      [503, 'unavailable', [`${PARENT_SWITCH} ou-b`, `${PARENT_SWITCH} ou-a`]],
+    ])('reports a %i from a switch as %s and keeps the session', async (status, reason, expected) => {
       const switches = serveSwitchableSession(status);
       await renderSwitching();
 
       fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
 
       await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent(`failed:${reason}`));
-      expect(switches).toEqual([`${PARENT_SWITCH} ou-b`]);
+      expect(switches).toEqual(expected);
       expect(screen.getByTestId('status')).toHaveTextContent('authenticated');
       expect(screen.getByTestId('org')).toHaveTextContent('org-a');
     });
@@ -831,6 +848,65 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
 
       await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('failed:unavailable'));
       expect(switches).toEqual([`${PARENT_SWITCH} ou-b`, `${OWN_SWITCH} ou-b`, `${PARENT_SWITCH} ou-a`]);
+    });
+
+    /** Holds back the 15 s answer timeouts, to fire them when the test says. */
+    function holdAnswerTimeouts() {
+      const held: Array<() => void> = [];
+      const realSetTimeout = globalThis.setTimeout;
+      vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+        callback: () => void,
+        ms?: number,
+        ...args: unknown[]
+      ) => (ms === 15_000 ? held.push(callback) : realSetTimeout(callback, ms, ...args))) as typeof setTimeout);
+      onTestFinished(() => {
+        vi.restoreAllMocks();
+      });
+      return {
+        held: () => held.length,
+        fire: () => held.splice(0).forEach((callback) => callback()),
+      };
+    }
+
+    it('is unavailable, without switching, when the organization list does not answer in time', async () => {
+      const switches = serveSwitchableSession();
+      server.use(http.get(SWITCH_CONFIG.authOrganizationsUrl, () => new Promise<never>(() => {})));
+      const timeout = holdAnswerTimeouts();
+      await renderSwitching();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
+      await vi.waitFor(() => expect(timeout.held()).toBeGreaterThan(1));
+      act(() => timeout.fire());
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('failed:unavailable'));
+      expect(switches).toEqual([]);
+    });
+
+    it('waits for a switch that gave no answer in time, then moves every session back', async () => {
+      const switches = serveSwitchableSession();
+      let answerLate!: () => void;
+      const late = new Promise<void>((resolve) => {
+        answerLate = resolve;
+      });
+      server.use(
+        http.post(OWN_SWITCH, async ({ request }) => {
+          const { ouId } = (await request.json()) as { ouId?: string };
+          switches.push(`${OWN_SWITCH} ${ouId}`);
+          if (ouId === ORG_B.id) await late;
+          return new HttpResponse(null, { status: 200 });
+        }),
+      );
+      await renderSwitching();
+      const timeout = holdAnswerTimeouts();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
+      await vi.waitFor(() => expect(switches).toContain(`${OWN_SWITCH} ou-b`));
+      act(() => timeout.fire());
+      answerLate();
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('failed:unavailable'));
+      expect(switches.slice(0, 2)).toEqual([`${PARENT_SWITCH} ou-b`, `${OWN_SWITCH} ou-b`]);
+      expect(switches.slice(2).sort()).toEqual([`${OWN_SWITCH} ou-a`, `${PARENT_SWITCH} ou-a`]);
     });
 
     it('stays off, and never calls the switch endpoints, unless both URLs are set', async () => {
