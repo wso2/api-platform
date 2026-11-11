@@ -196,6 +196,17 @@ describe('ConsoleScopeProvider organization switching', () => {
       expect(exchangeOrgToken).not.toHaveBeenCalled();
     });
 
+    it('drops a failed switch once the session reaches the organization anyway', async () => {
+      const exchangeOrgToken = vi.fn().mockRejectedValue(new OrganizationSwitchError('unavailable'));
+      const { moveSession } = renderTab(routes.organizationHome('org-b'), switchingSession(orgA, exchangeOrgToken));
+      expect(await screen.findByText('Unable to switch organization')).toBeInTheDocument();
+
+      moveSession(switchingSession(orgB, exchangeOrgToken));
+
+      expect(await screen.findByText(/^org-b:/)).toBeInTheDocument();
+      expect(screen.queryByText('Unable to switch organization')).not.toBeInTheDocument();
+    });
+
     it('still moves the session when this tab opens another organization', async () => {
       const exchangeOrgToken = vi.fn(() => new Promise<boolean>(() => {}));
       const { user } = renderTab(routes.organizationHome('org-a'), switchingSession(orgA, exchangeOrgToken));

@@ -160,6 +160,7 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     if (!canSwitchOrganization || !isAuthenticated || !orgHandle) return undefined;
     if (orgHandle === sessionOrgHandle) {
       setSettledOrgHandle(orgHandle);
+      setSwitchFailure(undefined);
       return undefined;
     }
     if (settledOrgHandle === orgHandle && sessionOrgHandle) {
