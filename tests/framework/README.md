@@ -281,6 +281,18 @@ policy images built on it are re-pulled each run because the tag moves.
 go test -gateway-version latest -blocks gateway-core/sqlite
 ```
 
+`-components` runs only the blocks that start at least one of the named components, and
+`-require-components` only the blocks that start all of them. The Platform Tests workflow uses
+them to run the blocks for the products a pull request changes, and to run only the blocks with
+a Gateway on the released Gateway legs, since a block without one runs the same on every
+Gateway version. A name no block starts is an error, and a selection that leaves no block is
+reported as a skip.
+
+```bash
+go test -components api-portal                       # every block that starts the API Portal
+go test -gateway-version 1.2.0 -require-components platform-gateway   # only blocks with a Gateway
+```
+
 Two flags are deliberately NOT named after their `go test` counterparts, because the go tool
 consumes any flag it recognises and forwards only the rest:
 
@@ -289,8 +301,8 @@ consumes any flag it recognises and forwards only the rest:
 | `-feature-tags` | `-tags` | build-constraint flag: the filter never arrives and the suite silently runs EVERYTHING |
 | `-block-parallel` | `-parallel` | caps `t.Parallel`: the engine nests parallel subtests, so a low value DEADLOCKS the suite after boot |
 
-`-blocks`, `-skip-blocks` and `-runner-parallel` have no builtin of that name and are forwarded
-to the binary as normal.
+`-blocks`, `-skip-blocks`, `-components`, `-require-components` and `-runner-parallel` have no
+builtin of that name and are forwarded to the binary as normal.
 
 Runner `tags` may begin with a framework Gateway-release selector, followed by `;` and an
 ordinary Godog expression: `gateway-version>1.2.0;~@known-issue`. The selector accepts only

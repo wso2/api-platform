@@ -1370,6 +1370,88 @@ func TestSelectionByBlockName(t *testing.T) {
 	})
 }
 
+// productSuite has a Gateway-only block, a Portal-only block and a block with both.
+func productSuite() *Resolved {
+	block := func(name string, started ...string) ResolvedBlock {
+		b := ResolvedBlock{
+			Name: name, Source: name, Parallel: 1,
+			Runners: []Runner{{Name: "r", Features: []string{"features/" + name + ".feature"}}},
+		}
+		for _, c := range started {
+			b.Components = append(b.Components, ResolvedComponent{Def: &components.Definition{Name: c}})
+		}
+		return b
+	}
+	return &Resolved{
+		Name:     "api-platform-it",
+		Parallel: 1,
+		Timeouts: Timeouts{Boot: DefaultBootTimeout, Propagation: DefaultPropagationTimeout},
+		Blocks: []ResolvedBlock{
+			block("gateway-core", "platform-gateway", "testbench"),
+			block("api-portal-core", "api-portal", "platform-api"),
+			block("all-three", "api-portal", "platform-api", "platform-gateway"),
+		},
+	}
+}
+
+func TestSelectionByComponents(t *testing.T) {
+	t.Run("keeps the blocks that start any named component", func(t *testing.T) {
+		got, err := Selection{Components: []string{"api-portal"}}.Apply(productSuite())
+		require.NoError(t, err)
+		require.Equal(t, []string{"api-portal-core", "all-three"}, got.BlockNames())
+	})
+
+	t.Run("several names are an OR", func(t *testing.T) {
+		got, err := Selection{Components: []string{"api-portal", "testbench"}}.Apply(productSuite())
+		require.NoError(t, err)
+		require.Len(t, got.Blocks, 3)
+	})
+
+	t.Run("required components drop the blocks without them", func(t *testing.T) {
+		got, err := Selection{RequireComponents: []string{"platform-gateway"}}.Apply(productSuite())
+		require.NoError(t, err)
+		require.Equal(t, []string{"gateway-core", "all-three"}, got.BlockNames())
+	})
+
+	t.Run("both filters apply together", func(t *testing.T) {
+		got, err := Selection{
+			Components:        []string{"api-portal"},
+			RequireComponents: []string{"platform-gateway"},
+		}.Apply(productSuite())
+		require.NoError(t, err)
+		require.Equal(t, []string{"all-three"}, got.BlockNames())
+	})
+
+	t.Run("a filter that leaves nothing is a skip, not a failure", func(t *testing.T) {
+		_, err := Selection{
+			Components:        []string{"api-portal"},
+			RequireComponents: []string{"testbench"},
+		}.Apply(productSuite())
+		require.ErrorIs(t, err, ErrNothingToRun)
+	})
+
+	t.Run("a component no block starts is an error", func(t *testing.T) {
+		for _, s := range []Selection{
+			{Components: []string{"api-portl"}},
+			{RequireComponents: []string{"api-portl"}},
+		} {
+			_, err := s.Apply(productSuite())
+			require.ErrorContains(t, err, "no block starts component api-portl")
+			require.ErrorContains(t, err, "available: api-portal, platform-api, platform-gateway, testbench")
+			require.NotErrorIs(t, err, ErrNothingToRun)
+		}
+	})
+
+	t.Run("flags parse comma-separated lists", func(t *testing.T) {
+		var s Selection
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		s.Flags(fs)
+		require.NoError(t, fs.Parse([]string{"-components=api-portal, platform-api", "-require-components=platform-gateway"}))
+		require.Equal(t, []string{"api-portal", "platform-api"}, s.Components)
+		require.Equal(t, []string{"platform-gateway"}, s.RequireComponents)
+	})
+}
+
 func TestUnmatchedSelectionIsAnError(t *testing.T) {
 	_, err := Selection{Blocks: []string{"gateway-core/mysql"}}.Apply(matrixSuite())
 	require.ErrorContains(t, err, "no block matches gateway-core/mysql")
