@@ -214,7 +214,7 @@ blocks:
       - name: coverage-branches
         features:
           - features/ai_workspace/coverage_branches.feature
-      # Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), provider creation through the browser.
+      # Scenarios AIW-LLM (scenarios/on-prem/AIW-LLM.yaml), provider creation through the browser.
       - name: aiw-llm-provider-creation
         features:
           - features/aiw_llm/provider_creation.feature

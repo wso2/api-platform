@@ -17,7 +17,7 @@
 # --------------------------------------------------------------------
 @AIW-LLM
 Feature: Creating LLM providers from different templates in the AI Workspace
-  Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-feature "Templates" (AIW-PRV-027), through the browser. The API-level
+  Scenarios AIW-LLM (scenarios/on-prem/AIW-LLM.yaml), sub-feature "Templates" (AIW-PRV-027), through the browser. The API-level
   scenario is in suites/it/features/ai-workspace/llm-providers/templates.feature.
 
   Two vendors' templates set up a provider differently: OpenAI has a built-in endpoint and
