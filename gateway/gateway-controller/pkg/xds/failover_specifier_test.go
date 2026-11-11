@@ -807,3 +807,74 @@ func TestFailoverRetryPolicy_RetriesAResetAfterTheRequestWasSent(t *testing.T) {
 			"excludes the failure this feature is for. Got %q", retry.RetryOn)
 	}
 }
+
+// A route carries exactly ONE cluster specifier, so failover and cluster_header routing are
+// mutually exclusive by construction. When an operation attaches model-failover the
+// priority_group plugin owns cluster selection and x-target-upstream is no longer consulted.
+//
+// This pins the PRECEDENCE, because the two arms live in a switch and a reorder would flip it
+// with no other visible symptom. Getting it backwards is not a cosmetic regression: the route
+// would select its cluster from a header that names ONE cluster and cannot survive a retry, so
+// every attempt after the first would go back to the same upstream and failover would silently
+// stop failing over while still generating a retry policy that looks correct in a config dump.
+//
+// UseClusterHeader is true for any API with upstream definitions or a sandbox — which is every
+// multi-provider LlmProxy — so this combination is the common case, not an exotic one (FR-053).
+func TestCreateRouteFromRDC_FailoverDisplacesClusterHeader(t *testing.T) {
+	logger := createTestLogger()
+	routerCfg := testRouterConfig()
+	cfg := testConfig()
+	cfg.Router = *routerCfg
+	translator, err := NewTranslator(logger, routerCfg, nil, cfg)
+	require.NoError(t, err)
+
+	rdc := &models.RuntimeDeployConfig{
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"main": {Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+		},
+	}
+	newRoute := func(failover *models.FailoverConfig) *models.Route {
+		return &models.Route{
+			Method:        "POST",
+			Path:          "/api/v1.0/chat",
+			OperationPath: "/chat",
+			Upstream: models.RouteUpstream{
+				ClusterKey:       "main",
+				UseClusterHeader: true, // the common case: upstream definitions or a sandbox
+				DefaultCluster:   "upstream_main",
+			},
+			Failover: failover,
+		}
+	}
+	withFailover := &models.FailoverConfig{
+		Targets: []models.FailoverTarget{
+			{Model: "gpt-4o", Cluster: "upstream_main"},
+			{Model: "gpt-4o-mini", Cluster: "upstream_fallback"},
+		},
+	}
+
+	// Both set: the specifier plugin wins and cluster_header is NOT emitted.
+	r := translator.createRouteFromRDC("POST|/api/v1.0/chat|main.local", newRoute(withFailover), rdc)
+	require.NotNil(t, r)
+	action := r.GetRoute()
+	require.NotNil(t, action)
+
+	require.NotEmpty(t, action.GetClusterSpecifierPlugin(),
+		"failover must own cluster selection when both it and UseClusterHeader are present")
+	require.Empty(t, action.GetClusterHeader(),
+		"cluster_header must not be emitted alongside the failover specifier: a route has one "+
+			"cluster specifier, and a header names one cluster that cannot survive a retry")
+	require.NotNil(t, action.GetRetryPolicy(),
+		"the retry policy is generated with the specifier, never without it")
+
+	// The control: the SAME route without failover keeps cluster_header, so the assertion
+	// above is about precedence rather than about cluster_header never being generated.
+	plain := translator.createRouteFromRDC("POST|/api/v1.0/chat|main.local", newRoute(nil), rdc)
+	require.NotNil(t, plain)
+	plainAction := plain.GetRoute()
+	require.NotNil(t, plainAction)
+	require.Equal(t, constants.TargetUpstreamHeader, plainAction.GetClusterHeader(),
+		"without failover the route must still select its cluster from x-target-upstream")
+	require.Empty(t, plainAction.GetClusterSpecifierPlugin(),
+		"a route that does not attach failover must generate no specifier plugin (FR-030c)")
+}
