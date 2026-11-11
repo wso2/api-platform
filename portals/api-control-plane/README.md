@@ -143,7 +143,8 @@ the session into the organization in its URL:
 - **The session is the browser's, not the tab's.** A tab whose session moved to
   another organization without it asking, such as a switch in another tab, loads
   that organization's home on its next session check rather than moving the
-  session back.
+  session back. The tab keeps its organization in `sessionStorage`, so this
+  holds after a reload or a new sign-in too.
 
 On the API Platform gateway, the switch endpoint is the `oauth2-org-switch`
 policy on the console's sign-in API, with the console's own session as its
