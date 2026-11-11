@@ -119,11 +119,11 @@ describe('GatewaysList permissions', () => {
   it('closes the configuration drawer when configuration-read access is lost', async () => {
     const { rerender } = renderWith(all(true));
     fireEvent.click(screen.getByRole('button', { name: 'Configure Dev edge' }));
-    expect(await screen.findByText('Gateway Configuration')).toBeTruthy();
+    expect(await screen.findByText('Gateway configuration')).toBeTruthy();
 
     rerender(listWith({ ...all(true), readConfiguration: false }));
 
-    await waitFor(() => expect(screen.queryByText('Gateway Configuration')).toBeNull());
+    await waitFor(() => expect(screen.queryByText('Gateway configuration')).toBeNull());
   });
 });
 

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type { FC } from 'react';
+import { useId, type FC } from 'react';
 import {
   Box,
   FormHelperText,
@@ -29,7 +29,9 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { CircleHelp } from '@wso2/oxygen-ui-icons-react';
+import { helperText, optionLabel } from '../config/display';
 import type { EditableField } from '../types';
+import { inputSx, secondaryTextSx } from './styles';
 
 export type SettingFieldProps = {
   field: EditableField;
@@ -37,26 +39,22 @@ export type SettingFieldProps = {
   value: unknown;
   error?: string;
   readOnly?: boolean;
+  /** Whether the shown value is an unsaved edit; marks the label and the control. */
+  modified?: boolean;
   onChange: (value: unknown) => void;
 };
 
 /**
- * One `editable` entry rendered as one row.
+ * One `editable` entry: its label above the control and one line below it.
  *
- * Everything shown comes from the response — `label` and `description` are the
+ * Everything shown comes from the response. `label` and `description` are the
  * platform's own user-facing copy and are used verbatim, not shortened. In
- * particular the two replica labels ("Gateway controller replicas" vs "Gateway
- * runtime replicas") name DIFFERENT pods and must never both become "Replicas".
+ * particular two settings with similar names ("controller" vs "policy engine"
+ * log level) name DIFFERENT components and must never be shortened to one.
  *
- * Only two things ever sit beside a control, split by WHEN they are needed,
- * because sixteen fields of prose is three screens of scrolling:
- *
- *   error        needed always         -> inline, and never behind a hover
- *   description  needed once, before   -> behind the `?`
- *
- * Bounds are NOT shown. They were a permanent second line under every field
- * for something that only matters while typing, and the message that arrives
- * when a value is actually out of range states them anyway.
+ * The line below is the platform's short hint and default, until there is an
+ * error, which takes its place: the error is what the user has to act on, and it
+ * states the bound that was broken. The full description is behind the `?`.
  *
  * Every string is one line. A TOML block is not rendered at all (see
  * `isTomlBlock`).
@@ -75,40 +73,40 @@ export const isTomlBlock = (field: EditableField): boolean =>
 const inputText = (value: unknown): string =>
   value === undefined || value === null ? '' : String(value);
 
-/*
- * Every control carries `aria-label={label}`. The visible label is a
- * `Typography` in the row beside it, not an `<label htmlFor>`, so nothing
- * associates the two -- a screen reader would announce the enum as an unnamed
- * combobox. Naming the control directly is the smaller fix here: the layout is
- * a two-column row shared by six widget types, and `InputLabel` would put a
- * floating label inside each one.
- */
 const SettingField: FC<SettingFieldProps> = ({
   field,
   value,
   error,
   readOnly = false,
+  modified = false,
   onChange,
 }) => {
   const label = field.label || field.path;
+  const labelId = useId();
+  const outline = inputSx(modified);
 
-
+  /*
+   * Every control is named by the visible label through `aria-labelledby`, so a
+   * screen reader announces the enum as "Controller log level", not as an
+   * unnamed combobox.
+   */
   const control = () => {
     switch (field.type) {
       case 'enum':
         return (
           <Select
-            aria-label={label}
+            inputProps={{ 'aria-labelledby': labelId }}
             disabled={readOnly}
             displayEmpty
             fullWidth
             size="small"
+            sx={outline}
             value={inputText(value)}
             onChange={(event) => onChange(event.target.value)}
           >
             {(field.values ?? []).map((option) => (
               <MenuItem key={option} value={option}>
-                {field.labels?.[option] ?? option}
+                {optionLabel(field, option)}
               </MenuItem>
             ))}
           </Select>
@@ -116,13 +114,21 @@ const SettingField: FC<SettingFieldProps> = ({
 
       case 'boolean':
         return (
-          <Switch
-            checked={value === true}
-            disabled={readOnly}
-            size="small"
-            inputProps={{ 'aria-label': label }}
-            onChange={(event) => onChange(event.target.checked)}
-          />
+          <Box sx={{ alignItems: 'center', display: 'flex', gap: 1, minHeight: 40 }}>
+            <Switch
+              checked={value === true}
+              disabled={readOnly}
+              size="small"
+              inputProps={{ 'aria-labelledby': labelId }}
+              onChange={(event) => onChange(event.target.checked)}
+            />
+            <Typography
+              variant="body2"
+              sx={readOnly ? { color: 'text.disabled' } : value === true ? undefined : secondaryTextSx}
+            >
+              {value === true ? 'On' : 'Off'}
+            </Typography>
+          </Box>
         );
 
       case 'integer':
@@ -133,8 +139,9 @@ const SettingField: FC<SettingFieldProps> = ({
             fullWidth
             size="small"
             type="number"
+            sx={outline}
             slotProps={{
-              htmlInput: { 'aria-label': label, min: field.min, max: field.max },
+              htmlInput: { 'aria-labelledby': labelId, min: field.min, max: field.max },
             }}
             value={inputText(value)}
             // An emptied input becomes '' rather than 0 or "unedited": the
@@ -142,9 +149,7 @@ const SettingField: FC<SettingFieldProps> = ({
             // old value back under the cursor. As '' it fails validation with
             // the platform's own "must be a whole number".
             onChange={(event) =>
-              onChange(
-                event.target.value === '' ? '' : Number(event.target.value)
-              )
+              onChange(event.target.value === '' ? '' : Number(event.target.value))
             }
           />
         );
@@ -154,13 +159,7 @@ const SettingField: FC<SettingFieldProps> = ({
       // write, which is why the drawer re-seeds from the PUT response.
       //
       // NO PLACEHOLDER. An example value in a greyed-out input is read as the
-      // setting's current value, and for the ten paths the response carries no
-      // value for, that is exactly the wrong thing to imply.
-      //
-      // With the bounds line gone there is now nothing on screen that spells
-      // the syntax before a value is typed: the `?` carries the platform's
-      // description, and an out-of-range value is told its bounds when it is
-      // rejected. That is the accepted cost of a quieter form.
+      // setting's current value; the default is spelled out in the line below.
       case 'duration':
       case 'quantity':
       case 'string':
@@ -171,7 +170,8 @@ const SettingField: FC<SettingFieldProps> = ({
             error={Boolean(error)}
             fullWidth
             size="small"
-            slotProps={{ htmlInput: { 'aria-label': label } }}
+            sx={outline}
+            slotProps={{ htmlInput: { 'aria-labelledby': labelId } }}
             value={inputText(value)}
             onChange={(event) => onChange(event.target.value)}
           />
@@ -184,52 +184,39 @@ const SettingField: FC<SettingFieldProps> = ({
 
   const rendered = control();
   if (!rendered) return null;
+  const help = helperText(field);
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, py: 1 }}>
-      <Box
-        sx={{
-          flex: 1,
-          minWidth: 0,
-          minHeight: 40,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 0.25,
-        }}
-      >
-        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+    <Box>
+      <Box sx={{ alignItems: 'center', display: 'flex', gap: 0.75, mb: 0.75 }}>
+        <Typography id={labelId} variant="body2">
           {label}
         </Typography>
         {field.description ? (
-          // An IconButton rather than a bare span: a tooltip on something
-          // unfocusable is unreachable by keyboard. `describeChild` keeps the
-          // button's own label and exposes the text as its description, and the
-          // touch delays make a tap show it and hold it long enough to read.
-          <Tooltip
-            title={field.description}
-            describeChild
-            enterTouchDelay={0}
-            leaveTouchDelay={8000}
-          >
-            <IconButton
-              aria-label={`About ${label}`}
-              size="small"
-              sx={{ p: 0.25, color: 'text.disabled' }}
-            >
+          // An IconButton rather than a bare icon: a tooltip on something
+          // unfocusable is unreachable by keyboard.
+          <Tooltip title={field.description} describeChild enterTouchDelay={0} leaveTouchDelay={8000}>
+            <IconButton aria-label={`About ${label}`} size="small" sx={{ ...secondaryTextSx, p: 0.25 }}>
               <CircleHelp size={14} />
             </IconButton>
           </Tooltip>
         ) : null}
-      </Box>
-
-      <Box sx={{ flex: '0 0 200px', minHeight: 40 }}>
-        {rendered}
-        {error ? (
-          <FormHelperText error sx={{ mx: 0 }}>
-            {error}
-          </FormHelperText>
+        {modified ? (
+          <Box
+            aria-label="Unsaved change"
+            role="img"
+            sx={{ bgcolor: 'primary.main', borderRadius: '50%', height: 7, width: 7 }}
+          />
         ) : null}
       </Box>
+      {rendered}
+      {error ? (
+        <FormHelperText error sx={{ mx: 0 }}>
+          {error}
+        </FormHelperText>
+      ) : help ? (
+        <FormHelperText sx={{ ...secondaryTextSx, mx: 0 }}>{help}</FormHelperText>
+      ) : null}
     </Box>
   );
 };

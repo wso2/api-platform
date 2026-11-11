@@ -183,7 +183,10 @@ export type EditableField = {
   path: string;
   type: ConfigFieldType;
   label?: string;
+  /** The full explanation, shown on demand. */
   description?: string;
+  /** One short line under the control, before the default. */
+  hint?: string;
   /** Heading of the form section this setting is shown under. */
   group?: string;
   /** Permitted values, present when `type` is `enum`. */
@@ -227,6 +230,30 @@ export type ConfigConstraint = {
 
 export type ConfigValues = Record<string, unknown>;
 
+/**
+ * One identity provider whose JWTs a managed gateway accepts. Exactly one of
+ * `jwksUri` and `publicKey` is set.
+ */
+export type GatewayKeyManager = {
+  /** What an API's JWT policy names it by in `issuers`. */
+  name: string;
+  /** The `iss` claim of the tokens it issues. */
+  issuer: string;
+  jwksUri?: string;
+  /** A PEM public key or certificate, for an IdP with no JWKS endpoint. */
+  publicKey?: string;
+  scopeClaim?: string;
+  scopeClaimSeparator?: string;
+};
+
+
+/** A form section the editable settings name in `group`. */
+export type ConfigGroup = {
+  name: string;
+  /** One line describing what the section's settings control. */
+  description?: string;
+};
+
 export type GatewayConfiguration = {
   id: string;
   name?: string;
@@ -234,6 +261,10 @@ export type GatewayConfiguration = {
   /** Current value of every editable setting, keyed exactly as a request body is. */
   values: ConfigValues;
   editable: EditableField[];
+  /** The sections `editable` names, with their descriptions. Absent on an older platform. */
+  groups?: ConfigGroup[];
+  /** What the gateway trusts, read and written with the settings. */
+  keyManagers?: GatewayKeyManager[];
   constraints?: ConfigConstraint[];
   status: ConfigStatus;
 };

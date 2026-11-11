@@ -21,14 +21,20 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   CircularProgress,
+  Divider,
   Drawer,
   IconButton,
+  LinearProgress,
   Tooltip,
   Typography,
+  alpha,
+  type Theme,
 } from '@wso2/oxygen-ui';
 import { X } from '@wso2/oxygen-ui-icons-react';
 import { readConfiguration, writeConfiguration } from '../config/api';
+import { sameKeyManagers } from '../config/keyManagers';
 import { isChange, shownValue } from '../config/defaults';
 import { isApplying } from '../config/status';
 import {
@@ -40,13 +46,18 @@ import {
 import type { AIWorkspaceHostPort } from '../hostPort';
 import { NO_PERMISSION_TOOLTIP } from '../permissions';
 import type {
+  ConfigStatus,
   ConfigValues,
   EditableField,
   Gateway,
   GatewayConfiguration,
+  GatewayKeyManager,
 } from '../types';
 import ConfigStatusBar from './ConfigStatusBar';
+import KeyManagersSection from './KeyManagersSection';
 import SettingField, { isTomlBlock } from './SettingField';
+import SettingsSection, { SettingsCell } from './SettingsSection';
+import { PROGRESS_ACCENT, secondaryTextSx } from './styles';
 
 export type GatewaySettingsDrawerProps = {
   open: boolean;
@@ -74,7 +85,45 @@ export type GatewaySettingsDrawerProps = {
  * gateway and cannot outlive it.
  */
 
-const DRAWER_WIDTH = 520;
+const DRAWER_WIDTH = 640;
+
+/** The trusted key managers belong to jwt-auth, so they sit in the section of its settings. */
+const JWT_PATH_PREFIX = 'gateway.config.policy_configurations.jwtauth_v1.';
+
+/** The phase as a tinted pill with a dot, beside the gateway's name. */
+const PHASE_CHIP: Partial<Record<string, { label: string; color: (theme: Theme) => string }>> = {
+  healthy: { label: 'Running', color: (theme) => theme.palette.success.main },
+  applying: { label: 'Applying', color: () => PROGRESS_ACCENT },
+  failed: { label: 'Failed', color: (theme) => theme.palette.error.main },
+};
+
+const PhaseChip: FC<{ status: ConfigStatus }> = ({ status }) => {
+  const chip = PHASE_CHIP[status.phase];
+  if (!chip) return null;
+  return (
+    <Chip
+      size="small"
+      label={chip.label}
+      sx={(theme) => ({
+        bgcolor: alpha(chip.color(theme), 0.16),
+        color: 'text.primary',
+        fontWeight: 500,
+        pl: 0.5,
+      })}
+      icon={
+        <Box
+          sx={(theme) => ({
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            bgcolor: chip.color(theme),
+            ml: '8px !important',
+          })}
+        />
+      }
+    />
+  );
+};
 
 /**
  * How often the drawer re-reads the configuration while it is open.
@@ -116,6 +165,8 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   const savingRef = useRef(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
+  /** The user's edited key manager list, `null` until edited; the saved one comes with `config`. */
+  const [keyManagerDraft, setKeyManagerDraft] = useState<GatewayKeyManager[] | null>(null);
 
   /**
    * Bumped by every read AND every write, so a response can tell whether it is
@@ -172,6 +223,8 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
     void load(gatewayId);
   }, [gatewayId, load, open]);
 
+  const keyManagers = config?.keyManagers ?? null;
+
   /**
    * Poll while the drawer is open, so `Applying…` becomes a timestamp on its own.
    *
@@ -213,7 +266,12 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   );
   const errors = { ...serverErrors, ...clientErrors };
 
-  const dirtyCount = Object.keys(patch).length;
+  /** The edited list, when it differs from what the gateway trusts. */
+  const keyManagerChange =
+    keyManagerDraft && keyManagers && !sameKeyManagers(keyManagerDraft, keyManagers)
+      ? keyManagerDraft
+      : null;
+  const dirtyCount = Object.keys(patch).length + (keyManagerChange ? 1 : 0);
   /**
    * The previous change has not reached the data plane yet. Writing again on top
    * of it re-renders the release from a document the gateway has not finished
@@ -221,6 +279,20 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
    * minutes, which is why the button explains itself rather than just greying out.
    */
   const applying = isApplying(config?.status);
+
+  /**
+   * Set when this drawer watched a change land: the phase went from `applying` to
+   * `healthy` while it was open. Not on open, since a gateway that was already
+   * healthy has nothing new to report.
+   */
+  const [applied, setApplied] = useState(false);
+  const previousPhase = useRef<string | undefined>(undefined);
+  const phase = config?.status.phase;
+  useEffect(() => {
+    if (phase === 'applying') setApplied(false);
+    else if (phase === 'healthy' && previousPhase.current === 'applying') setApplied(true);
+    previousPhase.current = phase;
+  }, [phase]);
   /**
    * The organization may not write at all. Read directly rather than through
    * `canCreate('gateways')`: that answers whether there is room for one MORE
@@ -269,8 +341,14 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
       // The response is the WHOLE configuration after the write, in the GET's
       // shape — so it is both the confirmation and the new baseline. Re-seeding
       // from it is what makes a canonicalized quantity ("1000m" -> "1") stop
-      // looking edited, and why there is no second GET here.
-      const written = await writeConfiguration(apiFetch, gatewayId, patch);
+      // looking edited, and why there is no second GET here. Settings and key
+      // managers go in one request, so the save is applied whole or not at all.
+      const written = await writeConfiguration(
+        apiFetch,
+        gatewayId,
+        patch,
+        keyManagerChange ?? undefined
+      );
       // The write happened, so it is confirmed and the edits are no longer
       // pending whatever else is in flight. Only the BASELINE is conditional:
       // a refresh started after this write owns the newer generation and its
@@ -278,6 +356,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
       // fighting over them.
       if (mine === generation.current) setConfig(written);
       setDrafts({});
+      setKeyManagerDraft(null);
       notify('Configuration saved.', 'success');
     } catch (error) {
       const message =
@@ -315,48 +394,57 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   const currentValue = (field: EditableField): unknown =>
     config ? shownValue(field, config.values, drafts) : undefined;
 
+  const locked = saving || !canWrite || applying;
+  const hasJwtSection = sections.some((section) =>
+    section.fields.some((field) => field.path.startsWith(JWT_PATH_PREFIX))
+  );
+  const descriptionOf = (group?: string) =>
+    config?.groups?.find((candidate) => candidate.name === group)?.description;
+  const keyManagerField = config ? (
+    <SettingsCell wide>
+      <KeyManagersSection
+        keyManagers={keyManagerDraft ?? keyManagers}
+        saved={keyManagers ?? []}
+        readOnly={locked}
+        modified={keyManagerChange !== null}
+        onChange={setKeyManagerDraft}
+      />
+    </SettingsCell>
+  ) : null;
+
   return (
     <Drawer anchor="right" open={open} onClose={onClose}>
       <Box
         sx={{
           width: DRAWER_WIDTH,
+          maxWidth: '100vw',
           display: 'flex',
           flexDirection: 'column',
           height: '100%',
         }}
       >
-        <Box sx={{ px: 3, pt: 3 }}>
+        <Box sx={{ px: 3, pt: 3, pb: 2, borderBottom: 1, borderColor: 'divider' }}>
           <Box
             sx={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              mb: 0.5,
+              mb: 1.5,
             }}
           >
-            <Typography sx={{ fontSize: 16, fontWeight: 600 }}>
-              Gateway Configuration
+            <Typography component="h2" variant="h5" sx={{ fontWeight: 600 }}>
+              Gateway configuration
             </Typography>
             <IconButton size="small" onClick={onClose} aria-label="Close">
               <X size={18} />
             </IconButton>
           </Box>
-          <Box
-            sx={{
-              alignItems: 'center',
-              display: 'flex',
-              gap: 1,
-              mb: 2,
-              minHeight: 32,
-            }}
-          >
-            <Typography
-              color="text.secondary"
-              sx={{ flex: 1, minWidth: 0 }}
-              variant="body2"
-            >
+          <Box sx={{ alignItems: 'center', display: 'flex', gap: 1.5, minHeight: 32 }}>
+            <Typography variant="body1" sx={{ fontWeight: 500 }}>
               {gateway.name}
             </Typography>
+            {config ? <PhaseChip status={config.status} /> : null}
+            <Box sx={{ flex: 1 }} />
             {config ? (
               <ConfigStatusBar
                 status={config.status}
@@ -377,7 +465,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
           {loadError ? (
             <Alert
               severity="error"
-              sx={{ my: 2 }}
+              sx={{ mt: 3 }}
               action={
                 <Button
                   size="small"
@@ -393,47 +481,107 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
           ) : null}
 
           {saveError ? (
-            <Alert severity="error" sx={{ my: 2 }}>
+            <Alert severity="error" sx={{ mt: 3 }}>
               {saveError}
             </Alert>
           ) : null}
 
           {config && !canWrite ? (
-            <Alert severity="info" sx={{ my: 2 }}>
+            <Alert severity="info" sx={{ mt: 3 }}>
               You can view this configuration, but you don&apos;t have permission to change it.
             </Alert>
           ) : null}
 
-          {sections.map((section, index) => (
-            <Box key={`${section.group ?? ''}-${index}`} sx={{ pt: 2 }}>
-              {section.group ? (
-                <Typography
-                  component="h3"
-                  variant="subtitle2"
-                  sx={{ color: 'text.secondary', pb: 0.5 }}
-                >
-                  {section.group}
-                </Typography>
-              ) : null}
-              {section.fields.map((field) => (
-                <SettingField
-                  key={field.path}
-                  field={field}
-                  value={currentValue(field)}
-                  error={errors[field.path]}
-                  readOnly={saving || !canWrite}
-                  onChange={(value) => setDraft(field.path, value)}
-                />
-              ))}
+          {/* No percentage or steps: the platform reports only that the change has
+              not landed yet, and a progress bar that guessed would be wrong for
+              minutes at a time. */}
+          {applying ? (
+            <Box
+              role="status"
+              sx={{
+                mt: 3,
+                p: 2,
+                border: 1,
+                borderColor: alpha(PROGRESS_ACCENT, 0.45),
+                bgcolor: alpha(PROGRESS_ACCENT, 0.08),
+                borderRadius: 2,
+              }}
+            >
+              <Box sx={{ alignItems: 'flex-start', display: 'flex', gap: 1.5, mb: 2 }}>
+                <CircularProgress size={18} sx={{ color: PROGRESS_ACCENT, mt: 0.25 }} />
+                <Box>
+                  <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                    Applying changes
+                  </Typography>
+                  <Typography variant="body2" sx={secondaryTextSx}>
+                    Settings are locked until the gateway is running the new
+                    configuration. This can take a few minutes.
+                  </Typography>
+                </Box>
+              </Box>
+              <LinearProgress
+                sx={{
+                  bgcolor: alpha(PROGRESS_ACCENT, 0.2),
+                  borderRadius: 1,
+                  '& .MuiLinearProgress-bar': { bgcolor: PROGRESS_ACCENT },
+                }}
+              />
             </Box>
-          ))}
+          ) : null}
+
+          {applied && !applying ? (
+            <Alert
+              severity="success"
+              variant="outlined"
+              sx={{ mt: 3 }}
+              action={
+                <Button color="inherit" size="small" onClick={() => setApplied(false)}>
+                  Dismiss
+                </Button>
+              }
+            >
+              Changes applied. The gateway is running the new configuration.
+            </Alert>
+          ) : null}
+
+          {sections.map((section, index) => {
+            const isJwt = section.fields.some((field) => field.path.startsWith(JWT_PATH_PREFIX));
+            return (
+              <Box key={`${section.group ?? ''}-${index}`}>
+                {index > 0 ? <Divider /> : null}
+                <SettingsSection title={section.group} description={descriptionOf(section.group)}>
+                  {section.fields.map((field) => (
+                    <SettingsCell key={field.path}>
+                      <SettingField
+                        field={field}
+                        value={currentValue(field)}
+                        error={errors[field.path]}
+                        modified={field.path in patch}
+                        readOnly={locked}
+                        onChange={(value) => setDraft(field.path, value)}
+                      />
+                    </SettingsCell>
+                  ))}
+                  {isJwt ? keyManagerField : null}
+                </SettingsSection>
+              </Box>
+            );
+          })}
+
+          {/* A platform that offers no JWT settings still lists what the gateway trusts. */}
+          {config && !hasJwtSection && keyManagerField ? (
+            <Box>
+              {sections.length > 0 ? <Divider /> : null}
+              <SettingsSection title="Key managers">{keyManagerField}</SettingsSection>
+            </Box>
+          ) : null}
         </Box>
 
         {config ? (
           <Box
             sx={{
+              alignItems: 'center',
               display: 'flex',
-              justifyContent: 'flex-end',
               gap: 1,
               px: 3,
               py: 2,
@@ -441,6 +589,14 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
               borderColor: 'divider',
             }}
           >
+            <Typography
+              variant="body2"
+              sx={{ ...(dirtyCount > 0 ? { color: 'primary.main' } : secondaryTextSx), flex: 1 }}
+            >
+              {dirtyCount === 0
+                ? 'No changes'
+                : `${dirtyCount} unsaved ${dirtyCount === 1 ? 'change' : 'changes'}`}
+            </Typography>
             {/* Restores the last loaded values — NOT platform defaults, which is not an operation the endpoint has. */}
             <Button
               variant="outlined"
@@ -448,11 +604,12 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
               disabled={dirtyCount === 0 || saving}
               onClick={() => {
                 setDrafts({});
+                setKeyManagerDraft(null);
                 setServerErrors({});
                 setSaveError(null);
               }}
             >
-              Reset
+              Discard
             </Button>
             <Tooltip
               title={
@@ -469,9 +626,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
                   explaining why it is disabled would never open. */}
               <Box component="span">
                 <Button variant="contained" disabled={!canSave} onClick={save}>
-                  {dirtyCount === 0
-                    ? 'Save'
-                    : `Save ${dirtyCount} ${dirtyCount === 1 ? 'change' : 'changes'}`}
+                  Save and apply
                 </Button>
               </Box>
             </Tooltip>
