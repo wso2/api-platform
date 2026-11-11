@@ -138,8 +138,76 @@ func buildFailoverConfig(policies *[]management.Policy, resolveCluster func(prov
 	return cfg
 }
 
-// failoverParams finds the model-failover entry in an operation's policy list and returns its
-// parameters. An entry with no params is still an attachment: defaults apply.
+// FailoverAttachment reports where an operation's authoritative model-failover entry was
+// written, and which policy list to read it from.
+//
+// WHY THIS EXISTS. Attachment point answers SCOPE — which operations the policy covers. It must
+// not also answer ORDER or EXISTENCE, and for a long time it silently answered both: every
+// consumer here read only the operation's own list, so a policy attached at the API level
+// (`globalPolicies` on an LlmProxy, `policies` on a RestApi) reached the executing chain through
+// buildPolicyChain and nothing else. It ran, cost a gRPC round trip per request, and declared
+// RequiresRequestBody — so every provider on the API buffered request bodies — while generating
+// no retry policy, no priority_group plugin, no per-attempt instance and no fault entry. A
+// silent no-op at the attachment point a publisher is most likely to reach for, since a chain is
+// keyed by the model the client asked for and never by path (FR-030r).
+//
+// PRECEDENCE. Operation-level wins outright rather than merging. A route carries ONE failover
+// configuration, so two attachments cannot compose the way ordinary chain entries do: Envoy
+// would retry one chain while the policy resolved another.
+type FailoverAttachment struct {
+	// Policies is the list holding the authoritative entry, or nil when neither level attaches.
+	Policies *[]management.Policy
+	// APILevel reports that the authoritative entry came from the API-level list.
+	APILevel bool
+	// Overridden reports that BOTH levels attached and the API-level entry was discarded.
+	Overridden bool
+}
+
+// Attached reports whether either level attached the policy.
+func (a FailoverAttachment) Attached() bool { return a.Policies != nil }
+
+// ResolveFailoverAttachment picks the authoritative list between an API-level and an
+// operation-level attachment. Operation-level wins; neither attaching yields a zero value whose
+// Attached reports false, which every caller treats as "not attached" exactly as before.
+func ResolveFailoverAttachment(apiPolicies, opPolicies *[]management.Policy) FailoverAttachment {
+	_, onOperation := failoverParams(opPolicies)
+	_, onAPI := failoverParams(apiPolicies)
+
+	switch {
+	case onOperation:
+		return FailoverAttachment{Policies: opPolicies, Overridden: onAPI}
+	case onAPI:
+		return FailoverAttachment{Policies: apiPolicies, APILevel: true}
+	default:
+		return FailoverAttachment{}
+	}
+}
+
+// dropFailoverInstances returns the chain with every model-failover instance removed, and
+// whether it removed any.
+//
+// Used to discard an API-level attachment on an operation that writes its own, so the route
+// carries one instance rather than two. Two instances is not a cosmetic duplication: they hold
+// DIFFERENT targets, both resolve a chain, and both grade the response — and grading is not
+// idempotent. The policy writes its "already graded" marker at the END of its response phase and
+// reads it only from the fault hook, so a second instance charges the same request's outcome to a
+// target's health a second time, halving the effective suspendAfterFailures.
+// Generic over the element type because the two policy representations this package threads
+// around — the SDK's resolved PolicyInstance and the model's Policy — differ only in what else
+// they carry, and a second copy of this rule is how the two drift.
+func dropFailoverInstances[T any](policies []T, nameOf func(T) string) ([]T, bool) {
+	kept := make([]T, 0, len(policies))
+	for _, p := range policies {
+		if nameOf(p) == FailoverPolicyName {
+			continue
+		}
+		kept = append(kept, p)
+	}
+	return kept, len(kept) != len(policies)
+}
+
+// failoverParams finds the model-failover entry in a policy list and returns its parameters. An
+// entry with no params is still an attachment: defaults apply.
 func failoverParams(policies *[]management.Policy) (map[string]interface{}, bool) {
 	if policies == nil {
 		return nil, false
@@ -298,15 +366,22 @@ func InjectProviderClusters(chain *models.PolicyChain, clusters map[string]inter
 // dynamic metadata and its own target out of the engine's reserved attempt namespace -- it needs
 // nothing configured. That is also why one instance serves every operation: the per-operation
 // configuration was already consumed by the downstream pass that produced the ranking.
-func perAttemptPolicies(operations *[]management.Operation) []models.Policy {
-	if operations == nil {
-		return nil
+// Scans the API-level list as well as every operation's: the attachment point decides which
+// operations the policy covers, never whether the per-attempt half gets installed. Reading only
+// the operations here is what left an API-level attachment with a downstream instance publishing
+// a ranking and no upstream instance to apply it (FR-030r).
+func perAttemptPolicies(apiPolicies *[]management.Policy, operations *[]management.Operation) []models.Policy {
+	lists := []*[]management.Policy{apiPolicies}
+	if operations != nil {
+		for _, op := range *operations {
+			lists = append(lists, op.Policies)
+		}
 	}
-	for _, op := range *operations {
-		if op.Policies == nil {
+	for _, list := range lists {
+		if list == nil {
 			continue
 		}
-		for _, p := range *op.Policies {
+		for _, p := range *list {
 			if p.Name != FailoverPolicyName {
 				continue
 			}

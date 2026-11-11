@@ -167,7 +167,7 @@ func (t *LLMTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeDep
 		rdc.UpstreamPolicyChains = buildUpstreamPolicyChains(&proxy.Spec, rdc.ProviderClusters,
 			transformerFor(upstreamProviderPolicies),
 			authFor(upstreamProviderPolicies),
-			perAttemptPolicies(&restAPI.Spec.Operations))
+			perAttemptPolicies(restAPI.Spec.Policies, &restAPI.Spec.Operations))
 	}
 
 	return rdc, nil

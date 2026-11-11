@@ -249,6 +249,11 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			vhosts = append(vhosts, effectiveSandboxVHost)
 		}
 
+		// Where model-failover was written decides which operations it covers, not whether it
+		// works — see ResolveFailoverAttachment. An API-level attachment governs every
+		// operation that does not write its own; an operation that does, overrides it whole.
+		failoverAttachment := ResolveFailoverAttachment(apiData.Policies, op.Policies)
+
 		// Resolve the effective matching criteria (simple top-level form or the richer match
 		// block) once per operation. Header matchers and their discriminator are vhost-
 		// independent; the discriminator keeps the route key unique across operations that
@@ -283,7 +288,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 					DefaultCluster:   defaultCluster,
 					Default:          &routeMainInfo,
 				},
-				Failover: buildFailoverConfig(op.Policies, resolveFailoverCluster),
+				Failover: buildFailoverConfig(failoverAttachment.Policies, resolveFailoverCluster),
 			}
 			rdc.Routes[routeKey] = rdcRoute
 
@@ -298,7 +303,25 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			}
 
 			// Build policy chain: API-level + operation-level + system policies
-			chain := t.buildPolicyChain(apiPolicies, op.Policies)
+			effectiveAPIPolicies := apiPolicies
+			if failoverAttachment.Overridden {
+				// Both levels attached model-failover. The route carries ONE failover
+				// configuration, so two instances cannot both be right: they would hold
+				// different targets, resolve different chains, and grade the same response
+				// twice. Drop the API-level one and say so — silently discarding an entry an
+				// author wrote is worse than silently moving one, which is why this logs even
+				// though moveFailoverLast's move is the more visible rearrangement.
+				var dropped bool
+				effectiveAPIPolicies, dropped = dropFailoverInstances(apiPolicies,
+					func(p policyenginev1.PolicyInstance) string { return p.Name })
+				if dropped {
+					slog.Info("API-level model-failover discarded for this operation; its own "+
+						"attachment overrides it. A route carries one failover configuration, "+
+						"so the two cannot be merged",
+						slog.String("route", routeKey))
+				}
+			}
+			chain := t.buildPolicyChain(effectiveAPIPolicies, op.Policies)
 			injected := utils.InjectSystemPolicies(chain, t.systemConfig, systemPolicyProps)
 			routeChain := sdkChainToModel(injected)
 			// Hand the failover policy the provider-to-cluster map, so it can publish complete

@@ -754,13 +754,21 @@ though the routing policy keeps nominating it, and that load spreads across the 
   the working attachment point, on the same reasoning `ValidateUpstreamPolicies` already applies to
   an upstream-level attachment: the authored intent is reasonable on its face and the configuration
   would otherwise appear to work.
-  **Status 2026-11-11 — unimplemented, and it currently fails in the worst available way.** Measured
-  through the transform pipeline: with `model-failover` at the API level the route's failover
-  configuration is `nil` while the policy is still present in the executing chain, against a
-  populated configuration from the identical policy at operation level. So the policy runs, costs a
-  gRPC round trip per request, and declares `RequiresRequestBody` — which makes every provider on
-  the API buffer request bodies — while performing no failover at all. No validation error, no
-  warning, no telemetry. Tracked as T095.
+  **Where both attach, the API-level instance MUST be discarded from the chain, not merely
+  outranked** — and the discard MUST be reported at generation time. Two instances is not a
+  cosmetic duplication: they carry different targets, resolve different chains, and both grade the
+  response. Grading is not idempotent — the policy writes its "already graded" marker at the END of
+  its response phase and reads it only from the fault hook — so a duplicate charges one request's
+  outcome to a target's health twice, halving the effective `suspendAfterFailures`.
+
+  **Status 2026-11-11 — IMPLEMENTED.** Before the fix, measured through the transform pipeline:
+  with `model-failover` at the API level the route's failover configuration was `nil` while the
+  policy was still present in the executing chain, against a populated configuration from the
+  identical policy at operation level. So the policy ran, cost a gRPC round trip per request, and
+  declared `RequiresRequestBody` — making every provider on the API buffer request bodies — while
+  performing no failover at all, with no validation error, warning or telemetry. Resolved by
+  `ResolveFailoverAttachment`, which answers "which list holds the authoritative entry" once per
+  operation and feeds every consumer from it. See T095.
 
 **Flow attachment and outcome attribution**
 

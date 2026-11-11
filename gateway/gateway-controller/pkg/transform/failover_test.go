@@ -390,7 +390,7 @@ func TestProviderClusterMap_EmptyAliasMustNotUseTheSharedMainCluster(t *testing.
 // LlmProxy buffer request bodies for a policy with nothing to do.
 func TestPerAttemptPolicies_OnlyWhenFailoverIsAttached(t *testing.T) {
 	withFailover := []management.Operation{{Policies: &[]management.Policy{{Name: FailoverPolicyName, Version: "v0"}}}}
-	got := perAttemptPolicies(&withFailover)
+	got := perAttemptPolicies(nil, &withFailover)
 	if len(got) != 1 || got[0].Name != FailoverPolicyName {
 		t.Fatalf("got %v, want one model-failover entry", got)
 	}
@@ -401,11 +401,11 @@ func TestPerAttemptPolicies_OnlyWhenFailoverIsAttached(t *testing.T) {
 	}
 
 	without := []management.Operation{{Policies: &[]management.Policy{{Name: "model-round-robin", Version: "v1"}}}}
-	if got := perAttemptPolicies(&without); got != nil {
+	if got := perAttemptPolicies(nil, &without); got != nil {
 		t.Fatalf("got %v, want nil for an API without failover", got)
 	}
 
-	if got := perAttemptPolicies(nil); got != nil {
+	if got := perAttemptPolicies(nil, nil); got != nil {
 		t.Fatalf("got %v, want nil for no operations", got)
 	}
 }
@@ -419,7 +419,7 @@ func TestPerAttemptPolicies_SingleParameterlessInstance(t *testing.T) {
 		{Policies: &[]management.Policy{{Name: FailoverPolicyName, Version: "v0"}}},
 	}
 
-	got := perAttemptPolicies(&ops)
+	got := perAttemptPolicies(nil, &ops)
 	if len(got) != 1 {
 		t.Fatalf("got %d entries, want 1 regardless of how many operations attach it", len(got))
 	}

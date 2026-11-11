@@ -496,6 +496,10 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/ai/model_failover_per_attempt.feature
+      - name: model-failover-attachment-scope
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_attachment_scope.feature
       - name: model-failover-layered
         tags: "gateway-version>1.2.0"
         features:
