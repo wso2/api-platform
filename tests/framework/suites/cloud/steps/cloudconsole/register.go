@@ -146,6 +146,8 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	s.registerPromotionSteps(sc)
 	s.registerSecretSteps(sc)
 	s.registerProjectSteps(sc)
+	s.registerPortalSteps(sc)
+	s.registerPortalSignInSteps(sc)
 	sc.Step(`^the cloud API response should report:$`, s.assertResponseReports)
 
 	sc.Step(`^I create a synthetic APIP project$`, s.createProject)
@@ -291,6 +293,9 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 		return err
 	}
 	if err := reg.RegisterDeleter(kindDefaultRestore, restoreDefaultDeleter(topo, client)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(kindAPIPortal, portalDeleter(topo, client)); err != nil {
 		return err
 	}
 	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, managedGatewaysCollection, false))
