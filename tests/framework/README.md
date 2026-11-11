@@ -292,10 +292,19 @@ go test -gateway-version latest -blocks gateway-core/sqlite
 
 `-components` runs only the blocks that start at least one of the named components, and
 `-require-components` only the blocks that start all of them. The Platform Tests workflow uses
-them to run the blocks for the products a pull request changes, and to run only the blocks with
-a Gateway on the released Gateway legs, since a block without one runs the same on every
-Gateway version. A name no block starts is an error, and a selection that leaves no block is
-reported as a skip.
+`-require-components platform-gateway` to run only the blocks with a Gateway on the released
+Gateway legs, since a block without one runs the same on every Gateway version. A name no block
+starts is an error, and a selection that leaves no block is reported as a skip.
+
+For a pull request, the workflow runs only the blocks the change can affect, chosen by
+`cmd/affectedblocks` from the changed files: the blocks listing a changed feature, the blocks
+declared in a changed block file, the blocks using a changed step package (plus the first block
+of each block file as a sample), and every block starting a changed product. Shared code runs
+every block. To see what a change would run:
+
+```bash
+git diff --name-only main | go run ./cmd/affectedblocks
+```
 
 ```bash
 go test -components api-portal                       # every block that starts the API Portal

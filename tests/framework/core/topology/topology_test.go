@@ -919,6 +919,14 @@ blockFiles:
 			names = append(names, b.Name)
 		}
 		require.Equal(t, []string{"inline", "a", "b", "c"}, names)
+
+		files := map[string]string{}
+		for _, b := range r.Blocks {
+			files[b.Name] = b.File
+		}
+		require.Equal(t, map[string]string{
+			"inline": "", "a": "blocks/one.yaml", "b": "blocks/one.yaml", "c": "blocks/two.yaml",
+		}, files, "each block records the file that declares it")
 	})
 
 	t.Run("a block name used in two files is rejected", func(t *testing.T) {

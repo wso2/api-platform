@@ -79,6 +79,10 @@ type ResolvedBlock struct {
 	// Source is the block name as written, before matrix expansion.
 	Source string
 
+	// File is the blockFiles entry that declares the block, or empty when the suite file
+	// declares it.
+	File string
+
 	// DB is the engine when exactly one component's db varies in this block; empty when none
 	// or several vary (each component's own DB then holds its engine).
 	DB components.DBType
@@ -211,6 +215,11 @@ func LoadFile(path string, registry *components.Registry) (*Resolved, error) {
 	resolved, err := resolveAndValidate(&suite, registry)
 	if err != nil {
 		return nil, fmt.Errorf("topology: in suite file %q: %w", path, err)
+	}
+	for i := range resolved.Blocks {
+		if file := declaredIn[resolved.Blocks[i].Source]; file != filepath.Base(path) {
+			resolved.Blocks[i].File = file
+		}
 	}
 	return resolved, nil
 }

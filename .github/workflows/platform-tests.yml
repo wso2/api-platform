@@ -26,8 +26,8 @@
 #   cloud suite    -> compile check and unit tests of tests/framework/suites/cloud
 # A failing unit-test job (cloud suite check included) stops both suites.
 #
-# The integration suite runs only the blocks that start a product the change touches (see
-# it_components below), and the released Gateway legs run only the blocks with a Gateway.
+# The integration suite runs only the blocks the change can affect (cmd/affectedblocks), and
+# the released Gateway legs run only the blocks with a Gateway.
 
 name: Platform Tests
 
@@ -50,8 +50,8 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
-      it_components: ${{ steps.filter.outputs.it_components }}
-      it_label: ${{ steps.filter.outputs.it_label }}
+      it_blocks: ${{ steps.blocks.outputs.blocks }}
+      it_label: ${{ steps.blocks.outputs.label || 'all blocks' }}
       ui: ${{ steps.filter.outputs.ui }}
       cloud: ${{ steps.filter.outputs.cloud }}
     steps:
@@ -83,8 +83,6 @@ jobs:
         run: |
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "backend=true" >> "$GITHUB_OUTPUT"
-            echo "it_components=" >> "$GITHUB_OUTPUT"
-            echo "it_label=all blocks" >> "$GITHUB_OUTPUT"
             echo "ui=true" >> "$GITHUB_OUTPUT"
             echo "cloud=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -109,57 +107,8 @@ jobs:
             | grep -vE '^(portals/cloud-plugins/|tests/framework/suites/(it|cloud)/)|\.md$' || true)"
           cloud_files="$(echo "$changed" | grep -E "$cloud_match" | grep -vE '^tests/framework/suites/(it|ui)/' || true)"
 
-          # it_components: the components whose blocks the integration suite runs. Each changed
-          # file maps to the product it belongs to, and the suite runs every block that starts
-          # one of them (-components). A file no rule names, such as shared code, the suite
-          # file or this workflow, runs every block, as does a manual run. The whole suite
-          # still compiles on every leg, so a broken step fails wherever it is used.
-          # A product's step package maps to that product only when every block that uses its
-          # steps starts the product. steps/platformgateway does not: api-portal-billing calls
-          # its service-request steps without a Gateway, so a change there runs every block.
-          # it_label names the products in the integration jobs' titles, so the checks list
-          # shows when only part of the suite ran.
-          portal='api-portal,api-portal-other-org,api-portal-multi-organization'
-          it_components=""
-          it_products=""
-          it_all=false
-          while IFS= read -r f; do
-            [ -n "$f" ] || continue
-            case "$f" in
-              portals/api-portal/* | \
-              tests/framework/core/catalog/apiportal/* | \
-              tests/framework/suites/it/features/apiportal/* | \
-              tests/framework/suites/it/steps/apiportal/* | \
-              tests/framework/suites/it/resources/templates/api-portal-* | \
-              tests/framework/suites/it/blocks/api-portal.yaml | \
-              tests/framework/suites/it/blocks/platform-api-gateway-api-portal.yaml)
-                it_components="$it_components,$portal"
-                it_products="$it_products,api-portal" ;;
-              gateway/* | \
-              tests/framework/core/catalog/platformgateway/* | \
-              tests/framework/suites/it/features/gateway/* | \
-              tests/framework/suites/it/features/ai-workspace-gateway/* | \
-              tests/framework/suites/it/blocks/gateway.yaml)
-                it_components="$it_components,platform-gateway"
-                it_products="$it_products,gateway" ;;
-              platform-api/* | \
-              tests/framework/core/catalog/platformapi/* | \
-              tests/framework/suites/it/steps/platformapi/* | \
-              tests/framework/suites/it/blocks/platform-api.yaml | \
-              tests/framework/suites/it/blocks/platform-api-gateway.yaml)
-                it_components="$it_components,platform-api"
-                it_products="$it_products,platform-api" ;;
-              *)
-                it_all=true ;;
-            esac
-          done <<< "$backend_files"
-          if [ "$it_all" = true ]; then
-            it_components=""
-            it_label="all blocks"
-          else
-            it_components="$(echo "$it_components" | tr ',' '\n' | sed '/^$/d' | sort -u | paste -sd, -)"
-            it_label="$(echo "$it_products" | tr ',' '\n' | sed '/^$/d' | sort -u | paste -sd+ - | sed 's/+/ + /g')"
-          fi
+          # The integration-block selection below reads the same files.
+          echo "$backend_files" > "$RUNNER_TEMP/backend-files.txt"
 
           backend=false
           ui=false
@@ -169,11 +118,28 @@ jobs:
           if [ -n "$cloud_files" ]; then cloud=true; fi
 
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
-          echo "it_components=$it_components" >> "$GITHUB_OUTPUT"
-          echo "it_label=$it_label" >> "$GITHUB_OUTPUT"
           echo "ui=$ui" >> "$GITHUB_OUTPUT"
           echo "cloud=$cloud" >> "$GITHUB_OUTPUT"
-          echo "backend=$backend ui=$ui cloud=$cloud it_components=${it_components:-<all>}"
+          echo "backend=$backend ui=$ui cloud=$cloud"
+
+      - name: Set up Go
+        if: github.event_name == 'pull_request' && steps.filter.outputs.backend == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.10'
+          cache-dependency-path: '**/go.sum'
+
+      # The blocks the integration suite runs: the blocks of the changed features and block
+      # files, the blocks using a changed step package (plus one sample block per block file),
+      # and every block starting a changed product. Anything else, shared code included, runs
+      # every block (empty output). The rules are in tests/framework/cmd/affectedblocks. If the
+      # selection fails, its outputs stay empty and the suite runs every block.
+      - name: Select the integration blocks
+        id: blocks
+        if: github.event_name == 'pull_request' && steps.filter.outputs.backend == 'true'
+        continue-on-error: true
+        working-directory: tests/framework
+        run: go run ./cmd/affectedblocks < "$RUNNER_TEMP/backend-files.txt" >> "$GITHUB_OUTPUT"
 
   unit-backend:
     name: Unit tests (backend)
@@ -509,10 +475,10 @@ jobs:
         env:
           IT_COVERAGE_OUT: ${{ github.workspace }}/tests/framework/suites/it/coverage-out
           IT_LOG_OUT: ${{ github.workspace }}/tests/framework/suites/it/logs-out
-          IT_COMPONENTS: ${{ needs.changes.outputs.it_components }}
+          IT_BLOCKS: ${{ needs.changes.outputs.it_blocks }}
         run: |
           go test -v ./suites/it -count=1 -timeout=60m -logs \
-            ${{ matrix.suite_flags }} ${IT_COMPONENTS:+"-components=$IT_COMPONENTS"}
+            ${{ matrix.suite_flags }} ${IT_BLOCKS:+"-blocks=$IT_BLOCKS"}
 
       # always(), and per leg: a failing run is exactly when the container logs are needed,
       # and each leg's artifact name must be unique or upload-artifact rejects the second.
@@ -549,7 +515,7 @@ jobs:
       # when every block ran: a partial run would replace the carried-forward coverage with
       # a lower figure.
       - name: Upload gateway-controller integration coverage to Codecov
-        if: matrix.leg == 'gateway-latest' && needs.changes.outputs.it_components == ''
+        if: matrix.leg == 'gateway-latest' && needs.changes.outputs.it_blocks == ''
         continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
@@ -559,7 +525,7 @@ jobs:
           flags: gateway-controller-integration
 
       - name: Upload policy-engine integration coverage to Codecov
-        if: matrix.leg == 'gateway-latest' && needs.changes.outputs.it_components == ''
+        if: matrix.leg == 'gateway-latest' && needs.changes.outputs.it_blocks == ''
         continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
@@ -569,7 +535,7 @@ jobs:
           flags: policy-engine-integration
 
       - name: Upload platform-api integration coverage to Codecov
-        if: matrix.leg == 'gateway-latest' && needs.changes.outputs.it_components == ''
+        if: matrix.leg == 'gateway-latest' && needs.changes.outputs.it_blocks == ''
         continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
@@ -582,7 +548,7 @@ jobs:
       # flag, so a shared one would replace the UI suite's report rather than carry it
       # forward on a commit the UI suite does not run for.
       - name: Upload API Portal server integration coverage to Codecov
-        if: matrix.leg == 'gateway-latest' && needs.changes.outputs.it_components == ''
+        if: matrix.leg == 'gateway-latest' && needs.changes.outputs.it_blocks == ''
         continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
