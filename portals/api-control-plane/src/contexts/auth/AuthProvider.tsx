@@ -308,10 +308,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!canSwitchOrganization) return Promise.resolve(true);
       const switchTo = async () => {
         if (sessionOrgHandle.current === orgHandle) return true;
-        const target = (await loadOrganizations()).find((org) => org.handle === orgHandle);
+        const organizations = await loadOrganizations();
+        const target = organizations.find((org) => org.handle === orgHandle);
         if (!target) throw new OrganizationSwitchError('forbidden');
-        for (const url of contract.switchOrganizationUrls) {
-          await requestOrganizationSwitch(url, target.id);
+        const switched: string[] = [];
+        try {
+          for (const url of contract.switchOrganizationUrls) {
+            await requestOrganizationSwitch(url, target.id);
+            switched.push(url);
+          }
+        } catch (error) {
+          // The sessions already moved go back, so none is left in the other organization.
+          const previous = organizations.find((org) => org.handle === sessionOrgHandle.current);
+          const restored =
+            previous !== undefined &&
+            (await Promise.all(switched.map((url) => requestOrganizationSwitch(url, previous.id))).then(
+              () => true,
+              () => false,
+            ));
+          if (switched.length > 0 && !restored) throw new OrganizationSwitchError('unavailable');
+          throw error;
         }
         // The switched session's claims name its new organization.
         await hydrate();

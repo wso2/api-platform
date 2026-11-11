@@ -729,7 +729,7 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
      * unit as the ThunderID SDK's `ouSwitch` does: in the query and the body.
      * The console's own session moves to org B on a switch that names ou-b.
      */
-    function serveSwitchableSession(switchStatus = 200) {
+    function serveSwitchableSession(answerSwitch: number | ((path: string, ouId?: string) => number) = 200) {
       let current = ORG_A;
       const switches: string[] = [];
       const switchAt = (path: string) =>
@@ -737,6 +737,7 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
           const fromQuery = new URL(request.url).searchParams.get('ouId');
           const { ouId } = (await request.json()) as { ouId?: string };
           switches.push(fromQuery === ouId ? `${path} ${ouId}` : `${path} mismatch`);
+          const switchStatus = typeof answerSwitch === 'number' ? answerSwitch : answerSwitch(path, ouId);
           if (switchStatus === 200 && path === OWN_SWITCH && ouId === ORG_B.id) current = ORG_B;
           return switchStatus === 200
             ? new HttpResponse(null, { status: 200 })
@@ -805,6 +806,31 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
       expect(switches).toEqual([`${PARENT_SWITCH} ou-b`]);
       expect(screen.getByTestId('status')).toHaveTextContent('authenticated');
       expect(screen.getByTestId('org')).toHaveTextContent('org-a');
+    });
+
+    // A later switch refused after an earlier one succeeded would leave the sessions in two
+    // organizations, so the earlier ones go back first.
+    it('moves the sessions it already switched back when a later switch is refused', async () => {
+      const switches = serveSwitchableSession((path) => (path === OWN_SWITCH ? 403 : 200));
+      await renderSwitching();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('failed:forbidden'));
+      expect(switches).toEqual([`${PARENT_SWITCH} ou-b`, `${OWN_SWITCH} ou-b`, `${PARENT_SWITCH} ou-a`]);
+      expect(screen.getByTestId('org')).toHaveTextContent('org-a');
+    });
+
+    it('reports a switch it could not undo as unavailable', async () => {
+      const switches = serveSwitchableSession((path, ouId) =>
+        path === OWN_SWITCH ? 403 : ouId === ORG_A.id ? 503 : 200,
+      );
+      await renderSwitching();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('failed:unavailable'));
+      expect(switches).toEqual([`${PARENT_SWITCH} ou-b`, `${OWN_SWITCH} ou-b`, `${PARENT_SWITCH} ou-a`]);
     });
 
     it('stays off, and never calls the switch endpoints, unless both URLs are set', async () => {
