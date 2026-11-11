@@ -22,7 +22,7 @@ Feature: LLM providers are read back faithfully and shared across projects
   I want a stored provider to read back exactly as it was created, without its credential
   So that what I configured is what runs, and secrets never leave the platform
 
-  # Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-features "List" (AIW-PRV-007), "Overview" (AIW-PRV-008) and
+  # Scenarios AIW-LLM (scenarios/on-prem/AIW-LLM.yaml), sub-features "List" (AIW-PRV-007), "Overview" (AIW-PRV-008) and
   # "Isolation" (AIW-PRV-031), at the API level. The list API has no search: finding a
   # provider is paging, which AIW-PRV-007 checks. Providers belong to the organization:
   # AIW-PRV-031 checks that one provider serves proxies in two different projects. The browser journey is

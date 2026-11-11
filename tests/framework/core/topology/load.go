@@ -177,43 +177,110 @@ func (b *ResolvedBlock) PartitionKey() string {
 	return strings.Trim(out.String(), "-")
 }
 
-// LoadFile reads and resolves a suite file.
+// LoadFile reads and resolves a suite file, adding the blocks of the files it names in
+// blockFiles.
 func LoadFile(path string, registry *components.Registry) (*Resolved, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("topology: reading suite file %q: %w", path, err)
 	}
-	resolved, err := Load(raw, registry)
+	var suite Suite
+	if err := decodeStrict(raw, &suite); err != nil {
+		return nil, fmt.Errorf("topology: in suite file %q: parsing suite: %w", path, err)
+	}
+	// declaredIn records where each block name is declared, so a name used twice is reported
+	// with both files rather than only the suite file.
+	declaredIn := make(map[string]string, len(suite.Blocks))
+	for _, block := range suite.Blocks {
+		declaredIn[block.Name] = filepath.Base(path)
+	}
+	for _, name := range suite.BlockFiles {
+		blocks, err := readBlockFile(filepath.Dir(path), name)
+		if err != nil {
+			return nil, fmt.Errorf("topology: in suite file %q: %w", path, err)
+		}
+		for _, block := range blocks {
+			if first, seen := declaredIn[block.Name]; seen {
+				return nil, fmt.Errorf("topology: in suite file %q: block %q is declared in both %q and %q",
+					path, block.Name, first, name)
+			}
+			declaredIn[block.Name] = name
+		}
+		suite.Blocks = append(suite.Blocks, blocks...)
+	}
+	resolved, err := resolveAndValidate(&suite, registry)
 	if err != nil {
 		return nil, fmt.Errorf("topology: in suite file %q: %w", path, err)
 	}
 	return resolved, nil
 }
 
+// readBlockFile reads the blocks of one blockFiles entry, relative to the suite directory.
+func readBlockFile(dir, name string) ([]Block, error) {
+	// IsLocal refuses an empty path, an absolute one and one that leaves the suite directory.
+	if !filepath.IsLocal(name) {
+		return nil, fmt.Errorf("blockFiles entry %q must be a path inside the suite file's directory", name)
+	}
+	path := filepath.Join(dir, name)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading block file %q: %w", name, err)
+	}
+	var file blockFile
+	if err := decodeStrict(raw, &file); err != nil {
+		return nil, fmt.Errorf("parsing block file %q: %w", name, err)
+	}
+	if len(file.Blocks) == 0 {
+		return nil, fmt.Errorf("block file %q declares no blocks", name)
+	}
+	for i, block := range file.Blocks {
+		if strings.TrimSpace(block.Name) == "" {
+			return nil, fmt.Errorf("block file %q: block %d has no name", name, i+1)
+		}
+	}
+	return file.Blocks, nil
+}
+
 // Load parses and resolves a suite from YAML.
 //
-// Parsing is strict and rejects unknown fields and multiple YAML documents.
+// Parsing is strict and rejects unknown fields and multiple YAML documents. A suite that
+// names blockFiles must be read with LoadFile, which knows where they are.
 func Load(raw []byte, registry *components.Registry) (*Resolved, error) {
 	if registry == nil {
 		return nil, fmt.Errorf("topology: a component registry is required")
 	}
+	var suite Suite
+	if err := decodeStrict(raw, &suite); err != nil {
+		return nil, fmt.Errorf("topology: parsing suite: %w", err)
+	}
+	if len(suite.BlockFiles) > 0 {
+		return nil, fmt.Errorf("topology: blockFiles are relative to the suite file; load it with LoadFile")
+	}
+	return resolveAndValidate(&suite, registry)
+}
 
+// decodeStrict decodes one YAML document, rejecting unknown fields and further documents.
+func decodeStrict(raw []byte, out any) error {
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
-
-	var suite Suite
-	if err := dec.Decode(&suite); err != nil {
-		return nil, fmt.Errorf("topology: parsing suite: %w", err)
+	if err := dec.Decode(out); err != nil {
+		return err
 	}
 	var extra yaml.Node
 	if err := dec.Decode(&extra); err != io.EOF {
 		if err == nil {
-			return nil, fmt.Errorf("topology: parsing suite: multiple YAML documents are not allowed")
+			return fmt.Errorf("multiple YAML documents are not allowed")
 		}
-		return nil, fmt.Errorf("topology: parsing suite: %w", err)
+		return err
 	}
+	return nil
+}
 
-	resolved, err := resolve(&suite, registry)
+func resolveAndValidate(suite *Suite, registry *components.Registry) (*Resolved, error) {
+	if registry == nil {
+		return nil, fmt.Errorf("topology: a component registry is required")
+	}
+	resolved, err := resolve(suite, registry)
 	if err != nil {
 		return nil, err
 	}

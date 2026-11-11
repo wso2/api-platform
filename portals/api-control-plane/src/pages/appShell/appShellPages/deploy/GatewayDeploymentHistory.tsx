@@ -86,7 +86,7 @@ export function GatewayDeploymentHistory({
 
   const handleDelete = (deployment: Deployment) => {
     deleteMutation.mutate(
-      { apiId, deploymentId: deployment.deploymentId },
+      { apiId, deploymentId: deployment.deploymentId, gatewayId: deployment.gatewayId },
       // No `onError`: the query client's `onMutationError` already notifies.
       {
         onSuccess: () =>

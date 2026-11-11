@@ -85,7 +85,9 @@ const messages = defineMessages({
 export type UseDeploymentMutationHook = () => {
   isPending: boolean;
   mutate: (
-    variables: { apiId: string; deploymentId: string },
+    // `gatewayId` is the deployment's own gateway: undeploy and restore send it
+    // and the server rejects a mismatch. Delete ignores it.
+    variables: { apiId: string; deploymentId: string; gatewayId: string },
     options?: { onSuccess?: () => void },
   ) => void;
 };
@@ -135,7 +137,7 @@ export function GatewayDeploymentSelector({
     const deployment = deployments.find((item) => item.deploymentId === selectedId);
     if (!deployment) return;
     restoreMutation.mutate(
-      { apiId, deploymentId: deployment.deploymentId },
+      { apiId, deploymentId: deployment.deploymentId, gatewayId: deployment.gatewayId },
       // No `onError`: the query client's `onMutationError` already notifies.
       {
         onSuccess: () => {

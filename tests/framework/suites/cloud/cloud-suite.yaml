@@ -38,3 +38,6 @@ blocks:
       - name: apip-secrets
         features:
           - features/apip_secrets.feature
+      - name: apip-portal
+        features:
+          - features/apip_portal.feature

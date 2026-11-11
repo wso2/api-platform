@@ -254,7 +254,11 @@ export function GatewayDeployEnvCard({
   // already notifies, so a local handler would only duplicate the toast.
   const handleUndeploy = () => {
     undeployMutation.mutate(
-      { apiId, deploymentId: currentDeployment.deploymentId },
+      {
+        apiId,
+        deploymentId: currentDeployment.deploymentId,
+        gatewayId: currentDeployment.gatewayId,
+      },
       {
         onSuccess: () =>
           notify(
@@ -269,7 +273,11 @@ export function GatewayDeployEnvCard({
 
   const handleRedeploy = () => {
     restoreMutation.mutate(
-      { apiId, deploymentId: currentDeployment.deploymentId },
+      {
+        apiId,
+        deploymentId: currentDeployment.deploymentId,
+        gatewayId: currentDeployment.gatewayId,
+      },
       {
         onSuccess: () =>
           notify(

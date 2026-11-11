@@ -31,7 +31,7 @@ go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=3
 
 # The ap CLI's ai-workspace commands against platform-api (needs the ap binary, see below):
 make ap-cli
-go test ./suites/it -count=1 -timeout=30m -blocks=ai-workspace-cli
+go test ./suites/it -count=1 -timeout=30m -blocks=platform-api-core/api-sqlite_gateway-sqlite -feature-tags=@ai-workspace-cli
 
 #   On Apple silicon, cap coverage runs at -block-parallel=2: the arm64 SQL Server
 #   substitute crashes probabilistically when three instrumented stacks cold-boot at once.
@@ -44,7 +44,7 @@ go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=2
 # Reports are written under whichever directory you pass; open its index.html to navigate
 # to each component report. A run's counters are never merged with another run's.
 
-# The UI suite (browser-driven AI Workspace journeys against the real gateway):
+# The UI suite (browser journeys through the AI Workspace, API Portal and Management Portal):
 go test ./suites/ui -count=1 -timeout=25m
 
 # The cloud suite (external APIP cloud; requires a workflow-provided access token):
@@ -54,20 +54,16 @@ go test ./suites/cloud -count=1 -timeout=60m \
 ```
 
 Prerequisite images: `make testbench` and, for blocks that list `a2a-trip-planner`,
-`make a2a-trip-planner` here. The `ai-workspace-cli` block also needs the host `ap` binary:
+`make a2a-trip-planner` here. The `ai-workspace-cli` and `ap-cli-gateway` runners also need the host `ap` binary:
 `make ap-cli` builds it to `cli/src/build/ap` (override the location with `AP_CLI_BINARY`); a
 missing binary fails the block rather than skipping it. Coverage runs build source images through the
 framework and use the product `VERSION` files for their tags; they do not require a separate
-product coverage-image target. See
-[`docs/coverage-architecture.md`](docs/coverage-architecture.md) for what coverage collects
-and how.
+product coverage-image target.
 
 The UI suite builds the `ai-workspace` and `platform-api` images through the framework when
 coverage is selected and pulls `mcr.microsoft.com/playwright` for the in-network browser;
 the playwright driver installs itself on first run. Failing scenarios leave a full-page
-screenshot and the DOM under `suites/ui/artifacts/`. See
-[`docs/ui-testing-architecture.md`](docs/ui-testing-architecture.md) for the architecture
-and the execution findings.
+screenshot and the DOM under `suites/ui/artifacts/`.
 
 ## Layout
 
@@ -83,9 +79,15 @@ framework/
   core/suiterun/    the exported suite entry (Main and Run) any project's test binary calls
   snapshots/        empty in git (.gitkeep); the release generates the embedded gateway schemas, current config and pricing file
 suites/
-  it/  cloud/  ui/
-scenarios/          one scenario list per feature (TENANT.yaml, ...)
+  it/               on-premises products at the API level; blocks in it/blocks/
+  ui/               on-premises portals through the browser
+  cloud/            the hosted APIP cloud
+scenarios/          one scenario list per feature: on-prem/ (TENANT.yaml, ...) for it and ui, cloud/ for cloud
 ```
+
+Which suite a test belongs in, how each suite lays out its feature files and step packages, and
+which block a new integration test goes in are in `CLAUDE.md` ("Suites: Where a Test Goes" and
+"Integration Suite Blocks").
 
 The cloud suite targets externally hosted APIP services. It does not compile product code,
 pull product images, create Docker networks, or provision databases. The environment-to-domain
@@ -103,11 +105,13 @@ before changing one — most encode a failure mode that presents as a passing te
 
 ## Scenario lists
 
-Some product features have a scenario list: `scenarios/<CODE>.yaml` (for example
-`scenarios/TENANT.yaml`), one entry per scenario ID with its title, priority and how each
-layer covers it. `it` is the API level and `ui` the browser. Each layer is `automated`,
-`known-issue` (with the issue link), `exempt` (with the reason) or `planned`, and `refs` name
-the feature file and scenario that automate it. The lists are kept by hand.
+Every test starts from a scenario list: `scenarios/on-prem/<CODE>.yaml` for the `it` and `ui`
+suites (for example `scenarios/on-prem/TENANT.yaml`) and `scenarios/cloud/<CODE>.yaml` for the
+cloud suite. A list has one entry per scenario ID with its title, priority and how each layer
+covers it: `it` is the API level and `ui` the browser in an on-prem list, `cloud` the cloud suite
+in a cloud list. Each layer is `automated`, `known-issue` (with the issue link), `exempt` (with
+the reason) or `planned`, and `refs` name the feature file and scenario that automate it. The
+lists are kept by hand.
 
 A scenario is tagged with every ID it covers (`@TENANT-004`) and its feature with the list's
 code (`@TENANT`), so `-feature-tags=@TENANT-004` runs one ID and `-feature-tags=@TENANT` a
@@ -220,6 +224,11 @@ A component definition (image, ports, alias, wait strategy, config injection, ty
 accessor set, DB contract) lives in Go. The suite YAML references components by name and
 declares topology: which blocks exist, which components each needs, what DB, what overlay,
 which features run where, and how much runs in parallel.
+
+A suite file may keep its blocks in further files, listed under `blockFiles` relative to it and
+read in order; each holds only `blocks`. The integration suite keeps one file per combination of
+products under `suites/it/blocks/`. "Integration Suite Blocks" in `CLAUDE.md` says which block a
+new feature goes in.
 
 If a topology need cannot be expressed by composing existing components, the answer is a new
 component or a new option in Go — not a new construct in the YAML schema. That line is what
