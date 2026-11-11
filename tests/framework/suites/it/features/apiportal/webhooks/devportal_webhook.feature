@@ -114,3 +114,47 @@ Feature: Credentials issued in the API Portal authorize gateway invocation via w
 
     When the subscription "${CTX:subscriptionId}" is removed in the API Portal
     Then I send a "GET" request to "${CTX:apiContext}/" until status 403
+
+  @multi-subscription
+  Scenario: Several developer-portal subscriptions by one consumer to one API each authorize at the gateway and are managed independently
+    Given I generate a unique resource name from "devportal-plan" and store it as "planHandle"
+    And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
+    And I generate a unique resource name from "devportal-plan2" and store it as "plan2Handle"
+    And I create a subscription plan "${CTX:plan2Handle}" allowing 5000 requests per hour via the control plane
+    And I generate a unique resource name from "devportal-api" and store it as "apiHandle"
+    And I generate a unique API context from "/devportal" and store it as "apiContext"
+    When I create a secured REST API "${CTX:apiHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:apiContext}" offering plan "${CTX:planHandle}"
+    And I deploy the "RestApi" "${CTX:apiHandle}" to the gateway via the control plane
+    Then I send a "GET" request to "${CTX:apiContext}/" until status 401
+
+    When the subscription plan "${CTX:planHandle}" is synced to the API Portal
+    And the subscription plan "${CTX:plan2Handle}" is synced to the API Portal
+    And the "${CTX:apiHandle}" API is published to the API Portal offering plan "${CTX:planHandle},${CTX:plan2Handle}"
+    And an application subscribed to API "${CTX:apiHandle}" plan "${CTX:planHandle}" is created in the API Portal, the token is stored as "token1" and the subscription is stored as "subscription1"
+    And an additional subscription to API "${CTX:apiHandle}" plan "${CTX:planHandle}" is created in the API Portal, the token is stored as "token2" and the subscription is stored as "subscription2"
+    And an additional subscription to API "${CTX:apiHandle}" plan "${CTX:plan2Handle}" is created in the API Portal, the token is stored as "token3" and the subscription is stored as "subscription3"
+    And an API key for API "${CTX:apiHandle}" is generated in the API Portal, the value is stored as "apiKeyValue" and the handle is stored as "apiKeyHandle"
+    And I set header "API-Key" to "${CTX:apiKeyValue}"
+
+    # --- Each subscription's own token authorizes the call: same plan twice, and another plan. ---
+    When I set header "Subscription-Key" to "${CTX:token1}"
+    Then I send a "GET" request to "${CTX:apiContext}/" until status 200
+    When I set header "Subscription-Key" to "${CTX:token2}"
+    Then I send a "GET" request to "${CTX:apiContext}/" until status 200
+    When I set header "Subscription-Key" to "${CTX:token3}"
+    Then I send a "GET" request to "${CTX:apiContext}/" until status 200
+
+    # --- Lifecycle changes address exactly one subscription. ---
+    When the subscription "${CTX:subscription2}" status is set to "INACTIVE" in the API Portal
+    And I set header "Subscription-Key" to "${CTX:token2}"
+    Then I send a "GET" request to "${CTX:apiContext}/" until status 403
+    When I set header "Subscription-Key" to "${CTX:token1}"
+    Then I send a "GET" request to "${CTX:apiContext}/" until status 200
+    When I set header "Subscription-Key" to "${CTX:token3}"
+    Then I send a "GET" request to "${CTX:apiContext}/" until status 200
+
+    When the subscription "${CTX:subscription1}" is removed in the API Portal
+    And I set header "Subscription-Key" to "${CTX:token1}"
+    Then I send a "GET" request to "${CTX:apiContext}/" until status 403
+    When I set header "Subscription-Key" to "${CTX:token3}"
+    Then I send a "GET" request to "${CTX:apiContext}/" until status 200

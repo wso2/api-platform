@@ -153,7 +153,8 @@ async function handlePlanSubscription(btnElement) {
 
     const existingSubs = window.existingSubscriptions || [];
 
-    if (existingSubs.length === 0) {
+    // Pages that support several subscriptions per API (API landing) always create a new one.
+    if (existingSubs.length === 0 || window.allowMultipleSubscriptions) {
         showSubscribeButtonLoading(btnElement);
         await subscribe(orgId, apiId, planName, planId, displayName);
         return;
@@ -281,6 +282,9 @@ async function refreshLandingPageSubscriptions() {
 
     var apiId = planBtn ? planBtn.dataset.apiId : null;
     if (!apiId) { window.location.reload(); return; }
+    // The API landing page renders its own per-subscription table server-side; reload to show it
+    // rather than rebuilding the legacy single-subscription UI below.
+    if (window.allowMultipleSubscriptions) { window.location.reload(); return; }
 
     try {
         var resp = await fetch(apiPortalApi.root('/subscriptions?artifactId=' + encodeURIComponent(apiId)), { headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.apiPortalApi.csrfToken() } });
