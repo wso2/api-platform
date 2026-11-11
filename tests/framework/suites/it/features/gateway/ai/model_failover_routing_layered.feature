@@ -422,3 +422,128 @@ Feature: Failover layered over a routing policy
     Then the response should be successful
     When I delete the LLM provider "${CTX:aliveName}"
     Then the response should be successful
+
+  Scenario: A failover-only vendor takes no traffic until every in-house target has failed
+    # A publisher's usual reason for a cross-vendor fallback is price: the in-house models are
+    # paid for, the vendor is billed per call. "It works when everything else is down" is only
+    # half the requirement. The other half - that it is never reached on an ordinary request -
+    # is the half a publisher watches, and the one no scenario asserted.
+    #
+    # Pointing the vendor at the testbench capture service is what makes that half provable.
+    # Asserting a response did not come from the vendor would also be satisfied by a vendor
+    # that WAS called and merely lost the race; a capture holding nothing says the call was
+    # never made. The positive control is read from the same capture state after the same
+    # reset, so "recorded nothing" cannot quietly mean "recording was broken".
+    #
+    # Two APIs rather than two operations, because an Operation has no upstream of its own -
+    # `spec.upstream.main.ref` is API-level, so one API cannot host both a healthy in-house
+    # upstream and a dead one. Each API's chain therefore takes the shape that is already
+    # proven elsewhere: the first target names nothing and so resolves to that API's own main
+    # upstream, and only the FALLBACK names another definition.
+    Given I resolve the "capture" service path at "/vendor-sink" and store it as "vendorPath"
+
+    # API ONE - in-house healthy. Its chain can still reach the vendor; nothing should.
+    Given I generate a unique resource name from "vendor-hold-ok" and store it as "okName"
+    And I generate a unique API version from "vendor-hold-ok" and store it as "okVersion"
+    And I generate a unique API context from "/vendor-hold-ok" and store it as "okContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion} |
+      | name                     | ${CTX:okName}             |
+      | spec.displayName         | ${CTX:okName}             |
+      | spec.version             | ${CTX:okVersion}          |
+      | spec.context             | ${CTX:okContext}/$version |
+      | spec.upstreamDefinitions | [{"name":"inhouse","basePath":"/inhouse-live","upstreams":[{"url":"http://testbench:3000"}]},{"name":"vendor","basePath":"${CTX:vendorPath}","upstreams":[{"url":"http://testbench:3010"}]}] |
+      | spec.upstream.main.ref   | inhouse                   |
+      | spec.operations          | [{"method":"POST","path":"/healthy","policies":[{"name":"model-failover","version":"v0","params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"premium-1","provider":"vendor"}]}]}}]}] |
+    Then the response should be successful
+
+    # API TWO - the in-house upstream REFUSES the connection, so the chain advances and
+    # reaches the vendor. This is the positive control.
+    #
+    # It points at a port nothing listens on rather than at a host that does not resolve,
+    # and the distinction is the policy's own documented limit: a member whose host does not
+    # resolve is answered locally, before any upstream request exists, and a local answer is
+    # not retriable - so the chain would stop there and never reach the vendor. A member that
+    # resolves but refuses fails over normally. The LLM proxy scenarios elsewhere in this
+    # suite can use a non-resolving host because a proxy reaches its providers through a
+    # loopback definition, which puts the resolution failure on the second hop; a RestApi
+    # pointed straight at a bad host has no such indirection.
+    Given I generate a unique resource name from "vendor-hold-dead" and store it as "deadName"
+    And I generate a unique API version from "vendor-hold-dead" and store it as "deadVersion"
+    And I generate a unique API context from "/vendor-hold-dead" and store it as "deadContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}   |
+      | name                     | ${CTX:deadName}             |
+      | spec.displayName         | ${CTX:deadName}             |
+      | spec.version             | ${CTX:deadVersion}          |
+      | spec.context             | ${CTX:deadContext}/$version |
+      | spec.upstreamDefinitions | [{"name":"inhouse","upstreams":[{"url":"http://testbench:9099"}]},{"name":"vendor","basePath":"${CTX:vendorPath}","upstreams":[{"url":"http://testbench:3010"}]}] |
+      | spec.upstream.main.ref   | inhouse                     |
+      | spec.operations          | [{"method":"POST","path":"/allfailed","policies":[{"name":"model-failover","version":"v0","params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"premium-1","provider":"vendor"}]}]}}]}] |
+    Then the response should be successful
+
+    # Readiness on both, before anything is measured. Reaching 200 on the dead-upstream API
+    # proves its whole chain - including the vendor - is live, and the reset afterwards
+    # discards everything these polls recorded.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:deadContext}/${CTX:deadVersion}/allfailed" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:okContext}/${CTX:okVersion}/healthy" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    When I send a "POST" request to the "capture" service at "/test/reset"
+    Then the response should be successful
+
+    # Three ordinary requests against the healthy API. Each is served by the in-house upstream
+    # in a single attempt, so no attempt is left for the chain to spend on the vendor. Sent
+    # plainly rather than polled: a polling send keeps going until it sees a 200 and so could
+    # absorb the very request that broke the claim.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:okContext}/${CTX:okVersion}/healthy" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:okContext}/${CTX:okVersion}/healthy" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:okContext}/${CTX:okVersion}/healthy" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+
+    # POSITIVE CONTROL, after the same reset.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:deadContext}/${CTX:deadVersion}/allfailed" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    When I send a "GET" request to the "capture" service at "/test/captured?path=/vendor-sink/allfailed"
+    Then the response status code should be 200
+
+    # THE CLAIM. 204 is the capture saying it holds nothing for the healthy API's path - three
+    # requests went through a chain whose tail is the vendor, and the vendor was never called.
+    # The control above proves this same capture was recording throughout.
+    When I send a "GET" request to the "capture" service at "/test/captured?path=/vendor-sink/healthy"
+    Then the response status code should be 204
+
+    When I delete the API "${CTX:okName}"
+    Then the response should be successful
+    When I delete the API "${CTX:deadName}"
+    Then the response should be successful
