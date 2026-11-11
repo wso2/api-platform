@@ -534,6 +534,7 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
         () => HttpResponse.json(alice),
         () => HttpResponse.json({ isSignedIn: false }),
       ]);
+      answer(SDK_CONFIG.authSessionUrl, { isSignedIn: false });
 
       vi.advanceTimersByTime(30_000);
       await eventually(() => expect(poll.checks()).toBe(1));
@@ -553,6 +554,7 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
 
     it('waits while the tab is hidden, and asks the moment it is shown again', async () => {
       const poll = await signInAndPoll(POLLING_CONFIG, [() => HttpResponse.json({ isSignedIn: false })]);
+      answer(SDK_CONFIG.authSessionUrl, { isSignedIn: false });
 
       setVisibility('hidden');
       vi.advanceTimersByTime(120_000);
@@ -561,6 +563,26 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
       setVisibility('visible');
       await eventuallyStatus('unauthenticated');
       expect(poll.checks()).toBe(1);
+    });
+
+    // Behind the gateway the session read signs the tab in again through Native SSO, so a
+    // session ended elsewhere (a parent console's switch, say) is renewed without a page load.
+    it('reads the session before signing out, so an ended session can be renewed in place', async () => {
+      const bob = { isSignedIn: true, user: { sub: '9d2e', name: 'Bob' }, scope: 'openid' };
+      const poll = await signInAndPoll(POLLING_CONFIG, [() => HttpResponse.json({ isSignedIn: false })]);
+      let reads = 0;
+      server.use(http.get(SDK_CONFIG.authSessionUrl, () => (reads++, HttpResponse.json(bob))));
+      const assign = vi.fn();
+      vi.stubGlobal('location', { ...window.location, assign });
+
+      vi.advanceTimersByTime(30_000);
+
+      await eventually(() => expect(screen.getByTestId('user').textContent).toBe('Bob'));
+      expect(poll.checks()).toBe(1);
+      expect(reads).toBe(1);
+      expect(screen.getByTestId('status').textContent).toBe('authenticated');
+      expect(assign).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
     });
 
     it('keeps the same user object when nothing changed, so the app does not re-render', async () => {

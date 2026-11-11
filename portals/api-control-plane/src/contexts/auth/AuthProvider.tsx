@@ -254,7 +254,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const hydrate = useCallback(async (url: string = contract.sessionUrl) => {
     const id = ++latestCheck.current;
-    const session = await checkSession(url);
+    let session = await checkSession(url);
+    // A check can't renew an ended session; the session read can (Native SSO), so ask it first.
+    if (url !== contract.sessionUrl && (session.status === 'unauthenticated' || session.status === 'expired')) {
+      session = await checkSession(contract.sessionUrl);
+    }
     if (leaving.current) return false;
     if (id !== latestCheck.current) return session.status === 'authenticated';
     if (session.status === 'unavailable') {
