@@ -27,7 +27,7 @@ Feature: Credentials issued in the API Portal authorize gateway invocation via w
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
     And a webhook subscriber targeting the control plane is registered in the API Portal
-    And I generate a unique value from "devportal-project" and store it as "projectHandle"
+    And I generate a unique resource name from "devportal-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   @smoke

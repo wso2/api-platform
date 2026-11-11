@@ -158,15 +158,17 @@ Feature: Agent policy attachment and enforcement
     Then the response status code should be 200
     And the JSON response should have field "result"
 
-    # CancelTask requires trip:cancel — denied on both bindings with the same token.
+    # CancelTask requires trip:cancel — denied on both bindings with the same token. The token
+    # authenticates but lacks the scope, so jwt-auth answers 403 (RFC 6750 insufficient_scope),
+    # not the 401 it gives a missing or invalid token.
     When I send a "POST" request to "${CTX:agentContext}/v1/tasks/${CTX:taskA}:cancel"
-    Then the response status code should be 401
+    Then the response status code should be 403
 
     When I send a "POST" request to "${CTX:agentContext}" with body:
       """
       {"jsonrpc": "2.0", "id": 2, "method": "CancelTask", "params": {"id": "${CTX:taskA}"}}
       """
-    Then the response status code should be 401
+    Then the response status code should be 403
 
     # With the scope, the same two calls succeed — one task per binding, since cancelling is not
     # idempotent in a way this scenario should rely on.

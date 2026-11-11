@@ -57,6 +57,11 @@ export type DeployPageProps = {
   ownership: ApiOwnership;
   /** Whether the user holds a scope that deploys; Deploy and Promote are disabled otherwise. */
   canDeploy: boolean;
+  /**
+   * Whether the user may add a gateway; the empty state's add buttons are
+   * disabled otherwise. Defaults to allowed.
+   */
+  canAddGateway?: boolean;
   /** Whether the user holds a scope that undeploys; every Stop is disabled otherwise. */
   canUndeploy: boolean;
   /** Whether the user holds a scope that deletes builds; every delete is disabled otherwise. */
@@ -113,6 +118,7 @@ const DeployPage: FC<DeployPageProps> = ({
   canDeploy,
   canUndeploy,
   canDeleteBuild,
+  canAddGateway = true,
   busy,
   onDeploy,
   onStopGateway,
@@ -177,6 +183,7 @@ const DeployPage: FC<DeployPageProps> = ({
           onAddCloud={onAddCloudGateway}
           provisioning={provisioning}
           selfHostedPending={selfHostedPending}
+          addDeniedReason={canAddGateway ? undefined : NO_PERMISSION_TOOLTIP}
         />
       ) : environments.length === 0 ? (
         <Box

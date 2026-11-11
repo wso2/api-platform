@@ -42,7 +42,7 @@ Feature: MCP spec versions from the control plane to the gateway
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "mcp-cp-versions-project" and store it as "projectHandle"
+    And I generate a unique resource name from "mcp-cp-versions-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   Scenario: Spec versions declared in the control plane reach the gateway

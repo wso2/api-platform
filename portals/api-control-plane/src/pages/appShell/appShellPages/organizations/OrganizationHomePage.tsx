@@ -59,6 +59,7 @@ import ExploreMoreCard from './components/ExploreMoreCard';
 import { Can } from '@/permissions/Can';
 import { CanCreate } from '@/permissions/CanCreate';
 import type { LimitedComponent } from '@/hooks/useResourceLimits';
+import { isFeatureDisabled } from '@/config/features';
 
 const messages = defineMessages({
   apiAction: {
@@ -588,24 +589,26 @@ function OrganizationHomePageContent() {
                           )}
                         </Box>
                       </ButtonBase>
-                      <Can do="DeleteProject" denied="hide">
-                        <IconButton
-                          aria-label={intl.formatMessage(messages.deleteAriaLabel, {
-                            name: project.displayName,
-                          })}
-                          className="project-delete-action"
-                          color="error"
-                          onClick={() => setProjectToDelete(project)}
-                          size="small"
-                          sx={{
-                            flexShrink: 0,
-                            mr: 1.5,
-                            opacity: { md: 0, xs: 1 },
-                          }}
-                        >
-                          <Trash2 size={18} />
-                        </IconButton>
-                      </Can>
+                      {!isFeatureDisabled('project-delete') && (
+                        <Can do="DeleteProject" denied="hide">
+                          <IconButton
+                            aria-label={intl.formatMessage(messages.deleteAriaLabel, {
+                              name: project.displayName,
+                            })}
+                            className="project-delete-action"
+                            color="error"
+                            onClick={() => setProjectToDelete(project)}
+                            size="small"
+                            sx={{
+                              flexShrink: 0,
+                              mr: 1.5,
+                              opacity: { md: 0, xs: 1 },
+                            }}
+                          >
+                            <Trash2 size={18} />
+                          </IconButton>
+                        </Can>
+                      )}
                     </Box>
                   ))}
                 </Stack>

@@ -27,7 +27,7 @@ Feature: Platform-API-issued subscription credentials authorize gateway invocati
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "papi-secured-project" and store it as "projectHandle"
+    And I generate a unique resource name from "papi-secured-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   @secured

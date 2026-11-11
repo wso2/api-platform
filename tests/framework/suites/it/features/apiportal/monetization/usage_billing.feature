@@ -26,7 +26,7 @@ Feature: Billing a plan by usage in the API Portal
     Given I send a "POST" request to the "stripe" service at "/test/reset"
     And I send a "POST" request to the "moesif" service at "/test/reset"
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "usage-billing-project" and store it as "projectHandle"
+    And I generate a unique resource name from "usage-billing-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "billed-calls" and store it as "meterId"
     And I generate a unique resource name from "usage-plan" and store it as "planHandle"
