@@ -267,3 +267,94 @@ Feature: Walking a failover chain
     Then the response should be successful
     When I delete the LLM provider "${CTX:regionBName}"
     Then the response should be successful
+
+  Scenario: Suspending one provider's copy of a model leaves the other provider's untouched
+    # The sibling scenario above proves two entries naming the SAME model are kept distinct
+    # for ROUTING. This one proves they are kept distinct for HEALTH, which is a separate
+    # store and a separate way to conflate them: a health view keyed on the model alone would
+    # suspend "gpt-4o" outright, taking out the healthy region with the broken one.
+    #
+    # That failure is loud rather than subtle, which is what makes it assertable. With both
+    # copies suspended the chain has no candidate left and the policy answers 503
+    # failover_exhausted without dispatching anything - so a 200 from region B after region A
+    # is suspended is the whole claim.
+    #
+    # Both providers carry an alias, including the primary: a suspension record names the
+    # provider the target named, and a target naming nothing logs an empty one, which
+    # identifies nothing in a log every runner on this gateway shares.
+    Given I generate a unique resource name from "health-region-a" and store it as "sickName"
+    And I generate a unique API version from "health-region-a" and store it as "sickVersion"
+    And I generate a unique API context from "/health-region-a" and store it as "sickContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                 |
+      | name               | ${CTX:sickName}                           |
+      | displayName        | ${CTX:sickName}                           |
+      | version            | ${CTX:sickVersion}                        |
+      | template           | openai                                    |
+      | spec.context       | ${CTX:sickContext}                        |
+      | spec.upstream.url  | http://health-region-a-nonexistent:9080/a |
+      | accessControl.mode | allow_all                                 |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "health-region-b" and store it as "wellName"
+    And I generate a unique API version from "health-region-b" and store it as "wellVersion"
+    And I generate a unique API context from "/health-region-b" and store it as "wellContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                      |
+      | name               | ${CTX:wellName}                                |
+      | displayName        | ${CTX:wellName}                                |
+      | version            | ${CTX:wellVersion}                             |
+      | template           | openai                                         |
+      | spec.context       | ${CTX:wellContext}                             |
+      | spec.upstream.url  | http://testbench:3000/health-region-b-upstream |
+      | accessControl.mode | allow_all                                      |
+    Then the response should be successful
+
+    # One model name, two providers. suspendAfterFailures is 1 so a single failed attempt
+    # suspends region A, and the window is held well past the scenario's own runtime so the
+    # second request cannot be served by region A quietly coming back.
+    Given I generate a unique resource name from "health-same-model" and store it as "proxyName"
+    And I generate a unique API version from "health-same-model" and store it as "proxyVersion"
+    And I generate a unique API context from "/health-same-model" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                                   |
+      | name                   | ${CTX:proxyName}                                                                                                            |
+      | displayName            | ${CTX:proxyName}                                                                                                            |
+      | version                | ${CTX:proxyVersion}                                                                                                         |
+      | context                | ${CTX:proxyContext}                                                                                                         |
+      | provider.id            | ${CTX:sickName}                                                                                                             |
+      | spec.providers         | [{"id":"${CTX:sickName}","alias":"region-a","isPrimary":true},{"id":"${CTX:wellName}","alias":"region-b"}]                  |
+      | spec.operationPolicies | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o","provider":"region-a","fallbacks":[{"model":"gpt-4o","provider":"region-b"}]}]}}]}] |
+    Then the response should be successful
+
+    # Request one: region A is attempted, fails, and region B answers on the same model name.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until header "x-envoy-attempt-count" is "2" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/health-region-b-upstream"
+    # The record names region A. Were health keyed on the model, there would be nothing in it
+    # to distinguish which of the two copies of gpt-4o had just been withdrawn.
+    And the "gateway-runtime" log since the latest request should contain "provider=region-a reason=consecutive_failures observed=1 sample_size=0 duration_seconds=300 escalation_step=1"
+
+    # Request two, sent once rather than polled - a poll would wait out a wrong answer instead
+    # of reporting it. ONE attempt proves region A was skipped rather than retried, and a 200
+    # from region B proves its health survived its sibling's suspension. Had the suspension
+    # applied to the model, this would be 503 failover_exhausted with nothing dispatched.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+    And the response body should contain "/health-region-b-upstream"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:sickName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:wellName}"
+    Then the response should be successful
