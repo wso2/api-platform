@@ -61,7 +61,7 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     # Unselecting every document, the landing page and the thumbnail removes them from the API Portal
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -98,7 +98,7 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     # Unselecting one of two documents removes only that document from the API Portal
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -134,7 +134,7 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     # Unselecting the thumbnail removes it from the API Portal
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -167,7 +167,7 @@ Feature: Documents, a landing page and a thumbnail published with an API reach t
     # Documents that together exceed the content size limit are refused before anything is sent to the API Portal
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane

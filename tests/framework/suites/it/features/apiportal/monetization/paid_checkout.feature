@@ -174,7 +174,7 @@ Feature: Buying a flat rate plan in the API Portal
     Given I send a "POST" request to the "stripe" service at "/test/reset"
     And I send a "POST" request to the "moesif" service at "/test/reset"
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "paid-checkout-project" and store it as "projectHandle"
+    And I generate a unique resource name from "paid-checkout-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "paid-checkout-plan" and store it as "planHandle"
     And I send a "POST" request to the control plane at "/subscription-plans" with body:
@@ -251,7 +251,7 @@ Feature: Buying a flat rate plan in the API Portal
     Given I send a "POST" request to the "stripe" service at "/test/reset"
     And I send a "POST" request to the "moesif" service at "/test/reset"
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "paid-checkout-project" and store it as "projectHandle"
+    And I generate a unique resource name from "paid-checkout-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "paid-checkout-plan" and store it as "planHandle"
     And I send a "POST" request to the control plane at "/subscription-plans" with body:
@@ -310,7 +310,7 @@ Feature: Buying a flat rate plan in the API Portal
     Given I send a "POST" request to the "stripe" service at "/test/reset"
     And I send a "POST" request to the "moesif" service at "/test/reset"
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "paid-checkout-project" and store it as "projectHandle"
+    And I generate a unique resource name from "paid-checkout-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "paid-checkout-plan" and store it as "planHandle"
     And I send a "POST" request to the control plane at "/subscription-plans" with body:
@@ -453,7 +453,7 @@ Feature: Buying a flat rate plan in the API Portal
     Given I send a "POST" request to the "stripe" service at "/test/reset"
     And I send a "POST" request to the "moesif" service at "/test/reset"
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "paid-checkout-project" and store it as "projectHandle"
+    And I generate a unique resource name from "paid-checkout-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "paid-checkout-plan" and store it as "planHandle"
     And I send a "POST" request to the control plane at "/subscription-plans" with body:

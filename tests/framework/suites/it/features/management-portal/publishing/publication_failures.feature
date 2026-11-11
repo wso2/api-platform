@@ -47,7 +47,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # Publishing without a saved draft is refused
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -65,7 +65,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # A draft without a definition cannot be published
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -87,7 +87,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # A draft with an invalid definition cannot be published
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -113,7 +113,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # A draft cannot select a subscription plan that is not active
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -136,7 +136,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # A plan deactivated after the draft was saved blocks the publish
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -165,7 +165,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # A draft with a label the API Portal does not have is refused, and publishes once the label exists
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -197,7 +197,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # A user without the publish scope cannot publish
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -218,7 +218,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # A user without the draft scope cannot save a draft
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -237,7 +237,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # Publishing an API or to a portal that does not exist is refused
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -257,7 +257,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # Deprecating an already deprecated API is refused
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -280,7 +280,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # Unpublishing an already unpublished API is refused
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -305,7 +305,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # Unpublishing is refused while the API Portal still has subscriptions to the API
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -332,7 +332,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # Unpublishing is refused while the API Portal still has API keys for the API
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -358,7 +358,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # Unpublishing succeeds once the subscriptions and API keys are removed
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -386,7 +386,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # A wrong shared key is reported as an unavailable portal, not as a conflict
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -412,7 +412,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # Publishing works once the shared key is rotated to the one the portal accepts
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -436,7 +436,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # The API Portal refuses a POST to /apis from a caller without the control plane's shared key
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -466,7 +466,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # The API Portal refuses a PUT to /apis/${CTX:apiHandle} from a caller without the control plane's shared key
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -496,7 +496,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # The API Portal refuses a DELETE to /apis/${CTX:apiHandle} from a caller without the control plane's shared key
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -526,7 +526,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # The API Portal refuses a POST to /subscription-plans from a caller without the control plane's shared key
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -556,7 +556,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # The API Portal refuses a PUT to /subscription-plans from a caller without the control plane's shared key
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -586,7 +586,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # The API Portal refuses a DELETE to /subscription-plans/${CTX:planHandle} from a caller without the control plane's shared key
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -616,7 +616,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     # The API Portal refuses a POST to /meters from a caller without the control plane's shared key
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane

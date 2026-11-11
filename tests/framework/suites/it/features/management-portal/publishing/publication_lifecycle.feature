@@ -52,7 +52,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # Publishing creates the selected plans the API Portal does not have yet
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -77,7 +77,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # An API that was never deployed to a gateway can be published
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -101,7 +101,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # Republishing an edited draft replaces the listing in the API Portal
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -129,7 +129,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # Republishing keeps the API Portal's subscriptions and shows the new description
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -165,7 +165,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # Deprecating a published API changes only its status
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -190,7 +190,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # Deprecating keeps the plan on offer and the existing subscription in the API Portal
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -217,7 +217,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # Unpublishing removes the listing from the API Portal and keeps a draft
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -244,7 +244,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # Unpublishing keeps the draft that was saved after publishing
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -273,7 +273,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # A published API's page, specification and Markdown are served by the API Portal
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -307,7 +307,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # An API published with a label appears only in the views of that label
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -355,7 +355,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # Unpublishing removes the API's page, Markdown and agent listings from the API Portal
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -398,7 +398,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # A GraphQL API is published, deprecated and unpublished through the control plane
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -434,7 +434,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # A GraphQL draft is published only through its own type, and only with a GraphQL definition
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -468,7 +468,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # An MCP proxy is published, deprecated and unpublished through the control plane
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -504,7 +504,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # Republishing an edited MCP proxy draft replaces its listing in the API Portal
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -535,7 +535,7 @@ Feature: Publishing an API to an API Portal through the control plane
     # An MCP proxy draft is published only through its own type, and only with an MCP definition
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane

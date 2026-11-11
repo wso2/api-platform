@@ -83,7 +83,7 @@ Feature: Publishing priced plans to an API Portal
     # Publishing brings a new limit to a plan the API Portal already sells at the same price
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "priced-publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "priced-publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "priced-calls" and store it as "meterId"
     And I generate a unique resource name from "priced-plan" and store it as "planId"
@@ -165,7 +165,7 @@ Feature: Publishing priced plans to an API Portal
     # A plan the API Portal already sells at another price blocks the publish
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "priced-publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "priced-publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "priced-calls" and store it as "meterId"
     And I generate a unique resource name from "priced-plan" and store it as "planId"
@@ -207,7 +207,7 @@ Feature: Publishing priced plans to an API Portal
     # A meter the API Portal defines differently blocks the publish
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "priced-publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "priced-publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "priced-calls" and store it as "meterId"
     And I generate a unique resource name from "priced-plan" and store it as "planId"
@@ -244,7 +244,7 @@ Feature: Publishing priced plans to an API Portal
     # A plan in use cannot be renamed, re-limited or deleted in the control plane, and the API Portal keeps its copy
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
@@ -292,7 +292,7 @@ Feature: Publishing priced plans to an API Portal
     # A plan change made while it is unused reaches the API Portal on the next publish
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane
