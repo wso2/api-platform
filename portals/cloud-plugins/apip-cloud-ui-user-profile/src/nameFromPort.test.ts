@@ -21,8 +21,12 @@ import { describe, expect, it } from 'vitest';
 import { nameFromPort } from './nameFromPort';
 
 describe('nameFromPort', () => {
-  it("returns the user's name, trimmed", () => {
-    expect(nameFromPort({ user: { name: ' Dilan Induwara ' } })).toBe('Dilan Induwara');
+  it("returns only the user's first name, trimmed", () => {
+    expect(nameFromPort({ user: { name: ' Dilan Induwara ' } })).toBe('Dilan');
+  });
+
+  it('returns a single-word name unchanged', () => {
+    expect(nameFromPort({ user: { name: 'induwara' } })).toBe('induwara');
   });
 
   it.each([
