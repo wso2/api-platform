@@ -41,6 +41,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/testbench"
 )
 
@@ -51,6 +52,7 @@ const (
 	cogScope      = "https://cognitiveservices.azure.com/.default"
 )
 
+// validForm returns a well-formed client credentials request with a client assertion.
 func validForm(scope string) url.Values {
 	return url.Values{
 		"grant_type":            {"client_credentials"},
@@ -61,6 +63,7 @@ func validForm(scope string) url.Values {
 	}
 }
 
+// serve sends req to h and returns the recorded response.
 func serve(t *testing.T, h http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
@@ -68,9 +71,10 @@ func serve(t *testing.T, h http.Handler, req *http.Request) *httptest.ResponseRe
 	return rec
 }
 
+// requestToken posts form to the tenant's token endpoint.
 func requestToken(t *testing.T, svc *Service, tenant string, form url.Values) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/"+tenant+"/oauth2/v2.0/token", strings.NewReader(form.Encode()))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/"+tenant+"/oauth2/v2.0/token", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	return serve(t, svc.Handler(), req)
 }
@@ -83,6 +87,7 @@ type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
 }
 
+// issued asserts rec is a 200 token response and decodes it.
 func issued(t *testing.T, rec *httptest.ResponseRecorder) tokenResponse {
 	t.Helper()
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -91,6 +96,7 @@ func issued(t *testing.T, rec *httptest.ResponseRecorder) tokenResponse {
 	return tok
 }
 
+// claimsOf decodes the claims of a token the service issued.
 func claimsOf(t *testing.T, token string) Claims {
 	t.Helper()
 	encoded, ok := strings.CutPrefix(token, TokenPrefix)
@@ -107,18 +113,20 @@ type requestLog struct {
 	Requests []Request `json:"requests"`
 }
 
+// recorded returns the tenant's token request log.
 func recorded(t *testing.T, svc *Service, tenant string) requestLog {
 	t.Helper()
-	rec := serve(t, svc.Handler(), httptest.NewRequest(http.MethodGet, "/"+tenant+"/test/requests", nil))
+	rec := serve(t, svc.Handler(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/"+tenant+"/test/requests", nil))
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var l requestLog
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &l))
 	return l
 }
 
+// callResource posts a chat request to a protected resource, with authorization when it is set.
 func callResource(t *testing.T, svc *Service, path, authorization string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"chat","messages":[]}`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader(`{"model":"chat","messages":[]}`))
 	if authorization != "" {
 		req.Header.Set("Authorization", authorization)
 	}
@@ -182,7 +190,7 @@ func TestTokenRejectsABadForm(t *testing.T) {
 	}
 
 	t.Run("not a form", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/t1/oauth2/v2.0/token", strings.NewReader(`{"grant_type":"client_credentials"}`))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/t1/oauth2/v2.0/token", strings.NewReader(`{"grant_type":"client_credentials"}`))
 		req.Header.Set("Content-Type", "application/json")
 		require.Equal(t, http.StatusBadRequest, serve(t, New().Handler(), req).Code)
 	})
@@ -274,15 +282,21 @@ func TestSlowWaitsAndStopsWhenCancelled(t *testing.T) {
 	require.GreaterOrEqual(t, time.Since(start), 50*time.Millisecond)
 
 	svc = newWithSlowDelay(time.Hour)
-	ctx, cancel := context.WithCancel(context.Background())
-	req := httptest.NewRequest(http.MethodPost, "/"+PrefixSlow+"y/oauth2/v2.0/token",
-		strings.NewReader(validForm(foundryScope).Encode())).WithContext(ctx)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/"+PrefixSlow+"y/oauth2/v2.0/token",
+		strings.NewReader(validForm(foundryScope).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	done := make(chan struct{})
 	go func() {
 		svc.Handler().ServeHTTP(httptest.NewRecorder(), req)
 		close(done)
 	}()
+	// Cancel only once the request is admitted, so the handler is past admission and waiting.
+	require.NoError(t, retry.Await(t.Context(), retry.Options{Timeout: 5 * time.Second, Interval: 10 * time.Millisecond, Fast: true},
+		func(context.Context) (int, error) { return recorded(t, svc, PrefixSlow+"y").Count, nil },
+		func(count int) bool { return count == 1 },
+		"waiting for the slow token request to be admitted"))
 	cancel()
 	select {
 	case <-done:
@@ -404,7 +418,11 @@ func TestOverTLSSharesTheServiceState(t *testing.T) {
 	client := &http.Client{Transport: &http.Transport{
 		TLSClientConfig: &tls.Config{RootCAs: roots, ServerName: "testbench", MinVersion: tls.VersionTLS12},
 	}}
-	resp, err := client.PostForm(server.URL+"/t1/oauth2/v2.0/token", validForm(foundryScope))
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/t1/oauth2/v2.0/token",
+		strings.NewReader(validForm(foundryScope).Encode()))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := client.Do(req)
 	require.NoError(t, err, "a client that trusts only the testbench certificate completes the handshake")
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -416,6 +434,7 @@ func TestOverTLSRejectsAnInvalidKeyPair(t *testing.T) {
 	require.Error(t, err)
 }
 
+// selfSignedPEM returns a self-signed certificate for host testbench and its key, both PEM-encoded.
 func selfSignedPEM(t *testing.T) ([]byte, []byte) {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

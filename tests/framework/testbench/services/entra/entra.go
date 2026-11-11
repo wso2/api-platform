@@ -106,6 +106,7 @@ type Service struct {
 // New returns a new Entra ID service.
 func New() *Service { return newWithSlowDelay(defaultSlowDelay) }
 
+// newWithSlowDelay returns a service whose slow- tenants wait delay before answering.
 func newWithSlowDelay(delay time.Duration) *Service {
 	return &Service{partitions: map[string]*partition{}, slowDelay: delay}
 }
@@ -159,6 +160,7 @@ func (s *Service) Handler() http.Handler {
 	return testbench.NormalizeMethod(testbench.PartitionRouter(routes))
 }
 
+// scoped passes fn the tenant PartitionRouter took from the path, failing a request that has none.
 func (s *Service) scoped(fn func(string, http.ResponseWriter, *http.Request)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tenant, ok := testbench.PartitionKeyFromContext(r.Context())
@@ -215,6 +217,7 @@ func wait(ctx context.Context, delay time.Duration) bool {
 	}
 }
 
+// writeJSON writes payload as a JSON response with status.
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
