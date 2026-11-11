@@ -76,8 +76,9 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
   const { canSwitchOrganization, exchangeOrgToken, isAuthenticated, user } = useAuth();
   const sessionOrgHandle = user?.org?.handle;
   const [switchFailure, setSwitchFailure] = useState<{ orgHandle: string; error: unknown }>();
-  // The organization this tab last had the session in.
+  // The organization this tab last had the session in, and the one its switch in flight is moving it to.
   const [settledOrgHandle, setSettledOrgHandle] = useState<string>();
+  const [switchingTo, setSwitchingTo] = useState<string>();
   const [tokenReadyOrgHandle, setTokenReadyOrgHandle] = useState<string>();
   const [orgTokenError, setOrgTokenError] = useState<Error>();
   const pathnameParams = useMemo(
@@ -150,14 +151,22 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     };
   }, [canSwitchOrganization, isAuthenticated, params.orgHandle]);
 
+  // A failed switch is tried again only once the URL has named another organization.
+  const failedFor = useRef<string>(undefined);
+  useEffect(() => {
+    failedFor.current = undefined;
+  }, [params.orgHandle]);
+
   // When the deployment switches organizations, the session is in one
   // organization at a time: the URL's is ready once the session is in it, and
   // until then the session is moved there. A session that left the URL's
   // organization without this tab asking (another tab switched) is followed
-  // instead, so tabs never move it back and forth.
+  // instead, so tabs never move it back and forth. While this tab's own switch
+  // is in flight, the page waits for it, wherever the URL goes meanwhile.
   useEffect(() => {
     const orgHandle = params.orgHandle;
     if (!canSwitchOrganization || !isAuthenticated || !orgHandle) return undefined;
+    if (switchingTo) return undefined;
     if (orgHandle === sessionOrgHandle) {
       setSettledOrgHandle(orgHandle);
       setSwitchFailure(undefined);
@@ -169,15 +178,20 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
       );
       return undefined;
     }
-    let isCurrent = true;
+    if (failedFor.current === orgHandle) return undefined;
     setSwitchFailure(undefined);
-    exchangeOrgTokenRef.current(orgHandle).catch((error: unknown) => {
-      if (isCurrent) setSwitchFailure({ orgHandle, error });
-    });
-    return () => {
-      isCurrent = false;
-    };
-  }, [canSwitchOrganization, isAuthenticated, params.orgHandle, sessionOrgHandle, settledOrgHandle]);
+    setSwitchingTo(orgHandle);
+    exchangeOrgTokenRef.current(orgHandle)
+      .then(
+        () => setSettledOrgHandle(orgHandle),
+        (error: unknown) => {
+          failedFor.current = orgHandle;
+          setSwitchFailure({ orgHandle, error });
+        },
+      )
+      .finally(() => setSwitchingTo(undefined));
+    return undefined;
+  }, [canSwitchOrganization, isAuthenticated, params.orgHandle, sessionOrgHandle, settledOrgHandle, switchingTo]);
 
   const switchError =
     switchFailure && switchFailure.orgHandle === params.orgHandle ? switchFailure.error : undefined;
@@ -300,7 +314,7 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     }
     // Nothing below may call the backend until the session is in this
     // organization: it would act on the previous one.
-    if (!queryOrgHandle) {
+    if (!queryOrgHandle || switchingTo) {
       return <LoadingState fullScreen label={intl.formatMessage(messages.switching)} />;
     }
   }

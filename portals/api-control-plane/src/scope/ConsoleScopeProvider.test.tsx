@@ -26,7 +26,7 @@ import { AuthStateContext } from '../contexts/auth/AuthStateContext';
 import { OrganizationSwitchError, type AuthState } from '../contexts/auth/authTypes';
 import { authStatePresets, makeAuthState } from '../test/mockAuthState';
 import { server } from '../test/server';
-import { renderWithProviders, screen, waitFor } from '../test/utils';
+import { act, renderWithProviders, screen, waitFor } from '../test/utils';
 import { OrganizationRedirectPage } from '../pages/appShell/appShellPages/system/SystemPages';
 import { ConsoleScopeProvider, useConsoleScope } from './ConsoleScopeProvider';
 
@@ -145,10 +145,16 @@ describe('ConsoleScopeProvider organization switching', () => {
       return <button onClick={() => navigate(routes.organizationHome(handle))}>{`open ${handle}`}</button>;
     }
 
+    function GoBack() {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate(-1)}>back</button>;
+    }
+
     /** A tab whose session the test can move, as another tab's switch does. */
     function renderTab(route: string, authState: AuthState) {
       const tree = (state: AuthState) => (
         <AuthStateContext.Provider value={state}>
+          <GoBack />
           <Routes>
             <Route
               element={
@@ -205,6 +211,25 @@ describe('ConsoleScopeProvider organization switching', () => {
 
       expect(await screen.findByText(/^org-b:/)).toBeInTheDocument();
       expect(screen.queryByText('Unable to switch organization')).not.toBeInTheDocument();
+    });
+
+    it('waits for its own switch when the user goes back, then moves to where they went', async () => {
+      const pending: Array<(value: boolean) => void> = [];
+      const exchangeOrgToken = vi.fn(() => new Promise<boolean>((resolve) => pending.push(resolve)));
+      const { user, moveSession } = renderTab(routes.organizationHome('org-a'), switchingSession(orgA, exchangeOrgToken));
+
+      await user.click(await screen.findByRole('button', { name: 'open org-b' }));
+      expect(await screen.findByText('Switching organization')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'back' }));
+
+      expect(screen.getByText('Switching organization')).toBeInTheDocument();
+      expect(screen.queryByText(/^org-a:/)).not.toBeInTheDocument();
+
+      moveSession(switchingSession(orgB, exchangeOrgToken));
+      await act(async () => pending[0](true));
+
+      await waitFor(() => expect(exchangeOrgToken).toHaveBeenLastCalledWith('org-a'));
+      expect(replace).not.toHaveBeenCalled();
     });
 
     it('still moves the session when this tab opens another organization', async () => {
