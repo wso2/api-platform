@@ -60,7 +60,7 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
 
   @DEPLC-001 @DEPLC-002 @DEPLC-005
   Scenario: Journey: a REST API's deployment is stopped, redeployed and deleted from its deploy page
-    Given I generate a unique handle from "deplc-ui-rest-actions-project" and store it as "project"
+    Given I generate a unique handle from "deplc-ui-rest-actions-proj" and store it as "project"
     And I generate a unique handle from "deplc-ui-rest-actions" and store it as "api"
     And a project "${CTX:project}" exists on the control plane
     And a REST API "${CTX:api}" exists in project "${CTX:project}" on the control plane
@@ -139,7 +139,7 @@ Feature: The Management Portal stops, redeploys, restores and deletes an API's d
 
   @DEPLC-001 @DEPLC-002 @DEPLC-005
   Scenario: Journey: a GraphQL API's deployment is stopped, redeployed and deleted from its deploy page
-    Given I generate a unique handle from "deplc-ui-graphql-actions-project" and store it as "project"
+    Given I generate a unique handle from "deplc-ui-gql-actions-proj" and store it as "project"
     And I generate a unique handle from "deplc-ui-graphql-actions" and store it as "api"
     And a project "${CTX:project}" exists on the control plane
     And a GraphQL API "${CTX:api}" exists in project "${CTX:project}" on the control plane
