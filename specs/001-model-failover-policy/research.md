@@ -645,3 +645,48 @@ native code into the data plane**.
 - [Agent Router — data plane architecture](https://theagentrouter.ai/docs/concepts/architecture/data-plane/) · [provider fallback](https://theagentrouter.ai/docs/0.3/capabilities/traffic/provider-fallback/) · [agent-router#2671 — discarded body mutations](https://github.com/theagentrouter/agent-router/issues/2671) · [project transition](https://theagentrouter.ai/blog/envoy-ai-gateway-is-now-agent-router/)
 - [kgateway v2.1 — Envoy-based AI gateway deprecation](https://kgateway.dev/blog/kgateway-v2.1-release-blog/)
 - Local verification: `go-control-plane/envoy@v1.37.0/extensions/load_balancing_policies/override_host/v3/override_host.pb.go`; `.../extensions/clusters/composite/v3/cluster.pb.go`; `gateway/gateway-runtime/Dockerfile:24`; `gateway/gateway-controller/go.mod:7`
+
+## 12. Envoy 1.38 / 1.39 / 1.40 changelog review (2026-11-11)
+
+T005 asked for this under §10; it goes here instead because §10 and §11 were written since and
+cramming a version review into a `priority_group` reassessment would bury it. The runtime is pinned
+at `ENVOY_VERSION=v1.40.0` (`gateway/gateway-runtime/Dockerfile`).
+
+**These are changelog claims, not measured behaviour.** Nothing below was verified against a running
+gateway; where an entry matters it is cross-referenced to the task that did measure it.
+
+### Load-bearing for this feature
+
+- **1.38 — "Fixed a bug that prevented two ext_proc filters from being configured in the same filter
+  chain."** The architecture requires exactly that: a downstream ext_proc that resolves and publishes
+  the chain once, and a per-attempt upstream ext_proc that applies each target (FR-057b). On a
+  pre-1.38 Envoy the two-filter arrangement this feature is built on could not be configured at all.
+  The version floor is therefore not only about `priority_group` — it is about the filter topology.
+
+- **1.39 — "Added `refresh_cluster_on_retry` to retry policies so retry attempts can refresh the
+  route-selected upstream cluster before being sent."** Already pinned by **T027**, which asserts the
+  failure mode rather than the feature, so a later config change cannot silently reintroduce it.
+
+### Worth knowing, not acted on
+
+- **1.39 — ext_proc decode/encode shared-continue-flag bug fix**: "a request body that continued the
+  decode direction while an upstream response was held at `encodeHeaders` turned the later
+  `continueEncoding()` into a silent no-op." Body-phase policies plus retries is exactly this
+  feature's shape, so the fix is in our favour; on an older Envoy it would have been a silent stall.
+- **1.40 — "Avoid sending empty data frames with `end_stream` set to `false` to the external
+  processing server."** Touches the streaming path the provisional-grading work (T030k3) depends on.
+- **1.38 — "Fixed a bug where unnecessary empty data chunks are processed by the filter chain."**
+  Same area.
+- **1.39 — `budget_interval` on the retry-budget circuit breaker**, and **`refreshRouteCluster` on
+  weighted-cluster routes**. Neither is used: the attempt budget is per-route via the generated retry
+  policy, and cluster selection is the `priority_group` specifier's job, not a weighted pool's.
+
+### Checked and clear
+
+No change across the three releases touches `x-envoy-attempt-count`, the virtual-host
+`include_attempt_count*` settings, cluster specifier plugin semantics, per-try timeout or
+`per_try_idle_timeout`, HCM path normalization, or the route-cache clearing this feature relies on.
+The route-cache entries that do appear are scoped to other filters (`set_filter_state` in 1.38, the
+MCP bridge in 1.39) and leave the ext_proc path alone. The one 1.40 route-validation addition —
+rejecting `prefix_rewrite` combined with `path_match_policy` in a redirect — does not apply: the
+generated config pairs neither.
