@@ -134,10 +134,10 @@ func buildIndex(resolved *topology.Resolved, suiteAbs, suiteDir string) (*index,
 			unmatched = unmatched || !matched
 		}
 		// A step no pattern matches (an outline placeholder, say) may belong to any package,
-		// so the feature counts as using all of them. A pattern built at run time matches
-		// every step, so its package counts as used by every feature.
-		for name := range packages {
-			if !unmatched && !used[name] {
+		// so the feature counts as using all of them. A package with a pattern that cannot be
+		// read counts as used by every feature.
+		for name, pkg := range packages {
+			if !unmatched && !used[name] && !pkg.unresolved {
 				continue
 			}
 			for _, dependency := range packages.dependenciesOf(name) {
@@ -319,6 +319,9 @@ type stepPackage struct {
 	importPath string
 	imports    []string
 	patterns   []*regexp.Regexp
+	// unresolved is true when a pattern is neither a string literal nor a concatenation of
+	// literals and package constants, so the package's steps cannot all be told apart.
+	unresolved bool
 }
 
 // matches reports whether one of the package's patterns matches the step text.
@@ -382,27 +385,48 @@ func readStepPackages(dir string) (stepPackages, *stepPackage, error) {
 
 // readDir reads every non-test Go file in dir into the package.
 func (p *stepPackage) readDir(dir string) error {
-	files, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	paths, err := filepath.Glob(filepath.Join(dir, "*.go"))
 	if err != nil {
 		return err
 	}
-	for _, file := range files {
-		if strings.HasSuffix(file, "_test.go") {
+	// Constants first, from every file: a pattern may join a literal with a constant
+	// declared in another file of the package.
+	var files []*ast.File
+	consts := map[string]ast.Expr{}
+	for _, path := range paths {
+		if strings.HasSuffix(path, "_test.go") {
 			continue
 		}
-		if err := p.read(file); err != nil {
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			return err
+		}
+		files = append(files, parsed)
+		for _, decl := range parsed.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.CONST {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				value := spec.(*ast.ValueSpec)
+				for i, name := range value.Names {
+					if i < len(value.Values) {
+						consts[name.Name] = value.Values[i]
+					}
+				}
+			}
+		}
+	}
+	for i, parsed := range files {
+		if err := p.read(paths[i], parsed, consts); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// read collects the imports and Step patterns of one Go file.
-func (p *stepPackage) read(file string) error {
-	parsed, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.SkipObjectResolution)
-	if err != nil {
-		return err
-	}
+// read collects the imports and Step patterns of one parsed Go file.
+func (p *stepPackage) read(file string, parsed *ast.File, consts map[string]ast.Expr) error {
 	for _, spec := range parsed.Imports {
 		path, err := strconv.Unquote(spec.Path.Value)
 		if err == nil && strings.Contains(path, "/suites/it/steps/") {
@@ -419,16 +443,10 @@ func (p *stepPackage) read(file string) error {
 		if !ok || sel.Sel.Name != "Step" {
 			return true
 		}
-		lit, ok := call.Args[0].(*ast.BasicLit)
-		if !ok || lit.Kind != token.STRING {
-			// A pattern built at run time cannot be matched here, so it matches every step.
-			p.patterns = append(p.patterns, regexp.MustCompile(""))
+		value, ok := constantString(call.Args[0], consts, 0)
+		if !ok {
+			p.unresolved = true
 			return true
-		}
-		value, err := strconv.Unquote(lit.Value)
-		if err != nil {
-			badPattern = fmt.Errorf("%s: %w", file, err)
-			return false
 		}
 		pattern, err := regexp.Compile(value)
 		if err != nil {
@@ -439,6 +457,40 @@ func (p *stepPackage) read(file string) error {
 		return true
 	})
 	return badPattern
+}
+
+// constantString evaluates a string literal, a package constant, or a + of them.
+func constantString(expr ast.Expr, consts map[string]ast.Expr, depth int) (string, bool) {
+	if depth > 16 {
+		return "", false
+	}
+	switch e := expr.(type) {
+	case *ast.BasicLit:
+		if e.Kind != token.STRING {
+			return "", false
+		}
+		value, err := strconv.Unquote(e.Value)
+		return value, err == nil
+	case *ast.Ident:
+		value, ok := consts[e.Name]
+		if !ok {
+			return "", false
+		}
+		return constantString(value, consts, depth+1)
+	case *ast.ParenExpr:
+		return constantString(e.X, consts, depth+1)
+	case *ast.BinaryExpr:
+		if e.Op != token.ADD {
+			return "", false
+		}
+		left, ok := constantString(e.X, consts, depth+1)
+		if !ok {
+			return "", false
+		}
+		right, ok := constantString(e.Y, consts, depth+1)
+		return left + right, ok
+	}
+	return "", false
 }
 
 var stepKeyword = regexp.MustCompile(`^(?:Given|When|Then|And|But|\*)\s+(.+)$`)

@@ -50,7 +50,7 @@ func fixture(t *testing.T) *index {
 			"    Then I send a request with body:\n      \"\"\"\n      When I am not a step\n      \"\"\"\n",
 		"features/portal/billing.feature": "Feature: x\n  Scenario: y\n    Given a portal plan \"gold\"\n" +
 			"    When I create it from \"resources/templates/plan.yaml\"\n",
-		"features/gateway/route.feature": "Feature: x\n  Scenario: y\n    When I route through the gateway\n",
+		"features/gateway/route.feature": "Feature: x\n  Scenario: y\n    When I route through the gateway\n    Then the log since the latest request is clean\n",
 		"features/api/list.feature":      "Feature: x\n  Scenario Outline: y\n    Then the response has <count> items\n",
 		"features/unused.feature":        "Feature: x\n",
 		"steps/base.go":                  stepFile("steps", `^I send a request with body:$`, `^I create it from "([^"]*)"$`),
@@ -59,9 +59,12 @@ func fixture(t *testing.T) *index {
 
 import _ "example/suites/it/steps/platformapi"
 ` + stepFile("", `^I log in to the portal$`, `^a portal plan "([^"]*)"$`),
-		"steps/apiportal/portal_test.go":   "package apiportal\n",
-		"steps/platformapi/api.go":         stepFile("platformapi", `^the response has (\d+) items$`),
-		"steps/platformgateway/gateway.go": stepFile("platformgateway", `^I route through the gateway$`),
+		"steps/apiportal/portal_test.go": "package apiportal\n",
+		"steps/platformapi/api.go":       stepFile("platformapi", `^the response has (\d+) items$`),
+		"steps/platformgateway/gateway.go": stepFile("platformgateway", `^I route through the gateway$`) +
+			"\nfunc logs(sc interface{ Step(any, any) }) {\n\tsc.Step(`^the log `+sincePhrase+` is clean$`, nil)\n}\n",
+		"steps/platformgateway/phrases.go": "package platformgateway\n\nconst sincePhrase = \"since the \" + latest\n\nconst latest = \"latest request\"\n",
+		"steps/apcli/cli.go":               "package apcli\n\nfunc register(sc interface{ Step(any, any) }) {\n\tsc.Step(pattern(), nil)\n}\n\nfunc pattern() string { return \"^x$\" }\n",
 	}
 	for name, content := range files {
 		path := filepath.Join(dir, name)
@@ -169,6 +172,26 @@ func TestFeatureStepsSkipDocStrings(t *testing.T) {
 func TestUnmatchedStepUsesEveryPackage(t *testing.T) {
 	idx := fixture(t)
 	require.True(t, idx.stepPackageSources["platformgateway"]["api-core"])
+}
+
+// A pattern joining literals and constants (from another file too) is read whole, so its
+// package is not taken as used by features that never call it.
+func TestPatternsJoiningConstantsAreRead(t *testing.T) {
+	idx := fixture(t)
+	require.True(t, idx.stepPackageSources["platformgateway"]["gateway-core"])
+	require.False(t, idx.stepPackageSources["platformgateway"]["portal-core"],
+		"a portal feature does not use the Gateway steps")
+}
+
+// A pattern that cannot be read makes its package count as used by every feature, without
+// hiding steps no pattern matches.
+func TestUnreadablePatternUsesEveryFeature(t *testing.T) {
+	idx := fixture(t)
+	for _, source := range []string{"portal-core", "portal-billing", "gateway-core", "api-core"} {
+		require.True(t, idx.stepPackageSources["apcli"][source], source)
+	}
+	require.True(t, idx.stepPackageSources["apiportal"]["api-core"],
+		"the outline step still counts as unmatched")
 }
 
 // The real suite: every feature a block lists exists and its step patterns compile.
