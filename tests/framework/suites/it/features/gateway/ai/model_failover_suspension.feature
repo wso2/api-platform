@@ -254,14 +254,19 @@ Feature: Taking a failing target out of rotation, and putting it back
       | accessControl.mode | allow_all                                   |
     Then the response should be successful
 
-    # BOTH providers are aliased, which the scenarios above do not need. A target's `provider`
-    # names an additionalProviders alias; the proxy's main provider has none, and a chain
-    # member naming nothing does not resolve on an LlmProxy - it is dropped, leaving a
-    # one-member chain that exhausts instead of failing over. Here the leading target must be
-    # named so the suspension record identifies itself in a log every runner shares, so the
-    # dead provider is listed as an additional provider as well as being the proxy's main. backoffResetSeconds is held far above the scenario's own
-    # runtime: a reset landing mid-run would put the second suspension back at the base and
-    # the doubling would silently stop being what is measured.
+    # The dead provider is listed as an ADDITIONAL provider as well as being the proxy's main,
+    # which the scenarios above do not need. A target's `provider` is looked up in the map the
+    # controller builds from additionalProviders, keyed by the alias an author writes; a target
+    # naming nothing takes the API's own main upstream. There is no key for the main provider's
+    # id - naming it is not the way to reach it - so a target that names it resolves to nothing
+    # and is dropped, leaving a one-member chain that cannot fail over.
+    #
+    # It has to be named here because the suspension record carries the provider, and an
+    # unnamed target logs an empty one, which identifies nothing in a log every runner shares.
+    #
+    # backoffResetSeconds is held far above the scenario's own runtime: a reset landing mid-run
+    # would put the second suspension back at the base and the doubling would silently stop
+    # being what is measured.
     Given I generate a unique resource name from "ladder-proxy" and store it as "proxyName"
     And I generate a unique API version from "ladder-proxy" and store it as "proxyVersion"
     And I generate a unique API context from "/ladder-proxy" and store it as "proxyContext"
