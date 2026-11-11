@@ -755,7 +755,12 @@ though the routing policy keeps nominating it, and that load spreads across the 
   an upstream-level attachment: the authored intent is reasonable on its face and the configuration
   would otherwise appear to work.
   **Where both attach, the API-level instance MUST be discarded from the chain, not merely
-  outranked** — and the discard MUST be reported at generation time. Two instances is not a
+  outranked** — and the discard MUST be reported at generation time. Discarding is what makes the
+  precedence effective, not a tidiness measure on top of it: at runtime the target is selected
+  from the ranking the surviving policy instance publishes, not from the `priority_group` the
+  route was built from, so leaving both instances in the chain leaves which chain is actually
+  walked decided by execution order rather than by the configured precedence. Measured
+  2026-11-11 — inverting the precedence resolution alone changed nothing observable. Two instances is not a
   cosmetic duplication: they carry different targets, resolve different chains, and both grade the
   response. Grading is not idempotent — the policy writes its "already graded" marker at the END of
   its response phase and reads it only from the fault hook — so a duplicate charges one request's

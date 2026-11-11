@@ -192,3 +192,90 @@ Feature: Model failover attachment scope
     Then the response should be successful
     When I delete the LLM provider "${CTX:opName}"
     Then the response should be successful
+
+  Scenario: Overriding discards the API-level instance rather than running both
+    # The override above is visible in routing, so it would still pass with BOTH instances
+    # left in the chain - the operation's is the one that routes either way. What a duplicate
+    # actually costs is health accounting: the two share a store (keyed by route and by
+    # suspension settings, which are identical here), and each grades the same response, so
+    # one failed request would be charged to the target twice.
+    #
+    # suspendAfterFailures is 2, which turns that into an attempt count. Charged once, the
+    # target survives the first request and is still in rotation for the second, which takes
+    # two attempts. Charged twice, one request suspends it and the second skips it in one
+    # attempt. Both chains are identical, so routing cannot account for the difference.
+    Given I generate a unique resource name from "fo-dup-dead" and store it as "deadName"
+    And I generate a unique value from "fo-dup-dead" and store it as "deadDisplayName"
+    And I generate a unique API version from "fo-dup-dead" and store it as "deadVersion"
+    And I generate a unique API context from "/fo-dup-dead" and store it as "deadContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                         |
+      | name               | ${CTX:deadName}                                   |
+      | displayName        | ${CTX:deadDisplayName}                            |
+      | version            | ${CTX:deadVersion}                                |
+      | template           | openai                                            |
+      | spec.context       | ${CTX:deadContext}                                |
+      | spec.upstream.url  | http://fo-dup-nonexistent-host:9080/dead-upstream |
+      | accessControl.mode | allow_all                                         |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "fo-dup-alive" and store it as "aliveName"
+    And I generate a unique value from "fo-dup-alive" and store it as "aliveDisplayName"
+    And I generate a unique API version from "fo-dup-alive" and store it as "aliveVersion"
+    And I generate a unique API context from "/fo-dup-alive" and store it as "aliveContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                |
+      | name               | ${CTX:aliveName}                         |
+      | displayName        | ${CTX:aliveDisplayName}                  |
+      | version            | ${CTX:aliveVersion}                      |
+      | template           | openai                                   |
+      | spec.context       | ${CTX:aliveContext}                      |
+      | spec.upstream.url  | http://testbench:3000/dup-alive-upstream |
+      | accessControl.mode | allow_all                                |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "fo-dup-proxy" and store it as "proxyName"
+    And I generate a unique value from "fo-dup-proxy" and store it as "proxyDisplayName"
+    And I generate a unique API version from "fo-dup-proxy" and store it as "proxyVersion"
+    And I generate a unique API context from "/fo-dup-proxy" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                                                                   |
+      | name                   | ${CTX:proxyName}                                                                                                                                            |
+      | displayName            | ${CTX:proxyDisplayName}                                                                                                                                     |
+      | version                | ${CTX:proxyVersion}                                                                                                                                         |
+      | context                | ${CTX:proxyContext}                                                                                                                                         |
+      | provider.id            | ${CTX:deadName}                                                                                                                                             |
+      | spec.providers         | [{"id":"${CTX:deadName}","alias":"dup-dead","isPrimary":true},{"id":"${CTX:aliveName}","alias":"dup-alive"}]                                                |
+      | spec.globalPolicies    | [{"name":"model-failover","version":"v0","params":{"suspendDuration":300,"suspendAfterFailures":2,"targets":[{"model":"gpt-4o","provider":"dup-dead","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"dup-alive"}]}]}}] |
+      | spec.operationPolicies | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":2,"targets":[{"model":"gpt-4o","provider":"dup-dead","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"dup-alive"}]}]}}]}] |
+    Then the response should be successful
+
+    # Request one. Polling here is safe and does not itself move the failure count: until the
+    # proxy is live a poll is a 404 or a cold-start 503, neither of which is an upstream
+    # failure, and the poll stops at the first response that actually failed over.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until header "x-envoy-attempt-count" is "2" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Request two, sent once rather than polled: a poll would retry past the very difference
+    # this asserts. Two attempts means the target was still in rotation, so request one was
+    # charged exactly once. One attempt would mean a single request had already spent the
+    # two-failure budget, which only a duplicate instance can do.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/dup-alive-upstream"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:deadName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:aliveName}"
+    Then the response should be successful
