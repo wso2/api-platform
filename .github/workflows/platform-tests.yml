@@ -53,6 +53,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       product: ${{ steps.filter.outputs.product }}
       it_components: ${{ steps.filter.outputs.it_components }}
+      it_label: ${{ steps.filter.outputs.it_label }}
       ui: ${{ steps.filter.outputs.ui }}
       cloud: ${{ steps.filter.outputs.cloud }}
     steps:
@@ -86,6 +87,7 @@ jobs:
             echo "backend=true" >> "$GITHUB_OUTPUT"
             echo "product=true" >> "$GITHUB_OUTPUT"
             echo "it_components=" >> "$GITHUB_OUTPUT"
+            echo "it_label=all blocks" >> "$GITHUB_OUTPUT"
             echo "ui=true" >> "$GITHUB_OUTPUT"
             echo "cloud=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -119,8 +121,11 @@ jobs:
           # one of them (-components). A file no rule names, such as shared code, the suite
           # file or this workflow, runs every block, as does a manual run. The whole suite
           # still compiles on every leg, so a broken step fails wherever it is used.
+          # it_label names the products in the integration jobs' titles, so the checks list
+          # shows when only part of the suite ran.
           portal='api-portal,api-portal-other-org,api-portal-multi-organization'
           it_components=""
+          it_products=""
           it_all=false
           while IFS= read -r f; do
             [ -n "$f" ] || continue
@@ -132,28 +137,33 @@ jobs:
               tests/framework/suites/it/resources/templates/api-portal-* | \
               tests/framework/suites/it/blocks/api-portal.yaml | \
               tests/framework/suites/it/blocks/platform-api-gateway-api-portal.yaml)
-                it_components="$it_components,$portal" ;;
+                it_components="$it_components,$portal"
+                it_products="$it_products,api-portal" ;;
               gateway/* | \
               tests/framework/core/catalog/platformgateway/* | \
               tests/framework/suites/it/features/gateway/* | \
               tests/framework/suites/it/features/ai-workspace-gateway/* | \
               tests/framework/suites/it/steps/platformgateway/* | \
               tests/framework/suites/it/blocks/gateway.yaml)
-                it_components="$it_components,platform-gateway" ;;
+                it_components="$it_components,platform-gateway"
+                it_products="$it_products,gateway" ;;
               platform-api/* | \
               tests/framework/core/catalog/platformapi/* | \
               tests/framework/suites/it/steps/platformapi/* | \
               tests/framework/suites/it/blocks/platform-api.yaml | \
               tests/framework/suites/it/blocks/platform-api-gateway.yaml)
-                it_components="$it_components,platform-api" ;;
+                it_components="$it_components,platform-api"
+                it_products="$it_products,platform-api" ;;
               *)
                 it_all=true ;;
             esac
           done <<< "$backend_files"
           if [ "$it_all" = true ]; then
             it_components=""
+            it_label="all blocks"
           else
             it_components="$(echo "$it_components" | tr ',' '\n' | sed '/^$/d' | sort -u | paste -sd, -)"
+            it_label="$(echo "$it_products" | tr ',' '\n' | sed '/^$/d' | sort -u | paste -sd+ - | sed 's/+/ + /g')"
           fi
 
           backend=false
@@ -168,6 +178,7 @@ jobs:
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
           echo "product=$product" >> "$GITHUB_OUTPUT"
           echo "it_components=$it_components" >> "$GITHUB_OUTPUT"
+          echo "it_label=$it_label" >> "$GITHUB_OUTPUT"
           echo "ui=$ui" >> "$GITHUB_OUTPUT"
           echo "cloud=$cloud" >> "$GITHUB_OUTPUT"
           echo "backend=$backend product=$product ui=$ui cloud=$cloud it_components=${it_components:-<all>}"
@@ -439,7 +450,7 @@ jobs:
   # A suite runs only when its kind of change is present and no unit-test job failed or was
   # cancelled. !cancelled() lets it run when the other unit job was skipped as not needed.
   integration:
-    name: Integration suite (${{ matrix.leg }})
+    name: Integration suite (${{ matrix.leg }}, ${{ needs.changes.outputs.it_label }})
     needs: [changes, unit-backend, unit-ui, cloud-suite]
     if: >-
       !cancelled()
