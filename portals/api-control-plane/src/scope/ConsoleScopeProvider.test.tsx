@@ -16,12 +16,13 @@
  * under the License.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Outlet, Route, Routes } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Outlet, Route, Routes, useNavigate } from 'react-router-dom';
 
 import { resetHttpClient } from '../api/core/http';
 import { routes } from '../routes/paths';
 import { anOrganization, collection } from '../test/msw';
+import { AuthStateContext } from '../contexts/auth/AuthStateContext';
 import { OrganizationSwitchError, type AuthState } from '../contexts/auth/authTypes';
 import { authStatePresets, makeAuthState } from '../test/mockAuthState';
 import { server } from '../test/server';
@@ -136,6 +137,75 @@ describe('ConsoleScopeProvider organization switching', () => {
 
     expect(await screen.findByText('Unable to switch organization')).toBeInTheDocument();
     expect(screen.queryByText(/^org-b:/)).not.toBeInTheDocument();
+  });
+
+  describe('when the session moves out of the open organization', () => {
+    function OpenOrganization({ handle }: { handle: string }) {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate(routes.organizationHome(handle))}>{`open ${handle}`}</button>;
+    }
+
+    /** A tab whose session the test can move, as another tab's switch does. */
+    function renderTab(route: string, authState: AuthState) {
+      const tree = (state: AuthState) => (
+        <AuthStateContext.Provider value={state}>
+          <Routes>
+            <Route
+              element={
+                <ConsoleScopeProvider>
+                  <Outlet />
+                </ConsoleScopeProvider>
+              }
+            >
+              <Route
+                path={routes.organizationHome()}
+                element={
+                  <>
+                    <OrganizationProbe />
+                    <OpenOrganization handle="org-b" />
+                  </>
+                }
+              />
+            </Route>
+          </Routes>
+        </AuthStateContext.Provider>
+      );
+      const view = renderWithProviders(tree(authState), { route, authState });
+      return { ...view, moveSession: (state: AuthState) => view.rerender(tree(state)) };
+    }
+
+    const replace = vi.fn();
+
+    beforeEach(() => {
+      replace.mockReset();
+      vi.stubGlobal('location', { ...window.location, replace });
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('follows the session to its organization instead of moving it back', async () => {
+      const exchangeOrgToken = vi.fn().mockResolvedValue(true);
+      const { moveSession } = renderTab(routes.organizationHome('org-a'), switchingSession(orgA, exchangeOrgToken));
+      expect(await screen.findByText('org-a:Org A')).toBeInTheDocument();
+
+      moveSession(switchingSession(orgB, exchangeOrgToken));
+
+      await waitFor(() => expect(replace).toHaveBeenCalledWith(routes.organizationHome('org-b')));
+      expect(exchangeOrgToken).not.toHaveBeenCalled();
+    });
+
+    it('still moves the session when this tab opens another organization', async () => {
+      const exchangeOrgToken = vi.fn(() => new Promise<boolean>(() => {}));
+      const { user } = renderTab(routes.organizationHome('org-a'), switchingSession(orgA, exchangeOrgToken));
+
+      await user.click(await screen.findByRole('button', { name: 'open org-b' }));
+
+      expect(await screen.findByText('Switching organization')).toBeInTheDocument();
+      expect(exchangeOrgToken).toHaveBeenCalledWith('org-b');
+      expect(replace).not.toHaveBeenCalled();
+    });
   });
 });
 

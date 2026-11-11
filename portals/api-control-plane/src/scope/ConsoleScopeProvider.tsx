@@ -21,6 +21,8 @@ import { defineMessages, useIntl } from 'react-intl';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
 
 import { ApiScopeProvider } from '../api/core/ApiScopeProvider';
+import { withAppBasePath } from '../config/authContract';
+import { runtimeConfig } from '../config/runtime';
 import { ErrorState, LoadingState } from '../components/StateViews';
 import { useAuth } from '../contexts/auth/AuthProvider';
 import { OrganizationSwitchError } from '../contexts/auth/authTypes';
@@ -74,6 +76,8 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
   const { canSwitchOrganization, exchangeOrgToken, isAuthenticated, user } = useAuth();
   const sessionOrgHandle = user?.org?.handle;
   const [switchFailure, setSwitchFailure] = useState<{ orgHandle: string; error: unknown }>();
+  // The organization this tab last had the session in.
+  const [settledOrgHandle, setSettledOrgHandle] = useState<string>();
   const [tokenReadyOrgHandle, setTokenReadyOrgHandle] = useState<string>();
   const [orgTokenError, setOrgTokenError] = useState<Error>();
   const pathnameParams = useMemo(
@@ -148,13 +152,22 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
 
   // When the deployment switches organizations, the session is in one
   // organization at a time: the URL's is ready once the session is in it, and
-  // until then the session is moved there. Keyed on the session's organization
-  // too, so a session that lands back elsewhere (signed in again through
-  // Native SSO, say) is moved again.
+  // until then the session is moved there. A session that left the URL's
+  // organization without this tab asking (another tab switched) is followed
+  // instead, so tabs never move it back and forth.
   useEffect(() => {
     const orgHandle = params.orgHandle;
     if (!canSwitchOrganization || !isAuthenticated || !orgHandle) return undefined;
-    if (orgHandle === sessionOrgHandle) return undefined;
+    if (orgHandle === sessionOrgHandle) {
+      setSettledOrgHandle(orgHandle);
+      return undefined;
+    }
+    if (settledOrgHandle === orgHandle && sessionOrgHandle) {
+      window.location.replace(
+        withAppBasePath(routes.organizationHome(sessionOrgHandle), runtimeConfig.appBasePath),
+      );
+      return undefined;
+    }
     let isCurrent = true;
     setSwitchFailure(undefined);
     exchangeOrgTokenRef.current(orgHandle).catch((error: unknown) => {
@@ -163,7 +176,7 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     return () => {
       isCurrent = false;
     };
-  }, [canSwitchOrganization, isAuthenticated, params.orgHandle, sessionOrgHandle]);
+  }, [canSwitchOrganization, isAuthenticated, params.orgHandle, sessionOrgHandle, settledOrgHandle]);
 
   const switchError =
     switchFailure && switchFailure.orgHandle === params.orgHandle ? switchFailure.error : undefined;
