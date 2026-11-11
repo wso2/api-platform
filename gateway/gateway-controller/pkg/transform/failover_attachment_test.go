@@ -183,3 +183,24 @@ func TestFailoverAttachment_APILevelGetsTheFaultChainEntry(t *testing.T) {
 		"model-failover must be FIRST on the fault chain, so the exhaustion error stays a "+
 			"default an operator's own entries can reshape")
 }
+
+// The no-op path: a chain with no failover instance is returned unchanged and reports that it
+// dropped nothing, so the caller logs no discard for a route where none happened. Worth its own
+// case because the override tests only ever exercise the branch that DOES drop, and a helper
+// that silently reported true would make the generation-time log claim a discard that never
+// occurred — noise that reads as a real precedence decision.
+func TestDropFailoverInstances_LeavesAChainWithoutFailoverAlone(t *testing.T) {
+	nameOf := func(p models.Policy) string { return p.Name }
+
+	chain := []models.Policy{{Name: "api-key-auth"}, {Name: "model-round-robin"}}
+	got, dropped := dropFailoverInstances(chain, nameOf)
+	require.False(t, dropped, "nothing to drop must report false")
+	require.Equal(t, []string{"api-key-auth", "model-round-robin"},
+		[]string{got[0].Name, got[1].Name}, "order and contents must be untouched")
+
+	withOne := []models.Policy{{Name: "api-key-auth"}, {Name: FailoverPolicyName}}
+	got, dropped = dropFailoverInstances(withOne, nameOf)
+	require.True(t, dropped)
+	require.Len(t, got, 1)
+	require.Equal(t, "api-key-auth", got[0].Name)
+}
