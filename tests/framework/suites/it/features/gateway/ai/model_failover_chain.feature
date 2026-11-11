@@ -90,8 +90,8 @@ Feature: Walking a failover chain
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:firstName}                                                                                                                                                       |
-      | spec.additionalProviders | [{"id":"${CTX:secondName}","as":"second"},{"id":"${CTX:thirdName}","as":"third"}]                                                                                      |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"second"},{"model":"command-r","provider":"third"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:firstName}","isPrimary":true},{"id":"${CTX:secondName}","alias":"second"},{"id":"${CTX:thirdName}","alias":"third"}]                                                                                      |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"second"},{"model":"command-r","provider":"third"}]}]}}]}] |
     Then the response should be successful
 
     # THREE attempts, and the third target's response. Two would mean the chain gave up
@@ -157,8 +157,8 @@ Feature: Walking a failover chain
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:deadName}                                                                                                                                                        |
-      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive"}]                                                                                                                               |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:deadName}","isPrimary":true},{"id":"${CTX:aliveName}","alias":"alive"}]                                                                                                                               |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
 
     When I set header "Content-Type" to "application/json"
@@ -195,6 +195,19 @@ Feature: Walking a failover chain
     # model twice. Were a target keyed on the model alone, the second entry would be a
     # duplicate of the first and the fallback a no-op - the request would simply re-attempt
     # the broken configuration.
+    #
+    # This scenario, alone in the failover suite, is authored in the LEGACY provider shape -
+    # `provider` plus `additionalProviders` with `as` - which the schema supports indefinitely
+    # and which the controller normalises into the same internal attachment the canonical
+    # `providers` list produces. Everything else here uses the canonical shape, so without one
+    # scenario holding the older form the suite would stop covering it end to end. The
+    # normalisation itself is unit-tested; what nothing else would show is that a
+    # legacy-authored proxy still gets a working per-attempt chain.
+    #
+    # It takes a complete `spec` override, because the canonical template renders a
+    # `providers` list and supplying both shapes is rejected. The template's placeholders are
+    # still passed so rendering succeeds; the override replaces the spec before the request
+    # goes out.
     Given I generate a unique resource name from "chain-region-a" and store it as "regionAName"
     And I generate a unique API version from "chain-region-a" and store it as "regionAVersion"
     And I generate a unique API context from "/chain-region-a" and store it as "regionAContext"
@@ -234,8 +247,7 @@ Feature: Walking a failover chain
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:regionAName}                                                                                                                                                     |
-      | spec.additionalProviders | [{"id":"${CTX:regionBName}","as":"region-b"}]                                                                                                                          |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"gpt-4o","provider":"region-b"}]}]}}]}] |
+      | spec                     | {"displayName":"${CTX:proxyName}","version":"${CTX:proxyVersion}","context":"${CTX:proxyContext}","provider":{"id":"${CTX:regionAName}"},"additionalProviders":[{"id":"${CTX:regionBName}","as":"region-b"}],"operationPolicies":[{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"gpt-4o","provider":"region-b"}]}]}}]}]} |
     Then the response should be successful
 
     # Two attempts, answered by region B's OWN endpoint. One attempt would mean the second

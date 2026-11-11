@@ -74,8 +74,8 @@ Feature: Each attempt carries its own provider's transformer and credential
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:vendorXName}                                                                                                                                                     |
-      | spec.additionalProviders | [{"id":"${CTX:vendorYName}","as":"vendor-y","auth":{"type":"api-key","header":"x-api-key","value":"${CTX:vendorYCredential}"},"transformer":{"type":"openai-to-anthropic-transformer","version":"v0"}}] |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"vendor-y"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:vendorXName}","isPrimary":true},{"id":"${CTX:vendorYName}","alias":"vendor-y","auth":{"type":"api-key","header":"x-api-key","value":"${CTX:vendorYCredential}"},"transformer":{"type":"openai-to-anthropic-transformer","version":"v0"}}] |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"vendor-y"}]}]}}]}] |
     Then the response should be successful
 
     # The client sends OpenAI's shape and gets a success.
@@ -185,8 +185,8 @@ Feature: Each attempt carries its own provider's transformer and credential
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:vendorCName}                                                                                                                                                     |
-      | spec.additionalProviders | [{"id":"${CTX:deadName}","as":"dead-vendor","auth":{"type":"api-key","header":"x-dead-key","value":"${CTX:deadCredential}"}},{"id":"${CTX:vendorBName}","as":"vendor-b","auth":{"type":"api-key","header":"x-api-key","value":"${CTX:vendorBCredential}"},"transformer":{"type":"openai-to-anthropic-transformer","version":"v0"}}] |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","provider":"dead-vendor","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"vendor-b"}]},{"model":"gpt-4o-mini"}]}}]}] |
+      | spec.providers | [{"id":"${CTX:vendorCName}","isPrimary":true},{"id":"${CTX:deadName}","alias":"dead-vendor","auth":{"type":"api-key","header":"x-dead-key","value":"${CTX:deadCredential}"}},{"id":"${CTX:vendorBName}","alias":"vendor-b","auth":{"type":"api-key","header":"x-api-key","value":"${CTX:vendorBCredential}"},"transformer":{"type":"openai-to-anthropic-transformer","version":"v0"}}] |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","provider":"dead-vendor","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"vendor-b"}]},{"model":"gpt-4o-mini"}]}}]}] |
     Then the response should be successful
 
     # Direction 1: the failed attempt's credential must not travel forward.

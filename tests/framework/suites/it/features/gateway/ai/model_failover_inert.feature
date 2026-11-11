@@ -45,7 +45,7 @@ Feature: Failover attached to a kind with no model concept
       | context           | ${CTX:mcpContext}                                                                                                                                                      |
       | specVersion       | 2025-06-18                                                                                                                                                             |
       | spec.upstream.url | http://testbench:3009${CTX:gatewayMCPUpstreamPath}                                                                                                                     |
-      | spec.policies     | [{"name":"model-failover","version":"v0","params":{"targets":[{"model":"gpt-4o","provider":"openai-primary","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"anthropic-secondary"}]}]}}] |
+      | spec.policies              | [{"name":"model-failover","version":"v0","params":{"targets":[{"model":"gpt-4o","provider":"openai-primary","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"anthropic-secondary"}]}]}}] |
     # Accepted, not rejected: an unresolvable target must never block a deployment.
     Then the response should be successful
     And the response should be valid JSON

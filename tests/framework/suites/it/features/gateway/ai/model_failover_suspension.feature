@@ -83,8 +83,8 @@ Feature: Taking a failing target out of rotation, and putting it back
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:deadName}                                                                                                                                                        |
-      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive"}]                                                                                                                               |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:deadName}","isPrimary":true},{"id":"${CTX:aliveName}","alias":"alive"}]                                                                                                                               |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
 
     # Poll on the attempt count, not on 200, so the request this stops at is necessarily the
@@ -175,8 +175,8 @@ Feature: Taking a failing target out of rotation, and putting it back
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:deadName}                                                                                                                                                        |
-      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive"}]                                                                                                                               |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":5,"suspendAfterFailures":1,"maxSuspendMultiplier":1,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:deadName}","isPrimary":true},{"id":"${CTX:aliveName}","alias":"alive"}]                                                                                                                               |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":5,"suspendAfterFailures":1,"maxSuspendMultiplier":1,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
 
     # The failure that suspends it.
@@ -254,15 +254,12 @@ Feature: Taking a failing target out of rotation, and putting it back
       | accessControl.mode | allow_all                                   |
     Then the response should be successful
 
-    # The dead provider is listed as an ADDITIONAL provider as well as being the proxy's main,
-    # which the scenarios above do not need. A target's `provider` is looked up in the map the
-    # controller builds from additionalProviders, keyed by the alias an author writes; a target
-    # naming nothing takes the API's own main upstream. There is no key for the main provider's
-    # id - naming it is not the way to reach it - so a target that names it resolves to nothing
-    # and is dropped, leaving a one-member chain that cannot fail over.
-    #
-    # It has to be named here because the suspension record carries the provider, and an
-    # unnamed target logs an empty one, which identifies nothing in a log every runner shares.
+    # The primary entry carries an alias, which the scenarios above do not need. A target's
+    # `provider` is looked up by the alias an author writes, and a target naming nothing takes
+    # the proxy's primary. The suspension record carries whichever provider the target named,
+    # so a target that names nothing logs an empty one - which identifies nothing in a log
+    # every runner on this gateway shares. Giving the primary an alias is what lets the record
+    # say which provider it is about.
     #
     # backoffResetSeconds is held far above the scenario's own runtime: a reset landing mid-run
     # would put the second suspension back at the base and the doubling would silently stop
@@ -277,8 +274,8 @@ Feature: Taking a failing target out of rotation, and putting it back
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:deadName}                                                                                                                                                        |
-      | spec.additionalProviders | [{"id":"${CTX:deadName}","as":"ladder-dead"},{"id":"${CTX:aliveName}","as":"ladder-alive"}]                                                                                                                        |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":3,"suspendAfterFailures":1,"maxSuspendMultiplier":8,"backoffResetSeconds":600,"targets":[{"model":"gpt-4o","provider":"ladder-dead","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"ladder-alive"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:deadName}","alias":"ladder-dead","isPrimary":true},{"id":"${CTX:aliveName}","alias":"ladder-alive"}]                                                                                                                        |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":3,"suspendAfterFailures":1,"maxSuspendMultiplier":8,"backoffResetSeconds":600,"targets":[{"model":"gpt-4o","provider":"ladder-dead","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"ladder-alive"}]}]}}]}] |
     Then the response should be successful
 
     # Rung one: the base duration, the first step on the ladder.
@@ -360,8 +357,8 @@ Feature: Taking a failing target out of rotation, and putting it back
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:deadName}                                                                                                                                                        |
-      | spec.additionalProviders | [{"id":"${CTX:deadName}","as":"cap-dead"},{"id":"${CTX:aliveName}","as":"cap-alive"}]                                                                                                                           |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":2,"suspendAfterFailures":1,"maxSuspendMultiplier":2,"backoffResetSeconds":600,"targets":[{"model":"gpt-4o","provider":"cap-dead","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"cap-alive"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:deadName}","alias":"cap-dead","isPrimary":true},{"id":"${CTX:aliveName}","alias":"cap-alive"}]                                                                                                                           |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":2,"suspendAfterFailures":1,"maxSuspendMultiplier":2,"backoffResetSeconds":600,"targets":[{"model":"gpt-4o","provider":"cap-dead","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"cap-alive"}]}]}}]}] |
     Then the response should be successful
 
     When I set header "Content-Type" to "application/json"
@@ -444,8 +441,8 @@ Feature: Taking a failing target out of rotation, and putting it back
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:flakyName}                                                                                                                                                       |
-      | spec.additionalProviders | [{"id":"${CTX:flakyName}","as":"reset-flaky"},{"id":"${CTX:aliveName}","as":"reset-alive"}]                                                                            |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":2,"statusCodes":[503],"targets":[{"model":"gpt-4o","provider":"reset-flaky","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"reset-alive"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:flakyName}","alias":"reset-flaky","isPrimary":true},{"id":"${CTX:aliveName}","alias":"reset-alive"}]                                                                            |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":2,"statusCodes":[503],"targets":[{"model":"gpt-4o","provider":"reset-flaky","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"reset-alive"}]}]}}]}] |
     Then the response should be successful
 
     # Readiness on a healthy request, so the wait records no failure of its own however many
@@ -566,8 +563,8 @@ Feature: Taking a failing target out of rotation, and putting it back
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:flakyName}                                                                                                                                                       |
-      | spec.additionalProviders | [{"id":"${CTX:flakyName}","as":"rebase-flaky"},{"id":"${CTX:aliveName}","as":"rebase-alive"}]                                                                          |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":2,"suspendAfterFailures":1,"maxSuspendMultiplier":8,"backoffResetSeconds":2,"recoverAfterSuccesses":1,"statusCodes":[503],"targets":[{"model":"gpt-4o","provider":"rebase-flaky","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"rebase-alive"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:flakyName}","alias":"rebase-flaky","isPrimary":true},{"id":"${CTX:aliveName}","alias":"rebase-alive"}]                                                                          |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":2,"suspendAfterFailures":1,"maxSuspendMultiplier":8,"backoffResetSeconds":2,"recoverAfterSuccesses":1,"statusCodes":[503],"targets":[{"model":"gpt-4o","provider":"rebase-flaky","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"rebase-alive"}]}]}}]}] |
     Then the response should be successful
 
     When I set header "Content-Type" to "application/json"

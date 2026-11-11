@@ -126,8 +126,8 @@ Feature: A failure after the response has started
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:truncName}                                                                                                                                                       |
-      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive"}]                                                                                                                               |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:truncName}","isPrimary":true},{"id":"${CTX:aliveName}","alias":"alive"}]                                                                                                                               |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
 
     # Reaching the truncating target is polled on the cut-off itself rather than on a status,
@@ -211,8 +211,8 @@ Feature: A failure after the response has started
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:wholeName}                                                                                                                                                       |
-      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive"}]                                                                                                                               |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:wholeName}","isPrimary":true},{"id":"${CTX:aliveName}","alias":"alive"}]                                                                                                                               |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
 
     # Same streaming shape as the truncating provider, delivered whole.
@@ -291,8 +291,8 @@ Feature: A failure after the response has started
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:mixedName}                                                                                                                                                       |
-      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive"}]                                                                                                                               |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":2,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:mixedName}","isPrimary":true},{"id":"${CTX:aliveName}","alias":"alive"}]                                                                                                                               |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":2,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
 
     # Failure 1 of 2: a truncation. One attempt, no rescue, the client wears it. Polled on

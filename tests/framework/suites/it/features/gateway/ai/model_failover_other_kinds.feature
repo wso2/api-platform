@@ -19,8 +19,8 @@
 @model-failover-other-kinds
 Feature: Failover on a kind that is not an LlmProxy
   Applicability is decided by whether a target RESOLVES, not by a list of permitted kinds.
-  On an LlmProxy a target's provider names an additionalProviders alias; on a RestApi it
-  names an upstreamDefinition. Name them the same and the policy block is byte-for-byte
+  On an LlmProxy a target's provider names an alias from the proxy's providers list; on a
+  RestApi it names an upstreamDefinition. Name them the same and the policy block is byte-for-byte
   identical - only the wrapper around it differs, because that is each kind's own
   attachment schema and not part of the failover configuration.
 

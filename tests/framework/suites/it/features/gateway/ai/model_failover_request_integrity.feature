@@ -73,14 +73,14 @@ Feature: What a re-attempted request carries, and what it must not
       | version                  | ${CTX:proxyAVersion}                                                                                                                                                   |
       | context                  | ${CTX:proxyAContext}                                                                                                                                                   |
       | provider.id              | ${CTX:deadName}                                                                                                                                                        |
-      | spec.additionalProviders | [{"id":"${CTX:sharedName}","as":"shared","auth":{"type":"api-key","header":"x-api-key","value":"${CTX:credentialA}"}}]                                                 |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"shared"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:deadName}","isPrimary":true},{"id":"${CTX:sharedName}","alias":"shared","auth":{"type":"api-key","header":"x-api-key","value":"${CTX:credentialA}"}}]                                                 |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"shared"}]}]}}]}] |
     Then the response should be successful
 
     # API B: the SAME provider, no failover at all, and a marker of its own set by an
-    # ordinary operation policy. A marker rather than a credential deliberately -
-    # primary-provider auth and additionalProviders auth do not reach the upstream by the
-    # same route, and this is about chain isolation, not about characterising that.
+    # ordinary operation policy. A marker rather than a credential deliberately - a primary
+    # provider's auth and a non-primary one's do not reach the upstream by the same route, and
+    # this is about chain isolation, not about characterising that.
     Given I generate a unique resource name from "xapi-b" and store it as "proxyBName"
     And I generate a unique API version from "xapi-b" and store it as "proxyBVersion"
     And I generate a unique API context from "/xapi-b" and store it as "proxyBContext"
@@ -92,7 +92,7 @@ Feature: What a re-attempted request carries, and what it must not
       | version       | ${CTX:proxyBVersion}                                                                                                                                                   |
       | context       | ${CTX:proxyBContext}                                                                                                                                                   |
       | provider.id   | ${CTX:sharedName}                                                                                                                                                      |
-      | spec.policies | [{"name":"set-headers","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"request":{"headers":[{"name":"x-xapi-b-marker","value":"${CTX:markerB}"}]}}}]}] |
+      | spec.operationPolicies | [{"name":"set-headers","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"request":{"headers":[{"name":"x-xapi-b-marker","value":"${CTX:markerB}"}]}}}]}] |
     Then the response should be successful
 
     # Drive API A first, so its per-attempt chain is live before B is observed.
@@ -185,8 +185,8 @@ Feature: What a re-attempted request carries, and what it must not
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:deadName}                                                                                                                                                        |
-      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive"}]                                                                                                                               |
-      | spec.policies            | [{"name":"pii-masking-regex","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+[.][a-zA-Z]{2,}"}],"jsonPath":"","redactPII":true}}]},{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:deadName}","isPrimary":true},{"id":"${CTX:aliveName}","alias":"alive"}]                                                                                                                               |
+      | spec.operationPolicies            | [{"name":"pii-masking-regex","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"customPIIEntities":[{"piiEntity":"EMAIL","piiRegex":"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+[.][a-zA-Z]{2,}"}],"jsonPath":"","redactPII":true}}]},{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
     Then the response should be successful
 
     When I set header "Content-Type" to "application/json"

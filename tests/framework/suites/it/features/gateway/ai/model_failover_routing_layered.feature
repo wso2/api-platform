@@ -83,8 +83,8 @@ Feature: Failover layered over a routing policy
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:deadName}                                                                                                                                                        |
-      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive-provider"}]                                                                                                                      |
-      | spec.policies            | [{"name":"model-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"models":[{"model":"gpt-4o"},{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}}]},{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o"}]}}]}] |
+      | spec.providers | [{"id":"${CTX:deadName}","isPrimary":true},{"id":"${CTX:aliveName}","alias":"alive-provider"}]                                                                                                                      |
+      | spec.operationPolicies            | [{"name":"model-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"models":[{"model":"gpt-4o"},{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}}]},{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o"}]}}]}] |
     Then the response should be successful
 
     # The three turns below assert the ALTERNATION, not absolute attempt counts, and that is a
@@ -187,8 +187,8 @@ Feature: Failover layered over a routing policy
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:deadName}                                                                                                                                                        |
-      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive-provider"}]                                                                                                                      |
-      | spec.policies            | [{"name":"model-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"models":[{"model":"gpt-4o"},{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}}]},{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o"}]}}]}] |
+      | spec.providers | [{"id":"${CTX:deadName}","isPrimary":true},{"id":"${CTX:aliveName}","alias":"alive-provider"}]                                                                                                                      |
+      | spec.operationPolicies            | [{"name":"model-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"models":[{"model":"gpt-4o"},{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}}]},{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o"}]}}]}] |
     Then the response should be successful
 
     # Poll on the attempt count rather than on 200, because the event this scenario turns on is
@@ -292,8 +292,8 @@ Feature: Failover layered over a routing policy
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:deadName}                                                                                                                                                        |
-      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive-provider"}]                                                                                                                      |
-      | spec.policies            | [{"name":"model-weighted-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"models":[{"model":"gpt-4o","weight":1}]}}]},{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:deadName}","isPrimary":true},{"id":"${CTX:aliveName}","alias":"alive-provider"}]                                                                                                                      |
+      | spec.operationPolicies            | [{"name":"model-weighted-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"models":[{"model":"gpt-4o","weight":1}]}}]},{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}]}}]}] |
     Then the response should be successful
 
     # There is no rotation here, so polling costs this scenario nothing and the attempt count
@@ -360,8 +360,8 @@ Feature: Failover layered over a routing policy
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:deadName}                                                                                                                                                        |
-      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive-provider"}]                                                                                                                      |
-      | spec.policies            | [{"name":"model-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"models":[{"model":"gpt-4o"},{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}}]}] |
+      | spec.providers | [{"id":"${CTX:deadName}","isPrimary":true},{"id":"${CTX:aliveName}","alias":"alive-provider"}]                                                                                                                      |
+      | spec.operationPolicies            | [{"name":"model-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"models":[{"model":"gpt-4o"},{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}}]}] |
     Then the response should be successful
 
     # Reaching the state under test needs the dead target to have been nominated once with the

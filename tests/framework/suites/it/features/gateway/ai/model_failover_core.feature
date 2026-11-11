@@ -81,8 +81,8 @@ Feature: Model failover core behaviour
       | version                 | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                 | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id             | ${CTX:deadName}                                                                                                                                                        |
-      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive-provider"}]                                                                                                                     |
-      | spec.policies           | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:deadName}","isPrimary":true},{"id":"${CTX:aliveName}","alias":"alive-provider"}]                                                                                                                     |
+      | spec.operationPolicies           | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}]}}]}] |
     Then the response should be successful
 
     # The client sees a 200 it never had to retry for, served by the SECOND target.
@@ -155,8 +155,8 @@ Feature: Model failover core behaviour
       | version                  | ${CTX:healthyVersion}                                                                                                                                                  |
       | context                  | ${CTX:healthyContext}                                                                                                                                                  |
       | provider.id              | ${CTX:firstName}                                                                                                                                                       |
-      | spec.additionalProviders | [{"id":"${CTX:secondName}","as":"second-provider"}]                                                                                                                    |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"second-provider"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:firstName}","isPrimary":true},{"id":"${CTX:secondName}","alias":"second-provider"}]                                                                                                                    |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"second-provider"}]}]}}]}] |
     Then the response should be successful
 
     When I set header "Content-Type" to "application/json"
@@ -226,8 +226,8 @@ Feature: Model failover core behaviour
       | version                  | ${CTX:exhaustedVersion}                                                                                                                                                |
       | context                  | ${CTX:exhaustedContext}                                                                                                                                                |
       | provider.id              | ${CTX:deadOneName}                                                                                                                                                     |
-      | spec.additionalProviders | [{"id":"${CTX:deadTwoName}","as":"dead-two-provider"}]                                                                                                                 |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"dead-two-provider"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:deadOneName}","isPrimary":true},{"id":"${CTX:deadTwoName}","alias":"dead-two-provider"}]                                                                                                                 |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"dead-two-provider"}]}]}}]}] |
     Then the response should be successful
 
     When I set header "Content-Type" to "application/json"
@@ -280,7 +280,7 @@ Feature: Model failover core behaviour
       | version       | ${CTX:inertProxyVersion}                                                                                                                                                |
       | context       | ${CTX:inertProxyContext}                                                                                                                                                |
       | provider.id   | ${CTX:inertName}                                                                                                                                                        |
-      | spec.policies | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","provider":"provider-that-does-not-exist","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"another-missing-provider"}]}]}}]}] |
+      | spec.operationPolicies | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","provider":"provider-that-does-not-exist","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"another-missing-provider"}]}]}}]}] |
     Then the response should be successful
 
     When I set header "Content-Type" to "application/json"
@@ -362,8 +362,8 @@ Feature: Model failover core behaviour
       | version                  | ${CTX:overrunVersion}                                                                                                                                                  |
       | context                  | ${CTX:overrunContext}                                                                                                                                                  |
       | provider.id              | ${CTX:ovrPrimary}                                                                                                                                                      |
-      | spec.additionalProviders | [{"id":"${CTX:ovrFallback}","as":"ovr-fallback"},{"id":"${CTX:ovrSpare}","as":"ovr-spare"}]                                                                             |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"ovr-fallback"}]},{"model":"mistral-large","fallbacks":[{"model":"mistral-small","provider":"ovr-spare"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:ovrPrimary}","isPrimary":true},{"id":"${CTX:ovrFallback}","alias":"ovr-fallback"},{"id":"${CTX:ovrSpare}","alias":"ovr-spare"}]                                                                             |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"ovr-fallback"}]},{"model":"mistral-large","fallbacks":[{"model":"mistral-small","provider":"ovr-spare"}]}]}}]}] |
     Then the response should be successful
 
     When I set header "Content-Type" to "application/json"

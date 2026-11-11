@@ -77,8 +77,8 @@ Feature: Per-attempt policy chains
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:deadName}                                                                                                                                                        |
-      | spec.additionalProviders | [{"id":"${CTX:aliveName}","as":"alive-provider","policies":[{"name":"set-headers","version":"v1","params":{"request":{"headers":[{"name":"X-Attempt-Provider","value":"alive"}]}}}]}] |
-      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}]}}]}] |
+      | spec.providers | [{"id":"${CTX:deadName}","isPrimary":true},{"id":"${CTX:aliveName}","alias":"alive-provider","policies":[{"name":"set-headers","version":"v1","params":{"request":{"headers":[{"name":"X-Attempt-Provider","value":"alive"}]}}}]}] |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive-provider"}]}]}}]}] |
     Then the response should be successful
 
     When I set header "Content-Type" to "application/json"
