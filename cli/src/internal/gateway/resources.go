@@ -31,6 +31,7 @@ const (
 	ResourceKindLLMProvider = "LlmProvider"
 	ResourceKindLLMProxy    = "LlmProxy"
 	ResourceKindGraphQLAPI  = "GraphQLApi"
+	ResourceKindSoapAPI     = "SoapApi"
 )
 
 // Resource represents a parsed gateway resource
@@ -127,6 +128,21 @@ func (h *GraphQLAPIHandler) UpdateEndpoint(handle string) string {
 	return fmt.Sprintf(utils.GatewayGraphQLAPIByIDPath, handle)
 }
 
+// SoapAPIHandler handles SoapApi kind resources
+type SoapAPIHandler struct{}
+
+func (h *SoapAPIHandler) GetEndpoint(handle string) string {
+	return fmt.Sprintf(utils.GatewaySoapAPIByIDPath, handle)
+}
+
+func (h *SoapAPIHandler) CreateEndpoint() string {
+	return utils.GatewaySoapAPIsPath
+}
+
+func (h *SoapAPIHandler) UpdateEndpoint(handle string) string {
+	return fmt.Sprintf(utils.GatewaySoapAPIByIDPath, handle)
+}
+
 // GetResourceHandler returns the appropriate handler for a resource kind
 func GetResourceHandler(kind string) ResourceHandler {
 	switch kind {
@@ -140,6 +156,8 @@ func GetResourceHandler(kind string) ResourceHandler {
 		return &LLMProxyHandler{}
 	case ResourceKindGraphQLAPI:
 		return &GraphQLAPIHandler{}
+	case ResourceKindSoapAPI:
+		return &SoapAPIHandler{}
 	default:
 		return nil
 	}

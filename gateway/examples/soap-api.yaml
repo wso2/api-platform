@@ -21,7 +21,10 @@
 # to demonstrate routing/passthrough end-to-end without a real SOAP server;
 # point `upstream.main.url` at an actual SOAP service for real use.
 #
-# Deploy:
+# Deploy with the ap CLI:
+#   ap gateway apply -f examples/soap-api.yaml
+#
+# Or with the management API:
 #   curl -X POST http://localhost:9090/api/management/v1/soap-apis \
 #     -u admin:admin -H 'Content-Type: application/yaml' \
 #     --data-binary @examples/soap-api.yaml
