@@ -49,7 +49,7 @@ go test ./suites/ui -count=1 -timeout=25m
 
 # The cloud suite (external APIP cloud; requires a workflow-provided access token):
 CLOUD_CONSOLE_ACCESS_TOKEN=<access-token> \
-go test ./suites/cloud -count=1 -timeout=15m \
+go test ./suites/cloud -count=1 -timeout=60m \
   -args -blocks=apip-cloud -cloud-env=development
 ```
 
