@@ -49,6 +49,7 @@ Feature: Developers own the applications they create in the API Portal
     And the JSON response field "displayName" should be "Renamed Orders Application"
     When I send an authenticated API Portal "DELETE" request to "/applications/${CTX:appId}" as "developer"
     Then the response status code should be 200
+    And I deregister API Portal resource "${CTX:appId}" at "/applications" from cleanup
     When I send an authenticated API Portal "GET" request to "/applications/${CTX:appId}" as "developer"
     Then the response status code should be 404
 
@@ -80,6 +81,7 @@ Feature: Developers own the applications they create in the API Portal
 
     When I send an authenticated API Portal "DELETE" request to "/applications/${CTX:appId}" as "developer"
     Then the response status code should be 200
+    And I deregister API Portal resource "${CTX:appId}" at "/applications" from cleanup
     When I send an authenticated API Portal "GET" request to "/applications/${CTX:appId}" as "developer"
     Then the response status code should be 404
     When I send an authenticated API Portal "GET" request to "/applications" as "developer"
