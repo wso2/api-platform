@@ -156,3 +156,86 @@ Feature: The two degradations a consecutive-failure rule never sees
 
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
+
+  Scenario: The failover log record carries neither the credential nor the prompt
+    # The record names targets, reasons and counts. It must never name the API key a provider
+    # was reached with, nor anything the end user typed - this log is read far more widely
+    # than the request was, and is routinely shipped to a third-party aggregator.
+    #
+    # Absence assertions are the easiest kind to pass by accident: get the scope wrong and
+    # every one of them holds for free. So the two below are anchored by a POSITIVE assertion
+    # on the very same scope, read since the very same request. If the suspension record were
+    # missing - wrong window, wrong log, nothing emitted - the anchor fails first and the
+    # absences are never reached on a scope that cannot see anything.
+    Given I generate a unique value from "redact-credential" and store it as "vendorCredential"
+    And I generate a unique value from "redact-prompt" and store it as "promptSecret"
+
+    Given I generate a unique resource name from "redact-dead" and store it as "deadName"
+    And I generate a unique API version from "redact-dead" and store it as "deadVersion"
+    And I generate a unique API context from "/redact-dead" and store it as "deadContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                  |
+      | name               | ${CTX:deadName}                            |
+      | displayName        | ${CTX:deadName}                            |
+      | version            | ${CTX:deadVersion}                         |
+      | template           | openai                                     |
+      | spec.context       | ${CTX:deadContext}                         |
+      | spec.upstream.url  | http://redact-nonexistent-host:9080/gone   |
+      | accessControl.mode | allow_all                                  |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "redact-alive" and store it as "aliveName"
+    And I generate a unique API version from "redact-alive" and store it as "aliveVersion"
+    And I generate a unique API context from "/redact-alive" and store it as "aliveContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}              |
+      | name               | ${CTX:aliveName}                       |
+      | displayName        | ${CTX:aliveName}                       |
+      | version            | ${CTX:aliveVersion}                    |
+      | template           | openai                                 |
+      | spec.context       | ${CTX:aliveContext}                    |
+      | spec.upstream.url  | http://testbench:3000/redact-upstream  |
+      | accessControl.mode | allow_all                              |
+    Then the response should be successful
+
+    # The fallback carries a real credential, so the value is genuinely in play on the attempt
+    # that serves - not merely declared somewhere the policy never touches.
+    Given I generate a unique resource name from "redact-proxy" and store it as "proxyName"
+    And I generate a unique API version from "redact-proxy" and store it as "proxyVersion"
+    And I generate a unique API context from "/redact-proxy" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                                   |
+      | name                   | ${CTX:proxyName}                                                                                                            |
+      | displayName            | ${CTX:proxyName}                                                                                                            |
+      | version                | ${CTX:proxyVersion}                                                                                                         |
+      | context                | ${CTX:proxyContext}                                                                                                         |
+      | provider.id            | ${CTX:deadName}                                                                                                             |
+      | spec.providers         | [{"id":"${CTX:deadName}","alias":"redact-dead","isPrimary":true},{"id":"${CTX:aliveName}","alias":"redact-alive","auth":{"type":"api-key","header":"x-vendor-key","value":"${CTX:vendorCredential}"}}] |
+      | spec.operationPolicies | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"targets":[{"model":"gpt-4o","provider":"redact-dead","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"redact-alive"}]}]}}]}] |
+    Then the response should be successful
+
+    # One request that fails over, carrying the user's text. The fallback answers, so the
+    # credential was used and the prompt was forwarded - both had every chance to be logged.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until header "x-envoy-attempt-count" is "2" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "${CTX:promptSecret}"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/redact-upstream"
+
+    # ANCHOR. A suspension record exists for this request, in this window. Everything below is
+    # read from the same scope, so none of it can be vacuous.
+    And the "gateway-runtime" log since the latest request should contain "provider=redact-dead reason=consecutive_failures observed=1 sample_size=0 duration_seconds=300 escalation_step=1"
+
+    # THE CLAIM. The credential the fallback was reached with is not in the record, and
+    # neither is anything the user typed.
+    And the "gateway-runtime" log since the latest request should not contain "${CTX:vendorCredential}"
+    And the "gateway-runtime" log since the latest request should not contain "${CTX:promptSecret}"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:deadName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:aliveName}"
+    Then the response should be successful
