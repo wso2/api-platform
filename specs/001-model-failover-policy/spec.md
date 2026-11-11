@@ -657,6 +657,13 @@ though the routing policy keeps nominating it, and that load spreads across the 
   unaffected either way — a status rewrite propagates only in the response body phase, which runs
   after the whole header phase where grading happens — but response *headers* do propagate, and
   `content-type` is what distinguishes a provisional streamed `200` from a complete one (FR-030p).
+
+  **It MUST be stated in the publisher-facing policy description, not only in the generation-time
+  log.** The log fires after the fact, to whoever reads controller output; a publisher deciding
+  where to write the policy needs to know beforehand that the choice is not theirs, and why — that
+  the gateway relocates it, that writing it anywhere in `operationPolicies` is therefore equally
+  correct, and that the fault-path placement is the mirror of the same rule. An undocumented
+  automatic relocation reads as the platform ignoring what was written.
 - **FR-024**: Once the configured fallbacks for the first target are spent, failover MUST continue
   through the remainder of the published list, in the order the routing policy ranked it. Ranked
   targets are not discarded — the routing policy already judged them usable. A target reachable
