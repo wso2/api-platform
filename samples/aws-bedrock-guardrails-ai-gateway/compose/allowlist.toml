@@ -1,0 +1,6 @@
+# Gateway-wide allowlist for the aws-bedrock-guardrail policy. Root-level keys, so they
+# must stay above the first [table] in config.toml. scripts/run-gateway.sh fills in the values.
+awsbedrock_allowed_regions       = ["${AWS_REGION}"]
+awsbedrock_allowed_guardrail_ids = ["${BASELINE_GUARDRAIL_ID}", "${SUPPORT_GUARDRAIL_ID}"]
+awsbedrock_allowed_role_arns     = ["${GATEWAY_ROLE_ARN}"]
+awsbedrock_allowed_auth_types    = ["sts-assume-role"]

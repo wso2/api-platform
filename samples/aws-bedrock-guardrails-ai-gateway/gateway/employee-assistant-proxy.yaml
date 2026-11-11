@@ -1,0 +1,25 @@
+# Employee assistant proxy. It has no guardrail of its own, so only the baseline applies.
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProxy
+metadata:
+  name: employee-assistant
+spec:
+  displayName: Employee assistant
+  version: v1.0
+  context: /employee-assistant
+  provider:
+    id: bedrock-provider
+    auth:
+      type: api-key
+      header: Authorization
+      value: 'Bearer {{ secret "employee-assistant-loopback" }}'
+  operationPolicies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /model/{modelId}/converse
+          methods: [POST]
+          params:
+            key: Authorization
+            in: header
+            valuePrefix: "Bearer "
