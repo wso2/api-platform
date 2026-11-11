@@ -21,7 +21,6 @@
 # Only what the change needs runs, and the suites run only after every unit-test job that ran
 # has passed:
 #   backend change -> backend unit tests -> integration suite (3 Gateway legs)
-#   test framework -> integration suite, without the backend unit tests
 #   UI change      -> UI unit tests      -> UI suite
 #   both           -> both unit jobs in parallel, then both suites
 #   cloud suite    -> compile check and unit tests of tests/framework/suites/cloud
@@ -51,7 +50,6 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
-      product: ${{ steps.filter.outputs.product }}
       it_components: ${{ steps.filter.outputs.it_components }}
       it_label: ${{ steps.filter.outputs.it_label }}
       ui: ${{ steps.filter.outputs.ui }}
@@ -85,7 +83,6 @@ jobs:
         run: |
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "backend=true" >> "$GITHUB_OUTPUT"
-            echo "product=true" >> "$GITHUB_OUTPUT"
             echo "it_components=" >> "$GITHUB_OUTPUT"
             echo "it_label=all blocks" >> "$GITHUB_OUTPUT"
             echo "ui=true" >> "$GITHUB_OUTPUT"
@@ -111,10 +108,6 @@ jobs:
           ui_files="$(echo "$changed" | grep -E "$ui_match" \
             | grep -vE '^(portals/cloud-plugins/|tests/framework/suites/(it|cloud)/)|\.md$' || true)"
           cloud_files="$(echo "$changed" | grep -E "$cloud_match" | grep -vE '^tests/framework/suites/(it|ui)/' || true)"
-
-          # product: the code the backend unit tests cover. A change only to the test framework
-          # cannot fail them, so it skips them; the integration suite still runs.
-          product_files="$(echo "$backend_files" | grep -vE '^tests/framework/' || true)"
 
           # it_components: the components whose blocks the integration suite runs. Each changed
           # file maps to the product it belongs to, and the suite runs every block that starts
@@ -167,26 +160,23 @@ jobs:
           fi
 
           backend=false
-          product=false
           ui=false
           cloud=false
           if [ -n "$backend_files" ]; then backend=true; fi
-          if [ -n "$product_files" ]; then product=true; fi
           if [ -n "$ui_files" ]; then ui=true; fi
           if [ -n "$cloud_files" ]; then cloud=true; fi
 
           echo "backend=$backend" >> "$GITHUB_OUTPUT"
-          echo "product=$product" >> "$GITHUB_OUTPUT"
           echo "it_components=$it_components" >> "$GITHUB_OUTPUT"
           echo "it_label=$it_label" >> "$GITHUB_OUTPUT"
           echo "ui=$ui" >> "$GITHUB_OUTPUT"
           echo "cloud=$cloud" >> "$GITHUB_OUTPUT"
-          echo "backend=$backend product=$product ui=$ui cloud=$cloud it_components=${it_components:-<all>}"
+          echo "backend=$backend ui=$ui cloud=$cloud it_components=${it_components:-<all>}"
 
   unit-backend:
     name: Unit tests (backend)
     needs: changes
-    if: needs.changes.outputs.product == 'true'
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-24.04
     env:
       CGO_ENABLED: "1"
