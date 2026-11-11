@@ -508,3 +508,128 @@ Feature: Taking a failing target out of rotation, and putting it back
     Then the response should be successful
     When I delete the LLM provider "${CTX:aliveName}"
     Then the response should be successful
+
+  Scenario: A target that stays healthy long enough starts its next suspension from the base
+    # The last rung of the ladder, and the one that stops it being a one-way ratchet. A
+    # provider that had a bad minute an hour ago should not be punished for an hour; without
+    # the reset, every later fault starts from wherever the last one left off and a
+    # long-lived gateway ends up holding a healthy provider out for its maximum.
+    #
+    # This is the only suspension scenario that cannot read its answer off a record and must
+    # let real time pass: the reset is earned by STAYING healthy, and nothing short of
+    # elapsed healthy traffic produces that. The healthy period is spanned by drip requests,
+    # which hold a real second each - the policy measures wall-clock health, so the scenario
+    # pays it in the same currency rather than sleeping.
+    Given I generate a unique resource name from "rebase-flaky" and store it as "flakyName"
+    And I generate a unique API version from "rebase-flaky" and store it as "flakyVersion"
+    And I generate a unique API context from "/rebase-flaky" and store it as "flakyContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}      |
+      | name               | ${CTX:flakyName}               |
+      | displayName        | ${CTX:flakyName}               |
+      | version            | ${CTX:flakyVersion}            |
+      | template           | openai                         |
+      | spec.context       | ${CTX:flakyContext}            |
+      | spec.upstream.url  | http://testbench:3027/rebase   |
+      | accessControl.mode | allow_all                      |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "rebase-alive" and store it as "aliveName"
+    And I generate a unique API version from "rebase-alive" and store it as "aliveVersion"
+    And I generate a unique API context from "/rebase-alive" and store it as "aliveContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                   |
+      | name               | ${CTX:aliveName}                            |
+      | displayName        | ${CTX:aliveName}                            |
+      | version            | ${CTX:aliveVersion}                         |
+      | template           | openai                                      |
+      | spec.context       | ${CTX:aliveContext}                         |
+      | spec.upstream.url  | http://testbench:3000/rebase-alive-upstream |
+      | accessControl.mode | allow_all                                   |
+    Then the response should be successful
+
+    # recoverAfterSuccesses is 1 so a single probe restores the target and starts its healthy
+    # clock; the default of three would make the scenario pay for two more round trips before
+    # the clock it is waiting on even begins.
+    Given I generate a unique resource name from "rebase-proxy" and store it as "proxyName"
+    And I generate a unique API version from "rebase-proxy" and store it as "proxyVersion"
+    And I generate a unique API context from "/rebase-proxy" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                     | ${CTX:proxyName}                                                                                                                                                       |
+      | displayName              | ${CTX:proxyName}                                                                                                                                                       |
+      | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
+      | context                  | ${CTX:proxyContext}                                                                                                                                                    |
+      | provider.id              | ${CTX:flakyName}                                                                                                                                                       |
+      | spec.additionalProviders | [{"id":"${CTX:flakyName}","as":"rebase-flaky"},{"id":"${CTX:aliveName}","as":"rebase-alive"}]                                                                          |
+      | spec.policies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":2,"suspendAfterFailures":1,"maxSuspendMultiplier":8,"backoffResetSeconds":2,"recoverAfterSuccesses":1,"statusCodes":[503],"targets":[{"model":"gpt-4o","provider":"rebase-flaky","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"rebase-alive"}]}]}}]}] |
+    Then the response should be successful
+
+    When I set header "Content-Type" to "application/json"
+    And I set header "x-stream-fault" to "plain"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+
+    # Suspension one, at the base.
+    When I set header "x-stream-fault" to "fail"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the "gateway-runtime" log since the latest request should contain "provider=rebase-flaky reason=consecutive_failures observed=1 sample_size=0 duration_seconds=2 escalation_step=1"
+
+    # Wait the suspension out and restore the target, in one step. While it is suspended the
+    # fallback answers and the body names the echo; once the window lapses the target is
+    # probed, the probe succeeds, and the body names it instead. Polling on WHICH upstream
+    # served is what makes this a wait for recovery rather than a wait for a status that was
+    # already being returned.
+    When I set header "x-stream-fault" to "plain"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until the response body contains "/rebase/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response header "x-envoy-attempt-count" should be "1"
+
+    # The healthy period, paid in real seconds. Three drip requests of a second each clear
+    # the two-second reset with margin; each is a complete stream the target serves itself,
+    # so the clock keeps running rather than being restarted by a failure.
+    When I set header "x-stream-fault" to "drip"
+    And I set header "x-stream-fault-seconds" to "1"
+    And I send 3 "POST" requests to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+
+    # The reset is earned by staying healthy but OBSERVED when a success is recorded, so it
+    # takes a success the gateway can record on the spot to collect it. The drips above spent
+    # the time; a streamed success is judged from the access log and its record would not
+    # arrive until after the failure below had already been graded, leaving the ladder exactly
+    # where it was. One plain success closes that gap.
+    When I set header "x-stream-fault" to "plain"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response header "x-envoy-attempt-count" should be "1"
+
+    # THE assertion. The target has been suspended before, so an un-reset ladder would put
+    # this one at double the base on rung two. Having stayed healthy long enough, it starts
+    # again from the bottom.
+    When I set header "x-stream-fault" to "fail"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the "gateway-runtime" log since the latest request should contain "provider=rebase-flaky reason=consecutive_failures observed=1 sample_size=0 duration_seconds=2 escalation_step=1"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:flakyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:aliveName}"
+    Then the response should be successful
