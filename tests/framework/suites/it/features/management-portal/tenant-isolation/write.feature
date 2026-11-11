@@ -23,7 +23,7 @@ Feature: Another organization cannot change or remove an organization's resource
   So that my resources stay exactly as I left them
 
   Background:
-    Given I generate a unique value from "tenant-write-project" and store it as "projectHandle"
+    Given I generate a unique resource name from "tenant-write-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   @TENANT-003

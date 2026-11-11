@@ -54,16 +54,11 @@ Feature: APIP cloud project lifecycle
     And the rejected APIP project should not exist
 
     Examples:
-      | defect                   |
-      | uppercase                |
-      | containing an underscore |
-      | starting with a hyphen   |
-      | ending with a hyphen     |
-
-    # Known issue: the platform record skips the handle rules and stores the handle in 40 characters (B7).
-    @known-issue
-    Examples:
       | defect                         |
+      | uppercase                      |
+      | containing an underscore       |
+      | starting with a hyphen         |
+      | ending with a hyphen           |
       | containing consecutive hyphens |
       | longer than 40 characters      |
 
