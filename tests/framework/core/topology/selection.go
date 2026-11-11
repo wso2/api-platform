@@ -429,29 +429,15 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 
 	if len(out.Blocks) == 0 {
 		// A component filter that matches no block is a skip: a pull request that changes only
-		// the API Portal may have nothing to run on a released Gateway leg. A block that matched
-		// and was then removed for another reason is reported below, not hidden by the skip.
+		// the API Portal may have nothing to run on a released Gateway leg.
 		if componentFiltered && !componentMatched {
 			return nil, fmt.Errorf("%w: no selected block starts the requested components", ErrNothingToRun)
 		}
-		if len(s.Policies) > 0 {
+		// So is a selection whose every block or runner the Gateway release excludes: a pull
+		// request that changes only a gateway-version>1.2.0 feature has nothing to run on the
+		// 1.2.0 leg. The skip names each block or runner and why, so nothing is hidden.
+		if len(s.Policies) > 0 || len(out.SkippedBlocks) > 0 || len(out.SkippedRunners) > 0 {
 			return nil, nothingToRun(out)
-		}
-		if len(out.SkippedBlocks) > 0 {
-			reasons := make([]string, 0, len(out.SkippedBlocks))
-			for _, skipped := range out.SkippedBlocks {
-				reasons = append(reasons, fmt.Sprintf("%s: %s", skipped.Block, skipped.Reason))
-			}
-			sort.Strings(reasons)
-			return nil, fmt.Errorf("topology: the selection has no compatible blocks (%s)", strings.Join(reasons, "; "))
-		}
-		if len(out.SkippedRunners) > 0 {
-			reasons := make([]string, 0, len(out.SkippedRunners))
-			for _, skipped := range out.SkippedRunners {
-				reasons = append(reasons, fmt.Sprintf("%s/%s: %s", skipped.Block, skipped.Runner, skipped.Reason))
-			}
-			sort.Strings(reasons)
-			return nil, fmt.Errorf("topology: the selection has no compatible runners (%s)", strings.Join(reasons, "; "))
 		}
 		return nil, fmt.Errorf("topology: the selection matched no blocks, so the run would test nothing")
 	}

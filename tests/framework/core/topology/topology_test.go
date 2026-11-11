@@ -1897,7 +1897,7 @@ func TestGatewayDatabaseCompatibility(t *testing.T) {
 		}}, selected.SkippedBlocks)
 	})
 
-	t.Run("an incompatible block the component filter kept is not hidden as a skip", func(t *testing.T) {
+	t.Run("an incompatible block the component filter kept is a skip that names why", func(t *testing.T) {
 		suite := newSuite()
 		suite.Blocks = []ResolvedBlock{
 			suite.Blocks[1], // gateway-core/sqlserver: kept by the filter, then incompatible
@@ -1911,8 +1911,8 @@ func TestGatewayDatabaseCompatibility(t *testing.T) {
 			GatewayVersion:    "1.1.0",
 			RequireComponents: []string{"platform-gateway"},
 		}).Apply(suite)
-		require.ErrorContains(t, err, "the selection has no compatible blocks")
-		require.NotErrorIs(t, err, ErrNothingToRun)
+		require.ErrorIs(t, err, ErrNothingToRun)
+		require.ErrorContains(t, err, "gateway-core/sqlserver: Gateway version 1.1.0 does not satisfy platform-gateway dbCompatibility for sqlserver")
 	})
 
 	t.Run("a supported release retains every variant", func(t *testing.T) {
@@ -1995,7 +1995,9 @@ blocks:
 	})
 }
 
-func TestGatewayVersionSelectionRejectsAnAllIncompatibleSelection(t *testing.T) {
+// A pull request that changes only a feature gated to newer Gateways selects nothing a released
+// leg can run; the leg skips, naming the runners and why.
+func TestGatewayVersionSelectionThatLeavesNothingIsASkip(t *testing.T) {
 	legacy, err := parseGatewayVersionConstraint("gateway-version<=1.2.0")
 	require.NoError(t, err)
 	_, err = Selection{}.Apply(&Resolved{Blocks: []ResolvedBlock{{
@@ -2005,7 +2007,7 @@ func TestGatewayVersionSelectionRejectsAnAllIncompatibleSelection(t *testing.T) 
 		}},
 		Runners: []Runner{{Name: "legacy", Features: []string{"legacy.feature"}, GatewayVersion: &legacy}},
 	}}})
-	require.ErrorContains(t, err, "the selection has no compatible runners")
+	require.ErrorIs(t, err, ErrNothingToRun)
 	require.ErrorContains(t, err, "gateway/legacy: Gateway version 1.3.0 does not satisfy gateway-version<=1.2.0")
 }
 
