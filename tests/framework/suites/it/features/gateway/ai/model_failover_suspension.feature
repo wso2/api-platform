@@ -635,3 +635,101 @@ Feature: Taking a failing target out of rotation, and putting it back
     Then the response should be successful
     When I delete the LLM provider "${CTX:aliveName}"
     Then the response should be successful
+
+  Scenario: A target returning to service is recorded as recovered
+    # Suspension has a record; coming back did not. The two are not symmetric in value - a
+    # suspension tells an operator a provider went away, and only the recovery tells them it
+    # came back. Without it the log reads as an outage that never ended, and an operator
+    # chasing a provider they have already stopped relying on is the predictable result.
+    #
+    # The target must FAIL and then SUCCEED, which a dead upstream cannot do, so this uses the
+    # streamfault service: the same provider answers per the x-stream-fault header, "fail" for
+    # the failure that suspends it and "plain" for the probe that restores it.
+    Given I generate a unique resource name from "recover-flaky" and store it as "flakyName"
+    And I generate a unique API version from "recover-flaky" and store it as "flakyVersion"
+    And I generate a unique API context from "/recover-flaky" and store it as "flakyContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}     |
+      | name               | ${CTX:flakyName}              |
+      | displayName        | ${CTX:flakyName}              |
+      | version            | ${CTX:flakyVersion}           |
+      | template           | openai                        |
+      | spec.context       | ${CTX:flakyContext}           |
+      | spec.upstream.url  | http://testbench:3027/recover |
+      | accessControl.mode | allow_all                     |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "recover-alive" and store it as "aliveName"
+    And I generate a unique API version from "recover-alive" and store it as "aliveVersion"
+    And I generate a unique API context from "/recover-alive" and store it as "aliveContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                    |
+      | name               | ${CTX:aliveName}                             |
+      | displayName        | ${CTX:aliveName}                             |
+      | version            | ${CTX:aliveVersion}                          |
+      | template           | openai                                       |
+      | spec.context       | ${CTX:aliveContext}                          |
+      | spec.upstream.url  | http://testbench:3000/recover-alive-upstream |
+      | accessControl.mode | allow_all                                    |
+    Then the response should be successful
+
+    # recoverAfterSuccesses 1 so a single probe restores the target - the default of three
+    # would spend two more round trips before the record this scenario reads is written at all.
+    # suspendDuration 2 keeps the wait short while still being a real window.
+    Given I generate a unique resource name from "recover-proxy" and store it as "proxyName"
+    And I generate a unique API version from "recover-proxy" and store it as "proxyVersion"
+    And I generate a unique API context from "/recover-proxy" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                            |
+      | name                   | ${CTX:proxyName}                                                                                                     |
+      | displayName            | ${CTX:proxyName}                                                                                                     |
+      | version                | ${CTX:proxyVersion}                                                                                                  |
+      | context                | ${CTX:proxyContext}                                                                                                  |
+      | provider.id            | ${CTX:flakyName}                                                                                                     |
+      | spec.providers         | [{"id":"${CTX:flakyName}","alias":"recover-flaky","isPrimary":true},{"id":"${CTX:aliveName}","alias":"recover-alive"}] |
+      | spec.operationPolicies | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":2,"suspendAfterFailures":1,"recoverAfterSuccesses":1,"targets":[{"model":"gpt-4o","provider":"recover-flaky","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"recover-alive"}]}]}}]}] |
+    Then the response should be successful
+
+    # Readiness on a complete, non-streamed success, so the target is known healthy before
+    # anything is measured and the failure below is the first one it records.
+    When I set header "Content-Type" to "application/json"
+    And I set header "x-stream-fault" to "plain"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # One failure suspends it. Asserted so the recovery below is known to be a return from a
+    # real suspension rather than a record written for a target that never left.
+    When I set header "x-stream-fault" to "fail"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the "gateway-runtime" log since the latest request should contain "provider=recover-flaky reason=consecutive_failures observed=1 sample_size=0 duration_seconds=2 escalation_step=1"
+
+    # Wait the window out and let the probe succeed, in one step. Polling on WHICH upstream
+    # answered rather than on the status: the fallback was already returning 200 throughout the
+    # suspension, so a status poll would have stopped on the first request and measured nothing.
+    When I set header "x-stream-fault" to "plain"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until the response body contains "/recover/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response header "x-envoy-attempt-count" should be "1"
+
+    # THE RECOVERY RECORD. Asserted on its attribute run, NOT including the message: the
+    # engine logs through slog's text handler, which emits the message as msg="..." - quoted -
+    # so any assertion spanning that boundary could never match. probes_required appears in no
+    # other record, so the run identifies the recovery line on its own. suspended_for_seconds
+    # is deliberately excluded, being elapsed wall-clock that varies per run.
+    And the "gateway-runtime" log since the latest request should contain "model=gpt-4o provider=recover-flaky probes_required=1"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:flakyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:aliveName}"
+    Then the response should be successful

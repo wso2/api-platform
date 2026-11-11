@@ -275,3 +275,146 @@ Feature: What the client sees when a chain cannot serve the request
     Then the response should be successful
     When I delete the API "${CTX:cutoffName}"
     Then the response should be successful
+
+  Scenario: The record names the target that failed and the one that served
+    # The client got a 200, so from its side nothing happened. This record is the ONLY place the
+    # failure is visible at all, which is why it is logged at INFO rather than DEBUG - an
+    # operator has no other signal that a provider is degrading underneath a healthy-looking
+    # API. It has to carry three things to be worth reading: what was asked for, which target
+    # failed, and which one answered instead.
+    Given I generate a unique resource name from "record-dead" and store it as "deadName"
+    And I generate a unique API version from "record-dead" and store it as "deadVersion"
+    And I generate a unique API context from "/record-dead" and store it as "deadContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                 |
+      | name               | ${CTX:deadName}                           |
+      | displayName        | ${CTX:deadName}                           |
+      | version            | ${CTX:deadVersion}                        |
+      | template           | openai                                    |
+      | spec.context       | ${CTX:deadContext}                        |
+      | spec.upstream.url  | http://record-nonexistent-host:9080/gone  |
+      | accessControl.mode | allow_all                                 |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "record-alive" and store it as "aliveName"
+    And I generate a unique API version from "record-alive" and store it as "aliveVersion"
+    And I generate a unique API context from "/record-alive" and store it as "aliveContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}             |
+      | name               | ${CTX:aliveName}                      |
+      | displayName        | ${CTX:aliveName}                      |
+      | version            | ${CTX:aliveVersion}                   |
+      | template           | openai                                |
+      | spec.context       | ${CTX:aliveContext}                   |
+      | spec.upstream.url  | http://testbench:3000/record-upstream |
+      | accessControl.mode | allow_all                             |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "record-proxy" and store it as "proxyName"
+    And I generate a unique API version from "record-proxy" and store it as "proxyVersion"
+    And I generate a unique API context from "/record-proxy" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                   |
+      | name                   | ${CTX:proxyName}                                                                                            |
+      | displayName            | ${CTX:proxyName}                                                                                            |
+      | version                | ${CTX:proxyVersion}                                                                                         |
+      | context                | ${CTX:proxyContext}                                                                                         |
+      | provider.id            | ${CTX:deadName}                                                                                             |
+      | spec.providers         | [{"id":"${CTX:deadName}","alias":"record-dead","isPrimary":true},{"id":"${CTX:aliveName}","alias":"record-alive"}] |
+      | spec.operationPolicies | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","provider":"record-dead","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"record-alive"}]}]}}]}] |
+    Then the response should be successful
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until header "x-envoy-attempt-count" is "2" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Asserted as one contiguous run rather than field by field, so the serving target cannot be
+    # satisfied by a different line than the attempt count. `ranking_source` is deliberately
+    # outside the run: its value depends on whether a routing policy published an order, which
+    # this scenario does not configure and should not pin.
+    And the "gateway-runtime" log since the latest request should contain "attempts=2 chain_length=2 serving_model=claude-sonnet-4-5-20250929 serving_provider=record-alive"
+    # The failed target, labelled provider:model. This is the half an operator acts on.
+    And the "gateway-runtime" log since the latest request should contain "failed_targets=record-dead:gpt-4o"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:deadName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:aliveName}"
+    Then the response should be successful
+
+  Scenario: An exhausted chain records every target it actually walked
+    # The sibling scenario above covers a chain that was never attempted - every target already
+    # suspended, so the record carries skipped_targets and nothing else. This is the other
+    # exhaustion: both targets were tried and both failed, so the record must carry
+    # failed_targets naming BOTH, in the order they were attempted.
+    #
+    # Both upstreams REFUSE rather than fail to resolve. A non-resolving host is answered
+    # locally before any upstream request exists, and a local answer is not retriable, so the
+    # chain would stop at the first member and never walk far enough to record two.
+    Given I generate a unique resource name from "walked-a" and store it as "firstName"
+    And I generate a unique API version from "walked-a" and store it as "firstVersion"
+    And I generate a unique API context from "/walked-a" and store it as "firstContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
+      | name               | ${CTX:firstName}          |
+      | displayName        | ${CTX:firstName}          |
+      | version            | ${CTX:firstVersion}       |
+      | template           | openai                    |
+      | spec.context       | ${CTX:firstContext}       |
+      | spec.upstream.url  | http://testbench:9097     |
+      | accessControl.mode | allow_all                 |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "walked-b" and store it as "secondName"
+    And I generate a unique API version from "walked-b" and store it as "secondVersion"
+    And I generate a unique API context from "/walked-b" and store it as "secondContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
+      | name               | ${CTX:secondName}         |
+      | displayName        | ${CTX:secondName}         |
+      | version            | ${CTX:secondVersion}      |
+      | template           | openai                    |
+      | spec.context       | ${CTX:secondContext}      |
+      | spec.upstream.url  | http://testbench:9096     |
+      | accessControl.mode | allow_all                 |
+    Then the response should be successful
+
+    # suspendDuration 0 so neither target is withdrawn: a skipped target would land in
+    # skipped_targets, which is the OTHER scenario's claim, and this one would stop measuring
+    # a walked chain.
+    Given I generate a unique resource name from "walked-proxy" and store it as "proxyName"
+    And I generate a unique API version from "walked-proxy" and store it as "proxyVersion"
+    And I generate a unique API context from "/walked-proxy" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                     |
+      | name                   | ${CTX:proxyName}                                                                                              |
+      | displayName            | ${CTX:proxyName}                                                                                              |
+      | version                | ${CTX:proxyVersion}                                                                                           |
+      | context                | ${CTX:proxyContext}                                                                                           |
+      | provider.id            | ${CTX:firstName}                                                                                              |
+      | spec.providers         | [{"id":"${CTX:firstName}","alias":"walked-a","isPrimary":true},{"id":"${CTX:secondName}","alias":"walked-b"}] |
+      | spec.operationPolicies | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","provider":"walked-a","fallbacks":[{"model":"gpt-4o-mini","provider":"walked-b"}]}]}}]}] |
+    Then the response should be successful
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until status 503 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 503
+    And the response body should contain "failover_exhausted"
+
+    # BOTH targets, in attempted order. One name would mean the chain stopped early; the order
+    # is what says which was the head and which the fallback.
+    And the "gateway-runtime" log since the latest request should contain "failed_targets=walked-a:gpt-4o,walked-b:gpt-4o-mini"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:firstName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:secondName}"
+    Then the response should be successful
