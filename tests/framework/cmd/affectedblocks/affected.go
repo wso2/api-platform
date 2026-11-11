@@ -199,8 +199,9 @@ func (idx *index) addFile(sel *selection, file string) bool {
 		return false
 	}
 	switch {
-	case strings.HasSuffix(rel, "_test.go"):
-		// Unit tests of the steps run outside the suite.
+	case strings.HasPrefix(rel, "steps/") && strings.HasSuffix(rel, "_test.go"):
+		// Unit tests of the steps run outside the suite. Other test files, suite_test.go
+		// above all, wire the suite itself and fall through to every block.
 		return true
 	case strings.HasPrefix(rel, "features/"):
 		for feature, sources := range idx.featureSources {
