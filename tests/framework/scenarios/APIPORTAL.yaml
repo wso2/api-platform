@@ -284,7 +284,7 @@ scenarios:
         - feature: suites/it/features/apiportal/subscriptions/subscription_plans.feature
           scenario: "Invalid plans are refused, plans are read-only for other roles, and a plan in use cannot be deleted"
   - id: APIP-024
-    title: "Subscription lifecycle and its effect at the gateway"
+    title: "Subscription lifecycle"
     priority: P0
     ui:
       status: planned
@@ -293,8 +293,6 @@ scenarios:
       refs:
         - feature: suites/it/features/apiportal/subscriptions/subscriptions.feature
           scenario: "A developer subscribes, changes plan and unsubscribes, and invalid changes leave the subscription as it was"
-        - feature: suites/it/features/apiportal/subscriptions/subscription_gateway.feature
-          scenario: "The gateway accepts a subscription only with the right credentials, and follows its suspension and removal"
   - id: APIP-025
     title: "Subscription rules and ownership"
     priority: P0
@@ -318,7 +316,7 @@ scenarios:
         - feature: suites/it/features/apiportal/subscriptions/api_keys.feature
           scenario: "Invalid API keys are refused, and a key is linked to an application until it is revoked"
   - id: APIP-027
-    title: "API keys: ownership, anonymous access and gateway propagation"
+    title: "API keys: ownership and anonymous access"
     priority: P0
     ui:
       status: planned
@@ -327,8 +325,6 @@ scenarios:
       refs:
         - feature: suites/it/features/apiportal/subscriptions/api_keys.feature
           scenario: "An API key belongs to its owner and needs a session"
-        - feature: suites/it/features/apiportal/subscriptions/subscription_gateway.feature
-          scenario: "API keys keep working at the gateway against other users and after their application is deleted"
   - id: APIP-028
     title: "Organization settings"
     priority: P0
@@ -491,76 +487,6 @@ scenarios:
           scenario: "A subscriber pages through their own invoices and opens their billing page, and only an administrator reads the revenue reports"
         - feature: suites/it/features/apiportal/monetization/usage_billing.feature
           scenario: "Usage Moesif counts is shown to the developer and billed by Stripe when they unsubscribe"
-  - id: APIP-044
-    title: "Publishing lifecycle from the control plane"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "A REST API is published, republished, deprecated and unpublished through the control plane"
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "A published API is served by its pages and labelled views, and leaves them when unpublished"
-  - id: APIP-045
-    title: "Publishing refusals and state conflicts"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "Invalid publishes and repeated state changes are refused and leave the API Portal unchanged"
-        - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "Unpublishing is refused while subscriptions or API keys exist, and succeeds once they are removed"
-  - id: APIP-046
-    title: "Published documents, landing page and thumbnail"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_content.feature
-          scenario: "Documents, a landing page and a thumbnail are published, removed when unselected, and limited in size"
-  - id: APIP-047
-    title: "Portal availability and the shared key"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_failures.feature
-          scenario: "A wrong shared key is reported as an unavailable portal, and only the control plane's key is accepted"
-        - feature: suites/it/features/apiportal/publishing/publication_outage.feature
-          scenario: "Publishing and deprecating fail and change nothing while the API Portal is down, and succeed once it is back"
-  - id: APIP-048
-    title: "Plans and meters during publishing"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_monetization.feature
-          scenario: "Priced plans, meters and new limits reach the API Portal on publish, and portal-made ones reach the control plane"
-        - feature: suites/it/features/apiportal/publishing/publication_monetization.feature
-          scenario: "Conflicting prices and meters block the publish, and control-plane plan changes follow their rules"
-  - id: APIP-049
-    title: "GraphQL APIs and MCP proxies"
-    priority: P1
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "A GraphQL API is published, deprecated and unpublished, only through its own type and definition"
-        - feature: suites/it/features/apiportal/publishing/publication_lifecycle.feature
-          scenario: "An MCP proxy is published, republished, deprecated and unpublished, only through its own type and definition"
   - id: APIP-050
     title: "Webhook subscribers"
     priority: P0
@@ -600,18 +526,6 @@ scenarios:
           scenario: "Application and API key events reach only the subscribers that asked for them"
         - feature: suites/it/features/apiportal/webhooks/subscription_webhooks.feature
           scenario: "A subscription's life is delivered in turn, and a refused plan change sends nothing"
-  - id: APIP-053
-    title: "Propagation to the control plane and the gateway"
-    priority: P0
-    ui:
-      status: planned
-    it:
-      status: automated
-      refs:
-        - feature: suites/it/features/apiportal/webhooks/devportal_webhook.feature
-          scenario: "API keys and subscriptions issued in the API Portal reach the gateway through their whole lifecycle"
-        - feature: suites/it/features/apiportal/webhooks/devportal_webhook.feature
-          scenario: "The control plane processes only signed, recent, known API Portal events, and a redelivered event changes nothing"
   - id: APIP-054
     title: "Per-organization token issuers"
     priority: P0

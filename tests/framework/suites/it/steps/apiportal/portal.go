@@ -87,10 +87,10 @@ const portalService = "api-portal"
 // apiPrefix is api-portal's whole REST surface, mounted under the portal's own base path.
 const apiPrefix = "/api-portal/api/v0.9"
 
-// webhookSubscriberID is a fixed handle, not a generated one: the Background step that
-// registers it runs once per SCENARIO (every scenario in the devportal-webhook runner shares
-// one webhook target), so registration must be idempotent across repeats within a runner
-// rather than accumulate a new subscriber per scenario.
+// webhookSubscriberID is a fixed handle, not a generated one: the step that registers it runs
+// once per scenario, and every scenario in a runner shares one webhook target, so registration
+// must be idempotent across repeats within a runner rather than accumulate a new subscriber per
+// scenario.
 const webhookSubscriberID = "platform-api"
 
 var (
@@ -224,7 +224,6 @@ func Register(
 	sc.Step(`^I verify no API Portal webhook event "([^"]*)" containing "([^"]*)" is delivered$`,
 		s.verifyNoWebhookEventContaining)
 	sc.Step(`^I reset API Portal webhook events$`, s.resetWebhookEvents)
-	sc.Step(`^every API Portal webhook event of type "([^"]*)" should have settled$`, s.waitForWebhookEventsSettled)
 	sc.Step(`^the values "([^"]*)" should each appear in exactly one of the stored API Portal responses "([^"]*)"$`,
 		s.assertValuesOnExactlyOnePage)
 	sc.Step(`^the API Portal API listing seen by "([^"]*)" should (contain|not contain) "([^"]*)" across all pages$`,
@@ -320,7 +319,6 @@ func Register(
 	s.registerMultiOrganizationSteps(sc)
 	s.registerBillingSteps(sc)
 	s.registerSecuritySteps(sc)
-	s.registerControlPlaneEventSteps(sc)
 	return s.trackPublishedPlan
 }
 
@@ -2942,59 +2940,6 @@ func (s *Steps) deregisterResourceFromCleanup(ctx context.Context, id, path stri
 	return nil
 }
 
-// waitForWebhookEventsSettled waits until the portal has finished delivering every event of the
-// type, so that what those events cause downstream is ordered before the next step's event.
-func (s *Steps) waitForWebhookEventsSettled(ctx context.Context, eventType string) error {
-	eventType, err := stepscommon.Expand(ctx, eventType)
-	if err != nil {
-		return err
-	}
-	settled, err := retry.Until(ctx, retry.Options{Interval: time.Second}, func(ctx context.Context) (bool, error) {
-		base, token, err := s.authedAs(ctx, "admin")
-		if err != nil {
-			return false, err
-		}
-		response, err := s.client.Do(ctx, httpx.Request{
-			Method:  http.MethodGet,
-			URL:     fmt.Sprintf("%s%s/webhook-events?limit=%d", base, apiPrefix, listingPageSize),
-			Headers: map[string]string{"Authorization": "Bearer " + token},
-		}, 0, 0)
-		if err != nil {
-			return false, retry.Transient(err)
-		}
-		if !response.Succeeded() {
-			return false, retry.Transient(fmt.Errorf("listing API Portal webhook events failed: %s", response.Describe()))
-		}
-		return webhookEventsSettled(response.Body, eventType)
-	}, func(settled bool) bool { return settled })
-	if err != nil {
-		return fmt.Errorf("waiting for API Portal webhook events %q to settle: %w", eventType, err)
-	}
-	if !settled {
-		return fmt.Errorf("API Portal webhook events %q did not settle before the timeout", eventType)
-	}
-	return nil
-}
-
-// webhookEventsSettled reports whether no event of the type in a listing is still being delivered.
-func webhookEventsSettled(body []byte, eventType string) (bool, error) {
-	var page struct {
-		List []struct {
-			Type   string `json:"type"`
-			Status string `json:"status"`
-		} `json:"list"`
-	}
-	if err := json.Unmarshal(body, &page); err != nil {
-		return false, fmt.Errorf("decoding API Portal webhook events: %w", err)
-	}
-	for _, event := range page.List {
-		if event.Type == eventType && (event.Status == "PENDING" || event.Status == "DISPATCHED") {
-			return false, nil
-		}
-	}
-	return true, nil
-}
-
 // assertValuesOnExactlyOnePage asserts each value is held by exactly one of the stored page
 // bodies, so that pagination neither repeats nor drops an item.
 func (s *Steps) assertValuesOnExactlyOnePage(ctx context.Context, values, keys string) error {
@@ -3595,8 +3540,8 @@ func addPart(mw *multipart.Writer, field, filename, contentType, content string)
 // syncSubscriptionPlan upserts a plan in api-portal whose refId equals the platform-api plan
 // handle, so subscription.created carries a resolvable subscription_plan.ref_id. PUT is a bulk
 // upsert (an array body, even for one plan) — api-portal's own subscription-plan endpoint has
-// no single-object POST/PUT pair. The quota mirrors the "10000 requests per hour" plan every
-// devportal-webhook scenario creates on platform-api: keeping both sides' literal in sync is
+// no single-object POST/PUT pair. The quota mirrors the "10000 requests per hour" plan that
+// scenarios create on platform-api: keeping both sides' literal in sync is
 // what api-portal's own onboarding flow does, not just what enforcement requires.
 func (s *Steps) syncSubscriptionPlan(ctx context.Context, handle string) error {
 	resolvedHandle, err := stepscommon.Expand(ctx, handle)

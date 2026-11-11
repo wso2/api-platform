@@ -24,8 +24,8 @@ Feature: Developers own the applications they create in the API Portal
 
   # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
   # The application events are asserted by webhooks/api_key_webhooks.feature,
-  # and deleting an application that holds credentials by applications/application_deletion.feature and
-  # subscriptions/subscription_gateway.feature. The suite has one developer, so the administrator, who holds every
+  # and deleting an application that holds credentials by applications/application_deletion.feature.
+  # The suite has one developer, so the administrator, who holds every
   # application scope, plays the second user: applications are owned by their creator, not by role.
 
   @APIP-014 @type:boundary @type:negative @type:security

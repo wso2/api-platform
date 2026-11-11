@@ -69,6 +69,14 @@ Feature: Developers subscribe to APIs through the API Portal REST API
     When I send an authenticated API Portal "GET" request to "/subscriptions/${CTX:subscriptionId}" as "developer"
     Then the response status code should be 404
 
+    # Subscribing again after unsubscribing gives a new subscription with a new token
+    When a developer subscription for API "${CTX:apiId}" using plan "Gold" is created and stored as "renewedSubscriptionId"
+    Then the response status code should be 201
+    And the JSON response field "status" should be "ACTIVE"
+    And the JSON response field "subscriptionId" should not equal "${CTX:subscriptionId}"
+    And the JSON response field "subscriptionToken" should not equal "${CTX:originalToken}"
+    And the JSON response field "subscriptionToken" should not equal "${CTX:rotatedToken}"
+
     # An invalid change to a subscription is refused and the subscription is unchanged
     Given a REST API is created in the API Portal and stored as "apiId"
     Given I generate a unique resource name from "portal-missing-subscription" and store it as "missingSubscriptionId"
@@ -78,6 +86,9 @@ Feature: Developers subscribe to APIs through the API Portal REST API
     Then the response status code should be 400
     When I send an authenticated API Portal "PUT" request to "/subscriptions/${CTX:subscriptionId}" as "developer" with JSON values:
       | status | PAUSED |
+    Then the response status code should be 400
+    When I send an authenticated API Portal "PUT" request to "/subscriptions/${CTX:subscriptionId}" as "developer" with JSON values:
+      | status | EXPIRED |
     Then the response status code should be 400
     When I send an authenticated API Portal "GET" request to "/subscriptions/${CTX:subscriptionId}" as "developer"
     Then the response status code should be 200

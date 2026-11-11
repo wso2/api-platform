@@ -23,8 +23,7 @@ Feature: Deleting an application unlinks its credentials without revoking them
   I want deleting an application to remove only the application
   So that the API keys, subscriptions and OAuth2 clients I grouped in it keep working
 
-  # Scenario APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
-  # The gateway side is in subscriptions/subscription_gateway.feature. It runs
+  # Scenario APIPORTAL (scenarios/APIPORTAL.yaml) at the API level. It runs
   # in the api-portal-webhooks block because webhook subscribers are organization-wide. The key
   # manager points at this scenario's partition of the testbench OAuth2 mock, whose fixed client is
   # "test-client" / "test-secret" — a mock credential, never a real one.

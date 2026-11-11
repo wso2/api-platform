@@ -16,13 +16,13 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@platform-api-gateway-api-portal @APIPORTAL
+@platform-api-publication-lifecycle
 Feature: Publishing an API to an API Portal through the control plane
   As an API publisher
   I want to publish a REST or GraphQL API to an API Portal from the control plane
   So that API consumers can discover it and its subscription plans in the portal
 
-  @APIP-044 @smoke
+  @smoke
   Scenario: A REST API is published, republished, deprecated and unpublished through the control plane
     # A deployed REST API is published to the API Portal through the control plane
     Given the gateway services are running
@@ -269,7 +269,6 @@ Feature: Publishing an API to an API Portal through the control plane
     When I read the draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" through the control plane
     Then the JSON response field "displayName" should be "${CTX:apiHandle}-next"
 
-  @APIP-044
   Scenario: A published API is served by its pages and labelled views, and leaves them when unpublished
     # A published API's page, specification and Markdown are served by the API Portal
     Given the gateway services are running
@@ -394,7 +393,7 @@ Feature: Publishing an API to an API Portal through the control plane
     Then the response status code should be 200
     And the response body should not contain "${CTX:apiHandle}"
 
-  @APIP-049 @type:negative
+  @type:negative
   Scenario: A GraphQL API is published, deprecated and unpublished, only through its own type and definition
     # A GraphQL API is published, deprecated and unpublished through the control plane
     Given the gateway services are running
@@ -464,7 +463,7 @@ Feature: Publishing an API to an API Portal through the control plane
     And the JSON response field "code" should be "PUBLICATION_VALIDATION_FAILED"
     And the API Portal should not list the API "${CTX:graphqlHandle}"
 
-  @APIP-049 @type:negative
+  @type:negative
   Scenario: An MCP proxy is published, republished, deprecated and unpublished, only through its own type and definition
     # An MCP proxy is published, deprecated and unpublished through the control plane
     Given the gateway services are running

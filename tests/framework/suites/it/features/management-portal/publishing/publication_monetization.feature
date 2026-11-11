@@ -16,13 +16,12 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@publication-monetization @APIPORTAL
+@platform-api-publication-monetization
 Feature: Publishing priced plans to an API Portal
   As an API publisher who prices plans in the control plane
   I want publishing an API to bring its priced plans and their meters to the API Portal
   So that the portal sells exactly the prices the control plane defined, and never a different one
 
-  @APIP-048
   Scenario: Priced plans, meters and new limits reach the API Portal on publish, and portal-made ones reach the control plane
     # Publishing an API with a usage-priced plan brings the meter and the priced plan to the API Portal
     Given the gateway services are running
@@ -162,7 +161,6 @@ Feature: Publishing priced plans to an API Portal
     And I send a "GET" request to the control plane at "/subscription-plans/${CTX:planId}"
     Then the response status code should be 404
 
-  @APIP-048
   Scenario: Conflicting prices and meters block the publish, and control-plane plan changes follow their rules
     # A plan the API Portal already sells at another price blocks the publish
     Given the gateway services are running

@@ -16,13 +16,13 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@platform-api-gateway-api-portal @APIPORTAL
+@platform-api-publication-failures
 Feature: Publishing is refused, and explained, when the control plane or the API Portal cannot accept it
   As an API publisher
   I want a rejected publish, deprecate or unpublish to say why and to leave everything as it was
   So that I can fix the cause and repeat the action
 
-  @APIP-045 @type:negative
+  @type:negative
   Scenario: Invalid publishes and repeated state changes are refused and leave the API Portal unchanged
     # An API that was never published cannot be deprecated or unpublished
     Given the gateway services are running
@@ -300,7 +300,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     Then the response status code should be 409
     And the JSON response field "code" should be "PUBLICATION_STATE_CONFLICT"
 
-  @APIP-045 @type:negative
+  @type:negative
   Scenario: Unpublishing is refused while subscriptions or API keys exist, and succeeds once they are removed
     # Unpublishing is refused while the API Portal still has subscriptions to the API
     Given the gateway services are running
@@ -381,7 +381,7 @@ Feature: Publishing is refused, and explained, when the control plane or the API
     Then the response status code should be 204
     And the API Portal should not list the API "${CTX:apiHandle}"
 
-  @APIP-047 @type:negative
+  @type:negative
   Scenario: A wrong shared key is reported as an unavailable portal, and only the control plane's key is accepted
     # A wrong shared key is reported as an unavailable portal, not as a conflict
     Given the gateway services are running

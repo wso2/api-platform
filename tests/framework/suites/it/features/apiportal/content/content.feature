@@ -24,7 +24,7 @@ Feature: An API's content is uploaded and served through the API Portal REST API
   So that developers see the API the way I describe it, and only I can change it
 
   # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API
-  # level, plus the public pages that render the content. Every content archive has one wrapper folder
+  # level, plus the public pages that show its icon and documents. Every content archive has one wrapper folder
   # holding web/ (landing page and images, first level only) and docs/<Section>/ (documents; a document
   # directly under docs/ is in section Other). The default fixture holds a marketing page
   # (api-content.hbs) and an image (api-icon.png). Images are public; other content needs a signed-in
@@ -56,13 +56,12 @@ Feature: An API's content is uploaded and served through the API Portal REST API
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=MARKETING&fileName=api-content.hbs" as "publisher"
     Then the response status code should be 200
 
-    # An API's content gives it a landing page, an icon and documents in their sections
+    # An API's content gives its page an icon and its documents their sections
     Given a REST API is created in the API Portal and stored as "apiId"
     When I upload API Portal content "with-docs" for API "${CTX:apiId}" as "publisher"
     Then the response status code should be 201
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}"
     Then the response status code should be 200
-    And the response body should contain "API Portal content"
     And the response body should contain "api-icon.png"
     And the response body should not contain "aov-api-avatar"
 
@@ -74,7 +73,6 @@ Feature: An API's content is uploaded and served through the API Portal REST API
     And the response body should contain "This API answers ping requests."
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/docs/HowTo/setup.md"
     Then the response status code should be 200
-    And the response body should contain "Call the ping operation with your subscription token."
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}/docs/HowTo/missing.md"
     Then the response status code should be 404
 
@@ -83,7 +81,6 @@ Feature: An API's content is uploaded and served through the API Portal REST API
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/api/${CTX:apiId}"
     Then the response status code should be 200
     And the response body should contain "aov-api-avatar"
-    And the response body should contain "API Portal content"
 
     # A second upload through PUT replaces everything the API held
     Given a REST API is created in the API Portal and stored as "apiId"

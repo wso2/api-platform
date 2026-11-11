@@ -16,13 +16,13 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@platform-api-gateway-api-portal @APIPORTAL
+@platform-api-publication-content
 Feature: Documents, a landing page and a thumbnail published with an API reach the API Portal
   As an API publisher
   I want the content I select for a publication to be what the API Portal shows
   So that consumers see the documentation I prepared and nothing I took out
 
-  @APIP-046 @type:negative
+  @type:negative
   Scenario: Documents, a landing page and a thumbnail are published, removed when unselected, and limited in size
     # Documents, a landing page and a thumbnail are published to the API Portal
     Given the gateway services are running

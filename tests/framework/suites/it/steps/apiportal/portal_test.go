@@ -1334,18 +1334,6 @@ func TestNewestDeliveryMatching(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestWebhookEventsSettled(t *testing.T) {
-	body := []byte(`{"list":[{"type":"a","status":"ALL_DELIVERED"},{"type":"b","status":"PENDING"}]}`)
-	settled, err := webhookEventsSettled(body, "a")
-	require.NoError(t, err)
-	require.True(t, settled)
-	settled, err = webhookEventsSettled(body, "b")
-	require.NoError(t, err)
-	require.False(t, settled)
-	_, err = webhookEventsSettled([]byte("not json"), "a")
-	require.Error(t, err)
-}
-
 func TestCheckValuesOnExactlyOnePage(t *testing.T) {
 	pages := []string{"one two", "three"}
 	require.NoError(t, checkValuesOnExactlyOnePage([]string{"one", " two", "three"}, pages))
@@ -1526,81 +1514,4 @@ func TestAssertWebhookDeliveryEnvelopesRefusesMissingInput(t *testing.T) {
 	s := &Steps{}
 	require.ErrorContains(t, s.assertWebhookDeliveryEnvelopes(ctx, " ", 1), "requires a marker")
 	require.ErrorContains(t, s.assertWebhookDeliveryEnvelopes(ctx, "app-1", 0), "positive count")
-}
-
-func TestSignControlPlaneEventMatchesTheReceiverFormat(t *testing.T) {
-	body := []byte(`{"event_type":"meter.created"}`)
-	at := time.Unix(1700000000, 0)
-	mac := hmac.New(sha256.New, []byte("secret"))
-	mac.Write([]byte("1700000000."))
-	mac.Write(body)
-
-	require.Equal(t, "t=1700000000,v1="+hex.EncodeToString(mac.Sum(nil)), signControlPlaneEvent("secret", body, at))
-	require.NotEqual(t, signControlPlaneEvent("secret", body, at), signControlPlaneEvent("other", body, at))
-	require.NotEqual(t, signControlPlaneEvent("secret", body, at), signControlPlaneEvent("secret", []byte(`{}`), at))
-}
-
-func TestControlPlaneEventBodyCarriesTheEnvelope(t *testing.T) {
-	body, err := controlPlaneEventBody("evt-1", "meter.created", "2026-01-01T00:00:00Z", "default", []byte(`{"handle":"calls"}`))
-	require.NoError(t, err)
-	var envelope struct {
-		EventID    string            `json:"event_id"`
-		EventType  string            `json:"event_type"`
-		OccurredAt string            `json:"occurred_at"`
-		Org        map[string]string `json:"org"`
-		Data       json.RawMessage   `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(body, &envelope))
-	require.Equal(t, "evt-1", envelope.EventID)
-	require.Equal(t, "meter.created", envelope.EventType)
-	require.Equal(t, "2026-01-01T00:00:00Z", envelope.OccurredAt)
-	require.Equal(t, map[string]string{"ref_id": "default"}, envelope.Org)
-	require.JSONEq(t, `{"handle":"calls"}`, string(envelope.Data))
-}
-
-func TestControlPlaneEventSignatureVariants(t *testing.T) {
-	body := []byte(`{"event_type":"meter.created"}`)
-	now := time.Unix(1700000000, 0)
-
-	signed, err := controlPlaneEventSignature(controlPlaneEventSigned, "secret", body, now)
-	require.NoError(t, err)
-	require.Equal(t, signControlPlaneEvent("secret", body, now), signed)
-
-	unsigned, err := controlPlaneEventSignature(controlPlaneEventUnsigned, "secret", body, now)
-	require.NoError(t, err)
-	require.Empty(t, unsigned)
-
-	other, err := controlPlaneEventSignature(controlPlaneEventOtherSecret, "secret", body, now)
-	require.NoError(t, err)
-	require.True(t, strings.HasPrefix(other, "t=1700000000,v1="))
-	require.NotEqual(t, signed, other)
-
-	stale, err := controlPlaneEventSignature(controlPlaneEventStale, "secret", body, now)
-	require.NoError(t, err)
-	require.Equal(t, signControlPlaneEvent("secret", body, now.Add(-controlPlaneEventStaleAge)), stale)
-	require.Greater(t, controlPlaneEventStaleAge, 5*time.Minute)
-
-	_, err = controlPlaneEventSignature("forged", "secret", body, now)
-	require.ErrorContains(t, err, "unknown API Portal event variant")
-}
-
-func TestResendLastControlPlaneEventNeedsAnEarlierEvent(t *testing.T) {
-	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
-	s := &Steps{}
-	require.ErrorContains(t, s.resendLastControlPlaneEvent(ctx), "no API Portal event was sent")
-
-	require.NoError(t, tcontext.Set(ctx, lastControlPlaneEventKey, sentControlPlaneEvent{eventType: "meter.created"}))
-	require.ErrorContains(t, s.resendLastControlPlaneEvent(ctx), "no API Portal event was sent")
-}
-
-func TestControlPlaneEventStepsRefuseMissingInput(t *testing.T) {
-	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
-	s := &Steps{}
-	data := &godog.DocString{Content: `{"handle":"calls"}`}
-	require.ErrorContains(t, s.sendControlPlaneEventVariant(ctx, " ", controlPlaneEventSigned, data), "needs a type")
-	require.ErrorContains(t, s.sendControlPlaneEventVariant(ctx, "meter.created", controlPlaneEventUnsigned, nil), "needs data")
-	require.ErrorContains(t, s.sendControlPlaneEventVariant(ctx, "meter.created", controlPlaneEventUnsigned,
-		&godog.DocString{Content: "{"}), "not valid JSON")
-	require.ErrorContains(t, s.sendControlPlaneEventForOrganization(ctx, "meter.created", " ", data), "needs an organization")
-	require.ErrorContains(t, s.sendControlPlaneEventVariant(ctx, "meter.created", "forged", data), "unknown API Portal event variant")
 }

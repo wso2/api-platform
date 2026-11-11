@@ -16,13 +16,13 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@platform-api-gateway-api-portal @APIPORTAL
+@platform-api-publication-outage
 Feature: Publishing while the API Portal is unavailable
   As an API publisher
   I want a publish or deprecate that cannot reach the API Portal to fail without changing anything
   So that I can repeat it once the portal is back
 
-  @APIP-047 @type:negative
+  @type:negative
   Scenario: Publishing and deprecating fail and change nothing while the API Portal is down, and succeed once it is back
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
