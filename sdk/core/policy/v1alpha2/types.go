@@ -29,6 +29,7 @@ const (
 	APIKindMCP         APIKind = "Mcp"
 	APIKindWebSubApi   APIKind = "WebSubApi"
 	APIKindGraphQL     APIKind = "GraphQLApi"
+	APIKindSoapApi     APIKind = "SoapApi"
 	APIKindAgent       APIKind = "Agent"
 	APIKindWebSocket   APIKind = "WebSocketApi"
 )
