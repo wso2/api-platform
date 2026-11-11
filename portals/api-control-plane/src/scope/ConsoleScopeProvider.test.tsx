@@ -30,10 +30,6 @@ import { renderWithProviders, screen, waitFor } from '../test/utils';
 import { OrganizationRedirectPage } from '../pages/appShell/appShellPages/system/SystemPages';
 import { ConsoleScopeProvider, useConsoleScope } from './ConsoleScopeProvider';
 
-beforeEach(() => {
-  sessionStorage.clear();
-});
-
 function OrganizationProbe() {
   const { organization, params } = useConsoleScope();
   return <p>{`${params.orgHandle}:${organization?.displayName ?? 'none'}`}</p>;
@@ -195,15 +191,6 @@ describe('ConsoleScopeProvider organization switching', () => {
       expect(await screen.findByText('org-a:Org A')).toBeInTheDocument();
 
       moveSession(switchingSession(orgB, exchangeOrgToken));
-
-      await waitFor(() => expect(replace).toHaveBeenCalledWith(routes.organizationHome('org-b')));
-      expect(exchangeOrgToken).not.toHaveBeenCalled();
-    });
-
-    it('still follows after a reload or a new sign-in, which start the page afresh', async () => {
-      sessionStorage.setItem('api-control-plane:settled-org', 'org-a');
-      const exchangeOrgToken = vi.fn().mockResolvedValue(true);
-      renderTab(routes.organizationHome('org-a'), switchingSession(orgB, exchangeOrgToken));
 
       await waitFor(() => expect(replace).toHaveBeenCalledWith(routes.organizationHome('org-b')));
       expect(exchangeOrgToken).not.toHaveBeenCalled();

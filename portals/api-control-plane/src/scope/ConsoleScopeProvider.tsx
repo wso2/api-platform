@@ -69,24 +69,6 @@ const messages = defineMessages({
   },
 });
 
-const SETTLED_ORG_KEY = 'api-control-plane:settled-org';
-
-function readSettledOrg(): string | undefined {
-  try {
-    return window.sessionStorage.getItem(SETTLED_ORG_KEY) ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function storeSettledOrg(orgHandle: string) {
-  try {
-    window.sessionStorage.setItem(SETTLED_ORG_KEY, orgHandle);
-  } catch {
-    // Without storage, a reload or a new sign-in forgets it, and the URL's organization wins.
-  }
-}
-
 export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
   const intl = useIntl();
   const routeParams = useParams<ConsoleRouteParams>();
@@ -94,8 +76,8 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
   const { canSwitchOrganization, exchangeOrgToken, isAuthenticated, user } = useAuth();
   const sessionOrgHandle = user?.org?.handle;
   const [switchFailure, setSwitchFailure] = useState<{ orgHandle: string; error: unknown }>();
-  // The organization this tab last had the session in, kept across a reload or a new sign-in.
-  const [settledOrgHandle, setSettledOrgHandle] = useState(readSettledOrg);
+  // The organization this tab last had the session in.
+  const [settledOrgHandle, setSettledOrgHandle] = useState<string>();
   const [tokenReadyOrgHandle, setTokenReadyOrgHandle] = useState<string>();
   const [orgTokenError, setOrgTokenError] = useState<Error>();
   const pathnameParams = useMemo(
@@ -178,7 +160,6 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     if (!canSwitchOrganization || !isAuthenticated || !orgHandle) return undefined;
     if (orgHandle === sessionOrgHandle) {
       setSettledOrgHandle(orgHandle);
-      storeSettledOrg(orgHandle);
       return undefined;
     }
     if (settledOrgHandle === orgHandle && sessionOrgHandle) {
