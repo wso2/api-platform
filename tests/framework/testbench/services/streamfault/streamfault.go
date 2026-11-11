@@ -62,6 +62,12 @@ const (
 	// ModeDrip sends headers at once and then streams slowly, so a route timeout cuts the
 	// body rather than the handshake.
 	ModeDrip = "drip"
+	// ModePlain is an ordinary non-streaming 200. It exists because WHEN a success is graded
+	// depends on its shape: a proxy cannot know a streamed response succeeded until the
+	// stream ends, so it defers to the access log and the verdict arrives asynchronously. A
+	// scenario that needs a success to have been counted before its next request sends one
+	// of these, which the response phase can grade on the spot.
+	ModePlain = "plain"
 )
 
 // truncateHold is how long ModeTruncate streams before resetting. The delay is load-bearing:
@@ -108,6 +114,8 @@ func (s *Service) serve(w http.ResponseWriter, r *http.Request) {
 		fail(w, r)
 	case ModeDrip:
 		drip(w, r)
+	case ModePlain:
+		plain(w, r)
 	default:
 		whole(w, r)
 	}
@@ -118,6 +126,16 @@ func whole(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "data: {\"served_by\":%q,\"complete\":true}\n\ndata: [DONE]\n\n", r.URL.Path)
+}
+
+// plain writes an ordinary JSON 200: fixed length, no chunking, no event-stream content type,
+// so nothing about it is provisional.
+func plain(w http.ResponseWriter, r *http.Request) {
+	body := fmt.Sprintf("{\"served_by\":%q,\"complete\":true}", r.URL.Path)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, body)
 }
 
 // fail refuses before any body, so the proxy may still retry the attempt elsewhere.

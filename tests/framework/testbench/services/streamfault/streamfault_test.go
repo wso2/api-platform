@@ -70,6 +70,24 @@ func TestWholeIsTheDefaultAndCompletes(t *testing.T) {
 	}
 }
 
+// TestPlainIsNotProvisional covers the one property ModePlain exists for: nothing about the
+// response defers the question of whether it succeeded. A chunked body or an event-stream
+// content type would, and a caller grading on the spot would have to wait for the stream.
+func TestPlainIsNotProvisional(t *testing.T) {
+	srv := httptest.NewServer(New().Handler())
+	defer srv.Close()
+
+	resp, body, readErr := get(t, srv, ModePlain, "")
+	require.NoError(t, readErr)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+	require.NotEqual(t, "chunked", resp.TransferEncoding, "a chunked body is provisional until it ends")
+	require.Empty(t, resp.TransferEncoding)
+	require.Equal(t, int64(len(body)), resp.ContentLength, "a declared length is what makes it final")
+	require.Contains(t, body, "/upstream/path")
+	require.NotContains(t, body, "data:", "SSE framing would make this a stream again")
+}
+
 func TestFailRefusesBeforeAnyBody(t *testing.T) {
 	srv := httptest.NewServer(New().Handler())
 	defer srv.Close()
