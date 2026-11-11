@@ -20,6 +20,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -29,6 +31,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -1660,15 +1663,16 @@ func (s *leftoverStub) handler(w http.ResponseWriter, r *http.Request) {
 
 func newLeftoverStub() *leftoverStub {
 	return &leftoverStub{failing: map[string]int{}, listedProjects: map[string][]string{}, lists: map[string][]map[string]any{
-		"/secrets": {{"id": "syn-secret-abcde234-1"}, {"id": "ops-secret"}},
+		"/secrets":             {{"id": "syn-secret-abcde234-1"}, {"id": "ops-secret"}},
+		"/managed-api-portals": {{"id": "syn-portal-abcde234-3", "name": "Synthetic syn-portal-abcde234-3"}, {"id": "ops-portal", "name": "Operations portal"}},
 		"/managed-gateways": {
 			{"id": "development-syn-gw-abcde234-1", "environment": "development"},
 			{"id": "development-default", "environment": "development"},
 			{"id": "development-syn-gw-zzzzz222-1", "environment": "development"},
 			{"id": "development-syn-gw-ab", "displayName": "syn-gw-abcde234-12", "environment": "development"},
 		},
-		"/projects":                    {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
-		"/rest-apis?projectId=default": {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
+		"/projects":                                   {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
+		"/rest-apis?projectId=default":                {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
 		"/rest-apis?projectId=syn-project-abcde234-2": {{"id": "syn-api-abcde234-2"}},
 		"/rest-apis?projectId=ops-project":            {{"id": "syn-api-abcde234-9"}},
 		"/pipelines":                                  {{"name": "default"}, {"name": "syn-pipeline-abcde234-1"}},
@@ -1696,13 +1700,14 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		"rest-apis/syn-api-abcde234-1",
 		"rest-apis/syn-api-abcde234-2",
 		"secrets/syn-secret-abcde234-1",
+		"managed-api-portals/syn-portal-abcde234-3",
 		"managed-gateways/development-syn-gw-abcde234-1",
 		"managed-gateways/development-syn-gw-ab",
 		"projects/syn-project-abcde234-2",
 		"pipelines/syn-pipeline-abcde234-1",
 		"environments/syn-env-abcde234-1",
-	}, stub.deleted[:8])
-	require.Len(t, removed, 8)
+	}, stub.deleted[:9])
+	require.Len(t, removed, 9)
 	for _, collection := range projectScopedCollections {
 		require.ElementsMatch(t, []string{"default", "syn-project-abcde234-2"}, stub.listedProjects[collection],
 			collection+" is listed for the default project and the run's projects only")
@@ -1712,6 +1717,7 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		require.NotContains(t, id, "zzzzz222")
 		require.NotContains(t, id, "ops-api")
 		require.NotContains(t, id, "syn-api-abcde234-9")
+		require.NotContains(t, id, "ops-portal")
 	}
 }
 
@@ -3066,7 +3072,7 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 				answer["status"], answer["statusReason"] = "FAILED", p.failsWith
 			}
 			_ = json.NewEncoder(w).Encode(answer)
-		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis"}, r.URL.Path):
+		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis", "/managed-api-portals"}, r.URL.Path):
 			// What the finalizer reads: this organisation holds none of it.
 			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{}})
 		default:
@@ -3911,4 +3917,838 @@ func TestDeleteProjectThroughCloudAPISendsOneRequestAndReportsARefusal(t *testin
 		require.Equal(t, []string{"DELETE " + coreAPIRoute + "/projects/syn-project-1"}, requests, "status %d", status)
 		require.Equal(t, "Bearer console-token", authorization)
 	}
+}
+
+// fastPortalPolls lowers the portal poll interval to the retry floor for one test.
+func fastPortalPolls(t *testing.T) {
+	t.Helper()
+	previous := portalPollInterval
+	portalPollInterval = retry.BaseInterval
+	t.Cleanup(func() { portalPollInterval = previous })
+}
+
+func registeredPortals(registry *cleanup.Registry) []string {
+	var ids []string
+	for _, resource := range registry.Pending() {
+		if resource.Kind == kindAPIPortal {
+			ids = append(ids, resource.ID)
+		}
+	}
+	return ids
+}
+
+func TestRequestRunnerPortalRegistersThePortalBeforeTheRequest(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var sent map[string]any
+	var registeredAtRequest []string
+	var registry *cleanup.Registry
+	answer := http.StatusAccepted
+	steps, ctx, _, reg := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, managedPortalsCollection, r.URL.Path)
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+		registeredAtRequest = registeredPortals(registry)
+		writeJSON(w, answer, map[string]any{"id": sent["handle"], "name": sent["name"], "status": portalStatusPending})
+	})
+	registry = reg
+
+	require.ErrorContains(t, steps.assertPortalAccepted(ctx), "requested no managed API Portal")
+	require.NoError(t, steps.requestRunnerPortal(ctx))
+	handle, err := runnerPortal(ctx)
+	require.NoError(t, err)
+	require.Equal(t, handle, sent["handle"])
+	require.Equal(t, "Synthetic "+handle, sent["name"])
+	require.NotContains(t, sent, "loginEnvironment", "the login environment is left to the platform's default")
+	require.LessOrEqual(t, len(handle), portalHandleMaxLength)
+	require.Equal(t, []string{handle}, registeredAtRequest, "the portal is registered before the request that creates it")
+	require.NoError(t, steps.assertPortalAccepted(ctx))
+
+	answer = http.StatusCreated
+	require.NoError(t, steps.requestRunnerPortal(ctx))
+	require.NoError(t, steps.assertPortalAccepted(ctx), "a portal the platform built before answering is accepted too")
+}
+
+func TestRequestRunnerPortalDropsTheRegistrationOfARefusedPortal(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusPaymentRequired, map[string]string{"code": "payment_required"})
+	})
+	require.NoError(t, steps.requestRunnerPortal(ctx))
+	require.Empty(t, registeredPortals(registry))
+	require.ErrorContains(t, steps.assertPortalAccepted(ctx), "not accepted")
+}
+
+func TestAssertPortalAcceptedChecksTheHandleAndThePendingStatus(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	body := map[string]any{}
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusAccepted, body)
+	})
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	for _, tc := range []struct {
+		body map[string]any
+		want string
+	}{
+		{map[string]any{"status": portalStatusPending}, "reading the id"},
+		{map[string]any{"id": "another-portal", "status": portalStatusPending}, "want the requested handle"},
+		{map[string]any{"id": "syn-portal-1", "status": portalStatusActive}, "should read as pending"},
+		{map[string]any{"id": "syn-portal-1"}, "should read as pending"},
+	} {
+		body = tc.body
+		_, err := steps.doAuthenticated(ctx, http.MethodGet, "/answer", nil)
+		require.NoError(t, err)
+		require.ErrorContains(t, steps.assertPortalAccepted(ctx), tc.want)
+	}
+}
+
+func TestAwaitPortalActiveWaitsForTheBuildAndRecordsTheURL(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	fastPortalPolls(t)
+	reads := 0
+	activeAt := 3
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, portalPath("syn-portal-1"), r.URL.Path)
+		reads++
+		if reads == 1 {
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "not_found"})
+			return
+		}
+		if reads < activeAt {
+			writeJSON(w, http.StatusOK, map[string]any{"id": "syn-portal-1", "status": portalStatusPending})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"id": "syn-portal-1", "status": portalStatusActive,
+			"url": "https://abc123-portal-p01.example.test", "loginEnvironment": "development", "selfSignup": true})
+	})
+	require.ErrorContains(t, steps.awaitPortalActive(ctx), "requested no managed API Portal")
+
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	require.NoError(t, steps.awaitPortalActive(ctx))
+	require.Equal(t, activeAt, reads, "a portal that briefly reads as not found while it is built is read again")
+	portalURL, err := requiredValue(ctx, keyAPIPortalURL)
+	require.NoError(t, err)
+	require.Equal(t, "https://abc123-portal-p01.example.test", portalURL)
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	status, err := stringField(published, "status")
+	require.NoError(t, err)
+	require.Equal(t, portalStatusActive, status, "the active read is published for the assertions that follow")
+	require.NoError(t, steps.assertPortalURL(ctx))
+
+	reads = activeAt
+	require.NoError(t, steps.awaitPortalActive(ctx), "an active portal passes on the first read")
+	require.Equal(t, activeAt+1, reads)
+}
+
+func TestAwaitPortalActiveStopsAtAFailedPortalOrARefusedRead(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	fastPortalPolls(t)
+	status, code := portalStatusFailed, http.StatusOK
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, code, map[string]any{"id": "syn-portal-1", "status": status})
+	})
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	started := time.Now()
+	require.ErrorIs(t, steps.awaitPortalActive(ctx), errPortalFailed)
+	code = http.StatusForbidden
+	require.ErrorContains(t, steps.awaitPortalActive(ctx), "403")
+	require.Less(t, time.Since(started), 10*time.Second, "neither a failed portal nor a refused read is waited for")
+}
+
+func TestRequireSecureURL(t *testing.T) {
+	t.Setenv(cloudLocalDataPlaneEnv, "")
+	require.Error(t, requireSecureURL(nil))
+	for _, accepted := range []string{"https://abc-portal-p01.example.test", "https://127.0.0.1:8443/api-portal"} {
+		parsed, err := url.Parse(accepted)
+		require.NoError(t, err)
+		require.NoError(t, requireSecureURL(parsed), accepted)
+	}
+	for _, refused := range []string{"http://abc-portal-p01.example.test", "https://user:pass@example.test", "/api-portal/login", "http://portal.localhost"} {
+		parsed, err := url.Parse(refused)
+		require.NoError(t, err)
+		err = requireSecureURL(parsed)
+		require.Error(t, err, refused)
+		require.NotContains(t, err.Error(), "pass@", "an error never repeats a credential")
+	}
+	t.Setenv(cloudLocalDataPlaneEnv, "true")
+	parsed, err := url.Parse("http://portal.localhost:8080")
+	require.NoError(t, err)
+	require.NoError(t, requireSecureURL(parsed), "a cloud on the developer's machine serves plain http on .localhost")
+}
+
+func TestAssertPortalURLRequiresAnHTTPSURL(t *testing.T) {
+	t.Setenv(cloudLocalDataPlaneEnv, "")
+	_, ctx, local, _ := cloudSteps(t, func(http.ResponseWriter, *http.Request) {})
+	steps := &Steps{}
+	require.ErrorContains(t, steps.assertPortalURL(ctx), "reported no URL")
+	local.Set(keyAPIPortalURL, "http://abc-portal-p01.example.test")
+	require.ErrorContains(t, steps.assertPortalURL(ctx), "https")
+	local.Set(keyAPIPortalURL, "https://abc-portal-p01.example.test")
+	require.NoError(t, steps.assertPortalURL(ctx))
+}
+
+func TestAssertPortalListedRequiresTheActivePortal(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	listed := []map[string]any{{"id": "ops-portal", "status": portalStatusActive}}
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, managedPortalsCollection, r.URL.Path)
+		writeJSON(w, http.StatusOK, map[string]any{"count": len(listed), "list": listed})
+	})
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	require.ErrorContains(t, steps.assertPortalListed(ctx), "does not include")
+	listed = append(listed, map[string]any{"id": "syn-portal-1", "status": portalStatusPending})
+	require.ErrorContains(t, steps.assertPortalListed(ctx), "status pending")
+	listed[1]["status"] = portalStatusActive
+	require.NoError(t, steps.assertPortalListed(ctx))
+}
+
+func TestRequestDuplicatePortalRepeatsTheHandleWithAnotherName(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var sent map[string]any
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+		writeJSON(w, http.StatusConflict, map[string]string{"code": "conflict"})
+	})
+	require.ErrorContains(t, steps.requestDuplicatePortal(ctx), "requested no managed API Portal")
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	require.NoError(t, steps.requestDuplicatePortal(ctx))
+	require.Equal(t, "syn-portal-1", sent["handle"])
+	require.NotEqual(t, "Synthetic syn-portal-1", sent["name"])
+	require.Empty(t, registeredPortals(registry), "the handle is the runner's and already registered")
+}
+
+func TestRequestDuplicatePortalSkipsWhereThePlanHasNoRoomForAnotherPortal(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	code, body := http.StatusPaymentRequired, map[string]string{"code": portalQuotaExceededCode, "message": "Hard limit reached: 1 of 1 used"}
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, code, body)
+	})
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	require.ErrorIs(t, steps.requestDuplicatePortal(ctx), godog.ErrSkip, "a full plan cannot show the duplicate handle")
+
+	body = map[string]string{"code": "payment_required"}
+	require.NoError(t, steps.requestDuplicatePortal(ctx), "another 402 is left to the status assertion")
+	code, body = http.StatusConflict, map[string]string{"code": "conflict"}
+	require.NoError(t, steps.requestDuplicatePortal(ctx))
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusConflict, published.StatusCode)
+}
+
+func TestAssertPortalStillActive(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	status, code := portalStatusActive, http.StatusOK
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, code, map[string]any{"id": "syn-portal-1", "status": status})
+	})
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	require.NoError(t, steps.assertPortalStillActive(ctx))
+	status = portalStatusPending
+	require.ErrorContains(t, steps.assertPortalStillActive(ctx), "want active")
+	code = http.StatusNotFound
+	require.Error(t, steps.assertPortalStillActive(ctx))
+}
+
+func TestRequestDefectivePortalBreaksOneRuleAndRegistersTheHandleFirst(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var sent map[string]any
+	var registeredAtRequest []string
+	var registry *cleanup.Registry
+	steps, ctx, _, reg := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+		registeredAtRequest = registeredPortals(registry)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "bad_request"})
+	})
+	registry = reg
+	require.ErrorContains(t, steps.requestDefectivePortal(ctx, "with a typo"), "unknown managed API Portal request defect")
+
+	checks := map[string]func(handle, name string){
+		"an uppercase handle": func(handle, _ string) {
+			require.Equal(t, strings.ToUpper(handle), handle)
+			require.NotEqual(t, strings.ToLower(handle), handle)
+		},
+		"a handle with an underscore":        func(handle, _ string) { require.Contains(t, handle, "_") },
+		"a handle shorter than 3 characters": func(handle, _ string) { require.Len(t, handle, 2) },
+		"a handle longer than 40 characters": func(handle, _ string) { require.Greater(t, len(handle), portalHandleMaxLength) },
+		"no name": func(handle, name string) {
+			require.Empty(t, name)
+			require.Regexp(t, `^[a-z0-9-]{3,40}$`, handle, "only the name is wrong")
+		},
+	}
+	require.Len(t, checks, len(portalRequestDefects), "every defect is checked")
+	for defect, check := range checks {
+		sent, registeredAtRequest = nil, nil
+		require.NoError(t, steps.requestDefectivePortal(ctx, defect), defect)
+		handle, _ := sent["handle"].(string)
+		name, _ := sent["name"].(string)
+		check(handle, name)
+		refused, err := requiredValue(ctx, keyRefusedAPIPortalID)
+		require.NoError(t, err)
+		require.Equal(t, refused, handle, defect)
+		require.Equal(t, []string{handle}, registeredAtRequest, defect+": registered before the request")
+		require.Empty(t, registeredPortals(registry), defect+": a refused portal is no longer registered")
+	}
+}
+
+func TestRequestDefectivePortalKeepsTheRegistrationOfAnAcceptedPortal(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusAccepted, map[string]any{"status": portalStatusPending})
+	})
+	require.NoError(t, steps.requestDefectivePortal(ctx, "no name"))
+	refused, err := requiredValue(ctx, keyRefusedAPIPortalID)
+	require.NoError(t, err)
+	require.Equal(t, []string{refused}, registeredPortals(registry), "a portal accepted against expectation is removed by cleanup")
+}
+
+func TestRequestPortalInAbsentEnvironmentNamesAnEnvironmentNobodyCreated(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var sent map[string]any
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "bad_request"})
+	})
+	require.NoError(t, steps.requestPortalInAbsentEnvironment(ctx))
+	environment, _ := sent["loginEnvironment"].(string)
+	require.True(t, strings.HasPrefix(environment, "syn-no-env-"), environment)
+	require.Regexp(t, `^[a-z0-9-]{3,40}$`, sent["handle"])
+	require.NotEmpty(t, sent["name"])
+	_, overwritten := tcontext.Get(ctx, keyEnvironmentName)
+	require.False(t, overwritten, "the environment the other steps name is left alone")
+}
+
+func TestAssertRefusedPortalNotListed(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	listed := []map[string]any{{"id": "ops-portal"}}
+	code := http.StatusOK
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, code, map[string]any{"list": listed})
+	})
+	require.ErrorContains(t, steps.assertRefusedPortalNotListed(ctx), "requested no managed API Portal")
+	local.Set(keyRefusedAPIPortalID, "SYN-PORTAL-1")
+	require.NoError(t, steps.assertRefusedPortalNotListed(ctx))
+	listed = append(listed, map[string]any{"id": "syn-portal-1"})
+	require.ErrorContains(t, steps.assertRefusedPortalNotListed(ctx), "is listed", "a handle is compared without regard to case")
+	listed = listed[:1]
+	code = http.StatusInternalServerError
+	require.Error(t, steps.assertRefusedPortalNotListed(ctx), "a list that does not answer proves nothing")
+}
+
+func TestReadRunnerAndAbsentPortals(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var seen []string
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "not_found"})
+	})
+	require.ErrorContains(t, steps.readRunnerPortal(ctx), "requested no managed API Portal")
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	require.NoError(t, steps.readRunnerPortal(ctx))
+	require.NoError(t, steps.readAbsentPortal(ctx))
+	absent, err := requiredValue(ctx, keyAbsentAPIPortalID)
+	require.NoError(t, err)
+	require.NotEqual(t, "syn-portal-1", absent)
+	require.Equal(t, []string{"GET " + portalPath("syn-portal-1"), "GET " + portalPath(absent)}, seen)
+	require.Empty(t, registry.Pending(), "a portal that is never created is never registered")
+}
+
+func TestAssertPortalDeletionAccepted(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	code := http.StatusAccepted
+	body := map[string]any{"id": "syn-portal-1", "status": portalStatusDeleting}
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodDelete, r.Method)
+		if code == http.StatusNoContent {
+			w.WriteHeader(code)
+			return
+		}
+		writeJSON(w, code, body)
+	})
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	require.NoError(t, steps.deleteRunnerPortal(ctx))
+	require.NoError(t, steps.assertPortalDeletionAccepted(ctx))
+	body["status"] = portalStatusActive
+	require.NoError(t, steps.deleteRunnerPortal(ctx))
+	require.ErrorContains(t, steps.assertPortalDeletionAccepted(ctx), "should read as deleting")
+	code = http.StatusNoContent
+	require.NoError(t, steps.deleteRunnerPortal(ctx))
+	require.NoError(t, steps.assertPortalDeletionAccepted(ctx))
+	code = http.StatusConflict
+	require.NoError(t, steps.deleteRunnerPortal(ctx))
+	require.ErrorContains(t, steps.assertPortalDeletionAccepted(ctx), "not accepted")
+}
+
+func TestAwaitPortalGoneWaitsForTheTeardownAndDropsTheRegistration(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	fastPortalPolls(t)
+	reads := 0
+	listed := []map[string]any{}
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == managedPortalsCollection {
+			writeJSON(w, http.StatusOK, map[string]any{"list": listed})
+			return
+		}
+		reads++
+		if reads < 3 {
+			writeJSON(w, http.StatusOK, map[string]any{"id": "syn-portal-1", "status": portalStatusDeleting})
+			return
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "not_found"})
+	})
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	require.NoError(t, cleanup.RegisterRunner(ctx, portalResource("syn-portal-1")))
+	require.NoError(t, steps.awaitPortalGone(ctx))
+	require.Equal(t, 3, reads)
+	require.Empty(t, registeredPortals(registry), "a deleted portal is not deleted again by cleanup")
+
+	listed = []map[string]any{{"id": "syn-portal-1", "status": portalStatusDeleting}}
+	require.ErrorContains(t, steps.awaitPortalGone(ctx), "still listed")
+}
+
+func TestDeletePortalRepeatsARefusalUntilTheBuildEnds(t *testing.T) {
+	fastPortalPolls(t)
+	var answers []int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodDelete, r.Method)
+		require.Equal(t, "Bearer console-token", r.Header.Get("Authorization"))
+		require.Equal(t, portalPath("syn-portal-1"), r.URL.Path)
+		code := answers[0]
+		if len(answers) > 1 {
+			answers = answers[1:]
+		}
+		w.WriteHeader(code)
+	}))
+	t.Cleanup(server.Close)
+	client := httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})
+
+	answers = []int{http.StatusConflict, http.StatusConflict, http.StatusAccepted}
+	require.NoError(t, deletePortal(context.Background(), client, server.URL, "console-token", "syn-portal-1", time.Minute))
+	require.Equal(t, []int{http.StatusAccepted}, answers, "the delete is repeated while the portal is still being built")
+
+	answers = []int{http.StatusNotFound}
+	require.NoError(t, deletePortal(context.Background(), client, server.URL, "console-token", "syn-portal-1", time.Minute),
+		"an absent portal counts as deleted")
+
+	answers = []int{http.StatusForbidden}
+	started := time.Now()
+	err := deletePortal(context.Background(), client, server.URL, "console-token", "syn-portal-1", time.Minute)
+	require.ErrorContains(t, err, "403")
+	require.Less(t, time.Since(started), 10*time.Second, "a refusal that will not change is not repeated")
+}
+
+func TestRegisterDeletersDeletesARegisteredPortal(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	fastPortalPolls(t)
+	var seen []string
+	reads := 0
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		if r.Method == http.MethodDelete {
+			writeJSON(w, http.StatusAccepted, map[string]any{"status": portalStatusDeleting})
+			return
+		}
+		reads++
+		if reads == 1 {
+			writeJSON(w, http.StatusOK, map[string]any{"id": "syn-portal-1", "status": portalStatusDeleting})
+			return
+		}
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "not_found"})
+	})
+	registry := cleanup.NewRegistry(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	require.NoError(t, RegisterDeleters(registry, topo))
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	require.NoError(t, cleanup.Install(ctx, registry))
+	require.NoError(t, cleanup.RegisterRunner(ctx, portalResource("syn-portal-1")))
+	require.NoError(t, registry.SweepRunner(ctx))
+	require.Equal(t, []string{"DELETE " + portalPath("syn-portal-1"), "GET " + portalPath("syn-portal-1"), "GET " + portalPath("syn-portal-1")}, seen,
+		"cleanup waits until the portal is gone, which frees the quota and leaves the finalizer nothing to find")
+	require.Empty(t, registry.Pending())
+}
+
+// fakePortalSite is a managed API Portal and its identity provider, each on a TLS server of its
+// own, that behave as the sign-in steps expect the real ones to. The identity provider serves
+// under a path prefix, as one behind a shared gateway does.
+type fakePortalSite struct {
+	t      *testing.T
+	portal *httptest.Server
+	idp    *httptest.Server
+
+	mu       sync.Mutex
+	users    map[string]string
+	sessions map[string]bool
+	flows    []map[string]any
+	// wrongPasswordStatus is how the identity provider answers a wrong password: 200 with an
+	// ERROR flow status, or a client error.
+	wrongPasswordStatus int
+	// clientID and callbackHost let a test break the authorization request the portal sends.
+	clientID     string
+	callbackHost string
+}
+
+const fakeIdentityPrefix = "/t/acme"
+
+func newFakePortalSite(t *testing.T) *fakePortalSite {
+	t.Helper()
+	site := &fakePortalSite{t: t, users: map[string]string{}, sessions: map[string]bool{}, clientID: "portal-client",
+		wrongPasswordStatus: http.StatusOK}
+	site.portal = httptest.NewTLSServer(http.HandlerFunc(site.servePortal))
+	site.idp = httptest.NewTLSServer(http.HandlerFunc(site.serveIdentity))
+	t.Cleanup(site.portal.Close)
+	t.Cleanup(site.idp.Close)
+	site.callbackHost = site.portal.URL
+	return site
+}
+
+// client trusts the fake servers' certificate, which the two servers share.
+func (f *fakePortalSite) client() *httpx.Client {
+	pool := x509.NewCertPool()
+	pool.AddCert(f.portal.Certificate())
+	return httpx.NewClient(httpx.Options{Timeout: 5 * time.Second, TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}})
+}
+
+func (f *fakePortalSite) sessionOf(r *http.Request) string {
+	if cookie, err := r.Cookie("portal.sid"); err == nil {
+		return cookie.Value
+	}
+	return ""
+}
+
+func (f *fakePortalSite) servePortal(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	const view = "/api-portal/acme/views/default"
+	switch r.URL.Path {
+	case "/api-portal/login":
+		http.Redirect(w, r, view+"/login", http.StatusFound)
+	case view + "/login":
+		http.SetCookie(w, &http.Cookie{Name: "portal.sid", Value: "anonymous", Path: "/api-portal"})
+		query := url.Values{"response_type": {"code"}, "client_id": {f.clientID}, "state": {"st"},
+			"redirect_uri": {f.callbackHost + "/api-portal/acme/callback"}}
+		http.Redirect(w, r, f.idp.URL+fakeIdentityPrefix+"/oauth2/authorize?"+query.Encode(), http.StatusFound)
+	case "/api-portal/acme/callback":
+		if f.sessionOf(r) != "anonymous" || r.URL.Query().Get("code") != "the-code" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		session := "signed-in-" + strconv.Itoa(len(f.sessions))
+		f.sessions[session] = true
+		http.SetCookie(w, &http.Cookie{Name: "portal.sid", Value: session, Path: "/api-portal"})
+		http.Redirect(w, r, view, http.StatusFound)
+	case view + "/applications":
+		if !f.sessions[f.sessionOf(r)] {
+			http.Redirect(w, r, view+"/login", http.StatusSeeOther)
+			return
+		}
+		_, _ = w.Write([]byte("<html>applications</html>"))
+	case view + "/logout":
+		delete(f.sessions, f.sessionOf(r))
+		http.Redirect(w, r, f.idp.URL+fakeIdentityPrefix+"/oauth2/logout", http.StatusFound)
+	default:
+		f.t.Errorf("unexpected portal request %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+func (f *fakePortalSite) serveIdentity(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	switch r.URL.Path {
+	case fakeIdentityPrefix + "/oauth2/authorize":
+		http.Redirect(w, r, f.idp.URL+"/gate/signin?executionId=exec-1&authId=auth-1", http.StatusFound)
+	case fakeIdentityPrefix + "/flow/execute":
+		var body map[string]any
+		require.NoError(f.t, json.NewDecoder(r.Body).Decode(&body))
+		f.flows = append(f.flows, body)
+		require.Equal(f.t, "exec-1", body["executionId"])
+		inputs, _ := body["inputs"].(map[string]any)
+		switch {
+		case body["action"] == nil:
+			writeJSON(w, http.StatusOK, map[string]any{"executionId": "exec-1", "flowStatus": "INCOMPLETE", "challengeToken": "ch-1"})
+		case body["action"] == flowActionSignUp:
+			require.Equal(f.t, "ch-1", body["challengeToken"])
+			writeJSON(w, http.StatusOK, map[string]any{"executionId": "exec-1", "flowStatus": "INCOMPLETE", "challengeToken": "ch-2"})
+		case body["action"] == flowActionSubmit && inputs["email"] != nil:
+			require.Equal(f.t, "ch-2", body["challengeToken"])
+			f.users[inputs["username"].(string)] = inputs["password"].(string)
+			writeJSON(w, http.StatusOK, map[string]any{"executionId": "exec-1", "flowStatus": flowStatusComplete, "assertion": "the-assertion"})
+		case body["action"] == flowActionSubmit:
+			require.Equal(f.t, "ch-1", body["challengeToken"])
+			if password, known := f.users[inputs["username"].(string)]; known && password == inputs["password"] {
+				writeJSON(w, http.StatusOK, map[string]any{"executionId": "exec-1", "flowStatus": flowStatusComplete, "assertion": "the-assertion"})
+				return
+			}
+			if f.wrongPasswordStatus != http.StatusOK {
+				writeJSON(w, f.wrongPasswordStatus, map[string]any{"code": "FES-1001", "message": "Invalid credentials"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"executionId": "exec-1", "flowStatus": flowStatusError, "failureReason": "Invalid credentials"})
+		default:
+			f.t.Errorf("unexpected flow action %v", body["action"])
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	case fakeIdentityPrefix + "/oauth2/auth/callback":
+		var body map[string]any
+		require.NoError(f.t, json.NewDecoder(r.Body).Decode(&body))
+		require.Equal(f.t, "auth-1", body["authId"])
+		require.Equal(f.t, "the-assertion", body["assertion"])
+		require.Equal(f.t, []any{}, body["sessionData"], "the callback carries a list even when the flow reported no session")
+		writeJSON(w, http.StatusOK, map[string]any{"redirect_uri": f.portal.URL + "/api-portal/acme/callback?code=the-code&state=st"})
+	default:
+		f.t.Errorf("unexpected identity provider request %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+// signInSteps returns steps whose client trusts the fake site, in a runner whose portal is the
+// fake portal.
+func signInSteps(t *testing.T, site *fakePortalSite) (*Steps, context.Context) {
+	t.Helper()
+	client := site.client()
+	steps := &Steps{funnel: httpx.NewFunnel(client, 0, 0), client: client}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	require.NoError(t, tcontext.Set(ctx, keyAPIPortalURL, site.portal.URL))
+	return steps, ctx
+}
+
+func TestViewSignInPage(t *testing.T) {
+	org, view, ok := viewSignInPage("/api-portal/acme/views/default/login")
+	require.True(t, ok)
+	require.Equal(t, "acme", org)
+	require.Equal(t, "default", view)
+	for _, other := range []string{"/api-portal/login", "/api-portal/acme/views/default", "/portal/acme/views/default/login",
+		"/api-portal//views/default/login", "/api-portal/acme/pages/default/login", "/api-portal/acme/views/default/login/extra"} {
+		_, _, ok := viewSignInPage(other)
+		require.False(t, ok, other)
+	}
+}
+
+func TestIdentityBaseKeepsThePrefixAndDropsTheQuery(t *testing.T) {
+	authorize, err := url.Parse("https://idp.example.test/t/acme/oauth2/authorize?client_id=c#x")
+	require.NoError(t, err)
+	base := identityBase(authorize)
+	require.Equal(t, "https://idp.example.test/t/acme", base.String())
+	require.Equal(t, "https://idp.example.test/t/acme/flow/execute", joinURLPath(base, identityFlowPath))
+	require.Equal(t, "https://idp.example.test/t/acme/oauth2/authorize?client_id=c#x", authorize.String(), "the authorization URL is left as it was")
+}
+
+func TestOpenSignInFollowsThePortalToItsIdentityProvider(t *testing.T) {
+	site := newFakePortalSite(t)
+	steps, ctx := signInSteps(t, site)
+	require.ErrorContains(t, steps.assertSentToIdentityProvider(ctx), "opened no managed API Portal")
+
+	require.NoError(t, steps.openSignInAsVisitor(ctx))
+	require.NoError(t, steps.assertSentToIdentityProvider(ctx))
+	browser, err := scenarioBrowser(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "acme", browser.org)
+	require.Equal(t, "default", browser.view)
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusFound, published.StatusCode, "the answer that sent the visitor away is published")
+
+	site.clientID = ""
+	require.NoError(t, steps.openSignInAsVisitor(ctx))
+	require.ErrorContains(t, steps.assertSentToIdentityProvider(ctx), "names no client")
+	site.clientID, site.callbackHost = "portal-client", site.idp.URL
+	require.NoError(t, steps.openSignInAsVisitor(ctx))
+	require.ErrorContains(t, steps.assertSentToIdentityProvider(ctx), "not to the portal")
+}
+
+func TestOpenSignInRefusesAPortalWithoutAnHTTPSURL(t *testing.T) {
+	t.Setenv(cloudLocalDataPlaneEnv, "")
+	site := newFakePortalSite(t)
+	steps, ctx := signInSteps(t, site)
+	require.NoError(t, tcontext.Set(ctx, keyAPIPortalURL, strings.Replace(site.portal.URL, "https://", "http://", 1)))
+	require.ErrorContains(t, steps.openSignInAsVisitor(ctx), "https")
+}
+
+func TestSignUpThenSignInKeepsTheConsumersSession(t *testing.T) {
+	site := newFakePortalSite(t)
+	steps, ctx := signInSteps(t, site)
+	require.ErrorContains(t, steps.signInConsumer(ctx), "signed up no consumer")
+
+	require.NoError(t, steps.signUpConsumer(ctx))
+	username, password, err := consumerCredentials(ctx)
+	require.NoError(t, err)
+	require.Equal(t, password, site.users[username])
+	require.Equal(t, []any{nil, flowActionSignUp, flowActionSubmit}, flowActions(site.flows))
+	require.Equal(t, username+"@example.com", site.flows[2]["inputs"].(map[string]any)["email"])
+	require.NoError(t, steps.assertConsumerSignedIn(ctx))
+	require.NoError(t, steps.assertVisitorWithoutSessionSentToSignIn(ctx))
+	require.ErrorContains(t, steps.assertConsumerNotSignedIn(ctx), "was not refused")
+
+	site.flows = nil
+	require.NoError(t, steps.signInConsumer(ctx))
+	require.Equal(t, []any{nil, flowActionSubmit}, flowActions(site.flows))
+	require.NoError(t, steps.assertConsumerSignedIn(ctx))
+	require.ErrorContains(t, steps.assertSignInRefused(ctx), "accepted the sign-in")
+}
+
+func flowActions(flows []map[string]any) []any {
+	actions := make([]any, 0, len(flows))
+	for _, flow := range flows {
+		actions = append(actions, flow["action"])
+	}
+	return actions
+}
+
+func TestAWrongPasswordIsRefusedAndLeavesNoSession(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusBadRequest, http.StatusUnauthorized} {
+		site := newFakePortalSite(t)
+		site.wrongPasswordStatus = status
+		steps, ctx := signInSteps(t, site)
+		require.NoError(t, steps.signUpConsumer(ctx))
+		_, password, err := consumerCredentials(ctx)
+		require.NoError(t, err)
+
+		require.NoError(t, steps.trySignInWithWrongPassword(ctx), "a refusal is the identity provider's answer, not a step failure")
+		require.NoError(t, steps.assertSignInRefused(ctx))
+		require.NoError(t, steps.assertConsumerNotSignedIn(ctx))
+		err = steps.signInConsumer(ctx)
+		require.NoError(t, err, "the right password still signs the consumer in")
+
+		require.NoError(t, steps.trySignInWithWrongPassword(ctx))
+		err = requireSignInAccepted(ctx)
+		require.ErrorContains(t, err, "refused the consumer's sign-in")
+		require.NotContains(t, err.Error(), password, "an error never repeats the consumer's password")
+	}
+}
+
+func TestSignOutEndsTheConsumersSession(t *testing.T) {
+	site := newFakePortalSite(t)
+	steps, ctx := signInSteps(t, site)
+	require.ErrorContains(t, steps.signOutConsumer(ctx), "opened no managed API Portal")
+	require.NoError(t, steps.signUpConsumer(ctx))
+	require.NoError(t, steps.assertConsumerSignedIn(ctx))
+	require.NoError(t, steps.signOutConsumer(ctx))
+	require.NoError(t, steps.assertConsumerNotSignedIn(ctx))
+	require.ErrorContains(t, steps.assertConsumerSignedIn(ctx), "could not open")
+}
+
+// fakePortalPlatform is the portal routes of the platform for the tests of the runner portal: each
+// portal reads with the status the test gives it, a delete turns it into a deleted portal, and a
+// create builds a portal whose status the test chose up front.
+type fakePortalPlatform struct {
+	mu       sync.Mutex
+	statuses map[string]string
+	builds   []string
+	created  []string
+	deleted  []string
+}
+
+func (f *fakePortalPlatform) handler(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	switch {
+	case r.Method == http.MethodPost && r.URL.Path == managedPortalsCollection:
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		handle, _ := body["handle"].(string)
+		f.created = append(f.created, handle)
+		next := portalStatusActive
+		if len(f.builds) > 0 {
+			next, f.builds = f.builds[0], f.builds[1:]
+		}
+		f.statuses[handle] = next
+		writeJSON(w, http.StatusAccepted, map[string]any{"id": handle, "status": portalStatusPending})
+	case r.Method == http.MethodDelete:
+		handle := strings.TrimPrefix(r.URL.Path, managedPortalsCollection+"/")
+		f.deleted = append(f.deleted, handle)
+		delete(f.statuses, handle)
+		writeJSON(w, http.StatusAccepted, map[string]any{"id": handle, "status": portalStatusDeleting})
+	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, managedPortalsCollection+"/"):
+		handle := strings.TrimPrefix(r.URL.Path, managedPortalsCollection+"/")
+		status, ok := f.statuses[handle]
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "not_found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"id": handle, "status": status, "url": "https://" + handle + "-portal-p01.example.test"})
+	default:
+		w.WriteHeader(http.StatusNotImplemented)
+	}
+}
+
+func TestEnsureActiveRunnerPortalUsesTheRunnersActivePortal(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	fastPortalPolls(t)
+	platform := &fakePortalPlatform{statuses: map[string]string{"syn-portal-1": portalStatusActive}}
+	steps, ctx, local, _ := cloudSteps(t, platform.handler)
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	local.Append(keyPortalBuilds, true)
+	require.NoError(t, cleanup.RegisterRunner(ctx, portalResource("syn-portal-1")))
+
+	require.NoError(t, steps.ensureActiveRunnerPortal(ctx))
+	require.Empty(t, platform.created, "an active portal is used as it is")
+	portalURL, err := requiredValue(ctx, keyAPIPortalURL)
+	require.NoError(t, err)
+	require.Equal(t, "https://syn-portal-1-portal-p01.example.test", portalURL)
+}
+
+func TestEnsureActiveRunnerPortalReplacesAFailedPortalOnce(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	fastPortalPolls(t)
+	platform := &fakePortalPlatform{statuses: map[string]string{"syn-portal-1": portalStatusFailed}}
+	steps, ctx, local, registry := cloudSteps(t, platform.handler)
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	local.Set(keyAPIPortalURL, "https://syn-portal-1-portal-p01.example.test")
+	local.Append(keyPortalBuilds, true)
+	require.NoError(t, cleanup.RegisterRunner(ctx, portalResource("syn-portal-1")))
+
+	require.NoError(t, steps.ensureActiveRunnerPortal(ctx))
+	require.Equal(t, []string{"syn-portal-1"}, platform.deleted, "the failed portal is deleted first, which frees the quota")
+	require.Len(t, platform.created, 1)
+	replacement, err := runnerPortal(ctx)
+	require.NoError(t, err)
+	require.Equal(t, platform.created[0], replacement)
+	require.Equal(t, []string{replacement}, registeredPortals(registry), "only the replacement is left for cleanup")
+	portalURL, err := requiredValue(ctx, keyAPIPortalURL)
+	require.NoError(t, err)
+	require.Equal(t, "https://"+replacement+"-portal-p01.example.test", portalURL, "the URL is the replacement's")
+	require.Len(t, local.List(keyPortalBuilds), maxPortalBuilds)
+
+	require.NoError(t, steps.ensureActiveRunnerPortal(ctx), "later scenarios use the replacement")
+	require.Len(t, platform.created, 1)
+}
+
+func TestEnsureActiveRunnerPortalGivesUpWhenTheReplacementFailsToo(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	fastPortalPolls(t)
+	platform := &fakePortalPlatform{statuses: map[string]string{"syn-portal-1": portalStatusFailed}, builds: []string{portalStatusFailed}}
+	steps, ctx, local, _ := cloudSteps(t, platform.handler)
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	local.Append(keyPortalBuilds, true)
+	require.NoError(t, cleanup.RegisterRunner(ctx, portalResource("syn-portal-1")))
+
+	err := steps.ensureActiveRunnerPortal(ctx)
+	require.ErrorIs(t, err, errPortalFailed)
+	require.ErrorContains(t, err, "none became active")
+	require.Len(t, platform.created, 1, "a failed replacement is not replaced again")
+}
+
+func TestEnsureActiveRunnerPortalBuildsOneWhenTheFirstWasRefused(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	fastPortalPolls(t)
+	platform := &fakePortalPlatform{statuses: map[string]string{}}
+	steps, ctx, local, _ := cloudSteps(t, platform.handler)
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	local.Append(keyPortalBuilds, true)
+
+	started := time.Now()
+	require.NoError(t, steps.ensureActiveRunnerPortal(ctx))
+	require.Less(t, time.Since(started), 10*time.Second, "a refused portal is not waited for")
+	require.Empty(t, platform.deleted, "a refused portal has nothing to delete")
+	require.Len(t, platform.created, 1)
+}
+
+func TestEnsureActiveRunnerPortalBuildsOneWhenNoneWasRequested(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	fastPortalPolls(t)
+	platform := &fakePortalPlatform{statuses: map[string]string{}}
+	steps, ctx, local, registry := cloudSteps(t, platform.handler)
+	require.NoError(t, steps.ensureActiveRunnerPortal(ctx))
+	require.Len(t, platform.created, 1)
+	require.Len(t, local.List(keyPortalBuilds), 1)
+	require.Equal(t, platform.created, registeredPortals(registry))
 }
