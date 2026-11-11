@@ -165,12 +165,15 @@ func TestTokenRejectsABadForm(t *testing.T) {
 		mutate    func(url.Values)
 		wantError string
 		wantCode  int
+		wantInfo  string
 	}{
-		{"wrong grant type", func(f url.Values) { f.Set("grant_type", "password") }, "unsupported_grant_type", 70003},
-		{"missing assertion", func(f url.Values) { f.Del("client_assertion") }, "invalid_request", 50027},
-		{"wrong assertion type", func(f url.Values) { f.Set("client_assertion_type", "secret") }, "invalid_request", 50027},
-		{"missing client_id", func(f url.Values) { f.Del("client_id") }, "invalid_request", 900144},
-		{"scope without /.default", func(f url.Values) { f.Set("scope", "https://ai.azure.com") }, "invalid_scope", 1002012},
+		{"wrong grant type", func(f url.Values) { f.Set("grant_type", "password") }, "unsupported_grant_type", 70003, ""},
+		{"missing assertion", func(f url.Values) { f.Del("client_assertion") }, "invalid_request", 50027, ""},
+		{"wrong assertion type", func(f url.Values) { f.Set("client_assertion_type", "secret") }, "invalid_request", 50027, ""},
+		{"missing client_id", func(f url.Values) { f.Del("client_id") }, "invalid_request", 900144, ""},
+		{"scope without /.default", func(f url.Values) { f.Set("scope", "https://ai.azure.com") }, "invalid_scope", 1002012, ""},
+		{"grant type repeated after a valid one", func(f url.Values) { f.Add("grant_type", "password") }, "invalid_request", 9000411, "'grant_type'"},
+		{"scope repeated with the same value", func(f url.Values) { f.Add("scope", foundryScope) }, "invalid_request", 9000411, "'scope'"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -183,6 +186,7 @@ func TestTokenRejectsABadForm(t *testing.T) {
 			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &e))
 			require.Equal(t, c.wantError, e.Error)
 			require.Equal(t, []int{c.wantCode}, e.Codes)
+			require.Contains(t, e.Description, c.wantInfo)
 			log := recorded(t, svc, "t1")
 			require.Equal(t, 1, log.Count, "a rejected request is still recorded")
 			require.Equal(t, http.StatusBadRequest, log.Requests[0].Status)
