@@ -143,6 +143,7 @@ func outcome(tenant string, n int) int {
 	}
 }
 
+// issue answers the tenant's n-th token request with a token for its scope and client.
 func issue(w http.ResponseWriter, tenant string, n int, req Request) {
 	claims, err := json.Marshal(Claims{Aud: strings.TrimSuffix(req.Scope, "/.default"), Tid: tenant, AppID: req.ClientID, N: n})
 	if err != nil {
