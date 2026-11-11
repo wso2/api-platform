@@ -174,6 +174,8 @@ func TestTokenRejectsABadForm(t *testing.T) {
 		{"scope without /.default", func(f url.Values) { f.Set("scope", "https://ai.azure.com") }, "invalid_scope", 1002012, ""},
 		{"grant type repeated after a valid one", func(f url.Values) { f.Add("grant_type", "password") }, "invalid_request", 9000411, "'grant_type'"},
 		{"scope repeated with the same value", func(f url.Values) { f.Add("scope", foundryScope) }, "invalid_request", 9000411, "'scope'"},
+		{"empty parameter name repeated", func(f url.Values) { f.Add("", "a"); f.Add("", "b") }, "invalid_request", 9000411, "parameter '' is"},
+		{"two parameters repeated", func(f url.Values) { f.Add("scope", foundryScope); f.Add("grant_type", "password") }, "invalid_request", 9000411, "'grant_type'"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
