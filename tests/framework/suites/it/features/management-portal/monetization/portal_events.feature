@@ -157,7 +157,7 @@ Feature: Meters and priced plans made in the API Portal reach the control plane
     Then the response status code should be 404
 
   Scenario: Deleting in the API Portal a plan a control-plane API offers takes it off that API
-    Given I generate a unique value from "portal-delete-project" and store it as "projectHandle"
+    Given I generate a unique resource name from "portal-delete-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "portal-delete-api" and store it as "apiHandle"
     And I generate a unique API context from "/portal-delete" and store it as "apiContext"

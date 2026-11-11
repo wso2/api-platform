@@ -108,7 +108,6 @@ Feature: APIP cloud builds and deployments
     And the cloud API response body should contain "not part of the project's deployment pipeline"
 
   @TC_APIP_DEP_008 @ID_APIP_DEPLOY_007
-  # The OpenAPI documents a 4xx, and the code returns 500.
   Scenario: Deploying a build that does not exist is rejected
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -163,6 +162,24 @@ Feature: APIP cloud builds and deployments
     And I request a deployment of the synthetic REST API with:
       | environment | ${CTX:cloudGatewayEnvironment} |
       | gatewayId   | ${UNIQUE:missing-gateway}      |
+    Then the cloud API response status code should be 400
+    And the cloud API response body should contain "is not in environment"
+    And the deployment stage of the active gateway's environment should show the active gateway as NOT_DEPLOYED
+
+  @TC_APIP_DEP_006 @ID_APIP_DEPLOY_011
+  Scenario: Deploying to a gateway that belongs to another environment is refused and leaves the API undeployed
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    And I create 1 synthetic non-production APIP environment
+    And I create a synthetic deployment pipeline with the promotion paths:
+      | source                            | targets                        |
+      | ${CTX:cloudSyntheticEnvironment1} | ${CTX:cloudGatewayEnvironment} |
+    And I create a synthetic APIP project bound to the synthetic deployment pipeline
+    When I create a synthetic REST API in the synthetic APIP project
+    And I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudSyntheticEnvironment1} |
+      | gatewayId   | ${CTX:cloudGatewayID}             |
     Then the cloud API response status code should be 400
     And the cloud API response body should contain "is not in environment"
     And the deployment stage of the active gateway's environment should show the active gateway as NOT_DEPLOYED

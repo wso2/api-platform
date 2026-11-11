@@ -30,7 +30,7 @@ Feature: Listing the versions of a REST API through the control plane
   # stored without a context (create rejects an empty one). The unit tests cover both.
 
   Background:
-    Given I generate a unique value from "papi-versions-project" and store it as "projectHandle"
+    Given I generate a unique resource name from "papi-versions-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "reading-list" and store it as "displayName"
 

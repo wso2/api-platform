@@ -176,3 +176,48 @@ Feature: APIP cloud managed gateway configuration
       | gateway.config.policy_configurations.jwtauth_v1.leeway        | "soon" | must be a duration such as "5m" |
       | gateway.config.policy_configurations.jwtauth_v1.tokencaching  | "on"   | must be true or false           |
     Then every one of those writes should have been refused as invalid
+
+  @TC_APIP_GWCFG_002 @ID_APIP_GATEWAY_CONFIG_020
+  Scenario: A written setting is reflected when the configuration is read
+    Given I obtain an APIP cloud console token
+    And I find an active APIP gateway
+    And I choose a synthetic managed APIP gateway name
+    When I request a synthetic managed APIP gateway that lasts for the runner with:
+      | environment | ${CTX:cloudGatewayEnvironment} |
+      | displayName | ${CTX:cloudManagedGatewayName} |
+      | handle      | ${CTX:cloudManagedGatewayName} |
+    Then the managed gateway request should be accepted
+    And synthetic managed APIP gateway 1 should become active
+    Given I work with the configuration of synthetic managed APIP gateway 1
+    And the configuration of the selected gateway should become readable
+    When I save the gateway configuration with:
+      | gateway.config.controller.logging.level   | debug |
+      | gateway.config.router.access_logs.enabled | false |
+    Then the cloud API response status code should be 200
+    And the gateway configuration phase should be "applying"
+    And the gateway configuration should report:
+      | gateway.config.controller.logging.level   | debug |
+      | gateway.config.router.access_logs.enabled | false |
+
+  @TC_APIP_GWCFG_022 @ID_APIP_GATEWAY_CONFIG_021
+  Scenario: Clearing a setting returns the gateway to the platform default
+    Given I obtain an APIP cloud console token
+    And I work with the configuration of synthetic managed APIP gateway 1
+    And the configuration of the selected gateway should become readable
+    When I save the gateway configuration with:
+      | gateway.config.controller.logging.level | debug |
+    Then the gateway configuration should report:
+      | gateway.config.controller.logging.level | debug |
+    When I save the gateway configuration with:
+      | gateway.config.controller.logging.level | null |
+    Then the cloud API response status code should be 200
+    And the gateway configuration should no longer report "gateway.config.controller.logging.level"
+
+  @TC_APIP_GWCFG_019 @ID_APIP_GATEWAY_CONFIG_022
+  Scenario: Simultaneous writes to a gateway's configuration are not silently overwritten
+    Given I obtain an APIP cloud console token
+    And I work with the configuration of synthetic managed APIP gateway 1
+    And the configuration of the selected gateway should become readable
+    When I write the gateway configuration from 6 writers at once until one is rejected
+    Then the cloud API response status code should be 409
+    And the cloud API error code should be "conflict"
