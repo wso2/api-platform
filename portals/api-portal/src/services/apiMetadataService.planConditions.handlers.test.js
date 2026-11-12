@@ -129,8 +129,12 @@ const UPGRADED_PROBE = `
     out.legacy = await get('legacy');
     out.async = await get('async');
     out.events = await create({ id: 'events', displayName: 'Events', limits: [{ limitType: 'EVENT_COUNT', limitCount: 30, timeUnit: 'MINUTE' }] });
+    // event-count is not a condition type.
     out.eventsConditions = await put({ id: 'events', displayName: 'Events', conditions: [
         { type: 'event-count', params: { limits: [window_(60, 1, 'MINUTE')], onExceed: 'allow' } },
+    ] });
+    out.eventsWithRequests = await put({ id: 'events', displayName: 'Events', conditions: [
+        { type: 'request-count', params: { limits: [window_(60, 1, 'MINUTE')], onExceed: 'allow' } },
         { id: 'region', type: 'custom', params: { zone: 'eu' } },
     ] });
     out.eventsLimitsOnly = await put({ id: 'events', displayName: 'Events', limits: [
@@ -138,7 +142,7 @@ const UPGRADED_PROBE = `
         { limitType: 'REQUEST_COUNT', limitCount: 10, timeUnit: 'MINUTE' },
     ] });
     out.eventsLimitsOnlyEvent = lastEvent();
-    out.eventsRequestsOnly = await put({ id: 'events', displayName: 'Events', limits: [{ limitType: 'REQUEST_COUNT', limitCount: 5, timeUnit: 'MINUTE' }] });
+    out.eventsEventLimitsOnly = await put({ id: 'events', displayName: 'Events', limits: [{ limitType: 'EVENT_COUNT', limitCount: 5, timeUnit: 'MINUTE' }] });
     out.legacyRowsBefore = legacyRows('legacy');
     out.legacyRenamed = await put({ id: 'legacy', displayName: 'Legacy 2' });
     out.legacyRowsAfterRename = legacyRows('legacy');
@@ -185,7 +189,7 @@ const UPGRADED_PROBE = `
         'kind: SubscriptionPlan\\nmetadata:\\n  name: yaml-plan\\nspec:\\n  displayName: YAML plan\\n  type: requestcount\\n  requestCount: 10000\\n');
     out.yamlRenamed = await yamlPlan(plans.putSubscriptionPlans,
         'kind: SubscriptionPlan\\nmetadata:\\n  name: yaml-plan\\nspec:\\n  displayName: YAML plan 2\\n');
-    // The eventCount shorthand is a per-minute event-count condition; -1 is unlimited, so no condition.
+    // The eventCount shorthand has no condition: the plan is unlimited.
     out.yamlEvents = await yamlPlan(plans.addSubscriptionPlans,
         'kind: SubscriptionPlan\\nmetadata:\\n  name: yaml-events\\nspec:\\n  displayName: YAML events\\n  type: eventcount\\n  eventCount: 2000\\n');
     out.yamlEventsUnlimited = await yamlPlan(plans.addSubscriptionPlans,
@@ -221,13 +225,12 @@ const NOT_UPGRADED_PROBE = `
         { type: 'request-count', params: { limits: [window_(5, 1, 'MINUTE')], onExceed: 'allow' } },
     ] });
     out.allowStored = planCount('allow');
-    // Event limits are kept there too, as EVENT_COUNT rows.
+    // event-count is not a condition type there either.
     out.async = await create({ id: 'async', displayName: 'Async', conditions: [
         { type: 'event-count', params: { limits: [window_(30, 1, 'MINUTE')] } },
         { type: 'request-count', params: { limits: [window_(60, 1, 'MINUTE')] } },
     ] });
-    out.asyncRows = legacyRows('async');
-    out.asyncRead = await get('async');
+    out.asyncStored = planCount('async');
 
     process.stdout.write('\\nPROBE_JSON:' + JSON.stringify(out) + '\\n');
     process.exit(0);
@@ -297,11 +300,9 @@ const notUpgraded = () => notUpgradedResults || (notUpgradedResults = runProbe('
 `, NOT_UPGRADED_PROBE));
 
 const requests = (limits, onExceed = 'reject') => ({ id: 'requests', type: 'request-count', params: { limits, onExceed } });
-const events = (limits, onExceed = 'reject') => ({ id: 'events', type: 'event-count', params: { limits, onExceed } });
 const toolCalls = (limits) => ({ id: 'tool-calls', type: 'tool-call-count', params: { limits, onExceed: 'reject' } });
 const w = (count, timeAmount, timeUnit) => ({ count, timeAmount, timeUnit });
 const requestLimit = (limitCount, timeUnit, timeAmount = 1) => ({ limitType: 'REQUEST_COUNT', timeUnit, timeAmount, limitCount });
-const eventLimit = (limitCount, timeUnit, timeAmount = 1) => ({ limitType: 'EVENT_COUNT', timeUnit, timeAmount, limitCount });
 
 test('a plan created with conditions returns them normalized; its limits are the request-count windows', () => {
     const r = upgraded().created;
@@ -326,62 +327,64 @@ test('the plan events carry the conditions, and limits for subscribers that pred
     ]);
 });
 
-test('a plan saved before conditions reads its request, event and total token limits as conditions, shortest first', () => {
+test('a plan saved before conditions reads its request and total token limits as conditions, shortest first', () => {
     const r = upgraded();
     assert.equal(r.legacy.status, 200);
-    // The unlimited limit and the bandwidth limit have no condition.
+    // The unlimited limit and the event and bandwidth limits have no condition.
     assert.deepEqual(r.legacy.body.conditions, [
         requests([w(100, 1, 'MINUTE'), w(5000, 1, 'DAY')]),
-        events([w(9, 1, 'MINUTE'), w(900, 1, 'HOUR')]),
         { id: 'tokens', type: 'token-count', params: { limits: [w(100000, 1, 'DAY')], onExceed: 'reject', tokenType: 'total' } },
     ]);
-    // `limits` stays the request and event limits older clients read.
-    assert.deepEqual(r.legacy.body.limits, [
-        requestLimit(100, 'MINUTE'), requestLimit(5000, 'DAY'), eventLimit(9, 'MINUTE'), eventLimit(900, 'HOUR'),
-    ]);
+    // `limits` stays the request limits older clients read.
+    assert.deepEqual(r.legacy.body.limits, [requestLimit(100, 'MINUTE'), requestLimit(5000, 'DAY')]);
     assert.equal(r.legacyRowsBefore.length, 7);
     assert.deepEqual(r.legacyRenamed.body.conditions, r.legacy.body.conditions);
     assert.equal(r.legacyRowsAfterRename.length, 7);
-    assert.deepEqual(r.async.body.conditions, [events([w(50, 1, 'MINUTE')])]);
-    assert.deepEqual(r.async.body.limits, [eventLimit(50, 'MINUTE')]);
+    // A plan with only event limits is unlimited.
+    assert.deepEqual(r.async.body.conditions, []);
+    assert.deepEqual(r.async.body.limits, []);
 });
 
-test('event limits sent alone become the event-count condition', () => {
+test('event limits sent alone have no condition', () => {
     const r = upgraded().events;
     assert.equal(r.status, 201);
-    assert.deepEqual(r.body.conditions, [events([w(30, 1, 'MINUTE')])]);
-    assert.deepEqual(r.body.limits, [eventLimit(30, 'MINUTE')]);
+    assert.deepEqual(r.body.conditions, []);
+    assert.deepEqual(r.body.limits, []);
 });
 
-test('limits sent alone set both the request-count and event-count conditions, and keep the others', () => {
+test('an event-count condition is refused with 400', () => {
     const r = upgraded();
-    assert.equal(r.eventsConditions.status, 200);
+    assert.equal(r.eventsConditions.status, 400);
+    assert.match(JSON.stringify(r.eventsConditions.body),
+        /conditions\[0\]: type must be one of request-count, tool-call-count, token-count or custom/);
+});
+
+test('limits sent alone set only the request-count condition, and keep the others', () => {
+    const r = upgraded();
+    assert.equal(r.eventsWithRequests.status, 200);
     assert.deepEqual(r.eventsLimitsOnly.body.conditions, [
-        requests([w(10, 1, 'MINUTE')]),
-        events([w(20, 1, 'HOUR')], 'allow'),
+        requests([w(10, 1, 'MINUTE')], 'allow'),
         { id: 'region', type: 'custom', params: { zone: 'eu' } },
     ]);
-    assert.deepEqual(r.eventsLimitsOnly.body.limits, [requestLimit(10, 'MINUTE'), eventLimit(20, 'HOUR')]);
-    // The plan events carry the event-count condition, and its windows as EVENT_COUNT limits.
-    assert.deepEqual(r.eventsLimitsOnlyEvent.conditions.map((c) => c.type), ['request-count', 'event-count', 'custom']);
+    assert.deepEqual(r.eventsLimitsOnly.body.limits, [requestLimit(10, 'MINUTE')]);
+    assert.deepEqual(r.eventsLimitsOnlyEvent.conditions.map((c) => c.type), ['request-count', 'custom']);
     assert.deepEqual(r.eventsLimitsOnlyEvent.limits, [
         { limit_type: 'REQUEST_COUNT', limit_count: 10, time_unit: 'MINUTE', time_amount: 1 },
-        { limit_type: 'EVENT_COUNT', limit_count: 20, time_unit: 'HOUR', time_amount: 1 },
     ]);
-    // Request limits alone remove the event-count condition.
-    assert.deepEqual(r.eventsRequestsOnly.body.conditions, [requests([w(5, 1, 'MINUTE')]), { id: 'region', type: 'custom', params: { zone: 'eu' } }]);
+    // Event limits alone remove the request-count condition.
+    assert.deepEqual(r.eventsEventLimitsOnly.body.conditions, [{ id: 'region', type: 'custom', params: { zone: 'eu' } }]);
 });
 
-test('saving the limits of a plan saved before conditions moves it to conditions, keeping its bandwidth row', () => {
+test('saving the limits of a plan saved before conditions moves it to conditions, keeping its event and bandwidth rows', () => {
     const r = upgraded();
-    // Request limits alone replace the request and event limits; the token limit stays.
+    // Request limits alone replace the request limits; the token limit stays.
     assert.deepEqual(r.legacySaved.body.conditions, [
         requests([w(40, 1, 'HOUR')]),
         { id: 'tokens', type: 'token-count', params: { limits: [w(100000, 1, 'DAY')], onExceed: 'reject', tokenType: 'total' } },
     ]);
     assert.deepEqual(r.legacyConditionRows, ['requests', 'tokens']);
-    // A bandwidth limit has no condition; its row is left as it was.
-    assert.deepEqual(r.legacyRowsAfterSave, [['BANDWIDTH', 1]]);
+    // Event and bandwidth limits have no condition; their rows are left as they were.
+    assert.deepEqual(r.legacyRowsAfterSave, [['BANDWIDTH', 1], ['EVENT_COUNT', 9], ['EVENT_COUNT', 900]]);
 });
 
 test('limits sent alone become the request-count condition; unlimited limits are left out', () => {
@@ -453,11 +456,10 @@ test('a database without the conditions table refuses onExceed allow, which it c
     assert.equal(r.allowStored, 0);
 });
 
-test('a database without the conditions table keeps event limits as EVENT_COUNT rows', () => {
+test('a database without the conditions table refuses an event-count condition, and saves nothing', () => {
     const r = notUpgraded();
-    assert.equal(r.async.status, 201);
-    assert.deepEqual(r.asyncRows, [['EVENT_COUNT', 30], ['REQUEST_COUNT', 60]]);
-    assert.deepEqual(r.asyncRead.body.conditions, [requests([w(60, 1, 'MINUTE')]), events([w(30, 1, 'MINUTE')])]);
+    assert.equal(r.async.status, 400);
+    assert.equal(r.asyncStored, 0);
 });
 
 test('YAML: requestCount is a per-minute limit, and an update without limits keeps them', () => {
@@ -469,10 +471,10 @@ test('YAML: requestCount is a per-minute limit, and an update without limits kee
     assert.deepEqual(r.yamlRenamed.body.conditions, [requests([w(10000, 1, 'MINUTE')])]);
 });
 
-test('YAML: eventCount is a per-minute event-count condition, and -1 is unlimited', () => {
+test('YAML: the eventCount shorthand has no condition', () => {
     const r = upgraded();
     assert.equal(r.yamlEvents.status, 201);
-    assert.deepEqual(r.yamlEvents.body.conditions, [events([w(2000, 1, 'MINUTE')])]);
+    assert.deepEqual(r.yamlEvents.body.conditions, []);
     assert.equal(r.yamlEventsUnlimited.status, 201);
     assert.deepEqual(r.yamlEventsUnlimited.body.conditions, []);
 });

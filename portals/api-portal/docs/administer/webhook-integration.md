@@ -559,7 +559,7 @@ Both events carry the plan's [`pricing`](#pricing), or `null` for a free plan. P
 }
 ```
 
-`handle` is the plan's Platform API handle: the plan's `refId` when it has one, otherwise its portal handle, which then becomes its `refId`. `conditions` are the plan's [conditions](subscription-plans.md#conditions); a plan saved before conditions sends its request, event and total token limits as request-count, event-count and token-count conditions. `limits` are the windows of the request-count condition as `REQUEST_COUNT` limits and of the event-count condition as `EVENT_COUNT` limits, kept for subscribers that predate conditions. An unlimited plan has no conditions and no `limits`.
+`handle` is the plan's Platform API handle: the plan's `refId` when it has one, otherwise its portal handle, which then becomes its `refId`. `conditions` are the plan's [conditions](subscription-plans.md#conditions); a plan saved before conditions sends its request and total token limits as request-count and token-count conditions. `limits` are the windows of the request-count condition as `REQUEST_COUNT` limits, kept for subscribers that predate conditions. An unlimited plan has no conditions and no `limits`.
 
 #### Pricing
 

@@ -281,7 +281,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_subscription_plan_org
 CREATE UNIQUE INDEX uq_subscription_plan_org_handle ON dbo.subscription_plans(org_uuid, handle, portal_id) WHERE org_uuid IS NOT NULL;
 
 -- Subscription Plan Conditions table: a plan's conditions in order. condition_type is request-count,
--- event-count, tool-call-count, token-count or custom. params is JSON, for example
+-- tool-call-count, token-count or custom. params is JSON, for example
 -- {"limits":[{"count":100,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}.
 -- Replaces subscription_plan_limits. A plan with no rows here is read from that table if it exists.
 IF OBJECT_ID(N'dbo.subscription_plan_conditions', N'U') IS NULL

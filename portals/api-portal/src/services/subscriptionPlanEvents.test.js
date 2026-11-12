@@ -79,16 +79,15 @@ test('a plan created in the portal is sent under its own handle, which becomes i
     assert.deepStrictEqual(opts, { transaction: tx, orgId: 'org-1', aggregateType: 'subscription_plan', aggregateId: 'p1' });
 });
 
-test('a plan\'s event-count condition is sent, and its windows as EVENT_COUNT limits', async () => {
+test('a plan\'s conditions are sent as they are, and its request-count windows as REQUEST_COUNT limits', async () => {
     const { events, calls } = load();
     const conditions = [
         { id: 'requests', type: 'request-count', params: { limits: [{ count: 10, timeAmount: 1, timeUnit: 'MINUTE' }], onExceed: 'reject' } },
-        { id: 'events', type: 'event-count', params: { limits: [{ count: 500, timeAmount: 1, timeUnit: 'HOUR' }], onExceed: 'allow' } },
+        { id: 'tool-calls', type: 'tool-call-count', params: { limits: [{ count: 500, timeAmount: 1, timeUnit: 'HOUR' }], onExceed: 'allow' } },
     ];
     const plan = {
         uuid: 'p4', handle: 'stream', ref_id: 'stream', display_name: 'Stream', conditions, limits: [
             { limit_type: 'REQUEST_COUNT', limit_count: 10, time_unit: 'MINUTE', time_amount: 1 },
-            { limit_type: 'EVENT_COUNT', limit_count: 500, time_unit: 'HOUR', time_amount: 1 },
         ],
     };
 
@@ -98,7 +97,6 @@ test('a plan\'s event-count condition is sent, and its windows as EVENT_COUNT li
     assert.deepStrictEqual(payload.conditions, conditions);
     assert.deepStrictEqual(payload.limits, [
         { limit_type: 'REQUEST_COUNT', limit_count: 10, time_unit: 'MINUTE', time_amount: 1 },
-        { limit_type: 'EVENT_COUNT', limit_count: 500, time_unit: 'HOUR', time_amount: 1 },
     ]);
 });
 

@@ -19,7 +19,7 @@
 
 /*
  * Subscription plan conditions, validated by the same rules as the Platform API. A built-in
- * condition (request-count, event-count, tool-call-count, token-count) has the id its type fixes and its
+ * condition (request-count, tool-call-count, token-count) has the id its type fixes and its
  * windows as params; a custom condition has an id of its own and key-value pairs as params.
  */
 
@@ -27,7 +27,6 @@ const { ValidationError } = require('./errors/customErrors');
 
 const TYPE = Object.freeze({
     REQUEST_COUNT: 'request-count',
-    EVENT_COUNT: 'event-count',
     TOOL_CALL_COUNT: 'tool-call-count',
     TOKEN_COUNT: 'token-count',
     CUSTOM: 'custom',
@@ -35,7 +34,6 @@ const TYPE = Object.freeze({
 
 const BUILT_IN_IDS = Object.freeze({
     [TYPE.REQUEST_COUNT]: 'requests',
-    [TYPE.EVENT_COUNT]: 'events',
     [TYPE.TOOL_CALL_COUNT]: 'tool-calls',
     [TYPE.TOKEN_COUNT]: 'tokens',
 });
@@ -49,7 +47,7 @@ const TOKEN_TYPES = ['total', 'prompt', 'completion'];
 const CUSTOM_ID_PATTERN = /^[a-z][a-z0-9-]{0,62}$/;
 const WINDOW_MINUTES = { MINUTE: 1, HOUR: 60, DAY: 24 * 60 };
 // The conditions older clients send and read as `limits`, and the limit type of each.
-const LEGACY_LIMIT_TYPES = Object.freeze({ [TYPE.REQUEST_COUNT]: 'REQUEST_COUNT', [TYPE.EVENT_COUNT]: 'EVENT_COUNT' });
+const LEGACY_LIMIT_TYPES = Object.freeze({ [TYPE.REQUEST_COUNT]: 'REQUEST_COUNT' });
 // The limit type of each condition kept in subscription_plan_limits by earlier releases: also the
 // TOTAL_TOKEN_COUNT limits, a token-count condition counting total tokens.
 const STORED_LIMIT_TYPES = Object.freeze({ ...LEGACY_LIMIT_TYPES, [TYPE.TOKEN_COUNT]: 'TOTAL_TOKEN_COUNT' });
@@ -195,7 +193,7 @@ function normalizeConditions(conditions) {
         } else if (type === '') {
             throw new ValidationError(`${field}: type is required`);
         } else {
-            throw new ValidationError(`${field}: type must be one of request-count, tool-call-count, token-count, event-count or custom`);
+            throw new ValidationError(`${field}: type must be one of request-count, tool-call-count, token-count or custom`);
         }
         seenIds.add(id);
         return { id, type, params };
@@ -203,8 +201,8 @@ function normalizeConditions(conditions) {
 }
 
 /**
- * The windows of a plan's limits (DAO rows or request limits) for a request-count, event-count or
- * token-count condition: its REQUEST_COUNT, EVENT_COUNT or TOTAL_TOKEN_COUNT limits. Unit-less limits are per minute. Unlimited,
+ * The windows of a plan's limits (DAO rows or request limits) for a request-count or token-count
+ * condition: its REQUEST_COUNT or TOTAL_TOKEN_COUNT limits. Unit-less limits are per minute. Unlimited,
  * unsupported and repeated-length limits are left out, and at most ten are kept.
  */
 function windowsFromLimits(limits, type = TYPE.REQUEST_COUNT) {
@@ -214,7 +212,7 @@ function windowsFromLimits(limits, type = TYPE.REQUEST_COUNT) {
         const limitType = String(l.limit_type ?? l.limitType ?? 'REQUEST_COUNT').toUpperCase();
         const count = Number(l.limit_count ?? l.limitCount);
         if (limitType !== STORED_LIMIT_TYPES[type] || !Number.isInteger(count) || count < 1) continue;
-        // A stored limit with no unit came from the YAML shorthand (requestCount, eventCount), which is per minute.
+        // A stored limit with no unit came from the YAML shorthand (requestCount), which is per minute.
         const unit = String(l.time_unit ?? l.timeUnit ?? '').trim().toUpperCase() || 'MINUTE';
         if (!TIME_UNITS.includes(unit)) continue;
         const amount = Math.max(1, Number(l.time_amount ?? l.timeAmount) || 1);
@@ -226,7 +224,7 @@ function windowsFromLimits(limits, type = TYPE.REQUEST_COUNT) {
     return windows;
 }
 
-/** The `type` condition (request-count or event-count) of the windows, or null when there are none (unlimited). */
+/** The `type` condition (request-count or token-count) of the windows, or null when there are none (unlimited). */
 function limitCondition(type, windows, onExceed = 'reject') {
     if (!windows || windows.length === 0) return null;
     return { id: BUILT_IN_IDS[type], type, params: { limits: windows, onExceed } };
@@ -244,21 +242,18 @@ function withCondition(conditions, type, condition) {
 
 /**
  * The conditions after `limits` sent alone, by a client that predates conditions: they set the
- * request-count and event-count conditions, each keeping its onExceed, and keep the others. A new one
- * goes first, request-count before event-count.
+ * request-count condition, keeping its onExceed, and keep the others. A new one goes first. Other
+ * limit types (EVENT_COUNT, BANDWIDTH) have no condition.
  */
 function conditionsFromLimits(current, limits) {
-    let conditions = current;
-    for (const type of [TYPE.EVENT_COUNT, TYPE.REQUEST_COUNT]) {
-        const onExceed = current.find((c) => c.type === type)?.params?.onExceed;
-        conditions = withCondition(conditions, type, limitCondition(type, windowsFromLimits(limits, type), onExceed));
-    }
-    return conditions;
+    const type = TYPE.REQUEST_COUNT;
+    const onExceed = current.find((c) => c.type === type)?.params?.onExceed;
+    return withCondition(current, type, limitCondition(type, windowsFromLimits(limits, type), onExceed));
 }
 
 /**
- * The conditions of a plan saved before conditions, from its subscription_plan_limits rows: request-count,
- * event-count and a total token-count. Other limit types (BANDWIDTH) have no condition.
+ * The conditions of a plan saved before conditions, from its subscription_plan_limits rows: request-count
+ * and a total token-count. Other limit types (EVENT_COUNT, BANDWIDTH) have no condition.
  */
 function conditionsFromStoredLimits(limits) {
     const tokens = limitCondition(TYPE.TOKEN_COUNT, windowsFromLimits(limits, TYPE.TOKEN_COUNT));
@@ -283,7 +278,7 @@ function storedLimitsFromConditions(conditions) {
     })));
 }
 
-/** The REQUEST_COUNT and EVENT_COUNT limits that mirror a plan's request-count and event-count conditions. */
+/** The REQUEST_COUNT limits that mirror a plan's request-count condition. */
 function legacyLimitsFromConditions(conditions) {
     return conditions.filter((c) => LEGACY_LIMIT_TYPES[c.type]).flatMap((c) => c.params.limits.map((w) => ({
         limitType: LEGACY_LIMIT_TYPES[c.type],
@@ -295,7 +290,6 @@ function legacyLimitsFromConditions(conditions) {
 
 const DISPLAY_LIMIT_TYPES = Object.freeze({
     [TYPE.REQUEST_COUNT]: () => 'REQUEST_COUNT',
-    [TYPE.EVENT_COUNT]: () => 'EVENT_COUNT',
     [TYPE.TOOL_CALL_COUNT]: () => 'TOOL_CALL_COUNT',
     [TYPE.TOKEN_COUNT]: (params) => ({ prompt: 'PROMPT_TOKEN_COUNT', completion: 'COMPLETION_TOKEN_COUNT' }[params.tokenType] || 'TOTAL_TOKEN_COUNT'),
 });
@@ -316,7 +310,7 @@ function displayLimits(conditions) {
     return out;
 }
 
-const CHIP_NAMES = { [TYPE.REQUEST_COUNT]: 'Requests', [TYPE.EVENT_COUNT]: 'Events', [TYPE.TOOL_CALL_COUNT]: 'Tool calls', [TYPE.TOKEN_COUNT]: 'Tokens' };
+const CHIP_NAMES = { [TYPE.REQUEST_COUNT]: 'Requests', [TYPE.TOOL_CALL_COUNT]: 'Tool calls', [TYPE.TOKEN_COUNT]: 'Tokens' };
 const TOKEN_NAMES = { total: 'Tokens', prompt: 'Prompt tokens', completion: 'Completion tokens' };
 const SHORT_UNITS = { MINUTE: 'min', HOUR: 'hr', DAY: 'day', MONTH: 'mo' };
 
@@ -338,7 +332,7 @@ const conditionChips = (conditions) => (conditions || []).map((c) => {
 });
 
 const UNIT_WORDS = { MINUTE: 'minute', HOUR: 'hour', DAY: 'day', MONTH: 'month' };
-const LINE_WHAT = { [TYPE.REQUEST_COUNT]: 'requests', [TYPE.EVENT_COUNT]: 'events', [TYPE.TOOL_CALL_COUNT]: 'tool calls' };
+const LINE_WHAT = { [TYPE.REQUEST_COUNT]: 'requests', [TYPE.TOOL_CALL_COUNT]: 'tool calls' };
 const TOKEN_WHAT = { total: 'tokens', prompt: 'prompt tokens', completion: 'completion tokens' };
 
 /**

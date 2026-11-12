@@ -4,12 +4,11 @@ A subscription plan (also called a subscription plan) is a named usage tier that
 
 A plan's limits are its conditions:
 - Requests (`request-count`)
-- Events (`event-count`), for event-based APIs (WebSocket, WebSub)
 - Tool calls (`tool-call-count`), for MCP servers
 - Tokens (`token-count`), for AI APIs
 - Custom conditions, key-value settings that a policy reads
 
-A plan saved before conditions shows its request limits as a request-count condition, its event limits as an event-count condition and its total token limits as a token-count condition counting total tokens. Bandwidth limits have no condition type; they are not shown, and saving the plan leaves them stored as they are.
+A plan saved before conditions shows its request limits as a request-count condition and its total token limits as a token-count condition counting total tokens. Event and bandwidth limits have no condition type; they are not shown, and saving the plan leaves them stored as they are.
 
 ## Default Plans
 
@@ -60,9 +59,8 @@ curl -k -X POST https://localhost:9543/api-portal/api/v0.9/subscription-plans \
 |---|---|---|
 | `metadata.name` | Yes | Unique plan identifier (used in API `subscriptionPlans` lists) |
 | `spec.displayName` | Yes | Human-friendly name shown to developers in the portal |
-| `spec.type` | Yes | `requestcount` (rate-limited) or `eventcount` |
+| `spec.type` | Yes | `requestcount` (rate-limited) |
 | `spec.requestCount` | No | Maximum requests per minute, with `type: requestcount`. Use `-1` for unlimited. For other windows, use `spec.conditions` |
-| `spec.eventCount` | No | Maximum events per minute, with `type: eventcount`: an event-count condition. Use `-1` for unlimited |
 | `spec.description` | No | Additional description shown to developers |
 | `spec.conditions` | No | The plan's limits; see [Conditions](#conditions) |
 | `spec.pricing` | No | A paid plan's pricing: the same fields as `pricing` in JSON, under the same rules. A plan without it is free |
@@ -81,10 +79,6 @@ spec:
           - { count: 10000, timeAmount: 1, timeUnit: MINUTE }
           - { count: 1000000, timeAmount: 1, timeUnit: DAY }
         onExceed: reject
-    - type: event-count
-      params:
-        limits:
-          - { count: 50000, timeAmount: 1, timeUnit: HOUR }
     - type: tool-call-count
       params:
         limits:
@@ -110,9 +104,9 @@ The portal checks conditions with the same rules as the Platform API:
 
 Sending `conditions` replaces all of the plan's conditions; `[]` removes them. Leaving it out keeps them.
 
-Older clients can still send `limits` alone. The `REQUEST_COUNT` limits then set the request-count condition and the `EVENT_COUNT` limits the event-count condition; a type with no such limits has its condition removed, and the plan's other conditions stay as they were. Each needs a `timeUnit`; one without it is refused. Unlimited (`-1`) limits and other limit types are not kept. Responses still carry `limits`: the windows of the request-count condition as `REQUEST_COUNT` limits and of the event-count condition as `EVENT_COUNT` limits.
+Older clients can still send `limits` alone. The `REQUEST_COUNT` limits then set the request-count condition; with none, the request-count condition is removed, and the plan's other conditions stay as they were. Each needs a `timeUnit`; one without it is refused. Unlimited (`-1`) limits and other limit types are not kept. Responses still carry `limits`: the windows of the request-count condition as `REQUEST_COUNT` limits.
 
-**Upgrading:** conditions are stored in the `subscription_plan_conditions` table, which replaces `subscription_plan_limits`. SQLite adds the table at startup. For PostgreSQL and SQL Server, re-run `schema.postgres.sql` or `schema.sqlserver.sql`; the scripts are safe to run again. Until then, plans keep only their request and event limits, and conditions of other types are refused. A plan saved before the upgrade reads its request and event limits as request-count and event-count conditions. It moves to the new table the next time a save gives its `conditions` or `limits`; a save that changes only other fields, such as the name, leaves it where it is.
+**Upgrading:** conditions are stored in the `subscription_plan_conditions` table, which replaces `subscription_plan_limits`. SQLite adds the table at startup. For PostgreSQL and SQL Server, re-run `schema.postgres.sql` or `schema.sqlserver.sql`; the scripts are safe to run again. Until then, plans keep only their request and total token limits, and conditions of other types are refused. A plan saved before the upgrade reads its request and total token limits as request-count and token-count conditions. It moves to the new table the next time a save gives its `conditions` or `limits`; a save that changes only other fields, such as the name, leaves it where it is.
 
 A paid plan carries its pricing in `spec.pricing`. Pricing is given only when the plan is created and can't be updated after that. Write amounts as quoted decimals, as in JSON. A usage price names an existing meter by its id in `meterId`; create the meter first.
 

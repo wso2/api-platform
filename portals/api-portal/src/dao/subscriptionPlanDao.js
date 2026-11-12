@@ -46,8 +46,8 @@ const buildSubscriptionPlanRow = (orgId, plan) => {
 };
 
 /**
- * Validates the `limits` older clients send; their REQUEST_COUNT and EVENT_COUNT limits are kept, as
- * the request-count and event-count conditions.
+ * Validates the `limits` older clients send; their REQUEST_COUNT limits are kept, as the request-count
+ * condition.
  */
 const normalizeLimits = (limits) => {
   if (!Array.isArray(limits)) return [];
@@ -64,8 +64,8 @@ const normalizeLimits = (limits) => {
       throw new ValidationError('timeAmount must be a positive whole number when provided');
     }
     // A limit with no window can't be enforced; refusing it beats saving the plan as unlimited.
-    if (l.limitCount !== -1 && ['REQUEST_COUNT', 'EVENT_COUNT'].includes(limitType) && !l.timeUnit) {
-      throw new ValidationError('timeUnit (MINUTE, HOUR, DAY or MONTH) is required for each request or event limit');
+    if (l.limitCount !== -1 && limitType === 'REQUEST_COUNT' && !l.timeUnit) {
+      throw new ValidationError('timeUnit (MINUTE, HOUR, DAY or MONTH) is required for each request limit');
     }
     return {
       limit_type: limitType,
@@ -114,13 +114,13 @@ const toCondition = (row) => ({
 
 const WINDOW_MINUTES = { MINUTE: 1, HOUR: 60, DAY: 24 * 60, MONTH: 31 * 24 * 60 };
 
-// The subscription_plan_limits rows that hold conditions. Other rows (BANDWIDTH) are left as they are.
+// The subscription_plan_limits rows that hold conditions. Other rows (EVENT_COUNT, BANDWIDTH) are left as they are.
 const STORED_LIMIT_TYPES = Object.values(planConditions.STORED_LIMIT_TYPES);
 const STORED_LIMIT_TYPES_SQL = STORED_LIMIT_TYPES.map((t) => `'${t}'`).join(', ');
 
 /**
- * Reads the REQUEST_COUNT, EVENT_COUNT and TOTAL_TOKEN_COUNT rows of plans saved before conditions as
- * each plan's request-count, event-count and token-count (total) conditions.
+ * Reads the REQUEST_COUNT and TOTAL_TOKEN_COUNT rows of plans saved before conditions as each plan's
+ * request-count and token-count (total) conditions.
  */
 const loadLegacyLimits = async (plans, exec) => {
   const ids = [...new Set(plans.map((p) => p.uuid))];
@@ -140,8 +140,8 @@ const loadLegacyLimits = async (plans, exec) => {
 };
 
 /**
- * Attaches `.conditions` to each plan, and `.limits`: the REQUEST_COUNT and EVENT_COUNT limits of its
- * request-count and event-count conditions, for the clients and events that predate conditions. A plan saved before conditions is
+ * Attaches `.conditions` to each plan, and `.limits`: the REQUEST_COUNT limits of its request-count
+ * condition, for the clients and events that predate conditions. A plan saved before conditions is
  * read from subscription_plan_limits.
  */
 const attachConditions = async (plans, t) => {
@@ -170,15 +170,15 @@ const attachConditions = async (plans, t) => {
   return plans;
 };
 
-/** Deletes the plan's subscription_plan_limits rows that hold conditions, keeping any others (BANDWIDTH). */
+/** Deletes the plan's subscription_plan_limits rows that hold conditions, keeping any others (EVENT_COUNT, BANDWIDTH). */
 const deleteStoredLimits = (planId, exec) => exec.execute(
   `DELETE FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid = ? AND portal_id = ? AND limit_type IN (${STORED_LIMIT_TYPES_SQL})`,
   [planId, getPortalId()]
 );
 
 /**
- * Stores the request-count, event-count and total token-count conditions in subscription_plan_limits,
- * as REQUEST_COUNT, EVENT_COUNT and TOTAL_TOKEN_COUNT rows, for a database not upgraded yet.
+ * Stores the request-count and total token-count conditions in subscription_plan_limits, as
+ * REQUEST_COUNT and TOTAL_TOKEN_COUNT rows, for a database not upgraded yet.
  */
 const saveLegacyLimits = async (planId, conditions, schema, exec) => {
   // subscription_plan_limits keeps neither other condition types nor onExceed: allow.
@@ -199,8 +199,8 @@ const saveLegacyLimits = async (planId, conditions, schema, exec) => {
 
 /**
  * Saves the plan's conditions. `conditions` replaces them all. `limits` sent alone, by clients that
- * predate conditions, sets the request-count and event-count conditions from its REQUEST_COUNT and
- * EVENT_COUNT limits and keeps the others. With neither, an update keeps them. Saving moves a plan off subscription_plan_limits.
+ * predate conditions, sets the request-count condition from its REQUEST_COUNT limits and keeps the
+ * others. With neither, an update keeps them. Saving moves a plan off subscription_plan_limits.
  */
 const savePlanDetails = async (planId, plan, isNew, t) => {
   const exec = t || db;
@@ -210,7 +210,7 @@ const savePlanDetails = async (planId, plan, isNew, t) => {
     conditions = planConditions.normalizeConditions(plan.conditions);
   } else if (hasLimits) {
     const current = isNew ? [] : (await attachConditions([{ uuid: planId }], t))[0].conditions;
-    // Checked again: adding the request-count or event-count condition can take a plan past its 20 conditions.
+    // Checked again: adding the request-count condition can take a plan past its 20 conditions.
     conditions = planConditions.normalizeConditions(
       planConditions.conditionsFromLimits(current, normalizeLimits(plan.limits)));
   } else if (isNew) {
