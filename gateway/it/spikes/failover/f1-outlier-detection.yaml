@@ -1,0 +1,102 @@
+# PROBE F — does outlier detection eject a transport-dead host under priority_group,
+# and does the chain still traverse past it?
+#
+# Why this matters (C3): Envoy never invokes ext_proc for its own local replies, so a
+# connection failure produces no policy call and the policy cannot suspend the dead member
+# itself. If Envoy will eject it, Envoy IS the suspension mechanism for transport failures and
+# no access-log feedback loop needs building.
+#
+# The original design document rejected this: "Disproven live: the composite still sends
+# attempt 1 to an ejected leaf -> 503 'no healthy upstream', not retryable (envoy#11307)."
+# That was the COMPOSITE cluster. This probe asks the same question of priority_group.
+#
+# provider_a points at a live container on a CLOSED port, so every dial is an immediate
+# ECONNREFUSED -- deterministic, and fast enough to iterate.
+#
+# NOTE max_ejection_percent: 100. The default is 10, and with a single host in the cluster
+# that rounds to ejecting nothing, so the probe would silently show "no ejection" for a reason
+# that has nothing to do with the question being asked.
+admin: { address: { socket_address: { address: 0.0.0.0, port_value: 9901 } } }
+static_resources:
+  listeners:
+  - name: main
+    address: { socket_address: { address: 0.0.0.0, port_value: 10000 } }
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: probe
+          access_log:
+          - name: envoy.access_loggers.stdout
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+              log_format:
+                text_format_source:
+                  inline_string: "ACCESSLOG cluster=%UPSTREAM_CLUSTER% attempts=%UPSTREAM_REQUEST_ATTEMPT_COUNT% status=%RESPONSE_CODE% flags=%RESPONSE_FLAGS% detail=%RESPONSE_CODE_DETAILS%\n"
+          route_config:
+            name: rc
+            cluster_specifier_plugins:
+            - extension:
+                name: failover-groups
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.router.cluster_specifiers.priority_group.v3.PriorityGroupClusterSpecifier
+                  override_metadata_namespace: wso2.failover
+                  priority_groups:
+                  - name: rank-1
+                    clusters: [ { cluster_name: provider_dead, weight: 1 } ]
+                  - name: rank-2
+                    clusters: [ { cluster_name: provider_b, weight: 1 } ]
+            virtual_hosts:
+            - name: vh
+              domains: ["*"]
+              include_attempt_count_in_response: true
+              routes:
+              - match: { prefix: "/" }
+                route:
+                  cluster_specifier_plugin: failover-groups
+                  retry_policy:
+                    # connect-failure covers the dial; 5xx covers the "no healthy upstream"
+                    # local reply that an ejected cluster produces. Whether that local reply
+                    # is actually retried is the question.
+                    retry_on: "5xx,connect-failure,refused-stream,reset,retriable-status-codes"
+                    retriable_status_codes: [429, 500, 503]
+                    num_retries: 1
+                    per_try_timeout: 3s
+                    refresh_cluster_on_retry: true
+          http_filters:
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+  - name: provider_dead
+    connect_timeout: 1s
+    type: STATIC
+    # Without this, ejection is cosmetic. A provider cluster typically has ONE host, so
+    # ejecting it leaves 0% healthy -- below the default 50% panic threshold -- and panic mode
+    # makes Envoy ignore health status and dial the dead host anyway. Measured: ejections_active
+    # was 1 while upstream_cx_connect_fail kept climbing, with lb_healthy_panic incrementing.
+    common_lb_config:
+      healthy_panic_threshold: { value: 0 }
+    load_assignment:
+      cluster_name: provider_dead
+      endpoints: [ { lb_endpoints: [ { endpoint: { address: { socket_address: { address: 172.28.0.13, port_value: 9999 } } } } ] } ]
+    outlier_detection:
+      # Connection failures are "local origin" errors; splitting them out is what makes
+      # consecutive_local_origin_failure count dial failures rather than only upstream 5xx.
+      split_external_local_origin_errors: true
+      consecutive_local_origin_failure: 2
+      enforcing_consecutive_local_origin_failure: 100
+      consecutive_gateway_failure: 2
+      enforcing_consecutive_gateway_failure: 100
+      consecutive_5xx: 2
+      enforcing_consecutive_5xx: 100
+      interval: 1s
+      base_ejection_time: 30s
+      max_ejection_percent: 100
+  - name: provider_b
+    connect_timeout: 2s
+    type: STATIC
+    load_assignment:
+      cluster_name: provider_b
+      endpoints: [ { lb_endpoints: [ { endpoint: { address: { socket_address: { address: 172.28.0.12, port_value: 8080 } } } } ] } ]
