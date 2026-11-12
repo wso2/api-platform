@@ -37,6 +37,7 @@ import { SecondaryText } from '@/components/common/SecondaryText';
 import { iconTileSx } from '@/theme/receipes';
 import { conditionTypeName } from '../../orgManage/components/PlanConditionsEditor';
 import {
+  apiKindOf,
   planEnforcement,
   SUBSCRIPTION_VALIDATION,
   type EnforcementRow,
@@ -96,6 +97,27 @@ const messages = defineMessages({
     description:
       '{policy} is the name of the policy that enforces the condition, or subscription-validation.',
   },
+  statusNotApplicable: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.statusNotApplicable',
+    defaultMessage: 'Does not apply',
+    description: 'Status of a plan condition this kind of API never counts (e.g. tool calls on a REST API).',
+  },
+  noteNotApplicableTools: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotApplicableTools',
+    defaultMessage: 'Only MCP proxies count tool calls; nothing to attach on this API.',
+  },
+  noteNotApplicableTokens: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotApplicableTokens',
+    defaultMessage: 'Only LLM proxies count tokens; nothing to attach on this API.',
+  },
+  noteNotApplicableEvents: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotApplicableEvents',
+    defaultMessage: 'Only event APIs (WebSub, WebSocket) count events; nothing to attach on this API.',
+  },
+  noteNotApplicableRequests: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotApplicableRequests',
+    defaultMessage: 'Event APIs count events, not requests; nothing to attach on this API.',
+  },
   noteNoPolicy: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNoPolicy',
     defaultMessage: 'No policy enforces this yet',
@@ -132,6 +154,7 @@ const STATUS: Record<
 > = {
   enforced: { color: 'success', icon: <CircleCheck size={14} />, label: messages.statusEnforced },
   noPolicy: { color: 'default', icon: <Minus size={14} />, label: messages.statusNoPolicy },
+  notApplicable: { color: 'default', icon: <Minus size={14} />, label: messages.statusNotApplicable },
   notEnforced: {
     color: 'warning',
     icon: <TriangleAlert size={14} />,
@@ -139,7 +162,15 @@ const STATUS: Record<
   },
 };
 
+const NOT_APPLICABLE_NOTE: Record<string, MessageDescriptor> = {
+  'event-count': messages.noteNotApplicableEvents,
+  'request-count': messages.noteNotApplicableRequests,
+  'token-count': messages.noteNotApplicableTokens,
+  'tool-call-count': messages.noteNotApplicableTools,
+};
+
 const noteOf = (row: EnforcementRow): MessageDescriptor => {
+  if (row.status === 'notApplicable') return NOT_APPLICABLE_NOTE[row.type];
   if (row.status === 'enforced') return messages.noteEnforced;
   if (row.status === 'notEnforced') {
     return row.partial ? messages.notePartial : messages.noteNotEnforced;
@@ -220,7 +251,7 @@ export function PlanPolicyNotes({
   const error = published.error ?? plansQuery.error;
   const planIds = new Set(published.planIds);
   const plans = (plansQuery.data?.list ?? []).filter((plan) => plan.id && planIds.has(plan.id));
-  const enforcement = planEnforcement(plans, attached, partial);
+  const enforcement = planEnforcement(plans, attached, partial, apiKindOf(apiType));
   const { rows } = enforcement;
   const ready = !isPending && !error;
   const anyNotEnforced = rows.some((row) => row.status === 'notEnforced');
@@ -318,7 +349,7 @@ export function PlanPolicyNotes({
               label={
                 <FormattedMessage
                   {...messages.summary}
-                  values={{ enforced: enforcement.enforced, total: rows.length }}
+                  values={{ enforced: enforcement.enforced, total: enforcement.applicable }}
                 />
               }
               size="small"

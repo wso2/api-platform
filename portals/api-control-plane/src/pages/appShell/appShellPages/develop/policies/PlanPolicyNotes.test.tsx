@@ -132,13 +132,14 @@ describe('PlanPolicyNotes', () => {
     expect(rowOf('requests')).toHaveTextContent('Request count');
     expect(rowOf('requests')).toHaveTextContent('Enforced');
     expect(rowOf('requests')).toHaveTextContent('By subscription-validation');
-    for (const id of ['tool-calls', 'tokens']) {
-      expect(rowOf(id)).toHaveTextContent('No policy yet');
-      expect(rowOf(id)).toHaveTextContent('No policy enforces this yet');
-    }
+    // A REST API never counts tool calls or tokens: nothing to attach, and not part of the count.
+    expect(rowOf('tool-calls')).toHaveTextContent('Does not apply');
+    expect(rowOf('tool-calls')).toHaveTextContent('Only MCP proxies count tool calls; nothing to attach on this API.');
+    expect(rowOf('tokens')).toHaveTextContent('Does not apply');
+    expect(rowOf('tokens')).toHaveTextContent('Only LLM proxies count tokens; nothing to attach on this API.');
     expect(rowOf('business-hours')).toHaveTextContent('Custom');
     expect(rowOf('business-hours')).toHaveTextContent('No policy reads it yet');
-    expect(screen.getByText('1 of 4 enforced')).toBeInTheDocument();
+    expect(screen.getByText('1 of 2 enforced')).toBeInTheDocument();
     expect(
       screen.getByText(
         'For the plans this API offers. A plan condition applies only where a policy enforces it. You pick the plans when you publish to the API Portal. This reflects the policies on this page; changes apply once you save and deploy the API.',
@@ -158,7 +159,7 @@ describe('PlanPolicyNotes', () => {
     expect(rowOf('requests')).toHaveTextContent(
       'Not enforced. Attach subscription-validation and redeploy.',
     );
-    expect(screen.getByText('0 of 4 enforced')).toBeInTheDocument();
+    expect(screen.getByText('0 of 2 enforced')).toBeInTheDocument();
   });
 
   it('marks request-count not enforced while subscription-validation is on some resources only', async () => {
@@ -173,7 +174,7 @@ describe('PlanPolicyNotes', () => {
       'Not enforced. subscription-validation is attached to some resources only. Attach it to the API or to every resource and redeploy.',
     );
     expect(screen.queryByText(/Attach subscription-validation first/)).not.toBeInTheDocument();
-    expect(screen.getByText('0 of 4 enforced')).toBeInTheDocument();
+    expect(screen.getByText('0 of 2 enforced')).toBeInTheDocument();
   });
 
   it('drops the plans of a listing unpublished since it was last read', async () => {

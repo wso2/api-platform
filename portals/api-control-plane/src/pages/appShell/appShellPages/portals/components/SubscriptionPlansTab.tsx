@@ -21,7 +21,11 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/subscriptionPlans';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
-import { requiredPolicies, unenforcedConditionTypes } from '../../develop/policies/planPolicies';
+import {
+  type ApiKind,
+  requiredPolicies,
+  unenforcedConditionTypes,
+} from '../../develop/policies/planPolicies';
 import { toggleSelection, type DeletedSelection, type DraftFormValues } from '../utils/publicationForm';
 import { PlanCard } from './PlanCard';
 import { RequiredPoliciesNote } from './RequiredPoliciesNote';
@@ -76,6 +80,8 @@ export type SubscriptionPlansTabProps = {
    * policy those plans need that is not among them is listed in a note. Absent: no note.
    */
   attachedPolicies?: ReadonlySet<string>;
+  /** The kind of API, so conditions it never counts (tool calls on a REST API) ask for no policy. */
+  apiKind?: ApiKind;
   /** Published view only: plans the listing holds whose subscription plan was deleted. They show struck through and count as published. */
   deletedPlans?: readonly DeletedSelection[];
   disabled?: boolean;
@@ -105,6 +111,7 @@ type DisplayablePlan = SubscriptionPlan & { id: string };
  */
 export function SubscriptionPlansTab({
   apiName = '',
+  apiKind = 'rest',
   attachedPolicies,
   deletedPlans = [],
   disabled,
@@ -156,7 +163,7 @@ export function SubscriptionPlansTab({
   const selectedPlans = activePlans.filter((plan) => selectedSet.has(plan.id));
   const missingPolicies =
     !readOnly && attachedPolicies && selectedPlans.length > 0
-      ? requiredPolicies(selectedPlans).filter((name) => !attachedPolicies.has(name))
+      ? requiredPolicies(selectedPlans, apiKind).filter((name) => !attachedPolicies.has(name))
       : [];
 
   const commitSelection = (nextIds: string[]) => {
@@ -187,7 +194,7 @@ export function SubscriptionPlansTab({
       <RequiredPoliciesNote
         apiName={apiName}
         missing={missingPolicies}
-        unenforced={unenforcedConditionTypes(selectedPlans)}
+        unenforced={unenforcedConditionTypes(selectedPlans, apiKind)}
       />
 
       <Box

@@ -2137,6 +2137,18 @@
     "defaultMessage": "No policy reads it yet",
     "description": "Note on a custom plan condition, which only a policy written to read its ID uses."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotApplicableEvents": {
+    "defaultMessage": "Only event APIs (WebSub, WebSocket) count events; nothing to attach on this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotApplicableRequests": {
+    "defaultMessage": "Event APIs count events, not requests; nothing to attach on this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotApplicableTokens": {
+    "defaultMessage": "Only LLM proxies count tokens; nothing to attach on this API."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotApplicableTools": {
+    "defaultMessage": "Only MCP proxies count tool calls; nothing to attach on this API."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotEnforced": {
     "defaultMessage": "Not enforced. Attach {policy} and redeploy.",
     "description": "{policy} is the name of the policy that would enforce the condition."
@@ -2151,6 +2163,10 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.statusNoPolicy": {
     "defaultMessage": "No policy yet",
     "description": "Status of a plan condition that no gateway policy can enforce today."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.statusNotApplicable": {
+    "defaultMessage": "Does not apply",
+    "description": "Status of a plan condition this kind of API never counts (e.g. tool calls on a REST API)."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.statusNotEnforced": {
     "defaultMessage": "Not enforced"
@@ -5846,9 +5862,6 @@
   "appShell.header.signOut": {
     "defaultMessage": "Sign out"
   },
-  "appShell.header.title": {
-    "defaultMessage": "API Platform"
-  },
   "appShell.insightsPage.feature": {
     "defaultMessage": "API insights",
     "description": "Feature name shown on the Coming Soon placeholder when API-scoped Insights is not available yet in cloud."
@@ -5867,6 +5880,10 @@
   },
   "appShell.runtimeLogsPage.subHeader": {
     "defaultMessage": "Runtime logs for {apiHandler}."
+  },
+  "branding.BrandLockup.name": {
+    "defaultMessage": "<bold>API</bold> Management",
+    "description": "Product name in the brand lockup. API is bold, Management regular — keep the bold tag around the equivalent of API."
   },
   "components.comingSoon.body": {
     "defaultMessage": "{feature} will be available soon."

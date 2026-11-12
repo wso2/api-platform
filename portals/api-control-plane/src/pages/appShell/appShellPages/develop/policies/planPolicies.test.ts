@@ -20,6 +20,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { PlanCondition } from '../../orgManage/components/planConditions';
 import {
+  apiKindOf,
+  appliesTo,
   attachedPolicyNames,
   CONDITION_POLICIES,
   enforcerOf,
@@ -200,5 +202,67 @@ describe('unenforcedConditionTypes', () => {
     expect(unenforcedConditionTypes([{ conditions: [limit('request-count', 'requests')] }])).toEqual(
       [],
     );
+  });
+});
+
+describe('conditions by kind of API', () => {
+  const plans = [
+    {
+      conditions: [
+        limit('request-count', 'requests'),
+        limit('tool-call-count', 'tool-calls'),
+        limit('token-count', 'tokens'),
+        limit('event-count', 'events'),
+        custom('region'),
+      ],
+    },
+  ];
+
+  it('reads the kind from the publication {apiType}', () => {
+    expect(apiKindOf('rest-api')).toBe('rest');
+    expect(apiKindOf('graphql-api')).toBe('graphql');
+    expect(apiKindOf('mcp-proxy')).toBe('mcp');
+    expect(apiKindOf('llm-proxy')).toBe('llm');
+    expect(apiKindOf('websub-api')).toBe('event');
+  });
+
+  it('applies each built-in condition only where it is counted, and custom ones everywhere', () => {
+    expect(appliesTo({ type: 'tool-call-count' }, 'rest')).toBe(false);
+    expect(appliesTo({ type: 'tool-call-count' }, 'mcp')).toBe(true);
+    expect(appliesTo({ type: 'token-count' }, 'graphql')).toBe(false);
+    expect(appliesTo({ type: 'token-count' }, 'llm')).toBe(true);
+    expect(appliesTo({ type: 'event-count' }, 'rest')).toBe(false);
+    expect(appliesTo({ type: 'request-count' }, 'event')).toBe(false);
+    expect(appliesTo({ type: 'custom' }, 'rest')).toBe(true);
+    expect(appliesTo({ type: 'tool-call-count' })).toBe(true);
+  });
+
+  it('marks conditions a REST API never counts as not applicable, out of the total', () => {
+    const result = planEnforcement(plans, new Set([SUBSCRIPTION_VALIDATION]), new Set(), 'rest');
+    expect(result.rows.map((row) => [row.id, row.status])).toEqual([
+      ['requests', 'enforced'],
+      ['events', 'notApplicable'],
+      ['tool-calls', 'notApplicable'],
+      ['tokens', 'notApplicable'],
+      ['region', 'noPolicy'],
+    ]);
+    expect(result.enforced).toBe(1);
+    expect(result.applicable).toBe(2);
+  });
+
+  it('keeps tool-call-count on an MCP proxy', () => {
+    const result = planEnforcement(plans, new Set([SUBSCRIPTION_VALIDATION]), new Set(), 'mcp');
+    expect(result.rows.find((row) => row.id === 'tool-calls')?.status).toBe('noPolicy');
+    expect(result.applicable).toBe(3);
+  });
+
+  it('needs no policy for a condition the kind never counts', () => {
+    expect(requiredPolicies(plans, 'rest')).toEqual([SUBSCRIPTION_VALIDATION]);
+  });
+
+  it('leaves out of the unenforced list the conditions the kind never counts', () => {
+    expect(unenforcedConditionTypes(plans, 'rest')).toEqual(['custom']);
+    expect(unenforcedConditionTypes(plans, 'llm')).toEqual(['token-count', 'custom']);
+    expect(unenforcedConditionTypes(plans)).toEqual(['event-count', 'tool-call-count', 'token-count', 'custom']);
   });
 });

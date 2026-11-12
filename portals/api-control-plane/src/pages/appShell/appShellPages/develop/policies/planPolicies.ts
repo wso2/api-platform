@@ -51,6 +51,34 @@ export const CONDITION_POLICIES: {
   customById: {},
 };
 
+/** The kinds of API a plan can be offered on, as far as its conditions are concerned. */
+export type ApiKind = 'rest' | 'graphql' | 'mcp' | 'llm' | 'event';
+
+/**
+ * Where each built-in condition is counted. A REST or GraphQL API never sees a tool call, a token
+ * count or an event, so a plan's tool-call-count, token-count or event-count condition does not apply
+ * to it, and no policy for it is needed there. Custom conditions apply wherever a policy reads them.
+ */
+export const CONDITION_APPLIES_TO: Record<BuiltInType, readonly ApiKind[]> = {
+  'event-count': ['event'],
+  'request-count': ['rest', 'graphql', 'mcp', 'llm'],
+  'token-count': ['llm'],
+  'tool-call-count': ['mcp'],
+};
+
+/** Whether a condition can apply to an API of this kind (always, when the kind is not given). */
+export const appliesTo = (condition: { type: string }, kind?: ApiKind): boolean =>
+  !kind || !isBuiltInType(condition.type) || CONDITION_APPLIES_TO[condition.type].includes(kind);
+
+/** The kind of an API from its `{apiType}` on the publication endpoints (`rest-api`, `graphql-api`). */
+export const apiKindOf = (apiType: string): ApiKind => {
+  if (apiType.startsWith('graphql')) return 'graphql';
+  if (apiType.startsWith('mcp')) return 'mcp';
+  if (apiType.startsWith('llm')) return 'llm';
+  if (/websub|websocket|event/.test(apiType)) return 'event';
+  return 'rest';
+};
+
 /** Whether `record` has `key` as its own property, so `constructor` or `__proto__` is not found
  * on its prototype. */
 const hasOwn = (record: object, key: string) => Object.prototype.hasOwnProperty.call(record, key);
@@ -107,14 +135,17 @@ export const attachedPolicyNames = (api: PolicyHolder): Set<string> =>
 
 /**
  * The policies an API needs for these plans to be enforced: subscription-validation always, then
- * the policy of each condition the plans hold, once each. A condition no policy enforces needs none.
+ * the policy of each condition the plans hold, once each. A condition no policy enforces needs none,
+ * and neither does one this kind of API never counts.
  */
 export const requiredPolicies = (
   plans: readonly Pick<SubscriptionPlan, 'conditions'>[],
+  kind?: ApiKind,
 ): string[] => {
   const names = new Set<string>([SUBSCRIPTION_VALIDATION]);
   for (const plan of plans) {
     for (const condition of plan.conditions ?? []) {
+      if (!appliesTo(condition, kind)) continue;
       const enforcer = enforcerOf(condition);
       if (enforcer) names.add(enforcer);
     }
@@ -123,7 +154,7 @@ export const requiredPolicies = (
 };
 
 /** Whether a condition is enforced on the API, not (yet attached), or has no policy at all. */
-export type EnforcementStatus = 'enforced' | 'notEnforced' | 'noPolicy';
+export type EnforcementStatus = 'enforced' | 'notEnforced' | 'noPolicy' | 'notApplicable';
 
 /** One row of the "Required by subscription plans" notes: a built-in type, or a custom ID. */
 export type EnforcementRow = {
@@ -146,6 +177,8 @@ export type PlanEnforcement = {
   /** Built-in types in the API Portal's order, then custom IDs in the order the plans list them. */
   rows: EnforcementRow[];
   enforced: number;
+  /** Rows whose condition applies to this kind of API: the total that `enforced` is out of. */
+  applicable: number;
 };
 
 /**
@@ -158,6 +191,7 @@ export const planEnforcement = (
   plans: readonly Pick<SubscriptionPlan, 'conditions'>[],
   attached: ReadonlySet<string>,
   partial: ReadonlySet<string> = new Set(),
+  kind?: ApiKind,
 ): PlanEnforcement => {
   const validationAttached = attached.has(SUBSCRIPTION_VALIDATION);
   const validationPartial = !validationAttached && partial.has(SUBSCRIPTION_VALIDATION);
@@ -175,7 +209,11 @@ export const planEnforcement = (
 
   const builtInRows = BUILT_IN_TYPES.filter((type) =>
     conditions.some((condition) => condition.type === type),
-  ).map((type) => rowOf(type, BUILT_IN_IDS[type], CONDITION_POLICIES.builtIn[type]));
+  ).map((type) =>
+    appliesTo({ type }, kind)
+      ? rowOf(type, BUILT_IN_IDS[type], CONDITION_POLICIES.builtIn[type])
+      : { id: BUILT_IN_IDS[type], partial: false, policy: null, status: 'notApplicable' as const, type },
+  );
   const customIds = [
     ...new Set(
       conditions
@@ -188,6 +226,7 @@ export const planEnforcement = (
   );
   const rows = [...builtInRows, ...customRows];
   return {
+    applicable: rows.filter((row) => row.status !== 'notApplicable').length,
     enforced: rows.filter((row) => row.status === 'enforced').length,
     rows,
     validationMissing,
@@ -201,10 +240,11 @@ export const planEnforcement = (
  */
 export const unenforcedConditionTypes = (
   plans: readonly Pick<SubscriptionPlan, 'conditions'>[],
+  kind?: ApiKind,
 ): (BuiltInType | 'custom')[] => {
   const unenforced = plans
     .flatMap((plan) => plan.conditions ?? [])
-    .filter((condition) => enforcerOf(condition) === null);
+    .filter((condition) => appliesTo(condition, kind) && enforcerOf(condition) === null);
   return [...BUILT_IN_TYPES, 'custom' as const].filter((type) =>
     unenforced.some((condition) =>
       type === 'custom' ? !isBuiltInType(condition.type) : condition.type === type,

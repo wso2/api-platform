@@ -209,9 +209,37 @@ describe('SubscriptionPlansTab', () => {
       });
 
       await screen.findByText('Platinum');
-      expect(note()).toHaveTextContent(
-        'Event count, Token count, and Custom conditions have no policy that enforces them yet.',
-      );
+      // A REST API never counts events or tokens, so only the custom condition is left unenforced.
+      expect(note()).toHaveTextContent('Custom conditions have no policy that enforces them yet.');
+      expect(note()).not.toHaveTextContent('Event count');
+      expect(note()).not.toHaveTextContent('Token count');
+    });
+
+    it('names the conditions the kind of API counts: token count on an LLM proxy', async () => {
+      const window1k = {
+        limits: [{ count: 1000, timeAmount: 1, timeUnit: 'HOUR' }],
+        onExceed: 'reject',
+      };
+      const platinum = aSubscriptionPlan({
+        conditions: [
+          { id: 'events', params: window1k, type: 'event-count' },
+          { id: 'tokens', params: { ...window1k, tokenType: 'total' }, type: 'token-count' },
+        ],
+        displayName: 'Platinum',
+        id: 'platinum',
+      });
+      server.use(collection(PLANS_PATH, [platinum]));
+
+      renderTab({
+        apiKind: 'llm',
+        apiName: 'Cat Facts API',
+        attachedPolicies: new Set(['jwt-auth']),
+        values: values({ subscriptionPlanIds: ['platinum'] }),
+      });
+
+      await screen.findByText('Platinum');
+      expect(note()).toHaveTextContent('Token count conditions have no policy that enforces them yet.');
+      expect(note()).not.toHaveTextContent('Event count');
     });
 
     it('shows nothing when the API has subscription-validation', async () => {
