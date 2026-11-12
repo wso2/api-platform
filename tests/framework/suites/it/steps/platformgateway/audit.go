@@ -20,7 +20,6 @@ package platformgateway
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -36,7 +35,6 @@ import (
 )
 
 const (
-	auditPlaceTable    = "gateway audit table"
 	auditPlaceLog      = "gateway-controller log"
 	auditPlaceFile     = "gateway audit file"
 	auditPlaceReceiver = "gateway audit receiver"
@@ -45,20 +43,13 @@ const (
 	auditFilePath = "/app/data/audit/audit.log"
 )
 
-// auditFields maps each record field to the audit table column that holds it.
-var auditFields = []struct{ field, column string }{
-	{"gatewayId", "gateway_id"},
-	{"correlationId", "correlation_id"},
-	{"action", "action"},
-	{"resourceType", "resource_type"},
-	{"resourceId", "resource_uuid"},
-	{"resourceName", "resource_name"},
-	{"outcome", "outcome"},
-	{"performedBy", "performed_by"},
+// auditFields are the record fields a step table can compare.
+var auditFields = []string{
+	"gatewayId", "correlationId", "action", "resourceType", "resourceId", "resourceName", "outcome", "performedBy",
 }
 
 func (g *Gateway) registerAuditSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^the (gateway audit table|gateway-controller log|gateway audit file|gateway audit receiver) should have exactly these audit records for "([^"]*)":$`,
+	sc.Step(`^the (gateway-controller log|gateway audit file|gateway audit receiver) should have exactly these audit records for "([^"]*)":$`,
 		g.auditRecordsAre)
 }
 
@@ -94,8 +85,6 @@ func (g *Gateway) auditRecordsAre(ctx context.Context, place, resource string, t
 func (g *Gateway) auditRecords(ctx context.Context, place, key string) ([]map[string]string, error) {
 	var records []map[string]string
 	switch place {
-	case auditPlaceTable:
-		return g.auditTableRecords(ctx, key)
 	case auditPlaceLog:
 		stack, _, err := g.topo.ServiceControl("gateway-controller")
 		if err != nil {
@@ -143,51 +132,6 @@ func (g *Gateway) auditRecords(ctx context.Context, place, key string) ([]map[st
 	}), nil
 }
 
-// auditTableRecords opens a fresh connection per call because an SQLite store is a
-// point-in-time snapshot (see Topology.OpenComponentDB).
-func (g *Gateway) auditTableRecords(ctx context.Context, key string) ([]map[string]string, error) {
-	store, ok := g.topo.Storage.Plan.StoreFor("platform-gateway", 0)
-	if !ok {
-		return nil, fmt.Errorf("platform-gateway has no assigned store")
-	}
-	columns := make([]string, len(auditFields))
-	for i, f := range auditFields {
-		columns[i] = f.column
-	}
-	p1, p2 := sqlPlaceholders(store.Type)
-	query := fmt.Sprintf("SELECT %s FROM audit WHERE resource_name = %s OR resource_uuid = %s",
-		strings.Join(columns, ", "), p1, p2)
-
-	db, closeDB, err := g.topo.OpenComponentDB(ctx, "platform-gateway", "gateway-controller")
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = closeDB() }()
-	rows, err := db.QueryContext(ctx, query, key, key)
-	if err != nil {
-		return nil, fmt.Errorf("querying audit rows for %q: %w", key, err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var records []map[string]string
-	for rows.Next() {
-		values := make([]sql.NullString, len(auditFields))
-		dest := make([]any, len(values))
-		for i := range values {
-			dest[i] = &values[i]
-		}
-		if err := rows.Scan(dest...); err != nil {
-			return nil, fmt.Errorf("reading an audit row for %q: %w", key, err)
-		}
-		record := make(map[string]string, len(auditFields))
-		for i, f := range auditFields {
-			record[f.field] = values[i].String
-		}
-		records = append(records, record)
-	}
-	return records, rows.Err()
-}
-
 func auditLogRecords(logs string) []map[string]string {
 	var records []map[string]string
 	for _, line := range strings.Split(logs, "\n") {
@@ -208,9 +152,9 @@ func decodeAuditRecord(raw []byte) (map[string]string, bool) {
 		return nil, false
 	}
 	record := make(map[string]string, len(auditFields))
-	for _, f := range auditFields {
-		if value, ok := fields[f.field].(string); ok {
-			record[f.field] = value
+	for _, field := range auditFields {
+		if value, ok := fields[field].(string); ok {
+			record[field] = value
 		}
 	}
 	return record, true
@@ -229,7 +173,7 @@ func auditExpectations(ctx context.Context, table *godog.Table) (auditExpectatio
 	var want auditExpectation
 	for _, cell := range table.Rows[0].Cells {
 		field := strings.TrimSpace(cell.Value)
-		if !slices.ContainsFunc(auditFields, func(f struct{ field, column string }) bool { return f.field == field }) {
+		if !slices.Contains(auditFields, field) {
 			return auditExpectation{}, fmt.Errorf("unknown audit record field %q", field)
 		}
 		if slices.Contains(want.columns, field) {

@@ -45,7 +45,7 @@ const (
 )
 
 // httpSink never blocks Write: lines go to a bounded in-memory queue, and a
-// batch that cannot be delivered is dropped (the audit table still has it).
+// batch that cannot be delivered is dropped.
 type httpSink struct {
 	cfg      config.AuditHTTPConfig
 	client   *http.Client

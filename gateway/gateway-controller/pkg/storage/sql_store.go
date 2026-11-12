@@ -3492,27 +3492,7 @@ func (s *sqlStore) DeleteSubscriptionsForAPINotIn(apiID string, ids []string) er
 	return nil
 }
 
-// SaveAudit inserts one audit row; an empty resource name is stored as NULL.
-func (s *sqlStore) SaveAudit(id string, performedAt time.Time, action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID string) error {
-	startTime := time.Now()
-	table := "audit"
-
-	query := `
-	INSERT INTO audit (uuid, gateway_id, correlation_id, action, resource_uuid, resource_name, resource_type, outcome, performed_by, performed_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`
-	if _, err := s.exec(query, id, s.gatewayId, correlationID, action, resourceUUID, nullableString(resourceName),
-		resourceType, outcome, performedBy, performedAt); err != nil {
-		metrics.DatabaseOperationsTotal.WithLabelValues("insert", table, "error").Inc()
-		metrics.StorageErrorsTotal.WithLabelValues("insert", "exec_error").Inc()
-		return fmt.Errorf("failed to save audit record: %w", err)
-	}
-
-	metrics.DatabaseOperationsTotal.WithLabelValues("insert", table, "success").Inc()
-	metrics.DatabaseOperationDurationSeconds.WithLabelValues("insert", table).Observe(time.Since(startTime).Seconds())
-	return nil
-}
-
+// SaveSecret persists a new encrypted secret
 func (s *sqlStore) SaveSecret(secret *models.Secret) error {
 	startTime := time.Now()
 	table := "secrets"

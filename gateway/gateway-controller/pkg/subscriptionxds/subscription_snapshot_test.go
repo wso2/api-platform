@@ -25,7 +25,6 @@ import (
 	"errors"
 	"log/slog"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -674,8 +673,4 @@ func TestSnapshotManager_UpdateSnapshot_DPToCPSyncedAPI(t *testing.T) {
 
 func TestSubscriptionStateTypeURL(t *testing.T) {
 	assert.Equal(t, "api-platform.wso2.org/v1.SubscriptionState", SubscriptionStateTypeURL)
-}
-
-func (m *MockStorage) SaveAudit(string, time.Time, string, string, string, string, string, string, string) error {
-	return nil
 }

@@ -695,8 +695,6 @@ blocks:
     components:
       - name: platform-gateway
         overlay: tests/framework/core/catalog/overlays/gateway-audit.toml
-        db:
-          matrix: [sqlite, postgres, sqlserver]
       - name: testbench
     runners:
       - name: audit

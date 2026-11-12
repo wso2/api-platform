@@ -150,8 +150,8 @@ func TestEveryBlockSweepsEveryEngine(t *testing.T) {
 // default-identity-on scenario) are the data plane's behaviour, not the store. The AI Workspace
 // CLI runner moved into platform-api-core and now sweeps every engine with it. The API
 // definition block sweeps platform-api's engines instead: its subject is the control plane's
-// store, and the gateway only serves what was imported. The masked audit block runs one engine
-// too, since masking changes only the audit output lines.
+// store, and the gateway only serves what was imported. The audit blocks run one engine too,
+// since audit records go only to output lines, never to the store.
 var singleEngineBlocks = map[string]components.DBType{
 	"platform-api-gateway-api-portal":                 components.Postgres,
 	"multigateway":                                    components.SQLite,
@@ -163,6 +163,7 @@ var singleEngineBlocks = map[string]components.DBType{
 	"gateway-mtls-hostnames-all-connections-required": components.SQLite,
 	"gateway-mtls-trust-any":                          components.SQLite,
 	"gateway-mtls-observability-default-identity":     components.SQLite,
+	"gateway-audit":                                   components.SQLite,
 	"gateway-audit-masked":                            components.SQLite,
 }
 

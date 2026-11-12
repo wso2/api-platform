@@ -24,17 +24,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 )
-
-type auditTable interface {
-	SaveAudit(id string, performedAt time.Time, action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID string) error
-}
 
 type recordJSON struct {
 	Time          time.Time `json:"time"`
@@ -55,20 +50,19 @@ const (
 	OutcomeFailed    = "failed"
 )
 
-// AuditService records changes made through the management API: a row in the
-// audit table and, optionally, the same record as a JSON line on every sink.
+// AuditService records changes made through the management API as a JSON line
+// on every sink.
 type AuditService struct {
 	enabled             bool
 	maskSensitiveFields bool
-	store               auditTable
 	gatewayID           string
 	sinks               []sink
 	logger              *slog.Logger
 }
 
 // NewAuditService builds the configured sinks; an error means startup must fail.
-func NewAuditService(store auditTable, gatewayID string, cfg config.AuditConfig, logger *slog.Logger) (*AuditService, error) {
-	s := &AuditService{enabled: cfg.Enabled, maskSensitiveFields: cfg.MaskSensitiveFields, store: store, gatewayID: gatewayID, logger: logger}
+func NewAuditService(gatewayID string, cfg config.AuditConfig, logger *slog.Logger) (*AuditService, error) {
+	s := &AuditService{enabled: cfg.Enabled, maskSensitiveFields: cfg.MaskSensitiveFields, gatewayID: gatewayID, logger: logger}
 	if !cfg.Enabled {
 		return s, nil
 	}
@@ -137,40 +131,15 @@ func newSinks(cfg config.AuditConfig, logger *slog.Logger) ([]sink, error) {
 	return sinks, nil
 }
 
-// Record never fails the request: a failed table insert is logged, and each
-// sink handles its own failures.
+// Record never fails the request: each sink handles its own failures.
 func (s *AuditService) Record(action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID string) {
-	if s == nil || !s.enabled {
-		return
-	}
-	// The correlation ID comes from the client: the column holds 64 bytes
-	// (NVARCHAR(64) on SQL Server) and PostgreSQL rejects invalid UTF-8.
-	if len(correlationID) > 64 {
-		correlationID = correlationID[:64]
-	}
-	correlationID = strings.ToValidUTF8(correlationID, "")
-	// Only some names are length-checked, and the column holds 255
-	// (NVARCHAR(255) on SQL Server); 255 bytes always fit.
-	if len(resourceName) > 255 {
-		resourceName = strings.ToValidUTF8(resourceName[:255], "")
-	}
-	id := uuid.New().String()
-	// Microseconds: the finest precision every supported database stores, so
-	// the row and the line hold the same time.
-	performedAt := time.Now().UTC().Truncate(time.Microsecond)
-
-	if err := s.store.SaveAudit(id, performedAt, action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID); err != nil {
-		s.logger.Warn("Failed to save audit record",
-			slog.String("action", action), slog.String("resource_type", resourceType),
-			slog.String("resource_uuid", resourceUUID), slog.Any("error", err))
-	}
-	if len(s.sinks) == 0 {
+	if s == nil || !s.enabled || len(s.sinks) == 0 {
 		return
 	}
 	record := recordJSON{
-		Time:          performedAt,
+		Time:          time.Now().UTC(),
 		LogType:       "audit",
-		ID:            id,
+		ID:            uuid.New().String(),
 		GatewayID:     s.gatewayID,
 		CorrelationID: correlationID,
 		Action:        action,
@@ -180,7 +149,6 @@ func (s *AuditService) Record(action, resourceUUID, resourceName, resourceType, 
 		Outcome:       outcome,
 		PerformedBy:   performedBy,
 	}
-	// The table keeps every value; mask_sensitive_fields hides them in the line only.
 	if s.maskSensitiveFields {
 		maskSensitiveFields(&record)
 	}

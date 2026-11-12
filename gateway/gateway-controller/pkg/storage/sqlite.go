@@ -74,14 +74,11 @@ func newSQLiteStorage(dbPath string, logger *slog.Logger) (*SQLiteStorage, error
 	return storage, nil
 }
 
-const currentSchemaVersion = 7
+const currentSchemaVersion = 6
 
-// The older schema versions this binary migrates in place. Any other stored
-// version is refused rather than skipped.
-const (
-	previousSchemaVersion = 6
-	v5SchemaVersion       = 5
-)
+// previousSchemaVersion is the only older schema version this binary migrates
+// in place. Any other stored version is refused rather than skipped.
+const previousSchemaVersion = 5
 
 // initSchema creates the database schema if it doesn't exist, migrates a
 // previous-version schema in place, and creates anything a current-version
@@ -102,10 +99,10 @@ func (s *SQLiteStorage) initSchema() error {
 			return fmt.Errorf("failed to create schema: %w", err)
 		}
 		s.logger.Info("Database schema initialized successfully")
-	case v5SchemaVersion, previousSchemaVersion:
+	case previousSchemaVersion:
 		s.logger.Info("Migrating database schema",
 			slog.Int("from_version", version), slog.Int("to_version", currentSchemaVersion))
-		if err := s.migrateSchema(version); err != nil {
+		if err := s.migrateSchemaV5ToV6(); err != nil {
 			return fmt.Errorf("failed to migrate schema from version %d to %d: %w", version, currentSchemaVersion, err)
 		}
 		s.logger.Info("Database schema migrated successfully")
@@ -121,15 +118,14 @@ func (s *SQLiteStorage) initSchema() error {
 	return nil
 }
 
-// migrateSchema migrates a version 5 or 6 database in place. A version 5
-// database first gets the certificates usage, role, match_json,
-// private_key_ciphertext and key_algorithm columns that version 6 added; usage
-// and role are defaulted, the rest are nullable. It then runs the schema to
-// create the tables and indexes added since, such as graphql_apis (version 6)
-// and audit (version 7), and sets user_version. No existing column changes.
-// graphql_apis must exist before the controller starts: GetAllConfigs reads
-// every builtin resource table, so loading configurations fails without it.
-func (s *SQLiteStorage) migrateSchema(from int) error {
+// migrateSchemaV5ToV6 adds the certificates usage, role, match_json,
+// private_key_ciphertext and key_algorithm columns to a version 5 database,
+// then runs the schema to create the tables and indexes version 6 added, such
+// as graphql_apis, and sets user_version to 6. usage and role are defaulted;
+// the rest are nullable. No existing column changes. graphql_apis must exist
+// before the controller starts: GetAllConfigs reads every builtin resource
+// table, so loading configurations fails without it.
+func (s *SQLiteStorage) migrateSchemaV5ToV6() error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin migration transaction: %w", err)
@@ -138,25 +134,23 @@ func (s *SQLiteStorage) migrateSchema(from int) error {
 		_ = tx.Rollback()
 	}()
 
-	if from == v5SchemaVersion {
-		if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN usage TEXT NOT NULL DEFAULT 'upstream'`); err != nil {
-			return fmt.Errorf("failed to add certificates.usage column: %w", err)
-		}
-		if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN role TEXT NOT NULL DEFAULT 'client'`); err != nil {
-			return fmt.Errorf("failed to add certificates.role column: %w", err)
-		}
-		if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN match_json TEXT`); err != nil {
-			return fmt.Errorf("failed to add certificates.match_json column: %w", err)
-		}
-		if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN private_key_ciphertext TEXT`); err != nil {
-			return fmt.Errorf("failed to add certificates.private_key_ciphertext column: %w", err)
-		}
-		if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN key_algorithm TEXT`); err != nil {
-			return fmt.Errorf("failed to add certificates.key_algorithm column: %w", err)
-		}
+	if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN usage TEXT NOT NULL DEFAULT 'upstream'`); err != nil {
+		return fmt.Errorf("failed to add certificates.usage column: %w", err)
+	}
+	if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN role TEXT NOT NULL DEFAULT 'client'`); err != nil {
+		return fmt.Errorf("failed to add certificates.role column: %w", err)
+	}
+	if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN match_json TEXT`); err != nil {
+		return fmt.Errorf("failed to add certificates.match_json column: %w", err)
+	}
+	if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN private_key_ciphertext TEXT`); err != nil {
+		return fmt.Errorf("failed to add certificates.private_key_ciphertext column: %w", err)
+	}
+	if _, err := tx.Exec(`ALTER TABLE certificates ADD COLUMN key_algorithm TEXT`); err != nil {
+		return fmt.Errorf("failed to add certificates.key_algorithm column: %w", err)
 	}
 	if _, err := tx.Exec(schemaSQL); err != nil {
-		return fmt.Errorf("failed to create the tables and indexes added since version %d: %w", from, err)
+		return fmt.Errorf("failed to create the tables and indexes added in version %d: %w", currentSchemaVersion, err)
 	}
 	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", currentSchemaVersion)); err != nil {
 		return fmt.Errorf("failed to set schema version: %w", err)

@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -33,115 +34,80 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 )
 
-type auditRow struct {
-	id                                                                                    string
-	performedAt                                                                           time.Time
-	action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID string
-}
-
-type recordingAuditTable struct {
-	rows []auditRow
-	err  error
-}
-
-func (t *recordingAuditTable) SaveAudit(id string, performedAt time.Time, action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID string) error {
-	t.rows = append(t.rows, auditRow{id, performedAt, action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID})
-	return t.err
-}
-
-func TestAuditServiceRecordsToDBAndOutput(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		err  error
-	}{
-		{"insert succeeds", nil},
-		{"insert fails", errors.New("insert failed")},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			db := &recordingAuditTable{err: tc.err}
-			logPath := filepath.Join(t.TempDir(), "audit.log")
-			s, err := NewAuditService(db, "gw-1", config.AuditConfig{
-				Enabled: true,
-				Outputs: []string{config.AuditOutputFile},
-				File:    config.AuditFileConfig{Path: logPath, MaxSizeMB: 100},
-			}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-			if err != nil {
-				t.Fatalf("NewAuditService error = %v", err)
-			}
-
-			s.Record("CREATE", "res-1", "petstore", "rest_api", OutcomeSucceeded, "admin", "corr-1")
-			if err := s.Close(context.Background()); err != nil {
-				t.Fatalf("Close error = %v", err)
-			}
-			out, err := os.ReadFile(logPath)
-			if err != nil {
-				t.Fatalf("reading the audit log: %v", err)
-			}
-
-			if len(db.rows) != 1 {
-				t.Fatalf("db rows = %d, want 1", len(db.rows))
-			}
-			row := db.rows[0]
-			if row.id == "" || row.performedAt.Location() != time.UTC {
-				t.Fatalf("row id = %q, performedAt = %v; want an id and a UTC time", row.id, row.performedAt)
-			}
-			if want := (auditRow{row.id, row.performedAt, "CREATE", "res-1", "petstore", "rest_api", OutcomeSucceeded, "admin", "corr-1"}); row != want {
-				t.Fatalf("db row = %+v, want %+v", row, want)
-			}
-
-			var line map[string]any
-			if err := json.Unmarshal(out, &line); err != nil {
-				t.Fatalf("output line is not one JSON object: %v: %q", err, out)
-			}
-			for key, value := range map[string]string{
-				"time":          row.performedAt.Format(time.RFC3339Nano),
-				"id":            row.id,
-				"logType":       "audit",
-				"gatewayId":     "gw-1",
-				"correlationId": "corr-1",
-				"action":        "CREATE",
-				"resourceType":  "rest_api",
-				"resourceId":    "res-1",
-				"resourceName":  "petstore",
-				"outcome":       OutcomeSucceeded,
-				"performedBy":   "admin",
-			} {
-				if line[key] != value {
-					t.Errorf("%s = %v, want %q", key, line[key], value)
-				}
-			}
-		})
-	}
-}
-
-func TestAuditServiceNoOutput(t *testing.T) {
-	db := &recordingAuditTable{}
-	s, err := NewAuditService(db, "gw-1", config.AuditConfig{Enabled: true}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+func TestAuditServiceRecordsToOutput(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "audit.log")
+	s, err := NewAuditService("gw-1", config.AuditConfig{
+		Enabled: true,
+		Outputs: []string{config.AuditOutputFile},
+		File:    config.AuditFileConfig{Path: logPath, MaxSizeMB: 100},
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewAuditService error = %v", err)
 	}
 
-	s.Record("DELETE", "res-1", "petstore", "rest_api", OutcomeSucceeded, "admin", "corr-1")
-
-	if len(db.rows) != 1 {
-		t.Fatalf("db rows = %d, want 1", len(db.rows))
+	s.Record("CREATE", "res-1", "petstore", "rest_api", OutcomeSucceeded, "admin", "corr-1")
+	if err := s.Close(context.Background()); err != nil {
+		t.Fatalf("Close error = %v", err)
 	}
+	out, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("reading the audit log: %v", err)
+	}
+
+	var line map[string]any
+	if err := json.Unmarshal(out, &line); err != nil {
+		t.Fatalf("output line is not one JSON object: %v: %q", err, out)
+	}
+	if id, _ := line["id"].(string); id == "" {
+		t.Errorf("id = %v, want a record id", line["id"])
+	}
+	if at, err := time.Parse(time.RFC3339Nano, fmt.Sprint(line["time"])); err != nil || at.Location() != time.UTC {
+		t.Errorf("time = %v, want a UTC RFC 3339 time", line["time"])
+	}
+	for key, value := range map[string]string{
+		"logType":       "audit",
+		"gatewayId":     "gw-1",
+		"correlationId": "corr-1",
+		"action":        "CREATE",
+		"resourceType":  "rest_api",
+		"resourceId":    "res-1",
+		"resourceName":  "petstore",
+		"outcome":       OutcomeSucceeded,
+		"performedBy":   "admin",
+	} {
+		if line[key] != value {
+			t.Errorf("%s = %v, want %q", key, line[key], value)
+		}
+	}
+}
+
+func TestAuditServiceNoOutput(t *testing.T) {
+	s, err := NewAuditService("gw-1", config.AuditConfig{Enabled: true}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewAuditService error = %v", err)
+	}
+
+	s.Record("DELETE", "res-1", "petstore", "rest_api", OutcomeSucceeded, "admin", "corr-1") // must not panic
+
 	if len(s.sinks) != 0 {
 		t.Fatal("output sinks built although audit.outputs is unset")
 	}
 }
 
 func TestDisabledAuditServiceRecordsNothing(t *testing.T) {
-	db := &recordingAuditTable{}
-	s, err := NewAuditService(db, "gw-1", config.AuditConfig{Outputs: []string{"stdout"}}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	logPath := filepath.Join(t.TempDir(), "audit.log")
+	s, err := NewAuditService("gw-1", config.AuditConfig{
+		Outputs: []string{config.AuditOutputFile},
+		File:    config.AuditFileConfig{Path: logPath},
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("NewAuditService error = %v", err)
 	}
 
 	s.Record("CREATE", "res-1", "petstore", "rest_api", OutcomeSucceeded, "admin", "corr-1")
 
-	if len(db.rows) != 0 {
-		t.Fatalf("db rows = %d, want 0 while audit is disabled", len(db.rows))
+	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+		t.Fatalf("audit log stat error = %v, want no file while audit is disabled", err)
 	}
 }
 
@@ -153,10 +119,9 @@ func TestNilAuditServiceRecordsNothing(t *testing.T) {
 	}
 }
 
-func TestAuditServiceMasksSensitiveFieldsInTheLineOnly(t *testing.T) {
-	db := &recordingAuditTable{}
+func TestAuditServiceMasksSensitiveFields(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "audit.log")
-	s, err := NewAuditService(db, "gw-1", config.AuditConfig{
+	s, err := NewAuditService("gw-1", config.AuditConfig{
 		Enabled:             true,
 		MaskSensitiveFields: true,
 		Outputs:             []string{config.AuditOutputFile},
@@ -194,32 +159,6 @@ func TestAuditServiceMasksSensitiveFieldsInTheLineOnly(t *testing.T) {
 	if got := lines[1].PerformedBy; got != "" {
 		t.Errorf("line performedBy = %q, want the empty user left empty", got)
 	}
-	if db.rows[0].performedBy != "admin" {
-		t.Errorf("row performedBy = %q, want the user", db.rows[0].performedBy)
-	}
-}
-
-func TestAuditServiceTrimsValuesToTheColumnSizes(t *testing.T) {
-	db := &recordingAuditTable{}
-	s, err := NewAuditService(db, "gw-1", config.AuditConfig{Enabled: true}, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if err != nil {
-		t.Fatalf("NewAuditService error = %v", err)
-	}
-
-	// The 255-byte cut falls inside the two-byte "é", which is then dropped.
-	name := strings.Repeat("a", 254) + "é" + "tail"
-	s.Record("CREATE", "res-1", name, "rest_api", OutcomeSucceeded, "admin", strings.Repeat("c", 70))
-	s.Record("CREATE", "res-1", "petstore", "rest_api", OutcomeSucceeded, "admin", "corr-\xff")
-
-	if got := db.rows[0].resourceName; got != strings.Repeat("a", 254) {
-		t.Errorf("resourceName = %q (%d bytes), want 254 valid bytes", got, len(got))
-	}
-	if got := db.rows[0].correlationID; got != strings.Repeat("c", 64) {
-		t.Errorf("correlationID = %q, want the first 64 bytes", got)
-	}
-	if got := db.rows[1].correlationID; got != "corr-" {
-		t.Errorf("correlationID = %q, want the invalid UTF-8 removed", got)
-	}
 }
 
 func TestNewAuditServiceFailsOnABadOutput(t *testing.T) {
@@ -238,7 +177,7 @@ func TestNewAuditServiceFailsOnABadOutput(t *testing.T) {
 		}, "controller.audit.http"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s, err := NewAuditService(&recordingAuditTable{}, "gw-1", tc.cfg, logger)
+			s, err := NewAuditService("gw-1", tc.cfg, logger)
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("NewAuditService = %v, %v; want an error containing %q", s, err, tc.wantErr)
 			}

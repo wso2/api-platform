@@ -20,7 +20,6 @@ package storage
 
 import (
 	"database/sql"
-	"time"
 
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
@@ -443,9 +442,6 @@ type Storage interface {
 	//
 	// Used during startup to bulk-load the in-memory store.
 	GetAllWebhookSecrets() ([]*models.WebhookSecret, error)
-
-	// SaveAudit inserts one audit row for this gateway.
-	SaveAudit(id string, performedAt time.Time, action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID string) error
 
 	// GetDB returns the underlying *sql.DB for direct access.
 	// Used by EventHub for event synchronization.

@@ -52,7 +52,8 @@ func TestValidateAuditConfig(t *testing.T) {
 	}{
 		{"every output", func(*AuditConfig) {}, ""},
 		{"disabled skips validation", func(c *AuditConfig) { c.Enabled = false; c.Outputs = []string{"syslog"} }, ""},
-		{"no outputs", func(c *AuditConfig) { c.Outputs = nil; c.File.Path = ""; c.HTTP.Endpoint = "" }, ""},
+		{"no outputs", func(c *AuditConfig) { c.Outputs = nil }, "controller.audit.outputs is empty"},
+		{"only blank outputs", func(c *AuditConfig) { c.Outputs = []string{" "} }, "controller.audit.outputs is empty"},
 		{"unselected outputs are not validated", func(c *AuditConfig) { c.Outputs = []string{"stdout"}; c.File.Path = ""; c.HTTP.Endpoint = "" }, ""},
 		{"unknown output", func(c *AuditConfig) { c.Outputs = []string{"syslog"} }, `unknown output "syslog"`},
 		{"repeated output", func(c *AuditConfig) { c.Outputs = []string{"file", " FILE "} }, `lists "file" more than once`},

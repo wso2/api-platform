@@ -31,7 +31,7 @@ Feature: Audit records of management API changes
     And I generate a unique value from "audit-correlation" and store it as "correlationId"
     And I set header "X-Correlation-ID" to "${CTX:correlationId}"
 
-  Scenario: Every change is recorded in the audit table and every output
+  Scenario: Every change is recorded in every output
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion             | ${CTX:gatewaySpecVersion}           |
       | name                   | ${CTX:apiName}                      |
@@ -52,11 +52,6 @@ Feature: Audit records of management API changes
     Then the response should be successful
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
-    And the gateway audit table should have exactly these audit records for "${CTX:apiName}":
-      | action | resourceType | outcome   | performedBy | correlationId        |
-      | CREATE | rest_api     | succeeded | admin       | ${CTX:correlationId} |
-      | UPDATE | rest_api     | succeeded | admin       | ${CTX:correlationId} |
-      | DELETE | rest_api     | succeeded | admin       | ${CTX:correlationId} |
     And the gateway-controller log should have exactly these audit records for "${CTX:apiName}":
       | action | resourceType | outcome   | performedBy | correlationId        |
       | CREATE | rest_api     | succeeded | admin       | ${CTX:correlationId} |
@@ -94,10 +89,6 @@ Feature: Audit records of management API changes
     Then the response should be successful
     When I send a "DELETE" request to the "gateway-controller" service at "/rest-apis/${CTX:apiName}"
     Then the response status should be 404
-    And the gateway audit table should have exactly these audit records for "${CTX:apiName}":
-      | action | outcome   |
-      | CREATE | succeeded |
-      | DELETE | succeeded |
     And the gateway-controller log should have exactly these audit records for "${CTX:apiName}":
       | action | outcome   |
       | CREATE | succeeded |

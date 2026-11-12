@@ -19,10 +19,13 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -444,22 +447,33 @@ func TestDeleteSubscriptionPlan_Errors(t *testing.T) {
 
 // --- audit ---
 
-type planAuditRows struct {
-	rows [][]string
-}
-
-func (r *planAuditRows) SaveAudit(_ string, _ time.Time, action, _, resourceName, resourceType, outcome, performedBy, _ string) error {
-	r.rows = append(r.rows, []string{action, resourceName, resourceType, outcome, performedBy})
-	return nil
+// planAuditRows reads back each record's action, resource name and type,
+// outcome and actor from the audit service's file output.
+func planAuditRows(t *testing.T, path string) [][]string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var rows [][]string
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		var record map[string]string
+		require.NoError(t, json.Unmarshal([]byte(line), &record))
+		rows = append(rows, []string{record["action"], record["resourceName"], record["resourceType"], record["outcome"], record["performedBy"]})
+	}
+	return rows
 }
 
 // The handlers record the authenticated user through the audit service that
 // SetAuditService wires into every service.
 func TestSubscriptionPlanHandlersRecordTheAuthenticatedUser(t *testing.T) {
 	server, _ := newPlanTestServer(t)
-	rows := &planAuditRows{}
-	auditService, err := audit.NewAuditService(rows, "test-gateway", config.AuditConfig{Enabled: true}, server.logger)
+	auditPath := filepath.Join(t.TempDir(), "audit.log")
+	auditService, err := audit.NewAuditService("test-gateway", config.AuditConfig{
+		Enabled: true,
+		Outputs: []string{config.AuditOutputFile},
+		File:    config.AuditFileConfig{Path: auditPath},
+	}, server.logger)
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditService.Close(context.Background()) })
 	server.SetAuditService(auditService)
 	asAlice := func(r *http.Request) *http.Request {
 		return withAuthContext(r, commonmodels.AuthContext{UserID: "alice", Roles: []string{"admin"}})
@@ -488,5 +502,5 @@ func TestSubscriptionPlanHandlersRecordTheAuthenticatedUser(t *testing.T) {
 		{"CREATE", "Gold", "subscription_plan", audit.OutcomeSucceeded, "alice"},
 		{"DELETE", "", "subscription_plan", audit.OutcomeSucceeded, "alice"},
 		{"CREATE", "Silver", "subscription_plan", audit.OutcomeSucceeded, ""},
-	}, rows.rows)
+	}, planAuditRows(t, auditPath))
 }

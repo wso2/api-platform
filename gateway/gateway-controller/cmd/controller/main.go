@@ -791,7 +791,7 @@ func main() {
 	// loader shares restAPIService and agentSvc, so nothing is audited there.
 	var auditService *audit.AuditService
 	if !cfg.ImmutableGateway.Enabled {
-		auditService, err = audit.NewAuditService(db, gatewayID, cfg.Controller.Audit, log)
+		auditService, err = audit.NewAuditService(gatewayID, cfg.Controller.Audit, log)
 		if err != nil {
 			log.Error("Failed to initialize audit outputs", slog.Any("error", err))
 			os.Exit(1)

@@ -1681,8 +1681,9 @@ func llmTemplateAuditParams(handle string) LLMTemplateParams {
 // outcome, the actor and the correlation ID.
 func assertLLMAudited(t *testing.T, rows *auditRowRecorder, action, name, resourceType, outcome string) {
 	t.Helper()
-	require.Len(t, rows.rows, 1)
-	got := rows.rows[0]
+	records := rows.read(t)
+	require.Len(t, records, 1)
+	got := records[0]
 	assert.NotEmpty(t, got[1], "resource id")
 	assert.Equal(t, []string{action, name, resourceType, outcome, "alice", "corr-1"}, []string{got[0], got[2], got[3], got[4], got[5], got[6]})
 }
@@ -1782,7 +1783,7 @@ func TestLLMDeploymentService_RecordsAuditForFailedWrites(t *testing.T) {
 			require.Error(t, tc.call(service))
 
 			if tc.want == nil {
-				assert.Empty(t, rows.rows)
+				assert.Empty(t, rows.read(t))
 				return
 			}
 			assertLLMAudited(t, rows, tc.want[0], tc.want[1], tc.want[2], audit.OutcomeFailed)

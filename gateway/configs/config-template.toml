@@ -339,26 +339,24 @@ format = "text"
 
 # Off by default. enabled = true records changes made through the management API
 # to REST and GraphQL APIs, LLM providers, proxies and provider templates, MCP
-# proxies, agents, API keys, certificates, subscriptions and subscription plans in
-# the audit table. Secrets and certificate reloads are not recorded. Deleting an
+# proxies, agents, API keys, certificates, subscriptions and subscription plans to
+# the outputs below. Secrets and certificate reloads are not recorded. Deleting an
 # API also removes its API keys and subscriptions; only the API's DELETE is
-# recorded. While it is false, nothing is recorded: no table rows and no output
-# lines. Changes pushed from the control plane are never recorded.
+# recorded. While it is false, nothing is recorded. Changes pushed from the
+# control plane are never recorded.
 [controller.audit]
 enabled = false
 # true writes "****" instead of the sensitive fields in the output lines: the
 # user who made the change (performedBy, the basic-auth username or token sub).
-# An empty value stays empty. The audit table always keeps the real values.
+# An empty value stays empty.
 mask_sensitive_fields = false
-# Also write each record as a JSON line tagged "logType":"audit" to any of
-# "stdout", "file" and "http". Outputs are additive and order is irrelevant.
-# While enabled, an unknown or repeated name fails startup. Empty keeps records in
-# the table only.
+# Write each record as a JSON line tagged "logType":"audit" to any of "stdout",
+# "file" and "http". Outputs are additive and order is irrelevant. While
+# enabled, an empty list or an unknown or repeated name fails startup.
 #
 # An output that cannot be built (a file that cannot be opened, an unreadable CA
 # file) fails startup. At runtime a failed write drops the line and logs an error
-# (at most once every 30s per output); it never fails the request, and the table
-# row is still written.
+# (at most once every 30s per output); it never fails the request.
 outputs = []
 # outputs = ["file", "http"]
 
@@ -385,9 +383,8 @@ max_size_mb = 100
 # http input needs content_type = "application/json". Elasticsearch/OpenSearch
 # _bulk needs an action line before each record, so send to them through one of
 # these collectors. The queue is held in memory only: an outage longer than the
-# queue and retries can absorb loses records from this output (the audit table
-# still has them). On shutdown the queue is flushed for up to 5s, and a batch
-# that fails then is not retried.
+# queue and retries can absorb loses records from this output. On shutdown the
+# queue is flushed for up to 5s, and a batch that fails then is not retried.
 # A retried batch may reach the receiver twice (e.g. after a timeout on a request
 # it already stored); deduplicate on "id" if that matters.
 [controller.audit.http]

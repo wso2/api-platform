@@ -142,6 +142,10 @@ func validateAuditConfig(cfg *AuditConfig) error {
 	if err != nil {
 		return err
 	}
+	if len(outputs) == 0 {
+		return fmt.Errorf("controller.audit.outputs is empty: list at least one of %s, %s, %s while audit is enabled",
+			AuditOutputStdout, AuditOutputFile, AuditOutputHTTP)
+	}
 	if slices.Contains(outputs, AuditOutputFile) {
 		if err := validateAuditFileConfig(cfg.File); err != nil {
 			return fmt.Errorf("controller.audit.file: %w", err)

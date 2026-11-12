@@ -31,7 +31,7 @@ Feature: Audit records with mask_sensitive_fields
     And I generate a unique value from "audit-correlation" and store it as "correlationId"
     And I set header "X-Correlation-ID" to "${CTX:correlationId}"
 
-  Scenario: The outputs show the user masked while the audit table keeps it
+  Scenario: The outputs show the user masked
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion             | ${CTX:gatewaySpecVersion}           |
       | name                   | ${CTX:apiName}                      |
@@ -43,10 +43,6 @@ Feature: Audit records with mask_sensitive_fields
     Then the response should be successful
     When I delete the API "${CTX:apiName}"
     Then the response should be successful
-    And the gateway audit table should have exactly these audit records for "${CTX:apiName}":
-      | action | performedBy |
-      | CREATE | admin       |
-      | DELETE | admin       |
     And the gateway-controller log should have exactly these audit records for "${CTX:apiName}":
       | action | performedBy |
       | CREATE | ****        |

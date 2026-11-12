@@ -107,7 +107,7 @@ func TestSchemaInitialization(t *testing.T) {
 		// Must track storage.currentSchemaVersion (pkg/storage/sqlite.go), which
 		// is unexported and so cannot be referenced from this external test
 		// package. A bump has to update both.
-		assert.Equal(t, 7, version, "Schema version should be 7")
+		assert.Equal(t, 6, version, "Schema version should be 6")
 	})
 
 	// Verify artifacts table exists

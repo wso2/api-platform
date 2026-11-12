@@ -1,5 +1,5 @@
 -- SQLite Schema for Gateway-Controller API Configurations
--- Version: 7
+-- Version: 6
 
 -- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies, Agents)
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -336,19 +336,4 @@ CREATE TABLE IF NOT EXISTS secrets (
 -- Note: webhook_secrets (per-API HMAC secrets for the websub-hmac-auth policy)
 -- is also owned by event-gateway/gateway-controller/pkg/dbschema — see note above.
 
--- Audit table (added in schema version 7)
-CREATE TABLE IF NOT EXISTS audit (
-    uuid TEXT NOT NULL,
-    gateway_id TEXT NOT NULL,
-    correlation_id TEXT,
-    action TEXT NOT NULL,
-    resource_uuid TEXT NOT NULL,
-    resource_name TEXT,
-    resource_type TEXT NOT NULL,
-    outcome TEXT NOT NULL,
-    performed_by TEXT,
-    performed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (gateway_id, uuid)
-);
-
-PRAGMA user_version = 7;
+PRAGMA user_version = 6;

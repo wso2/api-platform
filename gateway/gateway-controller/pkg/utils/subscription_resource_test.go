@@ -24,8 +24,10 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -213,20 +215,40 @@ func TestCopySubscriptionFields_CopiesBillingIDsAsSent(t *testing.T) {
 	assert.Nil(t, stored.BillingSubscriptionID)
 }
 
+// auditRowRecorder reads back the records the audit service wrote to its file output.
 type auditRowRecorder struct {
-	rows [][]string
+	path string
 }
 
-func (r *auditRowRecorder) SaveAudit(_ string, _ time.Time, action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID string) error {
-	r.rows = append(r.rows, []string{action, resourceUUID, resourceName, resourceType, outcome, performedBy, correlationID})
-	return nil
+// read returns each record's action, resource id, name and type, outcome, actor
+// and correlation ID.
+func (r *auditRowRecorder) read(t *testing.T) [][]string {
+	t.Helper()
+	data, err := os.ReadFile(r.path)
+	require.NoError(t, err)
+	var rows [][]string
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line == "" {
+			continue
+		}
+		var record map[string]string
+		require.NoError(t, json.Unmarshal([]byte(line), &record))
+		rows = append(rows, []string{record["action"], record["resourceId"], record["resourceName"], record["resourceType"],
+			record["outcome"], record["performedBy"], record["correlationId"]})
+	}
+	return rows
 }
 
 func newRecordingAuditService(t *testing.T) (*audit.AuditService, *auditRowRecorder) {
 	t.Helper()
-	rows := &auditRowRecorder{}
-	auditService, err := audit.NewAuditService(rows, "gateway-1", config.AuditConfig{Enabled: true}, newSubscriptionResourceTestLogger())
+	rows := &auditRowRecorder{path: filepath.Join(t.TempDir(), "audit.log")}
+	auditService, err := audit.NewAuditService("gateway-1", config.AuditConfig{
+		Enabled: true,
+		Outputs: []string{config.AuditOutputFile},
+		File:    config.AuditFileConfig{Path: rows.path},
+	}, newSubscriptionResourceTestLogger())
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditService.Close(context.Background()) })
 	return auditService, rows
 }
 
@@ -302,11 +324,12 @@ func TestSubscriptionResourceServiceRecordsAudit(t *testing.T) {
 
 				require.ErrorIs(t, err, oc.dbErr)
 				if oc.wantOutcome == "" {
-					assert.Empty(t, rows.rows)
+					assert.Empty(t, rows.read(t))
 					return
 				}
-				require.Len(t, rows.rows, 1)
-				assert.Equal(t, append(append([]string{}, op.want...), oc.wantOutcome, "alice", "corr-1"), rows.rows[0])
+				got := rows.read(t)
+				require.Len(t, got, 1)
+				assert.Equal(t, append(append([]string{}, op.want...), oc.wantOutcome, "alice", "corr-1"), got[0])
 			})
 		}
 	}
