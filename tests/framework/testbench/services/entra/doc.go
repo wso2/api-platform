@@ -16,8 +16,9 @@
  * under the License.
  */
 
-// Package entra provides a tenant-partitioned Microsoft Entra ID token endpoint and two
-// Entra-protected resources, for policies that authenticate to Azure with a workload identity.
+// Package entra provides a tenant-partitioned Microsoft Entra ID token endpoint, an Azure Instance
+// Metadata Service (IMDS) token endpoint and two Entra-protected resources, for policies that
+// authenticate to Azure with a workload identity or a managed identity.
 //
 // The gateway runtime is configured the way the AKS Workload Identity webhook configures a pod:
 // AZURE_AUTHORITY_HOST is https://testbench:3028/ (this service over TLS, with the certificate the
@@ -32,9 +33,10 @@
 // The token endpoint answers on both ports and checks the form as Entra ID does: grant_type
 // client_credentials, a client_id, a scope ending in /.default and a non-empty client assertion of
 // type urn:ietf:params:oauth:client-assertion-type:jwt-bearer, with no parameter given twice;
-// anything else is answered with 400 and Entra ID's error shape. A token is "testbench-entra." followed by the base64url encoding of
-// {"aud", "tid", "appid", "n"}: the scope without /.default, the tenant, the client_id and the
-// request's position for the tenant. It is valid for 3599 seconds.
+// anything else is answered with 400 and Entra ID's error shape. A token is "testbench-entra."
+// followed by the base64url encoding of {"aud", "tid", "appid", "n"}: the scope without /.default,
+// the tenant, the client_id and the request's position for the tenant. It is valid for 3599
+// seconds.
 //
 // A tenant prefix selects how the token endpoint answers:
 //
@@ -46,10 +48,32 @@
 //	unavailable-      503, every time
 //	slow-             tokens after three seconds, or nothing if the caller gives up first
 //
+// The IMDS token endpoint stands in for the managed identity endpoint of a VM or AKS node. The
+// runtime's AZURE_IMDS_TOKEN_ENDPOINT is https://testbench:3028/imds/metadata/identity/oauth2/token;
+// the path's first segment is required but ignored, because that address is the same for every
+// scenario:
+//
+//	GET  /<any>/metadata/identity/oauth2/token?api-version=2018-02-01&resource=<r>[&client_id=<id>]
+//
+// It checks the request as IMDS does: the Metadata: true header, api-version 2018-02-01, a
+// resource, and no X-Forwarded-For; anything else is answered with 400. It answers in IMDS's shape,
+// with every number as a string. Its tokens carry the resource as the audience, "managed-identity"
+// as the tenant and the client_id, or "system-assigned" without one, as the appid. Every request
+// is recorded under mi-<client_id> (or mi-system-assigned) and read from /<key>/test/requests, so
+// a scenario names its own identity, a fresh UUID, instead of a tenant. The resource selects how
+// it answers:
+//
+//	api://not-found-once       404 for the identity's first request, then tokens
+//	api://gone-once            410 for the first request, then tokens
+//	api://throttle-once        429 for the first request, then tokens
+//	api://error-once           500 for the first request, then tokens
+//	api://identity-not-found   400 invalid_request "Identity not found", every time
+//
 // A protected resource answers a valid token with a chat completion that echoes the request
 // headers ("headers") and the token's claims ("token"), and anything else with 401. Every answer
 // reports the bearer token it received in X-Testbench-Entra-Token and, for a token this service
-// issued, its tenant and audience in X-Testbench-Entra-Tid and X-Testbench-Entra-Aud.
+// issued, its tenant, audience and appid in X-Testbench-Entra-Tid, X-Testbench-Entra-Aud and
+// X-Testbench-Entra-Appid.
 //
 // The fixture federated token is "testbench-federated-identity-token" and every issued token
 // starts with "testbench-entra.", so a response body or log line without either discloses no

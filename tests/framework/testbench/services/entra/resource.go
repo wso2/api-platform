@@ -41,6 +41,9 @@ const (
 	HeaderTenant = "X-Testbench-Entra-Tid"
 	// HeaderAudience carries the received token's audience, when the token is one the service issued.
 	HeaderAudience = "X-Testbench-Entra-Aud"
+	// HeaderAppID carries the received token's appid (the client ID, or system-assigned), when the
+	// token is one the service issued.
+	HeaderAppID = "X-Testbench-Entra-Appid"
 )
 
 // resource serves a resource protected by tokens for audience: any method, any path below it.
@@ -54,6 +57,7 @@ func resource(audience string) func(string, http.ResponseWriter, *http.Request) 
 			if claims, valid = parseToken(token); valid {
 				w.Header().Set(HeaderTenant, claims.Tid)
 				w.Header().Set(HeaderAudience, claims.Aud)
+				w.Header().Set(HeaderAppID, claims.AppID)
 			}
 		}
 		if !valid {

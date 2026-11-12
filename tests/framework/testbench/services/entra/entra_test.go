@@ -463,3 +463,137 @@ func selfSignedPEM(t *testing.T) ([]byte, []byte) {
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
 		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
 }
+
+const testManagedClientID = "11111111-2222-3333-4444-555555555555"
+
+// imdsGet sends a managed identity token request to the IMDS route, under an arbitrary partition.
+func imdsGet(t *testing.T, svc *Service, query url.Values, header http.Header) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/imds/metadata/identity/oauth2/token?"+query.Encode(), nil)
+	for name, values := range header {
+		req.Header[name] = values
+	}
+	return serve(t, svc.Handler(), req)
+}
+
+// imdsQuery is a well-formed IMDS query; an empty clientID asks for the system-assigned identity.
+func imdsQuery(clientID, resource string) url.Values {
+	q := url.Values{"api-version": {IMDSAPIVersion}, "resource": {resource}}
+	if clientID != "" {
+		q.Set("client_id", clientID)
+	}
+	return q
+}
+
+var metadataTrue = http.Header{"Metadata": {"true"}}
+
+func TestIMDSIssuesATokenForTheResource(t *testing.T) {
+	svc := New()
+	rec := imdsGet(t, svc, imdsQuery(testManagedClientID, FoundryAudience), metadataTrue)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, "3599", body["expires_in"], "IMDS sends numbers as strings")
+	require.Equal(t, "Bearer", body["token_type"])
+	require.Equal(t, FoundryAudience, body["resource"])
+	require.Equal(t, testManagedClientID, body["client_id"])
+	token, ok := body["access_token"].(string)
+	require.True(t, ok)
+	require.Equal(t, Claims{Aud: FoundryAudience, Tid: "managed-identity", AppID: testManagedClientID, N: 1}, claimsOf(t, token))
+
+	log := recorded(t, svc, "mi-"+testManagedClientID)
+	require.Equal(t, 1, log.Count)
+	got := log.Requests[0]
+	require.Equal(t, testManagedClientID, got.ClientID)
+	require.Equal(t, FoundryAudience, got.Resource)
+	require.Equal(t, "2018-02-01", got.APIVersion)
+	require.Equal(t, "true", got.Metadata)
+	require.Equal(t, http.StatusOK, got.Status)
+}
+
+func TestIMDSSystemAssignedIdentity(t *testing.T) {
+	svc := New()
+	rec := imdsGet(t, svc, imdsQuery("", FoundryAudience), metadataTrue)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	token, _ := body["access_token"].(string)
+	require.Equal(t, "system-assigned", claimsOf(t, token).AppID)
+
+	log := recorded(t, svc, "mi-system-assigned")
+	require.Equal(t, 1, log.Count)
+	require.Empty(t, log.Requests[0].ClientID)
+}
+
+func TestIMDSRejectsAMalformedRequest(t *testing.T) {
+	cases := []struct {
+		name      string
+		query     url.Values
+		header    http.Header
+		wantError string
+	}{
+		{"no Metadata header", imdsQuery(testManagedClientID, FoundryAudience), nil, "bad_request_102"},
+		{"Metadata false", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"false"}}, "bad_request_102"},
+		{"no api-version", url.Values{"resource": {FoundryAudience}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request"},
+		{"another api-version", url.Values{"api-version": {"2019-01-01"}, "resource": {FoundryAudience}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request"},
+		{"no resource", url.Values{"api-version": {IMDSAPIVersion}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request"},
+		{"X-Forwarded-For", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"true"}, "X-Forwarded-For": {"10.0.0.1"}}, "invalid_request"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			svc := New()
+			rec := imdsGet(t, svc, c.query, c.header)
+			require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+			var e oauthError
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &e))
+			require.Equal(t, c.wantError, e.Error)
+			log := recorded(t, svc, "mi-"+testManagedClientID)
+			require.Equal(t, 1, log.Count, "a rejected request is still recorded")
+			require.Equal(t, http.StatusBadRequest, log.Requests[0].Status)
+		})
+	}
+}
+
+func TestIMDSModesAreChosenByResource(t *testing.T) {
+	cases := []struct {
+		resource string
+		want     [2]int
+	}{
+		{ResourceNotFoundOnce, [2]int{http.StatusNotFound, http.StatusOK}},
+		{ResourceGoneOnce, [2]int{http.StatusGone, http.StatusOK}},
+		{ResourceThrottleOnce, [2]int{http.StatusTooManyRequests, http.StatusOK}},
+		{ResourceErrorOnce, [2]int{http.StatusInternalServerError, http.StatusOK}},
+		{ResourceIdentityNotFound, [2]int{http.StatusBadRequest, http.StatusBadRequest}},
+	}
+	for _, c := range cases {
+		t.Run(c.resource, func(t *testing.T) {
+			svc := New()
+			for i, want := range c.want {
+				rec := imdsGet(t, svc, imdsQuery(testManagedClientID, c.resource), metadataTrue)
+				require.Equal(t, want, rec.Code, "request %d: %s", i+1, rec.Body.String())
+				if c.resource == ResourceIdentityNotFound {
+					require.JSONEq(t, `{"error":"invalid_request","error_description":"Identity not found"}`, rec.Body.String())
+				}
+			}
+		})
+	}
+}
+
+func TestResourceReportsTheTokenAppID(t *testing.T) {
+	svc := New()
+	rec := imdsGet(t, svc, imdsQuery(testManagedClientID, FoundryAudience), metadataTrue)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	token, _ := body["access_token"].(string)
+
+	ok := callResource(t, svc, "/p/foundry", "Bearer "+token)
+	require.Equal(t, http.StatusOK, ok.Code, ok.Body.String())
+	require.Equal(t, testManagedClientID, ok.Header().Get(HeaderAppID))
+	require.Equal(t, "managed-identity", ok.Header().Get(HeaderTenant))
+
+	none := callResource(t, svc, "/p/foundry", "")
+	require.Equal(t, http.StatusUnauthorized, none.Code)
+	require.Empty(t, none.Header().Values(HeaderAppID))
+}
