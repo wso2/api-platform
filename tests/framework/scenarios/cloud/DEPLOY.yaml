@@ -1,0 +1,117 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except in compliance
+# with the License. You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# --------------------------------------------------------------------
+
+# Scenario list: APIP Cloud Builds and Deployments (DEPLOY).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. The single layer (cloud) records how the suite covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but the product does not meet it yet, `issue` says why
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: DEPLOY
+title: APIP Cloud Builds and Deployments
+scenarios:
+  - id: ID_APIP_DEPLOY_001
+    title: "A build can be prepared for an API and is listed."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "A build can be prepared for an API and is listed"
+  - id: ID_APIP_DEPLOY_002
+    title: "The builds of an API are listed newest first."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "The builds of an API are listed newest first"
+  - id: ID_APIP_DEPLOY_003
+    title: "A build that already exists can be deployed to a gateway in an environment."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "A build that already exists can be deployed to a gateway in an environment"
+  - id: ID_APIP_DEPLOY_004
+    title: "The deployments of an API list one stage per environment of its pipeline."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "The deployments of an API list one stage per environment of its pipeline"
+  - id: ID_APIP_DEPLOY_005
+    title: "An undeployed API is no longer served by the gateway."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "An undeployed API is no longer served by the gateway"
+  - id: ID_APIP_DEPLOY_006
+    title: "Deploying to an environment that does not exist is rejected."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "Deploying to an environment that does not exist is rejected"
+  - id: ID_APIP_DEPLOY_007
+    title: "Deploying a build that does not exist is rejected."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "Deploying a build that does not exist is rejected"
+  - id: ID_APIP_DEPLOY_008
+    title: "A deployment the gateway refuses is reported as failed with a reason."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "A deployment the gateway refuses is reported as failed with a reason"
+  - id: ID_APIP_DEPLOY_009
+    title: "A per-deployment endpoint override reaches the gateway in the form the upstream expects."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "A per-deployment endpoint override reaches the gateway in the form the upstream expects"
+  - id: ID_APIP_DEPLOY_010
+    title: "Deploying to a gateway that does not exist is refused and leaves the API undeployed."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "Deploying to a gateway that does not exist is refused and leaves the API undeployed"
+  - id: ID_APIP_DEPLOY_011
+    title: "Deploying to a gateway that belongs to another environment is refused and leaves the API undeployed."
+    priority: P1
+    cloud:
+      status: known-issue
+      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
+      refs:
+        - feature: suites/cloud/features/apip_deploy.feature
+          scenario: "Deploying to a gateway that belongs to another environment is refused and leaves the API undeployed"
