@@ -1671,6 +1671,9 @@ var serviceEndpoints = map[string]struct {
 	"moesif": {component: "testbench", endpoint: "moesif", partitioned: true},
 	// The streamable-HTTP MCP server, addressed directly by clients that discover its tools.
 	"mcp": {component: "testbench", endpoint: "mcp"},
+	// The Microsoft Entra ID mock, addressed like jev: the tenant a scenario names is its
+	// partition, so token request counts are scoped to the scenario.
+	"entra": {component: "testbench", endpoint: "entra"},
 	// Metrics live on a DIFFERENT compose service from the one tests normally address —
 	// controller metrics on the controller, policy-engine metrics on the runtime — which the
 	// component contract resolves via Endpoint.Service. No base path: a scrape is not an API.

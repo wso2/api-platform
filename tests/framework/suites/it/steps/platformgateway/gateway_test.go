@@ -4132,6 +4132,14 @@ func TestMCPServiceResolvesToTheTestbenchMCPEndpoint(t *testing.T) {
 	require.False(t, spec.partitioned, "the MCP server is stateless, so it is not partitioned")
 }
 
+func TestEntraServiceResolvesToTheTestbenchEntraEndpoint(t *testing.T) {
+	spec, ok := serviceEndpoints["entra"]
+	require.True(t, ok)
+	require.Equal(t, "testbench", spec.component)
+	require.Equal(t, "entra", spec.endpoint)
+	require.False(t, spec.partitioned, "a scenario addresses its own tenant or block partition in the path")
+}
+
 func TestResolveServiceURLAndStoreChoosesTheNetworkOfTheClient(t *testing.T) {
 	definition := &components.Definition{
 		Name:      "testbench",
