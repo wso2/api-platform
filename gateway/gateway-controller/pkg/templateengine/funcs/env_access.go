@@ -19,6 +19,7 @@
 package funcs
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -123,4 +124,12 @@ type EnvAccessError struct{}
 
 func (e *EnvAccessError) Error() string {
 	return "environment variable is not permitted in artifact templates"
+}
+
+// IsEnvAccessError reports whether err, or any error it wraps, is an
+// *EnvAccessError: a template read an environment variable the env access
+// policy does not permit.
+func IsEnvAccessError(err error) bool {
+	var envErr *EnvAccessError
+	return errors.As(err, &envErr)
 }
