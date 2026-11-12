@@ -561,6 +561,7 @@ func main() {
 		transformerRegistry,
 		log,
 		cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
+		utils.NewEnvRefusedUndeployer(db, eventHubInstance, gatewayID, log),
 	)
 	if err != nil {
 		log.Error("Failed to load runtime configs from API configurations", slog.Any("error", err))

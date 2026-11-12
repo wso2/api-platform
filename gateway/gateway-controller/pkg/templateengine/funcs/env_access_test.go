@@ -21,6 +21,7 @@ package funcs
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"text/template"
@@ -175,4 +176,13 @@ func TestEnv_AllowedByPrefix(t *testing.T) {
 	out, err := executeTemplate(t, `{{ env "BACKEND_HOST" }}`)
 	require.NoError(t, err)
 	assert.Equal(t, "backend.internal", out)
+}
+
+func TestIsEnvAccessError(t *testing.T) {
+	wrapped := fmt.Errorf("render config: %w", fmt.Errorf("execute template: %w", &EnvAccessError{}))
+	assert.True(t, IsEnvAccessError(wrapped))
+	assert.True(t, IsEnvAccessError(&EnvAccessError{}))
+	assert.False(t, IsEnvAccessError(&SecretError{Key: "k", Cause: errors.New("missing")}))
+	assert.False(t, IsEnvAccessError(errors.New("other")))
+	assert.False(t, IsEnvAccessError(nil))
 }

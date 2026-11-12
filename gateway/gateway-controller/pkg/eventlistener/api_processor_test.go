@@ -24,8 +24,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/eventhub"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 )
 
 func TestHandleEvent_APICreate_AddsConfigFromDB(t *testing.T) {
@@ -161,4 +164,47 @@ func TestUpdatePoliciesForAPI_NilManagerIsNoop(t *testing.T) {
 		testRestStoredConfig("test-api-id", "test-api", "Test API", "v1.0.0", models.StateDeployed),
 		"corr-policy-noop",
 	)
+}
+
+// A REST API whose stored spec reads a refused variable is undeployed on the
+// replica that processes its update event: kept in the store as undeployed, with
+// its runtime config (policy chain) removed.
+func TestHandleEvent_APIUpdateReadingRefusedEnv_IsUndeployed(t *testing.T) {
+	t.Setenv("LISTENER_REFUSED_SECRET", "https://leak.example")
+	restricted, err := funcs.NewEnvAccessPolicy([]string{"BACKEND_URL"})
+	require.NoError(t, err)
+	useTemplateEnvPolicy(t, restricted)
+
+	store := storage.NewConfigStore()
+	db := setupSQLiteDBForEventListenerTests(t)
+	runtimeStore := storage.NewRuntimeConfigStore()
+	logger := newTestLogger()
+	policyManager := policyxds.NewPolicyManager(policyxds.NewSnapshotManager(logger), logger)
+	policyManager.SetRuntimeStore(runtimeStore)
+
+	deployed := testRestStoredConfig("api-env-refused-id", "env-refused-api", "Env Refused API", "v1.0.0", models.StateDeployed)
+	require.NoError(t, store.Add(deployed))
+	runtimeKey := storage.Key(models.KindRestApi, deployed.Handle)
+	runtimeStore.Set(runtimeKey, &models.RuntimeDeployConfig{})
+
+	refused := testRestStoredConfig(deployed.UUID, deployed.Handle, deployed.DisplayName, deployed.Version, models.StateDeployed)
+	restAPI := refused.SourceConfiguration.(api.RestAPI)
+	restAPI.Spec.Upstream.Main.Url = stringPtr(`{{ env "LISTENER_REFUSED_SECRET" }}`)
+	refused.Configuration = restAPI
+	refused.SourceConfiguration = restAPI
+	require.NoError(t, db.SaveConfig(refused))
+
+	listener := &EventListener{store: store, db: db, policyManager: policyManager, logger: logger}
+	listener.handleEvent(eventhub.Event{
+		EventType: eventhub.EventTypeAPI,
+		Action:    "UPDATE",
+		EntityID:  deployed.UUID,
+		EventID:   "corr-api-env-refused",
+	})
+
+	stored, err := store.Get(deployed.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StateUndeployed, stored.DesiredState)
+	_, exists := runtimeStore.Get(runtimeKey)
+	assert.False(t, exists, "the API's runtime config should be removed")
 }

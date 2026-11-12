@@ -509,7 +509,7 @@ func main() {
 	policyManager.SetTransformers(transformerRegistry)
 
 	loadedAPIs := configStore.GetAll()
-	if _, err := loadRuntimeConfigsFromExistingAPIConfigurations(loadedAPIs, runtimeStore, secretsService, transformerRegistry, log, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup); err != nil {
+	if _, err := loadRuntimeConfigsFromExistingAPIConfigurations(loadedAPIs, runtimeStore, secretsService, transformerRegistry, log, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup, utils.NewEnvRefusedUndeployer(db, eventHubInstance, gatewayID, log)); err != nil {
 		log.Error("Failed to load runtime configs from API configurations", slog.Any("error", err))
 		os.Exit(1)
 	}

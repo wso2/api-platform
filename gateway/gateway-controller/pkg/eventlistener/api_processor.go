@@ -28,6 +28,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 )
 
 // processAPIEvent dispatches API events by action
@@ -79,6 +80,10 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 	// Render template expressions in the spec (e.g. {{ secret "..." }}, {{ env "..." }}).
 	// storedConfig.Configuration is set to the resolved version; SourceConfiguration stays unrendered.
 	if err := templateengine.RenderSpec(storedConfig, l.secretResolver, l.logger); err != nil {
+		if funcs.IsEnvAccessError(err) {
+			l.undeployAfterEnvRefusal(storedConfig, event.EventID)
+			return
+		}
 		l.logger.Error("Failed to render config templates for API",
 			slog.String("api_id", entityID),
 			slog.String("event_id", event.EventID),
@@ -219,6 +224,46 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 	l.logger.Info("Successfully processed API delete event",
 		slog.String("api_id", entityID),
 		slog.String("event_id", event.EventID))
+}
+
+// undeployAfterEnvRefusal applies, on this replica, the undeploy of an artifact
+// whose spec reads an environment variable outside the env access allow list:
+// the artifact is kept in the in-memory store as undeployed so the router drops
+// its route, and its runtime config is removed so the policy engine drops its
+// policy chain. Nothing is written to the database; the replica that refused the
+// read persists the undeploy.
+func (l *EventListener) undeployAfterEnvRefusal(cfg *models.StoredConfig, eventID string) {
+	cfg.DesiredState = models.StateUndeployed
+	l.logger.Warn("Undeploying artifact: its spec reads an environment variable outside policy_engine.env_access.allow_list",
+		slog.String("id", cfg.UUID),
+		slog.String("kind", cfg.Kind),
+		slog.String("handle", cfg.Handle),
+		slog.String("event_id", eventID))
+
+	existing, _ := l.store.Get(cfg.UUID)
+	if existing != nil {
+		if err := l.store.Update(cfg); err != nil {
+			l.logger.Error("Failed to mark artifact undeployed in memory store",
+				slog.String("id", cfg.UUID),
+				slog.Any("error", err))
+			return
+		}
+	} else if err := l.store.Add(cfg); err != nil {
+		l.logger.Error("Failed to add undeployed artifact to memory store",
+			slog.String("id", cfg.UUID),
+			slog.Any("error", err))
+		return
+	}
+
+	l.updateSnapshot(cfg.UUID, eventID, "Failed to update xDS snapshot after undeploying artifact that reads a refused environment variable")
+
+	if l.policyManager != nil {
+		if err := l.policyManager.DeleteAPIConfig(cfg.Kind, cfg.Handle); err != nil {
+			l.logger.Warn("Failed to remove runtime config of artifact that reads a refused environment variable",
+				slog.String("id", cfg.UUID),
+				slog.Any("error", err))
+		}
+	}
 }
 
 // updatePoliciesForAPI upserts the RuntimeDeployConfig for an API into the policy xDS store.

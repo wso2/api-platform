@@ -74,3 +74,40 @@ Feature: Environment variable allow list for artifact templates
 
     When I get the API "${CTX:apiName}"
     Then the response status code should be 404
+
+  @type:negative
+  Scenario: updating a deployed API to read a variable outside the allow list is rejected and leaves it serving
+    Given I generate a unique resource name from "tpl-env-denied-update" and store it as "apiName"
+    And I generate a unique API version from "tpl-env-denied-update" and store it as "apiVersion"
+    And I generate a unique API context from "/tpl-env-denied-update" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}          |
+      | name                   | ${CTX:apiName}                     |
+      | spec.displayName       | Tpl-Env-Denied-Update              |
+      | spec.version           | ${CTX:apiVersion}                  |
+      | spec.context           | ${CTX:apiContext}/$version         |
+      | spec.upstream.main.url | http://testbench:3002              |
+      | spec.operations        | [{"method":"GET","path":"/probe"}] |
+    Then the response status code should be 201
+    And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/probe" until status 200
+
+    When I update API "${CTX:apiName}" from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}  |
+      | name                   | ${CTX:apiName}             |
+      | spec.displayName       | Tpl-Env-Denied-Update      |
+      | spec.version           | ${CTX:apiVersion}          |
+      | spec.context           | ${CTX:apiContext}/$version |
+      | spec.upstream.main.url | http://testbench:3002      |
+      | spec.operations        | [{"method":"GET","path":"/probe","policies":[{"name":"set-headers","version":"v1","params":{"request":{"headers":[{"name":"X-Leak","value":"{{ env \"APIP_GW_CONTROLLER_LOGGING_LEVEL\" }}"}]}}}]}] |
+    Then the response status code should be 400
+    And the JSON response field "message" should be "environment variable is not permitted in artifact templates"
+    And the response body should not contain "APIP_GW_CONTROLLER_LOGGING_LEVEL"
+    And the response body should not contain "debug"
+
+    # The previous definition is kept and keeps serving, with no leaked header.
+    When I get the API "${CTX:apiName}"
+    Then the response status code should be 200
+    And the response body should not contain "APIP_GW_CONTROLLER_LOGGING_LEVEL"
+    When I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/probe"
+    Then the response status code should be 200
+    And the response should not contain echoed header "X-Leak"
