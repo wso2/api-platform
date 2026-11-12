@@ -114,14 +114,14 @@ func imdsLogKey(block, identity string) string {
 	return block + "/" + identity
 }
 
-// validateIMDS checks a token request as IMDS does: the Metadata header, a query string that
-// parses cleanly (queryErr is ParseQuery's error), no repeated query parameter, the api-version, a
-// resource, and no X-Forwarded-For header, even an empty one, which IMDS refuses so that a proxy
-// cannot relay requests.
+// validateIMDS checks a token request as IMDS does: exactly one Metadata: true header, a query
+// string that parses cleanly (queryErr is ParseQuery's error), no repeated query parameter, the
+// api-version, a resource, and no X-Forwarded-For header, even an empty one, which IMDS refuses so
+// that a proxy cannot relay requests.
 func validateIMDS(r *http.Request, q url.Values, queryErr error, req Request) *imdsRejection {
 	name, repeated := repeatedParameter(q)
 	switch {
-	case req.Metadata != "true":
+	case len(r.Header.Values("Metadata")) != 1 || req.Metadata != "true":
 		return &imdsRejection{"bad_request_102", "Required metadata header not specified"}
 	case queryErr != nil:
 		return &imdsRejection{"invalid_request", "The query string is malformed"}

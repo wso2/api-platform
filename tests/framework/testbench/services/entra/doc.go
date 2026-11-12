@@ -60,8 +60,8 @@
 //	GET  /<block>/test/managed-identity/<client_id>   the block's requests for that identity
 //	GET  /<block>/test/managed-identity/system-assigned   the block's requests without client_id
 //
-// It checks the request as IMDS does: the Metadata: true header, a query string that parses
-// cleanly, no repeated query parameter, api-version 2018-02-01, a resource, and no
+// It checks the request as IMDS does: exactly one Metadata: true header, a query string that
+// parses cleanly, no repeated query parameter, api-version 2018-02-01, a resource, and no
 // X-Forwarded-For header, even an empty one; anything else is answered with 400.
 // It answers in IMDS's shape, with every number as a string. Its tokens carry the resource as the
 // audience, "managed-identity" as the tenant and the client_id, or "system-assigned" without one,

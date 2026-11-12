@@ -600,6 +600,8 @@ func TestIMDSRejectsAMalformedRequest(t *testing.T) {
 	}{
 		{"no Metadata header", imdsQuery(testManagedClientID, FoundryAudience), nil, "bad_request_102", ""},
 		{"Metadata false", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"false"}}, "bad_request_102", ""},
+		{"Metadata true and false", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"true", "false"}}, "bad_request_102", ""},
+		{"Metadata true twice", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"true", "true"}}, "bad_request_102", ""},
 		{"no api-version", url.Values{"resource": {FoundryAudience}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request", ""},
 		{"another api-version", url.Values{"api-version": {"2019-01-01"}, "resource": {FoundryAudience}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request", ""},
 		{"no resource", url.Values{"api-version": {IMDSAPIVersion}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request", ""},
