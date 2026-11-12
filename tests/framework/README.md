@@ -63,7 +63,25 @@ product coverage-image target.
 The UI suite builds the `ai-workspace` and `platform-api` images through the framework when
 coverage is selected and pulls `mcr.microsoft.com/playwright` for the in-network browser;
 the playwright driver installs itself on first run. Failing scenarios leave a full-page
-screenshot and the DOM under `suites/ui/artifacts/`.
+screenshot, the DOM and a Playwright trace under `suites/ui/artifacts/`; open a trace with
+`npx playwright show-trace <file>-trace.zip`.
+
+To watch the journeys locally, set `UI_HEADED=1`. Each block then opens a visible Chromium
+on your machine instead of using the headless one in its container, and `UI_SLOWMO=<ms>`
+pauses between actions. Narrow the run to the scenarios you are working on, because every
+running scenario opens its own window:
+
+```sh
+UI_HEADED=1 UI_SLOWMO=300 go test ./suites/ui -run TestUISuite -count=1 -timeout=30m \
+  -args -blocks=management-portal-deploy -feature-tags=@APIDEF
+```
+
+Headed mode installs Chromium for the pinned Playwright version on first use. The block's
+`browser` container then runs a small forward proxy (`core/catalog/browser/headed-proxy.js`)
+in place of the Playwright server, and the local browser browses through it, so it reaches
+the same container names and URLs the headless browser does. With `UI_HEADED` unset, which
+includes CI, nothing changes. A slowed, visible browser can expose timing a CI run hides,
+and the other way round, so confirm a fix with a headless run too.
 
 ## Layout
 
@@ -386,6 +404,16 @@ non-root user, cannot open it, and exits immediately. Its container is created w
 `"Started" matched 0 times` — a readiness message mentioning neither the socket nor the
 permission error behind it. This was once recorded here as an upstream Ryuk defect. It is not
 one.
+
+**On Rancher Desktop with Kubernetes enabled, images can vanish mid-run.** Its kubelet
+garbage-collects Docker images once the VM disk passes 85% and deletes any image no running
+container uses, such as a freshly built `testbench:test` or a pulled
+`mcr.microsoft.com/playwright` that the block has not started yet. A run then fails with
+`unauthorized` pulling an image you built, or a boot timeout while the browser image
+downloads again. `~/Library/Logs/rancher-desktop/k3s.log` shows it as
+`image_gc_manager ... "Removing image to free bytes"`. Turn Kubernetes off if you do not use
+it, or keep the disk well below 85%: `docker system df` usually shows build cache as the
+largest reclaimable part, and `docker builder prune` frees it.
 
 The framework previously set both variables itself, by shelling out to `docker context
 inspect`. That was deleted: it is developer environment setup, not something a test framework
