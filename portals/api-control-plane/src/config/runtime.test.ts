@@ -342,4 +342,32 @@ describe('runtimeConfig', () => {
       expect((await loadRuntimeConfig()).sanitizeHtmlDocsAdditionalAllowedAttributes).toEqual(expected);
     });
   });
+
+  it('leaves feature-usage tracking off when the deployment says nothing', async () => {
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.featureUsageTrackingEnabled).toBe(false);
+    expect(runtimeConfig.featureUsageCollectorPath).toBe('');
+  });
+
+  it('reads feature-usage tracking and the collector path from runtime config', async () => {
+    window.__RUNTIME_CONFIG__ = {
+      featureUsageTrackingEnabled: 'true',
+      featureUsageCollectorPath: '/_api/api-management/feature-usage/',
+    };
+    const runtimeConfig = await loadRuntimeConfig();
+
+    expect(runtimeConfig.featureUsageTrackingEnabled).toBe(true);
+    expect(runtimeConfig.featureUsageCollectorPath).toBe('/_api/api-management/feature-usage');
+  });
+
+  it.each([
+    ['another origin', 'https://api.moesif.net'],
+    ['a protocol-relative URL', '//api.moesif.net/v1'],
+    ['a relative path', 'feature-usage'],
+    ['a query string', '/feature-usage?x=1'],
+  ])('ignores a collector path that is %s', async (_label, value) => {
+    window.__RUNTIME_CONFIG__ = { featureUsageCollectorPath: value };
+    expect((await loadRuntimeConfig()).featureUsageCollectorPath).toBe('');
+  });
 });

@@ -15,27 +15,34 @@
 # under the License.
 # --------------------------------------------------------------------
 
+@APIPORTAL @apiportal-foreign-org-login
 Feature: API Portal organization-pinned login
 
-  Scenario: A portal serves its configured organization
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
+  # Runs in the api-portal-foreign-org block: a second portal ("api-portal-other-org") serves
+  # "other-org" from the same platform-api, so each refusal is paired with the portal that accepts it.
+
+  @APIP-029 @type:security
+  Scenario: A portal serves only its own organization and treats a foreign credential as a wrong password
+    # A portal serves its configured organization
     When I send an unauthenticated API Portal "GET" request to "/api-portal/other-org/views/default" using portal "api-portal-other-org"
     Then the response status code should be 200
 
-  Scenario: A portal does not serve the platform API organization
+    # A portal does not serve the platform API organization
     When I send an unauthenticated API Portal "GET" request to "/api-portal/default/views/default" using portal "api-portal-other-org"
     Then the response status code should be 404
 
-  Scenario: A valid credential logs in to its matching organization portal
+    # A valid credential logs in to its matching organization portal
     When I submit an API Portal file login for actor "admin"
     Then the response status code should be 302
     And the response header "Location" should not contain "error="
 
-  Scenario: A valid credential for another organization is rejected
+    # A valid credential for another organization is rejected
     When I submit an API Portal file login for actor "admin" to organization "other-org" using portal "api-portal-other-org"
     Then the response status code should be 302
     And the response header "Location" should contain "error="
 
-  Scenario: An organization mismatch is reported as a credential failure
+    # An organization mismatch is reported as a credential failure
     When I submit an API Portal file login for actor "admin" to organization "other-org" using portal "api-portal-other-org"
     Then the response status code should be 302
     And I store the API Portal response header "Location" as "mismatchLocation"
@@ -44,7 +51,7 @@ Feature: API Portal organization-pinned login
     And the API Portal response header "Location" should equal stored "mismatchLocation"
     And the response header "Location" should contain "Invalid+username+or+password"
 
-  Scenario: A rejected login does not establish a usable session
+    # A rejected login does not establish a usable session
     When I submit an API Portal file login for actor "admin" to organization "other-org" using portal "api-portal-other-org"
     Then the response status code should be 302
     And the response header "Location" should contain "error="

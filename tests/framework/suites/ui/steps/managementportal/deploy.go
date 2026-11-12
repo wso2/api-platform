@@ -51,8 +51,9 @@ func (s *Steps) registerDeploySteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the Management Portal confirms (stopping|redeploying|deleting) deployment "([^"]*)"$`, s.confirms)
 	sc.Step(`^the user closes the drawer in the Management Portal$`, s.closeDrawer)
 	sc.Step(`^the deployment status on gateway "([^"]*)" becomes "([^"]*)"$`, s.deploymentStatusBecomes)
-	sc.Step(`^the Management Portal's "([^"]*)" button is (enabled|disabled)$`, s.buttonState)
-	sc.Step(`^the Management Portal offers (a|no) "([^"]*)" button$`, s.offersButton)
+	sc.Step(`^the Management Portal's "([^"]*)" (button|link) is (enabled|disabled)$`, s.buttonState)
+	sc.Step(`^the "([^"]*)" button on gateway "([^"]*)" in the Management Portal is (enabled|disabled)$`, s.gatewayButtonState)
+	sc.Step(`^the Management Portal offers (a|no) "([^"]*)" (button|link)$`, s.offersButton)
 	sc.Step(`^the gateway answers (\d+) to a "([^"]*)" request to "([^"]*)"$`, s.gatewayAnswers)
 	sc.Step(`^the gateway answers (\d+) to a "([^"]*)" request to "([^"]*)" with body:$`, s.gatewayAnswersWithBody)
 }
@@ -134,6 +135,27 @@ func (s *Steps) clickOnGateway(ctx context.Context, button, gateway string) erro
 	}
 	if err := card.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: resolved, Exact: playwright.Bool(true)}).Click(); err != nil {
 		return fmt.Errorf("clicking %q on gateway %q: %w", resolved, gateway, err)
+	}
+	return nil
+}
+
+func (s *Steps) gatewayButtonState(ctx context.Context, button, gateway, state string) error {
+	resolved, err := uivalue.Expand(ctx, button)
+	if err != nil {
+		return err
+	}
+	card, err := s.gatewayCard(ctx, gateway)
+	if err != nil {
+		return err
+	}
+	locator := card.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: resolved, Exact: playwright.Bool(true)})
+	if state == "enabled" {
+		err = s.expect.Locator(locator).ToBeEnabled()
+	} else {
+		err = s.expect.Locator(locator).ToBeDisabled()
+	}
+	if err != nil {
+		return fmt.Errorf("the %q button on gateway %q is not %s: %w", resolved, gateway, state, err)
 	}
 	return nil
 }
@@ -244,9 +266,10 @@ func (s *Steps) closeDrawer(ctx context.Context) error {
 	return s.expect.Locator(page.Locator(".MuiDrawer-root")).ToHaveCount(0)
 }
 
-// statusSettleTimeout outlasts the console's deployment poll, which backs off to one fetch
-// every 30 seconds after a few actions on the page, plus the gateway's acknowledgement.
-const statusSettleTimeout = 60_000
+// statusSettleTimeout outlasts the gateway's acknowledgement plus the console's next deployment
+// poll, which runs about 2, 5, 9.5, 16, 26 and 42 seconds after each action. A later
+// acknowledgement is a slow gateway, not a settle the test should wait out.
+const statusSettleTimeout = 50_000
 
 // deploymentStatusBecomes reads the status bar of an expanded gateway card: Active for a
 // live deployment, Suspended for an undeployed one.
@@ -264,51 +287,61 @@ func (s *Steps) deploymentStatusBecomes(ctx context.Context, gateway, status str
 	return nil
 }
 
-func (s *Steps) buttonState(ctx context.Context, name, state string) error {
-	locator, err := s.button(ctx, name)
+func (s *Steps) buttonState(ctx context.Context, name, role, state string) error {
+	resolved, err := uivalue.Expand(ctx, name)
 	if err != nil {
 		return err
 	}
+	page, err := s.pageGetter(ctx)
+	if err != nil {
+		return err
+	}
+	locator := page.GetByRole(playwright.AriaRole(role), playwright.PageGetByRoleOptions{Name: resolved, Exact: playwright.Bool(true)})
 	if state == "enabled" {
 		err = s.expect.Locator(locator).ToBeEnabled()
 	} else {
 		err = s.expect.Locator(locator).ToBeDisabled()
 	}
 	if err != nil {
-		return fmt.Errorf("the %q button is not %s: %w", name, state, err)
+		return fmt.Errorf("the %q %s is not %s: %w", resolved, role, state, err)
 	}
 	return nil
 }
 
-// offersButton checks a button is there or absent. Features check absence after the page
-// shows what it loaded, so absence is not mistaken for a page still loading.
-func (s *Steps) offersButton(ctx context.Context, which, name string) error {
-	locator, err := s.button(ctx, name)
+// offersButton checks a button or link is there or absent. Features check absence after the
+// page shows what it loaded, so absence is not mistaken for a page still loading.
+func (s *Steps) offersButton(ctx context.Context, which, name, role string) error {
+	resolved, err := uivalue.Expand(ctx, name)
 	if err != nil {
 		return err
 	}
+	page, err := s.pageGetter(ctx)
+	if err != nil {
+		return err
+	}
+	locator := page.GetByRole(playwright.AriaRole(role), playwright.PageGetByRoleOptions{Name: resolved, Exact: playwright.Bool(true)})
 	if which == "a" {
 		err = s.expect.Locator(locator).ToBeVisible()
 	} else {
 		err = s.expect.Locator(locator).ToHaveCount(0)
 	}
 	if err != nil {
-		return fmt.Errorf("expected %s %q button: %w", which, name, err)
+		return fmt.Errorf("expected %s %q %s: %w", which, resolved, role, err)
 	}
 	return nil
 }
 
 func (s *Steps) gatewayAnswers(ctx context.Context, status int, method, path string) error {
-	return s.awaitGateway(ctx, status, method, path, "")
+	return s.awaitGateway(ctx, status, method, path, "", nil)
 }
 
 func (s *Steps) gatewayAnswersWithBody(ctx context.Context, status int, method, path string, body *godog.DocString) error {
-	return s.awaitGateway(ctx, status, method, path, body.Content)
+	return s.awaitGateway(ctx, status, method, path, body.Content, nil)
 }
 
 // awaitGateway sends the request to the gateway until it answers status. The gateway applies
 // a deploy or an undeploy shortly after the control plane accepts it.
-func (s *Steps) awaitGateway(ctx context.Context, status int, method, path, body string) error {
+func (s *Steps) awaitGateway(ctx context.Context, status int, method, path, body string, headers map[string]string) error {
 	resolved, err := uivalue.Expand(ctx, path)
 	if err != nil {
 		return err
@@ -317,20 +350,13 @@ func (s *Steps) awaitGateway(ctx context.Context, status int, method, path, body
 	if err != nil {
 		return err
 	}
-	request := httpx.Request{Method: method, URL: base + resolved}
+	request := httpx.Request{Method: method, URL: base + resolved, Headers: headers}
 	if body != "" {
 		request.ContentType = "application/json"
 		request.Body = []byte(body)
 	}
-	last, err := retry.Until(ctx, retry.Options{}, func(ctx context.Context) (*httpx.Response, error) {
+	return retry.Await(ctx, retry.Options{}, func(ctx context.Context) (*httpx.Response, error) {
 		return s.client.Do(ctx, request, 0, 0)
-	}, func(resp *httpx.Response) bool { return resp.StatusCode == status })
-	if err != nil {
-		described := "no response"
-		if last != nil {
-			described = last.Describe()
-		}
-		return fmt.Errorf("the gateway never answered %d to %s %s; last: %s: %w", status, method, resolved, described, err)
-	}
-	return nil
+	}, func(resp *httpx.Response) bool { return resp != nil && resp.StatusCode == status },
+		fmt.Sprintf("the gateway never answered %d to %s %s", status, method, resolved))
 }

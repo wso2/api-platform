@@ -5934,6 +5934,16 @@
   "apiControlPlane.projects.ProjectStatistics.total": {
     "defaultMessage": "Total"
   },
+  "apiControlPlane.scope.ConsoleScopeProvider.switchFailedMessage": {
+    "defaultMessage": "Refresh the page to try again."
+  },
+  "apiControlPlane.scope.ConsoleScopeProvider.switchFailedTitle": {
+    "defaultMessage": "Unable to switch organization"
+  },
+  "apiControlPlane.scope.ConsoleScopeProvider.switching": {
+    "defaultMessage": "Switching organization",
+    "description": "Shown while the session moves into the organization the user opened."
+  },
   "apiListPage.clearFilters": {
     "defaultMessage": "Clear filters"
   },

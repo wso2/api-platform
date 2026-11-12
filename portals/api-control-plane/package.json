@@ -18,6 +18,7 @@
     "prepreview": "npm run i18n:build",
     "preview": "vite preview --host localhost --port 3000",
     "api:codegen": "openapi-typescript ../../platform-api/resources/openapi.yaml -o src/api/generated/platform.d.ts && node scripts/generateOperationScopes.ts",
+    "taxonomy:codegen": "node scripts/generateFeatureTaxonomy.ts",
     "api:codegen:check": "npm run api:codegen && git add --intent-to-add src/api/generated && git diff --exit-code --stat HEAD -- src/api/generated",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --quiet",

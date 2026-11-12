@@ -10,7 +10,7 @@ This document provides instructions for the GitHub Copilot coding agent when wor
   - `gateway/gateway-runtime/router/` - Envoy-based router
 - `kubernetes/` - Kubernetes operator and Helm charts
   - `kubernetes/gateway-operator/` - Gateway Kubernetes operator
-- `tests/framework/` - Integration test framework; the gateway integration tests are in `tests/framework/suites/it/`
+- `tests/framework/` - Integration test framework. On-premises API-level tests (including the gateway integration tests) are in `tests/framework/suites/it/`, on-premises portal (browser) tests in `tests/framework/suites/ui/`, and hosted-cloud tests in `tests/framework/suites/cloud/`; see "Suites: Where a Test Goes" in `tests/framework/CLAUDE.md`
 
 ## Running Integration Tests
 
@@ -28,14 +28,31 @@ code, whether you changed gateway components or only test files.
    ```bash
    make -C gateway test-integration
    ```
-   Or the block and feature you changed. Find the block in `tests/framework/suites/it/it-suite.yaml`
+   Or the block and feature you changed. Find the block in `tests/framework/suites/it/blocks/`
    and select the feature by its tag:
    ```bash
    cd tests/framework
-   go test ./suites/it -count=1 -v -timeout=60m -blocks <block>/sqlite -feature-tags "@<feature-tag>"
+   go test ./suites/it -count=1 -v -timeout=60m -blocks <block-or-variant> -feature-tags "@<feature-tag>"
    ```
+   A block without a database matrix is selected by its name (`api-portal-core`). A block
+   with one runs once per engine: its bare name runs every variant, and one variant is
+   selected as `gateway-core/sqlite`, or `platform-api-core/api-sqlite_gateway-sqlite` when
+   the matrix covers two components.
 
-3. **Restore `gateway/build-manifest.yaml` before committing.** A source build rewrites it with the
+3. **Adding a feature to the suite.** `.agents/skills/write-framework-tests/SKILL.md` walks
+   through writing a test end to end. In short:
+   - Start from the feature's entry in its scenario list under `tests/framework/scenarios/on-prem/`.
+   - The blocks live in `tests/framework/suites/it/blocks/`, one file per combination of products
+     the tests check. In the file that matches your feature, add it to an existing runner that
+     fits it, or else add a runner to an existing block that fits: one whose settings and
+     isolation your feature can run with. Most features fit the file's generic block, such as
+     `gateway-core`.
+   - A new block (when no block fits: the feature needs a product setting the other runners must
+     not see, or must run alone) or a new block file is the last resort.
+
+   The rules are in "Scenario Lists" and "Integration Suite Blocks" in `tests/framework/CLAUDE.md`.
+
+4. **Restore `gateway/build-manifest.yaml` before committing.** A source build rewrites it with the
    newest policy versions:
    ```bash
    git restore gateway/build-manifest.yaml
@@ -100,7 +117,7 @@ When creating integration tests for a policy:
 
 2. **Identify systemParameters**: Look for properties with `"wso2/defaultValue"` - these need gateway config entries
 
-3. **Add system parameter values to the block's gateway configuration**: Add the required configuration under `policy_configurations` in the overlay the block uses (`tests/framework/core/catalog/overlays/<name>.toml`, referenced by the block's `overlay:` in `tests/framework/suites/it/it-suite.yaml`), following the JSON path from `"wso2/defaultValue"`:
+3. **Add system parameter values to the block's gateway configuration**: Add the required configuration under `policy_configurations` in the overlay the block uses (`tests/framework/core/catalog/overlays/<name>.toml`, referenced by the block's `overlay:` in its `tests/framework/suites/it/blocks/*.yaml` file), following the JSON path from `"wso2/defaultValue"`:
    - Path: `${config.policy_configurations.<policy_id>.<param_name>}`
    - Location: the overlay → `[policy_configurations.<policy_id>]` → `<param_name>`
    - Note: The `<policy_id>` in the path typically follows the pattern `<policyname>_v<version>` with underscores (e.g., `jwtauth_v1` for `jwt-auth` v1)

@@ -31,7 +31,7 @@ go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=3
 
 # The ap CLI's ai-workspace commands against platform-api (needs the ap binary, see below):
 make ap-cli
-go test ./suites/it -count=1 -timeout=30m -blocks=ai-workspace-cli
+go test ./suites/it -count=1 -timeout=30m -blocks=platform-api-core/api-sqlite_gateway-sqlite -feature-tags=@ai-workspace-cli
 
 #   On Apple silicon, cap coverage runs at -block-parallel=2: the arm64 SQL Server
 #   substitute crashes probabilistically when three instrumented stacks cold-boot at once.
@@ -44,7 +44,7 @@ go test ./suites/it -count=1 -timeout=45m -blocks=gateway-core -block-parallel=2
 # Reports are written under whichever directory you pass; open its index.html to navigate
 # to each component report. A run's counters are never merged with another run's.
 
-# The UI suite (browser-driven AI Workspace journeys against the real gateway):
+# The UI suite (browser journeys through the AI Workspace, API Portal and Management Portal):
 go test ./suites/ui -count=1 -timeout=25m
 
 # The cloud suite (external APIP cloud; requires a workflow-provided access token):
@@ -54,20 +54,34 @@ go test ./suites/cloud -count=1 -timeout=60m \
 ```
 
 Prerequisite images: `make testbench` and, for blocks that list `a2a-trip-planner`,
-`make a2a-trip-planner` here. The `ai-workspace-cli` block also needs the host `ap` binary:
+`make a2a-trip-planner` here. The `ai-workspace-cli` and `ap-cli-gateway` runners also need the host `ap` binary:
 `make ap-cli` builds it to `cli/src/build/ap` (override the location with `AP_CLI_BINARY`); a
 missing binary fails the block rather than skipping it. Coverage runs build source images through the
 framework and use the product `VERSION` files for their tags; they do not require a separate
-product coverage-image target. See
-[`docs/coverage-architecture.md`](docs/coverage-architecture.md) for what coverage collects
-and how.
+product coverage-image target.
 
 The UI suite builds the `ai-workspace` and `platform-api` images through the framework when
 coverage is selected and pulls `mcr.microsoft.com/playwright` for the in-network browser;
 the playwright driver installs itself on first run. Failing scenarios leave a full-page
-screenshot and the DOM under `suites/ui/artifacts/`. See
-[`docs/ui-testing-architecture.md`](docs/ui-testing-architecture.md) for the architecture
-and the execution findings.
+screenshot, the DOM and a Playwright trace under `suites/ui/artifacts/`; open a trace with
+`npx playwright show-trace <file>-trace.zip`.
+
+To watch the journeys locally, set `UI_HEADED=1`. Each block then opens a visible Chromium
+on your machine instead of using the headless one in its container, and `UI_SLOWMO=<ms>`
+pauses between actions. Narrow the run to the scenarios you are working on, because every
+running scenario opens its own window:
+
+```sh
+UI_HEADED=1 UI_SLOWMO=300 go test ./suites/ui -run TestUISuite -count=1 -timeout=30m \
+  -args -blocks=management-portal-deploy -feature-tags=@APIDEF
+```
+
+Headed mode installs Chromium for the pinned Playwright version on first use. The block's
+`browser` container then runs a small forward proxy (`core/catalog/browser/headed-proxy.js`)
+in place of the Playwright server, and the local browser browses through it, so it reaches
+the same container names and URLs the headless browser does. With `UI_HEADED` unset, which
+includes CI, nothing changes. A slowed, visible browser can expose timing a CI run hides,
+and the other way round, so confirm a fix with a headless run too.
 
 ## Layout
 
@@ -83,9 +97,15 @@ framework/
   core/suiterun/    the exported suite entry (Main and Run) any project's test binary calls
   snapshots/        empty in git (.gitkeep); the release generates the embedded gateway schemas, current config and pricing file
 suites/
-  it/  cloud/  ui/
-scenarios/          one scenario list per feature (TENANT.yaml, ...)
+  it/               on-premises products at the API level; blocks in it/blocks/
+  ui/               on-premises portals through the browser
+  cloud/            the hosted APIP cloud
+scenarios/          one scenario list per feature: on-prem/ (TENANT.yaml, ...) for it and ui, cloud/ for cloud
 ```
+
+Which suite a test belongs in, how each suite lays out its feature files and step packages, and
+which block a new integration test goes in are in `CLAUDE.md` ("Suites: Where a Test Goes" and
+"Integration Suite Blocks").
 
 The cloud suite targets externally hosted APIP services. It does not compile product code,
 pull product images, create Docker networks, or provision databases. The environment-to-domain
@@ -103,11 +123,13 @@ before changing one — most encode a failure mode that presents as a passing te
 
 ## Scenario lists
 
-Some product features have a scenario list: `scenarios/<CODE>.yaml` (for example
-`scenarios/TENANT.yaml`), one entry per scenario ID with its title, priority and how each
-layer covers it. `it` is the API level and `ui` the browser. Each layer is `automated`,
-`known-issue` (with the issue link), `exempt` (with the reason) or `planned`, and `refs` name
-the feature file and scenario that automate it. The lists are kept by hand.
+Every test starts from a scenario list: `scenarios/on-prem/<CODE>.yaml` for the `it` and `ui`
+suites (for example `scenarios/on-prem/TENANT.yaml`) and `scenarios/cloud/<CODE>.yaml` for the
+cloud suite. A list has one entry per scenario ID with its title, priority and how each layer
+covers it: `it` is the API level and `ui` the browser in an on-prem list, `cloud` the cloud suite
+in a cloud list. Each layer is `automated`, `known-issue` (with the issue link), `exempt` (with
+the reason) or `planned`, and `refs` name the feature file and scenario that automate it. The
+lists are kept by hand.
 
 A scenario is tagged with every ID it covers (`@TENANT-004`) and its feature with the list's
 code (`@TENANT`), so `-feature-tags=@TENANT-004` runs one ID and `-feature-tags=@TENANT` a
@@ -221,6 +243,11 @@ accessor set, DB contract) lives in Go. The suite YAML references components by 
 declares topology: which blocks exist, which components each needs, what DB, what overlay,
 which features run where, and how much runs in parallel.
 
+A suite file may keep its blocks in further files, listed under `blockFiles` relative to it and
+read in order; each holds only `blocks`. The integration suite keeps one file per combination of
+products under `suites/it/blocks/`. "Integration Suite Blocks" in `CLAUDE.md` says which block a
+new feature goes in.
+
 If a topology need cannot be expressed by composing existing components, the answer is a new
 component or a new option in Go — not a new construct in the YAML schema. That line is what
 keeps the YAML from becoming a second programming language.
@@ -281,6 +308,27 @@ policy images built on it are re-pulled each run because the tag moves.
 go test -gateway-version latest -blocks gateway-core/sqlite
 ```
 
+`-components` runs only the blocks that start at least one of the named components, and
+`-require-components` only the blocks that start all of them. The Platform Tests workflow uses
+`-require-components platform-gateway` to run only the blocks with a Gateway on the released
+Gateway legs, since a block without one runs the same on every Gateway version. A name no block
+starts is an error, and a selection that leaves no block is reported as a skip.
+
+For a pull request, the workflow runs only the blocks the change can affect, chosen by
+`cmd/affectedblocks` from the changed files: the blocks listing a changed feature, the blocks
+declared in a changed block file, the blocks using a changed step package (plus the first block
+of each block file as a sample), and every block starting a changed product. Shared code runs
+every block. To see what a change would run:
+
+```bash
+git diff --name-only main | go run ./cmd/affectedblocks
+```
+
+```bash
+go test -components api-portal                       # every block that starts the API Portal
+go test -gateway-version 1.2.0 -require-components platform-gateway   # only blocks with a Gateway
+```
+
 Two flags are deliberately NOT named after their `go test` counterparts, because the go tool
 consumes any flag it recognises and forwards only the rest:
 
@@ -289,8 +337,8 @@ consumes any flag it recognises and forwards only the rest:
 | `-feature-tags` | `-tags` | build-constraint flag: the filter never arrives and the suite silently runs EVERYTHING |
 | `-block-parallel` | `-parallel` | caps `t.Parallel`: the engine nests parallel subtests, so a low value DEADLOCKS the suite after boot |
 
-`-blocks`, `-skip-blocks` and `-runner-parallel` have no builtin of that name and are forwarded
-to the binary as normal.
+`-blocks`, `-skip-blocks`, `-components`, `-require-components` and `-runner-parallel` have no
+builtin of that name and are forwarded to the binary as normal.
 
 Runner `tags` may begin with a framework Gateway-release selector, followed by `;` and an
 ordinary Godog expression: `gateway-version>1.2.0;~@known-issue`. The selector accepts only
@@ -356,6 +404,16 @@ non-root user, cannot open it, and exits immediately. Its container is created w
 `"Started" matched 0 times` — a readiness message mentioning neither the socket nor the
 permission error behind it. This was once recorded here as an upstream Ryuk defect. It is not
 one.
+
+**On Rancher Desktop with Kubernetes enabled, images can vanish mid-run.** Its kubelet
+garbage-collects Docker images once the VM disk passes 85% and deletes any image no running
+container uses, such as a freshly built `testbench:test` or a pulled
+`mcr.microsoft.com/playwright` that the block has not started yet. A run then fails with
+`unauthorized` pulling an image you built, or a boot timeout while the browser image
+downloads again. `~/Library/Logs/rancher-desktop/k3s.log` shows it as
+`image_gc_manager ... "Removing image to free bytes"`. Turn Kubernetes off if you do not use
+it, or keep the disk well below 85%: `docker system df` usually shows build cache as the
+largest reclaimable part, and `docker builder prune` frees it.
 
 The framework previously set both variables itself, by shelling out to `docker context
 inspect`. That was deleted: it is developer environment setup, not something a test framework

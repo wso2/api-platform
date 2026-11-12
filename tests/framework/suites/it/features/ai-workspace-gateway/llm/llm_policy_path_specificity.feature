@@ -130,7 +130,7 @@ Feature: LLM policy path and method specificity
     # Request 2 - EXPECTED allowed (chat-quota 2/4).
     # A confirmed product bug fans the /* wildcard quota (1/hour) onto /chat/completions
     # too, so this request wrongly returns 429 once the wildcard bucket is exhausted -
-    # see the @known-issue tag/exclusion for this scenario in it-suite.yaml.
+    # see the @known-issue tag/exclusion for this scenario in suites/it/blocks/gateway.yaml.
     When I send a "POST" request to "${CTX:providerContext}/chat/completions" with body:
       """
       {"model":"gpt-4","messages":[{"role":"user","content":"Hello"}]}
