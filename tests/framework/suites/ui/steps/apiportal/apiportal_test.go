@@ -18,7 +18,10 @@
 package apiportal
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"strings"
 	"testing"
 
 	catalogapiportal "github.com/wso2/api-platform/tests/framework/core/catalog/apiportal"
@@ -101,5 +104,145 @@ func TestBillingWebhookBaseNamesTheBlocksOwnPortal(t *testing.T) {
 	// topology without its block network has no address to give Stripe.
 	if got, err := steps.billingWebhookBase(); err == nil {
 		t.Fatalf("billingWebhookBase() = %q, want an error without the block's network", got)
+	}
+}
+
+// TestNavigationStatusRequiresAnOpenedPage checks that the navigation status is an error until a
+// page has been opened, and is read back once stored.
+func TestNavigationStatusRequiresAnOpenedPage(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("api-portal"))
+
+	if _, err := navigationStatus(ctx); err == nil {
+		t.Fatal("navigationStatus() returned no error before any page was opened")
+	}
+	if err := tcontext.Set(ctx, keyAPIPortalNavigationStatus, "404"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := navigationStatus(ctx); err == nil {
+		t.Fatal("navigationStatus() accepted a status that is not an int")
+	}
+	if err := tcontext.Set(ctx, keyAPIPortalNavigationStatus, 404); err != nil {
+		t.Fatal(err)
+	}
+	if status, err := navigationStatus(ctx); err != nil || status != 404 {
+		t.Fatalf("navigationStatus() = (%d, %v), want (404, nil)", status, err)
+	}
+}
+
+// TestContextStringRejectsMissingEmptyAndNonStringValues checks that only a non-empty string is
+// returned from the scenario context.
+func TestContextStringRejectsMissingEmptyAndNonStringValues(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("api-portal"))
+
+	if _, err := contextString(ctx, "missing"); err == nil {
+		t.Fatal("contextString() returned no error for a missing value")
+	}
+	for name, value := range map[string]any{"empty": "", "number": 7} {
+		if err := tcontext.Set(ctx, name, value); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := contextString(ctx, name); err == nil {
+			t.Fatalf("contextString() accepted the %s value", name)
+		}
+	}
+	if err := tcontext.Set(ctx, "set", "value"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := contextString(ctx, "set"); err != nil || got != "value" {
+		t.Fatalf("contextString() = (%q, %v), want (\"value\", nil)", got, err)
+	}
+}
+
+// TestNumberOfConvertsEvaluatedNumbers checks that numeric values from page evaluation convert,
+// and that a string does not.
+func TestNumberOfConvertsEvaluatedNumbers(t *testing.T) {
+	for _, value := range []any{float64(3), 3, int64(3)} {
+		if got, err := numberOf(value); err != nil || got != 3 {
+			t.Fatalf("numberOf(%T) = (%v, %v), want (3, nil)", value, got, err)
+		}
+	}
+	if _, err := numberOf("3"); err == nil {
+		t.Fatal("numberOf() accepted a string")
+	}
+	if _, err := numberOf(nil); err == nil {
+		t.Fatal("numberOf() accepted nil")
+	}
+}
+
+// TestCatalogueDefinitions checks the catalogue fixtures' definitions: an unsecured REST document,
+// a keyed one, and the other API types.
+func TestCatalogueDefinitions(t *testing.T) {
+	rest := catalogueRESTDefinition("Pets")
+	if rest["openapi"] != "3.0.3" || rest["security"] != nil {
+		t.Fatalf("catalogueRESTDefinition() = %v, want an unsecured OpenAPI 3.0.3 document", rest)
+	}
+	keyed := apiKeyRESTDefinition("Pets")
+	if keyed["security"] == nil || keyed["components"] == nil {
+		t.Fatalf("apiKeyRESTDefinition() = %v, want API key security", keyed)
+	}
+	if catalogueRESTDefinition("Pets")["security"] != nil {
+		t.Fatal("apiKeyRESTDefinition() changed the plain definition it starts from")
+	}
+	async := asyncDefinition("Events")
+	channels, ok := async["channels"].(map[string]any)
+	if !ok || channels[asyncChannel] == nil {
+		t.Fatalf("asyncDefinition() channels = %v, want %s", async["channels"], asyncChannel)
+	}
+	arazzo := galleryArazzo("Flow")
+	if arazzo["arazzo"] != "1.0.0" || arazzo["workflows"] == nil {
+		t.Fatalf("galleryArazzo() = %v, want an Arazzo 1.0.0 document with a workflow", arazzo)
+	}
+}
+
+// TestThemeArchiveHoldsAStylesheetOrOnlyAScript checks the two theme archives the journeys upload.
+func TestThemeArchiveHoldsAStylesheetOrOnlyAScript(t *testing.T) {
+	for _, scriptOnly := range []bool{false, true} {
+		file, err := themeArchive(scriptOnly)
+		if err != nil {
+			t.Fatalf("themeArchive(%t) returned an error: %v", scriptOnly, err)
+		}
+		archive, err := zip.NewReader(bytes.NewReader(file.Buffer), int64(len(file.Buffer)))
+		if err != nil {
+			t.Fatalf("themeArchive(%t) is not a ZIP: %v", scriptOnly, err)
+		}
+		names := map[string]bool{}
+		for _, entry := range archive.File {
+			names[entry.Name] = true
+			if !strings.HasPrefix(entry.Name, "theme/") {
+				t.Fatalf("themeArchive(%t) entry %q is outside the theme folder", scriptOnly, entry.Name)
+			}
+		}
+		if names["theme/styles/main.css"] == scriptOnly || names["theme/scripts/app.js"] != scriptOnly {
+			t.Fatalf("themeArchive(%t) entries = %v", scriptOnly, names)
+		}
+	}
+}
+
+// TestJourneyNamingHelpers checks the names and paths the journeys derive from a view handle.
+func TestJourneyNamingHelpers(t *testing.T) {
+	name, description := llmText("view-1")
+	if !strings.Contains(name, "view-1") || !strings.Contains(description, "view-1") {
+		t.Fatalf("llmText() = (%q, %q), want both to name the view", name, description)
+	}
+	if got := llmsTxtPath("view-1"); got != "/api-portal/default/views/view-1/llms.txt" {
+		t.Fatalf("llmsTxtPath() = %q", got)
+	}
+	values := organizationValues("x1")
+	if len(values) != 4 || !strings.Contains(values["#org-owner-email"], "@") {
+		t.Fatalf("organizationValues() = %v, want four fields with an email", values)
+	}
+}
+
+// TestRegexpHelpersMatchWholeValues checks that the regexp helpers match whole class names and
+// values, not substrings.
+func TestRegexpHelpersMatchWholeValues(t *testing.T) {
+	if !regexpWord("is-invalid").MatchString("form-control is-invalid") || regexpWord("invalid").MatchString("is-invalid") {
+		t.Fatal("regexpWord() does not match whole class names")
+	}
+	if !regexpExact("600").MatchString("600") || regexpExact("600").MatchString("6000") {
+		t.Fatal("regexpExact() does not match the whole value")
+	}
+	if !regexpEscapedSuffix("/a.b").MatchString("https://host/x/a.b") || regexpEscapedSuffix("/a.b").MatchString("https://host/x/aXb") {
+		t.Fatal("regexpEscapedSuffix() does not escape its suffix")
 	}
 }

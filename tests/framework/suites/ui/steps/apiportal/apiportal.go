@@ -20,6 +20,7 @@ package apiportal
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -68,24 +69,18 @@ func (u *Steps) page(ctx context.Context) (playwright.Page, error) {
 // Register wires API Portal-specific steps into the scenario context.
 func (u *Steps) Register(sc *godog.ScenarioContext) {
 	sc.Step(`^the user opens the API Portal$`, u.openAPIPortal)
-	sc.Step(`^the API Portal page is visible$`, u.apiPortalPageIsVisible)
 	sc.Step(`^the API Portal page does not contain "([^"]*)"$`, u.apiPortalPageDoesNotContain)
-	sc.Step(`^the API Portal hero section is visible$`, u.apiPortalHeroIsVisible)
 	sc.Step(`^the API Portal API detail page is visible$`, u.apiPortalAPIDetailIsVisible)
 	sc.Step(`^the API Portal MCP listing is visible with a server$`, u.apiPortalMCPListingIsVisible)
 	sc.Step(`^the API Portal login form is visible$`, u.apiPortalLoginFormIsVisible)
-	sc.Step(`^the user signs in to the API Portal through the local form$`, u.signInThroughLocalForm)
 	sc.Step(`^the user signs out of the API Portal$`, u.logoutAPIPortal)
+	sc.Step(`^the user signs out of the API Portal through the profile menu$`, u.logoutThroughProfileMenu)
 	sc.Step(`^the user submits the API Portal login with an incorrect password$`, u.submitAPIPortalLoginWithIncorrectPassword)
 	sc.Step(`^the API Portal local login error is visible$`, u.apiPortalLocalLoginErrorIsVisible)
-	sc.Step(`^the API Portal has a settings label fixture$`, u.seedSettingsLabelFixture)
-	sc.Step(`^the API Portal has a settings view fixture$`, u.seedSettingsViewFixture)
-	sc.Step(`^the administrator creates a key manager and a developer application$`, u.createKeyManagerAndDeveloperApplication)
+	sc.Step(`^the administrator adds a label and a view with that label from their display names$`, u.addLabelAndView)
+	sc.Step(`^the administrator creates a key manager$`, u.createKeyManager)
 	sc.Step(`^the developer can choose that key manager when creating an OAuth2 key$`, u.developerCanChooseKeyManagerForOAuth2Key)
-	sc.Step(`^the user creates a view from a display name$`, u.createSettingsView)
 	sc.Step(`^the user renames the settings view$`, u.renameSettingsView)
-	sc.Step(`^the default view has an enabled delete control$`, u.defaultViewHasEnabledDeleteControl)
-	sc.Step(`^the user creates a label from a display name$`, u.createSettingsLabel)
 	sc.Step(`^the user creates an API workflow without a description$`, u.createAPIWorkflowWithoutDescription)
 	sc.Step(`^the API Portal Applications page is visible$`, u.apiPortalApplicationsIsVisible)
 	sc.Step(`^the API Portal API Keys page is visible$`, u.apiPortalAPIKeysIsVisible)
@@ -99,20 +94,17 @@ func (u *Steps) Register(sc *godog.ScenarioContext) {
 	sc.Step(`^the API Portal response status is one of (\d+), (\d+), or (\d+)$`, u.apiPortalResponseStatusOneOf)
 	sc.Step(`^the API Portal redirect contains "([^"]*)"$`, u.apiPortalRedirectContains)
 	sc.Step(`^the API Portal response content type contains "([^"]*)"$`, u.apiPortalResponseContentTypeContains)
-	sc.Step(`^the API Portal response body contains "([^"]*)"$`, u.apiPortalResponseBodyContains)
 	sc.Step(`^the API Portal response JSON status is "([^"]*)"$`, u.apiPortalResponseJSONStatus)
 	sc.Step(`^the API Portal response body does not contain "([^"]*)"$`, u.apiPortalResponseBodyDoesNotContain)
 	sc.Step(`^the user is signed in to the API Portal$`, u.isSignedInToAPIPortal)
 	sc.Step(`^the API Portal has portal-access fixtures$`, u.seedPortalAccessFixtures)
-	sc.Step(`^the API Portal has a REST API details fixture$`, u.seedRESTAPIDetailsFixture)
-	sc.Step(`^the API Portal has API listing fixtures$`, u.seedAPIListingFixtures)
-	sc.Step(`^the API listing shows REST and GraphQL APIs but not MCP$`, u.apiListingShowsTypes)
-	sc.Step(`^the API listing search returns only the GraphQL API$`, u.apiListingSearchReturnsGraphQL)
-	sc.Step(`^the API listing search excludes the MCP server$`, u.apiListingSearchExcludesMCP)
 	sc.Step(`^the API Portal has MCP listing fixtures$`, u.seedMCPListingFixtures)
 	sc.Step(`^the MCP listing shows both servers but not the REST API$`, u.mcpListingShowsTypes)
 	sc.Step(`^the MCP listing search returns only the first server$`, u.mcpListingSearchReturnsFirst)
 	sc.Step(`^the MCP listing search excludes the REST API$`, u.mcpListingSearchExcludesREST)
+	sc.Step(`^the first MCP listing server has a thumbnail and a landing page$`, u.uploadFirstMCPListingContent)
+	sc.Step(`^the first MCP listing server shows its thumbnail$`, u.firstMCPListingShowsThumbnail)
+	sc.Step(`^the first MCP listing server page shows its landing text$`, u.firstMCPListingShowsLandingText)
 	sc.Step(`^the API Portal has an application fixture$`, u.seedApplicationFixture)
 	sc.Step(`^the user creates edits and deletes the application$`, u.applicationCRUD)
 	sc.Step(`^the application detail shows the key association sections$`, u.applicationHasKeyAssociationSections)
@@ -124,42 +116,45 @@ func (u *Steps) Register(sc *godog.ScenarioContext) {
 	sc.Step(`^the user browses the MCP servers listing$`, u.browseMCPListing)
 	sc.Step(`^the user opens the API Workflows page$`, u.openAPIWorkflows)
 	sc.Step(`^the user opens the Applications page while signed out$`, u.openApplicationsSignedOut)
-	sc.Step(`^the user signs in and returns to Applications$`, u.signInAndReturnToApplications)
+	sc.Step(`^the developer signs in and returns to Applications$`, u.signInAndReturnToApplications)
 	sc.Step(`^the user opens the seeded API's API Keys page while signed out$`, u.openSeededAPIKeysSignedOut)
-	sc.Step(`^the user signs in and returns to the seeded API's API Keys page$`, u.signInAndReturnToSeededAPIKeys)
+	sc.Step(`^the developer signs in and returns to the seeded API's API Keys page$`, u.signInAndReturnToSeededAPIKeys)
 	u.registerBillingSteps(sc)
 	u.registerPaidSubscriptionSteps(sc)
 	u.registerAPIWizardSteps(sc)
+	u.registerShellSteps(sc)
+	u.registerCatalogueSteps(sc)
+	u.registerAPIPageSteps(sc)
+	u.registerSettingsAPISteps(sc)
+	u.registerMCPSteps(sc)
+	u.registerWorkflowSteps(sc)
+	u.registerContentSteps(sc)
+	u.registerDeveloperSteps(sc)
+	u.registerIntegrationSteps(sc)
+	u.registerPlanSteps(sc)
 }
 
 const (
-	keyAPIPortalResponse           = "uiAPIPortalResponse"
-	keyAPIPortalAPI                = "uiAPIPortalAPI"
-	keyAPIPortalMCP                = "uiAPIPortalMCP"
-	keyAPIPortalDetailAPI          = "uiAPIPortalDetailAPI"
-	keyAPIPortalDetailAPIName      = "uiAPIPortalDetailAPIName"
-	keyAPIPortalListingREST        = "uiAPIPortalListingREST"
-	keyAPIPortalListingGraphQL     = "uiAPIPortalListingGraphQL"
-	keyAPIPortalListingMCP         = "uiAPIPortalListingMCP"
-	keyAPIPortalMCPListingFirst    = "uiAPIPortalMCPListingFirst"
-	keyAPIPortalMCPListingSecond   = "uiAPIPortalMCPListingSecond"
-	keyAPIPortalMCPListingREST     = "uiAPIPortalMCPListingREST"
-	keyAPIPortalApplication        = "uiAPIPortalApplication"
-	keyAPIPortalApplicationName    = "uiAPIPortalApplicationName"
-	keyAPIPortalKeyManager         = "uiAPIPortalKeyManager"
-	keyAPIPortalKeyManagerName     = "uiAPIPortalKeyManagerName"
-	keyAPIPortalKeyManagerA        = "uiAPIPortalKeyManagerA"
-	keyAPIPortalKeyManagerB        = "uiAPIPortalKeyManagerB"
-	keyAPIPortalKeyManagerAName    = "uiAPIPortalKeyManagerAName"
-	keyAPIPortalKeyManagerBName    = "uiAPIPortalKeyManagerBName"
-	keyAPIPortalKeyManagerASecret  = "uiAPIPortalKeyManagerASecret"
-	keyAPIPortalKeyManagerBSecret  = "uiAPIPortalKeyManagerBSecret"
-	keyAPIPortalKeyManagerAMapping = "uiAPIPortalKeyManagerAMapping"
-	keyAPIPortalKeyManagerBMapping = "uiAPIPortalKeyManagerBMapping"
-	keyAPIPortalSettingsLabel      = "uiAPIPortalSettingsLabel"
-	keyAPIPortalSettingsLabelName  = "uiAPIPortalSettingsLabelName"
-	keyAPIPortalSettingsView       = "uiAPIPortalSettingsView"
-	keyAPIPortalWorkflow           = "uiAPIPortalWorkflow"
+	keyAPIPortalResponse          = "uiAPIPortalResponse"
+	keyAPIPortalAPI               = "uiAPIPortalAPI"
+	keyAPIPortalMCP               = "uiAPIPortalMCP"
+	keyAPIPortalDetailAPI         = "uiAPIPortalDetailAPI"
+	keyAPIPortalDetailAPIName     = "uiAPIPortalDetailAPIName"
+	keyAPIPortalMCPListingFirst   = "uiAPIPortalMCPListingFirst"
+	keyAPIPortalMCPListingFirstID = "uiAPIPortalMCPListingFirstID"
+	keyAPIPortalMCPListingSecond  = "uiAPIPortalMCPListingSecond"
+	keyAPIPortalMCPListingREST    = "uiAPIPortalMCPListingREST"
+	keyAPIPortalApplication       = "uiAPIPortalApplication"
+	keyAPIPortalApplicationName   = "uiAPIPortalApplicationName"
+	keyAPIPortalKeyManager        = "uiAPIPortalKeyManager"
+	keyAPIPortalKeyManagerName    = "uiAPIPortalKeyManagerName"
+	keyAPIPortalSettingsLabel     = "uiAPIPortalSettingsLabel"
+	keyAPIPortalSettingsLabelName = "uiAPIPortalSettingsLabelName"
+	keyAPIPortalSettingsView      = "uiAPIPortalSettingsView"
+	keyAPIPortalRenamedView       = "uiAPIPortalRenamedView"
+	keyAPIPortalWorkflow          = "uiAPIPortalWorkflow"
+
+	mcpLandingText = "Weather MCP landing page"
 )
 
 // KindAPIPortalAPI identifies an API owned by the API Portal test plane.
@@ -212,26 +207,8 @@ func (u *Steps) isSignedInToAPIPortal(ctx context.Context) error {
 	return u.expect.Locator(page.Locator(".profile-link")).ToBeVisible()
 }
 
-func (u *Steps) signInThroughLocalForm(ctx context.Context) error {
-	if err := u.openAPIPortal(ctx); err != nil {
-		return err
-	}
-	page, err := u.page(ctx)
-	if err != nil {
-		return err
-	}
-	if err := page.Locator(".login-btn").Click(); err != nil {
-		return fmt.Errorf("opening API Portal login: %w", err)
-	}
-	if err := u.submitAPIPortalLogin(ctx); err != nil {
-		return fmt.Errorf("submitting API Portal login: %w", err)
-	}
-	if err := u.expect.Page(page).ToHaveURL(regexp.MustCompile(`/views/default`)); err != nil {
-		return err
-	}
-	return u.expect.Locator(page.Locator(".profile-link")).ToContainText(u.topo.Admin.Username)
-}
-
+// submitAPIPortalLoginWithIncorrectPassword submits the local login form with the developer's
+// username and a wrong password.
 func (u *Steps) submitAPIPortalLoginWithIncorrectPassword(ctx context.Context) error {
 	if err := u.openAPIPortal(ctx); err != nil {
 		return err
@@ -243,7 +220,11 @@ func (u *Steps) submitAPIPortalLoginWithIncorrectPassword(ctx context.Context) e
 	if err := page.Locator(".login-btn").Click(); err != nil {
 		return fmt.Errorf("opening API Portal login: %w", err)
 	}
-	if err := page.Locator("#username").Fill(u.topo.Admin.Username); err != nil {
+	username, _, err := u.credentials(ctx, "developer")
+	if err != nil {
+		return err
+	}
+	if err := page.Locator("#username").Fill(username); err != nil {
 		return err
 	}
 	if err := page.Locator("#password").Fill("wrong-password"); err != nil {
@@ -323,21 +304,6 @@ func (u *Steps) addSettingsLabel(ctx context.Context, page playwright.Page, pref
 	return handle, display, nil
 }
 
-func (u *Steps) seedSettingsLabelFixture(ctx context.Context) error {
-	page, err := u.openSettings(ctx)
-	if err != nil {
-		return err
-	}
-	handle, display, err := u.addSettingsLabel(ctx, page, "apiportal-settings-label")
-	if err != nil {
-		return err
-	}
-	if err := tcontext.Set(ctx, keyAPIPortalSettingsLabel, handle); err != nil {
-		return err
-	}
-	return tcontext.Set(ctx, keyAPIPortalSettingsLabelName, display)
-}
-
 func (u *Steps) addSettingsView(ctx context.Context, page playwright.Page, label, prefix string) (string, error) {
 	value, err := unique.Unique(ctx, prefix)
 	if err != nil {
@@ -383,7 +349,9 @@ func (u *Steps) addSettingsView(ctx context.Context, page playwright.Page, label
 	return handle, nil
 }
 
-func (u *Steps) seedSettingsViewFixture(ctx context.Context) error {
+// addLabelAndView adds a label and a view with that label in the settings, each from a display
+// name whose handle the form generates, checks their rows, and stores both.
+func (u *Steps) addLabelAndView(ctx context.Context) error {
 	page, err := u.openSettings(ctx)
 	if err != nil {
 		return err
@@ -399,26 +367,14 @@ func (u *Steps) seedSettingsViewFixture(ctx context.Context) error {
 	if err := tcontext.Set(ctx, keyAPIPortalSettingsLabelName, labelName); err != nil {
 		return err
 	}
+	if err := tcontext.Set(ctx, keyAPIPortalSettingsLabel, label); err != nil {
+		return err
+	}
 	return tcontext.Set(ctx, keyAPIPortalSettingsView, view)
 }
 
-func (u *Steps) createSettingsView(ctx context.Context) error {
-	page, err := u.openSettings(ctx)
-	if err != nil {
-		return err
-	}
-	labelValue, ok := tcontext.Get(ctx, keyAPIPortalSettingsLabel)
-	if !ok {
-		return fmt.Errorf("settings label fixture is unavailable")
-	}
-	label, ok := labelValue.(string)
-	if !ok || label == "" {
-		return fmt.Errorf("settings label fixture has unexpected type %T", labelValue)
-	}
-	_, err = u.addSettingsView(ctx, page, label, "apiportal-settings-created-view")
-	return err
-}
-
+// renameSettingsView changes the settings view's handle in its edit dialog, checks the rename
+// warning and the renamed row, and re-registers the view under its new handle.
 func (u *Steps) renameSettingsView(ctx context.Context) error {
 	page, err := u.openSettings(ctx)
 	if err != nil {
@@ -439,6 +395,19 @@ func (u *Steps) renameSettingsView(ctx context.Context) error {
 		return fmt.Errorf("opening settings view editor: %w", err)
 	}
 	if err := u.expect.Locator(page.Locator("#cfg-view-modal")).ToBeVisible(); err != nil {
+		return err
+	}
+	handle := page.Locator("#view-handle")
+	if err := u.expect.Locator(handle).ToBeEditable(); err != nil {
+		return err
+	}
+	if err := u.expect.Locator(handle).ToHaveValue(view); err != nil {
+		return err
+	}
+	if err := u.expect.Locator(page.Locator("#view-handle-rename-warning")).ToBeVisible(); err != nil {
+		return err
+	}
+	if err := u.expect.Locator(page.Locator("#view-handle-rename-old")).ToContainText("/views/" + view); err != nil {
 		return err
 	}
 	newValue, err := unique.Unique(ctx, "apiportal-settings-renamed-view")
@@ -477,6 +446,9 @@ func (u *Steps) renameSettingsView(ctx context.Context) error {
 		_ = u.deletePortalArtifact(ctx, "views", newHandle)
 		return fmt.Errorf("registering renamed settings view for cleanup: %w", err)
 	}
+	if err := tcontext.Set(ctx, keyAPIPortalRenamedView, newHandle); err != nil {
+		return err
+	}
 	base, err := u.apiPortalURL()
 	if err != nil {
 		return err
@@ -485,30 +457,6 @@ func (u *Steps) renameSettingsView(ctx context.Context) error {
 		return fmt.Errorf("opening renamed settings view: %w", err)
 	}
 	return u.expect.Page(page).ToHaveURL(regexp.MustCompile(`/views/` + regexp.QuoteMeta(newHandle)))
-}
-
-func (u *Steps) defaultViewHasEnabledDeleteControl(ctx context.Context) error {
-	page, err := u.openSettings(ctx)
-	if err != nil {
-		return err
-	}
-	if err := page.Locator(`.cfg-nav-item[data-panel="cfg-views"]`).Click(); err != nil {
-		return fmt.Errorf("opening views settings: %w", err)
-	}
-	button := page.Locator(`#cfg-view-row-default .cfg-view-delete-btn`)
-	if err := u.expect.Locator(button).ToBeVisible(); err != nil {
-		return err
-	}
-	return u.expect.Locator(button).ToBeEnabled()
-}
-
-func (u *Steps) createSettingsLabel(ctx context.Context) error {
-	page, err := u.openSettings(ctx)
-	if err != nil {
-		return err
-	}
-	_, _, err = u.addSettingsLabel(ctx, page, "apiportal-settings-created-label")
-	return err
 }
 
 func (u *Steps) createAPIWorkflowWithoutDescription(ctx context.Context) error {
@@ -655,7 +603,9 @@ func (u *Steps) deleteAPIWorkflow(ctx context.Context, view, id string) error {
 	return nil
 }
 
-func (u *Steps) createKeyManagerAndDeveloperApplication(ctx context.Context) error {
+// createKeyManager adds a key manager in the settings, checks it is offered, stores it, then signs
+// the developer in for the OAuth2 key check.
+func (u *Steps) createKeyManager(ctx context.Context) error {
 	page, err := u.openSettings(ctx)
 	if err != nil {
 		return err
@@ -714,30 +664,40 @@ func (u *Steps) createKeyManagerAndDeveloperApplication(ctx context.Context) err
 		_ = u.deletePortalArtifact(ctx, "key-managers", id)
 		return err
 	}
-	if err := u.loginAsDeveloper(ctx); err != nil {
+	if err := tcontext.Set(ctx, keyAPIPortalKeyManager, id); err != nil {
 		return err
 	}
-	return u.seedApplicationFixture(ctx)
+	return u.loginAsDeveloper(ctx)
 }
 
+// loginAsDeveloper signs out and signs in again as the developer the block provisions.
 func (u *Steps) loginAsDeveloper(ctx context.Context) error {
-	usernameValue, err := tcontext.Resolve(ctx, frameworkruntime.KeyDeveloperUser)
+	username, password, err := u.developerCredentials(ctx)
 	if err != nil {
 		return err
+	}
+	return u.loginAs(ctx, username, password)
+}
+
+// developerCredentials returns the developer user the block provisions.
+func (u *Steps) developerCredentials(ctx context.Context) (string, string, error) {
+	usernameValue, err := tcontext.Resolve(ctx, frameworkruntime.KeyDeveloperUser)
+	if err != nil {
+		return "", "", err
 	}
 	passwordValue, err := tcontext.Resolve(ctx, frameworkruntime.KeyDeveloperPass)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 	username, ok := usernameValue.(string)
 	if !ok || username == "" {
-		return fmt.Errorf("developer username has unexpected type %T", usernameValue)
+		return "", "", fmt.Errorf("developer username has unexpected type %T", usernameValue)
 	}
 	password, ok := passwordValue.(string)
 	if !ok || password == "" {
-		return fmt.Errorf("developer password has unexpected type %T", passwordValue)
+		return "", "", fmt.Errorf("developer password has unexpected type %T", passwordValue)
 	}
-	return u.loginAs(ctx, username, password)
+	return username, password, nil
 }
 
 // loginAs signs out of the API Portal, and signs in again as the user.
@@ -748,6 +708,14 @@ func (u *Steps) loginAs(ctx context.Context, username, password string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
+	}
+	// Signing out of an anonymous session does not land on the login form, so open it.
+	if count, err := page.Locator("#local-login-form").Count(); err != nil {
+		return err
+	} else if count == 0 {
+		if err := u.openAPIPortalPath(ctx, "/login"); err != nil {
+			return err
+		}
 	}
 	if err := page.Locator("#username").Fill(username); err != nil {
 		return err
@@ -916,6 +884,7 @@ func (u *Steps) seedPortalAccessFixtures(ctx context.Context) error {
 	return tcontext.Set(ctx, keyAPIPortalMCP, mcpID)
 }
 
+// seedRESTAPIDetailsFixture creates a REST API with OAuth2 scopes and the Bronze and Silver plans.
 func (u *Steps) seedRESTAPIDetailsFixture(ctx context.Context) error {
 	apiID, err := unique.Unique(ctx, "rest-api-details")
 	if err != nil {
@@ -929,7 +898,7 @@ func (u *Steps) seedRESTAPIDetailsFixture(ctx context.Context) error {
 			"productionURL": "https://backend.example.invalid/" + apiID,
 			"sandboxURL":    "https://sandbox.example.invalid/" + apiID,
 		},
-		"subscriptionPlans": []map[string]string{{"id": "Bronze"}},
+		"subscriptionPlans": []map[string]string{{"id": "Bronze"}, {"id": "Silver"}},
 	}
 	definition := map[string]any{
 		"openapi": "3.0.3",
@@ -973,157 +942,8 @@ func (u *Steps) seedRESTAPIDetailsFixture(ctx context.Context) error {
 	return tcontext.Set(ctx, keyAPIPortalDetailAPIName, apiName)
 }
 
-func (u *Steps) seedAPIListingFixtures(ctx context.Context) error {
-	restID, err := unique.Unique(ctx, "api-listing-rest")
-	if err != nil {
-		return err
-	}
-	graphqlID, err := unique.Unique(ctx, "api-listing-graphql")
-	if err != nil {
-		return err
-	}
-	mcpID, err := unique.Unique(ctx, "api-listing-mcp")
-	if err != nil {
-		return err
-	}
-
-	endpoint := func(id string) map[string]string {
-		return map[string]string{
-			"productionURL": "https://backend.example.invalid/" + id,
-			"sandboxURL":    "https://sandbox.example.invalid/" + id,
-		}
-	}
-	seedAPI := func(id, name, apiType string, definition any) error {
-		metadata := map[string]any{
-			"id": id, "name": name, "version": "v1.0", "type": apiType,
-			"status": "PUBLISHED", "labels": []string{"default"}, "endPoints": endpoint(id),
-		}
-		if err := u.createPortalArtifact(ctx, "/api-portal/api/v0.9/apis", metadata, definition); err != nil {
-			return err
-		}
-		if err := cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalAPI, ID: id, Actor: u.topo.Admin.Username}); err != nil {
-			_ = u.deletePortalArtifact(ctx, "apis", id)
-			return fmt.Errorf("registering API listing API %q for cleanup: %w", id, err)
-		}
-		return nil
-	}
-
-	restName := "IT Listing REST API " + restID
-	restDefinition := map[string]any{
-		"openapi": "3.0.3", "info": map[string]string{"title": restName, "version": "1.0.0"},
-		"paths": map[string]any{"/ping": map[string]any{
-			"get": map[string]any{"responses": map[string]any{"200": map[string]string{"description": "ok"}}},
-		}},
-	}
-	if err := seedAPI(restID, restName, "REST", restDefinition); err != nil {
-		return err
-	}
-
-	graphqlName := "IT Listing GraphQL API " + graphqlID
-	if err := seedAPI(graphqlID, graphqlName, "GRAPHQL", "type Query { hello: String }\n"); err != nil {
-		return err
-	}
-
-	mcpName := "IT Listing MCP Server " + mcpID
-	mcpMetadata := map[string]any{
-		"id": mcpID, "name": mcpName, "version": "v1.0", "type": "MCP",
-		"status": "PUBLISHED", "labels": []string{"default"}, "endPoints": endpoint(mcpID),
-	}
-	mcpDefinition := []map[string]any{{
-		"type": "TOOL", "name": "hello", "description": "A greeting tool",
-		"inputSchema": map[string]any{"type": "object"},
-	}}
-	if err := u.createPortalArtifact(ctx, "/api-portal/api/v0.9/mcp-servers", mcpMetadata, mcpDefinition); err != nil {
-		return err
-	}
-	if err := cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalMCP, ID: mcpID, Actor: u.topo.Admin.Username}); err != nil {
-		_ = u.deletePortalArtifact(ctx, "mcp-servers", mcpID)
-		return fmt.Errorf("registering API listing MCP server %q for cleanup: %w", mcpID, err)
-	}
-	if err := u.waitForPortalCards(ctx, "/apis", restID, graphqlID); err != nil {
-		return err
-	}
-	if err := u.waitForPortalCards(ctx, "/mcps", mcpID); err != nil {
-		return err
-	}
-	for key, value := range map[string]string{
-		keyAPIPortalListingREST: restName, keyAPIPortalListingGraphQL: graphqlName, keyAPIPortalListingMCP: mcpName,
-	} {
-		if err := tcontext.Set(ctx, key, value); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (u *Steps) apiListingNames(ctx context.Context) (string, string, string, error) {
-	values := make([]string, 0, 3)
-	for _, key := range []string{keyAPIPortalListingREST, keyAPIPortalListingGraphQL, keyAPIPortalListingMCP} {
-		value, ok := tcontext.Get(ctx, key)
-		if !ok {
-			return "", "", "", fmt.Errorf("API listing fixture %q is unavailable", key)
-		}
-		name, ok := value.(string)
-		if !ok || name == "" {
-			return "", "", "", fmt.Errorf("API listing fixture %q has unexpected type %T", key, value)
-		}
-		values = append(values, name)
-	}
-	return values[0], values[1], values[2], nil
-}
-
-func (u *Steps) apiListingShowsTypes(ctx context.Context) error {
-	page, err := u.page(ctx)
-	if err != nil {
-		return err
-	}
-	restName, graphqlName, mcpName, err := u.apiListingNames(ctx)
-	if err != nil {
-		return err
-	}
-	if err := u.openAPIPortalPath(ctx, "/apis"); err != nil {
-		return err
-	}
-	if err := u.expect.Locator(page.Locator(".apilist-results-heading")).ToContainText("APIs"); err != nil {
-		return err
-	}
-	texts, err := page.Locator(".api-card").AllTextContents()
-	if err != nil {
-		return fmt.Errorf("reading API listing cards: %w", err)
-	}
-	for _, expected := range []string{restName, graphqlName} {
-		if !slices.ContainsFunc(texts, func(text string) bool { return strings.Contains(text, expected) }) {
-			return fmt.Errorf("API listing did not show %q", expected)
-		}
-	}
-	if slices.ContainsFunc(texts, func(text string) bool { return strings.Contains(text, mcpName) }) {
-		return fmt.Errorf("API listing unexpectedly showed MCP server %q", mcpName)
-	}
-	if count, err := page.Locator(".dp-badge--rest").Count(); err != nil || count < 1 {
-		return fmt.Errorf("API listing did not show a REST badge")
-	}
-	if count, err := page.Locator(".dp-badge--graphql").Count(); err != nil || count < 1 {
-		return fmt.Errorf("API listing did not show a GraphQL badge")
-	}
-	return nil
-}
-
-func (u *Steps) apiListingSearchReturnsGraphQL(ctx context.Context) error {
-	restName, graphqlName, _, err := u.apiListingNames(ctx)
-	if err != nil {
-		return err
-	}
-	return u.searchAPIListing(ctx, graphqlName, graphqlName, restName)
-}
-
-func (u *Steps) apiListingSearchExcludesMCP(ctx context.Context) error {
-	_, _, mcpName, err := u.apiListingNames(ctx)
-	if err != nil {
-		return err
-	}
-	return u.searchAPIListing(ctx, mcpName, "", mcpName)
-}
-
+// seedMCPListingFixtures creates two MCP servers with a tool and a resource, and a REST API, for the
+// MCP catalogue journey.
 func (u *Steps) seedMCPListingFixtures(ctx context.Context) error {
 	firstID, err := unique.Unique(ctx, "mcp-listing-alpha")
 	if err != nil {
@@ -1151,6 +971,9 @@ func (u *Steps) seedMCPListingFixtures(ctx context.Context) error {
 		definition := []map[string]any{{
 			"type": "TOOL", "name": "hello", "description": "A greeting tool",
 			"inputSchema": map[string]any{"type": "object"},
+		}, {
+			"type": "RESOURCE", "name": mcpListingResource, "description": "Every greeting",
+			"uri": "greetings://all", "mimeType": "application/json",
 		}}
 		if err := u.createPortalArtifact(ctx, "/api-portal/api/v0.9/mcp-servers", metadata, definition); err != nil {
 			return err
@@ -1194,7 +1017,8 @@ func (u *Steps) seedMCPListingFixtures(ctx context.Context) error {
 		return err
 	}
 	for key, value := range map[string]string{
-		keyAPIPortalMCPListingFirst: firstName, keyAPIPortalMCPListingSecond: secondName, keyAPIPortalMCPListingREST: restName,
+		keyAPIPortalMCPListingFirst: firstName, keyAPIPortalMCPListingFirstID: firstID,
+		keyAPIPortalMCPListingSecond: secondName, keyAPIPortalMCPListingREST: restName,
 	} {
 		if err := tcontext.Set(ctx, key, value); err != nil {
 			return err
@@ -1268,6 +1092,114 @@ func (u *Steps) mcpListingSearchExcludesREST(ctx context.Context) error {
 	return u.searchPortalListing(ctx, "/mcps", restName, "", restName)
 }
 
+// firstMCPListingID returns the id of the first MCP listing fixture stored in the scenario.
+func (u *Steps) firstMCPListingID(ctx context.Context) (string, error) {
+	value, ok := tcontext.Get(ctx, keyAPIPortalMCPListingFirstID)
+	if !ok {
+		return "", fmt.Errorf("MCP listing fixture %q is unavailable", keyAPIPortalMCPListingFirstID)
+	}
+	id, ok := value.(string)
+	if !ok || id == "" {
+		return "", fmt.Errorf("MCP listing fixture %q has unexpected type %T", keyAPIPortalMCPListingFirstID, value)
+	}
+	return id, nil
+}
+
+// uploadFirstMCPListingContent replaces the first server's content with a package holding a
+// thumbnail and landing text, through the signed-in page because the upload is CSRF-guarded.
+func (u *Steps) uploadFirstMCPListingContent(ctx context.Context) error {
+	page, err := u.page(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := u.firstMCPListingID(ctx)
+	if err != nil {
+		return err
+	}
+	content, err := wizardZip(map[string]string{
+		"web/" + wizardIconPNG: string(wizardImage(wizardPNGHex)),
+		"web/" + wizardLanding: "# " + mcpLandingText + "\n",
+	})
+	if err != nil {
+		return err
+	}
+	result, err := page.Evaluate(`async ({id, content}) => {
+        const token = document.cookie.split('; ').find(v => v.startsWith('XSRF-TOKEN='));
+        const bytes = Uint8Array.from(atob(content), c => c.charCodeAt(0));
+        const form = new FormData();
+        form.append('content', new Blob([bytes], { type: 'application/zip' }), 'content.zip');
+        const response = await fetch('/api-portal/api/v0.9/mcp-servers/' + encodeURIComponent(id) + '/assets', {
+            method: 'PUT',
+            headers: { organization: 'default', 'X-CSRF-Token': token ? decodeURIComponent(token.split('=').slice(1).join('=')) : '' },
+            body: form,
+        });
+        return { status: response.status };
+    }`, map[string]any{"id": id, "content": base64.StdEncoding.EncodeToString(content.Buffer)})
+	if err != nil {
+		return fmt.Errorf("uploading MCP server content: %w", err)
+	}
+	var response struct {
+		Status int `json:"status"`
+	}
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("reading the MCP server content response: %w", err)
+	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return fmt.Errorf("decoding the MCP server content response: %w", err)
+	}
+	if response.Status < 200 || response.Status >= 300 {
+		return fmt.Errorf("uploading MCP server content returned HTTP status %d", response.Status)
+	}
+	return nil
+}
+
+// firstMCPListingShowsThumbnail checks the thumbnail on the catalogue card and on the server page,
+// for whichever session the scenario is in.
+func (u *Steps) firstMCPListingShowsThumbnail(ctx context.Context) error {
+	page, err := u.page(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := u.firstMCPListingID(ctx)
+	if err != nil {
+		return err
+	}
+	if err := u.openAPIPortalPath(ctx, "/mcps"); err != nil {
+		return err
+	}
+	card := page.Locator("#apiCard-" + id + " img.api-card-img")
+	if err := u.expect.Locator(card).ToHaveAttribute("src", regexp.MustCompile(`/mcp-servers/`+regexp.QuoteMeta(id)+`/assets`)); err != nil {
+		return err
+	}
+	if err := u.imageLoaded(ctx, card); err != nil {
+		return err
+	}
+	if err := u.openAPIPortalPath(ctx, "/mcp/"+url.PathEscape(id)); err != nil {
+		return err
+	}
+	return u.imageLoaded(ctx, page.Locator("img.aov-api-img"))
+}
+
+// firstMCPListingShowsLandingText opens the first MCP server's page and checks it shows the
+// uploaded landing text.
+func (u *Steps) firstMCPListingShowsLandingText(ctx context.Context) error {
+	page, err := u.page(ctx)
+	if err != nil {
+		return err
+	}
+	id, err := u.firstMCPListingID(ctx)
+	if err != nil {
+		return err
+	}
+	if err := u.openAPIPortalPath(ctx, "/mcp/"+url.PathEscape(id)); err != nil {
+		return err
+	}
+	return u.expect.Locator(page.Locator(".api-md-content")).ToContainText(mcpLandingText)
+}
+
+// seedApplicationFixture creates an application on the Applications page as the signed-in
+// developer and registers it for cleanup as theirs.
 func (u *Steps) seedApplicationFixture(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
@@ -1310,7 +1242,12 @@ func (u *Steps) seedApplicationFixture(ctx context.Context) error {
 		return fmt.Errorf("created application has no identifier")
 	}
 	applicationID := id
-	if err := cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalApplication, ID: applicationID, Actor: u.topo.Admin.Username}); err != nil {
+	// Applications are owned by the developer that creates them, who alone can delete them.
+	owner, _, err := u.credentials(ctx, "developer")
+	if err != nil {
+		return err
+	}
+	if err := cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalApplication, ID: applicationID, Actor: owner}); err != nil {
 		_ = u.deletePortalArtifact(ctx, "applications", applicationID)
 		return fmt.Errorf("registering API Portal application for cleanup: %w", err)
 	}
@@ -1499,10 +1436,6 @@ func describeKeySectionDOM(page playwright.Page) string {
 		counts["#applicationName"], counts["section"])
 }
 
-func (u *Steps) searchAPIListing(ctx context.Context, query, mustContain, mustNotContain string) error {
-	return u.searchPortalListing(ctx, "/apis", query, mustContain, mustNotContain)
-}
-
 // waitForPortalCards waits for the portal's read-only listing to expose each
 // scenario-owned artifact after its management API accepts creation.
 func (u *Steps) waitForPortalCards(ctx context.Context, path string, ids ...string) error {
@@ -1603,6 +1536,8 @@ func (u *Steps) openRESTAPIDetailsPage(ctx context.Context, suffix string) (play
 	return page, nil
 }
 
+// openRESTAPIOverview opens the REST details API's page and checks its header, endpoints, sections
+// and resources.
 func (u *Steps) openRESTAPIOverview(ctx context.Context) error {
 	page, err := u.openRESTAPIDetailsPage(ctx, "")
 	if err != nil {
@@ -1620,7 +1555,6 @@ func (u *Steps) openRESTAPIOverview(ctx context.Context) error {
 		".aov-hero-name":      apiName,
 		"#token_api_prod_url": "backend.example.invalid",
 		"#token_api_dev_url":  "sandbox.example.invalid",
-		".aov-plan-card":      "Bronze",
 	} {
 		if err := u.expect.Locator(page.Locator(selector)).ToContainText(text); err != nil {
 			return err
@@ -1798,7 +1732,15 @@ func (u *Steps) restAPISpecificationExposesTryIt(ctx context.Context) error {
 	return nil
 }
 
+// createPortalArtifact creates an API or MCP server through the signed-in session, uploading its
+// definition as definition.json.
 func (u *Steps) createPortalArtifact(ctx context.Context, path string, metadata, definition any, docs ...map[string]any) error {
+	return u.createPortalArtifactFile(ctx, path, metadata, definition, "definition.json", docs...)
+}
+
+// createPortalArtifactFile creates an API or MCP server through the signed-in session, uploading
+// its definition under fileName.
+func (u *Steps) createPortalArtifactFile(ctx context.Context, path string, metadata, definition any, fileName string, docs ...map[string]any) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
@@ -1820,11 +1762,11 @@ func (u *Steps) createPortalArtifact(ctx context.Context, path string, metadata,
 	if err != nil {
 		return fmt.Errorf("encoding API Portal fixture documents: %w", err)
 	}
-	result, err := page.Evaluate(`async ({path, metadataJSON, definitionJSON, docs}) => {
+	result, err := page.Evaluate(`async ({path, metadataJSON, definitionJSON, fileName, docs}) => {
         const token = document.cookie.split('; ').find(v => v.startsWith('XSRF-TOKEN='));
         const form = new FormData();
         form.append('metadata', metadataJSON);
-        form.append('definition', new Blob([definitionJSON], { type: 'application/json' }), 'definition.json');
+        form.append('definition', new Blob([definitionJSON], { type: 'application/json' }), fileName);
         for (const doc of (JSON.parse(docs || '[]') || [])) {
             form.append('docs', new Blob([doc.content], { type: 'text/markdown' }), doc.name);
         }
@@ -1838,6 +1780,7 @@ func (u *Steps) createPortalArtifact(ctx context.Context, path string, metadata,
 		"path":           path,
 		"metadataJSON":   string(metadataJSON),
 		"definitionJSON": string(definitionJSON),
+		"fileName":       fileName,
 		"docs":           string(docsJSON),
 	})
 	if err != nil {
@@ -1892,6 +1835,7 @@ func (u *Steps) deletePortalArtifact(ctx context.Context, collection, id string)
 	return nil
 }
 
+// browseAPIListingAndOpenSeededAPI opens the API listing and clicks the seeded API's card.
 func (u *Steps) browseAPIListingAndOpenSeededAPI(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
@@ -1909,7 +1853,7 @@ func (u *Steps) browseAPIListingAndOpenSeededAPI(ctx context.Context) error {
 		return err
 	}
 	card := page.Locator("#apiCard-" + apiID)
-	if err := u.expect.Locator(card).ToBeVisible(); err != nil {
+	if err := u.revealOnPage(page, card); err != nil {
 		return fmt.Errorf("waiting for the seeded API listing card: %w", err)
 	}
 	return card.Locator(".api-card-top").Click()
@@ -1955,8 +1899,10 @@ func (u *Steps) openApplicationsSignedOut(ctx context.Context) error {
 	return u.expect.Page(page).ToHaveURL(regexp.MustCompile(`/login`))
 }
 
+// signInAndReturnToApplications signs the developer in on the login page Applications sent them to,
+// and checks they are returned to Applications.
 func (u *Steps) signInAndReturnToApplications(ctx context.Context) error {
-	if err := u.submitAPIPortalLogin(ctx); err != nil {
+	if err := u.submitLoginAs(ctx, "developer"); err != nil {
 		return err
 	}
 	page, err := u.page(ctx)
@@ -1994,8 +1940,10 @@ func (u *Steps) openSeededAPIKeysSignedOut(ctx context.Context) error {
 	return u.expect.Page(page).ToHaveURL(regexp.MustCompile(`/login`))
 }
 
+// signInAndReturnToSeededAPIKeys signs the developer in on the login page the API Keys page sent
+// them to, and checks they are returned to it.
 func (u *Steps) signInAndReturnToSeededAPIKeys(ctx context.Context) error {
-	if err := u.submitAPIPortalLogin(ctx); err != nil {
+	if err := u.submitLoginAs(ctx, "developer"); err != nil {
 		return err
 	}
 	page, err := u.page(ctx)
@@ -2009,15 +1957,35 @@ func (u *Steps) logoutAPIPortal(ctx context.Context) error {
 	return u.openAPIPortalPath(ctx, "/logout")
 }
 
-func (u *Steps) submitAPIPortalLogin(ctx context.Context) error {
+// logoutThroughProfileMenu signs out from the profile menu and waits for the login page.
+func (u *Steps) logoutThroughProfileMenu(ctx context.Context) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
 	}
-	if err := page.Locator("#username").Fill(u.topo.Admin.Username); err != nil {
+	if err := page.Locator(".profile-link").Click(); err != nil {
+		return fmt.Errorf("opening the profile menu: %w", err)
+	}
+	if err := page.Locator(".profile-dropdown-link").Click(); err != nil {
+		return fmt.Errorf("signing out from the profile menu: %w", err)
+	}
+	return u.expect.Page(page).ToHaveURL(regexp.MustCompile(`/login`))
+}
+
+// submitLoginAs fills the login form shown on the page with the role's credentials and submits it.
+func (u *Steps) submitLoginAs(ctx context.Context, role string) error {
+	page, err := u.page(ctx)
+	if err != nil {
 		return err
 	}
-	if err := page.Locator("#password").Fill(u.topo.Admin.Password); err != nil {
+	username, password, err := u.credentials(ctx, role)
+	if err != nil {
+		return err
+	}
+	if err := page.Locator("#username").Fill(username); err != nil {
+		return err
+	}
+	if err := page.Locator("#password").Fill(password); err != nil {
 		return err
 	}
 	return page.Locator(".ln-signin-btn").Click()
@@ -2072,28 +2040,12 @@ func (u *Steps) openAPIPortalPath(ctx context.Context, path string) error {
 	return nil
 }
 
-func (u *Steps) apiPortalPageIsVisible(ctx context.Context) error {
-	page, err := u.page(ctx)
-	if err != nil {
-		return err
-	}
-	return u.expect.Locator(page.Locator("body")).ToBeVisible()
-}
-
 func (u *Steps) apiPortalPageDoesNotContain(ctx context.Context, unwanted string) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
 	}
 	return u.expect.Locator(page.Locator("body")).Not().ToContainText(unwanted)
-}
-
-func (u *Steps) apiPortalHeroIsVisible(ctx context.Context) error {
-	page, err := u.page(ctx)
-	if err != nil {
-		return err
-	}
-	return u.expect.Locator(page.Locator(".hero")).ToBeVisible()
 }
 
 func (u *Steps) apiPortalAPIDetailIsVisible(ctx context.Context) error {
@@ -2353,10 +2305,6 @@ func (u *Steps) apiPortalResponseContentTypeContains(ctx context.Context, expect
 		return fmt.Errorf("API Portal content type %q does not contain %q", contentType, expected)
 	}
 	return nil
-}
-
-func (u *Steps) apiPortalResponseBodyContains(ctx context.Context, expected string) error {
-	return u.apiPortalResponseBodyMatch(ctx, expected, true)
 }
 
 func (u *Steps) apiPortalResponseJSONStatus(ctx context.Context, expected string) error {
