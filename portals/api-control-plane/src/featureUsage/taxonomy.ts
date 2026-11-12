@@ -112,45 +112,40 @@ export const asApiType = (value: unknown): (typeof API_TYPES)[number] | undefine
 export const isFeatureCode = (code: unknown): code is ApiPlatformFeatureCode =>
   typeof code === 'string' && Object.prototype.hasOwnProperty.call(API_PLATFORM_FEATURES, code);
 
-/** A policy-capability feature: one of the `apip.policies.*` codes a policy maps to. */
-export type PolicyFeatureCode = Extract<
-  ApiPlatformFeatureCode,
-  | 'apip.policies.client-authentication-attach'
-  | 'apip.policies.backend-authentication-attach'
-  | 'apip.policies.access-control-attach'
-  | 'apip.policies.rate-limiting-attach'
-  | 'apip.policies.traffic-routing-attach'
-  | 'apip.policies.transformation-attach'
-  | 'apip.policies.content-validation-attach'
-  | 'apip.policies.cors-attach'
-  | 'apip.policies.interception-attach'
-  | 'apip.policies.analytics-filtering-attach'
->;
+/**
+ * A policy-capability feature: an `apip.policies.<capability>-attach` code a
+ * policy maps to. Derived from the taxonomy, so a capability added there needs
+ * no change here.
+ */
+export type PolicyFeatureCode = Extract<ApiPlatformFeatureCode, `apip.policies.${string}-attach`>;
 
-/** Policies whose capability has a single policy, so the feature carries no `policy_name`. */
+const isPolicyFeatureCode = (code: string): code is PolicyFeatureCode =>
+  /^apip\.policies\.[a-z0-9-]+-attach$/.test(code);
+
+/**
+ * Policies whose capability has a single policy, so the feature carries no
+ * `policy_name` to read the policy from. The one mapping the taxonomy can't
+ * supply: add a capability here only if it has exactly one policy.
+ */
 const SINGLE_POLICY_FEATURES: Readonly<Record<string, PolicyFeatureCode>> = {
   'analytics-header-filter': 'apip.policies.analytics-filtering-attach',
   cors: 'apip.policies.cors-attach',
   'subscription-validation': 'apip.policies.access-control-attach',
 };
 
-const NAMED_POLICY_FEATURES: readonly PolicyFeatureCode[] = [
-  'apip.policies.client-authentication-attach',
-  'apip.policies.backend-authentication-attach',
-  'apip.policies.rate-limiting-attach',
-  'apip.policies.traffic-routing-attach',
-  'apip.policies.transformation-attach',
-  'apip.policies.content-validation-attach',
-  'apip.policies.interception-attach',
-];
-
-/** Policy name → the capability feature it belongs to, built from the registry. */
+/**
+ * Policy name → the capability feature it belongs to. Every capability feature
+ * whose taxonomy entry declares `policy_name` maps each of its values, so a
+ * policy or capability added to the taxonomy is classified without a change
+ * here.
+ */
 const POLICY_FEATURES: ReadonlyMap<string, PolicyFeatureCode> = new Map([
   ...Object.entries(SINGLE_POLICY_FEATURES),
-  ...NAMED_POLICY_FEATURES.flatMap((code) =>
-    (
-      API_PLATFORM_FEATURES[code].dimensions as Readonly<Record<string, DimensionSpec>>
-    ).policy_name.values.map((name) => [name, code] as const),
+  ...Object.entries(API_PLATFORM_FEATURES as Readonly<Record<string, FeatureSpec>>).flatMap(
+    ([code, spec]) =>
+      isPolicyFeatureCode(code) && spec.dimensions.policy_name
+        ? spec.dimensions.policy_name.values.map((name) => [name, code] as const)
+        : [],
   ),
 ]);
 

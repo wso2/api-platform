@@ -205,7 +205,9 @@ user or company updates and no API-call capture.
 
 ## Add tracking to a feature
 
-Instrumenting a feature takes four steps. `apis/create/ApiCreationWizard.tsx` is
+Instrumenting a feature takes four steps. The `feature-usage-tracking` skill
+(`.claude/skills/feature-usage-tracking/SKILL.md`) runs them, starting with whether
+the control is a feature at all. `apis/create/ApiCreationWizard.tsx` is
 the reference implementation.
 
 ### 1. Put the feature in the taxonomy
