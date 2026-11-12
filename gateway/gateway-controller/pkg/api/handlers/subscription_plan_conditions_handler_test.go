@@ -186,34 +186,11 @@ func TestUpdateSubscriptionPlan_ThrottleLimitKeepsTheConditionCap(t *testing.T) 
 	assert.Len(t, storedPlan(t, server, id).Conditions, 20, "nothing saved")
 }
 
-// An event-count condition is stored with the id events. It gives subscription-validation v1 no
-// throttle limit, and the throttle limit fields leave it as it is.
-func TestSubscriptionPlan_EventCountCondition(t *testing.T) {
+// event-count is not a condition type: a plan with one is refused.
+func TestSubscriptionPlan_EventCountRefused(t *testing.T) {
 	server, _ := newPlanTestServer(t)
 	code, body := createPlanViaHandler(t, server, `{"planName":"Streams","conditions":[
-		{"type":"event-count","params":{"limits":[{"count":500,"timeUnit":"MINUTE"},{"count":10000,"timeUnit":"DAY"}],"onExceed":"allow"}}]}`)
-	require.Equal(t, http.StatusCreated, code, string(body))
-	resp := planResponse(t, body)
-	assert.Equal(t, []string{"events"}, responseConditionIDs(resp))
-	assert.Equal(t, api.ConditionTypeEventCount, (*resp.Conditions)[0].Type)
-	assert.Nil(t, resp.ThrottleLimitCount, "event-count is not the v1 throttle limit")
-	id := *resp.Id
-	events := `{"limits":[{"count":500,"timeAmount":1,"timeUnit":"MINUTE"},{"count":10000,"timeAmount":1,"timeUnit":"DAY"}],"onExceed":"allow"}`
-	assert.JSONEq(t, events, string(storedPlan(t, server, id).Conditions[0].Params))
-
-	code, body = putSubscriptionPlan(t, server, id, "application/json", `{"throttleLimitCount":30,"throttleLimitUnit":"Min","stopOnQuotaReach":true}`)
-	require.Equal(t, http.StatusOK, code, string(body))
-	resp = planResponse(t, body)
-	assert.Equal(t, []string{"requests", "events"}, responseConditionIDs(resp))
-	assert.Equal(t, 30, *resp.ThrottleLimitCount)
-	assert.JSONEq(t, events, string(storedPlan(t, server, id).Conditions[1].Params), "event-count keeps its own onExceed")
-
-	for name, update := range map[string]string{
-		"two event-count": `{"conditions":[{"type":"event-count","params":{"limits":[{"count":1,"timeUnit":"DAY"}]}},{"type":"event-count","params":{"limits":[{"count":2,"timeUnit":"HOUR"}]}}]}`,
-		"tokenType":       `{"conditions":[{"type":"event-count","params":{"limits":[{"count":1,"timeUnit":"DAY"}],"tokenType":"total"}}]}`,
-		"custom events":   `{"conditions":[{"id":"events","type":"custom","params":{}}]}`,
-	} {
-		code, resp := putSubscriptionPlan(t, server, id, "application/json", update)
-		assert.Equal(t, http.StatusBadRequest, code, "%s: %s", name, resp)
-	}
+		{"type":"event-count","params":{"limits":[{"count":500,"timeUnit":"MINUTE"}]}}]}`)
+	require.Equal(t, http.StatusBadRequest, code, string(body))
+	assert.Contains(t, errorMessage(t, body), "type must be one of request-count, tool-call-count, token-count or custom")
 }

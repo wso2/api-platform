@@ -4962,10 +4962,9 @@ components:
       required: [type, params]
       description: |
         One condition of a subscription plan. A built-in condition (request-count, tool-call-count,
-        token-count, event-count) has the id its type fixes (requests, tool-calls, tokens, events) and
+        token-count) has the id its type fixes (requests, tool-calls, tokens) and
         its limits as params: {"limits": [{"count", "timeAmount", "timeUnit"}], "onExceed", "tokenType"},
-        with timeUnit one of MINUTE, HOUR, DAY or MONTH, and tokenType for token-count only. event-count
-        counts the events (WebSocket messages, WebSub deliveries) of async APIs.
+        with timeUnit one of MINUTE, HOUR, DAY or MONTH, and tokenType for token-count only.
         A custom condition has an id of its own and key-value pairs as params.
       properties:
         id:
@@ -4973,8 +4972,8 @@ components:
           example: requests
         type:
           type: string
-          enum: [request-count, tool-call-count, token-count, event-count, custom]
-          x-enum-varnames: [ConditionTypeRequestCount, ConditionTypeToolCallCount, ConditionTypeTokenCount, ConditionTypeEventCount, ConditionTypeCustom]
+          enum: [request-count, tool-call-count, token-count, custom]
+          x-enum-varnames: [ConditionTypeRequestCount, ConditionTypeToolCallCount, ConditionTypeTokenCount, ConditionTypeCustom]
         params:
           type: object
           additionalProperties: true
@@ -5025,8 +5024,8 @@ components:
           maxItems: 20
           description: |
             The plan's conditions, enforced by the policies attached to an API. A plan has at most 20
-            conditions: at most one of each built-in type (request-count, tool-call-count, token-count,
-            event-count), and custom conditions for the rest. Send either conditions or the throttle limit fields, not both.
+            conditions: at most one of each built-in type (request-count, tool-call-count, token-count),
+            and custom conditions for the rest. Send either conditions or the throttle limit fields, not both.
           items:
             $ref: "#/components/schemas/SubscriptionPlanCondition"
         expiryTime:
@@ -5083,8 +5082,8 @@ components:
           maxItems: 20
           description: |
             The plan's conditions, enforced by the policies attached to an API. A plan has at most 20
-            conditions: at most one of each built-in type (request-count, tool-call-count, token-count,
-            event-count), and custom conditions for the rest. An omitted conditions leaves them unchanged and [] removes them all. Send either conditions or
+            conditions: at most one of each built-in type (request-count, tool-call-count, token-count),
+            and custom conditions for the rest. An omitted conditions leaves them unchanged and [] removes them all. Send either conditions or
             the throttle limit fields, not both. The throttle limit fields alone change only the
             request-count condition.
           items:

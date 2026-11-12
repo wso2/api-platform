@@ -1236,10 +1236,9 @@ Details of an API key
 ```
 
 One condition of a subscription plan. A built-in condition (request-count, tool-call-count,
-token-count, event-count) has the id its type fixes (requests, tool-calls, tokens, events) and
+token-count) has the id its type fixes (requests, tool-calls, tokens) and
 its limits as params: {"limits": [{"count", "timeAmount", "timeUnit"}], "onExceed", "tokenType"},
-with timeUnit one of MINUTE, HOUR, DAY or MONTH, and tokenType for token-count only. event-count
-counts the events (WebSocket messages, WebSub deliveries) of async APIs.
+with timeUnit one of MINUTE, HOUR, DAY or MONTH, and tokenType for token-count only.
 A custom condition has an id of its own and key-value pairs as params.
 
 #### Properties
@@ -1257,7 +1256,6 @@ A custom condition has an id of its own and key-value pairs as params.
 |type|request-count|
 |type|tool-call-count|
 |type|token-count|
-|type|event-count|
 |type|custom|
 
 ## SubscriptionPlanCreateRequest
@@ -1301,7 +1299,7 @@ A custom condition has an id of its own and key-value pairs as params.
 |stopOnQuotaReach|boolean|false|none|none|
 |throttleLimitCount|integer|false|none|none|
 |throttleLimitUnit|string|false|none|none|
-|conditions|[[SubscriptionPlanCondition](#schemasubscriptionplancondition)]|false|none|The plan's conditions, enforced by the policies attached to an API. A plan has at most 20<br>conditions: at most one of each built-in type (request-count, tool-call-count, token-count,<br>event-count), and custom conditions for the rest. Send either conditions or the throttle limit fields, not both.|
+|conditions|[[SubscriptionPlanCondition](#schemasubscriptionplancondition)]|false|none|The plan's conditions, enforced by the policies attached to an API. A plan has at most 20<br>conditions: at most one of each built-in type (request-count, tool-call-count, token-count),<br>and custom conditions for the rest. Send either conditions or the throttle limit fields, not both.|
 |expiryTime|string(date-time)|false|none|none|
 |status|string|false|none|none|
 
@@ -1358,7 +1356,7 @@ Partial update. Fields that are omitted are left unchanged.
 |stopOnQuotaReach|boolean|false|none|none|
 |throttleLimitCount|integer¦null|false|none|Set together with throttleLimitUnit. Send an explicit null for both fields to remove the<br>limit, which makes the plan unlimited.|
 |throttleLimitUnit|string¦null|false|none|Set together with throttleLimitCount. Send an explicit null for both fields to remove the limit.|
-|conditions|[[SubscriptionPlanCondition](#schemasubscriptionplancondition)]|false|none|The plan's conditions, enforced by the policies attached to an API. A plan has at most 20<br>conditions: at most one of each built-in type (request-count, tool-call-count, token-count,<br>event-count), and custom conditions for the rest. An omitted conditions leaves them unchanged and [] removes them all. Send either conditions or<br>the throttle limit fields, not both. The throttle limit fields alone change only the<br>request-count condition.|
+|conditions|[[SubscriptionPlanCondition](#schemasubscriptionplancondition)]|false|none|The plan's conditions, enforced by the policies attached to an API. A plan has at most 20<br>conditions: at most one of each built-in type (request-count, tool-call-count, token-count),<br>and custom conditions for the rest. An omitted conditions leaves them unchanged and [] removes them all. Send either conditions or<br>the throttle limit fields, not both. The throttle limit fields alone change only the<br>request-count condition.|
 |expiryTime|string(date-time)¦null|false|none|Send an explicit null to remove the expiry time.|
 |status|string|false|none|none|
 
