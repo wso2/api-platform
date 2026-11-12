@@ -106,14 +106,27 @@ func failoverNumber(raw interface{}) (int64, bool) {
 
 // ValidateUpstreamPolicies rejects model-failover in an upstream's own policies list.
 //
-// model-failover is attached ONCE, in the operation's policies, and the controller adds whatever
-// per-attempt work it needs. Listing it per-provider would be a category error with a quiet
-// failure mode: each provider would carry its own health view and its own chain, so a target
-// suspended while serving provider A would still be freely selected on an attempt routed to
-// provider B, and the ordering each instance published would overwrite the last (FR-040).
+// model-failover is attached ONCE — in an operation's policies, or at the API level — and the
+// controller adds whatever per-attempt work it needs (perAttemptPolicies, pkg/transform). There
+// is nothing here for an author to add (FR-040).
 //
-// Worth rejecting rather than ignoring, because the authored intent — "fail over from this
-// provider" — is reasonable on its face and the configuration would otherwise appear to work.
+// THE REASON IS PLACEMENT, NOT SAFETY. A provider's policies list runs at the upstream position,
+// which Envoy enters once per attempt — AFTER it has already selected the cluster for that
+// attempt. A policy there cannot change where the attempt goes: that was settled by the priority
+// groups the downstream chain published. "Fail over from this provider" is therefore
+// unimplementable at the only position this field offers.
+//
+// What such a configuration actually does is nothing. buildFailoverConfig reads the operation and
+// API policy lists, never a provider's, so no route failover configuration, no cluster specifier
+// and no retry policy are generated; the authored instance then runs at the upstream position,
+// detects the per-attempt namespace, and finds no published ranking to apply. Worth rejecting
+// rather than ignoring, because the authored intent — "fail over from this provider" — is
+// reasonable on its face and the configuration would otherwise appear to work.
+//
+// NOT the reason, deliberately: FR-012f considered and WITHDREW the argument that a per-provider
+// attachment is unsafe because it repeats work. Each provider's upstream chain runs only on
+// attempts routed to that provider, so a per-provider policy is correctly scoped rather than
+// duplicated. This refusal is specific to model-failover and rests on FR-040 alone.
 func ValidateUpstreamPolicies(policies *[]api.Policy, fieldPath string) []ValidationError {
 	if policies == nil {
 		return nil
@@ -126,8 +139,9 @@ func ValidateUpstreamPolicies(policies *[]api.Policy, fieldPath string) []Valida
 		errors = append(errors, ValidationError{
 			Field: fmt.Sprintf("%s[%d].name", fieldPath, i),
 			Message: "model-failover cannot be attached to an upstream; attach it once in " +
-				"operationPolicies and the gateway applies it per attempt. Attaching it per " +
-				"upstream would give each provider a separate health view and a separate chain",
+				"operationPolicies or at the API level, and the gateway applies it per attempt. " +
+				"An upstream's policies run after this attempt's target has already been " +
+				"selected, so failover cannot steer from there",
 		})
 	}
 	return errors

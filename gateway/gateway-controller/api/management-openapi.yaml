@@ -6813,8 +6813,10 @@ components:
             The gateway appends this provider's transformer and then its authentication
             after these policies, so a policy listed here never observes the credential.
 
-            `model-failover` must NOT be listed here. It is attached once in
-            operationPolicies and the gateway adds whatever per-attempt work it needs.
+            `model-failover` must NOT be listed here. It is attached once — in
+            operationPolicies, or at the API level — and the gateway adds whatever per-attempt
+            work it needs. A policy in this list runs after the attempt's target has already
+            been selected, so failover cannot steer from this position.
           items:
             $ref: "#/components/schemas/Policy"
 
@@ -6863,8 +6865,10 @@ components:
             The gateway appends this provider's transformer and then its authentication
             after these policies, so a policy listed here never observes the credential.
 
-            `model-failover` must NOT be listed here. It is attached once in
-            operationPolicies and the gateway adds whatever per-attempt work it needs.
+            `model-failover` must NOT be listed here. It is attached once — in
+            operationPolicies, or at the API level — and the gateway adds whatever per-attempt
+            work it needs. A policy in this list runs after the attempt's target has already
+            been selected, so failover cannot steer from this position.
           items:
             $ref: "#/components/schemas/Policy"
 
