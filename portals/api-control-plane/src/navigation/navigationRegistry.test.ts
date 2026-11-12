@@ -406,6 +406,13 @@ describe('Manage menu', () => {
     expect(plans?.isVisible?.(atOrg()) ?? true).toBe(true);
   });
 
+  it('lists Develop, Deploy, Test, then Publish', () => {
+    const [develop, deploy, test, publish] = ['develop', 'deploy', 'test', 'publish'].map(definitionFor);
+    expect(develop.order).toBeLessThan(deploy.order);
+    expect(deploy.order).toBeLessThan(test.order);
+    expect(test.order).toBeLessThan(publish.order);
+  });
+
   it('sits in the same section as Insights and Observability, after them', () => {
     const [insights, observability, manage] = ['insights', 'observability', 'manage'].map(
       definitionFor,

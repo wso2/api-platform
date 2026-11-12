@@ -38,6 +38,17 @@ type Suite struct {
 
 	// Blocks are the topologies this suite runs.
 	Blocks []Block `yaml:"blocks"`
+
+	// BlockFiles names further files of blocks, relative to the suite file, added after
+	// Blocks in the order listed. Each holds only a blocks list, so a large suite can keep
+	// its blocks in one file per group. Paths inside them resolve exactly as they would in
+	// the suite file. Only LoadFile reads them.
+	BlockFiles []string `yaml:"blockFiles"`
+}
+
+// blockFile is one file named in Suite.BlockFiles.
+type blockFile struct {
+	Blocks []Block `yaml:"blocks"`
 }
 
 // Defaults are the suite-wide fallbacks.

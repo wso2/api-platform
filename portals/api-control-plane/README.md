@@ -83,6 +83,8 @@ default, is in `src/config/authContract.ts`.
 | `authLogoutUrl` | `/api/logout` | the sign-out URL |
 | `authLogoutStyle` | `post-json` | `navigate` (a plain navigation); `post-json` for the API Platform gateway, which answers `{"redirectUrl"}` |
 | `authClaimMappings` | the BFF's `[auth.claim_mappings]` defaults | which claim holds each user field, same keys as `[auth.claim_mappings]` |
+| `authOrganizationsUrl` | none | none; with `authSwitchOrganizationUrls`, turns on organization switching (see below) |
+| `authSwitchOrganizationUrls` | none | none; the endpoints that move the sessions into an organization, in order (a list, or comma-separated) |
 
 #### Session formats
 
@@ -115,12 +117,54 @@ BFF.
 `expiresAt` in the SDK session is the access token's expiry, not the session's;
 the gateway renews the token itself, so the console doesn't use it.
 
-### The Test console's gateway relay
+#### Switching organizations
 
-The Test console sends requests to a deployed gateway through a relay. That is
-a separate setting from sign-in, available in every auth mode:
-`gatewayRelayUrl` (`VITE_GATEWAY_RELAY_URL` at build time), by default the
-BFF's `/api/gateway-relay/invoke`.
+A session is in one organization at a time: its token's. With
+`authOrganizationsUrl` and `authSwitchOrganizationUrls` set, the console moves
+the session into the organization in its URL:
+
+- **The organization switcher** lists the organizations from
+  `authOrganizationsUrl`, which answers as ThunderID's `GET /users/me/ous`:
+  `{"organizationUnits": [{"id", "handle", "name"}]}`. The URL carries the
+  `handle`, the Platform API's organization id.
+- **Opening an organization** the session isn't in calls each
+  `authSwitchOrganizationUrls` entry in turn, as the ThunderID SDK's
+  backend-mode `ouSwitch` does: `POST {url}?ouId=<id>` with
+  `{"ouId": "<id>"}`. After the last success the console reads its
+  session again, and renders the organization once the session's claims name
+  it. Nothing calls the backend before that, so no request acts on the
+  previous organization. Scopes are the new token's.
+- **More than one session.** List the console's own switch last. Before it,
+  list any other session the console's API calls carry: on a host shared with
+  a parent console whose session some APIs use (billing, say), that session's
+  switch, so every call is made in the same organization.
+- **An organization the user isn't in** (not listed, or a `403`) sends them to
+  the organization picker. Any other answer shows an error.
+- **The session is the browser's, not the tab's.** A tab whose session moved to
+  another organization without it asking, such as a switch in another tab, loads
+  that organization's home on its next session check rather than moving the
+  session back.
+
+On the API Platform gateway, the switch endpoint is the `oauth2-org-switch`
+policy on the console's sign-in API, with the console's own session as its
+target:
+
+```js
+  authOrganizationsUrl: '/api-platform/idp/users/me/ous', // the IdP's API, with the session's token
+  authSwitchOrganizationUrls: ['/api-platform/auth/switch'],
+```
+
+Without both settings, the session stays in the organization it signed in to,
+as before.
+
+### The Test console's requests
+
+The Test console sends its requests to a deployed gateway through the Platform
+API, `POST /gateway-relay/invoke`, on the same path
+as every other Platform API call: the BFF's proxy, or the gateway's
+`oauth2-session-proxy`. The Platform API decides which gateway addresses it may
+reach, under `[platform_api.gateway_relay]` in its own config. There is nothing
+to set in the console.
 
 ## Development
 

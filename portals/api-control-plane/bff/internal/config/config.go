@@ -36,8 +36,6 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/v2"
-
-	"api-control-plane-bff/internal/egress"
 )
 
 // Config is the fully-resolved BFF configuration. Its shape mirrors the
@@ -69,8 +67,7 @@ type Config struct {
 	// Gateway is what a self-hosted gateway's setup instructions need from this
 	// deployment ([api_control_plane.gateway]). Mirrors AI Workspace's own
 	// [ai_workspace.gateway] table.
-	Gateway      GatewayConfig      `koanf:"gateway"`
-	GatewayRelay GatewayRelayConfig `koanf:"gateway_relay"`
+	Gateway GatewayConfig `koanf:"gateway"`
 
 	SanitizeHTMLDocs SanitizeHTMLDocsConfig `koanf:"sanitize_html_docs"`
 
@@ -131,67 +128,6 @@ func validControlPlaneHost(host string) bool {
 	}
 	port, err := strconv.Atoi(m[1])
 	return err == nil && port >= 1 && port <= 65535
-}
-
-// GatewayRelayConfig configures the bounded relay for the Test page's Swagger console.
-type GatewayRelayConfig struct {
-	// Enabled turns the relay on. When false the route 404s and no outbound
-	// client is built at all.
-	Enabled bool `koanf:"enabled"`
-
-	// RequestTimeout limits the relayed call from dialing through response-body
-	// processing. It should remain below the route's write deadline.
-	RequestTimeout time.Duration `koanf:"request_timeout"`
-	// MaxRequestBytes bounds the decoded relayed request body. The JSON envelope
-	// may be larger due to base64 encoding and JSON escaping.
-	MaxRequestBytes int64 `koanf:"max_request_bytes"`
-	// MaxResponseBytes limits the gateway response body. If exceeded, the body is
-	// truncated and flagged instead of failing the request.
-	MaxResponseBytes int64 `koanf:"max_response_bytes"`
-
-	// MaxConcurrent is how many relayed calls may be in flight at once.
-	MaxConcurrent int `koanf:"max_concurrent"`
-	// MaxPending limits queued calls; excess calls are rejected with 503.
-	MaxPending int `koanf:"max_pending"`
-
-	// ResolveCacheTTL controls how long resolved invoke URLs are reused before
-	// Platform API is consulted again; keep it short to limit revoked access.
-	ResolveCacheTTL time.Duration `koanf:"resolve_cache_ttl"`
-	// ResolveCacheSize bounds the number of cached entries.
-	ResolveCacheSize int `koanf:"resolve_cache_size"`
-
-	// CAFile is a PEM bundle to trust for gateway TLS certificates, appended to
-	// the system roots. Ignored when TLSSkipVerify is true.
-	CAFile string `koanf:"ca_file"`
-	// TLSSkipVerify disables gateway certificate verification. Use only for
-	// development or demonstrations. This is an operator setting, not a
-	// per-request option, to prevent clients from bypassing TLS verification.
-	TLSSkipVerify bool `koanf:"tls_skip_verify"`
-
-	// Egress bounds where the relay may connect. See internal/egress.
-	Egress EgressConfig `koanf:"egress"`
-}
-
-// Policy parses this block into the object that enforces it.
-func (e EgressConfig) Policy() (*egress.Policy, error) {
-	policy, err := egress.Parse(egress.Spec{AllowHosts: e.AllowHosts})
-	if err != nil {
-		return nil, fmt.Errorf("[gateway_relay.egress] %w", err)
-	}
-	return policy, nil
-}
-
-// EgressConfig is [gateway_relay.egress]: where the relay may connect.
-//
-// One rule: nothing is reachable unless an allow_hosts entry matches it. See
-// internal/egress.
-type EgressConfig struct {
-	// AllowHosts is the complete set of targets the relay may dial. Each entry
-	// has the form "[scheme://]host[:port]"; "*" may appear anywhere in host.
-	// Scheme and port constrain matching only when specified.
-	//
-	// An empty list permits no targets by design.
-	AllowHosts []string `koanf:"allow_hosts"`
 }
 
 // PolicyHubConfig configures the public catalog called directly by the browser.
@@ -385,6 +321,12 @@ type OIDCConfig struct {
 	RedirectURL           string `koanf:"redirect_url"` // must equal the IDP-registered redirect, points at /api/auth/callback
 	PostLogoutRedirectURL string `koanf:"post_logout_redirect_url"`
 	Scopes                string `koanf:"scope"` // space-separated
+	// Resource is the RFC 8707 resource indicator sent on /oauth2/authorize. An
+	// IdP that scopes tokens per resource server (WSO2 Thunder) only puts that
+	// server's scopes into the token and sets aud to it; without the parameter
+	// such an IdP issues no product scope at all. Empty sends no parameter, which
+	// is what every other IdP wants.
+	Resource string `koanf:"resource"`
 }
 
 // ClaimMappingConfig is [api_control_plane.auth.claim_mappings]: which claim
@@ -420,32 +362,94 @@ type ClaimMappingConfig struct {
 const CSRFHeaderName = "X-Requested-By"
 
 // defaultOIDCScopes requests every ap:* permission Platform API authorizes
-// against, so a logged-in user's access token carries them all. The IDP must
-// have these scopes registered and granted to the user, otherwise it drops the
-// ungranted ones. Override with the [auth.oidc] scope config key to request a
-// narrower set — a deployment against an IdP that cannot grant this many scopes
-// (or any ap:* scope at all) MUST override this rather than silently losing
-// access to scope-gated features.
+// against, so a logged-in user's access token carries them all: the scopes
+// platform-api/resources/openapi.yaml declares under securitySchemes (200 as of
+// 0.9.0), regenerated from that file when it changes. The IDP must have these
+// scopes registered and granted to the user, otherwise it drops the ungranted
+// ones. Override with the [auth.oidc] scope key (APIP_ACP_AUTH_OIDC_SCOPE) to
+// request a different set: a deployment against an IdP that cannot grant this
+// many scopes (or any ap:* scope at all) MUST override this rather than silently
+// losing access to scope-gated features, and a deployment whose Platform API
+// compiles a plugin in adds the plugin's own scopes the same way (the cloud
+// extension's ap:environment:*, ap:pipeline:*, ap:deployment:* and
+// ap:organization:delete). An empty override keeps this default (see
+// normalize), which is what lets the shipped config.toml carry an env token.
 //
 // offline_access is required: without it most IDPs issue no refresh token, so
 // the BFF cannot silently renew the access token and the user is logged out the
 // moment it expires. Keep it in any override.
 const defaultOIDCScopes = "openid profile email offline_access" +
-	" ap:organization:read ap:organization:manage ap:organization:subscription:read" +
-	" ap:project:read ap:project:create ap:project:update ap:project:delete ap:project:manage" +
-	" ap:application:read ap:application:create ap:application:update ap:application:delete ap:application:manage" +
-	" ap:application:api_key:read ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage" +
-	" ap:gateway:read ap:gateway:create ap:gateway:update ap:gateway:delete ap:gateway:manage" +
-	" ap:gateway:token:read ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage" +
-	" ap:rest_api:read ap:rest_api:create ap:rest_api:update ap:rest_api:delete ap:rest_api:manage ap:rest_api:import" +
-	" ap:rest_api:deployment:read ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage" +
-	" ap:rest_api:build:read ap:rest_api:build:create ap:rest_api:build:delete ap:rest_api:build:manage" +
-	" ap:rest_api:api_key:read ap:rest_api:api_key:create ap:rest_api:api_key:update ap:rest_api:api_key:delete ap:rest_api:api_key:manage" +
-	" ap:subscription:read ap:subscription:create ap:subscription:update ap:subscription:delete ap:subscription:manage" +
-	" ap:subscription_plan:read ap:subscription_plan:create ap:subscription_plan:update ap:subscription_plan:delete ap:subscription_plan:manage" +
-	" ap:service_account:read ap:service_account:manage" +
-	" ap:secret:read ap:secret:create ap:secret:update ap:secret:delete ap:secret:manage" +
-	" ap:docs:read ap:docs:manage ap:thumbnail:read ap:thumbnail:manage"
+	" ap:agent_proxy:api_key:create ap:agent_proxy:api_key:delete ap:agent_proxy:api_key:manage" +
+	" ap:agent_proxy:api_key:read ap:agent_proxy:api_key:update ap:agent_proxy:build:create" +
+	" ap:agent_proxy:build:delete ap:agent_proxy:build:manage ap:agent_proxy:build:read" +
+	" ap:agent_proxy:create ap:agent_proxy:delete ap:agent_proxy:deployment:create" +
+	" ap:agent_proxy:deployment:delete ap:agent_proxy:deployment:manage" +
+	" ap:agent_proxy:deployment:read ap:agent_proxy:deployment:restore" +
+	" ap:agent_proxy:deployment:undeploy ap:agent_proxy:manage ap:agent_proxy:read" +
+	" ap:agent_proxy:update" +
+	" ap:api_key:all:manage ap:api_key:read" +
+	" ap:api_portal:create ap:api_portal:delete ap:api_portal:draft:manage ap:api_portal:draft:read" +
+	" ap:api_portal:draft:update ap:api_portal:graphql_api:manage ap:api_portal:manage" +
+	" ap:api_portal:mcp_proxy:manage ap:api_portal:publication:read ap:api_portal:read" +
+	" ap:api_portal:rest_api:manage" +
+	" ap:api_portal:update" +
+	" ap:api_publication:read" +
+	" ap:application:api_key:create ap:application:api_key:delete ap:application:api_key:manage" +
+	" ap:application:api_key:read ap:application:association:api_key:read" +
+	" ap:application:association:create ap:application:association:delete" +
+	" ap:application:association:manage ap:application:association:read ap:application:create" +
+	" ap:application:delete ap:application:manage ap:application:read ap:application:update" +
+	" ap:docs:manage ap:docs:read" +
+	" ap:gateway:create ap:gateway:delete ap:gateway:manage ap:gateway:manifest:read ap:gateway:read" +
+	" ap:gateway:token:create ap:gateway:token:delete ap:gateway:token:manage ap:gateway:token:read" +
+	" ap:gateway:update" +
+	" ap:gateway_custom_policy:create ap:gateway_custom_policy:delete ap:gateway_custom_policy:manage" +
+	" ap:gateway_custom_policy:read" +
+	" ap:graphql_api:api_key:create ap:graphql_api:api_key:delete ap:graphql_api:api_key:manage" +
+	" ap:graphql_api:api_key:update ap:graphql_api:build:create ap:graphql_api:build:delete" +
+	" ap:graphql_api:build:manage ap:graphql_api:build:read ap:graphql_api:create" +
+	" ap:graphql_api:delete ap:graphql_api:deployment:create ap:graphql_api:deployment:delete" +
+	" ap:graphql_api:deployment:manage ap:graphql_api:deployment:read" +
+	" ap:graphql_api:deployment:restore ap:graphql_api:deployment:undeploy" +
+	" ap:graphql_api:gateway:create ap:graphql_api:gateway:manage ap:graphql_api:gateway:read" +
+	" ap:graphql_api:manage ap:graphql_api:read ap:graphql_api:update" +
+	" ap:llm_provider:api_key:create ap:llm_provider:api_key:delete ap:llm_provider:api_key:manage" +
+	" ap:llm_provider:api_key:read ap:llm_provider:build:create ap:llm_provider:build:delete" +
+	" ap:llm_provider:build:manage ap:llm_provider:build:read ap:llm_provider:create" +
+	" ap:llm_provider:delete ap:llm_provider:deployment:create ap:llm_provider:deployment:delete" +
+	" ap:llm_provider:deployment:manage ap:llm_provider:deployment:read" +
+	" ap:llm_provider:deployment:restore ap:llm_provider:deployment:undeploy ap:llm_provider:manage" +
+	" ap:llm_provider:read ap:llm_provider:update" +
+	" ap:llm_proxy:api_key:create ap:llm_proxy:api_key:delete ap:llm_proxy:api_key:manage" +
+	" ap:llm_proxy:api_key:read ap:llm_proxy:build:create ap:llm_proxy:build:delete" +
+	" ap:llm_proxy:build:manage ap:llm_proxy:build:read ap:llm_proxy:create ap:llm_proxy:delete" +
+	" ap:llm_proxy:deployment:create ap:llm_proxy:deployment:delete ap:llm_proxy:deployment:manage" +
+	" ap:llm_proxy:deployment:read ap:llm_proxy:deployment:restore ap:llm_proxy:deployment:undeploy" +
+	" ap:llm_proxy:manage ap:llm_proxy:read ap:llm_proxy:update" +
+	" ap:llm_template:create ap:llm_template:delete ap:llm_template:manage ap:llm_template:read" +
+	" ap:llm_template:update" +
+	" ap:mcp_proxy:build:create ap:mcp_proxy:build:delete ap:mcp_proxy:build:manage" +
+	" ap:mcp_proxy:build:read ap:mcp_proxy:create ap:mcp_proxy:delete ap:mcp_proxy:deployment:create" +
+	" ap:mcp_proxy:deployment:delete ap:mcp_proxy:deployment:manage ap:mcp_proxy:deployment:read" +
+	" ap:mcp_proxy:deployment:restore ap:mcp_proxy:deployment:undeploy ap:mcp_proxy:manage" +
+	" ap:mcp_proxy:read ap:mcp_proxy:update" +
+	" ap:meter:create ap:meter:delete ap:meter:manage ap:meter:read ap:meter:update" +
+	" ap:organization:create ap:organization:manage ap:organization:read" +
+	" ap:project:create ap:project:delete ap:project:manage ap:project:read ap:project:update" +
+	" ap:rest_api:api_key:create ap:rest_api:api_key:delete ap:rest_api:api_key:manage" +
+	" ap:rest_api:api_key:update ap:rest_api:build:create ap:rest_api:build:delete" +
+	" ap:rest_api:build:manage ap:rest_api:build:read ap:rest_api:create ap:rest_api:delete" +
+	" ap:rest_api:deployment:create ap:rest_api:deployment:delete ap:rest_api:deployment:manage" +
+	" ap:rest_api:deployment:read ap:rest_api:deployment:restore ap:rest_api:deployment:undeploy" +
+	" ap:rest_api:gateway:create ap:rest_api:gateway:manage ap:rest_api:gateway:read" +
+	" ap:rest_api:manage ap:rest_api:read ap:rest_api:update" +
+	" ap:secret:create ap:secret:delete ap:secret:manage ap:secret:read ap:secret:update" +
+	" ap:service_account:manage ap:service_account:read" +
+	" ap:subscription:create ap:subscription:delete ap:subscription:manage ap:subscription:read" +
+	" ap:subscription:update" +
+	" ap:subscription_plan:create ap:subscription_plan:delete ap:subscription_plan:manage" +
+	" ap:subscription_plan:pricing:read ap:subscription_plan:read ap:subscription_plan:update" +
+	" ap:thumbnail:manage ap:thumbnail:read"
 
 // Load resolves configuration from one or more config.toml files. At least one
 // path is required and each must exist and parse — there is no default path and
@@ -542,6 +546,50 @@ func (c *Config) normalize() {
 	if c.Auth.OIDC.ClientAuthMethod == "" {
 		c.Auth.OIDC.ClientAuthMethod = "client_secret_post"
 	}
+	// An empty scope key (the shipped config.toml's env token with its variable
+	// unset) keeps the built-in default rather than requesting no scope at all.
+	if strings.TrimSpace(c.Auth.OIDC.Scopes) == "" {
+		c.Auth.OIDC.Scopes = defaultOIDCScopes
+	}
+	c.Auth.OIDC.Resource = strings.TrimSpace(c.Auth.OIDC.Resource)
+}
+
+// oidcScopeOverrideWarnings reports what a [auth.oidc] scope override
+// (APIP_ACP_AUTH_OIDC_SCOPE) drops from the built-in default. An override
+// REPLACES defaultOIDCScopes rather than adding to it, so an operator who sets
+// only a plugin's own scopes (the cloud extension's ap:environment:* and the like)
+// silently stops requesting every base ap:* scope, and the console then hides the
+// features that need them. Not an error: an IdP that cannot grant the full list
+// is a legitimate reason to narrow it. Empty for the default itself.
+func oidcScopeOverrideWarnings(scopes string) []string {
+	if scopes == defaultOIDCScopes {
+		return nil
+	}
+	requested := make(map[string]bool)
+	for _, s := range strings.Fields(scopes) {
+		requested[s] = true
+	}
+	var warnings []string
+	if !requested["offline_access"] {
+		warnings = append(warnings, "[auth.oidc] scope override omits offline_access: most IdPs then issue no "+
+			"refresh token, so users are signed out when the access token expires.")
+	}
+	missing, total := 0, 0
+	for _, s := range strings.Fields(defaultOIDCScopes) {
+		if !strings.HasPrefix(s, "ap:") {
+			continue
+		}
+		total++
+		if !requested[s] {
+			missing++
+		}
+	}
+	if missing > 0 {
+		warnings = append(warnings, fmt.Sprintf("[auth.oidc] scope override replaces the built-in default and "+
+			"omits %d of its %d ap:* scopes; features gated on them are hidden. To add a plugin's scopes, "+
+			"set the full default list plus the plugin's (see defaultOIDCScopes).", missing, total))
+	}
+	return warnings
 }
 
 // validate fails startup on any value that would otherwise surface as a
@@ -560,9 +608,6 @@ func (c *Config) validate() error {
 	// to start rather than serve a UI in which nothing is permitted.
 	if c.Auth.Authorization.Mode == AuthzModeRole && c.Auth.Authorization.RoleToScopeMapping == "" {
 		return fmt.Errorf("[auth.authorization] role_to_scope_mapping is required when mode = %q", AuthzModeRole)
-	}
-	if err := c.validateGatewayRelay(); err != nil {
-		return err
 	}
 	if v, ok := runtimeValue(c.SanitizeHTMLDocs.Enabled); ok && strings.EqualFold(strings.TrimSpace(v), "false") {
 		slog.Warn("[sanitize_html_docs] enabled = false: raw HTML in API documents is rendered unsanitized. " +
@@ -591,6 +636,11 @@ func (c *Config) validate() error {
 	}
 	if c.Session.Cookie.SameSite == "none" && !c.Session.Cookie.Secure {
 		return fmt.Errorf("[session.cookie] same_site = \"none\" requires secure = true (browsers reject SameSite=None cookies without Secure)")
+	}
+	if c.Auth.OIDC.Enabled {
+		for _, w := range oidcScopeOverrideWarnings(c.Auth.OIDC.Scopes) {
+			slog.Warn(w)
+		}
 	}
 	if !c.Session.Cookie.Secure {
 		slog.Warn("[session.cookie] secure = false — the session cookie will be sent over plain HTTP. " +
@@ -694,60 +744,5 @@ func validateAbsoluteURL(label, rawURL string) error {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return fmt.Errorf("%s must be an absolute http:// or https:// URL, got %q", label, rawURL)
 	}
-	return nil
-}
-
-// validateGatewayRelay checks the relay's bounds and builds its egress policy.
-//
-// The policy is parsed here, not at wiring time, so a bad range refuses the
-// process at startup with the key that caused it — and so exactly one parse of
-// those strings exists, by the package that also enforces them.
-func (c *Config) validateGatewayRelay() error {
-	t := &c.GatewayRelay
-	if !t.Enabled {
-		return nil
-	}
-	if t.RequestTimeout <= 0 {
-		return fmt.Errorf("[gateway_relay] request_timeout must be positive when enabled = true, got %s", t.RequestTimeout)
-	}
-	if t.MaxRequestBytes <= 0 {
-		return fmt.Errorf("[gateway_relay] max_request_bytes must be positive when enabled = true, got %d", t.MaxRequestBytes)
-	}
-	if t.MaxResponseBytes <= 0 {
-		return fmt.Errorf("[gateway_relay] max_response_bytes must be positive when enabled = true, got %d", t.MaxResponseBytes)
-	}
-	if t.MaxConcurrent <= 0 {
-		return fmt.Errorf("[gateway_relay] max_concurrent must be positive when enabled = true, got %d", t.MaxConcurrent)
-	}
-	if t.ResolveCacheTTL < 0 {
-		return fmt.Errorf("[gateway_relay] resolve_cache_ttl must not be negative, got %s", t.ResolveCacheTTL)
-	}
-	if t.ResolveCacheSize < 0 {
-		return fmt.Errorf("[gateway_relay] resolve_cache_size must not be negative, got %d", t.ResolveCacheSize)
-	}
-	if t.MaxPending < 0 {
-		return fmt.Errorf("[gateway_relay] max_pending must not be negative, got %d", t.MaxPending)
-	}
-	if t.TLSSkipVerify && t.CAFile != "" {
-		return fmt.Errorf("[gateway_relay] ca_file and tls_skip_verify are mutually exclusive — skipping verification ignores the bundle entirely")
-	}
-
-	// Parsed here only to fail at startup, with the offending key named,
-	// rather than at wiring time. The server parses it again for real; it is
-	// the same pure function, so the two cannot disagree.
-	policy, err := t.Egress.Policy()
-	if err != nil {
-		return err
-	}
-	if len(t.Egress.AllowHosts) == 0 {
-		slog.Warn("[gateway_relay.egress] allow_hosts is empty, so every gateway-relay request will be refused. " +
-			"List the gateway targets the relay may dial, or set [gateway_relay] enabled = false.")
-	}
-
-	if t.TLSSkipVerify {
-		slog.Warn("[gateway_relay] tls_skip_verify = true — gateway certificate verification is DISABLED for gateway-relay requests. " +
-			"Trust the gateway certificate with ca_file instead.")
-	}
-	slog.Info("gateway-relay egress policy", "policy", policy.Describe())
 	return nil
 }

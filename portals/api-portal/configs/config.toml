@@ -16,6 +16,20 @@ console_only = true
 driver = '{{ env "APIP_AP_DATABASE_DRIVER" "sqlite" }}'
 path = '{{ env "APIP_AP_DATABASE_PATH" "./data/api-portal.db" }}'
 
+[api_portal.health]
+# Clients allowed to call /health and /ready. "*" (the default) allows every client;
+# list IP addresses or CIDR ranges, comma-separated, to restrict it.
+allowed_clients = '{{ env "APIP_AP_HEALTH_ALLOWED_CLIENTS" "*" }}'
+
+# [api_portal.health.database]
+# check_timeout   = "2s"
+# failure_window  = "30s"
+# failure_ratio   = 0.5
+# min_attempts    = 5
+# idle_period     = "10s"
+# pool_saturation = 0.9
+# pool_wait_limit = "5s"
+
 [api_portal.security]
 encryption_key = '{{ file "/etc/api-portal/keys/encryption.key" }}'
 session_secret = '{{ file "/etc/api-portal/keys/session-secret" }}'
@@ -47,6 +61,9 @@ hash = ""
 handle       = '{{ env "APIP_AP_ORGANIZATION_HANDLE" "default" }}'
 display_name = '{{ env "APIP_AP_ORGANIZATION_DISPLAY_NAME" "Default" }}'
 portal_id    = '{{ env "APIP_AP_ORGANIZATION_PORTAL_ID" "portal_id" }}'
+
+[api_portal.monetization]
+disabled = '{{ env "APIP_AP_MONETIZATION_DISABLED" "false" }}'
 
 [api_portal.billing.moesif]
 collector_application_id = '{{ env "APIP_AP_BILLING_MOESIF_COLLECTOR_APPLICATION_ID" "" }}'

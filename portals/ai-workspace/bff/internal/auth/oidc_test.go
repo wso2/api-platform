@@ -295,6 +295,37 @@ func TestAuthCodeURLExtrasCannotOverrideProtocolParams(t *testing.T) {
 	}
 }
 
+// The resource indicator reaches /authorize exactly when configured. An IdP that
+// scopes tokens per resource server (ThunderID) issues no product scope without it,
+// and rejects an empty resource=, so unset must send no parameter at all; nor may a
+// forwarded extra pick the resource server.
+func TestAuthCodeURLResourceIndicator(t *testing.T) {
+	for _, resource := range []string{"", "urn:wso2:cloud"} {
+		o := &OIDC{
+			clientID:    "ai-workspace",
+			redirectURL: "https://portal.example.com/ai-workspace/api/auth/callback",
+			scopes:      "openid",
+			sealer:      testOIDC(t).sealer,
+			disco:       discoveryDoc{AuthorizationEndpoint: "https://idp.example.com/authorize"},
+		}
+		o.SetResource(resource)
+		authURL, _, err := o.AuthCodeURL("/", url.Values{"resource": {"urn:attacker"}})
+		if err != nil {
+			t.Fatalf("AuthCodeURL: %v", err)
+		}
+		u, err := url.Parse(authURL)
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		if _, present := u.Query()["resource"]; present != (resource != "") {
+			t.Errorf("resource %q: parameter present = %v", resource, present)
+		}
+		if got := u.Query().Get("resource"); got != resource {
+			t.Errorf("resource = %q, want %q", got, resource)
+		}
+	}
+}
+
 // A 307/308 from the IDP re-sends the POST body to the redirect target, and that body
 // carries the client secret and — on revocation — the refresh token. Verified by
 // observing what an attacker-controlled redirect target actually receives.

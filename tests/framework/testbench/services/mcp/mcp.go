@@ -94,7 +94,107 @@ func newServer() *mcpsdk.Server {
 		Name:        "headers",
 		Description: "Reports the value of a header on the inbound HTTP request",
 	}, headers)
+	addResources(server)
+	addPrompts(server)
 	return server
+}
+
+// fixedResource is a resource whose content never changes, so a test can assert the exact
+// text a resources/read returns and the exact fields a resources/list carries.
+type fixedResource struct {
+	uri, name, title, description, text string
+}
+
+// fixedResources are the resources every MCP service serves. Two are enough for an ACL to
+// let one through and deny the other; the URI is what an ACL matches on.
+var fixedResources = []fixedResource{
+	{
+		uri:         "file:///docs/readme.txt",
+		name:        "readme",
+		title:       "Readme",
+		description: "A short project readme",
+		text:        "This is the readme.",
+	},
+	{
+		uri:         "file:///docs/changelog.txt",
+		name:        "changelog",
+		title:       "Changelog",
+		description: "The project changelog",
+		text:        "v1.0.0: first release.",
+	},
+}
+
+// addResources registers fixedResources as plain-text resources.
+func addResources(server *mcpsdk.Server) {
+	for _, r := range fixedResources {
+		server.AddResource(&mcpsdk.Resource{
+			URI:         r.uri,
+			Name:        r.name,
+			Title:       r.title,
+			Description: r.description,
+			MIMEType:    "text/plain",
+		}, readFixed(r))
+	}
+}
+
+// readFixed returns the handler that answers resources/read for one fixed resource.
+func readFixed(r fixedResource) mcpsdk.ResourceHandler {
+	return func(_ context.Context, _ *mcpsdk.ReadResourceRequest) (*mcpsdk.ReadResourceResult, error) {
+		return &mcpsdk.ReadResourceResult{
+			Contents: []*mcpsdk.ResourceContents{{URI: r.uri, MIMEType: "text/plain", Text: r.text}},
+		}, nil
+	}
+}
+
+// addPrompts registers two prompts with one optional argument each. Two are enough for an ACL
+// to let one through and deny the other; the name is what an ACL matches on.
+func addPrompts(server *mcpsdk.Server) {
+	server.AddPrompt(&mcpsdk.Prompt{
+		Name:        "greeting",
+		Title:       "Greeting",
+		Description: "Greets someone by name",
+		Arguments: []*mcpsdk.PromptArgument{
+			{Name: "name", Description: "Who to greet; World when omitted"},
+		},
+	}, greeting)
+	server.AddPrompt(&mcpsdk.Prompt{
+		Name:        "summary",
+		Title:       "Summary",
+		Description: "Asks for a summary of a text",
+		Arguments: []*mcpsdk.PromptArgument{
+			{Name: "text", Description: "The text to summarise"},
+		},
+	}, summary)
+}
+
+// greeting asks the model to greet the named person, or World when no name is given.
+func greeting(_ context.Context, req *mcpsdk.GetPromptRequest) (*mcpsdk.GetPromptResult, error) {
+	name := promptArgument(req, "name")
+	if name == "" {
+		name = "World"
+	}
+	return userPrompt("Greets someone by name", "Say hello to "+name+"."), nil
+}
+
+// summary asks the model to summarise the supplied text.
+func summary(_ context.Context, req *mcpsdk.GetPromptRequest) (*mcpsdk.GetPromptResult, error) {
+	return userPrompt("Asks for a summary of a text", "Summarize this text: "+promptArgument(req, "text")), nil
+}
+
+// promptArgument returns the named prompts/get argument, or "" when it is absent.
+func promptArgument(req *mcpsdk.GetPromptRequest, name string) string {
+	if req == nil || req.Params == nil {
+		return ""
+	}
+	return req.Params.Arguments[name]
+}
+
+// userPrompt creates a prompt result holding one user message.
+func userPrompt(description, text string) *mcpsdk.GetPromptResult {
+	return &mcpsdk.GetPromptResult{
+		Description: description,
+		Messages:    []*mcpsdk.PromptMessage{{Role: "user", Content: &mcpsdk.TextContent{Text: text}}},
+	}
 }
 
 // Name returns the service registration name.

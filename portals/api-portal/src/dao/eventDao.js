@@ -218,7 +218,7 @@ async function claimDueDeliveries(batchSize, orgUuid) {
         const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
         const orgParams = orgUuid ? [orgUuid] : [];
         await tx.execute(
-            `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_error = ?
+            `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_error = ?, encrypted_fields = NULL
              WHERE status = ? AND last_attempt_at < ? AND portal_id = ?${orgUuid
                 ? ` AND event_uuid IN (SELECT uuid FROM ${EVENTS_TABLE} WHERE org_uuid = ? AND portal_id = ?)` : ''}`,
             ['FAILED', 'Delivery abandoned: worker stopped mid-flight', 'IN_FLIGHT', staleThreshold, getPortalId(),
@@ -259,7 +259,7 @@ async function markDelivered(deliveryId, httpStatus) {
  */
 async function markFailed(deliveryId, { httpStatus, error }) {
     await db.execute(
-        `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_http_status = ?, last_error = ? WHERE uuid = ? AND portal_id = ?`,
+        `UPDATE ${DELIVERIES_TABLE} SET status = ?, last_http_status = ?, last_error = ?, encrypted_fields = NULL WHERE uuid = ? AND portal_id = ?`,
         ['FAILED', httpStatus ?? null, error ? String(error).slice(0, 1000) : null, deliveryId, getPortalId()]
     );
     const delivery = await db.queryOne(`SELECT * FROM ${DELIVERIES_TABLE} WHERE uuid = ? AND portal_id = ?`, [deliveryId, getPortalId()]);

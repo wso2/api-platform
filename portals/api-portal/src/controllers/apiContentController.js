@@ -40,6 +40,21 @@ const yaml = require('../utils/yaml');
 const markdown = require('marked');
 const generateArray = (length) => Array.from({ length });
 
+// An MCP tools schema as { tools, resources, prompts }, from its stored JSON or YAML file.
+const parseMcpSchema = (schemaRow) => {
+    const content = schemaRow.file_content.toString(constants.CHARSET_UTF8);
+    const fileName = String(schemaRow.file_name || '').toLowerCase();
+    const parsed = fileName.endsWith('.yaml') || fileName.endsWith('.yml') ? yaml.load(content) : JSON.parse(content);
+    if (!Array.isArray(parsed)) {
+        return parsed;
+    }
+    return {
+        tools: parsed.filter(item => item.type === 'TOOL'),
+        resources: parsed.filter(item => item.type === 'RESOURCE'),
+        prompts: parsed.filter(item => item.type === 'PROMPT'),
+    };
+};
+
 const loadAPIs = async (req, res, next) => {
 
     const { orgName, viewName } = req.params;
@@ -200,7 +215,6 @@ const loadAPIContent = async (req, res, next) => {
             }
         }
 
-        const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         const templateContent = {
             devMode: true,
             apiContent: '',
@@ -214,7 +228,7 @@ const loadAPIContent = async (req, res, next) => {
             // (app.js), so this download link has to carry the prefix like every other
             // server-generated URL.
             schemaUrl: `${constants.ROUTE.BASE_PATH}${constants.ROUTE.MOCK}/${apiHandle}/definition.yml`,
-            showApiKeysNav: await resolveShowApiKeysNav(null, null, apiType, metaData, definitionResponse.swagger ?? null),
+            showApiKeysNav: await resolveShowApiKeysNav(null, null, apiType, metaData),
             showSubscriptionsNav: (metaData.subscriptionPlans || []).length > 0,
         }
         const landingPage = isMCP ? 'pages/mcp-landing' : 'pages/api-landing';
@@ -308,23 +322,7 @@ const loadAPIContent = async (req, res, next) => {
                                 apiId
                             );
                             if (rawSchema) {
-                                const schemaString = rawSchema.file_content.toString(constants.CHARSET_UTF8);
-                                const schemaFileName = String(rawSchema.file_name || '').toLowerCase();
-                                let parsed;
-                                if (schemaFileName.endsWith('.yaml') || schemaFileName.endsWith('.yml')) {
-                                    parsed = yaml.load(schemaString);
-                                } else {
-                                    parsed = JSON.parse(schemaString);
-                                }
-                                if (Array.isArray(parsed)) {
-                                    schemaDefinition = {
-                                        tools: parsed.filter(item => item.type === 'TOOL'),
-                                        resources: parsed.filter(item => item.type === 'RESOURCE'),
-                                        prompts: parsed.filter(item => item.type === 'PROMPT'),
-                                    };
-                                } else {
-                                    schemaDefinition = parsed;
-                                }
+                                schemaDefinition = parseMcpSchema(rawSchema);
                             }
                         } catch (err) {
                             logger.error("Failed to load or parse schema definition", {
@@ -519,10 +517,6 @@ const loadDocsPage = async (req, res, next) => {
         const metaForNav = {
             refId: apiMetadata.refId,
         };
-        // Load the definition so the API Keys nav is computed the same way as every
-        // other API-scoped page — without it the check always returns false and the
-        // API Keys item is hidden on the documentation page.
-        const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
         const templateContent = {
             apiMD: '',
             baseUrl: constants.ROUTE.BASE_PATH + constants.ROUTE.VIEWS_PATH + viewName + '/api/' + apiHandle,
@@ -530,7 +524,7 @@ const loadDocsPage = async (req, res, next) => {
             docTypes: docNames,
             apiType: apiMetadata.type,
             apiName: apiMetadata.name || '',
-            showApiKeysNav: await resolveShowApiKeysNav(null, null, apiMetadata.type, metaForNav, definitionResponse.swagger ?? null),
+            showApiKeysNav: await resolveShowApiKeysNav(null, null, apiMetadata.type, metaForNav),
         }
         html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
     } else {
@@ -565,8 +559,7 @@ const loadDocsPage = async (req, res, next) => {
                 apiType: apiType,
                 apiName: apiMetadata[0].name || '',
                 profile: req.isAuthenticated() ? profile : null,
-                // resolveShowApiKeysNav returns false early for GraphQL/MCP/SOAP and lazily
-                // fetches the definition itself for the remaining types, so no preload here.
+                // resolveShowApiKeysNav decides from the API type alone; no definition is needed.
                 showApiKeysNav: await resolveShowApiKeysNav(orgId, apiId, apiType, metaForNav),
             };
             html = await renderTemplateFromAPI(templateContent, orgId, orgName, "pages/docs", viewName);
@@ -611,7 +604,11 @@ const loadDocument = async (req, res, next) => {
         const layoutPath = config.designMode.pathToLayout;
         const metaData = loadAPIMetaDataFromFile(apiHandle);
         const isSpecPage = req.originalUrl.includes(constants.FILE_NAME.API_SPECIFICATION_PATH);
-        const definitionResponse = await getAPIDefinition(orgName, viewName, apiHandle);
+        // Only the specification page needs the definition; Markdown documents take the
+        // type from the sample metadata, so an unreadable definition cannot fail them.
+        const definitionResponse = isSpecPage
+            ? await getAPIDefinition(orgName, viewName, apiHandle)
+            : { apiType: metaData.type };
         let templateContent = {
             isAPIDefinition: false,
             isWebSocketTryout: false,
@@ -655,10 +652,7 @@ const loadDocument = async (req, res, next) => {
         templateContent.currentDocType = docType || null;
         templateContent.apiName = metaData.name || '';
         const metaForNav = { refId: metaData.refId };
-        // Pass the definition so the API Keys nav is computed the same way as every
-        // other API-scoped page — without it the check always returns false and the
-        // API Keys item is hidden on the documentation page.
-        templateContent.showApiKeysNav = await resolveShowApiKeysNav(null, null, definitionResponse.apiType, metaForNav, definitionResponse.swagger ?? null);
+        templateContent.showApiKeysNav = await resolveShowApiKeysNav(null, null, definitionResponse.apiType, metaForNav);
         const html = renderTemplate(layoutPath + 'pages/docs/page.hbs', layoutPath + 'layout/main.hbs', templateContent, false);
         res.send(html);
         return;
@@ -883,18 +877,10 @@ async function loadAPIMetaData(req, orgId, apiId, viewName) {
     if (metaData !== "") {
         const data = metaData ? JSON.stringify(metaData) : {};
         metaData = JSON.parse(data);
-        //replace image urls
-        // Use the handle (metaData.id), not the raw uuid — the /apis/{apiId}/assets
-        // endpoint resolves apiId via getIdExcludingType, which matches on `handle`.
-        // A uuid here never matches and the asset request 404s. This mirrors
-        // appendAPIImageURL (listing page), which already uses the handle.
-        // orgId is appended so the (public) image endpoint can resolve the view for
-        // anonymous visitors with no session — mirrors appendAPIImageURL and getOrgAsset.
+        // Image URLs use the handle (metaData.id), not the uuid: the asset routes resolve the handle.
         let images = metaData.apiImageMetadata;
         for (const key in images) {
-            let apiImageUrl = `${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${metaData.id}${constants.API_TEMPLATE_FILE_NAME}`;
-            const modifiedApiImageURL = apiImageUrl + images[key] + `${constants.ORG_ID_PARAM}${orgId}`;
-            images[key] = modifiedApiImageURL;
+            images[key] = util.apiImageUrl(orgId, metaData, images[key]);
         }
     }
     return metaData;
@@ -930,45 +916,26 @@ async function getApiDefinitionFileContent(orgId, apiId) {
 
 /**
  * Single source of truth for the "API Keys" sidebar item visibility on any
- * API-scoped page (landing, documentation, api-keys). It loads the stored API
- * definition and inspects its security schemes so every page derives the flag
- * the same way — previously each page computed it separately and some (e.g. the
- * documentation page) omitted the definition, hiding the nav item inconsistently.
+ * API-scoped page (landing, documentation, api-keys), so every page derives the
+ * flag the same way.
  *
- * GraphQL/MCP/SOAP definitions are not OpenAPI security-scheme documents we can
- * inspect for apiKey security, so they resolve to false without a definition load.
+ * The result does not depend on the API definition's security schemes. GraphQL,
+ * MCP, SOAP and WebSub APIs do not get API keys.
+ *
+ * The orgId, apiId and preloadedDefinition parameters are no longer used; they
+ * are kept so existing callers do not need to change.
  *
  * @param {string} orgId
  * @param {string} apiId
  * @param {string} apiType - constants.API_TYPE.*
  * @param {object} metaData - any truthy metadata object for the API
- * @param {string|object} [preloadedDefinition] - the API definition if the caller
- *        already loaded it (pass to avoid a second read); omit to load from storage.
  * @returns {Promise<boolean>}
  */
-async function resolveShowApiKeysNav(orgId, apiId, apiType, metaData, preloadedDefinition) {
+async function resolveShowApiKeysNav(orgId, apiId, apiType, metaData) {
     if (!metaData) {
         return false;
     }
-    if (apiType === constants.API_TYPE.GRAPHQL
-        || apiType === constants.API_TYPE.MCP
-        || apiType === constants.API_TYPE.SOAP) {
-        return false;
-    }
-    let apiDefinition = preloadedDefinition;
-    if (apiDefinition === undefined) {
-        apiDefinition = null;
-        try {
-            apiDefinition = await getApiDefinitionFileContent(orgId, apiId);
-        } catch (definitionErr) {
-            logger.debug('Could not load API definition for API keys nav check', {
-                orgId,
-                apiId,
-                error: definitionErr.message
-            });
-        }
-    }
-    return apiUsesApiKeySecurity(metaData, apiDefinition);
+    return apiUsesApiKeySecurity({ ...metaData, type: apiType ?? metaData.type });
 }
 
 function parseApiDefinitionContent(apiDefinitionContent) {
@@ -1208,6 +1175,7 @@ const loadAPIContentMd = async (req, res) => {
 
         // Load API definition
         let apiDefinition = null;
+        let definitionRow = null;
         let specHeading = 'OpenAPI Specification';
         const apiType = metaData?.type;
         try {
@@ -1222,8 +1190,8 @@ const loadAPIContentMd = async (req, res) => {
             const definitionDocType = apiType === constants.API_TYPE.MCP
                 ? constants.DOC_TYPES.SCHEMA_DEFINITION
                 : constants.DOC_TYPES.API_DEFINITION;
-            const raw = await apiFileDao.getDoc(definitionDocType, orgId, apiId, null);
-            if (raw) apiDefinition = raw.file_content.toString(constants.CHARSET_UTF8);
+            definitionRow = await apiFileDao.getDoc(definitionDocType, orgId, apiId, null);
+            if (definitionRow) apiDefinition = definitionRow.file_content.toString(constants.CHARSET_UTF8);
         } catch (defErr) {
             logger.warn('Could not load API definition for markdown', { orgId, apiId, error: defErr.message });
         }
@@ -1264,16 +1232,7 @@ const loadAPIContentMd = async (req, res) => {
         let schemaDefinition = null;
         if (apiType === constants.API_TYPE.MCP && apiDefinition) {
             try {
-                const parsed = JSON.parse(apiDefinition);
-                if (Array.isArray(parsed)) {
-                    schemaDefinition = {
-                        tools: parsed.filter(item => item.type === 'TOOL'),
-                        resources: parsed.filter(item => item.type === 'RESOURCE'),
-                        prompts: parsed.filter(item => item.type === 'PROMPT'),
-                    };
-                } else {
-                    schemaDefinition = parsed;
-                }
+                schemaDefinition = parseMcpSchema(definitionRow);
             } catch (parseErr) {
                 logger.warn('Could not parse MCP schema definition for markdown', { orgId, apiId, error: parseErr.message });
             }

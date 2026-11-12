@@ -25,7 +25,7 @@ Feature: Publishing while the API Portal is unavailable
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "publish-plan" and store it as "planHandle"
     And I create a subscription plan "${CTX:planHandle}" allowing 10000 requests per hour via the control plane

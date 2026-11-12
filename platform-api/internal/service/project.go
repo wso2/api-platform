@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -39,29 +40,36 @@ type ProjectService struct {
 	projectRepo    repository.ProjectRepository
 	orgRepo        repository.OrganizationRepository
 	apiRepo        repository.APIRepository
+	graphqlAPIRepo repository.GraphQLAPIRepository
+	llmProxyRepo   repository.LLMProxyRepository
 	mcpProxyRepo   repository.MCPProxyRepository
 	agentProxyRepo repository.AgentProxyRepository
 	appRepo        repository.ApplicationRepository
 	deletionGuards []ProjectDeletionGuard
 	auditRepo      repository.AuditRepository
 	identity       *IdentityService
+	config         *config.Server
 	slogger        *slog.Logger
 }
 
 func NewProjectService(projectRepo repository.ProjectRepository, orgRepo repository.OrganizationRepository,
-	apiRepo repository.APIRepository, mcpProxyRepo repository.MCPProxyRepository,
+	apiRepo repository.APIRepository, graphqlAPIRepo repository.GraphQLAPIRepository,
+	llmProxyRepo repository.LLMProxyRepository, mcpProxyRepo repository.MCPProxyRepository,
 	agentProxyRepo repository.AgentProxyRepository,
 	appRepo repository.ApplicationRepository, auditRepo repository.AuditRepository,
-	identity *IdentityService, slogger *slog.Logger) *ProjectService {
+	identity *IdentityService, cfg *config.Server, slogger *slog.Logger) *ProjectService {
 	return &ProjectService{
 		projectRepo:    projectRepo,
 		orgRepo:        orgRepo,
 		apiRepo:        apiRepo,
+		graphqlAPIRepo: graphqlAPIRepo,
+		llmProxyRepo:   llmProxyRepo,
 		mcpProxyRepo:   mcpProxyRepo,
 		agentProxyRepo: agentProxyRepo,
 		appRepo:        appRepo,
 		auditRepo:      auditRepo,
 		identity:       identity,
+		config:         cfg,
 		slogger:        slogger,
 	}
 }
@@ -89,6 +97,9 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 	var handle string
 	if req.Id != nil && *req.Id != "" {
 		handle = *req.Id
+		if err := utils.ValidateHandle(handle); err != nil {
+			return nil, err
+		}
 		existing, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, organizationID)
 		if err != nil {
 			return nil, err
@@ -271,21 +282,68 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 	if project == nil {
 		return apperror.ProjectNotFound.New()
 	}
+	if err := s.checkProjectDeletion(project, orgId); err != nil {
+		return err
+	}
 
-	projects, err := s.projectRepo.GetProjectsByOrganizationID(project.OrganizationID)
+	if err := s.projectRepo.DeleteProject(project.ID); err != nil {
+		return err
+	}
+	_ = s.auditRepo.Record("DELETE", project.ID, "project", orgId, actor)
+	return nil
+}
+
+// CheckProjectDeletion reports whether DeleteProject would delete the project: nil when it
+// would, otherwise the refusal it would return. An unknown project is ProjectNotFound.
+func (s *ProjectService) CheckProjectDeletion(handle, orgId string) error {
+	project, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, orgId)
 	if err != nil {
 		return err
 	}
-	if len(projects) <= 1 {
-		return apperror.ValidationFailed.New("Organization must have at least one project")
+	if project == nil {
+		return apperror.ProjectNotFound.New()
+	}
+	return s.checkProjectDeletion(project, orgId)
+}
+
+// checkProjectDeletion refuses deleting a project that still holds artifacts or applications,
+// or that a plugin's deletion guard refuses. While new organizations get a default project, an
+// organization's last project is refused too.
+func (s *ProjectService) checkProjectDeletion(project *model.Project, orgId string) error {
+	if createsDefaultProject(s.config) {
+		projects, err := s.projectRepo.GetProjectsByOrganizationID(project.OrganizationID)
+		if err != nil {
+			return err
+		}
+		if len(projects) <= 1 {
+			return apperror.ValidationFailed.New("Organization must have at least one project")
+		}
 	}
 
-	apis, err := s.apiRepo.GetAPIsByProjectUUID(project.ID, orgId)
+	apisCount, err := s.apiRepo.CountAPIsByOrganizationUUID(orgId, project.ID, "")
 	if err != nil {
 		return err
 	}
-	if len(apis) > 0 {
+	if apisCount > 0 {
 		return apperror.ValidationFailed.New("Project has associated APIs")
+	}
+
+	// GraphQL APIs and LLM proxies cascade with the project in the database, so without these
+	// checks deleting the project would silently remove them.
+	graphqlAPIsCount, err := s.graphqlAPIRepo.CountByProject(orgId, project.ID, "")
+	if err != nil {
+		return err
+	}
+	if graphqlAPIsCount > 0 {
+		return apperror.ValidationFailed.New("Project has associated GraphQL APIs")
+	}
+
+	llmProxiesCount, err := s.llmProxyRepo.CountByProject(orgId, project.ID)
+	if err != nil {
+		return err
+	}
+	if llmProxiesCount > 0 {
+		return apperror.ValidationFailed.New("Project has associated LLM proxies")
 	}
 
 	mcpProxiesCount, err := s.mcpProxyRepo.CountByProject(orgId, project.ID)
@@ -322,11 +380,6 @@ func (s *ProjectService) DeleteProject(handle, orgId, actor string) error {
 			return err
 		}
 	}
-
-	if err := s.projectRepo.DeleteProject(project.ID); err != nil {
-		return err
-	}
-	_ = s.auditRepo.Record("DELETE", project.ID, "project", orgId, actor)
 	return nil
 }
 

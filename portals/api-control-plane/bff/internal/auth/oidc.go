@@ -95,6 +95,11 @@ type OIDCOptions struct {
 	RedirectURL           string
 	PostLogoutRedirectURL string
 	Scopes                string
+	// Resource is the RFC 8707 resource indicator put on /oauth2/authorize when
+	// set, for an IdP that scopes tokens per resource server. It goes on the
+	// authorize request only: the IdP binds it to the authorization code, and
+	// an empty resource= on the token endpoint is rejected by ThunderID.
+	Resource string
 }
 
 // OIDC implements the authorization-code flow with PKCE using only net/http,
@@ -254,6 +259,9 @@ func (o *OIDC) AuthCodeURL(returnURL string) (authURL, txID string, err error) {
 		"nonce":                 {nonce},
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
+	}
+	if o.opts.Resource != "" {
+		q.Set("resource", o.opts.Resource)
 	}
 	return o.disco.AuthorizationEndpoint + "?" + q.Encode(), txID, nil
 }

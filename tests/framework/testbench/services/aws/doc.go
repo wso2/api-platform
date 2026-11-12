@@ -17,10 +17,10 @@
  */
 
 // Package aws provides the testbench's AWS services. The AWS service, on port 80, plays the AWS
-// endpoints the gateway's AWS Authentication policy reaches, and verifies AWS Signature Version 4
-// (SigV4) request signatures independently of the AWS SDK the gateway uses. The Bedrock service,
-// on port 3006, plays the Bedrock Runtime ApplyGuardrail API the AWS Bedrock Guardrail policy
-// calls.
+// endpoints the gateway's AWS Authentication policy reaches. The Bedrock service, on port 3006,
+// plays the Bedrock Runtime ApplyGuardrail API the AWS Bedrock Guardrail policy calls. Both
+// verify AWS Signature Version 4 (SigV4) request signatures independently of the AWS SDK the
+// gateway uses.
 //
 // The first two segments of a request path to the AWS service name the AWS service and region
 // being addressed, as an AWS endpoint's host name does:
@@ -39,7 +39,9 @@
 //
 // Verification follows SigV4 as the AWS SDKs implement it for services other than Amazon S3: the
 // path is URI-encoded twice in the canonical request, and the signature, credential scope, session
-// token and expiry are checked. X-Amz-Date is accepted within five minutes of the service's clock.
+// token and expiry are checked. Every x-amz-* header of a request must be signed, as SigV4 requires,
+// except X-Amz-Security-Token, which AWS's test suite also accepts unsigned. A request with an unsigned
+// one gets 403 AccessDenied. X-Amz-Date is accepted within five minutes of the service's clock.
 // The tests check the verifier against the official AWS SigV4 test suite and the AWS SDK for Go v2
 // signer. The error codes are representative AWS codes, not those of one particular service. IAM
 // policy evaluation is reduced to a per-credential list of permitted resources, and S3-specific
@@ -55,7 +57,9 @@
 //
 // STS answers AssumeRole, signed with a permanent fixture credential, with temporary credentials
 // that expire after a short lifetime. Those credentials are derived from their expiry time rather
-// than stored. The name of the role a request assumes can select an STS failure or a shorter
+// than stored. Their secrets contain "SecretAccessKey000" and their session tokens
+// "SessionToken0001", as the fixture credentials' do, so a test can check that no secret of either
+// kind is disclosed. The name of the role a request assumes can select an STS failure or a shorter
 // credential lifetime, after the request's signature verifies:
 //
 //	testbench-sts-unavailable    always 503 ServiceUnavailable
@@ -69,12 +73,32 @@
 // Any other role is assumed normally.
 //
 // The Bedrock service (bedrock.go) listens on its own port, which the gateway runtime reaches
-// through AWS_ENDPOINT_URL_BEDROCK_RUNTIME as http://testbench:3006. It decides ApplyGuardrail from
-// the text it is given and does not verify signatures: text naming violence, hate or illegal
-// content is blocked (GUARDRAIL_INTERVENED); email addresses at example.com are masked ("mask-"
-// addresses, restorable) or redacted; text asking to simulate an error gets 500; anything else
-// passes (NONE) and is echoed back, as Bedrock always returns the text in outputs[0]. It keeps no
-// state either.
+// through AWS_ENDPOINT_URL_BEDROCK_RUNTIME as http://testbench:3006. It plays Bedrock Runtime in
+// us-east-1. Like Bedrock, it first verifies the request's signature, for service "bedrock" in
+// us-east-1, against the fixture and STS-issued credentials and two more key pairs only it
+// accepts, AKIAIOSFODNN7TEST / testsecretaccesskeytestsecretaccesskey1 and test-access-key /
+// test-secret-key. Where Bedrock uses another code than the shared verifier, it answers with
+// Bedrock's: UnrecognizedClientException for an unknown key, ExpiredTokenException for an expired
+// token and InvalidSignatureException for a signature that does not match. It then looks up the
+// guardrail: the account has only test-guardrail-id, at versions DRAFT and 1, and any other
+// identifier or version gets 404 ResourceNotFoundException.
+// It then decides ApplyGuardrail from the text it is given, reporting every policy that matches in
+// one assessment:
+//
+//	violence, hate, illegal        content filter VIOLENCE, blocked
+//	investment advice              denied topic "Investment Advice", blocked
+//	contraband, secret recipe      custom words, blocked; version 1 blocks only "contraband"
+//	email at example.com, phone    PII (EMAIL, PHONE, US_SOCIAL_SECURITY_NUMBER), anonymized:
+//	555-123-4567, SSN 123-45-6789  each match becomes "*****", or $ANONYMIZED_<TYPE>$ for every
+//	                               match when the text contains "mask-" anywhere
+//	simulate … error               500 InternalServerException
+//	simulate … outage              503 ServiceUnavailableException
+//	simulate … unresponsive        held without an answer until the caller gives up, or for at
+//	                               most 25 seconds, then 503 ServiceUnavailableException
+//
+// Matching ignores case. Blocked text is answered with the guardrail's blocked message; text that
+// matches nothing passes (NONE) and is echoed back, as Bedrock always returns the text in
+// outputs[0]. It keeps no state either.
 //
 // The fixture credentials are:
 //

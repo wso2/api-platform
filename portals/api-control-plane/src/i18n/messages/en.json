@@ -414,6 +414,9 @@
   "api.create.generalForm.description.label": {
     "defaultMessage": "Description"
   },
+  "api.create.generalForm.description.placeholder": {
+    "defaultMessage": "Ex: Manages customer orders and their fulfilment status."
+  },
   "api.create.generalForm.identifier.error.pattern": {
     "defaultMessage": "Use lowercase letters and numbers, separated by single hyphens."
   },
@@ -462,13 +465,13 @@
     "defaultMessage": "Enter a full URL, for example https://api.example.com."
   },
   "api.create.generalForm.targetUrl.error.required": {
-    "defaultMessage": "Enter a target URL."
+    "defaultMessage": "Enter an endpoint."
   },
   "api.create.generalForm.targetUrl.helper": {
     "defaultMessage": "The backend the gateway routes to."
   },
   "api.create.generalForm.targetUrl.label": {
-    "defaultMessage": "Target URL"
+    "defaultMessage": "Endpoint"
   },
   "api.create.generalForm.targetUrl.placeholder.notice": {
     "defaultMessage": "This API is using https://example.com as a placeholder backend. Replace it with your actual backend URL now, or update it before deploying."
@@ -785,6 +788,30 @@
     "defaultMessage": "Spectral rules passed",
     "description": "A passed check in the animated API Designer preview. Spectral is a tool name."
   },
+  "apiControlPlane.components.DocumentsIllustration.added": {
+    "defaultMessage": "Added",
+    "description": "Badge on the sample document in the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.count": {
+    "defaultMessage": "2 documents",
+    "description": "Footer count in the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.sampleTitle": {
+    "defaultMessage": "Getting started",
+    "description": "Name of the sample document that drops into the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.subtitle": {
+    "defaultMessage": "Guides, samples and support",
+    "description": "Subheading of the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.title": {
+    "defaultMessage": "API documents",
+    "description": "Heading of the animated documents preview."
+  },
+  "apiControlPlane.components.DocumentsIllustration.visible": {
+    "defaultMessage": "Visible to developers",
+    "description": "Footer of the animated documents preview."
+  },
   "apiControlPlane.components.ErrorFallback.action.goHome": {
     "defaultMessage": "Go to console home",
     "description": "Leaves the failing page for the console landing page. Escapes a page that fails every time it is opened."
@@ -871,6 +898,34 @@
     "defaultMessage": "Backend",
     "description": "Title of the backend card in the \"Ready to connect\" preview. Noun."
   },
+  "apiControlPlane.components.ServiceAccountsIllustration.active": {
+    "defaultMessage": "Active",
+    "description": "Badge on the sample service account in the animated preview."
+  },
+  "apiControlPlane.components.ServiceAccountsIllustration.clientId": {
+    "defaultMessage": "client id",
+    "description": "Label of the sample client ID line in the animated preview."
+  },
+  "apiControlPlane.components.ServiceAccountsIllustration.expires": {
+    "defaultMessage": "expires in 1h",
+    "description": "Token lifetime shown in the animated service accounts preview."
+  },
+  "apiControlPlane.components.ServiceAccountsIllustration.secret": {
+    "defaultMessage": "secret",
+    "description": "Label of the sample client secret line in the animated preview."
+  },
+  "apiControlPlane.components.ServiceAccountsIllustration.subtitle": {
+    "defaultMessage": "Scripts, pipelines and tools",
+    "description": "Subheading of the animated service accounts preview."
+  },
+  "apiControlPlane.components.ServiceAccountsIllustration.title": {
+    "defaultMessage": "Service accounts",
+    "description": "Heading of the animated service accounts preview."
+  },
+  "apiControlPlane.components.ServiceAccountsIllustration.tokenIssued": {
+    "defaultMessage": "Token issued",
+    "description": "Footer of the animated service accounts preview."
+  },
   "apiControlPlane.components.StateViews.forbiddenDescription": {
     "defaultMessage": "Your account does not include access to this page. An administrator in your organization can grant it.",
     "description": "Explanation under the forbidden heading. Names who can fix it, and deliberately not which scope is missing — that is meaningless to the reader and tells a probing caller what to look for."
@@ -941,10 +996,6 @@
     "defaultMessage": "WSO2-managed gateways",
     "description": "Plural noun for WSO2-managed gateways, used inside the limit-reached sentence."
   },
-  "apiControlPlane.hooks.useResourceLimits.componentSelfHostedGateways": {
-    "defaultMessage": "self-hosted gateways",
-    "description": "Plural noun for self-hosted gateways, used inside the limit-reached sentence."
-  },
   "apiControlPlane.hooks.useResourceLimits.componentPortals": {
     "defaultMessage": "portals",
     "description": "Plural noun for developer portals, used inside the limit-reached sentence."
@@ -952,6 +1003,10 @@
   "apiControlPlane.hooks.useResourceLimits.componentRestApis": {
     "defaultMessage": "APIs",
     "description": "Plural noun for APIs, used inside the limit-reached sentence."
+  },
+  "apiControlPlane.hooks.useResourceLimits.componentSelfHostedGateways": {
+    "defaultMessage": "self-hosted gateways",
+    "description": "Plural noun for self-hosted gateways, used inside the limit-reached sentence."
   },
   "apiControlPlane.hooks.useResourceLimits.limitReached": {
     "defaultMessage": "You cannot create more {component} because your organization has reached the maximum of {max}.",
@@ -2692,6 +2747,215 @@
   "apiControlPlane.pages.appShell.appShellPages.orgManage.components.SubscriptionPlanFormDialog.subtitle.edit": {
     "defaultMessage": "Update usage limits and availability for this plan."
   },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.afterBody": {
+    "defaultMessage": "You’ll save the secret, then can get a test token on the same page. The secret is shown once."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.afterTitle": {
+    "defaultMessage": "After you create it"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.back": {
+    "defaultMessage": "Service accounts"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.create": {
+    "defaultMessage": "Create service account"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.createFailed": {
+    "defaultMessage": "Could not create the service account."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.created": {
+    "defaultMessage": "Created \"{name}\"."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.creating": {
+    "defaultMessage": "Creating…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.description": {
+    "defaultMessage": "Description"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.descriptionPlaceholder": {
+    "defaultMessage": "What the account is for, who owns it"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.details": {
+    "defaultMessage": "Details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.displayName": {
+    "defaultMessage": "Display name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.displayNamePlaceholder": {
+    "defaultMessage": "e.g. billing-sync-pipeline"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.forbiddenBody": {
+    "defaultMessage": "Ask an organization administrator if you need a service account."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.forbiddenTitle": {
+    "defaultMessage": "Service accounts are managed by administrators"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.required": {
+    "defaultMessage": "Required."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roleAdmin": {
+    "defaultMessage": "Full control, including users and roles. Use sparingly."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roleDeployer": {
+    "defaultMessage": "Build and deploy APIs, proxies and pipelines."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roleServiceAccount": {
+    "defaultMessage": "Read access for automated integrations."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roleSubscriptions": {
+    "defaultMessage": "Manage applications and subscriptions."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.roles": {
+    "defaultMessage": "Roles"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesFailed": {
+    "defaultMessage": "Could not load the roles. Go back and try again."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesHint": {
+    "defaultMessage": "Select one or more. Scopes are combined."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesLoading": {
+    "defaultMessage": "Loading roles"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesNone": {
+    "defaultMessage": "No roles are defined. Add one to the role-to-scope mapping on the server."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.rolesRequired": {
+    "defaultMessage": "Select at least one role."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.scopeCount": {
+    "defaultMessage": "{count, plural, one {# scope} other {# scopes}}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.scopesGranted": {
+    "defaultMessage": "{count, plural, one {scope granted} other {scopes granted}}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.showScopes": {
+    "defaultMessage": "Show scopes of {role}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.subtitle": {
+    "defaultMessage": "An identity for a script, pipeline or tool. You get a client ID and secret once it is created."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.summary": {
+    "defaultMessage": "Summary"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.summaryName": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.summaryNoRoles": {
+    "defaultMessage": "None selected"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.summaryRoles": {
+    "defaultMessage": "Roles"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.title": {
+    "defaultMessage": "New service account"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.CreateServiceAccountPage.tooLong": {
+    "defaultMessage": "Too long: the limit is {max} bytes, and some characters take more than one."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.accessToken": {
+    "defaultMessage": "Access token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.clientId": {
+    "defaultMessage": "Client ID"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.clientSecret": {
+    "defaultMessage": "Client secret"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.copied": {
+    "defaultMessage": "Copied"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.copyEnv": {
+    "defaultMessage": "Copy both as .env"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.copyLabel": {
+    "defaultMessage": "Copy {label}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.crumbGetToken": {
+    "defaultMessage": "Get token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.crumbLabel": {
+    "defaultMessage": "Breadcrumb"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.crumbList": {
+    "defaultMessage": "Service accounts"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.done": {
+    "defaultMessage": "Done"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.exampleHint": {
+    "defaultMessage": "Set PLATFORM_API_URL to the API Platform address and CLIENT_SECRET from your secret store. The secret is never written into this example.",
+    "description": "PLATFORM_API_URL and CLIENT_SECRET are shell variable names — do not translate."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.exampleTitle": {
+    "defaultMessage": "Get an access token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.expired": {
+    "defaultMessage": "Expired"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.expiresIn": {
+    "defaultMessage": "Expires in {minutes}:{seconds}",
+    "description": "Countdown to token expiry, e.g. \"Expires in 14:52\". {seconds} is always two digits."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.failed": {
+    "defaultMessage": "Could not get a token. Try again in a moment."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.getAnother": {
+    "defaultMessage": "Get another"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.getToken": {
+    "defaultMessage": "Get token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.getting": {
+    "defaultMessage": "Getting token…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.hideLabel": {
+    "defaultMessage": "Hide {label}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.rejected": {
+    "defaultMessage": "Could not get a token. Check the secret, and that the account is enabled."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.retry": {
+    "defaultMessage": "Retry"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.revokeNote": {
+    "defaultMessage": "This token cannot be revoked on its own. Disabling the account or regenerating its secret stops it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.rolesFailed": {
+    "defaultMessage": "Could not load the roles, so the token's scopes are unknown. Retry without leaving this page, so the secret stays on screen."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.scopeFailed": {
+    "defaultMessage": "The account's roles do not grant the requested scopes. Save the secret before you leave this page, then check the role-to-scope mapping."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.scopesInToken": {
+    "defaultMessage": "{count, plural, one {scope in this token} other {scopes in this token}}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.showLabel": {
+    "defaultMessage": "Show {label}"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.testBody": {
+    "defaultMessage": "Check the credentials work. Uses the secret above, so there’s nothing to paste. Getting a token updates “Last token issued” and is logged."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.testTitle": {
+    "defaultMessage": "Get a test token"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.title": {
+    "defaultMessage": "Service account created"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.useIt": {
+    "defaultMessage": "Use it"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.warningBody": {
+    "defaultMessage": "Store it in your secret manager. If it is lost, regenerate it — which breaks anything still using the old one."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.warningTitle": {
+    "defaultMessage": "The secret will not be shown again"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountCreatedPage.works": {
+    "defaultMessage": "The credentials work. Token issued just now, and “Last token issued” is updated."
+  },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.serviceAccounts.ServiceAccountsPage.actionFailed": {
     "defaultMessage": "The action could not be completed."
   },
@@ -3189,13 +3453,13 @@
     "defaultMessage": "Portals"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayAction": {
-    "defaultMessage": "Connect a gateway"
+    "defaultMessage": "Connect an API gateway"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayDescription": {
-    "defaultMessage": "Run your APIs on a managed gateway or a self-hosted one."
+    "defaultMessage": "Run your APIs on a managed API gateway or a self-hosted one."
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.gatewayTitle": {
-    "defaultMessage": "Gateways"
+    "defaultMessage": "API Gateways"
   },
   "apiControlPlane.pages.appShell.appShellPages.organizations.OrganizationHomePage.loading": {
     "defaultMessage": "Loading organization"
@@ -3275,6 +3539,10 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.ApiPortalPublicationsList.title": {
     "defaultMessage": "Publish {apiName}",
     "description": "Page heading. {apiName} is the API display name, user-supplied; do not translate it."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.apiThumbnailFailed": {
+    "defaultMessage": "The API’s thumbnail could not be loaded.",
+    "description": "Shown when the publisher asks for the API’s own thumbnail and reading it failed, so nothing changed."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.back": {
     "defaultMessage": "Back to API portals"
@@ -3398,6 +3666,10 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.productionUrlLabel": {
     "defaultMessage": "Production URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.reloadThumbnail": {
+    "defaultMessage": "Use the API’s default thumbnail",
+    "description": "Icon button replacing the thumbnail on this page with the API’s own current one."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.sandboxUrlLabel": {
     "defaultMessage": "Sandbox URL"
@@ -3565,9 +3837,21 @@
     "defaultMessage": "Unlimited",
     "description": "Plan card value when the plan has no configured limit."
   },
-  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.goToPublish": {
-    "defaultMessage": "Go to Publish",
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.configureAndPublish": {
+    "defaultMessage": "Configure & Publish",
     "description": "Card action opening the publish flow for this API on this portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.moreActions": {
+    "defaultMessage": "More publish options",
+    "description": "Accessible label for the arrow of the Publish split button, which opens its other action."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.publish": {
+    "defaultMessage": "Publish",
+    "description": "Split button action, offered only while nothing is saved for this API on this portal, that publishes it there straight away."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.publishing": {
+    "defaultMessage": "Publishing…",
+    "description": "The Publish button’s label while its publish runs."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PortalPublicationCard.statusLabel": {
     "defaultMessage": "Status",
@@ -3598,14 +3882,26 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecate": {
     "defaultMessage": "Deprecate"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.deprecating": {
+    "defaultMessage": "Deprecating…",
+    "description": "Label of the Deprecate button while the deprecation is in progress."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.moreActions": {
     "defaultMessage": "More publish actions"
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.publish": {
     "defaultMessage": "Publish"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.publishing": {
+    "defaultMessage": "Publishing…",
+    "description": "Label of the Publish button while the publish is in progress."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.republish": {
     "defaultMessage": "Republish"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.republishing": {
+    "defaultMessage": "Republishing…",
+    "description": "Label of the Republish button while the republish is in progress."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.saveDraft": {
     "defaultMessage": "Save Draft"
@@ -3613,11 +3909,27 @@
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublish": {
     "defaultMessage": "Unpublish"
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishActionsBar.unpublishing": {
+    "defaultMessage": "Unpublishing…",
+    "description": "Label of the Unpublish button while the unpublish is in progress."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishWithDefaults.needsReview": {
+    "defaultMessage": "Nothing was published to {portalName}. Check the details here, then publish.",
+    "description": "Shown when a one-click Publish from a portal card cannot publish as it is and opens the publish page instead. {portalName} is user-supplied."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishWithDefaults.published": {
+    "defaultMessage": "Published {apiName} to {portalName}.",
+    "description": "Shown once a one-click Publish from a portal card succeeds. {apiName} and {portalName} are user-supplied."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishedSpecificationTab.error": {
     "defaultMessage": "Unable to load the published specification."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PublishedSpecificationTab.loading": {
     "defaultMessage": "Loading the published specification"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.apiDefinitionChanged": {
+    "defaultMessage": "Differs from the API’s specification.",
+    "description": "Tooltip of the info icon beside the button that loads the API’s own specification."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.editorLabel": {
     "defaultMessage": "API definition ({format})",
@@ -3630,9 +3942,21 @@
     "defaultMessage": "Source format",
     "description": "Accessible name for the YAML / JSON toggle buttons."
   },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.loadApiDefinition": {
+    "defaultMessage": "Load the API’s specification",
+    "description": "Button replacing the specification on this page with the API’s own current one. Shown only when the two differ."
+  },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.malformed": {
     "defaultMessage": "This is not valid {format}: {detail}",
     "description": "{format} is JSON, YAML or GraphQL; {detail} is the parser’s own message naming the line."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.resourcesEmpty": {
+    "defaultMessage": "No resources to show. Fix the definition on the left to see them here.",
+    "description": "Shown in the resources pane when the definition can't be read or has no paths."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.resourcesTitle": {
+    "defaultMessage": "Resources",
+    "description": "Heading of the pane listing the definition's operations, beside the editor."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.clearAll": {
     "defaultMessage": "Clear all"
@@ -5166,6 +5490,16 @@
   },
   "apiControlPlane.projects.ProjectStatistics.total": {
     "defaultMessage": "Total"
+  },
+  "apiControlPlane.scope.ConsoleScopeProvider.switchFailedMessage": {
+    "defaultMessage": "Refresh the page to try again."
+  },
+  "apiControlPlane.scope.ConsoleScopeProvider.switchFailedTitle": {
+    "defaultMessage": "Unable to switch organization"
+  },
+  "apiControlPlane.scope.ConsoleScopeProvider.switching": {
+    "defaultMessage": "Switching organization",
+    "description": "Shown while the session moves into the organization the user opened."
   },
   "apiListPage.clearFilters": {
     "defaultMessage": "Clear filters"

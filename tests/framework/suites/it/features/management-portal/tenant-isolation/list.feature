@@ -23,7 +23,7 @@ Feature: Another organization's listings never include an organization's resourc
   So that it cannot discover what my organization holds
 
   Background:
-    Given I generate a unique value from "tenant-list-project" and store it as "projectHandle"
+    Given I generate a unique resource name from "tenant-list-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   @TENANT-002

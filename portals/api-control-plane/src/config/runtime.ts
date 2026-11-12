@@ -41,7 +41,18 @@ export type GatewayVersionEntry = {
   channel: 'STS' | 'LTS';
 };
 
+/** The WSO2 Cloud platform switcher's config (`cloudShell` in the runtime config). */
+export type CloudShellConfig = {
+  platformUrls?: Record<string, string | undefined>;
+  /** Comma-separated platform ids shown as "Coming soon". */
+  comingSoonPlatforms?: string;
+};
+
 export type RuntimeConfig = {
+  /** The WSO2 Cloud console's origin; the switcher's Manage links point at it. */
+  cloudConsoleUrl: string;
+  /** Platform URLs for the switcher. Empty when the deployment sets none. */
+  cloudShell: CloudShellConfig;
   appBasePath: string;
   apiBaseUrl: string;
   /**
@@ -57,13 +68,6 @@ export type RuntimeConfig = {
    * per-deployment overrides applied (see `config/authContract.ts`).
    */
   authContract: AuthContract;
-  /**
-   * The Test console's relay, which sends a request to a deployed gateway and
-   * returns its answer. This portal's BFF serves it at
-   * /api/gateway-relay/invoke; set it wherever the deployment serves the relay,
-   * whatever the auth mode.
-   */
-  gatewayRelayUrl: string;
   /**
    * Per-deployment default locale (BCP 47, e.g. "en"). Falls through
    * to `DEFAULT_LOCALE` in `src/i18n/config.ts` if empty or unsupported.
@@ -88,6 +92,12 @@ export type RuntimeConfig = {
    * billing URL.
    */
   billingProxyEnabled: boolean;
+  /**
+   * Same-origin path of billing's user API, for a deployment that routes it
+   * apart from the console's proxy (e.g. "/_api/billing/api/v1"). Empty means
+   * `<platformApiBaseUrl>/billing`. Read only when `billingProxyEnabled` is set.
+   */
+  billingBaseUrl: string;
   /**
    * Region recorded on an organization this console registers. Only read when the
    * platform does not have the organization yet, which the provisioning flow
@@ -175,12 +185,16 @@ export type RuntimeConfig = {
 };
 
 type LegacyWindowConfig = Partial<{
+  cloudConsoleUrl: string;
+  cloudShell: CloudShellConfig;
   API_BASE_URL: string;
   API_PLATFORM_HOME_PAGE: string;
   AUTH_MODE: string;
   ORGANIZATION_API_URL: string;
   BILLING_PROXY_ENABLED: string;
   billingProxyEnabled: boolean | string;
+  BILLING_BASE_URL: string;
+  billingBaseUrl: string;
   DEFAULT_ORG_REGION: string;
   defaultOrgRegion: string;
   CLOUD_PROXY_ENABLED: string;
@@ -221,7 +235,8 @@ type LegacyWindowConfig = Partial<{
   authLogoutUrl: string;
   authLogoutStyle: string;
   authClaimMappings: string | Record<string, unknown>;
-  gatewayRelayUrl: string;
+  authOrganizationsUrl: string;
+  authSwitchOrganizationUrls: string | string[];
   FEATURE_FLAGS: string;
   environmentName: string;
   apiPlatformHomePage: string;
@@ -338,6 +353,20 @@ const readGatewayVersions = (value?: string): GatewayVersionEntry[] => {
   }
 };
 
+// cloudShell arrives as a native object (window config is a JS literal), but
+// tolerate a JSON string; anything else yields an empty config.
+const readCloudShell = (value: unknown): CloudShellConfig => {
+  let v = value;
+  if (typeof v === 'string') {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return {};
+    }
+  }
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as CloudShellConfig) : {};
+};
+
 // VITE_ override wins so a local platform-api can be targeted in dev even when the
 // runtime config injects a hosted "connect" gateway URL.
 const resolvedPlatformApiBaseUrl =
@@ -362,6 +391,8 @@ const resolvedAuthMode = readAuthMode(
 );
 
 export const runtimeConfig: RuntimeConfig = {
+  cloudConsoleUrl: fromWindow().cloudConsoleUrl || import.meta.env.VITE_CLOUD_CONSOLE_URL || '',
+  cloudShell: readCloudShell(fromWindow().cloudShell),
   appBasePath: normalizeBasePath(
     fromWindow().appBasePath ||
       import.meta.env.VITE_APP_BASE_PATH ||
@@ -389,11 +420,11 @@ export const runtimeConfig: RuntimeConfig = {
     logoutUrl: fromWindow().authLogoutUrl || import.meta.env.VITE_AUTH_LOGOUT_URL,
     logoutStyle: fromWindow().authLogoutStyle || import.meta.env.VITE_AUTH_LOGOUT_STYLE,
     claimMappings: fromWindow().authClaimMappings || import.meta.env.VITE_AUTH_CLAIM_MAPPINGS,
+    organizationsUrl:
+      fromWindow().authOrganizationsUrl || import.meta.env.VITE_AUTH_ORGANIZATIONS_URL,
+    switchOrganizationUrls:
+      fromWindow().authSwitchOrganizationUrls || import.meta.env.VITE_AUTH_SWITCH_ORGANIZATION_URLS,
   }),
-  gatewayRelayUrl:
-    fromWindow().gatewayRelayUrl ||
-    import.meta.env.VITE_GATEWAY_RELAY_URL ||
-    '/api/gateway-relay/invoke',
   defaultLocale:
     fromWindow().DEFAULT_LOCALE ||
     fromWindow().defaultLocale ||
@@ -423,6 +454,11 @@ export const runtimeConfig: RuntimeConfig = {
       fromWindow().billingProxyEnabled ||
       import.meta.env.VITE_BILLING_PROXY_ENABLED,
   ),
+  billingBaseUrl:
+    fromWindow().BILLING_BASE_URL ||
+    fromWindow().billingBaseUrl ||
+    import.meta.env.VITE_BILLING_BASE_URL ||
+    '',
   defaultOrgRegion:
     fromWindow().DEFAULT_ORG_REGION ||
     fromWindow().defaultOrgRegion ||

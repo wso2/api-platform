@@ -1,0 +1,6 @@
+# Enables the platform-api webhook receiver, deliberately leaving legacy_shared_secret at its
+# default (off), so this block proves the deny-by-default posture: a delivery with no secret_hash
+# is rejected, not silently accepted against the shared secret.
+[platform_api.webhook]
+enabled = true
+secret = '{{ env "APIP_CP_WEBHOOK_SECRET" }}'

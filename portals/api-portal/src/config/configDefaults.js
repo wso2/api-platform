@@ -121,6 +121,26 @@ const DEFAULTS = {
         poolConnectionTimeoutMs: 30000,
         poolRequestTimeoutMs: 30000,  // MSSQL only — per-query execution timeout
     },
+    // The /health and /ready endpoints (see src/health/). Durations use the Go
+    // notation ("3s", "500ms") the other components' health settings use; the
+    // loader adds a parsed millisecond twin (cacheTtlMs, checkTimeoutMs, ...) for
+    // each one.
+    health: {
+        cacheTtl: '3s',           // how long an evaluated result is reused
+        // Peer addresses (IP or CIDR) allowed to call the endpoints. Empty, or "*"
+        // alone, allows every client. A comma-separated string
+        // is accepted too, so one env var can carry the list.
+        allowedClients: [],
+        database: {
+            checkTimeout: '2s',   // bound on the check's own round trip
+            failureWindow: '30s', // how far back outcomes of real queries count
+            failureRatio: 0.5,    // failed share of attempts that means "down"
+            minAttempts: 5,       // attempts needed before the ratio decides
+            idlePeriod: '10s',    // with too few queries to decide, the check pings once per period
+            poolSaturation: 0.9,  // share of the pool in use, with callers waiting
+            poolWaitLimit: '5s',  // how long saturation may last before "down"
+        },
+    },
     security: {
         encryptionKey: '',
         sessionSecret: '',
@@ -371,6 +391,11 @@ const DEFAULTS = {
             // self-signed subscriber. Development only.
             tlsSkipVerify: false,
         },
+    },
+    // When true, Settings hides the Monetization section (Billing, Meters, Usage & Revenue) and the
+    // plan dialog's Paid plan option. Billing already set up keeps working.
+    monetization: {
+        disabled: false,
     },
     // Billing providers (Stripe, Moesif). The keys are entered in Settings › Billing, not here.
     billing: {

@@ -313,6 +313,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/gateway-relay/invoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test request to a REST API through a gateway
+         * @description Sends one request to the REST API (`restApiId`) as deployed on the gateway (`gatewayId`),
+         *     for the console's Test console, and returns the gateway's response as data. The request goes to the gateway's
+         *     endpoint plus the context of the REST API's deployment there, with that deployment's main
+         *     vhost as `Host` when it has one of its own, only if the REST API is deployed there and the
+         *     endpoint is on the control plane's allow list (`gateway_relay.egress.allow_hosts`).
+         *     Redirects are not followed, and the caller's own credentials never reach the gateway.
+         *
+         *     Any answer from the gateway is a `200` carrying its status, headers and body; an error
+         *     status means the request was not relayed. A test can change data behind the REST API
+         *     and reaches gateways the caller may not reach directly, so it needs a manage scope.
+         */
+        post: operations["InvokeRESTAPIOnGateway"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rest-apis/{restApiId}/api-keys": {
         parameters: {
             query?: never;
@@ -825,6 +854,9 @@ export interface paths {
          *     The content is pushed to the API Portal before anything is written locally, so a failed
          *     call leaves the draft intact and can simply be repeated.
          *
+         *     The listing's content on the API Portal is replaced, so documents, a landing page or a
+         *     thumbnail that are not in the draft are removed from it.
+         *
          *     Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
          */
         post: operations["publishRestApiToApiPortal"];
@@ -910,6 +942,9 @@ export interface paths {
          *     The content is pushed to the API Portal before anything is written locally, so a failed
          *     call leaves the draft intact and can simply be repeated.
          *
+         *     The listing's content on the API Portal is replaced, so documents, a landing page or a
+         *     thumbnail that are not in the draft are removed from it.
+         *
          *     Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
          */
         post: operations["publishGraphQLApiToApiPortal"];
@@ -994,6 +1029,9 @@ export interface paths {
          *
          *     The content is pushed to the API Portal before anything is written locally, so a failed
          *     call leaves the draft intact and can simply be repeated.
+         *
+         *     The listing's content on the API Portal is replaced, so documents, a landing page or a
+         *     thumbnail that are not in the draft are removed from it.
          *
          *     Returns 201 on a first publish or a re-publish after unpublish, 200 otherwise.
          */
@@ -3568,6 +3606,103 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/webhook-secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List webhook secrets
+         * @description Returns metadata of the organization's webhook secrets. Secret values are never included.
+         */
+        get: operations["listWebhookSecrets"];
+        put?: never;
+        /**
+         * Create a webhook secret
+         * @description Creates an organization-level webhook secret (for example for an API portal) and
+         *     returns its first version. The plaintext `secret` is returned only in this response
+         *     and cannot be retrieved again.
+         */
+        post: operations["createWebhookSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-secrets/{secretId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The webhook secret id */
+                secretId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a webhook secret
+         * @description Returns the webhook secret with its retained versions (masked values only).
+         */
+        get: operations["getWebhookSecret"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a webhook secret
+         * @description Deletes the webhook secret and all of its versions.
+         */
+        delete: operations["deleteWebhookSecret"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-secrets/{secretId}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate a webhook secret
+         * @description Issues a new version of the secret. Every retained version stays valid. The plaintext
+         *     `secret` of the new version is returned only in this response. When the secret already
+         *     holds the maximum number of versions (3 by default) the request fails with 409 and a
+         *     version must be deleted first.
+         */
+        post: operations["rotateWebhookSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/webhook-secrets/{secretId}/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a webhook secret version
+         * @description Deletes one version to free a slot for rotation. The last remaining version cannot be
+         *     deleted; delete the webhook secret instead.
+         */
+        delete: operations["deleteWebhookSecretVersion"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/secrets/{secretId}": {
         parameters: {
             query?: never;
@@ -4384,6 +4519,89 @@ export interface components {
              */
             gatewayId: string;
         };
+        /** @description One header or query parameter. A list keeps repeated names. */
+        RESTAPIInvokeHeader: {
+            /** @example X-API-Key */
+            name: string;
+            /** @example 3f2a9c */
+            value: string;
+        };
+        /**
+         * @description The test request to send. Hop-by-hop headers, `Host`, `Content-Length`, `Expect`,
+         *     `Cookie` and the forwarding headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`) are
+         *     refused; `Authorization` is allowed, for the API under test.
+         */
+        RESTAPIInvokeRequest: {
+            /**
+             * @description Handle of the REST API to test
+             * @example pizza-api
+             */
+            restApiId: string;
+            /**
+             * @description Handle of a gateway the REST API is deployed to
+             * @example prod-gateway-01
+             */
+            gatewayId: string;
+            /**
+             * @description One of GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS, in any case
+             * @default GET
+             * @example POST
+             */
+            method: string;
+            /**
+             * @description Path relative to the REST API's invoke URL, starting with `/`. It may not leave the
+             *     REST API's context, or carry a query or fragment.
+             * @default /
+             * @example /orders
+             */
+            path: string;
+            query?: components["schemas"]["RESTAPIInvokeHeader"][];
+            /** @description At most 50 headers, 16 KiB across all names and values */
+            headers?: components["schemas"]["RESTAPIInvokeHeader"][];
+            /**
+             * @description The request body, at most `gateway_relay.max_request_bytes` once decoded
+             * @example {"item":"pizza"}
+             */
+            body?: string;
+            bodyEncoding?: components["schemas"]["RESTAPIInvokeBodyEncoding"];
+        };
+        /**
+         * @description How `body` is written; `base64` carries binary data
+         * @default utf8
+         * @enum {string}
+         */
+        RESTAPIInvokeBodyEncoding: "utf8" | "base64";
+        RESTAPIInvokeResponse: {
+            /**
+             * @description Always `response`
+             * @enum {string}
+             */
+            outcome: "response";
+            response: components["schemas"]["RESTAPIInvokeResult"];
+        };
+        /** @description The gateway's response */
+        RESTAPIInvokeResult: {
+            /**
+             * @description The gateway's HTTP status
+             * @example 201
+             */
+            status: number;
+            /** @example Created */
+            statusText: string;
+            /** @description Every response header, sorted, repeated names kept */
+            headers: components["schemas"]["RESTAPIInvokeHeader"][];
+            /** @description The response body; base64 when it is not valid UTF-8 */
+            body: string;
+            bodyEncoding: components["schemas"]["RESTAPIInvokeBodyEncoding"];
+            /** @description The body exceeded `gateway_relay.max_response_bytes` and was clipped */
+            truncated: boolean;
+            /**
+             * Format: int64
+             * @description The gateway round trip, in milliseconds
+             * @example 42
+             */
+            durationMs: number;
+        };
         RESTAPIGatewayListResponse: {
             /**
              * @description Number of gateways in current response
@@ -4988,7 +5206,8 @@ export interface components {
             type: string;
             /**
              * @description Free-form qualifier used when `type` is `Other`. Stored and returned
-             *     exactly as typed (no case conversion). Ignored for all other types.
+             *     exactly as typed (no case conversion). Must not start with a dot or
+             *     contain `..`, `/` or `\`. Ignored for all other types.
              * @example FAQ
              */
             otherTypeName?: string;
@@ -4997,7 +5216,8 @@ export interface components {
             /** @description Inline UTF-8 Markdown content. */
             inlineContent?: string;
             /**
-             * @description File name to associate with the content. Defaults to `{handle}.md`.
+             * @description File name to associate with the content. Must end in `.md`, and must not start with a dot
+             *     or contain `..`. Defaults to `{handle}.md`.
              * @example payment-webhook.md
              */
             fileName?: string;
@@ -7631,6 +7851,56 @@ export interface components {
             list: components["schemas"]["SecretSummary"][];
             pagination: components["schemas"]["Pagination"];
         };
+        WebhookSecretCreateRequest: {
+            /** @example portal-3f9a1c */
+            id: string;
+            /** @example Developer portal webhook secret */
+            name: string;
+            /**
+             * @default PORTAL
+             * @enum {string}
+             */
+            type: "PORTAL";
+        };
+        /** @description One rotation version. Never includes the plaintext value. */
+        WebhookSecretVersion: {
+            /** @example 2 */
+            version?: number;
+            /** @example whsec_****9f2c */
+            maskedSecret?: string;
+            /**
+             * @description Identifier of this version: the lowercase hex SHA3-256 of `api-portal-webhook-secret-hash-v1:` followed by the secret. The API Portal sends the same value as `secret_hash` in each delivery, and the receiver uses it with the organization to find the secret.
+             * @example 32413deb36859f80321545a85378e517fad68ae583f7c3f3a0c6e50a1c96f824
+             */
+            hash?: string;
+            readonly createdBy?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        /** @description Webhook secret metadata with its retained versions. */
+        WebhookSecretInfo: {
+            /** @example portal-3f9a1c */
+            id?: string;
+            name?: string;
+            /** @enum {string} */
+            type?: "PORTAL";
+            readonly createdBy?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            versions?: components["schemas"]["WebhookSecretVersion"][];
+        };
+        WebhookSecretWithValue: components["schemas"]["WebhookSecretInfo"] & {
+            /**
+             * @description Plaintext of the newly issued version. Returned once and never retrievable again.
+             * @example whsec_0f3c9a...
+             */
+            secret: string;
+        };
+        WebhookSecretListResponse: {
+            count: number;
+            list: components["schemas"]["WebhookSecretInfo"][];
+            pagination: components["schemas"]["Pagination"];
+        };
         /** @description A service account. Never carries the plaintext secret. */
         ServiceAccount: {
             /**
@@ -9537,6 +9807,147 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalServerError"];
+        };
+    };
+    InvokeRESTAPIOnGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RESTAPIInvokeRequest"];
+            };
+        };
+        responses: {
+            /** @description The gateway answered; its response is in `response` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RESTAPIInvokeResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /**
+             * @description Forbidden. Either the token lacks the scopes, or the gateway's endpoint is not on the
+             *     control plane's allow list (`REST_API_INVOKE_TARGET_NOT_ALLOWED`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "error",
+                     *       "code": "REST_API_INVOKE_TARGET_NOT_ALLOWED",
+                     *       "message": "This gateway cannot be reached from the control plane."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Not Found. The REST API does not exist in the caller's organization
+             *     (`REST_API_NOT_FOUND`), or it is not deployed to the gateway
+             *     (`REST_API_INVOKE_GATEWAY_NOT_DEPLOYED`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "error",
+                     *       "code": "REST_API_INVOKE_GATEWAY_NOT_DEPLOYED",
+                     *       "message": "This REST API is not deployed to the selected gateway."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            /**
+             * @description Unprocessable Entity. The gateway has no endpoint (`REST_API_INVOKE_GATEWAY_NO_ENDPOINT`),
+             *     or its endpoint is not an http or https address (`REST_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "error",
+                     *       "code": "REST_API_INVOKE_GATEWAY_NO_ENDPOINT",
+                     *       "message": "The selected gateway has no endpoint configured."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalServerError"];
+            /** @description Bad Gateway. The gateway could not be reached (`REST_API_INVOKE_UPSTREAM_UNREACHABLE`). */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "error",
+                     *       "code": "REST_API_INVOKE_UPSTREAM_UNREACHABLE",
+                     *       "message": "The gateway could not be reached.",
+                     *       "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Service Unavailable. Too many test requests are in flight on this replica
+             *     (`REST_API_INVOKE_BUSY`); retry shortly.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "error",
+                     *       "code": "REST_API_INVOKE_BUSY",
+                     *       "message": "Too many test requests are in flight; try again shortly.",
+                     *       "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Gateway Timeout. The gateway did not respond in time (`REST_API_INVOKE_UPSTREAM_TIMEOUT`). */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "error",
+                     *       "code": "REST_API_INVOKE_UPSTREAM_TIMEOUT",
+                     *       "message": "The gateway did not respond in time.",
+                     *       "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     CreateAPIKey: {
@@ -15846,6 +16257,189 @@ export interface operations {
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
             503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listWebhookSecrets: {
+        parameters: {
+            query?: {
+                /** @description Maximum number of items to return per page. */
+                limit?: components["parameters"]["limit-Q"];
+                /** @description Zero-based index of the first item to return. */
+                offset?: components["parameters"]["offset-Q"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of webhook secrets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecretListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    createWebhookSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebhookSecretCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Webhook secret created. */
+            201: {
+                headers: {
+                    Location: components["headers"]["Location"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecretWithValue"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getWebhookSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The webhook secret id */
+                secretId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The webhook secret. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecretInfo"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    deleteWebhookSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The webhook secret id */
+                secretId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Webhook secret deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    rotateWebhookSecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The webhook secret id */
+                secretId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description New version issued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecretWithValue"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Conflict. The maximum number of versions is reached; delete a version first. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    deleteWebhookSecretVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The webhook secret id */
+                secretId: string;
+                /** @description The version number */
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Version deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Conflict. The last remaining version cannot be deleted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            500: components["responses"]["InternalServerError"];
         };
     };
     getSecret: {

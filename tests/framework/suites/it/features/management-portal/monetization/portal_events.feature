@@ -93,8 +93,10 @@ Feature: Meters and priced plans made in the API Portal reach the control plane
       """
       {"handle":"${CTX:planId}","display_name":"Metered ${CTX:planId}","pricing":{"pricing_type":"USAGE_BASED","currency":"USD","billing_period":"MONTH","prices":[{"meter_handle":"${CTX:meterId}","pricing_model":"PER_UNIT","unit_amount":"0.02","unit_quantity":1}]}}
       """
-    Then the response status code should be 409
-    And the JSON response field "code" should be "SUBSCRIPTION_PLAN_PRICING_LOCKED"
+    # The webhook receiver answers every delivery failure alike (see receiver.go's
+    # rejectUniformly), so a business-rule refusal looks the same as any other rejected delivery.
+    Then the response status code should be 401
+    And the JSON response field "code" should be "UNAUTHORIZED"
     When I send a "GET" request to the control plane at "/subscription-plans/${CTX:planId}/pricing"
     Then the JSON response field "prices[0].unitAmount" should be "0.01"
 
@@ -121,8 +123,10 @@ Feature: Meters and priced plans made in the API Portal reach the control plane
       """
       {"handle":"${CTX:planId}","display_name":"Orphan ${CTX:planId}","pricing":{"pricing_type":"USAGE_BASED","currency":"USD","billing_period":"MONTH","prices":[{"meter_handle":"${CTX:meterId}","pricing_model":"PER_UNIT","unit_amount":"0.01","unit_quantity":1}]}}
       """
-    Then the response status code should be 400
-    And the JSON response field "message" should be "Unknown meter: ${CTX:meterId}"
+    # The webhook receiver answers every delivery failure alike (see receiver.go's
+    # rejectUniformly), so an unenforceable plan looks the same as any other rejected delivery.
+    Then the response status code should be 401
+    And the JSON response field "code" should be "UNAUTHORIZED"
     When I send a "GET" request to the control plane at "/subscription-plans/${CTX:planId}"
     Then the response status code should be 404
 
@@ -153,7 +157,7 @@ Feature: Meters and priced plans made in the API Portal reach the control plane
     Then the response status code should be 404
 
   Scenario: Deleting in the API Portal a plan a control-plane API offers takes it off that API
-    Given I generate a unique value from "portal-delete-project" and store it as "projectHandle"
+    Given I generate a unique resource name from "portal-delete-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "portal-delete-api" and store it as "apiHandle"
     And I generate a unique API context from "/portal-delete" and store it as "apiContext"
@@ -183,8 +187,10 @@ Feature: Meters and priced plans made in the API Portal reach the control plane
       """
       <data>
       """
-    Then the response status code should be 400
-    And the JSON response field "message" should be "Failed to process event"
+    # The webhook receiver answers every delivery failure alike (see receiver.go's
+    # rejectUniformly), so an unenforceable meter/plan looks the same as any other rejected delivery.
+    Then the response status code should be 401
+    And the JSON response field "code" should be "UNAUTHORIZED"
 
     Examples:
       | event                     | data |

@@ -25,7 +25,7 @@ Feature: A paid subscription's billing state decides its access at the gateway
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "paid-access-project" and store it as "projectHandle"
+    And I generate a unique resource name from "paid-access-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   Scenario: A subscription that stops paying is refused at the gateway, and is served again once paid
@@ -122,7 +122,10 @@ Feature: A paid subscription's billing state decides its access at the gateway
       """
       {"subscriber_id":"e2e-subscriber","api":{"ref_id":"${CTX:apiHandle}","type":"RestApi"},"billing":{"status":"ACTIVE","customer_id":"cus-x","subscription_id":"sub-x"}}
       """
-    Then the response status code should be 404
+    # The webhook receiver answers every delivery failure alike (see receiver.go's
+    # rejectUniformly), so an unknown API looks the same as any other rejected delivery.
+    Then the response status code should be 401
+    And the JSON response field "code" should be "UNAUTHORIZED"
 
   # Known issue: the gateway pulls an API's subscriptions only on its first connection, and never
   # from an on-prem control plane (gateway-controller pkg/controlplane/client.go
