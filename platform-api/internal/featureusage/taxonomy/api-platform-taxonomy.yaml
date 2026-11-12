@@ -109,6 +109,11 @@ features:
       event_category: "discovery"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "entry_point"
           type: "enum"
           values: ["api-list", "api-list-empty-state", "org-home", "project-quick-actions", "direct"]
@@ -130,6 +135,11 @@ features:
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -151,6 +161,11 @@ features:
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -201,6 +216,11 @@ features:
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "contract_source"
           type: "enum"
           values: ["url", "file"]
@@ -256,6 +276,11 @@ features:
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "contract_source"
           type: "enum"
           values: ["url", "file"]
@@ -310,6 +335,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -331,6 +361,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -376,7 +411,12 @@ features:
       event_name: "apip.manage-apis.api-definition-update-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "OpenAPI Definition Update Click"
@@ -423,6 +463,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -510,6 +555,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -568,6 +618,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -622,6 +677,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -676,6 +736,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -726,6 +791,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -768,6 +838,11 @@ features:
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -799,6 +874,11 @@ features:
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api"]
@@ -886,6 +966,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "gateway_hosting"
           type: "enum"
           values: ["managed", "self-hosted"]
@@ -940,6 +1025,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "gateway_type"
           type: "enum"
           values: ["regular", "ai", "event"]
@@ -985,7 +1075,12 @@ features:
       event_name: "apip.gateway.gateway-token-regenerate-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Gateway Token Regeneration Click"
@@ -1003,6 +1098,11 @@ features:
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "install_method"
           type: "enum"
           values: ["quick-start", "virtual-machine", "docker", "kubernetes"]
@@ -1096,6 +1196,11 @@ features:
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "policy_name"
           type: "enum"
           values: ["api-key-auth", "basic-auth", "jwt-auth", "mtls-auth", "opaque-token-auth"]
@@ -1131,6 +1236,11 @@ features:
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "policy_name"
           type: "enum"
           values: ["backend-jwt", "aws-authentication", "oauth2-generator", "oauth2-token-exchange"]
@@ -1166,6 +1276,11 @@ features:
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
@@ -1193,6 +1308,11 @@ features:
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "policy_name"
           type: "enum"
           values: ["basic-ratelimit", "advanced-ratelimit"]
@@ -1228,6 +1348,11 @@ features:
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "policy_name"
           type: "enum"
           values: ["dynamic-endpoint", "redirect"]
@@ -1263,6 +1388,11 @@ features:
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "policy_name"
           type: "enum"
           values: ["set-headers", "remove-headers", "request-rewrite", "host-rewrite", "json-xml-mediator", "respond"]
@@ -1298,6 +1428,11 @@ features:
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "policy_name"
           type: "enum"
           values: ["json-schema-guardrail", "regex-guardrail", "content-length-guardrail", "url-guardrail", "word-count-guardrail", "sentence-count-guardrail"]
@@ -1333,6 +1468,11 @@ features:
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
@@ -1360,6 +1500,11 @@ features:
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "policy_name"
           type: "enum"
           values: ["interceptor-service", "log-message"]
@@ -1395,6 +1540,11 @@ features:
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
@@ -1443,6 +1593,11 @@ features:
       event_category: "discovery"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
@@ -1464,7 +1619,12 @@ features:
       event_name: "apip.policies.gateway-policies-view"
       event_category: "discovery"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Gateway Policy Views"
@@ -1515,6 +1675,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -1536,6 +1701,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -1586,6 +1756,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -1652,7 +1827,12 @@ features:
       event_name: "apip.security.service-account-create-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Service Account Creation Click"
@@ -1699,7 +1879,12 @@ features:
       event_name: "apip.security.service-account-update-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Service Account Update Click"
@@ -1716,7 +1901,12 @@ features:
       event_name: "apip.security.service-account-enable-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Service Account Enabling Click"
@@ -1733,7 +1923,12 @@ features:
       event_name: "apip.security.service-account-disable-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Service Account Disabling Click"
@@ -1775,7 +1970,12 @@ features:
       event_name: "apip.security.service-account-delete-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Service Account Deletion Click"
@@ -1817,7 +2017,12 @@ features:
       event_name: "apip.security.service-account-secret-regenerate-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Service Account Secret Regeneration Click"
@@ -1834,7 +2039,12 @@ features:
       event_name: "apip.security.service-account-test-token-get-click"
       event_category: "engagement"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Service Account Test Token Click"
@@ -1981,6 +2191,11 @@ features:
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -2039,6 +2254,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -2060,6 +2280,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -2110,6 +2335,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -2160,6 +2390,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -2181,6 +2416,11 @@ features:
       event_category: "discovery"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "artifact_kind"
           type: "enum"
           values: ["rest-api", "graphql-api", "llm-provider", "llm-proxy", "mcp-proxy", "agent-proxy"]
@@ -2231,6 +2471,11 @@ features:
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -2281,6 +2526,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -2331,6 +2581,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -2386,6 +2641,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api"]
@@ -2419,6 +2679,11 @@ features:
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "api_type"
           type: "enum"
           values: ["rest-api", "graphql-api", "mcp-proxy"]
@@ -2465,6 +2730,11 @@ features:
       event_category: "discovery"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "catalog_type"
           type: "enum"
           values: ["apis", "mcps"]
@@ -2486,6 +2756,11 @@ features:
       event_category: "discovery"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "search_mode"
           type: "enum"
           values: ["search", "label-filter"]
@@ -2511,6 +2786,11 @@ features:
       event_category: "discovery"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "asset_kind"
           type: "enum"
           values: ["api", "mcp"]
@@ -2532,6 +2812,11 @@ features:
       event_category: "discovery"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "content_kind"
           type: "enum"
           values: ["document", "specification"]
@@ -2556,7 +2841,12 @@ features:
       event_name: "apip.developer-portal.try-it"
       event_category: "engagement"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Try-It Invocations"
@@ -2573,7 +2863,12 @@ features:
       event_name: "apip.developer-portal.create-application"
       event_category: "adoption"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Applications Created"
@@ -2591,6 +2886,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "operation"
           type: "enum"
           values: ["update", "delete"]
@@ -2612,6 +2912,11 @@ features:
       event_category: "adoption"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "asset_kind"
           type: "enum"
           values: ["api", "mcp"]
@@ -2633,6 +2938,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "operation"
           type: "enum"
           values: ["change-plan", "set-status", "regenerate-token", "cancel"]
@@ -2654,6 +2964,11 @@ features:
       event_category: "adoption"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "key_type"
           type: "enum"
           values: ["api-key", "oauth2"]
@@ -2675,6 +2990,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "key_type"
           type: "enum"
           values: ["api-key", "oauth2"]
@@ -2701,6 +3021,11 @@ features:
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "key_type"
           type: "enum"
           values: ["api-key", "oauth2"]
@@ -2725,7 +3050,12 @@ features:
       event_name: "apip.developer-portal.view-usage"
       event_category: "engagement"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Usage Page Views"
@@ -2742,7 +3072,12 @@ features:
       event_name: "apip.developer-portal.copy-mcp-config"
       event_category: "engagement"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "MCP Configurations Copied"
@@ -2760,6 +3095,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "operation"
           type: "enum"
           values: ["publish", "update", "delete"]
@@ -2781,6 +3121,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "operation"
           type: "enum"
           values: ["create", "update", "delete"]
@@ -2802,6 +3147,11 @@ features:
           event_category: "engagement"
           platforms: ["web", "api"]
           dimensions:
+            - name: "portal"
+              type: "enum"
+              values: ["api-portal"]
+              required: false
+              description: "The API Platform UI the action was taken in."
             - name: "audience"
               type: "enum"
               values: ["human", "agent"]
@@ -2825,6 +3175,11 @@ features:
           event_category: "adoption"
           platforms: ["web", "api"]
           dimensions:
+            - name: "portal"
+              type: "enum"
+              values: ["api-portal"]
+              required: false
+              description: "The API Platform UI the action was taken in."
             - name: "operation"
               type: "enum"
               values: ["publish", "unpublish"]
@@ -2845,7 +3200,12 @@ features:
       event_name: "apip.developer-portal.view-workflow"
       event_category: "discovery"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Workflow Views"
@@ -2863,6 +3223,11 @@ features:
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "artifact"
           type: "enum"
           values: ["arazzo", "agent-prompt"]
@@ -2887,7 +3252,12 @@ features:
       event_name: "apip.developer-portal.llms-txt-config"
       event_category: "engagement"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "llms.txt Configurations"
@@ -2905,6 +3275,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "operation"
           type: "enum"
           values: ["create", "update", "delete"]
@@ -2926,6 +3301,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "operation"
           type: "enum"
           values: ["create", "update", "delete"]
@@ -2947,6 +3327,11 @@ features:
       event_category: "engagement"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "operation"
           type: "enum"
           values: ["apply", "export", "reset"]
@@ -2967,7 +3352,12 @@ features:
       event_name: "apip.developer-portal.portal-design-mode"
       event_category: "engagement"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Design Mode Sessions"
@@ -2985,6 +3375,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "operation"
           type: "enum"
           values: ["create", "update", "delete"]
@@ -3010,6 +3405,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "km_type"
           type: "enum"
           values: ["asgardeo", "thunderid", "wso2is", "custom", "provision"]
@@ -3038,7 +3438,12 @@ features:
           event_name: "apip.key-management.third-party-km.asgardeo"
           event_category: "lifecycle"
           platforms: ["web"]
-          dimensions: []
+          dimensions:
+            - name: "portal"
+              type: "enum"
+              values: ["api-portal"]
+              required: true
+              description: "The API Platform UI the action was taken in."
           aggregations:
             - type: "count"
               label: "Asgardeo Key Manager Changes"
@@ -3054,7 +3459,12 @@ features:
           event_name: "apip.key-management.third-party-km.thunderid"
           event_category: "lifecycle"
           platforms: ["web"]
-          dimensions: []
+          dimensions:
+            - name: "portal"
+              type: "enum"
+              values: ["api-portal"]
+              required: true
+              description: "The API Platform UI the action was taken in."
           aggregations:
             - type: "count"
               label: "ThunderID Key Manager Changes"
@@ -3070,7 +3480,12 @@ features:
           event_name: "apip.key-management.third-party-km.wso2is"
           event_category: "lifecycle"
           platforms: ["web"]
-          dimensions: []
+          dimensions:
+            - name: "portal"
+              type: "enum"
+              values: ["api-portal"]
+              required: true
+              description: "The API Platform UI the action was taken in."
           aggregations:
             - type: "count"
               label: "WSO2 Identity Server Key Manager Changes"
@@ -3086,7 +3501,12 @@ features:
           event_name: "apip.key-management.third-party-km.custom"
           event_category: "lifecycle"
           platforms: ["web"]
-          dimensions: []
+          dimensions:
+            - name: "portal"
+              type: "enum"
+              values: ["api-portal"]
+              required: true
+              description: "The API Platform UI the action was taken in."
           aggregations:
             - type: "count"
               label: "Custom Key Manager Changes"
@@ -3102,7 +3522,12 @@ features:
           event_name: "apip.key-management.third-party-km.provision"
           event_category: "lifecycle"
           platforms: ["web"]
-          dimensions: []
+          dimensions:
+            - name: "portal"
+              type: "enum"
+              values: ["api-portal"]
+              required: true
+              description: "The API Platform UI the action was taken in."
           aggregations:
             - type: "count"
               label: "Out-of-Band Key Manager Changes"
@@ -3120,6 +3545,11 @@ features:
       event_category: "engagement"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "grant_type"
           type: "enum"
           values: ["client-credentials"]
@@ -3238,7 +3668,12 @@ features:
       event_name: "apip.monetization.subscription-plan-create-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Subscription Plan Creation Click"
@@ -3285,7 +3720,12 @@ features:
       event_name: "apip.monetization.subscription-plan-update-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Subscription Plan Update Click"
@@ -3303,6 +3743,11 @@ features:
       event_category: "lifecycle"
       platforms: ["web"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
         - name: "status"
           type: "enum"
           values: ["active", "inactive"]
@@ -3348,7 +3793,12 @@ features:
       event_name: "apip.monetization.subscription-plan-delete-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Subscription Plan Deletion Click"
@@ -3390,7 +3840,12 @@ features:
       event_name: "apip.monetization.meter-create-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Meter Creation Click"
@@ -3432,7 +3887,12 @@ features:
       event_name: "apip.monetization.meter-update-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Meter Update Click"
@@ -3474,7 +3934,12 @@ features:
       event_name: "apip.monetization.meter-delete-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Meter Deletion Click"
@@ -3492,6 +3957,11 @@ features:
       event_category: "adoption"
       platforms: ["web", "api"]
       dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: false
+          description: "The API Platform UI the action was taken in."
         - name: "payment_provider"
           type: "enum"
           values: ["stripe"]
@@ -3516,7 +3986,12 @@ features:
       event_name: "apip.monetization.view-revenue"
       event_category: "engagement"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Revenue Views"
@@ -3533,7 +4008,12 @@ features:
       event_name: "apip.monetization.paid-checkout"
       event_category: "adoption"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Checkouts Started"
@@ -3550,7 +4030,12 @@ features:
       event_name: "apip.monetization.view-invoices"
       event_category: "engagement"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-portal"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Invoice Views"
@@ -3613,7 +4098,12 @@ features:
       event_name: "apip.admin.project-create-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Project Creation Click"
@@ -3655,7 +4145,12 @@ features:
       event_name: "apip.admin.project-delete-click"
       event_category: "lifecycle"
       platforms: ["web"]
-      dimensions: []
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
       aggregations:
         - type: "count"
           label: "Project Deletion Click"
