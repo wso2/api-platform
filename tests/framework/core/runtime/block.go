@@ -376,6 +376,7 @@ func (t *Topology) startComponent(
 		Env:       env,
 		Replicas:  rc.Replicas,
 		LogWriter: t.logWriter,
+		Partition: t.Block.PartitionKey(),
 	}
 
 	if def.IsCompose() {

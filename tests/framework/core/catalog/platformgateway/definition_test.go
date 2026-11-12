@@ -259,7 +259,7 @@ func TestComposeCarriesTheAzureWorkloadIdentity(t *testing.T) {
 	require.Equal(t, "5d6e7f80-91a2-4b3c-8d4e-5f6a7b8c9d0e", env["AZURE_CLIENT_ID"])
 	require.Equal(t, "/var/run/secrets/azure/tokens/azure-identity-token", env["AZURE_FEDERATED_TOKEN_FILE"])
 	require.Equal(t, "https://testbench:3028/", env["AZURE_AUTHORITY_HOST"])
-	require.Equal(t, "https://testbench:3028/${TESTBENCH_PARTITION}/metadata/identity/oauth2/token", env["AZURE_IMDS_TOKEN_ENDPOINT"])
+	require.Equal(t, "https://testbench:3028/${BLOCK}/metadata/identity/oauth2/token", env["AZURE_IMDS_TOKEN_ENDPOINT"])
 
 	services := composeFile(t)["services"].(map[string]any)
 	volumes, ok := services["gateway-runtime"].(map[string]any)["volumes"].([]any)

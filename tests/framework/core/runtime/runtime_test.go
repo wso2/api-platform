@@ -1488,12 +1488,16 @@ func TestFlushRunnerOutputRestoresABlockingPipe(t *testing.T) {
 	require.False(t, pipeNonblock(t, w), "flushRunnerOutput must restore blocking mode")
 }
 
-// A compose stack's staged files are filled with the block's testbench partition, so a service
-// can address a block-partitioned testbench route; it is the key scenarios know as the block's
-// partition, and a definition cannot override it.
+// A compose stack's staged files are filled with ${BLOCK}, the block's testbench partition the
+// options carry, so a service can address a block-partitioned testbench route the way a config
+// overlay does. Neither the definition nor the options' env can override it.
 func TestComposeSubstitutionsCarryTheBlockPartition(t *testing.T) {
-	spec := &components.ComposeSpec{Env: map[string]string{"IMAGE": "img:1", EnvTestbenchPartition: "spoofed"}}
-	opts := Options{Network: &Network{name: "apip-net", block: "azure-authentication/sqlite"}, Env: map[string]string{"EXTRA": "x"}}
+	spec := &components.ComposeSpec{Env: map[string]string{"IMAGE": "img:1", components.VarBlock: "spoofed"}}
+	opts := Options{
+		Network:   &Network{name: "apip-net", block: "a network label that is not the partition"},
+		Partition: "azure-authentication-sqlite",
+		Env:       map[string]string{"EXTRA": "x", components.VarBlock: "spoofed"},
+	}
 
 	got := composeSubstitutions(spec, opts, "-2")
 
@@ -1501,6 +1505,5 @@ func TestComposeSubstitutionsCarryTheBlockPartition(t *testing.T) {
 	require.Equal(t, "-2", got[EnvInstanceSuffix])
 	require.Equal(t, "img:1", got["IMAGE"])
 	require.Equal(t, "x", got["EXTRA"])
-	require.Equal(t, "azure-authentication-sqlite", got[EnvTestbenchPartition])
-	require.Equal(t, (&topology.ResolvedBlock{Name: "azure-authentication/sqlite"}).PartitionKey(), got[EnvTestbenchPartition])
+	require.Equal(t, "azure-authentication-sqlite", got[components.VarBlock])
 }

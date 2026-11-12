@@ -41,7 +41,6 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/assets"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
-	"github.com/wso2/api-platform/tests/framework/core/topology"
 )
 
 // stagingDirName is the directory used for compose files and bind-mount sources.
@@ -60,19 +59,16 @@ const (
 	EnvComposeMemoryLimitMB = "APIP_MEMORY_LIMIT_MB"
 	EnvInstanceSuffix       = "INSTANCE"
 
-	// EnvTestbenchPartition is the block's testbench partition (topology.PartitionKeyOf of the
-	// block name), substituted into staged compose files so that a service can address a
-	// block-partitioned testbench route, such as https://testbench:3028/${TESTBENCH_PARTITION}/….
-	// It is the same key scenarios use for the block's partition.
-	EnvTestbenchPartition = "TESTBENCH_PARTITION"
-
 	defaultMaxComponentDBFileBytes int64 = 256 << 20
 )
 
 var maxComponentDBFileBytes = defaultMaxComponentDBFileBytes
 
 // composeSubstitutions returns the values substituted into a stack's staged compose files: the
-// definition's and the options' env, then the framework's own values, which they cannot override.
+// network name, which the definition's and the options' env may override, then the instance suffix
+// and the block's testbench partition, which they cannot. The partition is substituted as ${BLOCK},
+// the name config overlays use for the same value, so a service can address a block-partitioned
+// testbench route such as https://testbench:3028/${BLOCK}/….
 func composeSubstitutions(spec *components.ComposeSpec, opts Options, suffix string) map[string]string {
 	substitutions := map[string]string{EnvComposeNetwork: opts.Network.Name()}
 	for k, v := range spec.Env {
@@ -82,7 +78,7 @@ func composeSubstitutions(spec *components.ComposeSpec, opts Options, suffix str
 		substitutions[k] = v
 	}
 	substitutions[EnvInstanceSuffix] = suffix
-	substitutions[EnvTestbenchPartition] = topology.PartitionKeyOf(opts.Network.Block())
+	substitutions[components.VarBlock] = opts.Partition
 	return substitutions
 }
 
