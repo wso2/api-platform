@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@template-functions
+@template-functions @GWENV
 Feature: Environment variable allow list for artifact templates
   As a gateway operator
   I want {{ env }} in a resource spec to read only the environment variables I
@@ -33,8 +33,23 @@ Feature: Environment variable allow list for artifact templates
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
 
-  @type:negative
+  @GWENV-001 @type:negative
   Scenario: env template in upstream URL naming a variable outside the allow list is rejected
+    # Control: a valid API created and read the same way, so the 404 below cannot
+    # pass because the lookup itself is broken.
+    Given I generate a unique resource name from "tpl-env-denied-upstream-control" and store it as "controlName"
+    And I generate a unique API version from "tpl-env-denied-upstream-control" and store it as "controlVersion"
+    And I generate a unique API context from "/tpl-env-denied-upstream-control" and store it as "controlContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}          |
+      | name                   | ${CTX:controlName}                 |
+      | spec.displayName       | Tpl-Env-Denied-Upstream-Control |
+      | spec.version           | ${CTX:controlVersion}              |
+      | spec.context           | ${CTX:controlContext}/$version     |
+      | spec.upstream.main.url | http://testbench:3002              |
+      | spec.operations        | [{"method":"GET","path":"/probe"}] |
+    Then the response status code should be 201
+
     Given I generate a unique resource name from "tpl-env-denied-upstream" and store it as "apiName"
     And I generate a unique API version from "tpl-env-denied-upstream" and store it as "apiVersion"
     And I generate a unique API context from "/tpl-env-denied-upstream" and store it as "apiContext"
@@ -51,12 +66,29 @@ Feature: Environment variable allow list for artifact templates
     And the response body should not contain "APIP_GW_CONTROLLER_LOGGING_LEVEL"
     And the response body should not contain "debug"
 
-    # Nothing was persisted for the rejected definition.
+    # Nothing was persisted for the rejected definition; the control is found.
+    When I get the API "${CTX:controlName}"
+    Then the response status code should be 200
     When I get the API "${CTX:apiName}"
     Then the response status code should be 404
 
-  @type:negative
+  @GWENV-002 @type:negative
   Scenario: env template in a policy parameter naming a variable outside the allow list is rejected
+    # Control: a valid API created and read the same way, so the 404 below cannot
+    # pass because the lookup itself is broken.
+    Given I generate a unique resource name from "tpl-env-denied-policy-control" and store it as "controlName"
+    And I generate a unique API version from "tpl-env-denied-policy-control" and store it as "controlVersion"
+    And I generate a unique API context from "/tpl-env-denied-policy-control" and store it as "controlContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}          |
+      | name                   | ${CTX:controlName}                 |
+      | spec.displayName       | Tpl-Env-Denied-Policy-Control |
+      | spec.version           | ${CTX:controlVersion}              |
+      | spec.context           | ${CTX:controlContext}/$version     |
+      | spec.upstream.main.url | http://testbench:3002              |
+      | spec.operations        | [{"method":"GET","path":"/probe"}] |
+    Then the response status code should be 201
+
     Given I generate a unique resource name from "tpl-env-denied-policy" and store it as "apiName"
     And I generate a unique API version from "tpl-env-denied-policy" and store it as "apiVersion"
     And I generate a unique API context from "/tpl-env-denied-policy" and store it as "apiContext"
@@ -72,10 +104,12 @@ Feature: Environment variable allow list for artifact templates
     And the JSON response field "message" should be "environment variable is not permitted in artifact templates"
     And the response body should not contain "APIP_GW_CONTROLLER_LOGGING_LEVEL"
 
+    When I get the API "${CTX:controlName}"
+    Then the response status code should be 200
     When I get the API "${CTX:apiName}"
     Then the response status code should be 404
 
-  @type:negative
+  @GWENV-003 @type:negative
   Scenario: updating a deployed API to read a variable outside the allow list is rejected and leaves it serving
     Given I generate a unique resource name from "tpl-env-denied-update" and store it as "apiName"
     And I generate a unique API version from "tpl-env-denied-update" and store it as "apiVersion"
