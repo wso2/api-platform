@@ -291,6 +291,8 @@ func kindToResourceTable(kind string) (string, error) {
 		return agentsResourceTable, nil
 	case "GraphQLApi":
 		return "graphql_apis", nil
+	case "Budget":
+		return "budgets", nil
 	default:
 		if table, ok := extraResourceTables[kind]; ok {
 			return table, nil
