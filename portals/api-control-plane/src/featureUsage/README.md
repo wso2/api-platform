@@ -194,7 +194,7 @@ adds is passed through; a field is sent only if it's in this table.
 | `user_id`                   | The IdP user ID (`sub`), only if it is a UUID                                                                                                                                 |
 | `company_id`                | The organization ID, only if it is a UUID                                                                                                                                     |
 | `session_token`             | A UUID per browser tab session, kept in `sessionStorage`                                                                                                                      |
-| `metadata`                  | The feature's declared dimensions, plus `action`, `category`, `tier`, `event_category`, `initiating_product: apip` and `platform: web`                                        |
+| `metadata`                  | The feature's declared dimensions, plus `action`, `category`, `tier`, `event_category`, `initiating_product: apip`, `platform: web` and `portal: api-control-plane`           |
 
 The browser **never sends** names, emails, org, project or API handles, anything
 the user typed, query strings, fragments, the referrer, or UTM or `gclid`
@@ -240,24 +240,56 @@ with the taxonomy owners first. Its rules:
 on them. Renaming one splits its history in two, so add a new value instead of
 renaming an old one.
 
-### 2. Register it in `taxonomy.ts`
+### 2. Add it to `api-platform-taxonomy.yaml` and regenerate
 
-Copy the entry into `API_PLATFORM_FEATURES`:
+The taxonomy lives in `src/featureUsage/api-platform-taxonomy.yaml`, the whole
+API Platform taxonomy in the WSO2 template's format. Add the entry there, and
+mark it as a console feature with the `portal` dimension:
 
-```ts
-'apip.manage-apis.api-delete': {
-  name: 'API Deletion',            // taxonomy `name` → metadata.action
-  category: 'manage-apis',         // taxonomy `category`
-  tier: 'core',
-  eventCategory: 'lifecycle',
-  // required(): every emission carries it; optional(): sent only when it applies.
-  dimensions: { api_type: required(['rest-api', 'graphql-api']) },
-},
+```yaml
+- code: 'apip.manage-apis.api-delete-click'
+  name: 'API Deletion Click'
+  category: 'manage-apis'
+  tier: 'core'
+  status: 'stable'
+  availability:
+    introduced_in: '0.9.0'
+  tracking:
+    event_name: 'apip.manage-apis.api-delete-click'
+    event_category: 'lifecycle'
+    platforms: ['web']
+    dimensions:
+      - name: 'portal'
+        type: 'enum'
+        values: ['api-control-plane']
+        required: true # false when platforms is ["web", "api"]
+        description: 'The API Platform UI the action was taken in.'
+      - name: 'api_type'
+        type: 'enum'
+        values: ['rest-api', 'graphql-api']
+        required: true
+    aggregations:
+      - type: 'count'
+        label: 'API Deletion Click'
 ```
 
-A feature with no required dimension can be called as `trackFeature(code)`.
+Then run `npm run taxonomy:codegen`. It writes `taxonomy.generated.ts`: the whole
+taxonomy (`API_PLATFORM_TAXONOMY`) and the console's features
+(`CONSOLE_FEATURES`), which `taxonomy.ts` exposes as `API_PLATFORM_FEATURES`.
+Commit both files. `taxonomy.generated.test.ts` fails if they drift apart.
 
-A code missing from this registry can't be tracked: the call doesn't compile.
+**Which features are the console's.** `tracking.platforms` only says `web`, and
+both the console and the API Portal are web. So every web feature an API
+Platform UI emits declares a `portal` dimension naming it: `api-control-plane`
+(this console) or `api-portal`. A feature is the console's exactly when its
+`portal` values include `api-control-plane`. API-only features
+(`platforms: ["api"]`, reported by Platform API) carry no `portal`.
+
+`portal` is never passed by a call site: `featureMetadata` adds
+`portal: api-control-plane` to every console event.
+
+A feature with no required dimension can be called as `trackFeature(code)`. A
+code that isn't a console feature can't be tracked: the call doesn't compile.
 
 ### 3. Call `useTrackFeature()` at the right moment
 
@@ -317,7 +349,8 @@ known to be static and masks the rest as `:id`.
 
 ### Review checklist
 
-- [ ] The code and its fields match an agreed taxonomy entry.
+- [ ] The entry is in `api-platform-taxonomy.yaml`, with `portal` naming
+      `api-control-plane`, and `taxonomy.generated.ts` is regenerated.
 - [ ] Each action fires once, at the moment in the table above.
 - [ ] Every dimension value comes from the UI's own enum, never from user input
       or server data.
@@ -410,13 +443,15 @@ cloud plugins report them too.
 
 ## Files
 
-| File                    | Role                                                                         |
-| ----------------------- | ---------------------------------------------------------------------------- |
-| `index.ts`              | The public surface: `useTrackFeature`, `API_PLATFORM_FEATURES` and the types |
-| `taxonomy.ts`           | The registry of trackable features, and `featureMetadata`                    |
-| `policies.ts`           | `trackPolicyAttachment`: a policy name to its capability feature             |
-| `useTrackFeature.ts`    | The hook UI code calls; attaches the user and organization                   |
-| `actions.ts`            | Builds each action from the allowlist; masks page URLs to route templates    |
-| `collector.ts`          | The enable switch, the queue, and the batched send to the collector route    |
-| `*.test.ts`             | Unit tests                                                                   |
-| `src/config/runtime.ts` | `featureUsageTrackingEnabled`, `featureUsageCollectorPath`                   |
+| File                         | Role                                                                             |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| `index.ts`                   | The public surface: `useTrackFeature`, `API_PLATFORM_FEATURES` and the types     |
+| `api-platform-taxonomy.yaml` | The API Platform feature taxonomy (WSO2 template); the source of truth           |
+| `taxonomy.generated.ts`      | Generated from the YAML (`npm run taxonomy:codegen`); never edit by hand         |
+| `taxonomy.ts`                | The console's features from the generated file, the types, and `featureMetadata` |
+| `policies.ts`                | `trackPolicyAttachment`: a policy name to its capability feature                 |
+| `useTrackFeature.ts`         | The hook UI code calls; attaches the user and organization                       |
+| `actions.ts`                 | Builds each action from the allowlist; masks page URLs to route templates        |
+| `collector.ts`               | The enable switch, the queue, and the batched send to the collector route        |
+| `*.test.ts`                  | Unit tests                                                                       |
+| `src/config/runtime.ts`      | `featureUsageTrackingEnabled`, `featureUsageCollectorPath`                       |

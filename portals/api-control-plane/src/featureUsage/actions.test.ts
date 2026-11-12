@@ -96,6 +96,7 @@ describe('buildAction', () => {
         event_category: 'engagement',
         initiating_product: 'apip',
         platform: 'web',
+        portal: 'api-control-plane',
         tier: 'core',
       },
       request: {

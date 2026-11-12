@@ -23,6 +23,7 @@ import {
   API_PLATFORM_FEATURES,
   API_PLATFORM_PRODUCT_ID,
   dimensionValues,
+  type ApiPlatformFeatureCode,
   featureMetadata,
   policyFeatureOf,
 } from './taxonomy';
@@ -74,8 +75,23 @@ describe('featureMetadata', () => {
       event_category: 'discovery',
       initiating_product: 'apip',
       platform: 'web',
+      portal: 'api-control-plane',
       tier: 'core',
     });
+  });
+
+  it.each(Object.keys(API_PLATFORM_FEATURES))('marks %s as coming from the console', (code) => {
+    expect(featureMetadata(code as ApiPlatformFeatureCode, undefined).portal).toBe(
+      'api-control-plane',
+    );
+  });
+
+  it('never lets a caller choose the portal', () => {
+    const metadata = featureMetadata('apip.policies.gateway-policies-view', {
+      portal: 'api-portal',
+    });
+
+    expect(metadata.portal).toBe('api-control-plane');
   });
 });
 

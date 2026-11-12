@@ -451,10 +451,12 @@ batching and flushing stay as they are.
 
 The console's features were checked against its pages (every button, link and
 dialog that commits an action), and `api-platform-taxonomy.yaml` was updated to
-match. `src/featureUsage/taxonomy.ts` is the console's copy: every code it can
-emit, with only the enum values its UI can produce. Its names, event
-categories, required flags and values were checked against the YAML; the YAML
-is not in this repository, so a change to either must be copied to the other.
+match. The YAML is `src/featureUsage/api-platform-taxonomy.yaml`, and
+`taxonomy.generated.ts` is generated from it (`npm run taxonomy:codegen`).
+Every web feature an API Platform UI emits declares an enum dimension `portal`
+(`api-control-plane` or `api-portal`), because `tracking.platforms` only says
+`web`; the console's features are those whose `portal` names
+`api-control-plane`.
 
 Codes are permanent once data exists, so these changes were made before any
 data was collected.
