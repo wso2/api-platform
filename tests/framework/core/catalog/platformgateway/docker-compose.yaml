@@ -74,7 +74,7 @@ services:
       - AZURE_AUTHORITY_HOST=https://testbench:3028/
       # The IMDS of the azure-authentication policy's managed-identity mode: the Entra mock over
       # the trusted TLS, under this block's partition, so blocks sharing a testbench keep apart.
-      - AZURE_IMDS_TOKEN_ENDPOINT=https://testbench:3028/${TESTBENCH_PARTITION}/metadata/identity/oauth2/token
+      - AZURE_IMDS_TOKEN_ENDPOINT=https://testbench:3028/${BLOCK}/metadata/identity/oauth2/token
       - GOCOVERDIR=${GOCOVERDIR:-}
     volumes:
       - ./config.toml:/etc/policy-engine/config.toml:ro

@@ -54,7 +54,7 @@
 //
 // The IMDS token endpoint stands in for the managed identity endpoint of a VM or AKS node. The
 // runtime's AZURE_IMDS_TOKEN_ENDPOINT is
-// https://testbench:3028/${TESTBENCH_PARTITION}/metadata/identity/oauth2/token, so each block's
+// https://testbench:3028/${BLOCK}/metadata/identity/oauth2/token, so each block's
 // gateway sends its IMDS requests under its own block's partition:
 //
 //	GET  /<block>/metadata/identity/oauth2/token?api-version=2018-02-01&resource=<r>[&client_id=<id>]
