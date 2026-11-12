@@ -165,8 +165,14 @@ func (b *ResolvedBlock) PartitionKey() string {
 	if b == nil {
 		return ""
 	}
+	return PartitionKeyOf(b.Name)
+}
+
+// PartitionKeyOf returns the partition key of the block named name: its lowercase letters and
+// digits, with every other character replaced by "-".
+func PartitionKeyOf(name string) string {
 	var out strings.Builder
-	for _, r := range strings.ToLower(b.Name) {
+	for _, r := range strings.ToLower(name) {
 		switch {
 		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
 			out.WriteRune(r)

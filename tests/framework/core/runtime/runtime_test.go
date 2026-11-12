@@ -1487,3 +1487,20 @@ func TestFlushRunnerOutputRestoresABlockingPipe(t *testing.T) {
 	require.NoError(t, flushRunnerOutput(w, "block/runner", bytes.NewBufferString("report")))
 	require.False(t, pipeNonblock(t, w), "flushRunnerOutput must restore blocking mode")
 }
+
+// A compose stack's staged files are filled with the block's testbench partition, so a service
+// can address a block-partitioned testbench route; it is the key scenarios know as the block's
+// partition, and a definition cannot override it.
+func TestComposeSubstitutionsCarryTheBlockPartition(t *testing.T) {
+	spec := &components.ComposeSpec{Env: map[string]string{"IMAGE": "img:1", EnvTestbenchPartition: "spoofed"}}
+	opts := Options{Network: &Network{name: "apip-net", block: "azure-authentication/sqlite"}, Env: map[string]string{"EXTRA": "x"}}
+
+	got := composeSubstitutions(spec, opts, "-2")
+
+	require.Equal(t, "apip-net", got[EnvComposeNetwork])
+	require.Equal(t, "-2", got[EnvInstanceSuffix])
+	require.Equal(t, "img:1", got["IMAGE"])
+	require.Equal(t, "x", got["EXTRA"])
+	require.Equal(t, "azure-authentication-sqlite", got[EnvTestbenchPartition])
+	require.Equal(t, (&topology.ResolvedBlock{Name: "azure-authentication/sqlite"}).PartitionKey(), got[EnvTestbenchPartition])
+}

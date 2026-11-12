@@ -160,6 +160,7 @@ func (s *Service) Handler() http.Handler {
 	routes.HandleFunc("POST /oauth2/v2.0/token", s.scoped(s.token))
 	routes.HandleFunc("GET /metadata/identity/oauth2/token", s.scoped(s.imdsToken))
 	routes.HandleFunc("GET /test/requests", s.scoped(s.recorded))
+	routes.HandleFunc("GET /test/managed-identity/{identity}", s.scoped(s.imdsRecorded))
 	for path, audience := range map[string]string{"/foundry": FoundryAudience, "/cognitive": CognitiveAudience} {
 		routes.HandleFunc(path, s.scoped(resource(audience)))
 		routes.HandleFunc(path+"/", s.scoped(resource(audience)))
@@ -202,9 +203,14 @@ func (s *Service) admit(tenant string, req Request, decide func(n int) int) (int
 
 // recorded reports GET /test/requests as {"count": n, "requests": [...]}, oldest first.
 func (s *Service) recorded(tenant string, w http.ResponseWriter, _ *http.Request) {
+	s.writeLog(w, tenant)
+}
+
+// writeLog writes the request log kept under key as {"count": n, "requests": [...]}.
+func (s *Service) writeLog(w http.ResponseWriter, key string) {
 	s.mu.Lock()
 	count, requests := 0, []Request{}
-	if p := s.partitions[tenant]; p != nil {
+	if p := s.partitions[key]; p != nil {
 		count = p.count
 		requests = append(requests, p.requests...)
 	}

@@ -72,8 +72,9 @@ services:
       - AZURE_CLIENT_ID=5d6e7f80-91a2-4b3c-8d4e-5f6a7b8c9d0e
       - AZURE_FEDERATED_TOKEN_FILE=/var/run/secrets/azure/tokens/azure-identity-token
       - AZURE_AUTHORITY_HOST=https://testbench:3028/
-      # The managed-identity mode's IMDS, served by the same Entra mock over the trusted TLS.
-      - AZURE_IMDS_TOKEN_ENDPOINT=https://testbench:3028/imds/metadata/identity/oauth2/token
+      # The IMDS of the azure-authentication policy's managed-identity mode: the Entra mock over
+      # the trusted TLS, under this block's partition, so blocks sharing a testbench keep apart.
+      - AZURE_IMDS_TOKEN_ENDPOINT=https://testbench:3028/${TESTBENCH_PARTITION}/metadata/identity/oauth2/token
       - GOCOVERDIR=${GOCOVERDIR:-}
     volumes:
       - ./config.toml:/etc/policy-engine/config.toml:ro

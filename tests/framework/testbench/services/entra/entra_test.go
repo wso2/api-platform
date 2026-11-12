@@ -464,16 +464,32 @@ func selfSignedPEM(t *testing.T) ([]byte, []byte) {
 		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
 }
 
-const testManagedClientID = "11111111-2222-3333-4444-555555555555"
+const (
+	testManagedClientID = "11111111-2222-3333-4444-555555555555"
+	// testBlock is the block partition a test's IMDS requests are sent under.
+	testBlock = "block-a"
+)
 
-// imdsGet sends a managed identity token request to the IMDS route, under an arbitrary partition.
-func imdsGet(t *testing.T, svc *Service, query url.Values, header http.Header) *httptest.ResponseRecorder {
+// imdsGet sends a managed identity token request to the IMDS route under a block's partition.
+func imdsGet(t *testing.T, svc *Service, block string, query url.Values, header http.Header) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/imds/metadata/identity/oauth2/token?"+query.Encode(), nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/"+block+"/metadata/identity/oauth2/token?"+query.Encode(), nil)
 	for name, values := range header {
 		req.Header[name] = values
 	}
 	return serve(t, svc.Handler(), req)
+}
+
+// imdsRecorded returns the block's IMDS request log for an identity: a client ID, or
+// SystemAssigned.
+func imdsRecorded(t *testing.T, svc *Service, block, identity string) requestLog {
+	t.Helper()
+	path := "/" + block + "/test/managed-identity/" + identity
+	rec := serve(t, svc.Handler(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var l requestLog
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &l))
+	return l
 }
 
 // imdsQuery is a well-formed IMDS query; an empty clientID asks for the system-assigned identity.
@@ -489,7 +505,7 @@ var metadataTrue = http.Header{"Metadata": {"true"}}
 
 func TestIMDSIssuesATokenForTheResource(t *testing.T) {
 	svc := New()
-	rec := imdsGet(t, svc, imdsQuery(testManagedClientID, FoundryAudience), metadataTrue)
+	rec := imdsGet(t, svc, testBlock, imdsQuery(testManagedClientID, FoundryAudience), metadataTrue)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	var body map[string]any
@@ -502,7 +518,7 @@ func TestIMDSIssuesATokenForTheResource(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, Claims{Aud: FoundryAudience, Tid: "managed-identity", AppID: testManagedClientID, N: 1}, claimsOf(t, token))
 
-	log := recorded(t, svc, "mi-"+testManagedClientID)
+	log := imdsRecorded(t, svc, testBlock, testManagedClientID)
 	require.Equal(t, 1, log.Count)
 	got := log.Requests[0]
 	require.Equal(t, testManagedClientID, got.ClientID)
@@ -514,41 +530,52 @@ func TestIMDSIssuesATokenForTheResource(t *testing.T) {
 
 func TestIMDSSystemAssignedIdentity(t *testing.T) {
 	svc := New()
-	rec := imdsGet(t, svc, imdsQuery("", FoundryAudience), metadataTrue)
+	rec := imdsGet(t, svc, testBlock, imdsQuery("", FoundryAudience), metadataTrue)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	token, _ := body["access_token"].(string)
 	require.Equal(t, "system-assigned", claimsOf(t, token).AppID)
 
-	log := recorded(t, svc, "mi-system-assigned")
+	log := imdsRecorded(t, svc, testBlock, SystemAssigned)
 	require.Equal(t, 1, log.Count)
 	require.Empty(t, log.Requests[0].ClientID)
 }
 
 func TestIMDSRejectsAMalformedRequest(t *testing.T) {
+	// repeated is a well-formed query with one parameter given a second, acceptable value.
+	repeated := func(name, value string) url.Values {
+		q := imdsQuery(testManagedClientID, FoundryAudience)
+		q.Add(name, value)
+		return q
+	}
 	cases := []struct {
 		name      string
 		query     url.Values
 		header    http.Header
 		wantError string
+		wantInfo  string
 	}{
-		{"no Metadata header", imdsQuery(testManagedClientID, FoundryAudience), nil, "bad_request_102"},
-		{"Metadata false", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"false"}}, "bad_request_102"},
-		{"no api-version", url.Values{"resource": {FoundryAudience}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request"},
-		{"another api-version", url.Values{"api-version": {"2019-01-01"}, "resource": {FoundryAudience}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request"},
-		{"no resource", url.Values{"api-version": {IMDSAPIVersion}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request"},
-		{"X-Forwarded-For", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"true"}, "X-Forwarded-For": {"10.0.0.1"}}, "invalid_request"},
+		{"no Metadata header", imdsQuery(testManagedClientID, FoundryAudience), nil, "bad_request_102", ""},
+		{"Metadata false", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"false"}}, "bad_request_102", ""},
+		{"no api-version", url.Values{"resource": {FoundryAudience}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request", ""},
+		{"another api-version", url.Values{"api-version": {"2019-01-01"}, "resource": {FoundryAudience}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request", ""},
+		{"no resource", url.Values{"api-version": {IMDSAPIVersion}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request", ""},
+		{"X-Forwarded-For", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"true"}, "X-Forwarded-For": {"10.0.0.1"}}, "invalid_request", ""},
+		{"resource given twice", repeated("resource", CognitiveAudience), metadataTrue, "invalid_request", "'resource'"},
+		{"client_id given twice", repeated("client_id", "99999999-8888-7777-6666-555555555555"), metadataTrue, "invalid_request", "'client_id'"},
+		{"api-version given twice", repeated("api-version", IMDSAPIVersion), metadataTrue, "invalid_request", "'api-version'"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			svc := New()
-			rec := imdsGet(t, svc, c.query, c.header)
+			rec := imdsGet(t, svc, testBlock, c.query, c.header)
 			require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 			var e oauthError
 			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &e))
 			require.Equal(t, c.wantError, e.Error)
-			log := recorded(t, svc, "mi-"+testManagedClientID)
+			require.Contains(t, e.Description, c.wantInfo)
+			log := imdsRecorded(t, svc, testBlock, testManagedClientID)
 			require.Equal(t, 1, log.Count, "a rejected request is still recorded")
 			require.Equal(t, http.StatusBadRequest, log.Requests[0].Status)
 		})
@@ -570,7 +597,7 @@ func TestIMDSModesAreChosenByResource(t *testing.T) {
 		t.Run(c.resource, func(t *testing.T) {
 			svc := New()
 			for i, want := range c.want {
-				rec := imdsGet(t, svc, imdsQuery(testManagedClientID, c.resource), metadataTrue)
+				rec := imdsGet(t, svc, testBlock, imdsQuery(testManagedClientID, c.resource), metadataTrue)
 				require.Equal(t, want, rec.Code, "request %d: %s", i+1, rec.Body.String())
 				if c.resource == ResourceIdentityNotFound {
 					require.JSONEq(t, `{"error":"invalid_request","error_description":"Identity not found"}`, rec.Body.String())
@@ -582,7 +609,7 @@ func TestIMDSModesAreChosenByResource(t *testing.T) {
 
 func TestResourceReportsTheTokenAppID(t *testing.T) {
 	svc := New()
-	rec := imdsGet(t, svc, imdsQuery(testManagedClientID, FoundryAudience), metadataTrue)
+	rec := imdsGet(t, svc, testBlock, imdsQuery(testManagedClientID, FoundryAudience), metadataTrue)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
@@ -596,4 +623,23 @@ func TestResourceReportsTheTokenAppID(t *testing.T) {
 	none := callResource(t, svc, "/p/foundry", "")
 	require.Equal(t, http.StatusUnauthorized, none.Code)
 	require.Empty(t, none.Header().Values(HeaderAppID))
+}
+
+// Two blocks share one testbench, and the gateway in each sends its IMDS requests under its own
+// block's partition: the same identity in two blocks keeps two counters and two logs, so each
+// block's first request gets the fail-once answer.
+func TestIMDSStateIsScopedToTheBlock(t *testing.T) {
+	svc := New()
+	for _, block := range []string{"block-a", "block-b"} {
+		first := imdsGet(t, svc, block, imdsQuery(testManagedClientID, ResourceNotFoundOnce), metadataTrue)
+		require.Equal(t, http.StatusNotFound, first.Code, "block %s: the identity's first request", block)
+		second := imdsGet(t, svc, block, imdsQuery(testManagedClientID, ResourceNotFoundOnce), metadataTrue)
+		require.Equal(t, http.StatusOK, second.Code, "block %s: the identity's second request", block)
+		require.Equal(t, http.StatusOK, imdsGet(t, svc, block, imdsQuery("", FoundryAudience), metadataTrue).Code)
+	}
+	for _, block := range []string{"block-a", "block-b"} {
+		require.Equal(t, 2, imdsRecorded(t, svc, block, testManagedClientID).Count, "block %s", block)
+		require.Equal(t, 1, imdsRecorded(t, svc, block, SystemAssigned).Count, "block %s", block)
+	}
+	require.Equal(t, 0, imdsRecorded(t, svc, "block-c", testManagedClientID).Count, "a block that sent nothing has an empty log")
 }
