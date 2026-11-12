@@ -951,6 +951,15 @@ though the routing policy keeps nominating it, and that load spreads across the 
   the control plane cannot resolve to a cluster — the system MUST drop that entry from the
   published ranking rather than publish a name with no group, so position-based fallback is never
   triggered.
+- **FR-056a**: A drop under FR-056 MUST be reported. The dropped entry is invisible in the
+  published result — the ranking is simply shorter than the chain described it — so without a
+  report an operator cannot tell a ranking that was written short from one silently truncated
+  here, and when every entry drops the policy goes inert with no signal at all. The system MUST
+  log the dropped targets once per request, and MUST carry them in the telemetry record in a field
+  distinct from the health-skipped targets of FR-033: a skip is health withholding a usable target
+  for a while and resolves itself, a drop means the target cannot be named on this API and needs
+  an operator. A drop MUST NOT fail the request — a shortened chain is still a usable chain, and
+  refusing would turn a naming mistake into an outage.
 
 #### Interaction with dynamic cluster selection
 
@@ -1212,11 +1221,22 @@ platform capability; model failover is its first consumer, not its only one.
   filter. No gating mechanism is required, and no opt-in flag is needed to protect unrelated
   traffic. The cluster is the provider here, which makes this a closer fit than per-route would
   have been. See `agent-router-comparison.md` § A1.
-- **FR-044**: Envoy does not invoke ext_proc for its own locally generated replies, so a connection
-  failure, reset, or per-attempt timeout produces no upstream or downstream policy invocation. The
-  system MUST therefore record transport-failure outcomes from a source other than the policy
-  response path, or explicitly document that transport failures fail over (Envoy retries them) but
-  never contribute to suspension (FR-009, FR-018).
+- **FR-044** *(premise corrected 2026-11-12 — measured, having been reasoned)*: Envoy makes no
+  PER-ATTEMPT ext_proc call for a connection failure, reset, or per-attempt timeout: there is no
+  response to process, and the upstream position is request-only. The original requirement
+  generalised that into "no downstream invocation either", and concluded transport failures could
+  never contribute to suspension. **That generalisation is wrong.** Grading happens once,
+  downstream, on whatever reply finally travels back, and the attempt count attributes it across
+  the chain — so attempts 1..N-1 are charged without the policy ever seeing their individual
+  failures, and a chain where EVERY member is transport-dead is charged too, because Envoy's own
+  terminal reply reaches the response phase like any other. Measured 2026-10-28: three dead
+  members produced three suspensions (`poc-results.md`, "What the policy can and cannot see").
+  The system MUST therefore NOT be built on the assumption that transport failures are invisible.
+  Two real limits remain and MUST be documented rather than designed around: a host that does not
+  RESOLVE produces a local reply with nothing to retry from, so it never fails over at all; and
+  only the FINAL attempt is judged on its status, so narrowing `statusCodes` below what Envoy's
+  `retry_on` covers leaves the last member of an exhausted chain recorded as having answered
+  (FR-009, FR-018).
 
 ### Key Entities
 
