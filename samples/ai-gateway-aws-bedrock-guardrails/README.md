@@ -72,7 +72,3 @@ terraform -chdir=terraform destroy "${TF_VARS[@]}"
 | Checkov 3 | `terraform/` | 8 passed, 0 failed |
 | ShellCheck | `scripts/*.sh` | No findings |
 | yamllint | `compose/` | No findings |
-
-## License
-
-Apache License 2.0. See [LICENSE](LICENSE).
