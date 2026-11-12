@@ -291,3 +291,45 @@ func TestInjectSystemPolicies_PreservesExistingPolicies(t *testing.T) {
 	assert.Equal(t, "policy1", result[1].Name)
 	assert.Equal(t, "policy2", result[2].Name)
 }
+
+func TestInjectSystemPolicies_BudgetPolicyOnLLMChainsOnly(t *testing.T) {
+	cfg := &config.Config{Analytics: config.AnalyticsConfig{Enabled: true}}
+	existing := []policyenginev1.PolicyInstance{{Name: "llm-cost", Version: "v1"}}
+	chainFor := func(kind string) []string {
+		props := map[string]any{SharedParamsKey: map[string]interface{}{"api_kind": kind}}
+		var names []string
+		for _, p := range InjectSystemPolicies(existing, cfg, props) {
+			names = append(names, p.Name)
+		}
+		return names
+	}
+
+	// The budget policy follows the collector and precedes the API's own policies, so its
+	// response phase runs after llm-cost has published the cost.
+	want := []string{constants.ANALYTICS_SYSTEM_POLICY_NAME, constants.BUDGET_SYSTEM_POLICY_NAME, "llm-cost"}
+	assert.Equal(t, want, chainFor("LlmProvider"))
+	assert.Equal(t, want, chainFor("LlmProxy"))
+
+	for _, kind := range []string{"RestApi", "Mcp", "GraphQLApi", ""} {
+		assert.NotContains(t, chainFor(kind), constants.BUDGET_SYSTEM_POLICY_NAME, kind)
+	}
+}
+
+func TestInjectSystemPolicies_BudgetPolicyWithoutAnalytics(t *testing.T) {
+	props := map[string]any{SharedParamsKey: map[string]interface{}{"api_kind": "LlmProvider"}}
+
+	result := InjectSystemPolicies(nil, &config.Config{}, props)
+
+	assert.Len(t, result, 1)
+	assert.Equal(t, constants.BUDGET_SYSTEM_POLICY_NAME, result[0].Name)
+	assert.Equal(t, constants.BUDGET_SYSTEM_POLICY_VERSION, result[0].Version)
+}
+
+func TestFaultSystemPolicies_ExcludeBudgetPolicy(t *testing.T) {
+	cfg := &config.Config{Analytics: config.AnalyticsConfig{Enabled: true}}
+	props := map[string]any{SharedParamsKey: map[string]interface{}{"api_kind": "LlmProvider"}}
+
+	for _, p := range FaultSystemPolicies(cfg, props) {
+		assert.NotEqual(t, constants.BUDGET_SYSTEM_POLICY_NAME, p.Name)
+	}
+}

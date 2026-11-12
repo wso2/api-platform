@@ -44,7 +44,7 @@ func (s *APIServer) CreateBudget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stored, err := s.budgetService.Create(budget.CreateParams{Body: body, Logger: log})
+	stored, err := s.budgetService.Create(budget.CreateParams{Body: body, CorrelationID: middleware.GetCorrelationID(r), Logger: log})
 	if err != nil {
 		var invalid *budget.ValidationError
 		switch {
@@ -52,6 +52,9 @@ func (s *APIServer) CreateBudget(w http.ResponseWriter, r *http.Request) {
 			httputil.WriteJSON(w, http.StatusBadRequest, budgetValidationResponse(invalid))
 		case storage.IsConflictError(err):
 			httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+		case errors.Is(err, budget.ErrPublish):
+			log.Error("Failed to publish budgets", slog.Any("error", err))
+			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: budget.ErrPublish.Error()})
 		default:
 			log.Error("Failed to create budget", slog.Any("error", err))
 			httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to create budget"})
@@ -106,7 +109,7 @@ func (s *APIServer) UpdateBudget(w http.ResponseWriter, r *http.Request, id stri
 		return
 	}
 
-	cfg, err := s.budgetService.Update(budget.UpdateParams{Name: id, Body: body, Logger: log})
+	cfg, err := s.budgetService.Update(budget.UpdateParams{Name: id, Body: body, CorrelationID: middleware.GetCorrelationID(r), Logger: log})
 	if err != nil {
 		writeBudgetError(w, log, "update", err)
 		return
@@ -119,7 +122,7 @@ func (s *APIServer) UpdateBudget(w http.ResponseWriter, r *http.Request, id stri
 func (s *APIServer) DeleteBudget(w http.ResponseWriter, r *http.Request, id string) {
 	log := middleware.GetLogger(r, s.logger)
 
-	if err := s.budgetService.Delete(id, log); err != nil {
+	if err := s.budgetService.Delete(id, middleware.GetCorrelationID(r), log); err != nil {
 		writeBudgetError(w, log, "delete", err)
 		return
 	}
@@ -136,6 +139,9 @@ func writeBudgetError(w http.ResponseWriter, log *slog.Logger, action string, er
 		httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{Status: "error", Message: err.Error()})
 	case errors.Is(err, budget.ErrReadOnly):
 		httputil.WriteJSON(w, http.StatusConflict, api.ErrorResponse{Status: "error", Message: err.Error()})
+	case errors.Is(err, budget.ErrPublish):
+		log.Error("Failed to publish budgets", slog.Any("error", err))
+		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: budget.ErrPublish.Error()})
 	default:
 		log.Error("Failed to "+action+" budget", slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError, api.ErrorResponse{Status: "error", Message: "Failed to " + action + " budget"})

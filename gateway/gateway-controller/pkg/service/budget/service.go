@@ -34,29 +34,40 @@ import (
 // budgetVersion is the artifacts.version of every budget; budgets are not versioned.
 const budgetVersion = "v1"
 
-// Service stores budgets in the gateway database.
+// Publisher sends the stored budgets to the policy engine.
+type Publisher interface {
+	Publish(correlationID string) error
+}
+
+// Service stores budgets in the gateway database and publishes them to the
+// policy engine.
 type Service struct {
 	db          storage.Storage
+	publisher   Publisher
 	logger      *slog.Logger
 	pushEnabled bool
 }
 
 // NewService returns a Service. pushEnabled is the gateway's deployment-sync
 // setting: when true, gateway-created budgets start as pending push-up.
-func NewService(db storage.Storage, logger *slog.Logger, pushEnabled bool) *Service {
+func NewService(db storage.Storage, publisher Publisher, logger *slog.Logger, pushEnabled bool) *Service {
 	if db == nil {
 		panic("budget.Service requires non-nil storage")
+	}
+	if publisher == nil {
+		panic("budget.Service requires a non-nil publisher")
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{db: db, logger: logger, pushEnabled: pushEnabled}
+	return &Service{db: db, publisher: publisher, logger: logger, pushEnabled: pushEnabled}
 }
 
 // CreateParams holds the request for Create. Body is JSON or YAML.
 type CreateParams struct {
-	Body   []byte
-	Logger *slog.Logger
+	Body          []byte
+	CorrelationID string
+	Logger        *slog.Logger
 }
 
 // Create parses, validates and stores a budget created through the gateway
@@ -108,7 +119,7 @@ func (s *Service) Create(params CreateParams) (*models.StoredConfig, error) {
 	}
 
 	log.Info("Budget created", slog.String("uuid", cfg.UUID), slog.String("handle", cfg.Handle))
-	return cfg, nil
+	return cfg, s.publish(params.CorrelationID)
 }
 
 // Get returns the budget with the given name.
@@ -134,9 +145,10 @@ func (s *Service) List() ([]*models.StoredConfig, error) {
 
 // UpdateParams holds the request for Update. Body is the full budget, JSON or YAML.
 type UpdateParams struct {
-	Name   string
-	Body   []byte
-	Logger *slog.Logger
+	Name          string
+	Body          []byte
+	CorrelationID string
+	Logger        *slog.Logger
 }
 
 // Update changes a gateway-created budget. Only status, the limit's amount,
@@ -184,11 +196,11 @@ func (s *Service) Update(params UpdateParams) (*models.StoredConfig, error) {
 	}
 
 	log.Info("Budget updated", slog.String("uuid", updated.UUID), slog.String("handle", updated.Handle))
-	return &updated, nil
+	return &updated, s.publish(params.CorrelationID)
 }
 
 // Delete removes a gateway-created budget.
-func (s *Service) Delete(name string, log *slog.Logger) error {
+func (s *Service) Delete(name, correlationID string, log *slog.Logger) error {
 	if log == nil {
 		log = s.logger
 	}
@@ -207,6 +219,15 @@ func (s *Service) Delete(name string, log *slog.Logger) error {
 	}
 
 	log.Info("Budget deleted", slog.String("uuid", existing.UUID), slog.String("handle", name))
+	return s.publish(correlationID)
+}
+
+// publish sends the stored budgets to the policy engine after a committed
+// change. A failure wraps ErrPublish: the change is saved either way.
+func (s *Service) publish(correlationID string) error {
+	if err := s.publisher.Publish(correlationID); err != nil {
+		return fmt.Errorf("%w: %v", ErrPublish, err)
+	}
 	return nil
 }
 

@@ -389,6 +389,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Publish the stored active budgets so a restart enforces them before any
+	// request is served, with or without the control plane.
+	budgets := utils.NewBudgetPublisher(db, lazyResourceXDSManager)
+	if err := budgets.Publish(""); err != nil {
+		log.Error("Refusing to start: budgets could not be published", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	// The SDS secret manager serves the listener certificate, gateway
 	// identities and the upstream trust bundle from the certificate store.
 	// Without an encryption provider, gateway identity secrets fail to build
@@ -763,6 +771,7 @@ func main() {
 		policyManager,
 		lazyResourceXDSManager,
 		clientAuthorities,
+		budgets,
 		log,
 		cpClient,
 		policyDefinitions,
@@ -1138,6 +1147,13 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"GET /subscription-plans/{planId}":    {"admin"},
 		"PUT /subscription-plans/{planId}":    {"admin"},
 		"DELETE /subscription-plans/{planId}": {"admin"},
+
+		// Budget endpoints
+		"POST /budgets":        {"admin"},
+		"GET /budgets":         {"admin"},
+		"GET /budgets/{id}":    {"admin"},
+		"PUT /budgets/{id}":    {"admin"},
+		"DELETE /budgets/{id}": {"admin"},
 
 		"POST /secrets":        {"admin"},
 		"GET /secrets":         {"admin"},

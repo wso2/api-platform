@@ -1,0 +1,252 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+// Package budget is the gateway's budget system policy: it enforces spend limits on LLM
+// traffic. The gateway controller attaches it to every LLM provider and LLM proxy route and
+// publishes the active budgets to the policy engine as lazy resources of type Budget.
+//
+// A request is admitted in the request body phase, after every header-phase policy has run,
+// because system policies come first in the chain and authentication must have filled the
+// auth context the consumer expressions read. The cost is charged when the response ends:
+// response phases run in reverse chain order, so llm-cost has published x-llm-cost by then.
+//
+// Spend is kept in memory in this policy engine. It resets on restart and is not shared with
+// other gateways; the shared spend tracker replaces it.
+package budget
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+	"math"
+	"net/http"
+	"strconv"
+	"time"
+
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
+)
+
+// Metadata keys read from, and written to, the request's shared metadata.
+const (
+	// metadataProviderName is the LLM provider handle the route serves, set by the engine.
+	metadataProviderName = "provider_name"
+	// metadataLLMCost and metadataLLMCostStatus are published by llm-cost.
+	metadataLLMCost       = "x-llm-cost"
+	metadataLLMCostStatus = "x-llm-cost-status"
+	costStatusCalculated  = "calculated"
+	// metadataAllowances carries the allowances a request was admitted against to the
+	// response phase.
+	metadataAllowances = "x-wso2-budget-allowances"
+	// internalLoopbackHeader marks the LLM proxy's internal call to its provider.
+	internalLoopbackHeader = "x-wso2-internal-loopback"
+)
+
+// BudgetSystemPolicy enforces budgets. Every attachment shares one instance, so spend is
+// counted once per policy engine.
+type BudgetSystemPolicy struct {
+	catalog *catalog
+	tracker *tracker
+	now     func() time.Time
+}
+
+var ins = newPolicy(policy.GetLazyResourceStoreInstance())
+
+func newPolicy(source resourceSource) *BudgetSystemPolicy {
+	c, err := newCatalog(source)
+	if err != nil {
+		// The environment declares one variable; it cannot fail at run time.
+		panic("budget: creating the CEL environment: " + err.Error())
+	}
+	return &BudgetSystemPolicy{catalog: c, tracker: newTracker(), now: time.Now}
+}
+
+// GetPolicy returns the shared instance. The policy takes no parameters.
+func GetPolicy(_ policy.PolicyMetadata, _ map[string]any) (policy.Policy, error) {
+	return ins, nil
+}
+
+// GetPolicyV2 is an alias for GetPolicy, provided for compatibility with plugin registries
+// that call GetPolicyV2 on all plugins.
+func GetPolicyV2(metadata policy.PolicyMetadata, params map[string]any) (policy.Policy, error) {
+	return GetPolicy(metadata, params)
+}
+
+// Mode buffers the request body, the phase admission runs in, and streams the response,
+// charging when it ends, as llm-cost does.
+func (p *BudgetSystemPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{
+		RequestHeaderMode:  policy.HeaderModeSkip,
+		RequestBodyMode:    policy.BodyModeBuffer,
+		ResponseHeaderMode: policy.HeaderModeSkip,
+		ResponseBodyMode:   policy.BodyModeStream,
+	}
+}
+
+// admitted is one allowance a request was admitted against, in the period it was admitted in.
+type admitted = spendKey
+
+// OnRequestBody finds the budgets that cover the request and refuses it when a Block
+// budget's allowance has spent its block point.
+func (p *BudgetSystemPolicy) OnRequestBody(_ context.Context, reqCtx *policy.RequestContext, _ map[string]any) policy.RequestAction {
+	if reqCtx == nil || reqCtx.SharedContext == nil {
+		return policy.UpstreamRequestModifications{}
+	}
+	var headers map[string][]string
+	if reqCtx.Headers != nil {
+		headers = reqCtx.Headers.GetAll()
+		if values := reqCtx.Headers.Get(internalLoopbackHeader); len(values) > 0 && values[0] != "" {
+			// The proxy's call to its provider: the outer call already counted it.
+			return policy.UpstreamRequestModifications{}
+		}
+	}
+	provider, _ := reqCtx.Metadata[metadataProviderName].(string)
+	if provider == "" {
+		return policy.UpstreamRequestModifications{}
+	}
+	budgets := p.catalog.current()
+	if len(budgets) == 0 {
+		return policy.UpstreamRequestModifications{}
+	}
+
+	now := p.now().UTC()
+	vars := activation(headers, reqCtx.Path, reqCtx.Method, reqCtx.Metadata, reqCtx.AuthContext)
+	var keys []admitted
+	var exhausted []*budget
+	for _, b := range budgets {
+		allowances, ok := b.matches(provider, vars)
+		if !ok {
+			continue
+		}
+		start := periodStart(b.period, now)
+		used := false
+		for _, allowance := range allowances {
+			key := admitted{allowance: allowance, periodStart: start}
+			keys = append(keys, key)
+			if b.action == actionBlock && p.tracker.spentIn(key) >= b.blockPoint() {
+				used = true
+			}
+		}
+		if used {
+			exhausted = append(exhausted, b)
+		}
+	}
+	if len(exhausted) > 0 {
+		return refusal(exhausted, now)
+	}
+	if len(keys) > 0 {
+		if reqCtx.Metadata == nil {
+			reqCtx.Metadata = map[string]any{}
+		}
+		reqCtx.Metadata[metadataAllowances] = keys
+	}
+	return policy.UpstreamRequestModifications{}
+}
+
+// NeedsMoreResponseData is false: the cost is read from metadata, not the body.
+func (p *BudgetSystemPolicy) NeedsMoreResponseData(_ []byte) bool { return false }
+
+// OnResponseBodyChunk charges the request when its response ends.
+func (p *BudgetSystemPolicy) OnResponseBodyChunk(
+	_ context.Context, respCtx *policy.ResponseStreamContext, chunk *policy.StreamBody, _ map[string]any,
+) policy.StreamingResponseAction {
+	if chunk != nil && chunk.EndOfStream && respCtx != nil {
+		p.charge(respCtx.SharedContext)
+	}
+	return policy.ForwardResponseChunk{}
+}
+
+// OnResponseBody charges a request whose response was delivered whole.
+func (p *BudgetSystemPolicy) OnResponseBody(_ context.Context, respCtx *policy.ResponseContext, _ map[string]any) policy.ResponseAction {
+	if respCtx != nil {
+		p.charge(respCtx.SharedContext)
+	}
+	return policy.DownstreamResponseModifications{}
+}
+
+// charge adds the cost llm-cost published to every allowance the request was admitted
+// against; without a calculated cost the request is charged $0 and counted as unpriced.
+// It charges once: the allowances are removed from the metadata.
+func (p *BudgetSystemPolicy) charge(shared *policy.SharedContext) {
+	if shared == nil || shared.Metadata == nil {
+		return
+	}
+	keys, _ := shared.Metadata[metadataAllowances].([]admitted)
+	if len(keys) == 0 {
+		return
+	}
+	delete(shared.Metadata, metadataAllowances)
+
+	now := p.now().UTC()
+	status, _ := shared.Metadata[metadataLLMCostStatus].(string)
+	costText, _ := shared.Metadata[metadataLLMCost].(string)
+	cost, err := strconv.ParseFloat(costText, 64)
+	if status != costStatusCalculated || err != nil || cost < 0 || math.IsNaN(cost) || math.IsInf(cost, 0) {
+		p.tracker.countUnpriced(keys, now)
+		return
+	}
+	p.tracker.charge(keys, cost, now)
+}
+
+// refusalBody is the 429 body: each used-up budget once, in handle order; allowances are
+// never shown.
+type refusalBody struct {
+	Code    string          `json:"code"`
+	Message string          `json:"message"`
+	Budgets []refusedBudget `json:"budgets"`
+}
+
+type refusedBudget struct {
+	Budget   string `json:"budget"`
+	Limit    string `json:"limit"`
+	Currency string `json:"currency"`
+	Period   string `json:"period"`
+	ResetsAt string `json:"resetsAt"`
+}
+
+// refusal answers 429 with Retry-After until the last listed budget resets.
+func refusal(exhausted []*budget, now time.Time) policy.ImmediateResponse {
+	body := refusalBody{
+		Code:    "BUDGET_EXCEEDED",
+		Message: "Budget used up. Retry after every listed budget resets.",
+	}
+	var latest time.Time
+	for _, b := range exhausted {
+		resets := periodEnd(b.period, periodStart(b.period, now))
+		if resets.After(latest) {
+			latest = resets
+		}
+		body.Budgets = append(body.Budgets, refusedBudget{
+			Budget: b.name, Limit: b.limit, Currency: b.currency, Period: b.period,
+			ResetsAt: resets.Format(time.RFC3339),
+		})
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		slog.Error("Failed to encode the budget refusal", slog.Any("error", err))
+		encoded = []byte(`{"code":"BUDGET_EXCEEDED"}`)
+	}
+	retryAfter := int64(math.Ceil(latest.Sub(now).Seconds()))
+	return policy.ImmediateResponse{
+		StatusCode: http.StatusTooManyRequests,
+		Headers: map[string]string{
+			"Content-Type": "application/json",
+			"Retry-After":  strconv.FormatInt(retryAfter, 10),
+		},
+		Body: encoded,
+	}
+}

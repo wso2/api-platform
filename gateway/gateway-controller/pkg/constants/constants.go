@@ -271,6 +271,12 @@ const (
 	// policy module asserts the same literal on its side.
 	JWKS_SYSTEM_POLICY_NAME = "wso2_apip_sys_jwks"
 
+	// BUDGET_SYSTEM_POLICY_NAME is the in-repo policy that enforces budgets
+	// (gateway/system-policies/budget). It is a defaultSystemPolicies entry limited
+	// to LLM provider and LLM proxy chains.
+	BUDGET_SYSTEM_POLICY_NAME    = "wso2_apip_sys_budget"
+	BUDGET_SYSTEM_POLICY_VERSION = "v1"
+
 	// A2A_POLICY_PARAM_* are the parameter names the policy above reads. Each
 	// gateway-answered A2A concern takes a nested block of its own rather than
 	// top-level fields, so the two cannot be confused for one another: a chain

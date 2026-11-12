@@ -34,9 +34,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
 const validBudget = `{
@@ -59,6 +61,22 @@ func newTestService(t *testing.T, pushEnabled bool) (*Service, storage.Storage) 
 // newTestServiceWithPath also returns the SQLite file, for tests that read the rows directly.
 func newTestServiceWithPath(t *testing.T, pushEnabled bool) (*Service, storage.Storage, string) {
 	t.Helper()
+	env := newTestEnv(t, pushEnabled, nil)
+	return env.svc, env.db, env.path
+}
+
+// testEnv is a service over a fresh SQLite database that publishes to an in-memory
+// lazy-resource manager.
+type testEnv struct {
+	svc       *Service
+	db        storage.Storage
+	path      string
+	resources *lazyresourcexds.LazyResourceStateManager
+}
+
+// newTestEnv builds a testEnv. A non-nil publisher replaces the real one.
+func newTestEnv(t *testing.T, pushEnabled bool, publisher Publisher) testEnv {
+	t.Helper()
 	metrics.Init()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	path := filepath.Join(t.TempDir(), "gateway.db")
@@ -70,7 +88,12 @@ func newTestServiceWithPath(t *testing.T, pushEnabled bool) (*Service, storage.S
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	seedLLMProvider(t, db, "openai")
-	return NewService(db, logger, pushEnabled), db, path
+	store := storage.NewLazyResourceStore(logger)
+	resources := lazyresourcexds.NewLazyResourceStateManager(store, lazyresourcexds.NewLazyResourceSnapshotManager(store, logger), logger)
+	if publisher == nil {
+		publisher = utils.NewBudgetPublisher(db, resources)
+	}
+	return testEnv{svc: NewService(db, publisher, logger, pushEnabled), db: db, path: path, resources: resources}
 }
 
 // seedLLMProvider stores an LLM provider so budgets can name it.
@@ -316,7 +339,7 @@ func TestControlPlaneBudgetsAreReadOnly(t *testing.T) {
 	_, err = svc.Update(UpdateParams{Name: "from-control-plane", Body: []byte(body)})
 	assert.True(t, errors.Is(err, ErrReadOnly), "update: got %v", err)
 
-	err = svc.Delete("from-control-plane", nil)
+	err = svc.Delete("from-control-plane", "", nil)
 	assert.True(t, errors.Is(err, ErrReadOnly), "delete: got %v", err)
 }
 
@@ -325,14 +348,14 @@ func TestDelete(t *testing.T) {
 	created, err := svc.Create(CreateParams{Body: []byte(validBudget)})
 	require.NoError(t, err)
 
-	require.NoError(t, svc.Delete("research-team-monthly", nil))
+	require.NoError(t, svc.Delete("research-team-monthly", "", nil))
 
 	_, err = svc.Get("research-team-monthly")
 	assert.True(t, errors.Is(err, ErrNotFound), "got %v", err)
 	_, err = db.GetConfig(created.UUID)
 	assert.True(t, storage.IsNotFoundError(err), "artifact row should be gone: %v", err)
 
-	err = svc.Delete("research-team-monthly", nil)
+	err = svc.Delete("research-team-monthly", "", nil)
 	assert.True(t, errors.Is(err, ErrNotFound), "got %v", err)
 }
 
@@ -530,7 +553,7 @@ func TestBudgetShapes_RoundTripThroughStorage(t *testing.T) {
 			assert.Equal(t, normalise(t, updated), normalise(t, stored["spec"]), "budgets.configuration after update")
 
 			// Delete removes both rows.
-			require.NoError(t, svc.Delete(name, nil))
+			require.NoError(t, svc.Delete(name, "", nil))
 			_, _, ok = readRows(t, raw, created.UUID)
 			assert.False(t, ok, "artifacts row still there after delete")
 		})
@@ -582,4 +605,61 @@ func TestBudgetShapes_RejectsUnsupported(t *testing.T) {
 			assert.Empty(t, stored, "a rejected budget was stored")
 		})
 	}
+}
+
+func TestService_PublishesActiveBudgetsToThePolicyEngine(t *testing.T) {
+	env := newTestEnv(t, false, nil)
+	published := func() map[string]*storage.LazyResource {
+		return env.resources.GetResourcesByType(utils.LazyResourceTypeBudget)
+	}
+
+	_, err := env.svc.Create(CreateParams{Body: []byte(validBudget)})
+	require.NoError(t, err)
+	require.Contains(t, published(), "research-team-monthly")
+	assert.Equal(t, "500.00", published()["research-team-monthly"].Resource["limit"].(map[string]interface{})["amount"])
+
+	// An edit reaches the policy engine.
+	_, err = env.svc.Update(UpdateParams{Name: "research-team-monthly", Body: []byte(strings.Replace(validBudget, `"500.00"`, `"650.00"`, 1))})
+	require.NoError(t, err)
+	assert.Equal(t, "650.00", published()["research-team-monthly"].Resource["limit"].(map[string]interface{})["amount"])
+
+	// Deactivating withdraws it; reactivating sends it again.
+	inactive := strings.Replace(validBudget, `"limit":`, `"status": "inactive", "limit":`, 1)
+	_, err = env.svc.Update(UpdateParams{Name: "research-team-monthly", Body: []byte(inactive)})
+	require.NoError(t, err)
+	assert.Empty(t, published())
+	_, err = env.svc.Update(UpdateParams{Name: "research-team-monthly", Body: []byte(validBudget)})
+	require.NoError(t, err)
+	assert.Contains(t, published(), "research-team-monthly")
+
+	// Deleting withdraws it.
+	require.NoError(t, env.svc.Delete("research-team-monthly", "", nil))
+	assert.Empty(t, published())
+}
+
+func TestService_InactiveBudgetIsStoredButNotPublished(t *testing.T) {
+	env := newTestEnv(t, false, nil)
+	inactive := strings.Replace(validBudget, `"limit":`, `"status": "inactive", "limit":`, 1)
+
+	_, err := env.svc.Create(CreateParams{Body: []byte(inactive)})
+
+	require.NoError(t, err)
+	_, err = env.svc.Get("research-team-monthly")
+	require.NoError(t, err)
+	assert.Empty(t, env.resources.GetResourcesByType(utils.LazyResourceTypeBudget))
+}
+
+// failingPublisher always fails, standing in for a policy-engine update that cannot be made.
+type failingPublisher struct{}
+
+func (failingPublisher) Publish(string) error { return errors.New("snapshot failed") }
+
+func TestService_PublishFailureKeepsTheChange(t *testing.T) {
+	env := newTestEnv(t, false, failingPublisher{})
+
+	_, err := env.svc.Create(CreateParams{Body: []byte(validBudget)})
+
+	assert.ErrorIs(t, err, ErrPublish)
+	_, err = env.svc.Get("research-team-monthly")
+	assert.NoError(t, err, "the budget is saved even though publishing failed")
 }

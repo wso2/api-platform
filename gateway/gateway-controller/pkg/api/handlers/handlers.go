@@ -113,6 +113,7 @@ func NewAPIServer(
 	policyManager *policyxds.PolicyManager,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	clientAuthorities *utils.ClientAuthorityPublisher,
+	budgets *utils.BudgetPublisher,
 	logger *slog.Logger,
 	controlPlaneClient controlplane.ControlPlaneClient,
 	policyDefinitions map[string]models.PolicyDefinition,
@@ -138,6 +139,9 @@ func NewAPIServer(
 	}
 	if clientAuthorities == nil {
 		panic("APIServer requires a non-nil client authority publisher")
+	}
+	if budgets == nil {
+		panic("APIServer requires a non-nil budget publisher")
 	}
 	gatewayID := strings.TrimSpace(systemConfig.Controller.Server.GatewayID)
 	if gatewayID == "" {
@@ -189,7 +193,7 @@ func NewAPIServer(
 	server.llmDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
 
 	server.agentService = agentService
-	server.budgetService = budget.NewService(db, logger, systemConfig.Controller.ControlPlane.DeploymentSyncEnabled)
+	server.budgetService = budget.NewService(db, budgets, logger, systemConfig.Controller.ControlPlane.DeploymentSyncEnabled)
 	server.AgentHandler = NewAgentHandler(agentService, logger)
 
 	server.restAPIService = restAPIService
