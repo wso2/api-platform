@@ -64,8 +64,11 @@ const (
 
 // kindOps adapts one artifact kind onto the verbs the tools expose.
 type kindOps struct {
-	Kind     string
-	Routable bool
+	Kind string
+	// MetricsType is the api_type label this kind's REST handler records the
+	// Prometheus API metrics under. Only RestApi and Agent has it.
+	MetricsType string
+	Routable    bool
 
 	// Collection is this kind's management REST collection path
 	// ("/rest-apis"). It is the authorization anchor: an MCP call is authorized
@@ -78,6 +81,9 @@ type kindOps struct {
 	Update func(handle string, manifest []byte, correlationID string, log *slog.Logger) (any, error)
 	Delete func(handle, correlationID string, log *slog.Logger) error
 	Get    func(handle string) (any, error)
+
+	// GetRedacted is set only for kinds whose Get returns a credential
+	GetRedacted func(handle string) (any, error)
 
 	// List takes no filter arguments by design: it returns every resource of the
 	// kind and the caller narrows the set. Server-side filters would have to be
@@ -364,10 +370,11 @@ func (h *McpHandler) kindsInClass(class kindClass) []string {
 
 func (h *McpHandler) restAPIOps() *kindOps {
 	return &kindOps{
-		Kind:       models.KindRestApi,
-		Routable:   true,
-		Collection: "/rest-apis",
-		Keys:       h.apiKeyOps(models.KindRestApi),
+		Kind:        models.KindRestApi,
+		MetricsType: "rest_api",
+		Routable:    true,
+		Collection:  "/rest-apis",
+		Keys:        h.apiKeyOps(models.KindRestApi),
 
 		Create: func(manifest []byte, correlationID string, log *slog.Logger) (any, error) {
 			result, err := h.restAPIService.Create(restapi.CreateParams{
@@ -755,10 +762,11 @@ func (h *McpHandler) llmProviderTemplateOps() *kindOps {
 // agentOps adapts Agent (A2A) configurations.
 func (h *McpHandler) agentOps() *kindOps {
 	return &kindOps{
-		Kind:       models.KindAgent,
-		Routable:   true,
-		Collection: "/agents",
-		Keys:       h.apiKeyOps(models.KindAgent),
+		Kind:        models.KindAgent,
+		MetricsType: metricsKindAgent,
+		Routable:    true,
+		Collection:  "/agents",
+		Keys:        h.apiKeyOps(models.KindAgent),
 
 		Create: func(manifest []byte, correlationID string, log *slog.Logger) (any, error) {
 			result, err := h.agentService.Create(agent.CreateParams{
@@ -881,15 +889,21 @@ func (h *McpHandler) secretOps() *kindOps {
 			if err != nil {
 				return nil, err
 			}
-			// includeValue=true matches GET /secrets/{id}
-			// (secret_handler.go), which returns the plaintext so a caller can
-			// read back what it wrote. MCP mirrors the REST API rather than
-			// applying its own policy, so a secret read here carries the value
-			// too — treat an MCP transcript as credential-bearing.
+			// includeValue=true matches GET /secrets/{id} (secret_handler.go).
+			// get_resource reaches this only when the caller chose
+			// secretValue="reveal"; "redact" goes through GetRedacted.
 			//
 			// Create and Update pass false, and List returns SecretMeta which
-			// has no value field at all; both also match REST.
+			// has no value field at all.
 			return buildSecretResourceResponse(secret, true), nil
+		},
+
+		GetRedacted: func(handle string) (any, error) {
+			secret, err := h.secretService.Get(handle, "")
+			if err != nil {
+				return nil, err
+			}
+			return buildSecretResourceResponse(secret, false), nil
 		},
 
 		List: func() ([]listedResource, error) {

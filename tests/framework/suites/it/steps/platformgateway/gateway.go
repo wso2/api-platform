@@ -1563,12 +1563,13 @@ func (g *Gateway) createAPI(ctx context.Context, body *godog.DocString, contentT
 		return fmt.Errorf("registering API %q for cleanup: %w", name, err)
 	}
 
-	return g.awaitDeployed(ctx, name)
+	return g.awaitDeployed(ctx, "/rest-apis", name)
 }
 
-// awaitDeployed polls the management API until the deployment is visible.
-func (g *Gateway) awaitDeployed(ctx context.Context, name string) error {
-	url, err := g.managementURL("/rest-apis/" + name)
+// awaitDeployed polls the management API until the resource named name in collection is
+// visible.
+func (g *Gateway) awaitDeployed(ctx context.Context, collection, name string) error {
+	url, err := g.managementURL(collection + "/" + name)
 	if err != nil {
 		return err
 	}
@@ -1587,7 +1588,7 @@ func (g *Gateway) awaitDeployed(ctx context.Context, name string) error {
 		accept,
 	)
 	return awaited(last, err, accept,
-		fmt.Sprintf("API %q was accepted but never became retrievable", name))
+		fmt.Sprintf("%s %q was accepted but never became retrievable", collection, name))
 }
 
 func (g *Gateway) getAPI(ctx context.Context, name string) error {

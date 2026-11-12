@@ -127,10 +127,13 @@ Feature: Gateway controller management MCP endpoint
     And I generate a unique value from "mcp-tool-graphql" and store it as "graphqlDisplayName"
     And I generate a unique API version from "mcp-tool-graphql" and store it as "graphqlVersion"
     And I generate a unique API context from "/mcp-tool-graphql" and store it as "graphqlContext"
-    When I call the MCP tool "wso2_apip_gw_deploy_api" on the "gateway-controller" service with arguments:
-      """
-      {"kind":"GraphQLApi","yaml":"apiVersion: ${CTX:gatewaySpecVersion}\nkind: GraphQLApi\nmetadata:\n  name: ${CTX:graphqlName}\nspec:\n  displayName: ${CTX:graphqlDisplayName}\n  version: ${CTX:graphqlVersion}\n  context: ${CTX:graphqlContext}\n  upstream:\n    main:\n      url: http://testbench:3000/graphql\n"}
-      """
+    When I deploy GraphQL API through MCP from "resources/templates/graphql-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}     |
+      | name                   | ${CTX:graphqlName}            |
+      | spec.displayName       | ${CTX:graphqlDisplayName}     |
+      | spec.version           | ${CTX:graphqlVersion}         |
+      | spec.context           | ${CTX:graphqlContext}         |
+      | spec.upstream.main.url | http://testbench:3000/graphql |
     Then the response status code should be 200
     And the JSON response field "result.isError" should not exist
     And the JSON response field "result.structuredContent.operation" should be "create"

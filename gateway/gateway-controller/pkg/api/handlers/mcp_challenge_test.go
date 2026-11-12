@@ -70,6 +70,20 @@ func TestChallengeOnForbidden(t *testing.T) {
 		rec.Header().Get("WWW-Authenticate"))
 }
 
+// Once a request has passed authentication and authorization, a 403 written
+// further in (such as an IP allowlist's) is not a credential problem, so it is
+// sent without a step-up challenge.
+func TestChallengeStopsAtEndMCPChallenge(t *testing.T) {
+	refuse := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+	})
+	rec := challengeServe(t, MCPChallengeMiddleware(challengeURL, challengeScopes),
+		EndMCPChallenge(refuse).ServeHTTP)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Empty(t, rec.Header().Get("WWW-Authenticate"), "no token can fix this 403")
+}
+
 // Each parameter is included only when there is a value for it. With nothing
 // to say, a 401 gets no challenge at all rather than a bare "Bearer ".
 func TestChallengeOmitsParametersWithoutAValue(t *testing.T) {

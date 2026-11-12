@@ -947,11 +947,8 @@ func main() {
 		if cfg.Controller.AdminServer.MCPServer.Enabled {
 			base := strings.TrimRight(cfg.Controller.AdminServer.ExternalBaseURL, "/")
 			const adminMcpRelPath = "/mcp"
-			// Both forms the generated router registers, so the legacy alias
-			// gets the challenge too.
 			adminMcpRoutePatterns := map[string]bool{
 				"POST " + adminAPIBasePath + adminMcpRelPath: true,
-				"POST " + adminMcpRelPath:                    true,
 			}
 			adminMcpResource := base + adminAPIBasePath + adminMcpRelPath
 			// As on the management endpoint: OAuth discovery only when an IdP

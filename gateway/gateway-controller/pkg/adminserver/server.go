@@ -11,6 +11,7 @@ import (
 	"time"
 
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 )
 
@@ -85,10 +86,8 @@ func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, authMiddlewar
 	}
 	authMW := createSelectiveAuthMiddleware(authMiddleware)
 
-	// Middleware shared by every generated route. The MCP challenge, when
-	// present, is appended last so it is outermost and can decorate the 401
-	// the authenticator writes. It arrives from main.go already scoped to the
-	// MCP route patterns, so REST 401s are untouched.
+	// Middleware shared by every generated route. The last entry is outermost
+	// and runs first, so authentication runs before the IP allowlist.
 	versionedMW := []adminapi.MiddlewareFunc{
 		createSelectiveIPWhitelistMiddleware(cfg.AllowedIPs),
 		authMW,
@@ -102,8 +101,12 @@ func NewServer(cfg *config.AdminServerConfig, apiServer apiServer, authMiddlewar
 	if mcp != nil && mcp.Handler != nil {
 		s.mcpHandler = mcp.Handler
 		if mcp.Challenge != nil {
-			versionedMW = append(versionedMW, mcp.Challenge)
-			legacyMW = append(legacyMW, mcp.Challenge)
+			versionedMW = []adminapi.MiddlewareFunc{
+				createSelectiveIPWhitelistMiddleware(cfg.AllowedIPs),
+				handlers.EndMCPChallenge,
+				authMW,
+				mcp.Challenge,
+			}
 		}
 	}
 
@@ -215,10 +218,12 @@ func (s *Server) GetXDSSyncStatus(w http.ResponseWriter, r *http.Request) {
 
 // HandleAdminMcp implements adminapi.ServerInterface. It answers 404 when the
 // MCP endpoint is disabled, so to an authenticated admin a gateway with MCP
-// switched off looks the same as one that does not implement it. As with
-// config_dump, the disabled check runs after authentication.
+// switched off looks the same as one that does not implement it. It also
+// answers 404 on the generated router's legacy unprefixed alias: MCP is new,
+// so it is served only under AdminAPIBasePath. As with config_dump, both
+// checks run after authentication.
 func (s *Server) HandleAdminMcp(w http.ResponseWriter, r *http.Request) {
-	if s.mcpHandler == nil {
+	if s.mcpHandler == nil || r.Pattern == "POST "+adminMcpRelPath {
 		http.NotFound(w, r)
 		return
 	}

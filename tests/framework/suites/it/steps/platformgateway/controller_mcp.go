@@ -51,7 +51,7 @@ func (g *Gateway) registerControllerMCPSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I send an MCP "([^"]*)" request to the "([^"]*)" service$`, g.sendControllerMCPMethod)
 	sc.Step(`^I call the MCP tool "([^"]*)" on the "([^"]*)" service with arguments:$`,
 		g.callControllerMCPTool)
-	sc.Step(`^I deploy API through MCP from "([^"]*)" with values:$`, g.deployAPIThroughMCP)
+	sc.Step(`^I deploy (API|GraphQL API) through MCP from "([^"]*)" with values:$`, g.deployAPIThroughMCP)
 	sc.Step(`^I update API "([^"]*)" through MCP from "([^"]*)" with values:$`, g.updateAPIThroughMCP)
 	sc.Step(`^I undeploy API "([^"]*)" through MCP$`, g.undeployAPIThroughMCP)
 }
@@ -140,20 +140,26 @@ func (g *Gateway) trackMCPToolResource(
 	return nil
 }
 
-// deployAPIThroughMCP renders the canonical API template and creates the API through the
-// management MCP endpoint's deploy tool.
+// deployAPIThroughMCP renders the canonical template for kind and creates the resource through
+// the management MCP endpoint's deploy tool.
 //
 // Like createAPI, a rejected deploy is published for the scenario to assert rather than failed
 // here. An accepted one is registered for cleanup before anything else can fail, then awaited.
 // A tool error arrives as HTTP 200 with result.isError, so success is judged on the JSON-RPC
 // result, not the status code.
-func (g *Gateway) deployAPIThroughMCP(ctx context.Context, templateName string, table *godog.Table) error {
-	definition, err := g.renderMCPTemplate(ctx, templateName, table)
+func (g *Gateway) deployAPIThroughMCP(ctx context.Context, kind, templateName string, table *godog.Table) error {
+	spec := resourceKinds[kind]
+	tracked := mcpTrackedKinds[spec.declared]
+	definition, err := g.renderMCPTemplate(ctx, kind, templateName, table)
 	if err != nil {
 		return err
 	}
+	if declared := kindFromDefinition(definition); declared != spec.declared {
+		return fmt.Errorf("step deploys %s but the definition declares kind %q, want %q",
+			kind, declared, spec.declared)
+	}
 	resp, err := g.controllerMCPToolCall(ctx, "gateway-controller", toolDeployAPI,
-		map[string]any{"kind": "RestApi", "yaml": definition})
+		map[string]any{"kind": spec.declared, "yaml": definition})
 	if err != nil {
 		return err
 	}
@@ -166,22 +172,24 @@ func (g *Gateway) deployAPIThroughMCP(ctx context.Context, templateName string, 
 		return nil
 	}
 	expectInDump(ctx, name, true)
-	if err := tcontext.Set(ctx, keyLastAPIName, name); err != nil {
-		return err
+	if kind == "API" {
+		if err := tcontext.Set(ctx, keyLastAPIName, name); err != nil {
+			return err
+		}
 	}
 	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindAPI, ID: name, Actor: "admin", Description: "deployed through MCP by " + scenarioLabel(ctx),
+		Kind: tracked.kind, ID: name, Actor: "admin", Description: "deployed through MCP by " + scenarioLabel(ctx),
 	}); err != nil {
-		deleteURL, urlErr := g.managementURL("/rest-apis/" + name)
+		deleteURL, urlErr := g.managementURL(tracked.collection + "/" + name)
 		if urlErr == nil {
 			if deleteErr := g.compensateDelete(ctx, deleteURL, g.scenarioHeaders(ctx)); deleteErr != nil {
-				return fmt.Errorf("registering API %q for cleanup: %w; compensation failed: %v",
-					name, err, deleteErr)
+				return fmt.Errorf("registering %s %q for cleanup: %w; compensation failed: %v",
+					kind, name, err, deleteErr)
 			}
 		}
-		return fmt.Errorf("registering API %q for cleanup: %w", name, err)
+		return fmt.Errorf("registering %s %q for cleanup: %w", kind, name, err)
 	}
-	return g.awaitDeployed(ctx, name)
+	return g.awaitDeployed(ctx, tracked.collection, name)
 }
 
 // updateAPIThroughMCP replaces an existing API through the deploy tool's update form.
@@ -192,7 +200,7 @@ func (g *Gateway) updateAPIThroughMCP(
 	if err != nil {
 		return err
 	}
-	definition, err := g.renderMCPTemplate(ctx, templateName, table)
+	definition, err := g.renderMCPTemplate(ctx, "API", templateName, table)
 	if err != nil {
 		return err
 	}
@@ -222,8 +230,8 @@ func (g *Gateway) undeployAPIThroughMCP(ctx context.Context, apiName string) err
 	return nil
 }
 
-// renderMCPTemplate renders a canonical API template for an MCP manifest argument.
-func (g *Gateway) renderMCPTemplate(ctx context.Context, templateName string, table *godog.Table) (string, error) {
+// renderMCPTemplate renders a canonical resource template for an MCP manifest argument.
+func (g *Gateway) renderMCPTemplate(ctx context.Context, kind, templateName string, table *godog.Table) (string, error) {
 	path, err := g.templatePath(templateName)
 	if err != nil {
 		return "", err
@@ -232,7 +240,7 @@ func (g *Gateway) renderMCPTemplate(ctx context.Context, templateName string, ta
 	if err != nil {
 		return "", fmt.Errorf("read resource template %q: %w", templateName, err)
 	}
-	definition, err := g.renderResourceTemplate(ctx, "API", templateName, content, table)
+	definition, err := g.renderResourceTemplate(ctx, kind, templateName, content, table)
 	if err != nil {
 		return "", fmt.Errorf("resource template %q: %w", templateName, err)
 	}

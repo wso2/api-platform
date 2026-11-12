@@ -20,12 +20,15 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 )
 
 // Tool handlers
@@ -71,8 +74,10 @@ func (h *McpHandler) write(ctx context.Context, class kindClass, tool string, in
 		slog.String("tool", tool),
 		slog.String("kind", ops.Kind))
 
+	start := time.Now()
 	if in.ID != "" {
 		resource, err := ops.Update(in.ID, []byte(in.Yaml), correlationID, log)
+		recordAPIMetrics(ops, "update", start, err)
 		if err != nil {
 			log.Error("MCP update failed", slog.String("id", in.ID), slog.Any("error", err))
 			// Validation details are how the model learns to correct the manifest and retry,
@@ -87,6 +92,7 @@ func (h *McpHandler) write(ctx context.Context, class kindClass, tool string, in
 	}
 
 	resource, err := ops.Create([]byte(in.Yaml), correlationID, log)
+	recordAPIMetrics(ops, "create", start, err)
 	if err != nil {
 		log.Error("MCP create failed", slog.Any("error", err))
 		return nil, nil, mcpWriteError(ops.Kind, mcpWriteOpCreate, "", err, log)
@@ -131,7 +137,10 @@ func (h *McpHandler) remove(ctx context.Context, class kindClass, tool string, i
 		slog.String("tool", tool),
 		slog.String("kind", ops.Kind))
 
-	if err := ops.Delete(in.ID, correlationID, log); err != nil {
+	start := time.Now()
+	err = ops.Delete(in.ID, correlationID, log)
+	recordAPIMetrics(ops, "delete", start, err)
+	if err != nil {
 		log.Error("MCP delete failed", slog.String("id", in.ID), slog.Any("error", err))
 		// Deliberately generic: a delete failure is usually "not found", and
 		// echoing the storage error would confirm what does and does not exist.
@@ -153,13 +162,35 @@ func (h *McpHandler) getResource(ctx context.Context, _ *mcp.CallToolRequest, in
 		return nil, nil, err
 	}
 
-	resource, err := ops.Get(in.ID)
+	get := ops.Get
+	if ops.GetRedacted != nil {
+		switch in.SecretValue {
+		case "reveal":
+		case "redact":
+			get = ops.GetRedacted
+		case "":
+			return nil, nil, fmt.Errorf(
+				"not reading %s %q yet: its value is a credential. Ask the user whether to show the value, "+
+					"hide it, or stop. Then call again with secretValue=\"reveal\" to include the value or "+
+					"secretValue=\"redact\" to leave it out; if they want to stop, do not call again",
+				ops.Kind, in.ID)
+		default:
+			return nil, nil, fmt.Errorf("secretValue must be \"reveal\" or \"redact\", got %q", in.SecretValue)
+		}
+	}
+
+	resource, err := get(in.ID)
 	if err != nil {
 		h.logger.Warn("MCP "+toolGetResource+" lookup failed",
 			slog.String("kind", ops.Kind), slog.String("id", in.ID), slog.Any("error", err))
 		return nil, nil, fmt.Errorf("%s with handle %q not found", ops.Kind, in.ID)
 	}
-	return nil, map[string]any{"kind": ops.Kind, "id": in.ID, "resource": resource}, nil
+
+	out := map[string]any{"kind": ops.Kind, "id": in.ID, "resource": resource}
+	if ops.GetRedacted != nil && in.SecretValue == "redact" {
+		out["notice"] = "spec.value was left out as the user asked; the " + ops.Kind + " still has a value"
+	}
+	return nil, out, nil
 }
 
 // listResources returns full manifests for one kind, or a cross-kind inventory.
@@ -224,4 +255,26 @@ func (h *McpHandler) listResources(ctx context.Context, _ *mcp.CallToolRequest, 
 			"for full manifests. Certificates and subscriptions are not kinds and do not appear here - " +
 			"use " + toolManageCertificates + " and " + toolManageSubscriptions + " for those respectively.",
 	}, nil
+}
+
+// recordAPIMetrics mirrors the Prometheus bookkeeping the RestApi and Agent
+// REST handlers do after calling their service (rest_api_handler.go,
+// agent_handler.go).
+func recordAPIMetrics(ops *kindOps, operation string, start time.Time, err error) {
+	if ops.MetricsType == "" {
+		return
+	}
+	var readBack *mcpReadBackError
+	if err != nil && !errors.As(err, &readBack) {
+		metrics.APIOperationsTotal.WithLabelValues(operation, "error", ops.MetricsType).Inc()
+		return
+	}
+	metrics.APIOperationsTotal.WithLabelValues(operation, "success", ops.MetricsType).Inc()
+	metrics.APIOperationDurationSeconds.WithLabelValues(operation, ops.MetricsType).Observe(time.Since(start).Seconds())
+	switch operation {
+	case "create":
+		metrics.APIsTotal.WithLabelValues(ops.MetricsType, "active").Inc()
+	case "delete":
+		metrics.APIsTotal.WithLabelValues(ops.MetricsType, "active").Dec()
+	}
 }

@@ -762,9 +762,11 @@ func toGenericMap(value interface{}) (map[string]interface{}, error) {
 // The route is registered unconditionally by the generated router, so the
 // disabled case is handled here rather than by skipping registration. It
 // answers 404 rather than 501: a gateway with MCP switched off should be
-// indistinguishable from one that does not implement it.
+// indistinguishable from one that does not implement it. The generated
+// router's legacy unprefixed alias also answers 404: MCP is new, so it is
+// served only under the versioned base path.
 func (s *APIServer) HandleMcp(w http.ResponseWriter, r *http.Request) {
-	if s.mcpHandler == nil {
+	if s.mcpHandler == nil || r.Pattern == "POST /mcp" {
 		httputil.WriteError(w, http.StatusNotFound, "not_found", "The requested resource was not found.")
 		return
 	}

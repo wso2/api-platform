@@ -310,6 +310,35 @@ func TestGetResourceRefusals(t *testing.T) {
 	assert.Zero(t, f.rest.get+f.secrets.get)
 }
 
+// A Secret read must name a choice, the way confirm guards delete; nothing is
+// read until it does, and each choice reads through the matching function.
+func TestGetResourceSecretNeedsAValueChoice(t *testing.T) {
+	f := newToolsHandler(false)
+	redacted := 0
+	f.h.kinds[models.KindSecret].GetRedacted = func(handle string) (any, error) {
+		redacted++
+		return map[string]any{"handle": handle}, nil
+	}
+
+	_, _, err := f.h.getResource(toolsCtx("admin"), nil, getInput{Kind: "Secret", ID: "db-pass"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `secretValue="reveal"`)
+	assert.Zero(t, f.secrets.get+redacted, "nothing is read before the user chooses")
+
+	_, _, err = f.h.getResource(toolsCtx("admin"), nil, getInput{Kind: "Secret", ID: "db-pass", SecretValue: "show"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `must be "reveal" or "redact"`)
+
+	_, _, err = f.h.getResource(toolsCtx("admin"), nil, getInput{Kind: "Secret", ID: "db-pass", SecretValue: "reveal"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, f.secrets.get)
+
+	_, out, err := f.h.getResource(toolsCtx("admin"), nil, getInput{Kind: "Secret", ID: "db-pass", SecretValue: "redact"})
+	require.NoError(t, err)
+	assert.Equal(t, 1, redacted)
+	assert.Contains(t, resultMap(t, out), "notice")
+}
+
 func TestListResourcesForOneKindReturnsFullManifests(t *testing.T) {
 	f := newToolsHandler(false)
 	f.rest.rows = []listedResource{

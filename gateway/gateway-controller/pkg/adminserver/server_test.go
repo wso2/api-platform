@@ -15,6 +15,7 @@ import (
 	"github.com/wso2/api-platform/common/authenticators"
 	commonmodels "github.com/wso2/api-platform/common/models"
 	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 )
 
@@ -624,10 +625,28 @@ func TestAdminServer_MCP_MetadataStillIPGated(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 }
 
-// TestAdminServer_MCP_LegacyAliasDeprecated pins that the generated router's
-// unprefixed alias works and carries the RFC 8594 deprecation header, exactly
-// as the other legacy admin routes do.
-func TestAdminServer_MCP_LegacyAliasDeprecated(t *testing.T) {
+// An authenticated admin outside allowed_ips gets a plain 403, not a step-up
+// challenge: no new token can fix an IP block. Uses the real challenge
+// middleware, which the stub above does not mirror in this respect.
+func TestAdminServer_MCP_IPRefusalIsNotAStepUpChallenge(t *testing.T) {
+	s := NewServer(&config.AdminServerConfig{Port: 9092, AllowedIPs: []string{"10.0.0.1"}},
+		&stubAPIServer{}, newAdminProtectMiddleware(t, []string{"admin"}), slog.Default(),
+		&MCPConfig{
+			Handler: stubMCPHandler(),
+			Challenge: handlers.MCPChallengeMiddleware(
+				"https://gw.example.com/.well-known/oauth-protected-resource"+AdminAPIBasePath+adminMcpRelPath,
+				[]string{"admin"}),
+		})
+
+	rec := mcpRequest(t, s, "127.0.0.1:12345", true)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Empty(t, rec.Header().Get("WWW-Authenticate"))
+}
+
+// MCP is new, so it has no deprecated unprefixed alias: the generated router
+// still registers POST /mcp, but the handler answers 404 there.
+func TestAdminServer_MCP_NoLegacyAlias(t *testing.T) {
 	s := newMCPTestServer(t, []string{"*"}, []string{"admin"})
 
 	req := httptest.NewRequest(http.MethodPost, "/mcp",
@@ -637,8 +656,7 @@ func TestAdminServer_MCP_LegacyAliasDeprecated(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.httpSrv.Handler.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, "true", rec.Header().Get("Deprecation"))
+	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
 func TestAdminServer_MCP_MethodNotAllowed(t *testing.T) {

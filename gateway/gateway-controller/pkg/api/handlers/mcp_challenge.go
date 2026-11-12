@@ -62,12 +62,40 @@ type challengeWriter struct {
 	unauthorized func() string
 	forbidden    func() string
 	written      bool
+	// done is set by EndMCPChallenge once the request has passed
+	// authentication and authorization. A 401 or 403 written after that is
+	// not a credential problem, so it is sent without a challenge.
+	done bool
+}
+
+// EndMCPChallenge marks where MCPChallengeMiddleware stops decorating
+// responses. Place it immediately inside the authentication and authorization
+// chain: a request that reaches it has valid credentials and the route's role,
+// so a 403 written further in (such as the admin IP allowlist's) is not
+// something a new token can fix and must not tell the client to step up.
+// ScopeGate's per-tool 403 is unaffected: it sets its own challenge. On a
+// route without the challenge it does nothing.
+func EndMCPChallenge(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for rw := w; ; {
+			if cw, ok := rw.(*challengeWriter); ok {
+				cw.done = true
+				break
+			}
+			u, ok := rw.(interface{ Unwrap() http.ResponseWriter })
+			if !ok {
+				break
+			}
+			rw = u.Unwrap()
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (cw *challengeWriter) WriteHeader(status int) {
 	if !cw.written {
 		cw.written = true
-		if cw.Header().Get("WWW-Authenticate") == "" {
+		if !cw.done && cw.Header().Get("WWW-Authenticate") == "" {
 			var v string
 			switch status {
 			case http.StatusUnauthorized:

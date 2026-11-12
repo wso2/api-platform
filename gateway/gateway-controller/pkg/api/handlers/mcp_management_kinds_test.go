@@ -480,6 +480,10 @@ func TestSecretValueIsReturnedOnlyByGet(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "s3cret-one", kindsDig(t, kindsJSON(t, got), "spec", "value"))
 
+	redacted, err := ops.GetRedacted("db-pass")
+	require.NoError(t, err)
+	assert.NotContains(t, kindsDig(t, kindsJSON(t, redacted), "spec"), "value")
+
 	rows, err := ops.List()
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
@@ -728,4 +732,14 @@ func TestAPIKeyOpsForAGraphQLAPI(t *testing.T) {
 	_, err = f.h.kinds[models.KindRestApi].Keys.List("orders-graphql", kindsCaller, "c", kindsDiscard)
 	require.Error(t, err)
 	assert.True(t, storage.IsNotFoundError(err), "orders-graphql is a GraphQLApi, not a RestApi: %v", err)
+}
+
+// Only the kinds whose REST handlers record Prometheus API metrics carry a
+// metrics label, with the same api_type value REST uses.
+func TestKindMetricsTypeMatchesREST(t *testing.T) {
+	f := newKindsFixture(t)
+	want := map[string]string{models.KindRestApi: "rest_api", models.KindAgent: metricsKindAgent}
+	for kind, ops := range f.h.kinds {
+		assert.Equal(t, want[kind], ops.MetricsType, kind)
+	}
 }
