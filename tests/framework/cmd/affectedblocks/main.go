@@ -22,6 +22,7 @@
 //
 //	blocks=<the -blocks value, empty for every block>
 //	label=<what the integration jobs' titles show>
+//	complete=<,product,...,: the products whose every block runs, for the coverage uploads>
 //
 // The rules, for each changed file:
 //   - a feature file runs the blocks that list it;
@@ -89,6 +90,7 @@ func run(suite, suiteDir string) error {
 	fmt.Fprintf(os.Stderr, "selected: %s\n", orAll(sel.blocks()))
 	fmt.Printf("blocks=%s\n", sel.blocks())
 	fmt.Printf("label=%s\n", idx.label(sel))
+	fmt.Printf("complete=%s\n", idx.complete(sel))
 	return nil
 }
 

@@ -255,11 +255,8 @@ func (idx *index) addResource(sel *selection, rel string) bool {
 // addComponents selects every block that starts one of the named components.
 func (idx *index) addComponents(sel *selection, names []string) {
 	for _, block := range idx.blocks {
-		for _, component := range block.Components {
-			if component.Def != nil && slices.Contains(names, component.Def.Name) {
-				sel.sources[block.Source] = true
-				break
-			}
+		if startsAny(block, names) {
+			sel.sources[block.Source] = true
 		}
 	}
 }
@@ -288,6 +285,54 @@ func (sel selection) blocks() string {
 	}
 	sort.Strings(names)
 	return strings.Join(names, ",")
+}
+
+// products are the products in productPaths, each named by its first component, with every
+// component that runs it.
+func products() [][]string {
+	var out [][]string
+	for _, product := range productPaths {
+		if !slices.ContainsFunc(out, func(known []string) bool { return known[0] == product.components[0] }) {
+			out = append(out, product.components)
+		}
+	}
+	return out
+}
+
+// complete returns the products whose every block runs in full (samples do not count, since
+// they run one variant), wrapped in commas so a workflow can test ",<product>,". A product
+// that complete names has all its integration coverage in the run, so its upload is not a
+// partial figure.
+func (idx *index) complete(sel selection) string {
+	var names []string
+	for _, components := range products() {
+		started := false
+		full := true
+		for _, block := range idx.blocks {
+			if !startsAny(block, components) {
+				continue
+			}
+			started = true
+			if !sel.all && !sel.sources[block.Source] {
+				full = false
+				break
+			}
+		}
+		if started && full {
+			names = append(names, components[0])
+		}
+	}
+	sort.Strings(names)
+	return "," + strings.Join(names, ",") + ","
+}
+
+func startsAny(block topology.ResolvedBlock, names []string) bool {
+	for _, component := range block.Components {
+		if component.Def != nil && slices.Contains(names, component.Def.Name) {
+			return true
+		}
+	}
+	return false
 }
 
 // label names what runs, for the integration jobs' titles.

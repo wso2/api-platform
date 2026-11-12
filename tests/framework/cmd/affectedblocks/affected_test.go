@@ -21,6 +21,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -207,5 +208,52 @@ func TestRealSuite(t *testing.T) {
 	require.False(t, sel.all)
 	for name := range sel.sources {
 		require.True(t, strings.HasPrefix(name, "api-portal"), "an API Portal feature selected %s", name)
+	}
+
+	// A Gateway source change runs every block with a Gateway, so the Gateway's coverage
+	// uploads; the Platform API's does not, since not all its blocks run.
+	require.Equal(t, ",platform-gateway,", idx.complete(idx.affected([]string{"gateway/gateway-controller/x.go"})))
+}
+
+// helperComponents are the components a block starts only to serve the products under test.
+var helperComponents = []string{"testbench", "tls-backend", "a2a-trip-planner"}
+
+// Every component a block starts belongs to a product in productPaths or is a helper. A new
+// name for an existing product (another API Portal variant, say) must join that product, or
+// its blocks would stop counting towards the product's coverage upload.
+func TestEveryComponentIsAProductOrAHelper(t *testing.T) {
+	registry, err := catalog.Registry()
+	require.NoError(t, err)
+	resolved, err := topology.LoadFile("../../suites/it/it-suite.yaml", registry)
+	require.NoError(t, err)
+	known := slices.Clone(helperComponents)
+	for _, product := range products() {
+		known = append(known, product...)
+	}
+	for _, block := range resolved.Blocks {
+		for _, component := range block.Components {
+			require.Contains(t, known, component.Def.Name, "block %s starts %s, which is neither a product in productPaths nor a helper", block.Name, component.Def.Name)
+		}
+	}
+}
+
+func TestComplete(t *testing.T) {
+	idx := fixture(t)
+	cases := []struct {
+		name    string
+		changed []string
+		want    string
+	}{
+		{"every block runs: every product is complete", []string{"common/x.go"}, ",api-portal,platform-api,platform-gateway,"},
+		{"product source: that product is complete", []string{"portals/api-portal/src/app.js"}, ",api-portal,"},
+		{"Gateway source", []string{"gateway/x.go"}, ",platform-gateway,"},
+		{"one feature: no product is complete", []string{suiteDir + "/features/portal/login.feature"}, ",,"},
+		// portal-core runs only as a sample, so the API Portal and Platform API are not complete.
+		{"a sample does not count", []string{suiteDir + "/steps/platformgateway/gateway.go"}, ",platform-gateway,"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, idx.complete(idx.affected(tc.changed)))
+		})
 	}
 }
