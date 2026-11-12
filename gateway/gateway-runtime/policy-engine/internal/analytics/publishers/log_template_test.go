@@ -23,8 +23,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,7 +34,6 @@ import (
 	"cel.dev/cel-go/common/types/ref"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wso2/api-platform/common/configinterpolate"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 )
@@ -93,31 +90,6 @@ func templateLine(t *testing.T, template string, event *dto.Event) string {
 	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{Template: template})
 	l.Publish(event)
 	return strings.TrimSuffix(buf.String(), "\n")
-}
-
-// useTemplateRoot makes root the only directory a template_file may be in, for the test.
-func useTemplateRoot(t *testing.T, root string) {
-	t.Helper()
-	previous := config.TemplateFileAllowlist
-	config.TemplateFileAllowlist = []string{root}
-	t.Cleanup(func() { config.TemplateFileAllowlist = previous })
-}
-
-// writeTemplateFileIn writes text to dir/name and returns its path.
-func writeTemplateFileIn(t *testing.T, dir, name, text string) string {
-	t.Helper()
-	path := filepath.Join(dir, name)
-	require.NoError(t, os.WriteFile(path, []byte(text), 0o600))
-	return path
-}
-
-// writeTemplateFile writes text to a file in a new temporary directory, which becomes the
-// allowed template_file root for the test, and returns its path.
-func writeTemplateFile(t *testing.T, text string) string {
-	t.Helper()
-	root := t.TempDir()
-	useTemplateRoot(t, root)
-	return writeTemplateFileIn(t, root, "template.json", text)
 }
 
 func TestLogTemplate_WritesTheTemplateLayout(t *testing.T) {
@@ -253,29 +225,14 @@ func logged(logs, level, msg string) bool {
 // A template that cannot be used makes NewLog return the error as it is: the whole startup
 // message, with no suffix. The template parser is the only place that checks the template's
 // content: invalid JSON, a top level that is not an object, content after the object, a repeated
-// key and nesting that is too deep. A template file that cannot be read is also an error here,
-// although config.Validate reports it first.
+// key and nesting that is too deep.
 func TestLogTemplate_TemplateErrors(t *testing.T) {
 	tooDeep := strings.Repeat(`{"a":`, maxTemplateDepth+1) + "1" + strings.Repeat("}", maxTemplateDepth+1)
-	root := t.TempDir()
-	useTemplateRoot(t, root)
-	tooLargeFile := writeTemplateFileIn(t, root, "too-large.json", strings.Repeat(" ", int(configinterpolate.DefaultMaxFileBytes)+1))
-	invalidFile := writeTemplateFileIn(t, root, "invalid.json", "{\n  \"a\": x\n}")
 	tests := []struct {
 		name string
 		cfg  config.TrafficLoggingConfig
 		want string
 	}{
-		{
-			name: "file too large",
-			cfg:  config.TrafficLoggingConfig{TemplateFile: tooLargeFile},
-			want: `traffic_logging.template_file: file "` + tooLargeFile + `" exceeds the maximum allowed size`,
-		},
-		{
-			name: "invalid JSON in the file",
-			cfg:  config.TrafficLoggingConfig{TemplateFile: invalidFile},
-			want: "traffic_logging.template_file: invalid JSON at line 2, column 8: invalid character 'x' looking for beginning of value",
-		},
 		{
 			name: "invalid JSON",
 			cfg:  config.TrafficLoggingConfig{Template: "{\n  \"a\": x\n}"},
@@ -331,18 +288,6 @@ func newLogTemplateError(t *testing.T, cfg config.TrafficLoggingConfig) error {
 	assert.Nil(t, l, "no Log is returned with the error")
 	assert.Empty(t, logs.String(), "NewLog only returns the error")
 	return err
-}
-
-// A template file that does not exist is a template error that names the path and never the
-// file's content.
-func TestLogTemplate_UnreadableTemplateFile(t *testing.T) {
-	root := t.TempDir()
-	useTemplateRoot(t, root)
-	path := filepath.Join(root, "missing.json")
-
-	err := newLogTemplateError(t, config.TrafficLoggingConfig{TemplateFile: path})
-
-	assert.EqualError(t, err, `traffic_logging.template_file: required file "`+path+`" is not found`)
 }
 
 // traffic_logging.properties applies only to the default line: with a template it is reported
@@ -966,148 +911,16 @@ func TestLogTemplate_NoValueIsLoggedAtDebug(t *testing.T) {
 	})
 }
 
-// A template read from a file writes the same lines as the same template given inline.
-func TestLogTemplate_TemplateFileWritesTheSameLinesAsInline(t *testing.T) {
-	const template = `{
-  "service": "orders",
-  "http": {"method": "$ctx:request.method", "status": "$ctx:response.status"},
-  "hdrs": "$ctx:request.header",
-  "tags": ["gw", "$ctx:api.name"]
-}`
-	inline := templateLine(t, template, ordersEvent())
-	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{TemplateFile: writeTemplateFile(t, template)})
-
-	l.Publish(ordersEvent())
-
-	assert.Equal(t, `{"service":"orders","http":{"method":"GET","status":200},"hdrs":{"authorization":"****","x-foo":"bar"},"tags":["gw","Orders"]}`, inline)
-	assert.Equal(t, inline+"\n", buf.String())
-}
-
-// The file is read once, at startup: changing it later does not change the lines.
-func TestLogTemplate_TemplateFileIsReadOnceAtStartup(t *testing.T) {
-	path := writeTemplateFile(t, `{"v":1}`)
-	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{TemplateFile: path})
-	require.NoError(t, os.WriteFile(path, []byte(`{"v":2}`), 0o600))
-
-	l.Publish(ordersEvent())
-
-	assert.Equal(t, `{"v":1}`+"\n", buf.String())
-}
-
-// A file of exactly the size limit is read; one byte more is a template error, checked in
-// TestLogTemplate_TemplateErrors.
-func TestLogTemplate_TemplateFileAtTheSizeLimit(t *testing.T) {
-	const prefix, suffix = `{"pad":"`, `"}`
-	template := prefix + strings.Repeat("a", int(configinterpolate.DefaultMaxFileBytes)-len(prefix)-len(suffix)) + suffix
-	require.Len(t, template, int(configinterpolate.DefaultMaxFileBytes))
-	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{TemplateFile: writeTemplateFile(t, template)})
-
-	l.Publish(ordersEvent())
-
-	assert.Equal(t, template+"\n", buf.String())
-}
-
-// Config interpolation applies to config strings, so {{ ... }} in the file is written as is.
-func TestLogTemplate_TemplateFileIsNotInterpolated(t *testing.T) {
-	t.Setenv("TRAFFIC_LOG_TEST_SERVICE", "orders")
-	const template = `{"service":"{{ env \"TRAFFIC_LOG_TEST_SERVICE\" }}"}`
-	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{TemplateFile: writeTemplateFile(t, template)})
-
-	l.Publish(ordersEvent())
-
-	assert.Equal(t, template+"\n", buf.String())
-}
-
-// A UTF-8 byte order mark at the start of a template file is skipped.
-func TestLogTemplate_TemplateFileStartingWithAByteOrderMark(t *testing.T) {
+// A UTF-8 byte order mark at the start of the template, as a file read with a {{ file }} token
+// may have, is skipped.
+func TestLogTemplate_TemplateStartingWithAByteOrderMark(t *testing.T) {
 	logs := captureLogs(t)
-	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{TemplateFile: writeTemplateFile(t, "\uFEFF"+`{"v":1}`)})
+	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{Template: "\uFEFF" + `{"v":1}`})
 
 	l.Publish(ordersEvent())
 
 	assert.Equal(t, `{"v":1}`+"\n", buf.String())
 	assert.Empty(t, logs.String())
-}
-
-// A template_file outside the allowed folder is rejected before it is read, even when its content
-// is a valid template: the error names the path but never the content.
-func TestLogTemplate_TemplateFileOutsideTheAllowedRoot(t *testing.T) {
-	const content = `{"token":"leaked-content"}`
-	base := t.TempDir()
-	root := filepath.Join(base, "etc", "gateway-runtime")
-	sibling := filepath.Join(base, "etc", "gateway-runtime-other")
-	elsewhere := filepath.Join(base, "elsewhere")
-	for _, dir := range []string{root, sibling, elsewhere} {
-		require.NoError(t, os.MkdirAll(dir, 0o755))
-	}
-	useTemplateRoot(t, root)
-	inside := writeTemplateFileIn(t, root, "template.json", content)
-	outside := writeTemplateFileIn(t, elsewhere, "template.json", content)
-	prefixTrick := writeTemplateFileIn(t, sibling, "x.json", content)
-	link := filepath.Join(root, "link.json")
-	require.NoError(t, os.Symlink(outside, link))
-
-	tests := []struct{ name, path string }{
-		{"a valid template outside the root", outside},
-		{"a .. escape", filepath.Join(root, "..", "..", "elsewhere", "template.json")},
-		{"a symlink inside the root pointing outside", link},
-		{"a null byte", inside + "\x00.txt"},
-		{"a folder whose name starts with the root's", prefixTrick},
-		{"a relative path", "template.json"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := newLogTemplateError(t, config.TrafficLoggingConfig{TemplateFile: tt.path})
-
-			assert.EqualError(t, err, `traffic_logging.template_file: file `+strconv.Quote(tt.path)+` is not in an allowed source directory`)
-			assert.NotContains(t, err.Error(), "leaked-content")
-		})
-	}
-}
-
-// The default folder is /etc/gateway-runtime and nothing else: a template is configuration, so
-// the secrets folder that a {{ file }} token may read is not allowed. These paths are rejected
-// before any file is opened.
-func TestLogTemplate_TemplateFileRootIsOnlyTheConfigFolder(t *testing.T) {
-	assert.Equal(t, []string{"/etc/gateway-runtime"}, config.TemplateFileAllowlist)
-
-	for _, path := range []string{"/secrets/gateway-runtime/template.json", "/etc/gateway-runtime-other/template.json", "/etc/passwd"} {
-		_, err := readTemplateFile(path)
-		assert.EqualError(t, err, `traffic_logging.template_file: file `+strconv.Quote(path)+` is not in an allowed source directory`)
-	}
-}
-
-// A ConfigMap mount lays a file out as <folder>/template.json -> ..data/template.json, with
-// ..data pointing at a dated folder. The resolved file is still inside the folder, so it is read.
-func TestLogTemplate_TemplateFileFromAKubernetesMount(t *testing.T) {
-	root := t.TempDir()
-	useTemplateRoot(t, root)
-	dataDir := filepath.Join(root, "..2026_11_05_data")
-	require.NoError(t, os.Mkdir(dataDir, 0o755))
-	writeTemplateFileIn(t, dataDir, "template.json", `{"v":1}`)
-	require.NoError(t, os.Symlink("..2026_11_05_data", filepath.Join(root, "..data")))
-	link := filepath.Join(root, "template.json")
-	require.NoError(t, os.Symlink(filepath.Join("..data", "template.json"), link))
-	logs := captureLogs(t)
-	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{TemplateFile: link})
-
-	l.Publish(ordersEvent())
-
-	assert.Equal(t, `{"v":1}`+"\n", buf.String())
-	assert.Empty(t, logs.String())
-}
-
-// A file in a folder below the allowed root is read.
-func TestLogTemplate_TemplateFileInAFolderBelowTheRoot(t *testing.T) {
-	root := t.TempDir()
-	useTemplateRoot(t, root)
-	require.NoError(t, os.Mkdir(filepath.Join(root, "traffic"), 0o755))
-	path := writeTemplateFileIn(t, filepath.Join(root, "traffic"), "template.json", `{"v":1}`)
-	l, buf := newTemplateLog(t, config.TrafficLoggingConfig{TemplateFile: path})
-
-	l.Publish(ordersEvent())
-
-	assert.Equal(t, `{"v":1}`+"\n", buf.String())
 }
 
 // Requests logged at the same time each get one complete line, with exclusions inside an

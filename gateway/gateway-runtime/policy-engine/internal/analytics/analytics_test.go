@@ -104,9 +104,9 @@ func TestNewAnalytics_Disabled(t *testing.T) {
 	assert.Empty(t, analytics.publishers)
 }
 
-// config.Validate checks the template settings, not its content. A mistake in the content, found
-// by the template parser when the publisher is built, reaches NewAnalytics, which refuses to
-// start. A "$ctx:" value that does not compile is not an error.
+// config.Validate does not check the template's content. A mistake in the content, found by the
+// template parser when the publisher is built, reaches NewAnalytics, which refuses to start. A
+// "$ctx:" value that does not compile is not an error.
 func TestNewAnalytics_RefusesToStartWhenTheTemplateCannotBeUsed(t *testing.T) {
 	tests := []struct {
 		name string

@@ -33,17 +33,12 @@ import (
 	"cel.dev/cel-go/common/types"
 	"cel.dev/cel-go/common/types/ref"
 
-	"github.com/wso2/api-platform/common/configinterpolate"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/dto"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 )
 
-// inlineTemplateSetting and fileTemplateSetting name the two template settings in startup
-// messages.
-const (
-	inlineTemplateSetting = "traffic_logging.template"
-	fileTemplateSetting   = "traffic_logging.template_file"
-)
+// templateSetting names the template setting in startup messages.
+const templateSetting = "traffic_logging.template"
 
 // maxTemplateDepth is the deepest nesting of objects and arrays a template may use.
 const maxTemplateDepth = 64
@@ -130,11 +125,10 @@ type logTemplate struct {
 // template that cannot be used at all; an expression that does not compile is written as null.
 // collectorCfg says which headers and bodies the collector captures.
 func newLogTemplate(logCfg *config.TrafficLoggingConfig, collectorCfg *config.CollectorConfig, maskedHeaders map[string]bool) (*logTemplate, error) {
-	text, source, err := templateText(logCfg)
-	if err != nil {
-		return nil, err
-	}
-	root, err := parseTemplate(source, text)
+	source := templateSetting
+	// A template read with a {{ file }} token may start with the UTF-8 byte order mark some
+	// editors write, which is not part of the JSON.
+	root, err := parseTemplate(source, strings.TrimPrefix(logCfg.Template, "\uFEFF"))
 	if err != nil {
 		return nil, err
 	}
@@ -159,31 +153,6 @@ func newLogTemplate(logCfg *config.TrafficLoggingConfig, collectorCfg *config.Co
 	t.compile(env, collectorCfg, root)
 	markExclusions(root)
 	return t, nil
-}
-
-// templateText returns the template's text and the setting it came from. A template file is
-// read only here, so a change to it takes effect after a restart.
-func templateText(logCfg *config.TrafficLoggingConfig) (text, source string, err error) {
-	switch {
-	// config.Validate has already rejected both settings being set, so the file wins here.
-	case logCfg.TemplateFile != "":
-		text, err = readTemplateFile(logCfg.TemplateFile)
-		return text, fileTemplateSetting, err
-	default:
-		return logCfg.Template, inlineTemplateSetting, nil
-	}
-}
-
-// readTemplateFile returns the content of the template file at path, which must be inside
-// config.TemplateFileRoot and at most configinterpolate.DefaultMaxFileBytes long, the same limit as
-// a {{ file }} token. Unlike an inline template, the content is not interpolated.
-func readTemplateFile(path string) (string, error) {
-	data, err := configinterpolate.ReadAllowedFile(path, config.TemplateFileAllowlist, configinterpolate.DefaultMaxFileBytes)
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", fileTemplateSetting, err)
-	}
-	// Some editors start a file with a UTF-8 byte order mark, which is not part of the JSON.
-	return strings.TrimPrefix(string(data), "\uFEFF"), nil
 }
 
 // excludeTemplatePath applies one exclude_fields path to an object node. A path that ends at a

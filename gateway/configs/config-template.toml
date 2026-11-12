@@ -1064,8 +1064,7 @@ response_body = false
 # lines. properties and the request_*/response_* toggles above do not: a header
 # or body is logged when the template reads it and [collector] captures it.
 #
-# A template that cannot be used (e.g. invalid JSON, a template_file that cannot
-# be read, or both template and template_file set) stops the gateway at startup
+# A template that cannot be used (e.g. invalid JSON) stops the gateway at startup
 # with an error that names the setting and the problem, until it is fixed. A
 # "$ctx:" value with a mistake does not stop it: the gateway logs a WARNING at
 # startup naming the field, and that field is written as null. A misspelled key
@@ -1081,13 +1080,11 @@ template = ""
 # '''
 # writes lines such as:
 # {"service":"orders","http":{"method":"GET","status":200},"durationMs":12.3}
-
-# Path of a file holding the template, instead of setting template above. Set
-# one or the other, not both. The file must be inside /etc/gateway-runtime and
-# at most 1 MiB. It is read once at startup, so restart the gateway after
-# changing it.
-template_file = ""
-# template_file = "/etc/gateway-runtime/traffic-log-template.json"
+#
+# To keep the template in a file, read it with a {{ file }} token, as any
+# setting can. The file is read once at startup, so restart the gateway after
+# changing it:
+# template = '{{ file "/etc/gateway-runtime/traffic-log-template.json" }}'
 
 # Optional field projection over the emitted line: drop the named fields and
 # keep everything else. Names are top-level keys (e.g. "latencies",

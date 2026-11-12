@@ -2398,7 +2398,6 @@ path = "/tmp/policies.yaml"
 		cfg := load(t, "")
 
 		assert.Empty(t, cfg.TrafficLogging.Template)
-		assert.Empty(t, cfg.TrafficLogging.TemplateFile)
 		assert.False(t, cfg.Collector.RequestHeaders)
 		assert.False(t, cfg.Collector.ResponseHeaders)
 	})
@@ -2411,11 +2410,9 @@ response_headers = true
 
 [traffic_logging]
 template = '''{"api": "$ctx:api.name"}'''
-template_file = "/etc/gateway/traffic-log-template.json"
 `)
 
 		assert.Equal(t, `{"api": "$ctx:api.name"}`, cfg.TrafficLogging.Template)
-		assert.Equal(t, "/etc/gateway/traffic-log-template.json", cfg.TrafficLogging.TemplateFile)
 		assert.True(t, cfg.Collector.RequestHeaders)
 		assert.True(t, cfg.Collector.ResponseHeaders)
 	})
@@ -2434,42 +2431,18 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 
 // A template set while traffic logging is disabled has no effect, which is reported once.
 func TestValidateTrafficLoggingConfig_TemplateWhileDisabled(t *testing.T) {
-	tests := []struct {
-		name         string
-		template     string
-		templateFile string
-		want         string
-	}{
-		{
-			name:     "template",
-			template: `{"a":1}`,
-			want:     "traffic_logging.template is set but traffic_logging.enabled is false; the template has no effect",
-		},
-		{
-			name:         "template_file",
-			templateFile: "/etc/gateway/template.json",
-			want:         "traffic_logging.template_file is set but traffic_logging.enabled is false; the template has no effect",
-		},
-		{
-			name:         "both",
-			template:     `{"a":1}`,
-			templateFile: "/etc/gateway/template.json",
-			want:         "traffic_logging.template and traffic_logging.template_file are set but traffic_logging.enabled is false; the template has no effect",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			logs := captureLogs(t)
-			cfg := &Config{TrafficLogging: TrafficLoggingConfig{Template: tt.template, TemplateFile: tt.templateFile}}
+	t.Run("set", func(t *testing.T) {
+		logs := captureLogs(t)
+		cfg := &Config{TrafficLogging: TrafficLoggingConfig{Template: `{"a":1}`}}
 
-			require.NoError(t, cfg.validateTrafficLoggingConfig())
+		require.NoError(t, cfg.validateTrafficLoggingConfig())
 
-			assert.Equal(t, 1, strings.Count(logs.String(), "level=WARN"), logs.String())
-			assert.Contains(t, logs.String(), "level=WARN msg="+strconv.Quote(tt.want))
-		})
-	}
+		want := "traffic_logging.template is set but traffic_logging.enabled is false; the template has no effect"
+		assert.Equal(t, 1, strings.Count(logs.String(), "level=WARN"), logs.String())
+		assert.Contains(t, logs.String(), "level=WARN msg="+strconv.Quote(want))
+	})
 
-	t.Run("neither", func(t *testing.T) {
+	t.Run("not set", func(t *testing.T) {
 		logs := captureLogs(t)
 		cfg := &Config{TrafficLogging: TrafficLoggingConfig{}}
 
@@ -2480,13 +2453,9 @@ func TestValidateTrafficLoggingConfig_TemplateWhileDisabled(t *testing.T) {
 }
 
 // loadTrafficLogging loads a config file made of a minimal base and extra TOML, and returns what
-// Load returns. Template files are read from dir, the only folder allowed for the test.
-func loadTrafficLogging(t *testing.T, dir, extra string) (*Config, error) {
+// Load returns.
+func loadTrafficLogging(t *testing.T, extra string) (*Config, error) {
 	t.Helper()
-	previous := TemplateFileAllowlist
-	TemplateFileAllowlist = []string{dir}
-	t.Cleanup(func() { TemplateFileAllowlist = previous })
-
 	const base = `
 [policy_engine.config_mode]
 mode = "file"
@@ -2499,78 +2468,29 @@ path = "/tmp/policies.yaml"
 	return Load(configPath)
 }
 
-// A template setting that cannot be used is an invalid setting like any other: Load fails with one
-// error that names the setting and the reason, and the gateway exits instead of starting.
-func TestLoad_TemplateSettingThatCannotBeUsedStopsStartup(t *testing.T) {
+// A template kept in a file is read with a {{ file }} token, like any other config string. The
+// file's content is used as it is: a {{ ... }} inside it is not interpolated.
+func TestLoad_TemplateFromAFile(t *testing.T) {
 	dir := t.TempDir()
-	tooLarge := filepath.Join(dir, "too-large.json")
-	require.NoError(t, os.WriteFile(tooLarge, []byte(strings.Repeat(" ", int(configinterpolate.DefaultMaxFileBytes)+1)), 0o600))
-	missing := filepath.Join(dir, "missing.json")
+	t.Setenv(configinterpolate.EnvFileSourceAllowlist, dir)
+	const content = `{"api":"$ctx:api.name","service":"{{ env \"SERVICE\" }}"}`
+	path := filepath.Join(dir, "traffic-log-template.json")
+	require.NoError(t, os.WriteFile(path, []byte(content+"\n"), 0o600))
 
-	tests := []struct {
-		name, extra, want string
-	}{
-		{
-			name:  "both settings set",
-			extra: "template = '''{\"a\":1}'''\ntemplate_file = '" + missing + "'\n",
-			want:  "traffic_logging.template, traffic_logging.template_file: both are set; set only one",
-		},
-		{
-			name:  "a template file that does not exist",
-			extra: "template_file = '" + missing + "'\n",
-			want:  `traffic_logging.template_file: required file "` + missing + `" is not found`,
-		},
-		{
-			name:  "a template file over the size limit",
-			extra: "template_file = '" + tooLarge + "'\n",
-			want:  `traffic_logging.template_file: file "` + tooLarge + `" exceeds the maximum allowed size`,
-		},
-		{
-			name:  "a template file outside the allowed folder",
-			extra: "template_file = '/etc/passwd'\n",
-			want:  `traffic_logging.template_file: file "/etc/passwd" is not in an allowed source directory`,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg, err := loadTrafficLogging(t, dir, "[traffic_logging]\nenabled = true\n"+tt.extra)
-
-			assert.Nil(t, cfg)
-			assert.EqualError(t, err, "invalid configuration: "+tt.want)
-		})
-	}
-}
-
-// While traffic logging is disabled the template is not read: Load succeeds even for a file that
-// does not exist, with the one warning that the template has no effect.
-func TestLoad_TemplateWhileDisabledIsNotRead(t *testing.T) {
-	dir := t.TempDir()
-	missing := filepath.Join(dir, "missing.json")
-	logs := captureLogs(t)
-
-	cfg, err := loadTrafficLogging(t, dir, "[traffic_logging]\ntemplate_file = '"+missing+"'\n")
+	cfg, err := loadTrafficLogging(t, "[traffic_logging]\nenabled = true\ntemplate = '{{ file \""+path+"\" }}'\n")
 
 	require.NoError(t, err)
-	assert.Equal(t, missing, cfg.TrafficLogging.TemplateFile)
-	want := "traffic_logging.template_file is set but traffic_logging.enabled is false; the template has no effect"
-	assert.Equal(t, 1, strings.Count(logs.String(), "level=WARN msg="+strconv.Quote(want)), logs.String())
+	assert.Equal(t, content, cfg.TrafficLogging.Template)
 }
 
-// Validate checks the settings, and that a template file can be read, but not the template's
-// content: the template parser checks that when the publisher is built.
+// Validate does not check the template's content: the template parser checks that when the
+// publisher is built.
 func TestLoad_TemplateContentIsNotCheckedHere(t *testing.T) {
-	dir := t.TempDir()
-	validFile := filepath.Join(dir, "valid.json")
-	require.NoError(t, os.WriteFile(validFile, []byte(`{"status":"$ctx:response.status"}`), 0o600))
-	invalidFile := filepath.Join(dir, "invalid.json")
-	require.NoError(t, os.WriteFile(invalidFile, []byte(`{"a":`), 0o600))
 	deep := strings.Repeat(`{"a":`, 70) + "1" + strings.Repeat("}", 70)
 
 	tests := []struct{ name, extra string }{
 		{"a valid template", "template = '''{\"api\":\"$ctx:api.name\"}'''\n"},
-		{"a valid template in a file", "template_file = '" + validFile + "'\n"},
 		{"invalid JSON", "template = '''{\"a\":'''\n"},
-		{"invalid JSON in a file", "template_file = '" + invalidFile + "'\n"},
 		{"a top level that is not an object", "template = '''[\"a\"]'''\n"},
 		{"a repeated key", "template = '''{\"a\":1,\"a\":2}'''\n"},
 		{"nesting that is too deep", "template = '''" + deep + "'''\n"},
@@ -2578,22 +2498,9 @@ func TestLoad_TemplateContentIsNotCheckedHere(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := loadTrafficLogging(t, dir, "[traffic_logging]\nenabled = true\n"+tt.extra)
+			_, err := loadTrafficLogging(t, "[traffic_logging]\nenabled = true\n"+tt.extra)
 
 			require.NoError(t, err)
 		})
-	}
-}
-
-// The folder is /etc/gateway-runtime and nothing else: a template is configuration, so the
-// secrets folder that a {{ file }} token may read is not allowed. These paths are rejected before
-// any file is opened.
-func TestTemplateFileFolderIsOnlyTheConfigFolder(t *testing.T) {
-	assert.Equal(t, []string{"/etc/gateway-runtime"}, TemplateFileAllowlist)
-
-	for _, path := range []string{"/secrets/gateway-runtime/template.json", "/etc/gateway-runtime-other/template.json", "/etc/passwd"} {
-		err := validateTrafficLogTemplate(TrafficLoggingConfig{TemplateFile: path})
-
-		assert.EqualError(t, err, `traffic_logging.template_file: file `+strconv.Quote(path)+` is not in an allowed source directory`)
 	}
 }

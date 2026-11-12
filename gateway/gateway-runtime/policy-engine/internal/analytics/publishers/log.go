@@ -77,9 +77,8 @@ type Log struct {
 // lines would go to stdout and could put bodies in the container log; without the
 // template, the default line would be written, with fields the template leaves out.
 //
-// config.Validate has already checked the settings and that the template file can be
-// read, so a template error here is a mistake in the template's content, or a file
-// that changed during startup.
+// config.Validate does not check the template's content, so a template error here is a
+// mistake in that content.
 //
 // collectorCfg holds the collector's capture settings. A nil value means nothing is
 // captured.
@@ -100,7 +99,7 @@ func NewLog(logCfg *config.TrafficLoggingConfig, collectorCfg *config.CollectorC
 	}
 
 	var template *logTemplate
-	if logCfg.Enabled && (logCfg.Template != "" || logCfg.TemplateFile != "") {
+	if logCfg.Enabled && logCfg.Template != "" {
 		var err error
 		template, err = newLogTemplate(logCfg, collectorCfg, masked)
 		if err != nil {

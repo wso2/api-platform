@@ -72,17 +72,6 @@ func fileFunc(opts *Options, stats *Stats) func(string) (string, error) {
 	}
 }
 
-// ReadAllowedFile reads a file under the same rules as {{ file }}: path must be inside one of the
-// allowlist directories, and the file at most maxBytes (<= 0 uses DefaultMaxFileBytes). The
-// content is returned as read, not trimmed. Errors name the path but never the content, the
-// allowlist or the limit.
-func ReadAllowedFile(path string, allowlist []string, maxBytes int64) ([]byte, error) {
-	if maxBytes <= 0 {
-		maxBytes = DefaultMaxFileBytes
-	}
-	return readAllowedFile(path, &Options{FileAllowlist: allowlist, MaxFileBytes: maxBytes})
-}
-
 // readAllowedFile enforces the file-access security rules before reading:
 // null-byte/traversal rejection, allowlist containment on the input path, symlink
 // resolution and re-check against the allowlist roots before opening (prevents

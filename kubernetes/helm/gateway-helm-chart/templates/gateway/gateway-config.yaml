@@ -607,9 +607,6 @@ data:
     {{- if .Values.gateway.config.traffic_logging.template }}
     template = {{ .Values.gateway.config.traffic_logging.template | quote }}
     {{- end }}
-    {{- if .Values.gateway.config.traffic_logging.template_file }}
-    template_file = {{ .Values.gateway.config.traffic_logging.template_file | quote }}
-    {{- end }}
     {{- if .Values.gateway.config.traffic_logging.outputs }}
     outputs = [{{- range $i, $o := .Values.gateway.config.traffic_logging.outputs }}{{- if gt $i 0 }}, {{ end }}{{ $o | quote }}{{- end }}]
     {{- end }}
