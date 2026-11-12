@@ -4196,9 +4196,11 @@ paths:
         the model endpoints it names in `spec.endpoints` (for example the
         gateway-provisioned `openai`, by default at `/openai/v1`): clients send the
         Model's `modelName` where the endpoint's inbound format carries the model,
-        and the gateway routes the request to one of the Model's targets. The Model
-        is not checked against its endpoints: one that an endpoint cannot serve is
-        left out of that endpoint and the reason is logged.
+        and the gateway routes the request to one of the Model's targets. A Model
+        saved as deployed is refused with 400 when an endpoint it names cannot
+        serve it; an undeployed Model is checked when it is deployed. A Model that
+        a later provider change leaves unservable on an endpoint is left out of
+        that endpoint and the reason is logged.
       operationId: createModel
       x-basicauth-roles: [admin]
       tags:
@@ -8383,8 +8385,10 @@ components:
             The transformers that convert this endpoint's inbound format to a
             provider's. There are no built-in defaults: a provider whose template is
             the endpoint's inbound template needs none, and any other provider needs
-            an entry here, matched by provider handle first and template second. A
-            Model with a provider no entry matches is left out of this endpoint.
+            an entry here, matched by provider handle first and template second.
+            Saving a deployed Model with a provider no entry matches is refused with
+            400, and a change to this list that would stop the endpoint serving a
+            deployed Model is refused with 409.
           maxItems: 128
           items:
             $ref: '#/components/schemas/ModelEndpointTransformer'
