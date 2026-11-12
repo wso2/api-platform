@@ -86,7 +86,7 @@ func (s *Service) token(tenant string, w http.ResponseWriter, r *http.Request) {
 		return outcome(tenant, eligible)
 	})
 	if !admitted {
-		http.Error(w, "entra: tenant budget exhausted", http.StatusInsufficientStorage)
+		http.Error(w, "entra: partition budget exhausted", http.StatusInsufficientStorage)
 		return
 	}
 

@@ -31,8 +31,8 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench"
 )
 
-// Port is the container port the service answers on over plain HTTP: the protected resources,
-// the request log and the token endpoint.
+// Port is the container port the service answers every route on over plain HTTP: the token and
+// IMDS endpoints, their request logs and the protected resources.
 const Port = 3027
 
 // TLSPort is the port the same service answers on over HTTPS, for a token client that requires an
@@ -70,10 +70,11 @@ const (
 // testbench's 30-second write timeout.
 const defaultSlowDelay = 3 * time.Second
 
-// maxPartitions bounds how many tenants the service holds.
+// maxPartitions bounds how many partitions the service holds: tenants, and each block's managed
+// identities.
 const maxPartitions = 4096
 
-// maxRetainedRequests bounds the requests one tenant keeps; the count stays exact beyond it.
+// maxRetainedRequests bounds the requests one partition keeps; the count stays exact beyond it.
 const maxRetainedRequests = 256
 
 // maxFormBytes bounds one token request body.
@@ -105,8 +106,9 @@ type partition struct {
 	requests []Request
 }
 
-// Service implements testbench.Service and testbench.Partitioned. Its partition key is the Entra
-// tenant: the first path segment of every route.
+// Service implements testbench.Service and testbench.Partitioned. The first path segment of every
+// route is its partition: the Entra tenant for the token endpoint, its log and the resources, and
+// the block for the IMDS endpoint and its log, whose state is kept per block and identity.
 type Service struct {
 	mu         sync.Mutex
 	partitions map[string]*partition
@@ -192,8 +194,8 @@ type admission struct {
 
 // admit records a token request under key. A malformed request is answered 400; a well-formed one
 // gets the status decide picks for its position among the partition's well-formed requests, so a
-// malformed request never uses up a one-time answer. It reports false when the tenant budget is
-// exhausted.
+// malformed request never uses up a one-time answer. It reports false when the partition budget
+// is exhausted.
 func (s *Service) admit(key string, req Request, wellFormed bool, decide func(eligible int) int) (admission, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

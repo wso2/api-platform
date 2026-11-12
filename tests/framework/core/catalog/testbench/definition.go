@@ -182,9 +182,10 @@ func Testbench() *components.Definition {
 			// faults, then forwards to another service on this testbench, addressed as
 			// http://testbench:3026/<block>/<id>. See testbench/services/faultinjection.
 			{Name: "fault-injection", Port: faultinjection.Port, Scheme: "http", AwaitListening: true},
-			// entra is STATEFUL and partitioned per scenario: a Microsoft Entra ID token endpoint
-			// and two token-protected resources, addressed as http://testbench:3027/<tenant>/...,
-			// where the tenant a scenario names is its partition. See testbench/services/entra.
+			// entra is STATEFUL: a Microsoft Entra ID token endpoint and two token-protected
+			// resources, addressed as http://testbench:3027/<tenant>/..., where the tenant a
+			// scenario names is its partition, and an IMDS token endpoint under the block's
+			// partition, /<block>/metadata/identity/oauth2/token. See testbench/services/entra.
 			{Name: "entra", Port: entra.Port, Scheme: "http", AwaitListening: true},
 			// The same entra service over HTTPS with shared.JevTLS, which the gateway runtime
 			// trusts: the authority host the runtime is given, https://testbench:3028/.
