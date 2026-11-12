@@ -28,7 +28,7 @@ Feature: Platform-API-driven deployment resolves secret references on demand
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "papi-secret-project" and store it as "projectHandle"
+    And I generate a unique resource name from "papi-secret-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   Scenario: An LLM provider with a secret-backed API key is deployed and active on the gateway

@@ -77,6 +77,14 @@ type ApiControlPlaneExtensionBase = SlotEntry & {
    * user may not see is released, the way an invisible claim is.
    */
   requiredScopes?: readonly string[];
+  /**
+   * For a page override (`page.*` slots): the scopes, one of which the page's
+   * own primary action needs, when they differ from the built-in page's. A
+   * control elsewhere that leads to the action (the API overview's Deploy
+   * button) is then gated on these instead of the built-in operation, so it is
+   * not offered to a user the overriding page would refuse.
+   */
+  actionScopes?: readonly string[];
 };
 
 export type ApiControlPlaneExtension = ApiControlPlaneExtensionBase &

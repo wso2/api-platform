@@ -49,6 +49,9 @@ export const GATEWAY_OPERATIONS = {
   DeleteManagedGateway: ['ap:gateway:delete', 'ap:gateway:manage'],
   GetManagedGatewayConfiguration: ['ap:gateway:read', 'ap:gateway:manage'],
   UpdateManagedGatewayConfiguration: ['ap:gateway:update', 'ap:gateway:manage'],
+  // A self-hosted gateway's registration tokens (`/self-hosted-gateways/{id}/tokens`):
+  // opening a gateway mints its first one, and Reconfigure revokes and mints.
+  CreateGatewayToken: ['ap:gateway:token:create', 'ap:gateway:token:manage', 'ap:gateway:manage'],
 } as const satisfies Record<string, readonly string[]>;
 
 /**

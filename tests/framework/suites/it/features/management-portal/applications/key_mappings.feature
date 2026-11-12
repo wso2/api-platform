@@ -22,7 +22,7 @@ Feature: API keys are mapped to applications, and the gateway attributes their c
   I want to map my API keys to an application
   So that the gateway knows which application each call comes from
 
-  # Scenarios GENAPP-001 to 003 (scenarios/GENAPP.yaml). The key belongs to an LLM provider on the
+  # Scenarios GENAPP-001 to 003 (scenarios/on-prem/GENAPP.yaml). The key belongs to an LLM provider on the
   # gateway, protected by API key security. The gateway puts the application of the calling key in
   # each analytics event (applicationName), so the analytics shows whether the gateway holds a
   # mapping. An application created by the steps is named after its handle.

@@ -25,7 +25,8 @@ portal's native extension contract.
   `file:` dependency of this package: `apip-cloud-ui-deploy`,
   `apip-cloud-ui-entitlements`, `apip-cloud-ui-environments-new`,
   `apip-cloud-ui-gateways`, `apip-cloud-ui-insights`,
-  `apip-cloud-ui-managed-portals`, `apip-cloud-ui-pipelines`,
+  `apip-cloud-ui-managed-portals`, `apip-cloud-ui-marketing-consent`,
+  `apip-cloud-ui-pipelines`,
   `apip-cloud-ui-settings` and `apip-cloud-ui-trial-status`.
 
 Each portal has an injection seam at `src/cloud/index.ts` that exports an empty

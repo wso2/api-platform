@@ -16,21 +16,27 @@
  * under the License.
  */
 
+import { http as mswHttp, HttpResponse } from 'msw';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import {
+  accepts,
   aGraphQLApiDetail,
+  apiUrl,
+  aPublication,
+  aPublicationDraftDetails,
   aPublicationSummary,
   collection,
+  failure,
   recorder,
   resource,
 } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
-import { renderWithProviders, screen } from '@/test/utils';
+import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { GraphqlPublishPage } from './GraphqlPublishPage';
 
 const ORG = 'api-platform-demo';
@@ -97,6 +103,57 @@ describe('GraphqlPublishPage', () => {
     expect(await screen.findByTestId('location')).toHaveTextContent(
       `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${API}/publish/partner-portal`,
     );
+  });
+
+  describe('one-click Publish', () => {
+    const BASE = `/api-portals/partner-portal/apis/graphql-api/${API}`;
+
+    /** Nothing saved for the portal; the API's own SDL is `sdl`. */
+    function serveFreshApi(sdl: string) {
+      server.use(
+        resource('/graphql-apis/:graphqlApiId', api),
+        collection('/api-publications', [aPublicationSummary({ apiPortalId: 'partner-portal' })]),
+        resource('/graphql-apis/:graphqlApiId/sdl', { sdl }),
+        collection(`/graphql-apis/${API}/gateways`, []),
+        collection(`/apis/graphql-api/${API}/docs`, []),
+        mswHttp.get(apiUrl(`/apis/graphql-api/${API}/thumbnail`), () => new HttpResponse(null, { status: 204 })),
+        failure('get', `${BASE}/draft`, 404, 'DRAFT_NOT_FOUND'),
+        failure('get', `${BASE}/draft/definition`, 404, 'DRAFT_NOT_FOUND'),
+        failure('get', `${BASE}/publication`, 404, 'PUBLICATION_NOT_FOUND'),
+        failure('get', `${BASE}/publication/definition`, 404, 'PUBLICATION_NOT_FOUND'),
+      );
+      const writes = { definition: recorder(), draft: recorder(), publish: recorder() };
+      server.use(
+        accepts('put', `${BASE}/draft`, aPublicationDraftDetails(), { record: writes.draft }),
+        accepts('put', `${BASE}/draft/definition`, undefined, { record: writes.definition }),
+        accepts('post', `${BASE}/publish`, aPublication(), { record: writes.publish }),
+      );
+      return writes;
+    }
+
+    it('publishes the API’s own SDL', async () => {
+      const writes = serveFreshApi('type Query { country: String }');
+      const { user } = renderPage();
+
+      await user.click(await screen.findByRole('button', { name: 'Publish' }));
+
+      await waitFor(() => expect(writes.publish.count()).toBe(1));
+      expect(writes.definition.last()?.body).toBe('type Query { country: String }');
+    });
+
+    it.each([
+      ['does not parse', 'type Query {'],
+      ['is empty', ''],
+      ['has no Query type', 'type Country { name: String }'],
+    ])('opens the publish page instead when the API’s SDL %s', async (_case, sdl) => {
+      const writes = serveFreshApi(sdl);
+      const { user } = renderPage();
+
+      await user.click(await screen.findByRole('button', { name: 'Publish' }));
+
+      expect(await screen.findByTestId('location')).toHaveTextContent(`/graphql-apis/${API}/publish/partner-portal`);
+      expect(writes.draft.count() + writes.definition.count() + writes.publish.count()).toBe(0);
+    });
   });
 
   it('shows an error state when the API cannot be found', async () => {

@@ -40,10 +40,37 @@ import type { PermissionsPort } from './hostPort';
 export const API_DEPLOYMENT_OPERATIONS = {
   ListApiBuilds: ['ap:deployment:read', 'ap:deployment:manage'],
   ListApiDeployments: ['ap:deployment:read', 'ap:deployment:manage'],
-  DeployApi: ['ap:deployment:deploy', 'ap:deployment:manage'],
-  UndeployApi: ['ap:deployment:undeploy', 'ap:deployment:manage'],
+  // Deploy and stop also take the API kind's own deployment scopes, as the
+  // platform's REST/GraphQL deployment operations do: a Developer or API
+  // Publisher deploys the APIs they build without the pipeline-wide scopes.
+  DeployApi: [
+    'ap:deployment:deploy',
+    'ap:deployment:manage',
+    'ap:rest_api:deployment:create',
+    'ap:rest_api:deployment:manage',
+    'ap:rest_api:manage',
+    'ap:graphql_api:deployment:create',
+    'ap:graphql_api:deployment:manage',
+    'ap:graphql_api:manage',
+  ],
+  UndeployApi: [
+    'ap:deployment:undeploy',
+    'ap:deployment:manage',
+    'ap:rest_api:deployment:undeploy',
+    'ap:rest_api:deployment:manage',
+    'ap:rest_api:manage',
+    'ap:graphql_api:deployment:undeploy',
+    'ap:graphql_api:deployment:manage',
+    'ap:graphql_api:manage',
+  ],
   DeleteApiBuild: ['ap:deployment:manage'],
 } as const satisfies Record<string, readonly string[]>;
+
+/**
+ * Platform API: adding the first gateway from the empty Deploy page
+ * (`POST /managed-gateways`, `POST /self-hosted-gateways`); both accept the same list.
+ */
+export const GATEWAY_CREATE_OPERATIONS = ['ap:gateway:create', 'ap:gateway:manage'] as const;
 
 /**
  * Cloud Extension API: an LLM provider's deployments straight to the

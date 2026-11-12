@@ -126,6 +126,27 @@ describe('animated illustrations', () => {
     });
   });
 
+  describe('ServiceAccountsIllustration', () => {
+    it('is decorative and walks a new account from empty to a token issued', () => {
+      const { container } = renderWithProviders(<ServiceAccountsIllustration />);
+
+      expect(container.firstElementChild).toHaveAttribute('aria-hidden', 'true');
+      for (const text of [
+        'service-accounts / new',
+        'Service accounts',
+        'Scripts, pipelines and tools',
+        'ci-pipeline',
+        'Active',
+        'client id',
+        'secret',
+        'Token issued',
+        'expires in 1h',
+      ]) {
+        expect(screen.getByText(text)).toBeInTheDocument();
+      }
+    });
+  });
+
   describe('ApiDesignerCanvasIllustration', () => {
     it('is decorative and shows the governance checks and score', () => {
       const { container } = renderWithProviders(<ApiDesignerCanvasIllustration />);

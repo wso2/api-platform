@@ -42,6 +42,7 @@ import {
 import { useManagedPortalList } from "./hooks";
 import { NO_PERMISSION_TOOLTIP } from "./permissions";
 import type { ManagedPortal } from "./types";
+import { changeFailed, describeChange, isBeingChanged } from "./utils/change";
 import { PortalPublishAnimation } from "./PortalPublishAnimation";
 import { usePortalFeature } from "./portContext";
 import UnexpectedErrorState from "./components/UnexpectedErrorState";
@@ -315,6 +316,11 @@ export default function ManagedPortalsList({
                     const canVisit = status === "active" && Boolean(portal.url);
                     const isPending = status === "pending";
                     const isDeleting = status === "deleting";
+                    // A pending portal with a change already exists; one without is being created.
+                    const isChanging = isBeingChanged(portal);
+                    // A failed change is repeated from the edit form, so the portal stays editable.
+                    const isChangeFailed = changeFailed(portal);
+                    const canEdit = status === "active" || isChangeFailed;
                     return (
                       <Card
                         key={portal.id}
@@ -391,15 +397,24 @@ export default function ManagedPortalsList({
                               >
                                 {portal.description || ""}
                               </Typography>
+                              {isChangeFailed && portal.lastChangeError && (
+                                <Typography variant="caption" color="error">
+                                  {portal.lastChangeError.message}
+                                </Typography>
+                              )}
                             </Stack>
                             <Tooltip
                               title={
                                 !canUpdate
                                   ? NO_PERMISSION_TOOLTIP
                                   : isPending
-                                    ? "Editing is available once provisioning completes."
+                                    ? isChanging
+                                      ? "Editing is available once the update completes."
+                                      : "Editing is available once provisioning completes."
                                     : isDeleting
                                       ? "The portal is being deleted."
+                                      : isChangeFailed
+                                        ? "Edit portal to repeat the change"
                                       : status === "failed"
                                         ? "Editing is disabled while the portal is in a failed state. Delete and re-create."
                                         : readOnly
@@ -413,7 +428,7 @@ export default function ManagedPortalsList({
                                   size="small"
                                   aria-label={`Edit ${portal.name}`}
                                   onClick={() => onEdit(portal)}
-                                  disabled={status !== "active" || readOnly || !canUpdate}
+                                  disabled={!canEdit || readOnly || !canUpdate}
                                 >
                                   <Pencil size={16} />
                                 </IconButton>
@@ -498,9 +513,13 @@ export default function ManagedPortalsList({
                                 }
                               >
                                 {isPending
-                                  ? "Creating portal..."
+                                  ? isChanging
+                                    ? describeChange(portal.change)
+                                    : "Creating portal..."
                                   : isDeleting
                                     ? "Deleting portal..."
+                                    : isChangeFailed
+                                    ? "Update failed"
                                     : status === "failed"
                                     ? "Creation failed"
                                     : "Portal unavailable"}
