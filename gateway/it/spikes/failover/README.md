@@ -42,6 +42,13 @@ and grepping for `Looking up`.
 | `b3-refresh-off.yaml` | B3 missing `refresh_cluster_on_retry` |
 | `c-body-a.yaml` / `c-body-b.yaml` | C body-mutation preservation |
 
+Probe E needs a cross-compiled ext_proc server, which is **not committed** (it is a 19 MB
+build artifact). Build it before running that probe:
+
+```bash
+cd extproc && GOWORK=off GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o extproc-server .
+```
+
 `backend.py` is a fake provider: it echoes the body and auth header it received, and
 returns 500 when `ALWAYS_FAIL=true`.
 
