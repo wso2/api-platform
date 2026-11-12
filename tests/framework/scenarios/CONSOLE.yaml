@@ -1,0 +1,221 @@
+# Scenario list: APIP Console End-to-End Journeys (CONSOLE).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+#
+# These are browser journeys in the Management Portal (the api-control-plane console). Several
+# IDs share a journey; 007 is split between a passing journey and a known-issue one.
+code: CONSOLE
+title: APIP Console End-to-End Journeys
+scenarios:
+  - id: CONSOLE-001
+    title: "Create a REST API from scratch with a backend endpoint; the API appears in the list, and its overview shows the name, version, context and upstream entered."
+    priority: P0
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/create_api.feature
+          scenario: "Journey: a publisher creates a REST API from scratch with a backend endpoint"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-002
+    title: "Create a REST API by importing an OpenAPI contract from a URL; the Configure step is filled with the name, version and description from the contract, and after Create the overview lists every resource in the contract."
+    priority: P0
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher creates an API from an OpenAPI URL"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-003
+    title: "Create a REST API by uploading an OpenAPI contract file; the API is created, and its overview lists every resource in the uploaded file."
+    priority: P0
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-004
+    title: "Try to create a REST API with an invalid contract or invalid API details; an unusable contract shows its error and Continue stays disabled, invalid API details show each field's error when Create is clicked, and no API is created."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/api_definition.feature
+          scenario: "Journey: a publisher creates an API from an OpenAPI file after the console refuses unusable ones"
+        - feature: suites/ui/features/management_portal/create_api.feature
+          scenario: "Journey: the create wizard shows each invalid detail's error on Create and creates nothing"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-005
+    title: "With an API with the identifier reading-list-api in the project, create a REST API with a different name and that identifier, then change the identifier; the identifier field shows Identifier is already in use, and the API is not created until the identifier is changed."
+    priority: P1
+    ui:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/4139
+      refs:
+        - feature: suites/ui/features/management_portal/create_api.feature
+          scenario: "Journey: an identifier already used in the project is flagged on its field, and nothing is created until it changes"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-006
+    title: "Go back in the creation wizard to change the endpoint or contract, then create the API; the source step keeps the endpoint or contract already entered, and the API is created with the changed endpoint or contract."
+    priority: P2
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/create_api.feature
+          scenario: "Journey: going back in the wizard keeps the endpoint entered, and the API is created with the changed one"
+        - feature: suites/ui/features/management_portal/create_api.feature
+          scenario: "Journey: going back in the wizard keeps the contract uploaded, and the API is created with the changed one"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-007
+    title: "Edit an API's basic details, endpoint and OpenAPI definition after creating it; the overview, Endpoints card and definition show the saved changes after a page reload."
+    priority: P1
+    ui:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/3899
+      refs:
+        - feature: suites/ui/features/management_portal/develop_api.feature
+          scenario: "Journey: a publisher edits an API's definition, name, description and endpoint, and they stay saved after a reload"
+        - feature: suites/ui/features/management_portal/develop_api.feature
+          scenario: "Journey: a publisher changes an API's version and context, and they stay saved after a reload"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-008
+    title: "Attach policies to an API at the API level and to a single resource; both policies are saved and still shown on the Policies page after a page reload, the resource-level policy on its resource only."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/develop_api.feature
+          scenario: "Journey: a publisher attaches an API-level and a resource-level policy, and the redeployed gateway applies the resource's only to it"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-009
+    title: "Create, edit and delete documents for an API; the document is listed under its type and on the overview Documents panel, edits are saved, and the deleted document is gone."
+    priority: P2
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/develop_api.feature
+          scenario: "Journey: a publisher creates, edits and deletes an API's document"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-010
+    title: "Deploy an API to a gateway; a new deployment is listed on the Deploy page, and the gateway shows it as Active."
+    priority: P0
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a REST API's live deployment can be neither deleted nor restored over itself"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-011
+    title: "Test a deployed API from the Console view, sending requests through the proxy; the response shows the cURL command, request URL and a successful status code with the backend response body."
+    priority: P0
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/test_api.feature
+          scenario: "Journey: a publisher tests a deployed API through the proxy, directly from the browser and with a cURL command"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-012
+    title: "Test a deployed API from the Console view, sending requests directly from the browser; the request is sent from the browser, and it succeeds when the gateway allows the console's origin, otherwise it shows a CORS or network error."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/test_api.feature
+          scenario: "Journey: a publisher tests a deployed API through the proxy, directly from the browser and with a cURL command"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-013
+    title: "Build a request in the cURL view and run the generated command in a terminal; the command updates as you type, and running it returns the same response as the Console view."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/test_api.feature
+          scenario: "Journey: a publisher tests a deployed API through the proxy, directly from the browser and with a cURL command"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-014
+    title: "Undeploy a deployed REST API from the Deploy page, then restore it; the status updates each time, and the gateway stops, then resumes, serving the API."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a REST API's deployment is stopped, redeployed and deleted from its deploy page"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-015
+    title: "Add a policy to one operation of a deployed REST API on the Policies page, then redeploy; the gateway applies the policy to that operation only."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/develop_api.feature
+          scenario: "Journey: a publisher attaches an API-level and a resource-level policy, and the redeployed gateway applies the resource's only to it"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-016
+    title: "Publish a deployed REST API to an API Portal; the API is listed in the API Portal with its definition and documents."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/publish_api.feature
+          scenario: "Journey: a publisher publishes a deployed API, and the API Portal lists it with its definition and documents"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-017
+    title: "Register a gateway, copy its token, and start a gateway with that token; the gateway shows as active."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/gateways.feature
+          scenario: "Journey: an administrator provisions a gateway, starts it with the token the console shows, and the console shows it connected"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."
+  - id: CONSOLE-018
+    title: "As a user with a read-only role, open an API's pages; create, edit, deploy and delete actions are hidden or disabled."
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/permissions.feature
+          scenario: "Journey: a read-only viewer opens an API's pages and is offered no create, edit, deploy or delete action"
+    it:
+      status: exempt
+      reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."

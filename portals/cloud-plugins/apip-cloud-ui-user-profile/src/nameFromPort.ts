@@ -22,11 +22,13 @@ export type UserProfileHostPort = {
 };
 
 /**
- * The signed-in person's own name from the host's session, or `null` when there
- * is none to show (no user, no name, or a blank one), so the host keeps what it
+ * The signed-in person's first name from the host's session (the platform
+ * greets by first name only, as other platforms do), or `null` when there is
+ * none to show (no user, no name, or a blank one), so the host keeps what it
  * already shows. Makes no request of its own: the host has read the session.
  */
 export function nameFromPort(port: UserProfileHostPort): string | null {
   const name = port.user?.name;
-  return typeof name === 'string' && name.trim() ? name.trim() : null;
+  const firstName = typeof name === 'string' ? name.trim().split(/\s+/)[0] : '';
+  return firstName || null;
 }

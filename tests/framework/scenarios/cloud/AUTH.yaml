@@ -1,0 +1,92 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except in compliance
+# with the License. You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# --------------------------------------------------------------------
+
+# Scenario list: APIP Cloud Access and Identity (AUTH).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. The single layer (cloud) records how the suite covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but the product does not meet it yet, `issue` says why
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: AUTH
+title: APIP Cloud Access and Identity
+scenarios:
+  - id: ID_APIP_AUTH_001
+    title: "The console token is a live JWT that the cloud API accepts."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_auth.feature
+          scenario: "The console token is a live JWT that the cloud API accepts"
+  - id: ID_APIP_AUTH_002
+    title: "The cloud API resolves the caller's organisation from the token alone."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_auth.feature
+          scenario: "The cloud API resolves the caller's organisation from the token alone"
+  - id: ID_APIP_AUTH_003
+    title: "The console token carries the organisation claim the control plane requires."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_auth.feature
+          scenario: "The console token carries the organisation claim the control plane requires"
+  - id: ID_APIP_AUTH_004
+    title: "A request without an Authorization header is refused."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_auth.feature
+          scenario: "A request without an Authorization header is refused"
+  - id: ID_APIP_AUTH_005
+    title: "A request bearing an expired token is refused."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_auth.feature
+          scenario: "A request bearing an expired token is refused"
+  - id: ID_APIP_AUTH_006
+    title: "A token signed by an unknown issuer or key is refused."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_auth.feature
+          scenario: "A token signed by an unknown issuer or key is refused"
+  - id: ID_APIP_AUTH_007
+    title: "A malformed bearer value is refused without leaking internal detail."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_auth.feature
+          scenario: "A malformed bearer value is refused without leaking internal detail"
+  - id: ID_APIP_AUTH_008
+    title: "Every cloud control-plane route requires authentication."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_auth.feature
+          scenario: "Every cloud control-plane route requires authentication"

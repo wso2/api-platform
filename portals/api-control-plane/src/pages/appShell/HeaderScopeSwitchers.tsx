@@ -23,6 +23,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useAllGraphQLApis } from '../../api/resources/graphqlApis';
 import { useAllRestApis } from '../../api/resources/restApis';
+import { useAuth } from '../../contexts/auth/AuthProvider';
 import SearchableComplexSelect from '../../components/common/SearchableComplexSelect';
 import { findTargetAtScope } from '../../navigation/navigationRegistry';
 import { toGraphQLListableApi, toRestListableApi } from './appShellPages/apis/listing/apiListItem';
@@ -74,6 +75,7 @@ export function HeaderScopeSwitchers() {
   const location = useLocation();
   const intl = useIntl();
   const scope = useConsoleScope();
+  const { organizations: sessionOrganizations } = useAuth();
   const {
     component,
     organization,
@@ -144,10 +146,14 @@ export function HeaderScopeSwitchers() {
     navigate(target ?? routes.projectHome(params.orgHandle, params.projectHandler));
   };
 
-  // organizations may not be loaded yet on first paint; keep the current org
-  // selectable so the switcher never renders an out-of-range value.
+  // Where the session switches organizations, the identity provider lists
+  // every organization the user belongs to; the Platform API only those
+  // already used. Either may not be loaded yet on first paint; keep the
+  // current org selectable so the switcher never renders an out-of-range value.
   const orgOptions: { handle: string; name: string }[] =
-    organizations.length > 0
+    sessionOrganizations && sessionOrganizations.length > 0
+      ? sessionOrganizations.map((org) => ({ handle: org.handle, name: org.name }))
+      : organizations.length > 0
       ? organizations.map((org) => ({ handle: org.id, name: org.displayName || org.id }))
       : params.orgHandle
         ? [{ handle: params.orgHandle, name: organization?.displayName || params.orgHandle }]
@@ -218,7 +224,11 @@ export function HeaderScopeSwitchers() {
 
   // A single loaded organization is read-only; use the loaded list so the
   // switcher is not locked while the real list is still loading.
-  const isSingleOrganization = organizations.length === 1;
+  const loadedOrganizationCount =
+    sessionOrganizations && sessionOrganizations.length > 0
+      ? sessionOrganizations.length
+      : organizations.length;
+  const isSingleOrganization = loadedOrganizationCount === 1;
 
   if (!params.orgHandle) return null;
 

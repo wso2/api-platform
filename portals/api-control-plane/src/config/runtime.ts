@@ -235,6 +235,8 @@ type LegacyWindowConfig = Partial<{
   authLogoutUrl: string;
   authLogoutStyle: string;
   authClaimMappings: string | Record<string, unknown>;
+  authOrganizationsUrl: string;
+  authSwitchOrganizationUrls: string | string[];
   FEATURE_FLAGS: string;
   environmentName: string;
   apiPlatformHomePage: string;
@@ -418,6 +420,10 @@ export const runtimeConfig: RuntimeConfig = {
     logoutUrl: fromWindow().authLogoutUrl || import.meta.env.VITE_AUTH_LOGOUT_URL,
     logoutStyle: fromWindow().authLogoutStyle || import.meta.env.VITE_AUTH_LOGOUT_STYLE,
     claimMappings: fromWindow().authClaimMappings || import.meta.env.VITE_AUTH_CLAIM_MAPPINGS,
+    organizationsUrl:
+      fromWindow().authOrganizationsUrl || import.meta.env.VITE_AUTH_ORGANIZATIONS_URL,
+    switchOrganizationUrls:
+      fromWindow().authSwitchOrganizationUrls || import.meta.env.VITE_AUTH_SWITCH_ORGANIZATION_URLS,
   }),
   defaultLocale:
     fromWindow().DEFAULT_LOCALE ||

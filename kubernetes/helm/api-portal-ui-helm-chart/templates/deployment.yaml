@@ -140,14 +140,15 @@ spec:
             - name: http
               containerPort: {{ $ap.containerPort }}
               protocol: TCP
+          {{- $plainHttp := eq $tls.certificateProvider "none" }}
           livenessProbe:
-            {{- toYaml $deployment.livenessProbe | nindent 12 }}
+            {{- include "apip.apiPortal.probe" (dict "probe" $deployment.livenessProbe "plainHttp" $plainHttp) | nindent 12 }}
           {{- with $deployment.startupProbe }}
           startupProbe:
-            {{- toYaml . | nindent 12 }}
+            {{- include "apip.apiPortal.probe" (dict "probe" . "plainHttp" $plainHttp) | nindent 12 }}
           {{- end }}
           readinessProbe:
-            {{- toYaml $deployment.readinessProbe | nindent 12 }}
+            {{- include "apip.apiPortal.probe" (dict "probe" $deployment.readinessProbe "plainHttp" $plainHttp) | nindent 12 }}
           resources:
             {{- toYaml ($deployment.resources | default dict) | nindent 12 }}
           volumeMounts:

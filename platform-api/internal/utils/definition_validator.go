@@ -26,6 +26,7 @@ import (
 
 	"github.com/pb33f/libopenapi"
 	openapivalidator "github.com/pb33f/libopenapi-validator"
+	validatorconfig "github.com/pb33f/libopenapi-validator/config"
 	v3high "github.com/pb33f/libopenapi/datamodel/high/v3"
 	"github.com/wso2/api-platform/httpkit/httputil"
 	"github.com/wso2/api-platform/platform-api/api"
@@ -158,7 +159,12 @@ func ValidateSpec(sd *SpecDocument) api.ValidateOpenAPIResponse {
 	// NewValidator internally calls BuildV3Model and — critically — sets the
 	// document field that ValidateDocument requires. NewValidatorFromV3Model does
 	// not set that field, causing the "Document is not set" error.
-	v, vErrs := openapivalidator.NewValidator(sd.doc)
+	//
+	// WithSchemaCache(nil) disables the eager warmSchemaCaches pass that
+	// pre-compiles every schema node upfront. Schemas are compiled on first
+	// access instead, keeping peak memory proportional to the paths actually
+	// traversed during ValidateDocument rather than the entire spec graph.
+	v, vErrs := openapivalidator.NewValidator(sd.doc, validatorconfig.WithSchemaCache(nil))
 	if vErrs != nil {
 		errs := make([]api.OpenAPIValidationError, 0, len(vErrs))
 		for _, e := range vErrs {

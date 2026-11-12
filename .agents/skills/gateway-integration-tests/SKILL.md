@@ -1,16 +1,18 @@
 ---
 name: gateway-integration-tests
-description: Run or debug WSO2 API Platform gateway integration tests. Use when the user asks to run gateway Integration Tests (IT), BDD tests, godog tests, or a specific `.feature` file; verify a feature file passes; or debug why a gateway integration test is failing.
+description: Run or debug WSO2 API Platform integration tests (the `tests/framework/suites/it` suite), with troubleshooting focused on the gateway. Use when the user asks to run gateway Integration Tests (IT), BDD tests, godog tests, a block, or a specific `.feature` file; verify a feature file passes; or debug why an integration test is failing.
 compatibility: "Requires docker, make, Go (the version in tests/framework/go.mod). Optional: delve (`dlv`) for gateway-level debugging via [[gateway-debug]]."
 allowed-tools: Bash Read Edit Grep Glob
 ---
 
 # Gateway Integration Tests
 
-Runs the gateway integration tests of the integration framework (`tests/framework`, Godog +
+Runs the integration suite of the integration framework (`tests/framework/suites/it`, Godog +
 Testcontainers) for a chosen block, runner or feature, diagnoses failures, and confirms nothing
-is left running afterwards. The framework starts every container a block needs itself — the
-gateway, a database and the testbench mock backends — and removes them when the run ends.
+is left running afterwards. The suite covers the gateway, Platform API, the API Portal, AI
+Workspace and the `ap` CLI; the troubleshooting below focuses on the gateway. The framework
+starts every container a block needs itself — the products, their databases and the testbench
+mock backends — and removes them when the run ends.
 
 `tests/framework/README.md` documents every flag; `tests/framework/CLAUDE.md` holds the
 conventions for writing features and steps.
@@ -25,10 +27,19 @@ conventions for writing features and steps.
 ## Layout
 
 - Framework root: `tests/framework/` — run `go test` from here.
-- Suite: `suites/it/it-suite.yaml`. It declares **blocks** (a set of components — gateway,
-  database, testbench, platform-api, … — started once) and, inside each block, **runners**
-  (lists of feature files that run against that block). Blocks with a database matrix expand
-  to one variant per engine: `<block>/sqlite`, `<block>/postgres`, `<block>/sqlserver`.
+- Suite: `suites/it/it-suite.yaml` holds the shared settings; the **blocks** live in
+  `suites/it/blocks/*.yaml`, one file per combination of products. A block is a set of
+  components (gateway, database, testbench, platform-api, …) started once; inside each block,
+  **runners** (lists of feature files that run against that block). A block with a database
+  matrix expands to one variant per engine (`gateway-core/sqlite`, `/postgres`, `/sqlserver`);
+  a matrix on two components names each variant after both
+  (`platform-api-core/api-sqlite_gateway-sqlite`).
+- Writing a new test: follow [[write-framework-tests]]. In short: start from its entry in the
+  feature's scenario list (`scenarios/on-prem/<CODE>.yaml`), then pick the block file by the
+  products the feature checks, and add the feature to an existing runner that fits it, or else
+  a runner to an existing block that fits (most fit the file's generic block, such as
+  `gateway-core`). Add a new block or a new block
+  file only as the last resort, when no existing block fits.
 - Features: `suites/it/features/<area>/…/*.feature`. Each feature file starts with a tag
   (e.g. `@config-dump`).
 - Steps: `suites/it/steps/` (`base.go` for generic request/assertion steps,
@@ -66,7 +77,7 @@ make -C tests/framework ap-cli
 Find the block and runner that run your feature:
 
 ```bash
-grep -n "<feature-file>.feature" tests/framework/suites/it/it-suite.yaml   # then read up to the block's `- name:`
+grep -rn "<feature-file>.feature" tests/framework/suites/it/blocks/   # then read up to the block's `- name:`
 ```
 
 Run one block variant, optionally narrowed to one feature by its tag:
@@ -83,7 +94,9 @@ go test ./suites/it -count=1 -v -timeout=60m -blocks gateway-core/sqlite -featur
 - `make -C gateway test-integration` runs the `gateway-core` block on SQLite;
   `make -C gateway test-integration-all` runs the whole suite.
 - Only blocks with a database matrix have `/sqlite`, `/postgres` and `/sqlserver` variants;
-  single-engine blocks (e.g. `gateway-mtls-trust-any`) are selected by their bare name.
+  single-engine blocks (e.g. `gateway-mtls-trust-any`) are selected by their bare name. A block
+  with a matrix on two components names each variant after both, e.g.
+  `platform-api-core/api-sqlite_gateway-sqlite`; an unknown name fails with the list of valid ones.
 - Use `-feature-tags`, never `-tags`, and `-block-parallel`, never `-parallel` (see the README).
 - A source build rewrites `gateway/build-manifest.yaml` with the newest policy versions; restore
   it (`git restore gateway/build-manifest.yaml`) before committing.
