@@ -46,6 +46,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/budget"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -60,6 +61,7 @@ type APIServer struct {
 
 	restAPIService              *restapi.RestAPIService
 	agentService                *agent.AgentService
+	budgetService               *budget.Service
 	store                       *storage.ConfigStore
 	db                          storage.Storage
 	snapshotManager             *xds.SnapshotManager
@@ -187,6 +189,7 @@ func NewAPIServer(
 	server.llmDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
 
 	server.agentService = agentService
+	server.budgetService = budget.NewService(db, logger, systemConfig.Controller.ControlPlane.DeploymentSyncEnabled)
 	server.AgentHandler = NewAgentHandler(agentService, logger)
 
 	server.restAPIService = restAPIService

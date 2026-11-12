@@ -405,6 +405,13 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 		}
 		cfg.SourceConfiguration = config
 		cfg.Configuration = config
+	case "Budget":
+		var config api.BudgetRequest
+		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+			return fmt.Errorf("failed to unmarshal configuration: %w", err)
+		}
+		cfg.SourceConfiguration = config
+		cfg.Configuration = config
 	default:
 		if fn, ok := kindUnmarshalers[cfg.Kind]; ok {
 			return fn(cfg, jsonData)
