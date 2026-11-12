@@ -27,13 +27,12 @@
 # Feature paths are relative to suites/it, as in it-suite.yaml.
 
 blocks:
-  # Platform-api working with an API Portal and a gateway: publishing a REST API to the portal.
+  # Platform-api working with an API Portal and a gateway: publishing an API to the portal.
   # Platform-api registers the portal over HTTPS and trusts its certificate, so the block overlays
   # the portal's own certificate onto platform-api's outbound trust and gives the portal the hash
   # of the key platform-api publishes with. The portal stages its product role file, which grants
-  # the platform-api-system role the publishing calls (including the devportal webhook runners
-  # hosted here) are authorized as. The outage runner stops the portal, so runners must not
-  # overlap: keep parallel at 1.
+  # the platform-api-system role the publishing calls are authorized as. The outage runner stops
+  # the portal, so runners must not overlap: keep parallel at 1.
   - name: platform-api-gateway-api-portal
     parallel: 1
     components:
@@ -53,24 +52,17 @@ blocks:
     runners:
       - name: publication-lifecycle
         features:
-          - features/apiportal/publishing/publication_lifecycle.feature
+          - features/management-portal/publishing/publication_lifecycle.feature
       - name: publication-monetization
         features:
-          - features/apiportal/publishing/publication_monetization.feature
+          - features/management-portal/publishing/publication_monetization.feature
       - name: publication-failures
         features:
-          - features/apiportal/publishing/publication_failures.feature
+          - features/management-portal/publishing/publication_failures.feature
       - name: publication-content
-        # Excludes the scenarios for content that stays on the portal after it is unselected.
         features:
-          - features/apiportal/publishing/publication_content.feature
+          - features/management-portal/publishing/publication_content.feature
         tags: "~@known-issue"
-      - name: devportal-webhook
-        features:
-          - features/apiportal/webhooks/devportal_webhook.feature
-      - name: devportal-monetization-webhook
-        features:
-          - features/apiportal/webhooks/monetization_webhook.feature
       - name: publication-outage
         features:
-          - features/apiportal/publishing/publication_outage.feature
+          - features/management-portal/publishing/publication_outage.feature

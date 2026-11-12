@@ -1,0 +1,6 @@
+apiVersion: api-portal.api-platform.wso2.com/v1
+kind: Organization
+metadata:
+  name: ${VALUE:name}
+spec:
+  displayName: ${VALUE:displayName}
