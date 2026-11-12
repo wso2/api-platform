@@ -33,7 +33,8 @@
 // The token endpoint answers on both ports and checks the form as Entra ID does: grant_type
 // client_credentials, a client_id, a scope ending in /.default and a non-empty client assertion of
 // type urn:ietf:params:oauth:client-assertion-type:jwt-bearer, with no parameter given twice;
-// anything else is answered with 400 and Entra ID's error shape. A token is "testbench-entra."
+// anything else is answered with 400 and Entra ID's error shape, whose trace_id and correlation_id
+// are fresh random GUIDs, as Entra ID's are, so they never carry the tenant. A token is "testbench-entra."
 // followed by the base64url encoding of {"aud", "tid", "appid", "n"}: the scope without /.default,
 // the tenant, the client_id and the request's position for the tenant. It is valid for 3599
 // seconds.

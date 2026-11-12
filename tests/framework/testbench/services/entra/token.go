@@ -19,6 +19,7 @@
 package entra
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -89,26 +90,25 @@ func (s *Service) token(tenant string, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status, n := a.status, a.n
-	switch status {
+	switch status := a.status; status {
 	case http.StatusBadRequest:
-		writeOAuthError(w, status, tenant, n, rejection.code, rejection.description, rejection.aadsts)
+		writeOAuthError(w, status, rejection.code, rejection.description, rejection.aadsts)
 	case http.StatusUnauthorized:
-		writeOAuthError(w, status, tenant, n, "invalid_client",
+		writeOAuthError(w, status, "invalid_client",
 			"AADSTS700213: No matching federated identity record found for presented assertion subject.", 700213)
 	case http.StatusTooManyRequests:
 		w.Header().Set("Retry-After", "1")
-		writeOAuthError(w, status, tenant, n, "temporarily_unavailable", "The request was throttled.", 0)
+		writeOAuthError(w, status, "temporarily_unavailable", "The request was throttled.", 0)
 	case http.StatusInternalServerError:
 		w.WriteHeader(status)
 	case http.StatusServiceUnavailable:
-		writeOAuthError(w, status, tenant, n, "temporarily_unavailable", "The service is unavailable.", 0)
+		writeOAuthError(w, status, "temporarily_unavailable", "The service is unavailable.", 0)
 	default:
 		if strings.HasPrefix(tenant, PrefixSlow) && !wait(r.Context(), s.slowDelay) {
 			s.abandon(tenant, a)
 			return
 		}
-		issue(w, tenant, n, req)
+		issue(w, tenant, a.n, req)
 	}
 }
 
@@ -191,18 +191,28 @@ func issue(w http.ResponseWriter, tenant string, n int, req Request) {
 	writeJSON(w, http.StatusOK, body)
 }
 
-// writeOAuthError writes an Entra ID error body. aadsts is omitted from error_codes when zero.
-func writeOAuthError(w http.ResponseWriter, status int, tenant string, n int, code, description string, aadsts int) {
+// writeOAuthError writes an Entra ID error body, with a fresh GUID as its trace_id and its
+// correlation_id. aadsts is omitted from error_codes when zero.
+func writeOAuthError(w http.ResponseWriter, status int, code, description string, aadsts int) {
 	body := map[string]any{
 		"error":             code,
 		"error_description": description + " (testbench)",
-		"trace_id":          fmt.Sprintf("testbench-trace-%s-%d", tenant, n),
-		"correlation_id":    fmt.Sprintf("testbench-correlation-%s-%d", tenant, n),
+		"trace_id":          newGUID(),
+		"correlation_id":    newGUID(),
 	}
 	if aadsts != 0 {
 		body["error_codes"] = []int{aadsts}
 	}
 	writeJSON(w, status, body)
+}
+
+// newGUID returns a random version 4 GUID, the shape of Entra ID's trace and correlation IDs.
+func newGUID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:]) // crypto/rand.Read never returns an error
+	b[6] = b[6]&0x0f | 0x40
+	b[8] = b[8]&0x3f | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 // parseToken decodes a token the service issued.
