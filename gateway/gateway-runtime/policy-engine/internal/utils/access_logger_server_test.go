@@ -95,7 +95,7 @@ func createTestConfig() *config.Config {
 func TestNewAccessLogServiceServer(t *testing.T) {
 	cfg := createTestConfig()
 
-	server := newAccessLogServiceServer(cfg, nil)
+	server := newAccessLogServiceServer(cfg, nil, nil)
 
 	require.NotNil(t, server)
 	assert.NotNil(t, server.cfg)
@@ -108,7 +108,7 @@ func TestNewAccessLogServiceServer(t *testing.T) {
 
 func TestStreamAccessLogs_EmptyStream(t *testing.T) {
 	cfg := createTestConfig()
-	server := newAccessLogServiceServer(cfg, nil)
+	server := newAccessLogServiceServer(cfg, nil, nil)
 
 	stream := &mockAccessLogStream{
 		messages: []*v3.StreamAccessLogsMessage{},
@@ -122,7 +122,7 @@ func TestStreamAccessLogs_EmptyStream(t *testing.T) {
 
 func TestStreamAccessLogs_RecvError(t *testing.T) {
 	cfg := createTestConfig()
-	server := newAccessLogServiceServer(cfg, nil)
+	server := newAccessLogServiceServer(cfg, nil, nil)
 
 	expectedErr := io.ErrUnexpectedEOF
 	stream := &mockAccessLogStream{
@@ -139,7 +139,7 @@ func TestStreamAccessLogs_RecvError(t *testing.T) {
 
 func TestStreamAccessLogs_WithNilHttpLogs(t *testing.T) {
 	cfg := createTestConfig()
-	server := newAccessLogServiceServer(cfg, nil)
+	server := newAccessLogServiceServer(cfg, nil, nil)
 
 	stream := &mockAccessLogStream{
 		messages: []*v3.StreamAccessLogsMessage{
@@ -155,7 +155,7 @@ func TestStreamAccessLogs_WithNilHttpLogs(t *testing.T) {
 
 func TestStreamAccessLogs_WithHttpLogs(t *testing.T) {
 	cfg := createTestConfig()
-	server := newAccessLogServiceServer(cfg, nil)
+	server := newAccessLogServiceServer(cfg, nil, nil)
 
 	stream := &mockAccessLogStream{
 		messages: []*v3.StreamAccessLogsMessage{
@@ -179,7 +179,7 @@ func TestStreamAccessLogs_WithHttpLogs(t *testing.T) {
 
 func TestStreamAccessLogs_MultipleMessages(t *testing.T) {
 	cfg := createTestConfig()
-	server := newAccessLogServiceServer(cfg, nil)
+	server := newAccessLogServiceServer(cfg, nil, nil)
 
 	stream := &mockAccessLogStream{
 		messages: []*v3.StreamAccessLogsMessage{
@@ -222,7 +222,7 @@ func TestStartAccessLogServiceServer_TCP(t *testing.T) {
 	}
 
 	// Start the server
-	als, err := StartAccessLogServiceServer(cfg, nil)
+	als, err := StartAccessLogServiceServer(cfg, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, als)
 	require.NotNil(t, als.Server)
@@ -252,7 +252,7 @@ func TestStartAccessLogServiceServer_ReturnsErrorRatherThanPanicking(t *testing.
 
 	var als *AccessLogService
 	var err error
-	require.NotPanics(t, func() { als, err = StartAccessLogServiceServer(cfg, nil) })
+	require.NotPanics(t, func() { als, err = StartAccessLogServiceServer(cfg, nil, nil) })
 	require.Error(t, err)
 	assert.Nil(t, als)
 	assert.Contains(t, err.Error(), "max_header_limit")
@@ -276,12 +276,12 @@ func TestNewAccessLogServiceServer_ConsumerRegistration(t *testing.T) {
 	collectorOff := &config.Config{}
 	require.False(t, collectorOff.IsCollectorEnabled(),
 		"both collector inputs default off — the premise FR-030o rests on")
-	assert.Equal(t, []string{"failover-attempt-verdict"}, names(newAccessLogServiceServer(collectorOff, nil)),
+	assert.Equal(t, []string{"failover-attempt-verdict"}, names(newAccessLogServiceServer(collectorOff, nil, nil)),
 		"failover grading works with analytics unconfigured")
 
 	collectorOn := &config.Config{Analytics: config.AnalyticsConfig{Enabled: true}}
 	require.True(t, collectorOn.IsCollectorEnabled())
-	assert.Equal(t, []string{"failover-attempt-verdict", "analytics"}, names(newAccessLogServiceServer(collectorOn, nil)),
+	assert.Equal(t, []string{"failover-attempt-verdict", "analytics"}, names(newAccessLogServiceServer(collectorOn, nil, nil)),
 		"the collector's consumer joins the one that is always present")
 }
 

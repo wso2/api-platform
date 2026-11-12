@@ -82,13 +82,14 @@ func checkedUInt32FromPositiveInt(fieldName string, value int) (uint32, error) {
 // corrStore may be nil (collector disabled elsewhere) -- Analytics treats a nil
 // store as "always miss", falling back to decoding headers from the access-log
 // entry's own metadata exactly as it did before this store existed.
-func newAccessLogServiceServer(cfg *config.Config, corrStore *correlation.Store) *AccessLogServiceServer {
+func newAccessLogServiceServer(cfg *config.Config, corrStore *correlation.Store,
+	verdictSink attemptverdict.Sink) *AccessLogServiceServer {
 	analyticsInstance := analytics.NewAnalytics(cfg)
 	if corrStore != nil {
 		analyticsInstance.SetCorrelationStore(corrStore)
 	}
 
-	verdicts := attemptverdict.NewConsumer(nil)
+	verdicts := attemptverdict.NewConsumer(verdictSink)
 	consumers := []accessLogConsumer{verdicts}
 
 	// Analytics is registered only when the collector is enabled. Process() builds a full
@@ -155,9 +156,10 @@ type AccessLogService struct {
 // grade mid-stream failures should not: failover works without it, merely more conservatively
 // (an attempt it cannot verify records nothing rather than a success — FR-030p), so an unusable
 // collector transport there is a degraded capability, not a reason to refuse to serve traffic.
-func StartAccessLogServiceServer(cfg *config.Config, corrStore *correlation.Store) (*AccessLogService, error) {
+func StartAccessLogServiceServer(cfg *config.Config, corrStore *correlation.Store,
+	verdictSink attemptverdict.Sink) (*AccessLogService, error) {
 	// Create a new instance of the Access Log Service Server
-	accessLogServiceServer := newAccessLogServiceServer(cfg, corrStore)
+	accessLogServiceServer := newAccessLogServiceServer(cfg, corrStore, verdictSink)
 
 	kaParams := keepalive.ServerParameters{
 		Time:    2 * time.Hour, // Ping the client if it is idle for 2 hours

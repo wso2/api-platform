@@ -31,6 +31,8 @@
 package attemptverdict
 
 import (
+	"time"
+
 	accesslogv3 "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
 	"github.com/wso2/api-platform/common/collector"
 )
@@ -39,6 +41,13 @@ import (
 type Verdict struct {
 	// RequestID is Envoy's x-request-id for the downstream request the attempt belongs to.
 	RequestID string
+	// RouteName is Envoy's name for the route that served the request, which the controller
+	// sets to the same key the engine files policy chains under (`route.Route{Name: routeKey}`
+	// in the xDS translator). That shared identity is what makes delivery structural rather
+	// than a guess from cluster names — and it is also what separates an LLM proxy's two hops,
+	// since each is its own route and only one carries the failover policy.
+	RouteName string
+
 	// UpstreamCluster names the target that served (or failed) the attempt. This is a direct
 	// answer to "which target was this?", where the policy's response phase can only infer it
 	// from the attempt count.
@@ -46,6 +55,11 @@ type Verdict struct {
 	// Flags are the upstream-failure flags Envoy set, in the order of
 	// collector.FailoverGradingResponseFlags. More than one can be set at once.
 	Flags []string
+	// Duration is how long the exchange ran before it ended. Carried so a policy feeding a
+	// latency statistic has a real sample: zero is not neutral, it reads as unusually fast and
+	// drags a percentile down.
+	Duration time.Duration
+
 	// ResponseCode is what the client was told, which is what makes the verdict interesting:
 	// a `200` here means the failure happened after the response was already committed, and so
 	// is invisible to every phase the policy runs in.
@@ -93,7 +107,9 @@ func FromAccessLogEntry(entry *accesslogv3.HTTPAccessLogEntry) (Verdict, bool) {
 
 	return Verdict{
 		RequestID:       entry.GetRequest().GetRequestId(),
+		RouteName:       entry.GetCommonProperties().GetRouteName(),
 		UpstreamCluster: entry.GetCommonProperties().GetUpstreamCluster(),
+		Duration:        entry.GetCommonProperties().GetDuration().AsDuration(),
 		Flags:           set,
 		ResponseCode:    entry.GetResponse().GetResponseCode().GetValue(),
 	}, true

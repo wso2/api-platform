@@ -40,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/admin"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/attemptverdict"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -382,7 +383,10 @@ func main() {
 	var alsAnalytics *analytics.Analytics
 	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.Collector.Server)
 	slog.Info("Starting the ALS gRPC server...")
-	als, alsErr := utils.StartAccessLogServiceServer(cfg, corrStore)
+	// Verdicts are delivered to the policies on the route that produced them, resolved through
+	// the kernel's own chain map so attribution is structural rather than inferred (T030k3).
+	verdictSink := attemptverdict.NewPolicyDeliverySink(k.GetPolicyChain, nil)
+	als, alsErr := utils.StartAccessLogServiceServer(cfg, corrStore, verdictSink)
 	switch {
 	case alsErr != nil && cfg.IsCollectorEnabled():
 		// Analytics or traffic logging is configured and this stream is its only data source.
