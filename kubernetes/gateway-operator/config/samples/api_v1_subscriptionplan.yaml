@@ -1,5 +1,5 @@
 # Example 1: plan with conditions. Built-in types (request-count, tool-call-count,
-# token-count, event-count) take limit windows; custom conditions take free-form
+# token-count) take limit windows; custom conditions take free-form
 # key-values. The gateway-controller validates the params and derives the legacy
 # throttle fields from the request-count condition.
 apiVersion: gateway.api-platform.wso2.com/v1

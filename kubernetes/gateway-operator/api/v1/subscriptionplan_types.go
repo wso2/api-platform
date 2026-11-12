@@ -27,14 +27,14 @@ import (
 // +kubebuilder:validation:XValidation:rule="self.type != 'custom' || has(self.id)",message="a custom condition needs an id"
 type SubscriptionPlanCondition struct {
 	// Id names the condition. Built-in types have fixed ids (requests,
-	// tool-calls, tokens, events) and may omit it; custom conditions need one.
+	// tool-calls, tokens) and may omit it; custom conditions need one.
 	// +optional
 	// +kubebuilder:validation:MaxLength=63
 	Id string `json:"id,omitempty"`
 
 	// Type is the condition type.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=request-count;tool-call-count;token-count;event-count;custom
+	// +kubebuilder:validation:Enum=request-count;tool-call-count;token-count;custom
 	Type string `json:"type"`
 
 	// Params holds the condition's settings. Built-in types take

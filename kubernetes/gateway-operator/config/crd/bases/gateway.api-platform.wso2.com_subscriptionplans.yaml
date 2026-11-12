@@ -69,7 +69,7 @@ spec:
                     id:
                       description: |-
                         Id names the condition. Built-in types have fixed ids (requests,
-                        tool-calls, tokens, events) and may omit it; custom conditions need one.
+                        tool-calls, tokens) and may omit it; custom conditions need one.
                       maxLength: 63
                       type: string
                     params:
@@ -85,7 +85,6 @@ spec:
                       - request-count
                       - tool-call-count
                       - token-count
-                      - event-count
                       - custom
                       type: string
                   required:
@@ -277,7 +276,7 @@ spec:
                     id:
                       description: |-
                         Id names the condition. Built-in types have fixed ids (requests,
-                        tool-calls, tokens, events) and may omit it; custom conditions need one.
+                        tool-calls, tokens) and may omit it; custom conditions need one.
                       maxLength: 63
                       type: string
                     params:
@@ -293,7 +292,6 @@ spec:
                       - request-count
                       - tool-call-count
                       - token-count
-                      - event-count
                       - custom
                       type: string
                   required:
