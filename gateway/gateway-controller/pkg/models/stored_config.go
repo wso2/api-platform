@@ -198,6 +198,8 @@ func apiVersionOf(cfg any) string {
 		return string(sc.ApiVersion)
 	case api.GraphQLAPI:
 		return string(sc.ApiVersion)
+	case api.BudgetRequest:
+		return string(sc.ApiVersion)
 	}
 	return ""
 }
