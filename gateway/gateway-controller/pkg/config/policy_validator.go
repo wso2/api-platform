@@ -331,11 +331,12 @@ func (pv *PolicyValidator) ValidateModelPolicies(cfg *api.ModelConfiguration) []
 		policyDef, errs := pv.validatePolicyRef(routing.Policy.Name, routing.Policy.Version, "spec.routing.policy")
 		errors = append(errors, errs...)
 		if len(errs) == 0 && policyDef.Parameters != nil {
-			// Copied, so coercion never touches the Model being saved.
+			// Copied deeply, so coercion never touches the Model being saved, nested
+			// values included.
 			params := make(map[string]interface{})
 			if routing.Params != nil {
 				for k, v := range *routing.Params {
-					params[k] = v
+					params[k] = deepCopyParam(v)
 				}
 			}
 			coerceParamsBySchema(params, *policyDef.Parameters)
@@ -419,11 +420,19 @@ func definesParameter(def *models.PolicyDefinition, name string) bool {
 }
 
 // withPlaceholderStandIns replaces each {apiVersion} placeholder with a stand-in
-// value, so a parameter that will hold a version validates as one.
+// value, so a parameter that will hold a version validates as one: the declared
+// default when the placeholder has one, otherwise a representative version.
 func withPlaceholderStandIns(v interface{}) interface{} {
 	switch val := v.(type) {
 	case string:
-		return knownParamPlaceholder.ReplaceAllString(val, "v1")
+		return knownParamPlaceholder.ReplaceAllStringFunc(val, func(ph string) string {
+			if strings.HasPrefix(ph, "{apiVersion:") {
+				if def := strings.TrimSuffix(strings.TrimPrefix(ph, "{apiVersion:"), "}"); def != "" {
+					return def
+				}
+			}
+			return "v1"
+		})
 	case map[string]interface{}:
 		out := make(map[string]interface{}, len(val))
 		for k, inner := range val {
@@ -705,6 +714,28 @@ func (pv *PolicyValidator) CoerceRestAPIPolicies(config *api.RestAPI) {
 	}
 }
 
+// CoerceModelPolicies coerces policy param strings to their schema-declared types for
+// a Model: its policies and its routing policy's params. Must be called after template
+// rendering in the event listener, as for every other kind, so the compiled routes
+// carry typed values rather than rendered strings.
+func (pv *PolicyValidator) CoerceModelPolicies(config *api.ModelConfiguration) {
+	if config.Spec.Policies != nil {
+		pv.coercePolicySlice(*config.Spec.Policies)
+	}
+	if routing := config.Spec.Routing; routing != nil && routing.Params != nil {
+		pv.coerceSinglePolicyParams(routing.Policy.Name, routing.Policy.Version, *routing.Params)
+	}
+}
+
+// CoerceModelEndpointPolicies coerces policy param strings to their schema-declared
+// types for a model endpoint's policies. Must be called after template rendering in
+// the event listener, as for every other kind.
+func (pv *PolicyValidator) CoerceModelEndpointPolicies(config *api.ModelEndpointConfiguration) {
+	if config.Spec.Policies != nil {
+		pv.coercePolicySlice(*config.Spec.Policies)
+	}
+}
+
 // CoerceMCPProxyPolicies coerces policy param strings to their schema-declared types for
 // an MCPProxyConfiguration. Must be called after template rendering in the event listener.
 func (pv *PolicyValidator) CoerceMCPProxyPolicies(config *api.MCPProxyConfiguration) {
@@ -796,6 +827,26 @@ func (pv *PolicyValidator) coerceSinglePolicyParams(name, version string, params
 		return
 	}
 	coerceParamsBySchema(params, *policyDef.Parameters)
+}
+
+// deepCopyParam copies a decoded parameter value, maps and slices included, so a
+// coercion of the copy cannot reach the original.
+func deepCopyParam(v interface{}) interface{} {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(val))
+		for k, inner := range val {
+			out[k] = deepCopyParam(inner)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(val))
+		for i, inner := range val {
+			out[i] = deepCopyParam(inner)
+		}
+		return out
+	}
+	return v
 }
 
 // coerceParamsBySchema mutates params in-place, replacing string values with their

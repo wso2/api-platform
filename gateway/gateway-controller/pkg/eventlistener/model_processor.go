@@ -73,6 +73,15 @@ func (l *EventListener) handleModelCreateOrUpdate(event eventhub.Event) {
 		return
 	}
 
+	// Rendering leaves template output as strings. Coerce policy and routing params
+	// back to their schema-declared types, as every other kind does.
+	if l.policyValidator != nil {
+		if model, ok := storedConfig.Configuration.(api.ModelConfiguration); ok {
+			l.policyValidator.CoerceModelPolicies(&model)
+			storedConfig.Configuration = model
+		}
+	}
+
 	existing, _ := l.store.Get(entityID)
 	affected := modelEndpointsOf(existing)
 	if existing != nil {

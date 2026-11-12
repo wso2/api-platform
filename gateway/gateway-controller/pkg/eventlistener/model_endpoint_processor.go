@@ -68,6 +68,15 @@ func (l *EventListener) handleModelEndpointCreateOrUpdate(event eventhub.Event) 
 		return
 	}
 
+	// Rendering leaves template output as strings. Coerce policy params back to their
+	// schema-declared types, as every other kind does.
+	if l.policyValidator != nil {
+		if endpoint, ok := storedConfig.Configuration.(api.ModelEndpointConfiguration); ok {
+			l.policyValidator.CoerceModelEndpointPolicies(&endpoint)
+			storedConfig.Configuration = endpoint
+		}
+	}
+
 	if existing, _ := l.store.Get(entityID); existing != nil {
 		if err := l.store.Update(storedConfig); err != nil {
 			l.logger.Error("Failed to update model endpoint in memory store",
