@@ -66,14 +66,16 @@ type imdsRejection struct {
 // sends its IMDS requests under its own block's partition, so the counters that pick a fail-once
 // answer, and the request logs, belong to the block and the identity together.
 func (s *Service) imdsToken(block string, w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
+	// ParseQuery keeps the pairs it could read even when it fails, so a malformed request is
+	// still logged with what it carried.
+	q, queryErr := url.ParseQuery(r.URL.RawQuery)
 	req := Request{
 		ClientID:   q.Get("client_id"),
 		Resource:   q.Get("resource"),
 		APIVersion: q.Get("api-version"),
 		Metadata:   r.Header.Get("Metadata"),
 	}
-	rejection := validateIMDS(r, q, req)
+	rejection := validateIMDS(r, q, queryErr, req)
 
 	identity := req.ClientID
 	if identity == "" {
@@ -112,14 +114,16 @@ func imdsLogKey(block, identity string) string {
 	return block + "/" + identity
 }
 
-// validateIMDS checks a token request as IMDS does: the Metadata header, no repeated query
-// parameter, the api-version, a resource, and no X-Forwarded-For, which IMDS refuses so that a
-// proxy cannot relay requests.
-func validateIMDS(r *http.Request, q url.Values, req Request) *imdsRejection {
+// validateIMDS checks a token request as IMDS does: the Metadata header, a query string that
+// parses cleanly (queryErr is ParseQuery's error), no repeated query parameter, the api-version, a
+// resource, and no X-Forwarded-For, which IMDS refuses so that a proxy cannot relay requests.
+func validateIMDS(r *http.Request, q url.Values, queryErr error, req Request) *imdsRejection {
 	name, repeated := repeatedParameter(q)
 	switch {
 	case req.Metadata != "true":
 		return &imdsRejection{"bad_request_102", "Required metadata header not specified"}
+	case queryErr != nil:
+		return &imdsRejection{"invalid_request", "The query string is malformed"}
 	case repeated:
 		return &imdsRejection{"invalid_request", "The query parameter '" + name + "' is duplicated"}
 	case req.APIVersion == "":
