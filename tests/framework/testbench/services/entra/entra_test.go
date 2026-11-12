@@ -320,13 +320,14 @@ func TestSlowWaitsAndStopsWhenCancelled(t *testing.T) {
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/"+PrefixSlow+"y/oauth2/v2.0/token",
 		strings.NewReader(validForm(foundryScope).Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
 	done := make(chan struct{})
 	go func() {
-		svc.Handler().ServeHTTP(httptest.NewRecorder(), req)
+		svc.Handler().ServeHTTP(rec, req)
 		close(done)
 	}()
 	// Cancel only once the request is admitted, so the handler is past admission and waiting.
-	require.NoError(t, retry.Await(t.Context(), retry.Options{Timeout: 5 * time.Second, Interval: 10 * time.Millisecond, Fast: true},
+	require.NoError(t, retry.Await(t.Context(), retry.Options{Fast: true},
 		func(context.Context) (int, error) { return recorded(t, svc, PrefixSlow+"y").Count, nil },
 		func(count int) bool { return count == 1 },
 		"waiting for the slow token request to be admitted"))
@@ -336,6 +337,10 @@ func TestSlowWaitsAndStopsWhenCancelled(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("slow mode kept waiting after the caller went away")
 	}
+	require.Zero(t, rec.Body.Len(), "a caller that left is sent no token")
+	log := recorded(t, svc, PrefixSlow+"y")
+	require.Equal(t, 1, log.Count)
+	require.Equal(t, 0, log.Requests[0].Status, "a request whose caller left before the answer is recorded with status 0")
 }
 
 func TestPartitionBudget(t *testing.T) {

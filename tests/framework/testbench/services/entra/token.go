@@ -81,7 +81,7 @@ func (s *Service) token(tenant string, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	n, status, admitted := s.admit(tenant, req, rejection == nil, func(eligible int) int {
+	a, admitted := s.admit(tenant, req, rejection == nil, func(eligible int) int {
 		return outcome(tenant, eligible)
 	})
 	if !admitted {
@@ -89,6 +89,7 @@ func (s *Service) token(tenant string, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	status, n := a.status, a.n
 	switch status {
 	case http.StatusBadRequest:
 		writeOAuthError(w, status, tenant, n, rejection.code, rejection.description, rejection.aadsts)
@@ -104,6 +105,7 @@ func (s *Service) token(tenant string, w http.ResponseWriter, r *http.Request) {
 		writeOAuthError(w, status, tenant, n, "temporarily_unavailable", "The service is unavailable.", 0)
 	default:
 		if strings.HasPrefix(tenant, PrefixSlow) && !wait(r.Context(), s.slowDelay) {
+			s.abandon(tenant, a)
 			return
 		}
 		issue(w, tenant, n, req)

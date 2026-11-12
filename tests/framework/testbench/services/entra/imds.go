@@ -79,7 +79,7 @@ func (s *Service) imdsToken(block string, w http.ResponseWriter, r *http.Request
 	if identity == "" {
 		identity = SystemAssigned
 	}
-	n, status, admitted := s.admit(imdsLogKey(block, identity), req, rejection == nil, func(eligible int) int {
+	a, admitted := s.admit(imdsLogKey(block, identity), req, rejection == nil, func(eligible int) int {
 		return imdsOutcome(req.Resource, eligible)
 	})
 	if !admitted {
@@ -87,9 +87,9 @@ func (s *Service) imdsToken(block string, w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	switch status {
+	switch status := a.status; status {
 	case http.StatusOK:
-		issueIMDS(w, n, req)
+		issueIMDS(w, a.n, req)
 	case http.StatusBadRequest:
 		if rejection == nil {
 			rejection = &imdsRejection{"invalid_request", "Identity not found"}

@@ -48,6 +48,9 @@
 //	unavailable-      503, every time
 //	slow-             tokens after three seconds, or nothing if the caller gives up first
 //
+// Every request is logged with the status it was answered with, or 0 when the caller left before
+// the answer, as a slow- request does when its caller gives up.
+//
 // The IMDS token endpoint stands in for the managed identity endpoint of a VM or AKS node. The
 // runtime's AZURE_IMDS_TOKEN_ENDPOINT is
 // https://testbench:3028/${TESTBENCH_PARTITION}/metadata/identity/oauth2/token, so each block's
