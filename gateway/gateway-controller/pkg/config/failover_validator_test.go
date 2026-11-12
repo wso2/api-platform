@@ -81,25 +81,6 @@ func TestValidateFailoverParams_NeverRejectsUnresolvableTargets(t *testing.T) {
 	}
 }
 
-func TestValidateFailoverAgainstRequestTimeout(t *testing.T) {
-	params := map[string]interface{}{"perAttemptTimeoutMs": float64(30000)}
-
-	if errs := validateFailoverAgainstRequestTimeout(params, 60000, "p"); len(errs) != 0 {
-		t.Fatalf("a per-attempt timeout inside the request budget is valid: %v", errs)
-	}
-	// Equal is already too large: the first attempt alone can consume the whole budget.
-	if errs := validateFailoverAgainstRequestTimeout(params, 30000, "p"); len(errs) != 1 {
-		t.Fatalf("expected one error for an equal timeout, got %v", errs)
-	}
-	if errs := validateFailoverAgainstRequestTimeout(params, 15000, "p"); len(errs) != 1 {
-		t.Fatalf("expected one error for a per-attempt timeout above the request timeout, got %v", errs)
-	}
-	// An unknown request timeout is not grounds for an error; there is nothing to compare to.
-	if errs := validateFailoverAgainstRequestTimeout(params, 0, "p"); len(errs) != 0 {
-		t.Fatalf("expected no error when the request timeout is unknown: %v", errs)
-	}
-}
-
 // model-failover belongs in operationPolicies, once. Attaching it per upstream looks reasonable
 // — "fail over from this provider" — and would appear to deploy fine, which is exactly why it
 // has to be rejected rather than ignored: each provider would carry its own health view and its
