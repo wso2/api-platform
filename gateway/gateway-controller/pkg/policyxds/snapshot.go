@@ -282,6 +282,31 @@ func (t *Translator) TranslateRuntimeConfigs(rdcs []*models.RuntimeDeployConfig)
 			policyResources[routeKey] = resource
 		}
 
+		// Per-attempt chains, one per cluster that has upstream work.
+		//
+		// Published through the same PolicyChain resource type as the route-keyed chains, so
+		// the engine's existing receive and chain-building path serves both. Only the key
+		// differs — UpstreamChainKey namespaces them so a cluster name can never be mistaken
+		// for a route key.
+		for cluster, chain := range rdc.UpstreamPolicyChains {
+			if chain == nil {
+				t.logger.Error("Skipping nil upstream policy chain",
+					slog.String("cluster", cluster),
+					slog.String("kind", rdc.Metadata.Kind),
+					slog.String("name", rdc.Metadata.DisplayName))
+				continue
+			}
+			key := UpstreamChainKey(cluster)
+			resource, err := t.createPolicyChainResource(key, chain, rdc.Metadata, rdc.SensitiveValues)
+			if err != nil {
+				t.logger.Error("Failed to create upstream policy chain resource",
+					slog.String("cluster", cluster),
+					slog.Any("error", err))
+				continue
+			}
+			policyResources[key] = resource
+		}
+
 		// Build route config resources (one per route)
 		for routeKey, route := range rdc.Routes {
 			// Same reasoning as the nil chain above: route.Upstream is dereferenced on the
@@ -542,4 +567,18 @@ func encodePolicyList(policies []models.Policy) []map[string]interface{} {
 		out = append(out, pol)
 	}
 	return out
+}
+
+// UpstreamChainPrefix namespaces a per-attempt chain's key so a cluster name can never be
+// mistaken for a route key.
+//
+// CROSS-MODULE CONTRACT: the policy engine builds the same key to look a chain up, and the two
+// are separate Go modules that cannot share a constant. A mismatch is silent — the engine finds
+// no chain, the attempt runs unmodified, and the request still succeeds against whatever the
+// previous attempt left in place. Pinned by a test on each side.
+const UpstreamChainPrefix = "upstream:"
+
+// UpstreamChainKey is the policy-chain key for the per-attempt chain of one cluster.
+func UpstreamChainKey(cluster string) string {
+	return UpstreamChainPrefix + cluster
 }

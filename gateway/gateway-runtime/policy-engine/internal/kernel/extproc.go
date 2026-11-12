@@ -62,7 +62,11 @@ type ExternalProcessorServer struct {
 
 	kernel   *Kernel
 	executor *executor.ChainExecutor
-	tracer   trace.Tracer
+
+	// baselines remembers, per request, the shape the FIRST attempt saw, so later attempts
+	// reset to it instead of compounding the previous attempt's rewrites (FR-038a).
+	baselines *attemptBaselineStore
+	tracer    trace.Tracer
 
 	// tracingEnabled gates the per-request trace-context extraction. When false,
 	// the tracer is a no-op anyway, so building the carrier and running the
@@ -175,6 +179,7 @@ func NewExternalProcessorServer(kernel *Kernel, chainExecutor *executor.ChainExe
 	srv := &ExternalProcessorServer{
 		kernel:                       kernel,
 		executor:                     chainExecutor,
+		baselines:                    newAttemptBaselineStore(),
 		tracer:                       otel.Tracer(serviceName),
 		tracingEnabled:               tracingConfig.Enabled,
 		maxRequestDecompressedBytes:  maxRequestDecompressedBytes,
@@ -300,6 +305,10 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 		}
 	}()
 
+	// Per-stream, not per-request: an upstream stream serves exactly one attempt, and its body
+	// message arrives without the attributes the headers message carried (upstreamAttemptState).
+	var upstreamState upstreamAttemptState
+
 	for {
 		// Receive request from Envoy
 		req, err := stream.Recv()
@@ -336,6 +345,42 @@ func (s *ExternalProcessorServer) Process(stream extprocv3.ExternalProcessor_Pro
 		// Subsequent messages on this stream reuse the same span and context.
 		if span == nil {
 			ctx, span = s.startRootSpan(ctx, req)
+		}
+
+		// A stream from the UPSTREAM filter position is a different thing entirely: it
+		// serves ONE attempt, not the client request, and Envoy opens a fresh one per
+		// retry. It has no route to resolve, no API metadata to initialise and no
+		// downstream lifecycle — so it must not fall into the phase machinery below,
+		// which assumes all of those and would re-run once-per-request work on every
+		// attempt (FR-012d).
+		//
+		// The position is declared by the router in gRPC initial metadata, never inferred
+		// from the payload: both processors dial the same cluster and Envoy keys ext_proc
+		// attributes by canonical filter type, so nothing else distinguishes them.
+		if positionFromStream(stream.Context()) == PositionUpstream {
+			var resp *extprocv3.ProcessingResponse
+			var err error
+			switch req.Request.(type) {
+			case *extprocv3.ProcessingRequest_RequestHeaders:
+				resp, err = s.handleUpstreamRequestHeaders(ctx, req, &upstreamState)
+			case *extprocv3.ProcessingRequest_RequestBody:
+				// Only sent when this attempt's chain asked for it — a transformer
+				// rewriting the payload for its provider.
+				resp, err = s.handleUpstreamRequestBody(ctx, req, &upstreamState)
+			default:
+				// The per-attempt chain is request-only (FR-037a), so nothing else is
+				// asked for. Acknowledge rather than stall the attempt if Envoy sends a
+				// phase this filter did not request.
+				resp = &extprocv3.ProcessingResponse{}
+			}
+			if err != nil {
+				slog.ErrorContext(ctx, "per-attempt policy chain failed", "error", err)
+				return status.Errorf(grpccodes.Internal, "upstream policy chain failed: %v", err)
+			}
+			if err := stream.Send(resp); err != nil {
+				return err
+			}
+			continue
 		}
 
 		// Handle the request based on phase

@@ -200,6 +200,41 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 	}
 
 	// Build routes and policy chains for each operation
+	// Maps a failover target's provider alias to the cluster serving it.
+	//
+	// Only the control plane can do this: cluster names are derived from the upstream
+	// definition name (or the main upstream's host), never from the alias a policy author
+	// writes. That is why the generated priority groups carry the clusters and the policy
+	// reorders them by group name alone.
+	//
+	// An alias naming no definition resolves to "" and that target is dropped from the
+	// chain — a silent no-op, never a deployment rejection (FR-006a).
+	// Built once per API: the policy needs it on every failover-bearing chain.
+	failoverProviderClusters := BuildProviderClusterMap(
+		mainUpstream.ClusterKey, apiData.UpstreamDefinitions, cfg.Kind, cfg.UUID)
+	// Carried on the RDC so later stages — the LLM layer's per-upstream chains, the xDS
+	// snapshot — use the same mapping rather than each re-deriving it from cluster names.
+	rdc.ProviderClusters = failoverProviderClusters
+
+	resolveFailoverCluster := func(provider string) string {
+		if provider == "" {
+			return mainUpstream.ClusterKey
+		}
+		if apiData.UpstreamDefinitions == nil {
+			return ""
+		}
+		for _, def := range *apiData.UpstreamDefinitions {
+			if def.Name != provider {
+				continue
+			}
+			if len(def.Upstreams) == 0 || def.Upstreams[0].Url == "" {
+				return ""
+			}
+			return "upstream_" + cfg.Kind + "_" + cfg.UUID + "_" + SanitizeUpstreamDefinitionName(def.Name)
+		}
+		return ""
+	}
+
 	for i, op := range apiData.Operations {
 		// Operation-level resilience overrides API-level (per field); nil leaves the
 		// global route timeout default in effect.
@@ -213,6 +248,11 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 		if hasSandbox {
 			vhosts = append(vhosts, effectiveSandboxVHost)
 		}
+
+		// Where model-failover was written decides which operations it covers, not whether it
+		// works — see ResolveFailoverAttachment. An API-level attachment governs every
+		// operation that does not write its own; an operation that does, overrides it whole.
+		failoverAttachment := ResolveFailoverAttachment(apiData.Policies, op.Policies)
 
 		// Resolve the effective matching criteria (simple top-level form or the richer match
 		// block) once per operation. Header matchers and their discriminator are vhost-
@@ -248,6 +288,7 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 					DefaultCluster:   defaultCluster,
 					Default:          &routeMainInfo,
 				},
+				Failover: buildFailoverConfig(failoverAttachment.Policies, resolveFailoverCluster),
 			}
 			rdc.Routes[routeKey] = rdcRoute
 
@@ -262,9 +303,42 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			}
 
 			// Build policy chain: API-level + operation-level + system policies
-			chain := t.buildPolicyChain(apiPolicies, op.Policies)
+			effectiveAPIPolicies := apiPolicies
+			if failoverAttachment.Overridden {
+				// Both levels attached model-failover. The route carries ONE failover
+				// configuration, so two instances cannot both be right: they would hold
+				// different targets, resolve different chains, and grade the same response
+				// twice. Drop the API-level one and say so — silently discarding an entry an
+				// author wrote is worse than silently moving one, which is why this logs even
+				// though moveFailoverLast's move is the more visible rearrangement.
+				var dropped bool
+				effectiveAPIPolicies, dropped = dropFailoverInstances(apiPolicies,
+					func(p policyenginev1.PolicyInstance) string { return p.Name })
+				if dropped {
+					slog.Info("API-level model-failover discarded for this operation; its own "+
+						"attachment overrides it. A route carries one failover configuration, "+
+						"so the two cannot be merged",
+						slog.String("route", routeKey))
+				}
+			}
+			chain := t.buildPolicyChain(effectiveAPIPolicies, op.Policies)
 			injected := utils.InjectSystemPolicies(chain, t.systemConfig, systemPolicyProps)
 			routeChain := sdkChainToModel(injected)
+			// Hand the failover policy the provider-to-cluster map, so it can publish complete
+			// priority groups and reach a (provider, model) the control plane never enumerated
+			// — a wildcard member, or a target a routing policy alone knows about.
+			InjectProviderClusters(routeChain, failoverProviderClusters)
+			// model-failover runs LAST on the request path, wherever the author wrote it —
+			// see moveFailoverLast for why the control plane decides this rather than the
+			// author. Logged when it actually moved, so a deliberate arrangement is not
+			// silently rearranged.
+			if moved, changed := moveFailoverLast(rdcRoute.Failover, routeChain.Policies); changed {
+				routeChain.Policies = moved
+				slog.Info("model-failover moved to the end of the request chain; it consumes "+
+					"routing decisions published by earlier policies, so its position is set "+
+					"by the control plane rather than by chain order",
+					slog.String("route", routeKey))
+			}
 			// Fault policies: this operation's entries then the API's, which is the order
 			// they execute in, and then the fault-path system policies LAST.
 			//
@@ -280,7 +354,14 @@ func (t *RestAPITransformer) Transform(cfg *models.StoredConfig) (*models.Runtim
 			// body its client can parse, and now also gets its failure recorded.
 			routeChain.FaultPolicies = appendFaultSystemPolicies(
 				mergeFaultPolicies(
-					t.collectFaultPolicies(op.FaultPolicies, policyv1alpha.LevelRoute),
+					// model-failover first, so the exhaustion error is a default the
+					// operator's own entries can still reshape — see
+					// prependFailoverFaultEntry for why it is attached automatically.
+					prependFailoverFaultEntry(
+						rdcRoute.Failover,
+						routeChain.Policies,
+						t.collectFaultPolicies(op.FaultPolicies, policyv1alpha.LevelRoute),
+					),
 					apiFaultPolicies,
 				),
 				faultSystemPolicies,

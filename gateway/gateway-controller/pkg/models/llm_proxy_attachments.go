@@ -36,6 +36,13 @@ type LLMProxyAttachment struct {
 	Transformer *api.LLMProxyTransformer
 	IsPrimary   bool
 
+	// Policies run once per upstream attempt, on attempts routed to this
+	// provider only. Both shapes carry them, so the per-attempt chain is built
+	// from the normalised attachment and never from a raw shape — reading
+	// AdditionalProviders directly is what left canonically-authored proxies
+	// with no per-attempt chain at all.
+	Policies *[]api.Policy
+
 	// SourceIndex is the position this attachment occupied in the configuration
 	// as it was authored, before normalisation moved the primary to the front.
 	// Validation reports field paths with it, so an error about the third entry
@@ -115,6 +122,8 @@ func NormaliseLLMProxyAttachments(spec api.LLMProxyConfigData) ([]LLMProxyAttach
 		Alias:       spec.Provider.As,
 		Auth:        spec.Provider.Auth,
 		Transformer: spec.Provider.Transformer,
+		// The legacy `provider` object carries no policies field; only the
+		// canonical shape can attach per-attempt policies to the primary.
 		IsPrimary:   true,
 		SourceIndex: 0,
 	}}
@@ -125,6 +134,7 @@ func NormaliseLLMProxyAttachments(spec api.LLMProxyConfigData) ([]LLMProxyAttach
 				Alias:       additional.As,
 				Auth:        additional.Auth,
 				Transformer: additional.Transformer,
+				Policies:    additional.Policies,
 				SourceIndex: i + 1,
 			})
 		}
@@ -150,6 +160,7 @@ func attachmentFromEntry(entry api.LLMProxyProviderEntry, sourceIndex int) LLMPr
 		Alias:       entry.Alias,
 		Auth:        entry.Auth,
 		Transformer: entry.Transformer,
+		Policies:    entry.Policies,
 		IsPrimary:   entry.IsPrimary,
 		SourceIndex: sourceIndex,
 	}

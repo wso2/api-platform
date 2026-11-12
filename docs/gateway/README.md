@@ -58,6 +58,10 @@ An LLM Proxy lets developers create their own endpoint that consumes an LLM Prov
 - Per-application policies such as prompt management and guardrails
 - Separation between platform administration and application development
 
+A proxy that fronts more than one provider can also attach policies to a *provider* rather than to
+the operation, so they run only on attempts routed to that provider — see
+[Per-provider policies](per-provider-policies.md).
+
 ### MCP Proxy
 
 An MCP Proxy routes Model Context Protocol traffic to MCP servers. MCP lets AI assistants interact with external tools and data sources. With MCP Proxies, you can:

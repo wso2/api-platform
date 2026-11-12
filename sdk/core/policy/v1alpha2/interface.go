@@ -188,3 +188,38 @@ type StreamingResponsePolicy interface {
 type FaultPolicy interface {
 	OnFault(ctx context.Context, faultCtx *FaultContext, params map[string]interface{}) *FaultResponse
 }
+
+// AttemptCompletionPolicy is the contract for a policy that needs to know how an upstream
+// attempt actually ENDED, after the exchange is over.
+//
+// Every other hook on a policy runs while the request is in flight, which means none of them can
+// see the end of a response. A target that sends `200`, streams part of a body and then dies is,
+// from OnResponseHeaders, indistinguishable from one that served the whole answer — the headers
+// are identical, and the failure happens long after the policy has returned. For a policy that
+// grades upstream health, recording that as a success is worse than recording nothing: it
+// actively credits a target for an answer it never delivered.
+//
+// Envoy is the only component that observes the end of the exchange, and reports it as a
+// response flag on the access-log entry. This hook carries that verdict back.
+//
+// Three properties follow from WHERE the verdict comes from, and a policy implementing this must
+// be written for all three:
+//
+//   - It is OUT OF BAND. The call arrives roughly a second after the client's request finished,
+//     on the access-log stream's goroutine, with no request context. Nothing it does can affect
+//     the request it describes; the only useful action is updating state that outlives the
+//     request, such as health. Correlate by RequestID with something recorded during the request.
+//   - It is NOT GUARANTEED. The gateway delivers it only when the deployment's access-log sink
+//     carries the entry. A policy must behave correctly when the hook is never called at all —
+//     conservatively, not by assuming success.
+//   - It is BODY-INDEPENDENT. Unlike a streaming hook, participation does not require the policy
+//     to process the response body, so it does not force the body out of its skip/streaming mode
+//     and does not make this policy's correctness depend on what the OTHER policies in the chain
+//     support.
+//
+// Implementations must not block: the hook runs inline on the access-log stream, so a slow
+// implementation stalls delivery for every other route. They must not panic: the request is
+// already finished, so there is nothing to fail, and a panic takes the stream down with it.
+type AttemptCompletionPolicy interface {
+	OnAttemptComplete(ctx context.Context, attemptCtx *AttemptCompletionContext, params map[string]interface{})
+}

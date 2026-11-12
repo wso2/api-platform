@@ -17,7 +17,11 @@
 
 package policyv1alpha2
 
-import policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
+import (
+	"time"
+
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
+)
 
 // Body represents HTTP request or response body data
 type Body struct {
@@ -547,3 +551,61 @@ const (
 	PolicyPhaseResponseHeaders = "response_headers"
 	PolicyPhaseResponseBody    = "response_body"
 )
+
+// AttemptCompletionContext describes how one upstream attempt ended, as observed after the
+// exchange finished. It is the argument to AttemptCompletionPolicy.OnAttemptComplete.
+//
+// It is deliberately small and value-like. The request is over by the time this exists, so there
+// are no headers to mutate, no body to read and no action to return — only a description of what
+// happened.
+type AttemptCompletionContext struct {
+	// RequestID is the gateway's correlation id for the downstream request (Envoy's
+	// x-request-id). It is the ONLY way to tie this verdict back to what the policy saw while
+	// the request was in flight, since none of the request's own state is available here.
+	RequestID string
+
+	// RouteName identifies the route whose chain this policy was configured on. The gateway
+	// has already used it to select this policy, so it is informational — useful for logs.
+	RouteName string
+
+	// UpstreamCluster names the cluster that served, or failed to serve, the attempt this
+	// verdict describes.
+	//
+	// Note what this is NOT: it is not necessarily unique per logical destination. Several
+	// configured destinations can share one cluster, so a policy that keys state more finely
+	// than "cluster" must correlate by RequestID rather than infer identity from this name.
+	UpstreamCluster string
+
+	// ResponseFlags are the gateway's short codes for how the attempt failed upstream — for
+	// example "UPE" (upstream protocol error) or "UC" (upstream connection termination). A
+	// verdict always carries at least one; an attempt that completed normally produces no call.
+	ResponseFlags []string
+
+	// Duration is how long the attempt ran before it ended — the gateway's measure of the
+	// whole exchange, from the first downstream byte to the last.
+	//
+	// Carried because a policy grading health usually feeds a latency statistic, and a failure
+	// that arrives through this hook would otherwise have to be recorded with no duration at
+	// all. A zero sample is not neutral: it reads as an unusually FAST response and drags a
+	// percentile down, so a target that truncated after thirty seconds would look quick.
+	Duration time.Duration
+
+	// ResponseCode is the status the client was given.
+	//
+	// Read together with ResponseFlags this is the whole point of the hook: a 5xx here was
+	// already visible to the policy's response phase, whereas a 2xx means the client was told
+	// the request SUCCEEDED and the failure happened afterwards — the case no in-flight hook
+	// can observe. See CommittedBeforeFailing.
+	ResponseCode uint32
+}
+
+// CommittedBeforeFailing reports whether the client had already been told the request succeeded
+// when the attempt fell over.
+//
+// This separates the two cases a policy must treat differently. A failure BEFORE commitment
+// surfaced to the client as an error status, which the policy's ordinary response phase already
+// saw and graded. A failure AFTER commitment is invisible to every in-flight hook, and is the
+// reason this one exists.
+func (c *AttemptCompletionContext) CommittedBeforeFailing() bool {
+	return c != nil && c.ResponseCode >= 200 && c.ResponseCode < 300
+}

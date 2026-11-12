@@ -102,6 +102,44 @@ const (
 	ExtProcHeaderModeSkip            = "SKIP"
 	ExtProcRequestAttributeRouteName = "xds.route_name"
 
+	// UpstreamExtProcFilterName names the per-attempt ext_proc filter. Deliberately DISTINCT
+	// from ExtProcFilterName: the two filters are configured independently and, once
+	// per-route gating lands, must be individually targetable by typed_per_filter_config.
+	// Sharing a name would make it impossible to disable one without the other.
+	UpstreamExtProcFilterName = "api_platform.policy_engine.envoy.filters.http.ext_proc.upstream"
+
+	// MaxRetriesHeader sizes the attempt budget for ONE request. The failover policy sets it
+	// to the length of the ranking it published, because num_retries is generated once from
+	// the publisher's configured chain and would otherwise truncate a longer ranking.
+	MaxRetriesHeader = "x-envoy-max-retries"
+
+	// PolicyPositionMetadataKey is gRPC initial metadata identifying WHICH filter position a
+	// stream comes from, so the engine never has to infer it.
+	//
+	// Both processors connect to the same policy-engine cluster, and Envoy keys ext_proc
+	// attributes by the filter's CANONICAL type (envoy.filters.http.ext_proc) rather than its
+	// instance name — so a distinct filter name does not separate them, and the engine would
+	// otherwise be left guessing from which attributes happen to be present. Guessing the
+	// position would mean guessing which policy chain to run, and the upstream chain is the
+	// one that injects credentials (GO-AUTH-017: decide structurally, never heuristically).
+	PolicyPositionMetadataKey = "x-wso2-policy-position"
+
+	// PolicyPositionUpstream marks the per-attempt stream. The downstream stream sends no
+	// position metadata at all, so an engine that predates this still sees exactly what it
+	// saw before.
+	PolicyPositionUpstream = "upstream"
+
+	// UpstreamCodecFilterName terminates an upstream HTTP filter chain. Envoy requires it as
+	// the LAST filter there, the way the router filter terminates a downstream chain.
+	UpstreamCodecFilterName = "envoy.filters.http.upstream_codec"
+
+	// Attributes that give a per-attempt policy its target identity. Probe E confirmed both
+	// carry correct PER-ATTEMPT values — cluster_name was provider_a on attempt 1 and
+	// provider_b on attempt 2 — which is what lets an upstream policy learn which target it
+	// is serving without having to know the failover chain at all.
+	ExtProcRequestAttributeClusterName     = "xds.cluster_name"
+	ExtProcRequestAttributeUpstreamAddress = "upstream.address"
+
 	// Connection attributes sent to the policy engine so mtls-auth can
 	// authenticate the certificate presented on the connection.
 	ExtProcRequestAttributeConnectionMTLS                   = "connection.mtls"
