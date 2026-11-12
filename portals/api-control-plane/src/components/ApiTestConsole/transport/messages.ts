@@ -24,7 +24,8 @@ export const transportMessages = defineMessages({
     id: 'apiControlPlane.components.ApiTestConsole.transport.invalidTarget',
     defaultMessage:
       'This request cannot be sent as written. Check the path, headers and parameters.',
-    description: 'Shown when the console refused to send a request it could not prove stays on the selected gateway.',
+    description:
+      'Shown when the console refused to send a request it could not prove stays on the selected gateway.',
   },
   invalidHeader: {
     id: 'apiControlPlane.components.ApiTestConsole.transport.invalidHeader',
@@ -32,7 +33,8 @@ export const transportMessages = defineMessages({
   },
   bodyTooLarge: {
     id: 'apiControlPlane.components.ApiTestConsole.transport.bodyTooLarge',
-    defaultMessage: 'This request body is too large to send from the console. Use the cURL command instead.',
+    defaultMessage:
+      'This request body is too large to send from the console. Use the cURL command instead.',
   },
   timeout: {
     id: 'apiControlPlane.components.ApiTestConsole.transport.timeout',

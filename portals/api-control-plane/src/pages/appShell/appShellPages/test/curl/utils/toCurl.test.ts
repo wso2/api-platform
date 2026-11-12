@@ -270,7 +270,7 @@ describe('toCurl', () => {
     expect(command).toContain("-H 'X-Trace: plain'");
   });
 
-  it('emits -d for a JSON body', () => {
+  it('emits --data-raw for a JSON body', () => {
     const command = toCurl(request({ method: 'POST', ...raw('{"amount": 2500}') }), {
       revealSecrets: true,
     });
@@ -278,7 +278,7 @@ describe('toCurl', () => {
     // Byte for byte as typed. Re-serialising through `JSON.parse` would round a
     // number too wide for a double and drop a duplicate key, so the command
     // would stop describing the body the console sends.
-    expect(command).toContain(`-d '{"amount": 2500}'`);
+    expect(command).toContain(`--data-raw '{"amount": 2500}'`);
   });
 
   it('keeps a pretty-printed JSON body exactly as written', () => {
@@ -287,7 +287,7 @@ describe('toCurl', () => {
 
     // The newlines survive inside the single quotes, so the pasted command
     // sends the same bytes the editor shows.
-    expect(command).toContain(`-d '${body}'`);
+    expect(command).toContain(`--data-raw '${body}'`);
   });
 
   it('emits no -d in None mode, even with body text left over', () => {
@@ -310,7 +310,7 @@ describe('toCurl', () => {
       revealSecrets: true,
     });
 
-    expect(command).toContain(`-d '{"note":"it'\\''s fine"}'`);
+    expect(command).toContain(`--data-raw '{"note":"it'\\''s fine"}'`);
   });
 
   it('leaves no dangling line continuation on the last line', () => {
@@ -398,7 +398,7 @@ describe('encoded bodies', () => {
       { revealSecrets: true },
     );
 
-    // Joining these into one `-d 'a=1&b=2'` would mean encoding them
+    // Joining these into one `--data-raw 'a=1&b=2'` would mean encoding them
     // ourselves, and an unescaped `&` in a value would split one field in two.
     expect(command).toContain("--data-urlencode 'title=The Hobbit'");
     expect(command).toContain("--data-urlencode 'note=a&b=c'");
@@ -491,7 +491,7 @@ describe('raw bodies other than JSON', () => {
       revealSecrets: true,
     });
 
-    expect(command).toContain(`-d '{"unclosed":'`);
+    expect(command).toContain(`--data-raw '{"unclosed":'`);
   });
 });
 

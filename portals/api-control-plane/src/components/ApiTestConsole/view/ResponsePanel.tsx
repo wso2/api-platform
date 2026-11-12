@@ -38,6 +38,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { SecondaryText } from '@/components/common/SecondaryText';
 
 import type { ConsoleOperation, ConsoleSendRequest, ConsoleSendResult } from '../types';
+import { prettyPrintJson } from '../format/prettyJson';
 import { displayUrl, toCurl } from '../request/display';
 import { ExpectedResponses } from './SchemaViews';
 import { CodeView } from './CodeView';
@@ -146,6 +147,8 @@ export type Outcome = {
     request: ConsoleSendRequest;
     secretHeaders: ReadonlySet<string>;
     secretQuery: ReadonlySet<string>;
+    /** How it was sent, as of sending; switching modes afterwards must not relabel it. */
+    routeLabel?: string;
   };
 };
 
@@ -175,7 +178,7 @@ export const prettyBody = (
   const looksJson = /json/i.test(contentType ?? '') || /^\s*[[{]/.test(text);
   if (!looksJson || text.length > PRETTY_LIMIT_CHARS) return { text, json: false };
   try {
-    return { text: JSON.stringify(JSON.parse(text), null, 2), json: true };
+    return { text: prettyPrintJson(text), json: true };
   } catch {
     return { text, json: false };
   }
@@ -258,7 +261,11 @@ export function ResponsePanel({
                   )}
                   {chip(intl.formatMessage(messages.time, { ms: result.durationMs }))}
                   {chip(intl.formatNumber(result.sizeBytes, { style: 'unit', unit: 'byte' }))}
-                  {routeLabel && <SecondaryText variant="caption">{routeLabel}</SecondaryText>}
+                  {(outcome?.sent?.routeLabel ?? routeLabel) && (
+                    <SecondaryText variant="caption">
+                      {outcome?.sent?.routeLabel ?? routeLabel}
+                    </SecondaryText>
+                  )}
                 </>
               )}
             </Stack>

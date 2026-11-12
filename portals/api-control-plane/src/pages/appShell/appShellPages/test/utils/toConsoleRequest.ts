@@ -17,11 +17,7 @@
  */
 
 import type { ConsoleAutoParam, ConsoleSendRequest } from '@/components/ApiTestConsole';
-import {
-  rawFormatFor,
-  type ConsoleRequest,
-  type KeyValueRow,
-} from './types';
+import { contentTypeFor, rawFormatFor, type ConsoleRequest, type KeyValueRow } from './types';
 
 /**
  * Mirrors the test console's request into the cURL builder's model.
@@ -29,8 +25,23 @@ import {
  * Credentials the page injects itself (the test key) are left out here on
  * purpose: `withTarget` re-applies them to whichever list the API's policy
  * names, and a copy that arrived here as an ordinary row would be duplicated.
- * `Content-Type` is left out too, because the model derives it from the body.
+ * `Content-Type` is left out when the model would derive the same value from
+ * the body; a different one (`application/problem+json` for a JSON body) is
+ * kept, so the command says what the console sends. Files are carried as file
+ * references, not their contents.
  */
+
+const EMPTY: ConsoleRequest = {
+  baseUrl: '',
+  body: '',
+  bodyMode: 'none',
+  formFields: [],
+  headers: [],
+  method: 'GET',
+  path: '/',
+  queryParams: [],
+  rawFormat: 'json',
+};
 
 let rowSequence = 0;
 const row = (prefix: string, name: string, value: string): KeyValueRow => {
@@ -46,13 +57,33 @@ export const toConsoleRequest = (
   const autoHeaderNames = new Set(autoHeaders.map((header) => header.name.toLowerCase()));
   const autoQueryNames = new Set(autoQuery.map((param) => param.name));
 
+  const { body } = request;
+  // What the cURL model would infer for this body, or nothing when it infers nothing.
+  const impliedType =
+    body?.kind === 'text'
+      ? contentTypeFor({
+          ...EMPTY,
+          body: body.text,
+          bodyMode: 'raw',
+          rawFormat: rawFormatFor(body.mediaType),
+        })
+      : body?.kind === 'form'
+        ? 'application/x-www-form-urlencoded'
+        : undefined;
+  const sameAsImplied = (value: string): boolean =>
+    impliedType !== undefined && value.split(';')[0].trim().toLowerCase() === impliedType;
+
   const base: ConsoleRequest = {
     baseUrl: request.baseUrl,
     body: '',
     bodyMode: 'none',
     formFields: [],
     headers: request.headers
-      .filter(([name]) => name.toLowerCase() !== 'content-type' && !autoHeaderNames.has(name.toLowerCase()))
+      .filter(
+        ([name, value]) =>
+          !autoHeaderNames.has(name.toLowerCase()) &&
+          (name.toLowerCase() !== 'content-type' || !sameAsImplied(value)),
+      )
       .map(([name, value]) => row('h', name, value)),
     method: request.method,
     path: request.path,
@@ -62,7 +93,6 @@ export const toConsoleRequest = (
     rawFormat: 'json',
   };
 
-  const { body } = request;
   if (!body) return base;
 
   switch (body.kind) {
@@ -75,13 +105,16 @@ export const toConsoleRequest = (
         formFields: body.fields.map(([name, value]) => row('f', name, value)),
       };
     case 'multipart':
-      // Files cannot be expressed in the model; their text fields can.
       return {
         ...base,
         bodyMode: 'form-data',
-        formFields: body.parts.flatMap((part) => ('value' in part ? [row('f', part.name, part.value)] : [])),
+        formFields: body.parts.map((part) =>
+          'file' in part
+            ? { ...row('f', part.name, part.file.name), file: true }
+            : row('f', part.name, part.value),
+        ),
       };
     case 'binary':
-      return base;
+      return { ...base, binaryFile: body.file.name };
   }
 };

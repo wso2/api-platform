@@ -82,12 +82,14 @@ const messages = defineMessages({
   },
   gatewayNotDeployed: {
     id: 'apiControlPlane.pages.test.console.relayTransport.gatewayNotDeployed',
-    defaultMessage: 'This API is not deployed to the selected gateway. Deploy it first, then try again.',
+    defaultMessage:
+      'This API is not deployed to the selected gateway. Deploy it first, then try again.',
     description: 'Actionable: the gateway exists but the API has not been deployed to it.',
   },
   gatewayUnsupportedScheme: {
     id: 'apiControlPlane.pages.test.console.relayTransport.gatewayUnsupportedScheme',
-    defaultMessage: 'The selected gateway’s endpoint is not an HTTP address, so it cannot be called from here.',
+    defaultMessage:
+      'The selected gateway’s endpoint is not an HTTP address, so it cannot be called from here.',
   },
   invalidRequest: {
     id: 'apiControlPlane.pages.test.console.relayTransport.invalidRequest',
@@ -202,6 +204,11 @@ const bodyTooLargeError = () =>
     code: 'REQUEST_TOO_LARGE',
   });
 
+/** Rejects text whose UTF-8 size is over the console limit; character count is not bytes. */
+const assertTextWithinLimit = (text: string): void => {
+  if (new TextEncoder().encode(text).length > MAX_BINARY_BODY_BYTES) throw bodyTooLargeError();
+};
+
 /**
  * Normalizes the request body for transport in the invoke request.
  *
@@ -215,10 +222,13 @@ export const encodeRequestBody = async (
     return { body: '', bodyEncoding: 'utf8' };
   }
   if (typeof body === 'string') {
+    assertTextWithinLimit(body);
     return { body, bodyEncoding: 'utf8' };
   }
   if (body instanceof URLSearchParams) {
-    return { body: body.toString(), bodyEncoding: 'utf8' };
+    const text = body.toString();
+    assertTextWithinLimit(text);
+    return { body: text, bodyEncoding: 'utf8' };
   }
   if (typeof FormData !== 'undefined' && body instanceof FormData) {
     const { bytes, contentType } = await encodeMultipart(body);
@@ -256,12 +266,16 @@ export const encodeRequestBody = async (
 const encodeMultipart = async (
   form: FormData,
 ): Promise<{ bytes: Uint8Array; contentType: string }> => {
-  // Sized before anything is read: File.size and a string's length are both
-  // metadata, so this pass touches no file contents.
+  // Sized before any file is read: File.size is metadata, and text is counted
+  // in UTF-8 bytes (not characters) together with its name.
+  const sizer = new TextEncoder();
   let declared = 0;
-  for (const [, value] of form.entries()) {
-    declared += MULTIPART_PART_OVERHEAD_BYTES;
-    declared += typeof value === 'string' ? value.length : value.size;
+  for (const [name, value] of form.entries()) {
+    declared += MULTIPART_PART_OVERHEAD_BYTES + sizer.encode(name).length;
+    declared +=
+      typeof value === 'string'
+        ? sizer.encode(value).length
+        : value.size + sizer.encode(value.name).length;
     if (declared > MAX_BINARY_BODY_BYTES) throw bodyTooLargeError();
   }
 
@@ -285,6 +299,8 @@ const encodeMultipart = async (
   chunks.push(encoder.encode(`--${boundary}--\r\n`));
 
   const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  // The framing is real now, so check the assembled payload as well.
+  if (total > MAX_BINARY_BODY_BYTES) throw bodyTooLargeError();
   const bytes = new Uint8Array(total);
   let offset = 0;
   chunks.forEach((chunk) => {
@@ -309,7 +325,8 @@ const escapeFormName = (name: string): string =>
 /** Bytes as UTF-8 when they decode cleanly, base64 otherwise. */
 const bytesToPayload = (bytes: Uint8Array): { body: string; bodyEncoding: 'utf8' | 'base64' } => {
   try {
-    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    // `ignoreBOM` keeps a leading U+FEFF; by default the decoder drops it, which would alter an uploaded file.
+    const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
     return { body: text, bodyEncoding: 'utf8' };
   } catch {
     let binary = '';
@@ -334,10 +351,21 @@ const isRelayResult = (value: unknown): value is RelayResult => {
   const { outcome, response } = value as { outcome?: unknown; response?: unknown };
   if (outcome !== 'response') return false;
   if (typeof response !== 'object' || response === null) return false;
-  const { status, headers } = response as { status?: unknown; headers?: unknown };
+  const { status, statusText, headers, body, bodyEncoding, truncated } = response as {
+    status?: unknown;
+    statusText?: unknown;
+    headers?: unknown;
+    body?: unknown;
+    bodyEncoding?: unknown;
+    truncated?: unknown;
+  };
 
   return (
     typeof status === 'number' &&
+    typeof statusText === 'string' &&
+    typeof body === 'string' &&
+    (bodyEncoding === 'utf8' || (bodyEncoding === 'base64' && isBase64(body))) &&
+    (truncated === undefined || typeof truncated === 'boolean') &&
     Array.isArray(headers) &&
     headers.every(
       (header) =>
@@ -348,6 +376,10 @@ const isRelayResult = (value: unknown): value is RelayResult => {
     )
   );
 };
+
+/** Whether text is canonical base64, so `atob` cannot throw on it. */
+const isBase64 = (value: string): boolean =>
+  value.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(value);
 
 /** Converts the console's body into what `encodeRequestBody` accepts. */
 const bodyInput = (body: ConsoleBody | undefined): unknown => {
@@ -377,16 +409,26 @@ const bodyInput = (body: ConsoleBody | undefined): unknown => {
  * the user made (no query string, which can carry a credential), not the relay
  * endpoint.
  */
-export const toSendResult = (result: RelayResult, url: string, durationMs: number): ConsoleSendResult => {
+export const toSendResult = (
+  result: RelayResult,
+  url: string,
+  durationMs: number,
+): ConsoleSendResult => {
   const { response } = result;
-  const contentType = response.headers.find(({ name }) => name.toLowerCase() === 'content-type')?.value ?? null;
+  const contentType =
+    response.headers.find(({ name }) => name.toLowerCase() === 'content-type')?.value ?? null;
 
   const bytes =
     response.bodyEncoding === 'base64'
       ? base64ToBytes(response.body)
       : new TextEncoder().encode(response.body);
-  const truncated = bytes.length > MAX_DISPLAY_BYTES;
-  const decoded = decodeBody(truncated ? bytes.slice(0, MAX_DISPLAY_BYTES) : bytes, contentType);
+  // Cut here, or already cut by the Platform API before it answered.
+  const truncated = bytes.length > MAX_DISPLAY_BYTES || response.truncated === true;
+  const decoded = decodeBody(
+    bytes.length > MAX_DISPLAY_BYTES ? bytes.slice(0, MAX_DISPLAY_BYTES) : bytes,
+    contentType,
+    truncated,
+  );
 
   return {
     binary: decoded.binary,
@@ -463,5 +505,9 @@ export const createRelayTransport =
     if (!isRelayResult(parsed)) {
       throw new ConsoleTransportError(intl.formatMessage(messages.unexpected));
     }
-    return toSendResult(parsed, `${request.baseUrl}${request.path}`, Math.round(performance.now() - started));
+    return toSendResult(
+      parsed,
+      `${request.baseUrl}${request.path}`,
+      Math.round(performance.now() - started),
+    );
   };

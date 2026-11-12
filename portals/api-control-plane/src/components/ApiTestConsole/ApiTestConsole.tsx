@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { Card, CardContent, Grid, Stack } from '@wso2/oxygen-ui';
+import { Alert, Card, CardContent, Grid, Stack } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { SecondaryText } from '@/components/common/SecondaryText';
@@ -37,6 +37,10 @@ import { ResponsePanel, type Outcome, type ResponseTab } from './view/ResponsePa
 import { SchemaPage } from './view/SchemaViews';
 
 const messages = defineMessages({
+  copyFailed: {
+    id: 'apiControlPlane.components.ApiTestConsole.ApiTestConsole.copyFailed',
+    defaultMessage: 'Your browser did not allow copying. Select the text and copy it yourself.',
+  },
   noOperations: {
     id: 'apiControlPlane.components.ApiTestConsole.ApiTestConsole.noOperations',
     defaultMessage: 'This API’s definition has no operations to test.',
@@ -66,7 +70,9 @@ export type ApiTestConsoleProps = {
 
 /** Saves the API definition as `openapi.json`. A Blob URL to local text, revoked right after the click. */
 export const downloadOpenApi = (spec: Record<string, unknown>): void => {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(spec, null, 2)], { type: 'application/json' }));
+  const url = URL.createObjectURL(
+    new Blob([JSON.stringify(spec, null, 2)], { type: 'application/json' }),
+  );
   const link = document.createElement('a');
   link.href = url;
   link.download = 'openapi.json';
@@ -81,12 +87,14 @@ const NO_PARAMS: readonly ConsoleAutoParam[] = [];
 const requestSignature = (request: ConsoleSendRequest): string =>
   JSON.stringify(request, (_key, value) => (value instanceof File ? `file:${value.name}` : value));
 
-/** Copies text, ignoring a browser that refuses clipboard access. */
-const writeClipboard = (text: string) => {
+/** Copies text; resolves to whether the browser accepted it. */
+const writeClipboard = async (text: string): Promise<boolean> => {
   try {
-    void navigator.clipboard?.writeText(text).catch(() => undefined);
+    if (!navigator.clipboard) return false;
+    await navigator.clipboard.writeText(text);
+    return true;
   } catch {
-    // No clipboard access: nothing to do, and nothing worth reporting.
+    return false;
   }
 };
 
@@ -113,6 +121,18 @@ export function ApiTestConsole({
   const [responseTab, setResponseTab] = useState<ResponseTab>('body');
   const [sendingKey, setSendingKey] = useState<string | undefined>(undefined);
   const [copiedKey, setCopiedKey] = useState('');
+  const [copyFailed, setCopyFailed] = useState(false);
+
+  // A different API definition invalidates everything keyed by its operations:
+  // drafts, responses and problems would otherwise carry over to a changed endpoint.
+  const [seenModel, setSeenModel] = useState(model);
+  if (seenModel !== model) {
+    setSeenModel(model);
+    setDrafts({});
+    setOutcomes({});
+    setProblems({});
+    setSelectedSchema(undefined);
+  }
 
   const abort = useRef<AbortController | undefined>(undefined);
   const copyTimer = useRef<number | undefined>(undefined);
@@ -153,16 +173,22 @@ export function ApiTestConsole({
   );
 
   const copy = useCallback((text: string, key: string) => {
-    writeClipboard(text);
-    setCopiedKey(key);
-    window.clearTimeout(copyTimer.current);
-    copyTimer.current = window.setTimeout(() => setCopiedKey(''), 1400);
+    void writeClipboard(text).then((copied) => {
+      window.clearTimeout(copyTimer.current);
+      setCopyFailed(!copied);
+      // "Copied" is only shown when the browser really took the text.
+      setCopiedKey(copied ? key : '');
+      if (copied) copyTimer.current = window.setTimeout(() => setCopiedKey(''), 1400);
+    });
   }, []);
 
   const updateDraft = useCallback(
     (update: (current: RequestDraft) => RequestDraft) => {
       if (!operation) return;
-      setDrafts((all) => ({ ...all, [operation.key]: update(all[operation.key] ?? initialDraft(operation)) }));
+      setDrafts((all) => ({
+        ...all,
+        [operation.key]: update(all[operation.key] ?? initialDraft(operation)),
+      }));
       // Editing clears that operation's shown problems; they are recomputed on the next send.
       setProblems((all) => (all[operation.key] ? { ...all, [operation.key]: {} } : all));
     },
@@ -192,7 +218,12 @@ export function ApiTestConsole({
     abort.current = controller;
     setSendingKey(operation.key);
     setResponseTab('body');
-    const sent = { request: result.request, secretHeaders: result.secretHeaders, secretQuery: result.secretQuery };
+    const sent = {
+      request: result.request,
+      routeLabel,
+      secretHeaders: result.secretHeaders,
+      secretQuery: result.secretQuery,
+    };
 
     try {
       const response = await transport(result.request, controller.signal);
@@ -205,12 +236,14 @@ export function ApiTestConsole({
       // Only our own, already-worded messages are shown. Anything else is not
       // passed through: an unknown error's text could carry URLs or tokens.
       const message =
-        error instanceof ConsoleTransportError ? error.message : intl.formatMessage(messages.unexpected);
+        error instanceof ConsoleTransportError
+          ? error.message
+          : intl.formatMessage(messages.unexpected);
       setOutcomes((all) => ({ ...all, [operation.key]: { error: message, sent } }));
     } finally {
       setSendingKey(undefined);
     }
-  }, [autoHeaders, autoQuery, baseUrl, draft, intl, operation, sendingKey, transport]);
+  }, [autoHeaders, autoQuery, baseUrl, draft, intl, operation, routeLabel, sendingKey, transport]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
@@ -222,7 +255,10 @@ export function ApiTestConsole({
   };
 
   const lastStatus = useMemo(
-    () => Object.fromEntries(Object.entries(outcomes).map(([key, outcome]) => [key, outcome?.result?.status])),
+    () =>
+      Object.fromEntries(
+        Object.entries(outcomes).map(([key, outcome]) => [key, outcome?.result?.status]),
+      ),
     [outcomes],
   );
 
@@ -262,6 +298,11 @@ export function ApiTestConsole({
 
       <Grid size={{ lg: 8, xs: 12 }} sx={{ minWidth: 0 }}>
         <Stack spacing={2}>
+          {copyFailed && (
+            <Alert onClose={() => setCopyFailed(false)} severity="warning">
+              <FormattedMessage {...messages.copyFailed} />
+            </Alert>
+          )}
           {schema ? (
             <Card variant="outlined">
               <CardContent>
@@ -304,6 +345,7 @@ export function ApiTestConsole({
                   operation={operation}
                   preview={built.preview}
                   problems={problems[operation.key] ?? {}}
+                  busy={sendingKey !== undefined && !sending}
                   sending={sending}
                   tab={requestTab}
                 />

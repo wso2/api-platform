@@ -27,7 +27,13 @@ import {
 } from '../types';
 import { headerProblem, resolveTarget } from '../request/safety';
 import { transportMessages } from './messages';
-import { decodeBody, MAX_DISPLAY_BYTES, MAX_REQUEST_BODY_BYTES, readLimited } from './response';
+import {
+  decodeBody,
+  MAX_DISPLAY_BYTES,
+  MAX_REQUEST_BODY_BYTES,
+  readLimited,
+  requestBodySize,
+} from './response';
 
 /**
  * Sends the request from the browser straight to the gateway.
@@ -49,30 +55,23 @@ export const DIRECT_TIMEOUT_MS = 30_000;
 
 const toFetchBody = (body: ConsoleBody | undefined, intl: IntlShape): BodyInit | undefined => {
   if (!body) return undefined;
-  const tooLarge = () => new ConsoleTransportError(intl.formatMessage(transportMessages.bodyTooLarge));
+  if (requestBodySize(body) > MAX_REQUEST_BODY_BYTES) {
+    throw new ConsoleTransportError(intl.formatMessage(transportMessages.bodyTooLarge));
+  }
   switch (body.kind) {
     case 'text':
-      if (new TextEncoder().encode(body.text).length > MAX_REQUEST_BODY_BYTES) throw tooLarge();
       return body.text;
     case 'form':
       return new URLSearchParams(body.fields);
     case 'multipart': {
       const form = new FormData();
-      let size = 0;
       body.parts.forEach((part) => {
-        if ('file' in part) {
-          size += part.file.size;
-          form.append(part.name, part.file, part.file.name);
-        } else {
-          size += part.value.length;
-          form.append(part.name, part.value);
-        }
+        if ('file' in part) form.append(part.name, part.file, part.file.name);
+        else form.append(part.name, part.value);
       });
-      if (size > MAX_REQUEST_BODY_BYTES) throw tooLarge();
       return form;
     }
     case 'binary':
-      if (body.file.size > MAX_REQUEST_BODY_BYTES) throw tooLarge();
       return body.file;
   }
 };
@@ -125,7 +124,7 @@ export const createDirectTransport =
       }
 
       const read = await readLimited(response, MAX_DISPLAY_BYTES);
-      const decoded = decodeBody(read.bytes, response.headers.get('content-type'));
+      const decoded = decodeBody(read.bytes, response.headers.get('content-type'), read.truncated);
 
       return {
         binary: decoded.binary,

@@ -156,7 +156,9 @@ describe('createRelayTransport — what reaches the Platform API', () => {
 
   it('refuses a path that would leave the gateway, and sends nothing', async () => {
     for (const path of ['//evil.example.com/x', '/a/../../admin', '/a\\b', 'order']) {
-      await expect(transportOf()(request({ path }), live)).rejects.toThrow(/cannot be sent as written/i);
+      await expect(transportOf()(request({ path }), live)).rejects.toThrow(
+        /cannot be sent as written/i,
+      );
     }
     expect(sent).toBeUndefined();
   });
@@ -271,7 +273,11 @@ describe('createRelayTransport — what comes back', () => {
 
   it('never shows the server’s own message text', async () => {
     answer = async () => {
-      throw new ApiError('internal: db password=hunter2', { kind: 'http', code: 'WHATEVER', status: 500 });
+      throw new ApiError('internal: db password=hunter2', {
+        kind: 'http',
+        code: 'WHATEVER',
+        status: 500,
+      });
     };
 
     await expect(transportOf()(request(), live)).rejects.toThrow(/could not be sent/i);
@@ -288,7 +294,9 @@ describe('createRelayTransport — what comes back', () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(transportOf()(request(), controller.signal)).rejects.toMatchObject({ aborted: true });
+    await expect(transportOf()(request(), controller.signal)).rejects.toMatchObject({
+      aborted: true,
+    });
   });
 
   it('reports a reply that is not a relay envelope as a usable message', async () => {
@@ -304,7 +312,14 @@ describe('createRelayTransport — oversized bodies', () => {
 
     await expect(
       transportOf()(
-        request({ body: { file: blob as unknown as File, kind: 'binary', mediaType: 'application/octet-stream' }, method: 'POST' }),
+        request({
+          body: {
+            file: blob as unknown as File,
+            kind: 'binary',
+            mediaType: 'application/octet-stream',
+          },
+          method: 'POST',
+        }),
         live,
       ),
     ).rejects.toThrow(/too large to send from the console/i);
@@ -366,3 +381,49 @@ describe('encodeRequestBody', () => {
   });
 });
 
+describe('relay hardening', () => {
+  it('keeps a leading byte-order mark in an uploaded file', async () => {
+    const bytes = new Uint8Array([0xef, 0xbb, 0xbf, 0x68, 0x69]);
+    const file = new File([bytes], 'bom.txt');
+    // jsdom's File has no arrayBuffer(); give it the bytes it would read.
+    Object.defineProperty(file, 'arrayBuffer', { value: async () => bytes.buffer });
+    await transportOf()(
+      request({ body: { file, kind: 'binary', mediaType: 'text/plain' }, method: 'POST' }),
+      live,
+    );
+
+    expect(sent?.body.bodyEncoding).toBe('utf8');
+    expect(sent?.body.body).toBe('\ufeffhi');
+  });
+
+  it('refuses a text body whose UTF-8 size is over the limit, whatever its character count', async () => {
+    // 6 M characters of '€' are 18 MB in UTF-8 — over 16 MiB, though under it as a character count.
+    const text = '€'.repeat(6_000_000);
+    await expect(
+      transportOf()(
+        request({ body: { kind: 'text', mediaType: 'text/plain', text }, method: 'POST' }),
+        live,
+      ),
+    ).rejects.toThrow();
+    expect(sent).toBeUndefined();
+  });
+
+  it.each([
+    ['a body that is not a string', { body: 42 }],
+    ['an unknown body encoding', { bodyEncoding: 'rot13' }],
+    ['base64 that is not base64', { body: '***', bodyEncoding: 'base64' }],
+    ['a status text that is not a string', { statusText: null }],
+  ])('rejects a reply with %s instead of converting it', async (_label, override) => {
+    respondWith(relayed(override));
+
+    await expect(transportOf()(request(), live)).rejects.toThrow();
+  });
+
+  it('marks the result truncated when the Platform API already clipped the body', async () => {
+    respondWith(relayed({ truncated: true }));
+
+    const result = await transportOf()(request(), live);
+
+    expect(result.truncated).toBe(true);
+  });
+});

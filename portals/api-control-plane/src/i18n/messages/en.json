@@ -788,6 +788,9 @@
     "defaultMessage": "Spectral rules passed",
     "description": "A passed check in the animated API Designer preview. Spectral is a tool name."
   },
+  "apiControlPlane.components.ApiTestConsole.ApiTestConsole.copyFailed": {
+    "defaultMessage": "Your browser did not allow copying. Select the text and copy it yourself."
+  },
   "apiControlPlane.components.ApiTestConsole.ApiTestConsole.noOperations": {
     "defaultMessage": "This API’s definition has no operations to test."
   },
@@ -823,6 +826,14 @@
     "defaultMessage": "Search endpoints",
     "description": "Accessible label and placeholder of the endpoint search box."
   },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.acceptLabel": {
+    "defaultMessage": "Response format",
+    "description": "Label of the dropdown that picks which media type to ask for in the Accept header."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.acceptNone": {
+    "defaultMessage": "No preference",
+    "description": "Dropdown option that sends no Accept header."
+  },
   "apiControlPlane.components.ApiTestConsole.RequestPanel.addHeader": {
     "defaultMessage": "Add header",
     "description": "Button that adds a blank row to the request headers. A command."
@@ -848,6 +859,10 @@
   "apiControlPlane.components.ApiTestConsole.RequestPanel.bodyTab": {
     "defaultMessage": "Body",
     "description": "Tab for the request body."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.busyHint": {
+    "defaultMessage": "Another request is still running. Wait for it or cancel it first.",
+    "description": "Tooltip of the disabled Send button while a request for a different endpoint is in flight."
   },
   "apiControlPlane.components.ApiTestConsole.RequestPanel.cancel": {
     "defaultMessage": "Cancel",
@@ -1078,6 +1093,10 @@
   "apiControlPlane.components.ApiTestConsole.ResponsePanel.waiting": {
     "defaultMessage": "Waiting for the gateway…"
   },
+  "apiControlPlane.components.ApiTestConsole.SchemaViews.collapseField": {
+    "defaultMessage": "Hide the fields of {name}",
+    "description": "Accessible label of the button that closes a nested object in the schema list."
+  },
   "apiControlPlane.components.ApiTestConsole.SchemaViews.example": {
     "defaultMessage": "Example",
     "description": "Toggle option showing an example payload."
@@ -1085,6 +1104,10 @@
   "apiControlPlane.components.ApiTestConsole.SchemaViews.exampleLabel": {
     "defaultMessage": "Example payload",
     "description": "Accessible name for the region showing an example payload."
+  },
+  "apiControlPlane.components.ApiTestConsole.SchemaViews.expandField": {
+    "defaultMessage": "Show the fields of {name}",
+    "description": "Accessible label of the button that opens a nested object in the schema list."
   },
   "apiControlPlane.components.ApiTestConsole.SchemaViews.noExample": {
     "defaultMessage": "No example is documented for this response."

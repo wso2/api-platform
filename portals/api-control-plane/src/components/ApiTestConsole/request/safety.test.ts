@@ -83,12 +83,19 @@ describe('headerProblem', () => {
     expect(headerProblem('Authorization', 'Bearer x')).toBeUndefined();
   });
 
-  it.each(['Host', 'cookie', 'Content-Length', 'Transfer-Encoding', 'Origin', 'X-Forwarded-For', 'Proxy-Authorization', 'Sec-Fetch-Mode', 'X-HTTP-Method-Override'])(
-    'refuses %s, which the browser or gateway owns',
-    (name) => {
-      expect(headerProblem(name, 'x')).toBe('forbidden');
-    },
-  );
+  it.each([
+    'Host',
+    'cookie',
+    'Content-Length',
+    'Transfer-Encoding',
+    'Origin',
+    'X-Forwarded-For',
+    'Proxy-Authorization',
+    'Sec-Fetch-Mode',
+    'X-HTTP-Method-Override',
+  ])('refuses %s, which the browser or gateway owns', (name) => {
+    expect(headerProblem(name, 'x')).toBe('forbidden');
+  });
 
   it('refuses a name that is not a token', () => {
     expect(headerProblem('Bad Name', 'x')).toBe('name');
@@ -100,5 +107,16 @@ describe('headerProblem', () => {
     expect(headerProblem('X-A', 'a\r\nX-B: b')).toBe('value');
     expect(headerProblem('X-A', 'a\nb')).toBe('value');
     expect(headerProblem('X-A', 'a\0b')).toBe('value');
+  });
+});
+
+describe('isSafePath with encoded slashes', () => {
+  it('rejects a dot segment hidden behind %2F', () => {
+    expect(isSafePath('/a%2F..%2Fb')).toBe(false);
+    expect(isSafePath('/a%2f%2e%2e')).toBe(false);
+  });
+
+  it('still allows an encoded slash inside a normal segment', () => {
+    expect(isSafePath('/a%2Fb')).toBe(true);
   });
 });

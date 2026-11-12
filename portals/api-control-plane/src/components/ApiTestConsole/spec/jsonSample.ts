@@ -88,10 +88,19 @@ export const flatten = (spec: Schema, schema: Schema, depth: number): Schema => 
         ...(isObject(merged.properties) ? merged.properties : {}),
         ...(isObject(resolved.properties) ? resolved.properties : {}),
       };
+      // Each member names its own required fields; the composed model needs all of them.
+      const required = Array.from(
+        new Set(
+          [merged.required, resolved.required]
+            .flatMap((list) => (Array.isArray(list) ? list : []))
+            .filter((name): name is string => typeof name === 'string'),
+        ),
+      );
       return {
         ...merged,
         ...resolved,
         ...(Object.keys(properties).length > 0 ? { properties } : {}),
+        ...(required.length > 0 ? { required } : {}),
       };
     },
     { ...schema, allOf: undefined },

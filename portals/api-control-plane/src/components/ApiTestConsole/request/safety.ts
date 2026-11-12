@@ -72,11 +72,7 @@ export type HeaderProblem = 'name' | 'forbidden' | 'value';
 export const headerProblem = (name: string, value: string): HeaderProblem | undefined => {
   const lower = name.trim().toLowerCase();
   if (!HEADER_NAME.test(name.trim())) return 'name';
-  if (
-    FORBIDDEN_HEADER_NAMES.has(lower) ||
-    lower.startsWith('proxy-') ||
-    lower.startsWith('sec-')
-  ) {
+  if (FORBIDDEN_HEADER_NAMES.has(lower) || lower.startsWith('proxy-') || lower.startsWith('sec-')) {
     return 'forbidden';
   }
   // CR, LF and NUL are how a header value becomes a second header.
@@ -103,7 +99,8 @@ export const isSafePath = (path: string): boolean => {
   if (!path.startsWith('/') || path.startsWith('//')) return false;
   // eslint-disable-next-line no-control-regex
   if (/[\\?#\u0000-\u001f\u007f]/.test(path)) return false;
-  return path.split('/').every((segment) => {
+  // An encoded slash can hide a dot segment inside one segment (`a%2F..%2Fb`), so split on those too.
+  return path.split(/\/|%2f/i).every((segment) => {
     const decoded = segment.replace(/%2e/gi, '.');
     return decoded !== '.' && decoded !== '..';
   });

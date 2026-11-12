@@ -16,6 +16,8 @@
  * under the License.
  */
 
+import type { ConsoleBody } from '../types';
+
 /**
  * Reading a response safely.
  *
@@ -30,11 +32,43 @@ export const MAX_DISPLAY_BYTES = 2 * 1024 * 1024;
 /** Largest request body (file or text) the console will read into memory to send. */
 export const MAX_REQUEST_BODY_BYTES = 16 * 1024 * 1024;
 
+const utf8Length = (text: string): number => new TextEncoder().encode(text).length;
+
+/** Per-part framing in a multipart body: boundary, `Content-Disposition`, blank lines. */
+const MULTIPART_PART_OVERHEAD = 256;
+
+/**
+ * Bytes a request body will occupy on the wire — UTF-8 length for text, the
+ * encoded string for a form, and values plus framing for multipart. Character
+ * counts are not enough: one character can take up to four bytes.
+ */
+export const requestBodySize = (body: ConsoleBody): number => {
+  switch (body.kind) {
+    case 'text':
+      return utf8Length(body.text);
+    case 'form':
+      return utf8Length(new URLSearchParams(body.fields).toString());
+    case 'multipart':
+      return body.parts.reduce(
+        (total, part) =>
+          total +
+          MULTIPART_PART_OVERHEAD +
+          utf8Length(part.name) +
+          ('file' in part ? part.file.size + utf8Length(part.file.name) : utf8Length(part.value)),
+        0,
+      );
+    case 'binary':
+      return body.file.size;
+  }
+};
+
 /** Content types that are text whatever the bytes happen to look like. */
-const TEXT_TYPES = /^(text\/|application\/(json|xml|javascript|x-www-form-urlencoded|yaml|x-yaml|graphql)|[^;]*\+(json|xml|yaml))/i;
+const TEXT_TYPES =
+  /^(text\/|application\/(json|xml|javascript|x-www-form-urlencoded|yaml|x-yaml|graphql)|[^;]*\+(json|xml|yaml))/i;
 
 /** Content types that are never shown as text. */
-const BINARY_TYPES = /^(image|audio|video|font)\/|^application\/(octet-stream|pdf|zip|gzip|x-tar|vnd\.|msword)/i;
+const BINARY_TYPES =
+  /^(image|audio|video|font)\/|^application\/(octet-stream|pdf|zip|gzip|x-tar|vnd\.|msword)/i;
 
 export type ReadBody = {
   bytes: Uint8Array;
@@ -82,18 +116,28 @@ export const readLimited = async (response: Response, limit: number): Promise<Re
   return { bytes, truncated, totalSeen: seen };
 };
 
-/** Decodes bytes as UTF-8 text, or reports they are binary. */
+/**
+ * Decodes bytes as UTF-8 text, or reports they are binary.
+ *
+ * `truncated` says the body was cut at the ceiling, so a last character that
+ * is only partly there is expected and must not make the whole body "binary".
+ */
 export const decodeBody = (
   bytes: Uint8Array,
   contentType: string | null,
+  truncated = false,
 ): { text: string; binary: boolean } => {
   if (bytes.length === 0) return { text: '', binary: false };
   const type = (contentType ?? '').trim();
-  if (BINARY_TYPES.test(type)) return { text: '', binary: true };
+  const knownText = TEXT_TYPES.test(type);
+  // `application/vnd.api+json` is vendor-specific but still structured text.
+  if (!knownText && BINARY_TYPES.test(type)) return { text: '', binary: true };
 
   try {
-    // A body cut mid-character must not turn a text response into "binary".
-    return { text: new TextDecoder('utf-8', { fatal: !TEXT_TYPES.test(type) }).decode(bytes), binary: false };
+    return {
+      text: new TextDecoder('utf-8', { fatal: !knownText }).decode(bytes, { stream: truncated }),
+      binary: false,
+    };
   } catch {
     return { text: '', binary: true };
   }

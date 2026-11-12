@@ -64,11 +64,15 @@ describe('toCurl', () => {
   });
 
   it('quotes a body so it cannot end the shell quoting', () => {
-    expect(toCurl(request, { reveal: true })).toContain(`-d '{"a":"it'\\''s"}'`);
+    expect(toCurl(request, { reveal: true })).toContain(`--data-raw '{"a":"it'\\''s"}'`);
   });
 
   it('quotes a hostile value as one argument', () => {
-    const hostile: ConsoleSendRequest = { ...request, body: undefined, headers: [['X-A', `x'; rm -rf / #`]] };
+    const hostile: ConsoleSendRequest = {
+      ...request,
+      body: undefined,
+      headers: [['X-A', `x'; rm -rf / #`]],
+    };
     expect(toCurl(hostile, { reveal: true })).toContain(`-H 'X-A: x'\\''; rm -rf / #'`);
   });
 

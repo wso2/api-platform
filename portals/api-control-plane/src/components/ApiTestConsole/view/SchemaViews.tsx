@@ -23,12 +23,14 @@ import {
   AccordionSummary,
   Box,
   Chip,
+  Collapse,
   Divider,
+  IconButton,
   Paper,
   Stack,
   Typography,
 } from '@wso2/oxygen-ui';
-import { ChevronDown } from '@wso2/oxygen-ui-icons-react';
+import { ChevronDown, ChevronRight } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { SegmentedControl } from '@/components/common/SegmentedControl';
@@ -43,6 +45,16 @@ import type {
 import { CodeView, languageForMediaType } from './CodeView';
 
 const messages = defineMessages({
+  collapseField: {
+    id: 'apiControlPlane.components.ApiTestConsole.SchemaViews.collapseField',
+    defaultMessage: 'Hide the fields of {name}',
+    description: 'Accessible label of the button that closes a nested object in the schema list.',
+  },
+  expandField: {
+    id: 'apiControlPlane.components.ApiTestConsole.SchemaViews.expandField',
+    defaultMessage: 'Show the fields of {name}',
+    description: 'Accessible label of the button that opens a nested object in the schema list.',
+  },
   example: {
     id: 'apiControlPlane.components.ApiTestConsole.SchemaViews.example',
     defaultMessage: 'Example',
@@ -84,7 +96,81 @@ const messages = defineMessages({
   },
 });
 
-/** A schema's fields as a table. Text only: names and descriptions come from the document. */
+/** One field; a nested object opens to show its own fields, indented beneath it. */
+function FieldRow({ field, depth }: { field: ConsoleSchemaField; depth: number }) {
+  const intl = useIntl();
+  const [open, setOpen] = useState(false);
+  const children = field.children ?? [];
+
+  return (
+    <>
+      <Box
+        sx={{
+          display: 'grid',
+          gap: 1,
+          gridTemplateColumns: { sm: 'minmax(0, 1fr) minmax(0, 2fr)', xs: 'minmax(0, 1fr)' },
+          pl: 2 + depth * 3,
+          pr: 2,
+          py: 1.5,
+        }}
+      >
+        <Stack alignItems="baseline" direction="row" flexWrap="wrap" gap={1}>
+          {children.length > 0 && (
+            <IconButton
+              aria-expanded={open}
+              aria-label={intl.formatMessage(open ? messages.collapseField : messages.expandField, {
+                name: field.name,
+              })}
+              onClick={() => setOpen((current) => !current)}
+              size="small"
+              sx={{ alignSelf: 'center', mr: -0.5 }}
+            >
+              {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            </IconButton>
+          )}
+          <Typography
+            fontFamily="monospace"
+            fontWeight={600}
+            variant="body2"
+            sx={{ wordBreak: 'break-word' }}
+          >
+            {field.name}
+          </Typography>
+          {field.required && (
+            <Typography color="warning.main" variant="caption">
+              <FormattedMessage {...messages.required} />
+            </Typography>
+          )}
+        </Stack>
+        <Stack spacing={0.25}>
+          <Typography
+            color="info.main"
+            fontFamily="monospace"
+            variant="body2"
+            sx={{ wordBreak: 'break-word' }}
+          >
+            {field.type}
+          </Typography>
+          {field.description !== '' && (
+            <SecondaryText variant="body2">{field.description}</SecondaryText>
+          )}
+        </Stack>
+      </Box>
+      {children.length > 0 && (
+        <Collapse in={open} timeout="auto" unmountOnExit>
+          {children.map((child) => (
+            <Box key={child.name}>
+              <Divider />
+              <FieldRow depth={depth + 1} field={child} />
+            </Box>
+          ))}
+        </Collapse>
+      )}
+    </>
+  );
+}
+
+/** A schema's fields as a list. Text only: names and descriptions come from the document. */
 export function SchemaTable({ fields }: { fields: ConsoleSchemaField[] }) {
   if (fields.length === 0) {
     return (
@@ -98,44 +184,7 @@ export function SchemaTable({ fields }: { fields: ConsoleSchemaField[] }) {
       {fields.map((field, index) => (
         <Box key={field.name}>
           {index > 0 && <Divider />}
-          <Box
-            sx={{
-              display: 'grid',
-              gap: 1,
-              gridTemplateColumns: { sm: 'minmax(0, 1fr) minmax(0, 2fr)', xs: 'minmax(0, 1fr)' },
-              px: 2,
-              py: 1.5,
-            }}
-          >
-            <Stack alignItems="baseline" direction="row" flexWrap="wrap" gap={1}>
-              <Typography
-                fontFamily="monospace"
-                fontWeight={600}
-                variant="body2"
-                sx={{ wordBreak: 'break-word' }}
-              >
-                {field.name}
-              </Typography>
-              {field.required && (
-                <Typography color="warning.main" variant="caption">
-                  <FormattedMessage {...messages.required} />
-                </Typography>
-              )}
-            </Stack>
-            <Stack spacing={0.25}>
-              <Typography
-                color="info.main"
-                fontFamily="monospace"
-                variant="body2"
-                sx={{ wordBreak: 'break-word' }}
-              >
-                {field.type}
-              </Typography>
-              {field.description !== '' && (
-                <SecondaryText variant="body2">{field.description}</SecondaryText>
-              )}
-            </Stack>
-          </Box>
+          <FieldRow depth={0} field={field} />
         </Box>
       ))}
     </Paper>

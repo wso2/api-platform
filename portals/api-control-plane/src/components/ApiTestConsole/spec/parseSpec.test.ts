@@ -45,7 +45,11 @@ const SPEC = {
           content: {
             'application/json': { schema: { $ref: '#/components/schemas/NewBook' } },
             'application/x-www-form-urlencoded': {
-              schema: { properties: { title: { type: 'string' } }, required: ['title'], type: 'object' },
+              schema: {
+                properties: { title: { type: 'string' } },
+                required: ['title'],
+                type: 'object',
+              },
             },
           },
           required: true,
@@ -68,7 +72,10 @@ const SPEC = {
           content: {
             'multipart/form-data': {
               schema: {
-                properties: { file: { format: 'binary', type: 'string' }, note: { type: 'string' } },
+                properties: {
+                  file: { format: 'binary', type: 'string' },
+                  note: { type: 'string' },
+                },
                 required: ['file'],
                 type: 'object',
               },
@@ -83,12 +90,22 @@ const SPEC = {
     schemas: {
       Book: {
         description: 'A book.',
-        properties: { id: { format: 'uuid', type: 'string' }, title: { example: 'Dune', type: 'string' } },
+        properties: {
+          id: { format: 'uuid', type: 'string' },
+          title: { example: 'Dune', type: 'string' },
+        },
         required: ['id'],
         type: 'object',
       },
-      BookList: { properties: { books: { items: { $ref: '#/components/schemas/Book' }, type: 'array' } }, type: 'object' },
-      NewBook: { properties: { title: { example: 'Dune', type: 'string' } }, required: ['title'], type: 'object' },
+      BookList: {
+        properties: { books: { items: { $ref: '#/components/schemas/Book' }, type: 'array' } },
+        type: 'object',
+      },
+      NewBook: {
+        properties: { title: { example: 'Dune', type: 'string' } },
+        required: ['title'],
+        type: 'object',
+      },
     },
   },
 };
@@ -118,7 +135,11 @@ describe('parseConsoleSpec', () => {
   });
 
   it('treats a path parameter as required and lets the operation override the path level', () => {
-    expect(op('GET /books/{id}')?.parameters[0]).toMatchObject({ in: 'path', required: true, type: 'string' });
+    expect(op('GET /books/{id}')?.parameters[0]).toMatchObject({
+      in: 'path',
+      required: true,
+      type: 'string',
+    });
     expect(op('PUT /books/{id}')?.parameters).toHaveLength(1);
     expect(op('PUT /books/{id}')?.parameters[0].type).toBe('integer');
   });
@@ -141,7 +162,11 @@ describe('parseConsoleSpec', () => {
   it('documents the responses and the schemas', () => {
     expect(op('GET /books')?.responses[0]).toMatchObject({ schemaName: 'BookList', status: '200' });
     expect(model.schemas.map((s) => s.name)).toEqual(['Book', 'BookList', 'NewBook']);
-    expect(model.schemas[0].fields[0]).toMatchObject({ name: 'id', required: true, type: 'string (uuid)' });
+    expect(model.schemas[0].fields[0]).toMatchObject({
+      name: 'id',
+      required: true,
+      type: 'string (uuid)',
+    });
   });
 
   it('does not follow a remote $ref', () => {
@@ -151,7 +176,11 @@ describe('parseConsoleSpec', () => {
       paths: {
         '/x': {
           post: {
-            requestBody: { content: { 'application/json': { schema: { $ref: 'https://evil.example.com/schema.json' } } } },
+            requestBody: {
+              content: {
+                'application/json': { schema: { $ref: 'https://evil.example.com/schema.json' } },
+              },
+            },
             responses: {},
           },
         },
@@ -165,7 +194,9 @@ describe('parseConsoleSpec', () => {
 
   it('survives a self-referencing $ref', () => {
     const loop = parseConsoleSpec({
-      paths: { '/x': { get: { parameters: [{ $ref: '#/components/parameters/Loop' }], responses: {} } } },
+      paths: {
+        '/x': { get: { parameters: [{ $ref: '#/components/parameters/Loop' }], responses: {} } },
+      },
       components: { parameters: { Loop: { $ref: '#/components/parameters/Loop' } } },
     });
     expect(loop.operations[0].parameters).toEqual([]);
@@ -178,13 +209,23 @@ describe('parseConsoleSpec', () => {
         '/pets': {
           post: {
             consumes: ['application/json'],
-            parameters: [{ in: 'body', name: 'pet', required: true, schema: { properties: { name: { type: 'string' } }, type: 'object' } }],
+            parameters: [
+              {
+                in: 'body',
+                name: 'pet',
+                required: true,
+                schema: { properties: { name: { type: 'string' } }, type: 'object' },
+              },
+            ],
             responses: {},
           },
         },
       },
     });
-    expect(v2.operations[0].body?.options[0]).toMatchObject({ kind: 'json', mediaType: 'application/json' });
+    expect(v2.operations[0].body?.options[0]).toMatchObject({
+      kind: 'json',
+      mediaType: 'application/json',
+    });
   });
 
   it('returns nothing for a document with no paths, rather than throwing', () => {

@@ -88,27 +88,51 @@ export const typeLabel = (spec: Json, schema: unknown, depth = 0): string => {
   return str(resolved.format) ? `${base} (${str(resolved.format)})` : base;
 };
 
+/** How many levels of nested objects are listed under a field. */
+const MAX_NESTING = 3;
+
 /** The fields of an object schema, composed models included. */
-export const fieldsOf = (spec: Json, schema: unknown): ConsoleSchemaField[] => {
+export const fieldsOf = (
+  spec: Json,
+  schema: unknown,
+  nesting = 0,
+  visiting: readonly string[] = [],
+): ConsoleSchemaField[] => {
   if (!isObject(schema)) return [];
+  // A schema that contains itself is listed once, not unfolded forever.
+  const own = refName(schema.$ref);
+  if (own && visiting.includes(own)) return [];
+  const path = own ? [...visiting, own] : visiting;
   const resolved = flatten(spec, schema, 0);
 
   // A response that is a list of something reads best as that something's fields.
   const target =
-    resolved.type === 'array' && isObject(resolved.items) ? flatten(spec, resolved.items, 0) : resolved;
+    resolved.type === 'array' && isObject(resolved.items)
+      ? flatten(spec, resolved.items, 0)
+      : resolved;
   if (!isObject(target.properties)) return [];
 
   const required = new Set(
-    Array.isArray(target.required) ? target.required.filter((n): n is string => typeof n === 'string') : [],
+    Array.isArray(target.required)
+      ? target.required.filter((n): n is string => typeof n === 'string')
+      : [],
   );
   return Object.entries(target.properties).map(([name, property]) => {
     const detail = isObject(property) ? flatten(spec, property, 0) : {};
-    const enumValues = Array.isArray(detail.enum) ? ` (${detail.enum.map(String).join(' | ')})` : '';
+    const enumValues = Array.isArray(detail.enum)
+      ? ` (${detail.enum.map(String).join(' | ')})`
+      : '';
+    // An object, or an array of objects, can be opened to show its own fields.
+    const nested =
+      nesting < MAX_NESTING && isObject(property)
+        ? fieldsOf(spec, detail.type === 'array' ? detail.items : property, nesting + 1, path)
+        : [];
     return {
       name,
       type: typeLabel(spec, property),
       required: required.has(name),
       description: `${str(detail.description)}${enumValues}`.trim(),
+      ...(nested.length > 0 ? { children: nested } : {}),
     };
   });
 };
@@ -140,7 +164,9 @@ export const bodyKindOf = (mediaType: string): ConsoleBodyKind => {
 const exampleOf = (spec: Json, media: Json): string => {
   if (media.example !== undefined) return stringify(media.example);
   if (isObject(media.examples)) {
-    const first = Object.values(media.examples).map((e) => deref(spec, e)).find(isObject);
+    const first = Object.values(media.examples)
+      .map((e) => deref(spec, e))
+      .find(isObject);
     if (first && first.value !== undefined) return stringify(first.value);
   }
   if (!isObject(media.schema)) return '';
@@ -153,7 +179,9 @@ const formFieldsOf = (spec: Json, schema: unknown): ConsoleFormField[] => {
   const resolved = flatten(spec, schema, 0);
   if (!isObject(resolved.properties)) return [];
   const required = new Set(
-    Array.isArray(resolved.required) ? resolved.required.filter((n): n is string => typeof n === 'string') : [],
+    Array.isArray(resolved.required)
+      ? resolved.required.filter((n): n is string => typeof n === 'string')
+      : [],
   );
   return Object.entries(resolved.properties).map(([name, property]) => {
     const detail = isObject(property) ? flatten(spec, property, 0) : {};
@@ -164,7 +192,10 @@ const formFieldsOf = (spec: Json, schema: unknown): ConsoleFormField[] => {
       required: required.has(name),
       description: str(detail.description),
       binary: detail.format === 'binary',
-      example: typeof sample === 'string' || typeof sample === 'number' || typeof sample === 'boolean' ? String(sample) : '',
+      example:
+        typeof sample === 'string' || typeof sample === 'number' || typeof sample === 'boolean'
+          ? String(sample)
+          : '',
     };
   });
 };
@@ -184,7 +215,13 @@ const bodyOptionOf = (spec: Json, mediaType: string, mediaValue: unknown): Conso
   };
 };
 
-const PARAM_TYPES: readonly ConsoleParamType[] = ['string', 'integer', 'number', 'boolean', 'array'];
+const PARAM_TYPES: readonly ConsoleParamType[] = [
+  'string',
+  'integer',
+  'number',
+  'boolean',
+  'array',
+];
 
 const parameterOf = (spec: Json, raw: unknown): ConsoleParameter | undefined => {
   const parameter = deref(spec, raw);
@@ -210,10 +247,15 @@ const parameterOf = (spec: Json, raw: unknown): ConsoleParameter | undefined => 
     type,
     description: str(parameter.description) || undefined,
     enum: Array.isArray(schema.enum) ? schema.enum.map(String) : undefined,
-    example: typeof example === 'string' || typeof example === 'number' || typeof example === 'boolean' ? String(example) : undefined,
+    example:
+      typeof example === 'string' || typeof example === 'number' || typeof example === 'boolean'
+        ? String(example)
+        : undefined,
     minimum: num(schema.minimum),
     maximum: num(schema.maximum),
     deprecated: parameter.deprecated === true,
+    style: typeof parameter.style === 'string' ? parameter.style : undefined,
+    explode: typeof parameter.explode === 'boolean' ? parameter.explode : undefined,
   };
 };
 
@@ -222,20 +264,37 @@ const SWAGGER2_FORM = ['application/x-www-form-urlencoded', 'multipart/form-data
 const bodyOf = (
   spec: Json,
   operation: Json,
+  pathParameters: unknown[] = [],
 ): { required: boolean; options: ConsoleBodyOption[] } | undefined => {
   const body = deref(spec, operation.requestBody);
   if (body && isObject(body.content)) {
-    const options = Object.entries(body.content).map(([mediaType, media]) => bodyOptionOf(spec, mediaType, media));
+    const options = Object.entries(body.content).map(([mediaType, media]) =>
+      bodyOptionOf(spec, mediaType, media),
+    );
     if (options.length > 0) return { required: body.required === true, options };
   }
 
   // Swagger 2.0: a single `in: body` parameter, or `in: formData` parameters.
-  const params = (Array.isArray(operation.parameters) ? operation.parameters : [])
+  // Operation-level parameters override path-level ones of the same name and place.
+  const own = (Array.isArray(operation.parameters) ? operation.parameters : [])
     .map((p) => deref(spec, p))
     .filter(isObject);
+  const ownKeys = new Set(own.map((p) => `${str(p.in)}:${str(p.name)}`));
+  const params = [
+    ...pathParameters
+      .map((p) => deref(spec, p))
+      .filter(isObject)
+      .filter((p) => !ownKeys.has(`${str(p.in)}:${str(p.name)}`)),
+    ...own,
+  ];
   const bodyParam = params.find((p) => p.in === 'body');
-  const consumes = (Array.isArray(operation.consumes) ? operation.consumes : Array.isArray(spec.consumes) ? spec.consumes : [])
-    .filter((c): c is string => typeof c === 'string');
+  const consumes = (
+    Array.isArray(operation.consumes)
+      ? operation.consumes
+      : Array.isArray(spec.consumes)
+        ? spec.consumes
+        : []
+  ).filter((c): c is string => typeof c === 'string');
   if (bodyParam) {
     const mediaType = consumes[0] ?? 'application/json';
     return {
@@ -245,14 +304,27 @@ const bodyOf = (
   }
   const formParams = params.filter((p) => p.in === 'formData');
   if (formParams.length > 0) {
-    const mediaType = consumes.find((c) => SWAGGER2_FORM.includes(c)) ?? 'application/x-www-form-urlencoded';
+    const mediaType =
+      consumes.find((c) => SWAGGER2_FORM.includes(c)) ?? 'application/x-www-form-urlencoded';
     const properties = Object.fromEntries(
-      formParams.map((p) => [str(p.name), { type: p.type === 'file' ? 'string' : p.type, format: p.type === 'file' ? 'binary' : p.format, description: p.description, enum: p.enum }]),
+      formParams.map((p) => [
+        str(p.name),
+        {
+          type: p.type === 'file' ? 'string' : p.type,
+          format: p.type === 'file' ? 'binary' : p.format,
+          description: p.description,
+          enum: p.enum,
+        },
+      ]),
     );
     const requiredNames = formParams.filter((p) => p.required === true).map((p) => str(p.name));
     return {
       required: requiredNames.length > 0,
-      options: [bodyOptionOf(spec, mediaType, { schema: { type: 'object', properties, required: requiredNames } })],
+      options: [
+        bodyOptionOf(spec, mediaType, {
+          schema: { type: 'object', properties, required: requiredNames },
+        }),
+      ],
     };
   }
   return undefined;
@@ -263,6 +335,15 @@ const responsesOf = (spec: Json, operation: Json): ConsoleResponseDoc[] => {
   return Object.entries(operation.responses).map(([status, raw]) => {
     const response = deref(spec, raw) ?? {};
     const content = isObject(response.content) ? response.content : {};
+    // Swagger 2.0 lists what an operation produces separately from its responses.
+    const produced = (
+      Array.isArray(operation.produces)
+        ? operation.produces
+        : Array.isArray(spec.produces)
+          ? spec.produces
+          : []
+    ).filter((type): type is string => typeof type === 'string');
+    const mediaTypes = Object.keys(content).length > 0 ? Object.keys(content) : produced;
     const mediaType = Object.keys(content)[0];
     const media = mediaType ? (content[mediaType] as unknown) : undefined;
     const mediaObject = isObject(media) ? media : {};
@@ -272,15 +353,22 @@ const responsesOf = (spec: Json, operation: Json): ConsoleResponseDoc[] => {
       status,
       description: str(response.description),
       mediaType,
+      mediaTypes,
       schemaName: isObject(schema) ? refName(schema.$ref) : undefined,
-      example: mediaType ? exampleOf(spec, mediaObject) || undefined : isObject(schema) ? stringify(sampleFromSchema(spec, schema)) : undefined,
+      example: mediaType
+        ? exampleOf(spec, mediaObject) || undefined
+        : isObject(schema)
+          ? stringify(sampleFromSchema(spec, schema))
+          : undefined,
       fields: fieldsOf(spec, schema),
     };
   });
 };
 
 const groupOf = (operation: Json, path: string): string => {
-  const tag = Array.isArray(operation.tags) ? operation.tags.find((t) => typeof t === 'string' && t !== '') : undefined;
+  const tag = Array.isArray(operation.tags)
+    ? operation.tags.find((t) => typeof t === 'string' && t !== '')
+    : undefined;
   if (typeof tag === 'string') return tag;
   const segment = path.split('/').find((part) => part !== '' && !part.startsWith('{'));
   return segment ? `/${segment}` : '/';
@@ -288,7 +376,11 @@ const groupOf = (operation: Json, path: string): string => {
 
 const schemasOf = (spec: Json): ConsoleSchemaDoc[] => {
   const components = isObject(spec.components) ? spec.components : {};
-  const source = isObject(components.schemas) ? components.schemas : isObject(spec.definitions) ? spec.definitions : {};
+  const source = isObject(components.schemas)
+    ? components.schemas
+    : isObject(spec.definitions)
+      ? spec.definitions
+      : {};
   return Object.entries(source).map(([name, schema]) => ({
     name,
     description: isObject(schema) ? str(schema.description) : '',
@@ -327,7 +419,7 @@ export const parseConsoleSpec = (spec: Json): ConsoleSpecModel => {
         group: groupOf(operation, path),
         deprecated: operation.deprecated === true,
         parameters: [...shared, ...own],
-        body: bodyOf(spec, operation),
+        body: bodyOf(spec, operation, Array.isArray(item.parameters) ? item.parameters : []),
         responses: responsesOf(spec, operation),
       });
     });

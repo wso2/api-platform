@@ -71,26 +71,37 @@ describe('createDirectTransport — what leaves the browser', () => {
 
   it('refuses a request it cannot prove stays on the gateway, and sends nothing', async () => {
     for (const path of ['//evil.example.com', '/a/../../b', 'order']) {
-      await expect(transport(request({ path }), live)).rejects.toThrow(/cannot be sent as written/i);
+      await expect(transport(request({ path }), live)).rejects.toThrow(
+        /cannot be sent as written/i,
+      );
     }
     await expect(transport(request({ baseUrl: 'javascript:alert(1)' }), live)).rejects.toThrow(
       ConsoleTransportError,
     );
-    await expect(transport(request({ baseUrl: 'https://u:p@gw.example.com' }), live)).rejects.toThrow(
-      ConsoleTransportError,
-    );
+    await expect(
+      transport(request({ baseUrl: 'https://u:p@gw.example.com' }), live),
+    ).rejects.toThrow(ConsoleTransportError);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('refuses a forbidden or malformed header, and sends nothing', async () => {
-    for (const header of [['Host', 'x'], ['Cookie', 'a=b'], ['X-A', 'a\r\nb']] as [string, string][]) {
-      await expect(transport(request({ headers: [header] }), live)).rejects.toThrow(/header .* not allowed/i);
+    for (const header of [
+      ['Host', 'x'],
+      ['Cookie', 'a=b'],
+      ['X-A', 'a\r\nb'],
+    ] as [string, string][]) {
+      await expect(transport(request({ headers: [header] }), live)).rejects.toThrow(
+        /header .* not allowed/i,
+      );
     }
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('sends a form body as url-encoded fields', async () => {
-    await transport(request({ body: { fields: [['a', 'b c']], kind: 'form' }, method: 'POST' }), live);
+    await transport(
+      request({ body: { fields: [['a', 'b c']], kind: 'form' }, method: 'POST' }),
+      live,
+    );
 
     const body = fetchMock.mock.calls[0][1].body as URLSearchParams;
     expect(body.toString()).toBe('a=b+c');
@@ -159,7 +170,9 @@ describe('createDirectTransport — what comes back', () => {
 describe('createDirectTransport — failures', () => {
   it('explains an unreachable or CORS-blocked gateway without exposing the browser’s error', async () => {
     fetchMock.mockReset();
-    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch https://gw.example.com/p/order?token=abc'));
+    fetchMock.mockRejectedValueOnce(
+      new TypeError('Failed to fetch https://gw.example.com/p/order?token=abc'),
+    );
 
     const failure = await transport(request(), live).then(
       () => undefined,
@@ -175,7 +188,9 @@ describe('createDirectTransport — failures', () => {
     fetchMock.mockImplementationOnce(
       (_url: unknown, init: RequestInit) =>
         new Promise((_resolve, reject) => {
-          init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+          init.signal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError')),
+          );
         }),
     );
     const controller = new AbortController();
@@ -192,7 +207,9 @@ describe('createDirectTransport — failures', () => {
     fetchMock.mockImplementationOnce(
       (_url: unknown, init: RequestInit) =>
         new Promise((_resolve, reject) => {
-          init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+          init.signal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError')),
+          );
         }),
     );
 

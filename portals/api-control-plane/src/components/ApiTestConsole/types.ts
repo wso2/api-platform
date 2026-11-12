@@ -25,7 +25,15 @@
  * sent directly — is the transport's business, never the console's.
  */
 
-export const CONSOLE_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
+export const CONSOLE_METHODS = [
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'HEAD',
+  'OPTIONS',
+] as const;
 export type ConsoleMethod = (typeof CONSOLE_METHODS)[number];
 
 /** Parameter slots the console can fill. `cookie` is not offered: browsers forbid setting it. */
@@ -45,6 +53,9 @@ export type ConsoleParameter = {
   minimum?: number;
   maximum?: number;
   deprecated: boolean;
+  /** OpenAPI serialization of an array query value. */
+  style?: string;
+  explode?: boolean;
 };
 
 export type ConsoleSchemaField = {
@@ -52,6 +63,8 @@ export type ConsoleSchemaField = {
   type: string;
   required: boolean;
   description: string;
+  /** Fields of a nested object, or of an array's item object, when it has any. */
+  children?: ConsoleSchemaField[];
 };
 
 /** How a request body is encoded. Decides the editor offered and the wire format. */
@@ -78,6 +91,8 @@ export type ConsoleResponseDoc = {
   status: string;
   description: string;
   mediaType?: string;
+  /** Every media type the response is documented in, `mediaType` first. */
+  mediaTypes: string[];
   schemaName?: string;
   example?: string;
   fields: ConsoleSchemaField[];
@@ -111,9 +126,7 @@ export type ConsoleSpecModel = {
 };
 
 /** One part of a multipart body: a text field or a chosen file. */
-export type ConsoleBodyPart =
-  | { name: string; value: string }
-  | { name: string; file: File };
+export type ConsoleBodyPart = { name: string; value: string } | { name: string; file: File };
 
 export type ConsoleBody =
   | { kind: 'text'; mediaType: string; text: string }

@@ -101,16 +101,22 @@ export const curlSummary = (
  * safely. Multipart fields use `-F` so curl generates the boundary.
  */
 const bodyFlags = (request: ConsoleRequest, options: ToCurlOptions): string[] => {
+  if (request.binaryFile) return [`--data-binary ${shellQuote(`@${request.binaryFile}`)}`];
   if (!hasBody(request)) return [];
 
   if (request.bodyMode === 'raw') {
-    return [`-d ${shellQuote(request.body)}`];
+    // `--data-raw`: plain `-d` reads a body starting with `@` as a file name.
+    return [`--data-raw ${shellQuote(request.body)}`];
   }
 
-  const flag = request.bodyMode === 'form-data' ? '--form-string' : '--data-urlencode';
-  return activeRows(request.formFields).map(
-    (field) => `${flag} ${shellQuote(`${field.name.trim()}=${displayValue(field, options)}`)}`,
-  );
+  return activeRows(request.formFields).map((field) => {
+    const name = field.name.trim();
+    const value = displayValue(field, options);
+    if (field.file) return `-F ${shellQuote(`${name}=@${value}`)}`;
+    if (request.bodyMode === 'form-data') return `--form-string ${shellQuote(`${name}=${value}`)}`;
+    // curl encodes the value of --data-urlencode but not the name.
+    return `--data-urlencode ${shellQuote(`${encodeURIComponent(name)}=${value}`)}`;
+  });
 };
 
 /**

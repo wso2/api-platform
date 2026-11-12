@@ -91,6 +91,17 @@ export type BuildResult = {
   secretQuery: ReadonlySet<string>;
 };
 
+/** Own-property read, so a field named `constructor` or `__proto__` cannot reach the prototype. */
+const own = <T>(record: Record<string, T>, key: string): T | undefined =>
+  Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
+
+/** Joiner for a non-exploded array query value, by OpenAPI `style`. */
+const ARRAY_DELIMITERS: Record<string, string> = {
+  form: ',',
+  pipeDelimited: '|',
+  spaceDelimited: ' ',
+};
+
 /** Validates one parameter value; `undefined` when it is acceptable. */
 const parameterProblem = (parameter: ConsoleParameter, value: string): Problem | undefined => {
   if (value === '') return parameter.required ? { code: 'required' } : undefined;
@@ -163,23 +174,40 @@ export const buildSendRequest = ({
   const autoQueryNames = new Set(autoQuery.map((q) => q.name));
 
   operation.parameters.forEach((parameter) => {
-    const value = (draft.params[paramKey(parameter)] ?? '').trim();
-    const problem = parameterProblem(parameter, value);
+    // The console supplies these itself, so what the user typed (or left blank) is moot.
+    if (parameter.in === 'query' && autoQueryNames.has(parameter.name)) return;
+    if (parameter.in === 'header' && autoHeaderNames.has(parameter.name.toLowerCase())) return;
+    // Content-Type is owned by the body editor's media-type choice.
+    if (parameter.in === 'header' && parameter.name.toLowerCase() === 'content-type') return;
+
+    // Trimmed only to judge it; what is sent is what was typed.
+    const value = own(draft.params, paramKey(parameter)) ?? '';
+    const problem = parameterProblem(parameter, value.trim());
     if (problem) {
       problems[paramProblemKey(parameter)] = problem;
       return;
     }
-    if (value === '') return;
+    if (value.trim() === '') return;
 
     if (parameter.in === 'path') {
       path = path.split(`{${parameter.name}}`).join(encodePathValue(value));
     } else if (parameter.in === 'query') {
-      // An array is entered comma-separated and sent as repeated parameters.
-      const values = parameter.type === 'array' ? value.split(',').map((v) => v.trim()) : [value];
-      if (!autoQueryNames.has(parameter.name)) {
-        values.filter((v) => v !== '').forEach((v) => query.push([parameter.name, v]));
+      if (parameter.type === 'array') {
+        const items = value
+          .split(',')
+          .map((v) => v.trim())
+          .filter((v) => v !== '');
+        // `explode` defaults to true for `form`, which is a repeated parameter.
+        const delimiter = ARRAY_DELIMITERS[parameter.style ?? 'form'];
+        if (parameter.explode === false && delimiter !== undefined) {
+          if (items.length > 0) query.push([parameter.name, items.join(delimiter)]);
+        } else {
+          items.forEach((v) => query.push([parameter.name, v]));
+        }
+      } else {
+        query.push([parameter.name, value]);
       }
-    } else if (!autoHeaderNames.has(parameter.name.toLowerCase())) {
+    } else {
       headers.push([parameter.name, value]);
     }
   });
@@ -191,7 +219,12 @@ export const buildSendRequest = ({
       const problem = headerProblem(name, header.value);
       if (problem) {
         problems[headerProblemKey(header.id)] = {
-          code: problem === 'name' ? 'headerName' : problem === 'forbidden' ? 'headerForbidden' : 'headerValue',
+          code:
+            problem === 'name'
+              ? 'headerName'
+              : problem === 'forbidden'
+                ? 'headerForbidden'
+                : 'headerValue',
         };
         return;
       }
@@ -208,6 +241,10 @@ export const buildSendRequest = ({
   let body: ConsoleBody | undefined;
   const canHaveBody = operation.method !== 'GET' && operation.method !== 'HEAD';
   const option = operation.body?.options.find((o) => o.mediaType === draft.bodyMediaType);
+  if (canHaveBody && operation.body && !option && operation.body.required) {
+    // A required body with no usable media type must not be dropped silently.
+    problems[BODY_PROBLEM_KEY] = { code: 'required' };
+  }
   if (canHaveBody && operation.body && option) {
     if (option.kind === 'json' || option.kind === 'xml' || option.kind === 'text') {
       const text = draft.bodyText;
@@ -221,7 +258,7 @@ export const buildSendRequest = ({
     } else if (option.kind === 'urlencoded') {
       const fields: [string, string][] = [];
       option.formFields.forEach((field) => {
-        const value = draft.formValues[field.name] ?? '';
+        const value = own(draft.formValues, field.name) ?? '';
         if (value === '') {
           if (field.required) problems[fieldProblemKey(field.name)] = { code: 'required' };
           return;
@@ -233,12 +270,12 @@ export const buildSendRequest = ({
       const parts: ConsoleBodyPart[] = [];
       option.formFields.forEach((field) => {
         if (field.binary) {
-          const file = draft.files[field.name];
+          const file = own(draft.files, field.name);
           if (file) parts.push({ name: field.name, file });
           else if (field.required) problems[fieldProblemKey(field.name)] = { code: 'file' };
           return;
         }
-        const value = draft.formValues[field.name] ?? '';
+        const value = own(draft.formValues, field.name) ?? '';
         if (value === '') {
           if (field.required) problems[fieldProblemKey(field.name)] = { code: 'required' };
           return;
@@ -247,7 +284,7 @@ export const buildSendRequest = ({
       });
       if (parts.length > 0) body = { kind: 'multipart', parts };
     } else {
-      const file = draft.files[BINARY_FILE_KEY];
+      const file = own(draft.files, BINARY_FILE_KEY);
       if (file) body = { kind: 'binary', mediaType: option.mediaType, file };
       else if (operation.body.required) problems[BODY_PROBLEM_KEY] = { code: 'file' };
     }
@@ -258,7 +295,9 @@ export const buildSendRequest = ({
   if (body?.kind === 'binary') headers.push(['Content-Type', body.mediaType]);
   // Multipart: the boundary belongs to whoever serialises the body, so no Content-Type here.
 
-  const secretHeaders = new Set(autoHeaders.filter((h) => h.secret).map((h) => h.name.toLowerCase()));
+  const secretHeaders = new Set(
+    autoHeaders.filter((h) => h.secret).map((h) => h.name.toLowerCase()),
+  );
   const secretQuery = new Set(autoQuery.filter((q) => q.secret).map((q) => q.name));
 
   const preview = { path, query };

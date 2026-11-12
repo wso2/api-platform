@@ -31,15 +31,27 @@ const SPEC = {
   paths: {
     '/books': {
       get: {
-        parameters: [{ in: 'query', name: 'limit', schema: { maximum: 100, minimum: 1, type: 'integer' } }],
+        parameters: [
+          { in: 'query', name: 'limit', schema: { maximum: 100, minimum: 1, type: 'integer' } },
+        ],
         responses: {
-          '200': { content: { 'application/json': { example: { books: [] } } }, description: 'the list' },
+          '200': {
+            content: { 'application/json': { example: { books: [] } } },
+            description: 'the list',
+          },
         },
         summary: 'List books',
       },
       post: {
         requestBody: {
-          content: { 'application/json': { schema: { properties: { title: { example: 'Dune', type: 'string' } }, type: 'object' } } },
+          content: {
+            'application/json': {
+              schema: {
+                properties: { title: { example: 'Dune', type: 'string' } },
+                type: 'object',
+              },
+            },
+          },
           required: true,
         },
         responses: { '201': { description: 'created' } },
@@ -74,7 +86,12 @@ const renderConsole = (
   props: Partial<React.ComponentProps<typeof ApiTestConsole>> = {},
 ) =>
   renderWithProviders(
-    <ApiTestConsole baseUrl="https://gw.example.com/p" spec={SPEC} transport={transport} {...props} />,
+    <ApiTestConsole
+      baseUrl="https://gw.example.com/p"
+      spec={SPEC}
+      transport={transport}
+      {...props}
+    />,
   );
 
 const sendButton = () => screen.getByRole('button', { name: /^Send/ });
@@ -108,7 +125,11 @@ describe('ApiTestConsole — browsing', () => {
 
   it('says so when the definition has nothing to test', () => {
     renderWithProviders(
-      <ApiTestConsole baseUrl="https://gw.example.com/p" spec={{ paths: {} }} transport={vi.fn()} />,
+      <ApiTestConsole
+        baseUrl="https://gw.example.com/p"
+        spec={{ paths: {} }}
+        transport={vi.fn()}
+      />,
     );
 
     expect(screen.getByText(/no operations to test/i)).toBeInTheDocument();
@@ -125,7 +146,12 @@ describe('ApiTestConsole — sending', () => {
     expect(await screen.findByText('200 OK')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Response body' })).toHaveTextContent('"books"');
     const [sent] = transport.mock.calls[0];
-    expect(sent).toMatchObject({ baseUrl: 'https://gw.example.com/p', method: 'GET', path: '/books', query: [] });
+    expect(sent).toMatchObject({
+      baseUrl: 'https://gw.example.com/p',
+      method: 'GET',
+      path: '/books',
+      query: [],
+    });
   });
 
   it('will not send while something is wrong, and says what', async () => {
@@ -140,7 +166,9 @@ describe('ApiTestConsole — sending', () => {
   });
 
   it('encodes a path value so it stays one segment', async () => {
-    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result({ status: 404, statusText: 'Not Found' }));
+    const transport = vi
+      .fn<ConsoleTransport>()
+      .mockResolvedValue(result({ status: 404, statusText: 'Not Found' }));
     const { user } = renderConsole(transport);
     await user.click(screen.getByRole('button', { name: /Get a book/ }));
 
@@ -163,7 +191,9 @@ describe('ApiTestConsole — sending', () => {
   });
 
   it('starts an operation’s body from its example, and refuses malformed JSON', async () => {
-    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result({ status: 201, statusText: 'Created' }));
+    const transport = vi
+      .fn<ConsoleTransport>()
+      .mockResolvedValue(result({ status: 201, statusText: 'Created' }));
     const { user } = renderConsole(transport);
     await user.click(screen.getByRole('button', { name: /Add a book/ }));
     await user.click(screen.getByRole('tab', { name: /Body/ }));
@@ -180,7 +210,10 @@ describe('ApiTestConsole — sending', () => {
     await user.click(screen.getByRole('button', { name: 'Reset to example' }));
     await user.click(sendButton());
     expect(await screen.findByText('201 Created')).toBeInTheDocument();
-    expect(transport.mock.calls[0][0].body).toMatchObject({ kind: 'text', mediaType: 'application/json' });
+    expect(transport.mock.calls[0][0].body).toMatchObject({
+      kind: 'text',
+      mediaType: 'application/json',
+    });
   });
 
   it('refuses a header the browser owns, without sending', async () => {
@@ -190,7 +223,10 @@ describe('ApiTestConsole — sending', () => {
 
     await user.click(screen.getByRole('button', { name: /Add header/ }));
     // An Accept row is pre-filled from the documented response, so the new row is the last.
-    await user.type(screen.getAllByRole('textbox', { name: 'Header name' }).at(-1) as HTMLElement, 'Host');
+    await user.type(
+      screen.getAllByRole('textbox', { name: 'Header name' }).at(-1) as HTMLElement,
+      'Host',
+    );
     await user.click(sendButton());
 
     expect(await screen.findByText(/cannot be sent from here/i)).toBeInTheDocument();
@@ -209,7 +245,9 @@ describe('ApiTestConsole — untrusted responses', () => {
     await screen.findByText('200 OK');
     expect(container.querySelector('img')).toBeNull();
     expect(container.querySelector('script')).toBeNull();
-    expect(screen.getByRole('region', { name: 'Response body' })).toHaveTextContent('<img src=x onerror=alert(1)>');
+    expect(screen.getByRole('region', { name: 'Response body' })).toHaveTextContent(
+      '<img src=x onerror=alert(1)>',
+    );
   });
 
   it('does not show a binary body, and says it was cut when it is', async () => {
@@ -250,7 +288,9 @@ describe('ApiTestConsole — cancelling', () => {
       (_request, s) =>
         new Promise((_resolve, reject) => {
           signal = s;
-          s.addEventListener('abort', () => reject(new ConsoleTransportError('', { aborted: true })));
+          s.addEventListener('abort', () =>
+            reject(new ConsoleTransportError('', { aborted: true })),
+          );
         }),
     );
     const { user } = renderConsole(transport);
@@ -302,7 +342,9 @@ describe('ApiTestConsole — credentials', () => {
 
   it('keeps a credential out of the URL it shows', async () => {
     const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
-    const { container } = renderConsole(transport, { autoQuery: [{ name: 'api_key', secret: true, value: 'sekret-value' }] });
+    const { container } = renderConsole(transport, {
+      autoQuery: [{ name: 'api_key', secret: true, value: 'sekret-value' }],
+    });
 
     expect(container).not.toHaveTextContent('sekret-value');
   });
@@ -317,6 +359,94 @@ describe('ApiTestConsole — mirroring', () => {
     expect(onRequestChange.mock.calls.at(-1)?.[0]).toMatchObject({ method: 'GET', path: '/books' });
 
     await user.type(screen.getByRole('textbox', { name: 'limit' }), '5');
-    await waitFor(() => expect(onRequestChange.mock.calls.at(-1)?.[0].query).toEqual([['limit', '5']]));
+    await waitFor(() =>
+      expect(onRequestChange.mock.calls.at(-1)?.[0].query).toEqual([['limit', '5']]),
+    );
+  });
+});
+
+describe('ApiTestConsole — response format', () => {
+  const MULTI = {
+    paths: {
+      '/books': {
+        get: {
+          responses: {
+            '200': {
+              content: { 'application/json': {}, 'application/xml': {} },
+              description: 'ok',
+            },
+          },
+          summary: 'List books',
+        },
+      },
+    },
+  };
+
+  it('offers the documented media types and sends the chosen one as Accept', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
+    const { user } = renderConsole(transport, { spec: MULTI });
+
+    await user.click(screen.getByRole('tab', { name: /Headers/ }));
+    await user.click(screen.getByRole('combobox', { name: /Response format/ }));
+    await user.click(screen.getByRole('option', { name: 'application/xml' }));
+    await user.click(sendButton());
+
+    await waitFor(() => expect(transport).toHaveBeenCalled());
+    expect((transport.mock.calls[0][0] as ConsoleSendRequest).headers).toContainEqual([
+      'Accept',
+      'application/xml',
+    ]);
+  });
+
+  it('sends no Accept header when "No preference" is chosen', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
+    const { user } = renderConsole(transport, { spec: MULTI });
+
+    await user.click(screen.getByRole('tab', { name: /Headers/ }));
+    await user.click(screen.getByRole('combobox', { name: /Response format/ }));
+    await user.click(screen.getByRole('option', { name: 'No preference' }));
+    await user.click(sendButton());
+
+    await waitFor(() => expect(transport).toHaveBeenCalled());
+    const names = (transport.mock.calls[0][0] as ConsoleSendRequest).headers.map(([name]) => name);
+    expect(names).not.toContain('Accept');
+  });
+});
+
+describe('ApiTestConsole — nested schemas', () => {
+  const NESTED = {
+    components: {
+      schemas: {
+        Author: {
+          properties: {
+            address: { $ref: '#/components/schemas/Address' },
+            name: { type: 'string' },
+          },
+          type: 'object',
+        },
+        Address: {
+          properties: { city: { type: 'string' }, owner: { $ref: '#/components/schemas/Author' } },
+          type: 'object',
+        },
+      },
+    },
+    paths: { '/a': { get: { responses: {}, summary: 'A' } } },
+  };
+
+  it('opens a nested object to show its fields, and stops at a cycle', async () => {
+    const { user } = renderConsole(vi.fn(), { spec: NESTED });
+
+    await user.click(screen.getByRole('button', { name: /Schemas/ }));
+    await user.click(screen.getByRole('button', { name: /Author/ }));
+
+    expect(screen.queryByText('city')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show the fields of address' }));
+    expect(screen.getByText('city')).toBeInTheDocument();
+
+    // `owner` leads back to Author, which is listed once more and then not unfolded again.
+    await user.click(screen.getByRole('button', { name: 'Show the fields of owner' }));
+    // Only the first `address` can be opened; the one under `owner` would repeat it.
+    expect(screen.queryAllByRole('button', { name: 'Show the fields of address' })).toHaveLength(0);
+    expect(screen.getAllByRole('button', { name: 'Hide the fields of address' })).toHaveLength(1);
   });
 });

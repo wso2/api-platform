@@ -54,6 +54,7 @@ import { methodPalette } from '@/components/SwaggerOperationsView/methodPalette'
 import {
   BINARY_FILE_KEY,
   BODY_PROBLEM_KEY,
+  PATH_PROBLEM_KEY,
   fieldProblemKey,
   headerProblemKey,
   paramKey,
@@ -62,6 +63,7 @@ import {
   type Problem,
   type RequestDraft,
 } from '../request/buildRequest';
+import { prettyPrintJson } from '../format/prettyJson';
 import { MASKED_VALUE } from '../request/display';
 import type { ConsoleAutoParam, ConsoleOperation, ConsoleParameter } from '../types';
 import { SchemaTable } from './SchemaViews';
@@ -124,6 +126,17 @@ const messages = defineMessages({
     id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.format',
     defaultMessage: 'Format',
     description: 'Button that pretty-prints the JSON body. A command.',
+  },
+  acceptLabel: {
+    id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.acceptLabel',
+    defaultMessage: 'Response format',
+    description:
+      'Label of the dropdown that picks which media type to ask for in the Accept header.',
+  },
+  acceptNone: {
+    id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.acceptNone',
+    defaultMessage: 'No preference',
+    description: 'Dropdown option that sends no Accept header.',
   },
   headerName: {
     id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.headerName',
@@ -268,6 +281,12 @@ const messages = defineMessages({
     description:
       'Live check beside the body editor: the text is not valid JSON. The cross marks failure.',
   },
+  busyHint: {
+    id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.busyHint',
+    defaultMessage: 'Another request is still running. Wait for it or cancel it first.',
+    description:
+      'Tooltip of the disabled Send button while a request for a different endpoint is in flight.',
+  },
   sendHint: {
     id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.sendHint',
     defaultMessage: 'Send ({shortcut})',
@@ -369,6 +388,8 @@ export type RequestPanelProps = {
   tab: RequestTab;
   onTab: (tab: RequestTab) => void;
   sending: boolean;
+  /** A request for another operation is in flight, so this one cannot be sent yet. */
+  busy?: boolean;
   onSend: () => void;
   onCancel: () => void;
   /** Text to put on the clipboard for "Copy URL" (credentials revealed). */
@@ -504,7 +525,8 @@ function ParamsTab({
   problems: Record<string, Problem>;
   onChange: (key: string, value: string) => void;
 }) {
-  if (operation.parameters.length === 0) {
+  const pathProblem = problems[PATH_PROBLEM_KEY];
+  if (operation.parameters.length === 0 && !pathProblem) {
     return (
       <SecondaryText variant="body2">
         <FormattedMessage {...messages.noParams} />
@@ -512,40 +534,51 @@ function ParamsTab({
     );
   }
   return (
-    <TableContainer component={Paper} variant="outlined">
-      <Table size="small" sx={{ '& .MuiTableCell-root': { borderColor: 'divider' } }}>
-        <TableHead>
-          <TableRow>
-            <TableCell>
-              <FormattedMessage {...messages.paramColumn} />
-            </TableCell>
-            <TableCell>
-              <FormattedMessage {...messages.valueColumn} />
-            </TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {operation.parameters.map((parameter) => (
-            <ParameterRow
-              key={paramKey(parameter)}
-              onChange={(value) => onChange(paramKey(parameter), value)}
-              parameter={parameter}
-              problem={problems[paramProblemKey(parameter)]}
-              value={draft.params[paramKey(parameter)] ?? ''}
-            />
-          ))}
-        </TableBody>
-      </Table>
-    </TableContainer>
+    <Stack spacing={1}>
+      {pathProblem && <ProblemText problem={pathProblem} />}
+      {operation.parameters.length > 0 && (
+        <TableContainer component={Paper} variant="outlined">
+          <Table size="small" sx={{ '& .MuiTableCell-root': { borderColor: 'divider' } }}>
+            <TableHead>
+              <TableRow>
+                <TableCell>
+                  <FormattedMessage {...messages.paramColumn} />
+                </TableCell>
+                <TableCell>
+                  <FormattedMessage {...messages.valueColumn} />
+                </TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {operation.parameters.map((parameter) => (
+                <ParameterRow
+                  key={paramKey(parameter)}
+                  onChange={(value) => onChange(paramKey(parameter), value)}
+                  parameter={parameter}
+                  problem={problems[paramProblemKey(parameter)]}
+                  value={draft.params[paramKey(parameter)] ?? ''}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Stack>
   );
 }
 
+/** The media types an operation documents for its responses, in document order, once each. */
+const acceptOptionsOf = (operation: ConsoleOperation): string[] =>
+  Array.from(new Set(operation.responses.flatMap((response) => response.mediaTypes)));
+
 function HeadersTab({
+  operation,
   headers,
   autoHeaders,
   problems,
   onChange,
 }: {
+  operation: ConsoleOperation;
   headers: DraftHeader[];
   autoHeaders: readonly ConsoleAutoParam[];
   problems: Record<string, Problem>;
@@ -555,8 +588,47 @@ function HeadersTab({
   const update = (id: string, patch: Partial<DraftHeader>) =>
     onChange(headers.map((header) => (header.id === id ? { ...header, ...patch } : header)));
 
+  const isAccept = (header: DraftHeader) => header.name.trim().toLowerCase() === 'accept';
+  const acceptOptions = acceptOptionsOf(operation);
+  const accept = headers.find(isAccept)?.value ?? '';
+  // A value the user typed by hand stays selectable rather than vanishing from the list.
+  const shownOptions =
+    accept !== '' && !acceptOptions.includes(accept) ? [...acceptOptions, accept] : acceptOptions;
+  // The console owns Accept when it injects one itself.
+  const showAccept =
+    shownOptions.length > 0 &&
+    !autoHeaders.some((header) => header.name.toLowerCase() === 'accept');
+  const chooseAccept = (value: string) => {
+    const rest = headers.filter((header) => !isAccept(header));
+    onChange(value === '' ? rest : [{ id: 'accept', name: 'Accept', value }, ...rest]);
+  };
+
   return (
     <Stack alignItems="flex-start" spacing={1.5}>
+      {showAccept && (
+        <FormControl size="small" sx={{ minWidth: 280 }}>
+          <FormLabel id="api-test-console-accept" sx={{ mb: 0.5 }}>
+            <SecondaryText variant="caption">
+              <FormattedMessage {...messages.acceptLabel} />
+            </SecondaryText>
+          </FormLabel>
+          <Select
+            displayEmpty
+            labelId="api-test-console-accept"
+            onChange={(event) => chooseAccept(String(event.target.value))}
+            value={accept}
+          >
+            <MenuItem value="">
+              <FormattedMessage {...messages.acceptNone} />
+            </MenuItem>
+            {shownOptions.map((option) => (
+              <MenuItem key={option} value={option}>
+                {option}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      )}
       {(autoHeaders.length > 0 || headers.length > 0) && (
         <TableContainer component={Paper} variant="outlined">
           <Table size="small" sx={{ '& .MuiTableCell-root': { borderColor: 'divider' } }}>
@@ -714,6 +786,8 @@ function BodyTab({
   const option = body.options.find((o) => o.mediaType === draft.bodyMediaType) ?? body.options[0];
   const isText = option.kind === 'json' || option.kind === 'xml' || option.kind === 'text';
   const bodyProblem = problems[BODY_PROBLEM_KEY];
+  // With no fields there is no schema to show, so the editor is the only view.
+  const activeView = isText && option.fields.length > 0 ? view : 'edit';
 
   let jsonValid = false;
   if (option.kind === 'json' && draft.bodyText.trim() !== '') {
@@ -770,7 +844,7 @@ function BodyTab({
                   { label: <FormattedMessage {...messages.edit} />, value: 'edit' },
                   { label: <FormattedMessage {...messages.schema} />, value: 'schema' },
                 ]}
-                value={view}
+                value={activeView}
               />
             )}
             {option.kind === 'json' && draft.bodyText.trim() !== '' && (
@@ -779,13 +853,13 @@ function BodyTab({
               </Typography>
             )}
           </Stack>
-          {isText && view === 'edit' && (
+          {isText && activeView === 'edit' && (
             <Stack direction="row" spacing={1}>
               {option.kind === 'json' && (
                 <Button
                   onClick={() => {
                     try {
-                      const pretty = JSON.stringify(JSON.parse(draft.bodyText), null, 2);
+                      const pretty = prettyPrintJson(draft.bodyText);
                       onDraft((current) => ({ ...current, bodyText: pretty }));
                     } catch {
                       // Not valid JSON: leave the text as typed so it can be corrected.
@@ -809,7 +883,7 @@ function BodyTab({
         </Stack>
         <Divider />
 
-        {isText && view === 'edit' && (
+        {isText && activeView === 'edit' && (
           <TextField
             error={Boolean(bodyProblem)}
             fullWidth
@@ -832,7 +906,7 @@ function BodyTab({
             value={draft.bodyText}
           />
         )}
-        {isText && view === 'schema' && <SchemaTable fields={option.fields} />}
+        {isText && activeView === 'schema' && <SchemaTable fields={option.fields} />}
         {(option.kind === 'urlencoded' || option.kind === 'multipart') && (
           <TableContainer>
             <Table size="small" sx={{ '& .MuiTableCell-root': { borderColor: 'divider' } }}>
@@ -929,6 +1003,7 @@ export function RequestPanel({
   tab,
   onTab,
   sending,
+  busy = false,
   onSend,
   onCancel,
   copyableUrl,
@@ -1041,23 +1116,31 @@ export function RequestPanel({
               value={shownUrl}
             />
             <Tooltip
-              title={intl.formatMessage(sending ? messages.cancelHint : messages.sendHint, {
-                shortcut: sending ? SHORTCUT_CANCEL : SHORTCUT_SEND,
-              })}
+              title={
+                busy
+                  ? intl.formatMessage(messages.busyHint)
+                  : intl.formatMessage(sending ? messages.cancelHint : messages.sendHint, {
+                      shortcut: sending ? SHORTCUT_CANCEL : SHORTCUT_SEND,
+                    })
+              }
             >
-              <Button
-                color={sending ? 'inherit' : 'primary'}
-                onClick={sending ? onCancel : onSend}
-                startIcon={sending ? <Square size={14} /> : <Send size={14} />}
-                sx={{ flexShrink: 0 }}
-                variant={sending ? 'outlined' : 'contained'}
-              >
-                {sending ? (
-                  <FormattedMessage {...messages.cancel} />
-                ) : (
-                  <FormattedMessage {...messages.send} />
-                )}
-              </Button>
+              {/* A disabled button swallows pointer events, so the tooltip hangs off a wrapper. */}
+              <span>
+                <Button
+                  color={sending ? 'inherit' : 'primary'}
+                  disabled={busy}
+                  onClick={sending ? onCancel : onSend}
+                  startIcon={sending ? <Square size={14} /> : <Send size={14} />}
+                  sx={{ flexShrink: 0 }}
+                  variant={sending ? 'outlined' : 'contained'}
+                >
+                  {sending ? (
+                    <FormattedMessage {...messages.cancel} />
+                  ) : (
+                    <FormattedMessage {...messages.send} />
+                  )}
+                </Button>
+              </span>
             </Tooltip>
           </Stack>
 
@@ -1107,6 +1190,7 @@ export function RequestPanel({
             )}
             {activeTab === 'headers' && (
               <HeadersTab
+                operation={operation}
                 autoHeaders={autoHeaders}
                 headers={draft.headers}
                 onChange={(next) => onDraft((current) => ({ ...current, headers: next }))}

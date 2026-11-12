@@ -63,9 +63,11 @@ const bodyFlags = (request: ConsoleSendRequest): string[] => {
   if (!body) return [];
   switch (body.kind) {
     case 'text':
-      return [`-d ${shellQuote(body.text)}`];
+      return [`--data-raw ${shellQuote(body.text)}`];
     case 'form':
-      return body.fields.map(([name, value]) => `--data-urlencode ${shellQuote(`${name}=${value}`)}`);
+      return body.fields.map(
+        ([name, value]) => `--data-urlencode ${shellQuote(`${encodeURIComponent(name)}=${value}`)}`,
+      );
     case 'multipart':
       return body.parts.map((part) =>
         // `--form-string` keeps a leading `@` or `<` in a value from being read as a file.
