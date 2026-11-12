@@ -193,6 +193,34 @@ describe('SpecificationTab', () => {
     ).toBeInTheDocument();
   });
 
+  describe('loading the API\u2019s own specification', () => {
+    const DIFFERS = 'Differs from the API\u2019s specification.';
+
+    it('offers nothing to load unless it is asked to', () => {
+      renderWithProviders(<Harness initialText={JSON_DEFINITION} />);
+
+      expect(screen.queryByRole('button', { name: 'Load the API\u2019s specification' })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(DIFFERS)).not.toBeInTheDocument();
+    });
+
+    it.each(['json', 'graphql'] as const)('offers the load in the %s toolbar, with a note saying why', async (format) => {
+      const onLoadApiDefinition = vi.fn();
+      const { user } = renderWithProviders(
+        <SpecificationTab
+          format={format}
+          onChange={vi.fn()}
+          onLoadApiDefinition={onLoadApiDefinition}
+          text={format === 'graphql' ? 'type Query { hello: String }' : JSON_DEFINITION}
+        />,
+      );
+
+      expect(screen.getByLabelText(DIFFERS)).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Load the API\u2019s specification' }));
+
+      expect(onLoadApiDefinition).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('shows no resources pane for a GraphQL definition', () => {
     renderWithProviders(
       <SpecificationTab format="graphql" text="type Query { hello: String }" />,

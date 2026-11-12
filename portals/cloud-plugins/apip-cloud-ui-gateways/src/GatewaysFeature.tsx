@@ -83,6 +83,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   const canCreate =
     permissions.canAny(GATEWAY_OPERATIONS.CreateManagedGateway) && canReadEnvironments;
   const canUpdate = permissions.canAny(GATEWAY_OPERATIONS.UpdateManagedGateway);
+  const canManageTokens = permissions.canAny(GATEWAY_OPERATIONS.CreateGatewayToken);
   const canDelete = permissions.canAny(GATEWAY_OPERATIONS.DeleteManagedGateway);
   const canReadConfiguration = permissions.canAny(GATEWAY_OPERATIONS.GetManagedGatewayConfiguration);
   const canWriteConfiguration = permissions.canAny(
@@ -423,6 +424,8 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         onGenerateRegistrationToken={selfHostedClient.generateToken}
         onReconfigureRegistrationToken={selfHostedClient.reconfigureToken}
         notify={notify}
+        canManageTokens={canManageTokens}
+        canEdit={canUpdate}
       />
     );
   }

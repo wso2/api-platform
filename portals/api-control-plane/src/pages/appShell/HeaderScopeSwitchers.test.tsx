@@ -24,6 +24,8 @@ import type { GraphQLApiListItem } from '@/api/resources/graphqlApis';
 import type { RestApi } from '@/api/resources/restApis';
 import { routes } from '@/routes/paths';
 import { anOrganization, aProject } from '@/test/msw';
+import type { AuthState } from '@/contexts/auth/authTypes';
+import { makeAuthState } from '@/test/mockAuthState';
 import { makeConsoleScope } from '@/test/mockScope';
 import { renderWithProviders, screen } from '@/test/utils';
 
@@ -246,7 +248,10 @@ const organizationTrigger = () =>
 const ACME = anOrganization({ id: 'acme-org', displayName: 'Acme' });
 const GLOBEX = anOrganization({ id: 'globex-org', displayName: 'Globex' });
 
-const renderSwitchers = (organizations: ReturnType<typeof anOrganization>[]) =>
+const renderSwitchers = (
+  organizations: ReturnType<typeof anOrganization>[],
+  authState: AuthState = makeAuthState(),
+) =>
   renderWithProviders(
     // `Header.Switchers` needs its compound parent, and `Header` needs the shell.
     <AppShell>
@@ -257,6 +262,7 @@ const renderSwitchers = (organizations: ReturnType<typeof anOrganization>[]) =>
       </AppShell.Navbar>
     </AppShell>,
     {
+      authState,
       route: `/organizations/${ACME.id}/projects/project-1/home`,
       scope: makeConsoleScope({
         organization: ACME,
@@ -302,5 +308,24 @@ describe('HeaderScopeSwitchers organization switcher', () => {
 
     expect(await screen.findByRole('listbox')).toBeInTheDocument();
     expect(screen.getByRole('option', { name: /Globex/ })).toBeInTheDocument();
+  });
+
+  // The Platform API lists only the organizations the user has used; where the
+  // session switches organizations, the identity provider lists them all.
+  it("lists the identity provider's organizations where the session switches", async () => {
+    const { user } = renderSwitchers(
+      [ACME],
+      makeAuthState({
+        canSwitchOrganization: true,
+        organizations: [
+          { id: 'ou-acme', handle: ACME.id, name: 'Acme' },
+          { id: 'ou-initech', handle: 'initech-org', name: 'Initech' },
+        ],
+      }),
+    );
+
+    await user.click(organizationTrigger());
+
+    expect(await screen.findByRole('option', { name: /Initech/ })).toBeInTheDocument();
   });
 });

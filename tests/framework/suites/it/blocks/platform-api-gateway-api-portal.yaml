@@ -1,0 +1,76 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Platform API, API Portal and gateway blocks: the three working together, such as
+# publishing from the control plane to the portal and portal credentials reaching
+# the gateway.
+#
+# Adding a test: add it to an existing runner below that fits it, or else add a runner to the
+# block below. A new block is the last resort (a product setting the other runners must not
+# see, or a test that must run alone); say why in a comment above it. A new combination (a
+# new file) is an even worse last resort; see it-suite.yaml.
+# Feature paths are relative to suites/it, as in it-suite.yaml.
+
+blocks:
+  # Platform-api working with an API Portal and a gateway: publishing a REST API to the portal.
+  # Platform-api registers the portal over HTTPS and trusts its certificate, so the block overlays
+  # the portal's own certificate onto platform-api's outbound trust and gives the portal the hash
+  # of the key platform-api publishes with. The portal stages its product role file, which grants
+  # the platform-api-system role the publishing calls (including the devportal webhook runners
+  # hosted here) are authorized as. The outage runner stops the portal, so runners must not
+  # overlap: keep parallel at 1.
+  - name: platform-api-gateway-api-portal
+    parallel: 1
+    components:
+      - name: platform-api
+        overlay: tests/framework/core/catalog/overlays/platform-api-portal-publishing.toml
+        db: postgres
+      - name: api-portal
+        dependsOn: [platform-api]
+        db: postgres
+        overlay: tests/framework/core/catalog/overlays/api-portal-publishing.toml
+        stagedFiles:
+          role-to-scope-mapping.yaml: portals/api-portal/resources/role-to-scope-mapping.yaml
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: postgres
+      - name: testbench
+    runners:
+      - name: publication-lifecycle
+        features:
+          - features/apiportal/publishing/publication_lifecycle.feature
+      - name: publication-monetization
+        features:
+          - features/apiportal/publishing/publication_monetization.feature
+      - name: publication-failures
+        features:
+          - features/apiportal/publishing/publication_failures.feature
+      - name: publication-content
+        # Excludes the scenarios for content that stays on the portal after it is unselected.
+        features:
+          - features/apiportal/publishing/publication_content.feature
+        tags: "~@known-issue"
+      - name: devportal-webhook
+        features:
+          - features/apiportal/webhooks/devportal_webhook.feature
+      - name: devportal-monetization-webhook
+        features:
+          - features/apiportal/webhooks/monetization_webhook.feature
+      - name: publication-outage
+        features:
+          - features/apiportal/publishing/publication_outage.feature

@@ -80,7 +80,6 @@ func handleDefectNames() string {
 func (s *Steps) registerProjectSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I read the default APIP project$`, s.readDefaultProject)
 	sc.Step(`^I read an APIP project that does not exist$`, s.readAbsentProject)
-	sc.Step(`^I delete an APIP project that does not exist$`, s.deleteAbsentProject)
 	sc.Step(`^I create the synthetic APIP project again under the same handle$`, s.createDuplicateProject)
 	sc.Step(`^I request a synthetic APIP project whose handle is "([^"]*)"$`, s.requestProjectWithDefectiveHandle)
 	sc.Step(`^the rejected APIP project should not exist$`, s.assertRejectedProjectAbsent)
@@ -113,17 +112,6 @@ func (s *Steps) readAbsentProject(ctx context.Context) error {
 		return err
 	}
 	_, err = s.doAuthenticated(ctx, http.MethodGet, "/projects/"+url.PathEscape(id), nil)
-	return err
-}
-
-// deleteAbsentProject deletes a project that does not exist and publishes the answer. Nothing is
-// created, so nothing is registered for cleanup.
-func (s *Steps) deleteAbsentProject(ctx context.Context) error {
-	id, err := chooseAbsentProjectID(ctx)
-	if err != nil {
-		return err
-	}
-	_, err = s.doAuthenticated(ctx, http.MethodDelete, "/projects/"+url.PathEscape(id), nil)
 	return err
 }
 

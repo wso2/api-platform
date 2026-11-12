@@ -38,6 +38,7 @@ import { SecondaryText } from '@/components/common/SecondaryText';
 import { hairline, iconTileSx } from '@/theme/receipes';
 import { useNotifications } from '@/components/Notifications';
 import { PolicyIndicator, SwaggerResourceRow } from '@/components/SwaggerOperationsView';
+import { useCan } from '@/permissions';
 import { AttachedPolicyList } from './AttachedPolicyList';
 import { AvailablePoliciesPanel } from './AvailablePoliciesPanel';
 import { SaveBar } from '../SaveBar';
@@ -206,8 +207,11 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   const hubEnabled = useIsPolicyHubConfigured();
   const restApiId = api.id;
   // A gateway-created API is owned by that gateway: its policies are shown,
-  // but every action that would change them is disabled.
-  const readOnly = api.readOnly === true;
+  // but every action that would change them is disabled. Saving is an API
+  // update, so a caller who may not update the API gets the same view.
+  const gatewayOwned = api.readOnly === true;
+  const canUpdate = useCan('UpdateRESTAPI');
+  const readOnly = gatewayOwned || !canUpdate;
 
   const [apiPolicies, setApiPolicies] = useState<Policy[]>(api.policies ?? []);
   // Flattened once, lazily: from here the panel owns the edits, so re-deriving
@@ -369,7 +373,7 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   return (
     <Stack spacing={2}>
       <PoliciesPageTitle />
-      {readOnly && <ReadOnlyPoliciesNotice />}
+      {gatewayOwned && <ReadOnlyPoliciesNotice />}
       <Stack alignItems="flex-start" direction={{ xs: 'column', md: 'row' }} spacing={2}>
         {/* LEFT: Policies (drop targets) */}
         <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>

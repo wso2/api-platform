@@ -43,6 +43,13 @@ type ChipColor = 'default' | 'error' | 'info' | 'primary' | 'secondary' | 'succe
 const GET_TONE = { dark: '#6C8CFF', light: '#1F4FFF' } as const;
 const isGet = (method: string) => method.toUpperCase() === 'GET';
 
+/**
+ * PATCH is teal. `secondary` under Choreo Labs is midnight ink, which made PATCH
+ * read as an unrelated near-black next to the other methods.
+ */
+const PATCH_TONE = '#50E3C2';
+const isPatch = (method: string) => method.toUpperCase() === 'PATCH';
+
 const methodColor = (method: string): ChipColor => {
   switch (method.toUpperCase()) {
     case 'GET':
@@ -62,6 +69,7 @@ const methodColor = (method: string): ChipColor => {
 
 const methodTone = (theme: Theme, method: string, isDark: boolean) => {
   if (isGet(method)) return isDark ? GET_TONE.dark : GET_TONE.light;
+  if (isPatch(method)) return PATCH_TONE;
   const color = methodColor(method);
   return color === 'default' ? theme.palette.text.primary : theme.palette[color].main;
 };
@@ -128,7 +136,7 @@ export function SwaggerOperationsView({
                 flexShrink: 0,
                 fontWeight: 700,
                 minWidth: 80,
-                ...(isGet(method) && {
+                ...((isGet(method) || isPatch(method)) && {
                   bgcolor: methodTone(theme, method, isDark),
                   color: '#FFFFFF',
                 }),

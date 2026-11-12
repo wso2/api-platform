@@ -29,13 +29,15 @@ blocks:
         features:
           - features/apip_gateway.feature
       - name: apip-gateway-config
+        tags: "~@known-issue"
         features:
           - features/apip_gateway_config.feature
       - name: apip-promotion
-        tags: "~@known-issue"
         features:
           - features/apip_promotion.feature
       - name: apip-secrets
-        tags: "~@known-issue"
         features:
           - features/apip_secrets.feature
+      - name: apip-portal
+        features:
+          - features/apip_portal.feature

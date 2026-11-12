@@ -18,6 +18,7 @@ import {
   ManagedPortalsPage,
   PORTAL_OPERATIONS,
 } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
+import { MarketingConsentGate } from '@wso2-enterprise/apip-cloud-ui-marketing-consent';
 import { AppSwitcherButton } from '@wso2-enterprise/apip-cloud-ui-app-switcher';
 import { SettingsButton } from '@wso2-enterprise/apip-cloud-ui-settings';
 import { nameFromPort } from '@wso2-enterprise/apip-cloud-ui-user-profile';
@@ -48,6 +49,21 @@ import { defineCloudPlugin, getCloudExtensions, type CloudPluginFeature } from '
 import { filterExtensionsForRuntime } from '../runtimeFlags';
 import cloudLogoDark from '../assets/logos/apiplatform_white.svg';
 import cloudLogoLight from '../assets/logos/apiplatform_black.svg';
+
+/**
+ * Scopes the cloud Deploy page deploys under (apip-cloud-ui-deploy
+ * API_DEPLOYMENT_OPERATIONS.DeployApi): one of them is needed to deploy.
+ */
+const CLOUD_DEPLOY_SCOPES = [
+  'ap:deployment:deploy',
+  'ap:deployment:manage',
+  'ap:rest_api:deployment:create',
+  'ap:rest_api:deployment:manage',
+  'ap:rest_api:manage',
+  'ap:graphql_api:deployment:create',
+  'ap:graphql_api:deployment:manage',
+  'ap:graphql_api:manage',
+] as const;
 
 /** Cloud console branding used by the host header and login page. */
 export const cloudBrandLogo: BrandLogo = {
@@ -180,6 +196,25 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
     ],
   }),
   defineCloudPlugin({
+    // Asks a signed-in person once whether they want WSO2 marketing email, and
+    // records the answer with Pardot through platform-api's internal consent
+    // endpoint (the BFF's `marketing-consent` upstream, carrying the person's own
+    // token). Headless `app.gate` entry: renders nothing unless they never answered.
+    // Console-only; the AI Workspace host registers nothing.
+    id: 'marketing-consent',
+    version: '0.1.0',
+    extensions: [
+      {
+        id: 'marketing-consent-gate',
+        slot: APP_GATE_SLOT,
+        order: 20,
+        render: (port) => (
+          <MarketingConsentGate port={port} proxyBase={runtimeConfig.platformApiBaseUrl} />
+        ),
+      },
+    ],
+  }),
+  defineCloudPlugin({
     // The header's settings icon, which opens the WSO2 Cloud console's organization
     // pages. Console-only: it is registered in this host and not in the AI Workspace
     // one, so that portal's header is unchanged. Ordered after the trial badge, and
@@ -273,6 +308,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         render: (port) => <CloudDeployPage port={port} />,
         label: 'Deploy',
         level: 'api',
+        // The cloud deploys through the project's pipeline, under the scopes
+        // its Deploy page checks (CLOUD_DEPLOY_SCOPES).
+        actionScopes: CLOUD_DEPLOY_SCOPES,
       },
       {
         // The same Deploy feature for a GraphQL API, so both kinds deploy through
@@ -282,6 +320,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         id: 'graphql-api-deploy',
         slot: PAGE_GRAPHQL_API_DEPLOY_SLOT,
         order: 0,
+        actionScopes: CLOUD_DEPLOY_SCOPES,
         routePath: 'deploy',
         render: (port, artifactHandle) => (
           <DeployFeature

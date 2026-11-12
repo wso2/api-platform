@@ -25,7 +25,7 @@ Feature: Publishing priced plans to an API Portal
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "priced-publish-project" and store it as "projectHandle"
+    And I generate a unique resource name from "priced-publish-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "priced-calls" and store it as "meterId"
     And I generate a unique resource name from "priced-plan" and store it as "planId"

@@ -25,7 +25,7 @@ Feature: A paid subscription's billing state decides its access at the gateway
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "paid-access-project" and store it as "projectHandle"
+    And I generate a unique resource name from "paid-access-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   Scenario: A subscription that stops paying is refused at the gateway, and is served again once paid

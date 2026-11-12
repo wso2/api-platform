@@ -103,9 +103,15 @@ function renderPage() {
   );
 }
 
-/** Nothing saved for this portal yet: the page opens on the API's own details and SDL. */
+const DOCS_PATH = `/apis/graphql-api/${API}/docs`;
+
+/**
+ * Nothing saved for this portal yet: the page opens on the API's own details and SDL. The API has no
+ * documents unless a test serves some.
+ */
 function serveFreshApi() {
   server.use(
+    collection(DOCS_PATH, []),
     mswHttp.get(apiUrl(`/apis/graphql-api/${API}/thumbnail`), () => new HttpResponse(null, { status: 204 })),
     resource('/graphql-apis/:graphqlApiId', api),
     resource('/graphql-apis/:graphqlApiId/sdl', { sdl: SDL }),
@@ -209,14 +215,13 @@ describe('GraphqlPortalPublishPage', () => {
     });
   });
 
-  it('saves the selected documents with the GraphQL draft', async () => {
+  it('selects no document of a fresh GraphQL API, and saves the one picked with the draft', async () => {
     serveFreshApi();
-    const docsPath = `/apis/graphql-api/${API}/docs`;
     const draftRequests = recorder();
     server.use(
-      collection(docsPath, [{ contentType: 'text/markdown', displayName: 'Schema guide', id: 'schema-guide', type: 'HowTo' }]),
+      collection(DOCS_PATH, [{ contentType: 'text/markdown', displayName: 'Schema guide', id: 'schema-guide', type: 'HowTo' }]),
       mswHttp.get(
-        apiUrl(`${docsPath}/:docId/content`),
+        apiUrl(`${DOCS_PATH}/:docId/content`),
         () => new HttpResponse('Body', { headers: { 'Content-Type': 'text/markdown' } }),
       ),
       accepts('put', `${BASE}/draft`, aPublicationDraftDetails(), { record: draftRequests }),
@@ -227,6 +232,7 @@ describe('GraphqlPortalPublishPage', () => {
     await screen.findByDisplayValue('Countries GraphQL API');
     await user.click(screen.getByRole('tab', { name: 'Documentation' }));
     const row = (await screen.findByText('Schema guide')).closest('[role="row"]') as HTMLElement;
+    expect(within(row).getByRole('checkbox')).not.toBeChecked();
     await user.click(within(row).getByRole('checkbox'));
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
