@@ -156,6 +156,13 @@ func main() {
 		slog.Bool("skip_invalid_deployments_on_startup", cfg.Controller.Server.SkipInvalidDeploymentsOnStartup),
 	)
 
+	// Install the {{ env }} access policy for artifact specs before anything
+	// renders an artifact (startup bootstrap, REST handlers, control-plane events).
+	if err := cfg.InstallArtifactEnvAccessPolicy(log); err != nil {
+		log.Error("Invalid artifact env access configuration", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	if !cfg.Controller.Auth.Basic.Enabled && !cfg.Controller.Auth.IDP.Enabled {
 		log.Warn("No authentication configured: both basic auth and IDP are disabled. Gateway Controller API will allow all requests without authentication")
 	}

@@ -35,6 +35,7 @@ import (
 	"github.com/wso2/api-platform/common/configinterpolate"
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 )
 
 const (
@@ -1931,6 +1932,12 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Validate the artifact-template env allow list; a malformed entry refuses
+	// startup rather than being silently ignored.
+	if _, err := c.ArtifactEnvAccessPolicy(); err != nil {
+		return err
+	}
+
 	// Validate vhost configuration
 	if err := c.validateVHostsConfig(); err != nil {
 		return err
@@ -2272,6 +2279,93 @@ func (c *Config) validateTimeoutConfig() error {
 }
 
 // validatePolicyEngineConfig validates the policy engine configuration
+// ArtifactEnvAccessPolicy builds the policy that scopes which environment
+// variables {{ env "NAME" }} may read when rendering artifact specs, from
+// [policy_engine.env_access].allow_list. The section lives under policy_engine
+// because it governs what policy params can resolve to, but only the controller
+// reads it — rendering happens here, before config reaches the policy engine.
+//
+// When allow_list is not set (or is a blank string, e.g. from an unset
+// {{ env }} config token), every variable is readable, as in earlier releases.
+// When it is set, only the listed names are readable; an empty array permits
+// none. allow_list is a TOML array of names, or one comma-separated string.
+func (c *Config) ArtifactEnvAccessPolicy() (*funcs.EnvAccessPolicy, error) {
+	entries, configured, err := c.artifactEnvAllowList()
+	if err != nil {
+		return nil, err
+	}
+	if !configured {
+		return funcs.UnrestrictedEnvAccessPolicy(), nil
+	}
+	policy, err := funcs.NewEnvAccessPolicy(entries)
+	if err != nil {
+		return nil, fmt.Errorf("policy_engine.env_access.allow_list: %w", err)
+	}
+	return policy, nil
+}
+
+// InstallArtifactEnvAccessPolicy builds the {{ env }} access policy from this
+// configuration and installs it process-wide. Every binary that renders artifact
+// specs (gateway-controller, event-gateway controller) must call it at startup,
+// before anything renders: until a policy is installed every read is refused.
+func (c *Config) InstallArtifactEnvAccessPolicy(log *slog.Logger) error {
+	policy, err := c.ArtifactEnvAccessPolicy()
+	if err != nil {
+		return err
+	}
+	funcs.SetEnvAccessPolicy(policy)
+	if log == nil {
+		return nil
+	}
+	if policy.Unrestricted() {
+		log.Info("Artifact templates may read any environment variable; set policy_engine.env_access.allow_list to restrict them")
+		return nil
+	}
+	exactCount, prefixCount := policy.Counts()
+	log.Info("Artifact template environment variable access is restricted to an allow list",
+		slog.Int("exact_entries", exactCount),
+		slog.Int("prefix_entries", prefixCount))
+	return nil
+}
+
+// artifactEnvAllowList returns the configured allow list entries and whether an
+// allow list is configured at all.
+func (c *Config) artifactEnvAllowList() ([]string, bool, error) {
+	section, ok := c.PolicyEngine["env_access"]
+	if !ok || section == nil {
+		return nil, false, nil
+	}
+	sectionMap, ok := section.(map[string]interface{})
+	if !ok {
+		return nil, false, fmt.Errorf("policy_engine.env_access must be a table")
+	}
+	raw, ok := sectionMap["allow_list"]
+	if !ok || raw == nil {
+		return nil, false, nil
+	}
+	switch v := raw.(type) {
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return nil, false, nil
+		}
+		return strings.Split(v, ","), true, nil
+	case []string:
+		return v, true, nil
+	case []interface{}:
+		entries := make([]string, 0, len(v))
+		for _, item := range v {
+			s, ok := item.(string)
+			if !ok {
+				return nil, false, fmt.Errorf("policy_engine.env_access.allow_list entries must be strings")
+			}
+			entries = append(entries, s)
+		}
+		return entries, true, nil
+	default:
+		return nil, false, fmt.Errorf("policy_engine.env_access.allow_list must be an array of strings")
+	}
+}
+
 func (c *Config) validatePolicyEngineConfig() error {
 	policyEngine := c.Router.PolicyEngine
 

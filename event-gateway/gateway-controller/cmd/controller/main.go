@@ -182,6 +182,13 @@ func main() {
 		slog.Bool("event_gateway_enabled", eventGatewayCfg.Enabled),
 	)
 
+	// Install the {{ env }} access policy for artifact specs before anything
+	// renders an artifact; the shared deployment code refuses every read until then.
+	if err := cfg.InstallArtifactEnvAccessPolicy(log); err != nil {
+		log.Error("Invalid artifact env access configuration", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	if !cfg.Controller.Auth.Basic.Enabled && !cfg.Controller.Auth.IDP.Enabled {
 		log.Warn("No authentication configured: both basic auth and IDP are disabled. Event-Gateway-Controller API will allow all requests without authentication")
 	}
