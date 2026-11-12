@@ -107,7 +107,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_LoadsModelEndpoints(t *
 		{UUID: "model-1", Kind: models.KindModel, Handle: "gpt", DisplayName: "GPT", Version: "v1.0"},
 	}
 	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(configs, runtimeStore, nil, transformer,
-		newDiscardLogger(), false)
+		newDiscardLogger(), false, nil)
 
 	assert.NoError(t, err)
 	assert.Equal(t, 1, loadedCount)
