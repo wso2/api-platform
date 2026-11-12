@@ -92,7 +92,8 @@ type Request struct {
 	Resource   string `json:"resource,omitempty"`
 	APIVersion string `json:"apiVersion,omitempty"`
 	Metadata   string `json:"metadata,omitempty"`
-	// Status is the HTTP status the service answered the request with.
+	// Status is the HTTP status the service answered the request with, or 0 when the caller left
+	// before the answer was sent.
 	Status int `json:"status"`
 }
 
@@ -183,17 +184,23 @@ func (s *Service) scoped(fn func(string, http.ResponseWriter, *http.Request)) ht
 	}
 }
 
-// admit records a token request under key and returns its 1-based position in the partition and
-// its status. A malformed request is answered 400; a well-formed one gets the status decide picks
-// for its position among the partition's well-formed requests, so a malformed request never uses
-// up a one-time answer. It reports false when the tenant budget is exhausted.
-func (s *Service) admit(key string, req Request, wellFormed bool, decide func(eligible int) int) (int, int, bool) {
+// admission is an admitted request: its 1-based position in the partition, its status, and its
+// index in the partition's retained requests, or -1 when the retention cap left it out.
+type admission struct {
+	n, status, index int
+}
+
+// admit records a token request under key. A malformed request is answered 400; a well-formed one
+// gets the status decide picks for its position among the partition's well-formed requests, so a
+// malformed request never uses up a one-time answer. It reports false when the tenant budget is
+// exhausted.
+func (s *Service) admit(key string, req Request, wellFormed bool, decide func(eligible int) int) (admission, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p := s.partitions[key]
 	if p == nil {
 		if len(s.partitions) >= maxPartitions {
-			return 0, 0, false
+			return admission{}, false
 		}
 		p = &partition{}
 		s.partitions[key] = p
@@ -205,10 +212,25 @@ func (s *Service) admit(key string, req Request, wellFormed bool, decide func(el
 	} else {
 		req.Status = http.StatusBadRequest
 	}
+	a := admission{n: p.count, status: req.Status, index: -1}
 	if len(p.requests) < maxRetainedRequests {
+		a.index = len(p.requests)
 		p.requests = append(p.requests, req)
 	}
-	return p.count, req.Status, true
+	return a, true
+}
+
+// abandon records that the caller of an admitted request left before it was answered: the
+// request keeps its place in the log and count, with status 0.
+func (s *Service) abandon(key string, a admission) {
+	if a.index < 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p := s.partitions[key]; p != nil {
+		p.requests[a.index].Status = 0
+	}
 }
 
 // recorded reports GET /test/requests as {"count": n, "requests": [...]}, oldest first.
