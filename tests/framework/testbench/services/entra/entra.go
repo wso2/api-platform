@@ -97,7 +97,10 @@ type Request struct {
 }
 
 type partition struct {
+	// count is every request the partition received; eligible is the well-formed ones, the
+	// count that picks a one-time answer.
 	count    int
+	eligible int
 	requests []Request
 }
 
@@ -180,21 +183,28 @@ func (s *Service) scoped(fn func(string, http.ResponseWriter, *http.Request)) ht
 	}
 }
 
-// admit records a token request and returns its 1-based position for the tenant and the status
-// decide picks for that position. It reports false when the tenant budget is exhausted.
-func (s *Service) admit(tenant string, req Request, decide func(n int) int) (int, int, bool) {
+// admit records a token request under key and returns its 1-based position in the partition and
+// its status. A malformed request is answered 400; a well-formed one gets the status decide picks
+// for its position among the partition's well-formed requests, so a malformed request never uses
+// up a one-time answer. It reports false when the tenant budget is exhausted.
+func (s *Service) admit(key string, req Request, wellFormed bool, decide func(eligible int) int) (int, int, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	p := s.partitions[tenant]
+	p := s.partitions[key]
 	if p == nil {
 		if len(s.partitions) >= maxPartitions {
 			return 0, 0, false
 		}
 		p = &partition{}
-		s.partitions[tenant] = p
+		s.partitions[key] = p
 	}
 	p.count++
-	req.Status = decide(p.count)
+	if wellFormed {
+		p.eligible++
+		req.Status = decide(p.eligible)
+	} else {
+		req.Status = http.StatusBadRequest
+	}
 	if len(p.requests) < maxRetainedRequests {
 		p.requests = append(p.requests, req)
 	}
