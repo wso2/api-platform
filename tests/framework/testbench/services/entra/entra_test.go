@@ -512,6 +512,16 @@ func imdsGet(t *testing.T, svc *Service, block string, query url.Values, header 
 	return serve(t, svc.Handler(), req)
 }
 
+// imdsGetRaw sends a managed identity token request whose query string is sent exactly as given.
+func imdsGetRaw(t *testing.T, svc *Service, block, rawQuery string, header http.Header) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/"+block+"/metadata/identity/oauth2/token?"+rawQuery, nil)
+	for name, values := range header {
+		req.Header[name] = values
+	}
+	return serve(t, svc.Handler(), req)
+}
+
 // imdsRecorded returns the block's IMDS request log for an identity: a client ID, or
 // SystemAssigned.
 func imdsRecorded(t *testing.T, svc *Service, block, identity string) requestLog {
@@ -612,6 +622,33 @@ func TestIMDSRejectsAMalformedRequest(t *testing.T) {
 			require.Equal(t, http.StatusBadRequest, log.Requests[0].Status)
 		})
 	}
+}
+
+// A query string that does not parse cleanly is rejected, not read with the bad pairs left out.
+func TestIMDSRejectsAMalformedQueryString(t *testing.T) {
+	base := "api-version=" + IMDSAPIVersion + "&client_id=" + testManagedClientID
+	cases := []struct{ name, rawQuery string }{
+		{"a bad escape in a repeated parameter", base + "&resource=" + url.QueryEscape(FoundryAudience) + "&resource=%ZZ"},
+		{"a semicolon", base + "&resource=" + url.QueryEscape(FoundryAudience) + ";x=y"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			svc := New()
+			rec := imdsGetRaw(t, svc, testBlock, c.rawQuery, metadataTrue)
+			require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+			require.JSONEq(t, `{"error":"invalid_request","error_description":"The query string is malformed"}`, rec.Body.String())
+			log := imdsRecorded(t, svc, testBlock, testManagedClientID)
+			require.Equal(t, 1, log.Count, "a malformed query is still recorded")
+			require.Equal(t, http.StatusBadRequest, log.Requests[0].Status)
+		})
+	}
+
+	// A semicolon that hides client_id would otherwise get a token for the system-assigned identity.
+	svc := New()
+	hidden := "api-version=" + IMDSAPIVersion + "&resource=" + url.QueryEscape(FoundryAudience) + "&client_id=" + testManagedClientID + ";x=y"
+	require.Equal(t, http.StatusBadRequest, imdsGetRaw(t, svc, testBlock, hidden, metadataTrue).Code)
+	require.Equal(t, 1, imdsRecorded(t, svc, testBlock, SystemAssigned).Count,
+		"the rejection is logged under the identity the query's well-formed part names")
 }
 
 func TestIMDSModesAreChosenByResource(t *testing.T) {
