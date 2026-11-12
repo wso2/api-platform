@@ -41,6 +41,7 @@ const (
 	KindLlmProviderTemplate ArtifactKind = "LlmProviderTemplate"
 	KindAgent               ArtifactKind = "Agent"
 	KindGraphQLApi          ArtifactKind = "GraphQLApi"
+	KindBudget              ArtifactKind = "Budget"
 )
 
 // DesiredState represents the intended deployment state of an API configuration.

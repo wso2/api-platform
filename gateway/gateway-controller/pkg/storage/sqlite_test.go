@@ -93,6 +93,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 		"llm_proxies",
 		"mcp_proxies",
 		"graphql_apis",
+		"budgets",
 		"certificates",
 		"llm_provider_templates",
 		"agents",
@@ -981,6 +982,33 @@ func TestSQLite_RepairsVersion6DatabaseWithoutGraphQLAPIs(t *testing.T) {
 	assert.NilError(t, rawDB.Close())
 
 	assertStartsLikeFreshDatabase(t, stuckPath, filepath.Join(tmpDir, "fresh.db"))
+}
+
+// TestSQLite_AddsBudgetsTableToExistingVersion6Database checks a version 6
+// database without the budgets table gains it at startup.
+func TestSQLite_AddsBudgetsTableToExistingVersion6Database(t *testing.T) {
+	tmpDir := t.TempDir()
+	existingPath := filepath.Join(tmpDir, "existing.db")
+
+	rawDB, err := sql.Open("sqlite3", existingPath)
+	assert.NilError(t, err)
+	_, err = rawDB.Exec(schemaSQL)
+	assert.NilError(t, err)
+	_, err = rawDB.Exec(`DROP TABLE budgets`)
+	assert.NilError(t, err)
+	var version int
+	assert.NilError(t, rawDB.QueryRow("PRAGMA user_version").Scan(&version))
+	assert.Equal(t, version, currentSchemaVersion)
+	assert.NilError(t, rawDB.Close())
+
+	assertStartsLikeFreshDatabase(t, existingPath, filepath.Join(tmpDir, "fresh.db"))
+
+	rawDB, err = sql.Open("sqlite3", existingPath)
+	assert.NilError(t, err)
+	defer rawDB.Close()
+	var tables int
+	assert.NilError(t, rawDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'budgets'`).Scan(&tables))
+	assert.Equal(t, tables, 1)
 }
 
 // releasedV5SchemaSHA256 is the SHA-256 of gateway-controller-db.sql as gateway
