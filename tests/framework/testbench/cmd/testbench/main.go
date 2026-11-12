@@ -51,6 +51,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/opa"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/specs"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/streamfault"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/stripe"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/tlsbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
@@ -139,6 +140,7 @@ func services() ([]testbench.Service, error) {
 		specsSvc,
 		aws.New(),
 		faultinjection.New(),
+		streamfault.New(),
 	}
 	if cert, key := os.Getenv(jev.EnvTLSCert), os.Getenv(jev.EnvTLSKey); cert != "" || key != "" {
 		jevTLS, err := jevSvc.OverTLS([]byte(cert), []byte(key))

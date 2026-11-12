@@ -1,0 +1,44 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Override layered on top of docker-compose.test.yaml to run the policy engine with
+# the fault flow handling upstream failures. Combine via COMPOSE_FILE:
+#   COMPOSE_FILE=docker-compose.test.yaml:docker-compose.test.faultflow.override.yaml
+# (see the `test-faultflow` Makefile target).
+#
+# An OVERRIDE rather than a second full compose file, and a config FRAGMENT rather
+# than a second full config: the policy engine accepts -config more than once and
+# merges last-wins, and the entrypoint forwards every --pol.* argument in order, so
+# the delta is one stanza. The vhosts and postgres variants predate that and
+# duplicate ~300 lines each, which is why they carry a "keep in sync" warning.
+#
+# Only gateway-runtime is touched. handle_upstream_faults is read by the policy
+# engine alone; the controller shares the same config file but has no interest in
+# it, so overriding it there would suggest a coupling that does not exist.
+services:
+  gateway-runtime:
+    # Replaces the base command. The second --pol.config is layered over the first.
+    command:
+      - "--pol.config"
+      - "/etc/policy-engine/config.toml"
+      - "--pol.config"
+      - "/etc/policy-engine/fault-flow.toml"
+    # A NEW mount target, so this merges with the base's volumes rather than
+    # colliding with the config mount already there.
+    volumes:
+      - ./test-config.faultflow.toml:/etc/policy-engine/fault-flow.toml:ro

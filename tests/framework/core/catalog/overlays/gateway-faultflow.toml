@@ -1,0 +1,21 @@
+# The fault-flow posture: a failing response runs through the FAULT chain instead of the
+# response chain.
+#
+# Worth a block of its own rather than a suite-wide default. For model-failover the responses
+# diverted here are exactly the ones it grades, so a regression on this path leaves the policy
+# not degraded but inert - no health recorded, no target suspended, the upstream's own error
+# reaching the client - while every scenario in the ordinary blocks still passes. The failure
+# mode is silence, which is what a separate posture has to exist for.
+#
+# Not the default because it is process-level: it changes error handling for every API and
+# every policy on the gateway, so adopting it everywhere is a platform decision rather than a
+# failover one.
+
+[policy_engine.fault_policies]
+handle_upstream_faults = true
+
+# The line that proves the posture is on is written at DEBUG, and the base config runs at
+# info. Without this the scenario could not tell a fault-flow run from an ordinary one - which
+# is the single thing this block exists to establish.
+[policy_engine.logging]
+level = "debug"

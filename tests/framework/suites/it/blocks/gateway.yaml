@@ -66,6 +66,69 @@ blocks:
       - name: api-deploy
         features:
           - features/gateway/core/api_deploy.feature
+      # Failover re-attempts one client request against several providers, so it needs
+      # the testbench as a healthy fallback and an unresolvable host as the dead primary.
+      #
+      # Every failover runner is gated on a gateway newer than 1.2.0, here and in the two
+      # other blocks that carry one. model-failover is not in a released gateway yet, so a
+      # released leg has no policy to attach and every scenario would fail for a reason that
+      # is not about failover. The gate lifts itself the moment the policy ships.
+      - name: model-failover-core
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_core.feature
+      - name: model-failover-per-attempt
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_per_attempt.feature
+      - name: model-failover-attachment-scope
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_attachment_scope.feature
+      - name: model-failover-layered
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_routing_layered.feature
+      - name: model-failover-chain
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_chain.feature
+      - name: model-failover-suspension
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_suspension.feature
+      - name: model-failover-per-provider
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_per_provider.feature
+      - name: model-failover-request-integrity
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_request_integrity.feature
+      - name: model-failover-other-kinds
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_other_kinds.feature
+      - name: model-failover-error-surface
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_error_surface.feature
+      - name: model-failover-health-grading
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_health_grading.feature
+      - name: model-failover-steering
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_steering.feature
+      - name: model-failover-streaming
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_streaming.feature
+      - name: model-failover-abandoned-caller
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_abandoned_caller.feature
       - name: upstream-url-validation
         tags: "gateway-version>=1.2.0"
         features:
@@ -317,6 +380,23 @@ blocks:
   # Mutual TLS outcomes in the access log, analytics and metrics. The block reads gateway-wide
   # certificate gauges and its own JSON access log lines, so runners take turns. The overlay never
   # touches present_default_identity, which also covers the on/default-identity scenario.
+  # The fault-flow posture, which is process-level: with handle_upstream_faults on, a failing
+  # response runs through the fault chain instead of the response chain. It cannot be a tag or a
+  # scenario setting, because the gateway has to be started with it - which is why it gets a
+  # block rather than joining an existing one.
+  - name: gateway-faultflow
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-faultflow.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: model-failover-fault-flow
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_fault_flow.feature
+
   - name: gateway-mtls-observability-default-identity
     parallel: 1
     components:
@@ -573,6 +653,15 @@ blocks:
 
   # The listener's request header timeout is 5s (backend-timeout.toml), a gateway-wide setting
   # gateway-core's runners must not see.
+      - name: model-failover-inert
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_inert.feature
+      - name: model-failover-accounting
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/ai/model_failover_accounting.feature
+
   - name: backend-timeout
     parallel: 2
     components:
