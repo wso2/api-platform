@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -324,6 +325,19 @@ func (s *LLMDeploymentService) DeployLLMProviderConfiguration(params LLMDeployme
 		return nil, fmt.Errorf("provider validation failed with %d error(s): %s", len(validationErrors), strings.Join(errs, "; "))
 	}
 
+	// A provider with exposure none publishes no route, and an LLM proxy reaches its
+	// providers through their routes, so a provider a proxy uses keeps its route.
+	if !models.IsLLMProviderExposed(renderedProvider.Spec) {
+		proxies, err := s.llmProxiesUsingProvider(renderedProvider.Metadata.Name)
+		if err != nil {
+			return nil, err
+		}
+		if len(proxies) > 0 {
+			return nil, conflictf("provider '%s' cannot have exposure 'none': LLM proxy(s) %s reach it through its route; "+
+				"remove it from those proxies first", renderedProvider.Metadata.Name, strings.Join(proxies, ", "))
+		}
+	}
+
 	// Transform rendered config to RestAPI configuration. Configuration on the resulting
 	// storedCfg is built from rendered values; SourceConfiguration retains the unrendered
 	// providerConfig so replicas can re-render on consumption.
@@ -509,6 +523,9 @@ func (s *LLMDeploymentService) DeployLLMProxyConfiguration(params LLMDeploymentP
 			errs = append(errs, fmt.Sprintf("%d. %s: %s", i+1, e.Field, e.Message))
 		}
 		return nil, fmt.Errorf("%w: %d error(s): %s", ErrLLMProxyValidation, len(validationErrors), strings.Join(errs, "; "))
+	}
+	if err := s.ensureProxyProvidersExposed(&renderedProxy); err != nil {
+		return nil, err
 	}
 
 	// Transform rendered config to RestAPI. Configuration is built from rendered
@@ -1222,6 +1239,56 @@ func (s *LLMDeploymentService) UpdateLLMProvider(handle string, params LLMDeploy
 	s.warnUnresolvableDependentModels(handle, params.Logger)
 	s.pushDeployableArtifact(result, params.CorrelationID, params.Logger)
 	return result, nil
+}
+
+// ensureProxyProvidersExposed refuses an LLM proxy that names a provider with
+// exposure none: a proxy reaches its providers through their own routes, which
+// such a provider does not publish. A provider that cannot be found is left to the
+// transformer, which reports it.
+func (s *LLMDeploymentService) ensureProxyProvidersExposed(proxy *api.LLMProxyConfiguration) error {
+	attachments, err := models.NormaliseLLMProxyAttachments(proxy.Spec)
+	if err != nil {
+		return nil
+	}
+	for _, a := range attachments {
+		cfg, err := s.db.GetConfigByKindAndHandle(string(api.LLMProviderConfigurationKindLlmProvider), a.Id)
+		if err != nil || cfg == nil {
+			continue
+		}
+		if provider, ok := cfg.SourceConfiguration.(api.LLMProviderConfiguration); ok && !models.IsLLMProviderExposed(provider.Spec) {
+			return fmt.Errorf("%w: provider '%s' has exposure 'none' and serves no route, so an LLM proxy cannot use it",
+				ErrLLMProxyValidation, a.Id)
+		}
+	}
+	return nil
+}
+
+// llmProxiesUsingProvider returns the handles of the stored LLM proxies that name
+// the provider, as their primary or an additional provider, sorted.
+func (s *LLMDeploymentService) llmProxiesUsingProvider(providerHandle string) ([]string, error) {
+	configs, err := s.db.GetAllConfigsByKind(string(api.LLMProxyConfigurationKindLlmProxy))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list LLM proxies: %w", err)
+	}
+	var handles []string
+	for _, cfg := range configs {
+		proxy, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
+		if !ok {
+			continue
+		}
+		attachments, err := models.NormaliseLLMProxyAttachments(proxy.Spec)
+		if err != nil {
+			continue
+		}
+		for _, a := range attachments {
+			if a.Id == providerHandle {
+				handles = append(handles, cfg.Handle)
+				break
+			}
+		}
+	}
+	sort.Strings(handles)
+	return handles, nil
 }
 
 // warnUnresolvableDependentModels logs every Model a provider change has left
