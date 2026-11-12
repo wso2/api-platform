@@ -67,16 +67,12 @@ const CLOUD_DEPLOY_SCOPES = [
 ] as const;
 
 /**
- * Scopes that change a project (the accepted lists of UpdateProject and
- * DeleteProject): one of them is needed for the Manage project button, as the
- * WSO2 Cloud console shows its own Manage button only to someone who may update
- * or delete the project.
+ * Scopes that change a project (the accepted list of UpdateProject): one of them
+ * is needed for the Manage project button, as the WSO2 Cloud console shows its
+ * own Manage button only to someone who may change the project. Project delete
+ * is left out: WSO2 Cloud's roles do not grant it.
  */
-const MANAGE_PROJECT_SCOPES = [
-  'ap:project:update',
-  'ap:project:delete',
-  'ap:project:manage',
-] as const;
+const MANAGE_PROJECT_SCOPES = ['ap:project:update', 'ap:project:manage'] as const;
 
 /** Cloud console branding used by the host header and login page. */
 export const cloudBrandLogo: BrandLogo = {
