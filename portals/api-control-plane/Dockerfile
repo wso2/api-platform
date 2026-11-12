@@ -14,6 +14,10 @@
 # external IdP) and serves the SPA itself — there is no nginx in this image.
 #
 #   docker build -t api-control-plane .
+#
+# To serve the console under a path prefix on a shared origin (e.g. /console),
+# build with --build-arg VITE_APP_BASE_PATH=/console/. Whatever serves the
+# bundle must serve it under that same prefix.
 # -----------------------------------------------------------------------------
 
 ###########################
@@ -31,11 +35,14 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
+# URL path prefix baked into the bundle's asset URLs. "/" serves from the origin root.
+ARG VITE_APP_BASE_PATH=/
+
 COPY . .
 RUN if [ "$ENABLE_COVERAGE" = "true" ]; then \
-        NODE_OPTIONS=--max-old-space-size=8192 VITE_COVERAGE=true VITE_APP_BASE_PATH=/ npm run build -- --sourcemap hidden; \
+        NODE_OPTIONS=--max-old-space-size=8192 VITE_COVERAGE=true VITE_APP_BASE_PATH="$VITE_APP_BASE_PATH" npm run build -- --sourcemap hidden; \
     else \
-        VITE_APP_BASE_PATH=/ npm run build; \
+        VITE_APP_BASE_PATH="$VITE_APP_BASE_PATH" npm run build; \
     fi
 
 ###########################

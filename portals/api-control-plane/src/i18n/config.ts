@@ -20,7 +20,9 @@ export const SUPPORTED_LOCALES = ['en', 'en-XA'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
 export const DEFAULT_LOCALE: SupportedLocale = 'en';
-export const LOCALE_STORAGE_KEY = 'app.locale';
+// Namespaced: served under a base path, the console shares an origin with
+// whatever else is hosted there, and a generic key would collide with it.
+export const LOCALE_STORAGE_KEY = 'apicp.locale';
 
 /**
  * Pseudo-locale for layout testing. `en-XA` is a longer, accented version of
