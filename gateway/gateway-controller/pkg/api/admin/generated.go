@@ -33,6 +33,23 @@ const (
 	Undeployed ConfigDumpAPIMetadataStatus = "undeployed"
 )
 
+// Defines values for HealthCheckStatus.
+const (
+	Down HealthCheckStatus = "down"
+	Up   HealthCheckStatus = "up"
+)
+
+// Defines values for HealthForbiddenResponseStatus.
+const (
+	Forbidden HealthForbiddenResponseStatus = "forbidden"
+)
+
+// Defines values for HealthResponseStatus.
+const (
+	Healthy   HealthResponseStatus = "healthy"
+	Unhealthy HealthResponseStatus = "unhealthy"
+)
+
 // CertificateResponse defines model for CertificateResponse.
 type CertificateResponse struct {
 	Count    *int       `json:"count,omitempty" yaml:"count,omitempty"`
@@ -101,14 +118,46 @@ type ForbiddenResponse struct {
 	Message string `json:"message" yaml:"message"`
 }
 
+// HealthCheck defines model for HealthCheck.
+type HealthCheck struct {
+	// Error Generic reason the check is down; present only when down
+	Error *string `json:"error,omitempty" yaml:"error,omitempty"`
+
+	// Since When the check started failing; present only when down
+	Since *time.Time `json:"since,omitempty" yaml:"since,omitempty"`
+
+	// Status Whether the dependency is usable
+	Status HealthCheckStatus `json:"status" yaml:"status"`
+
+	// Warning Generic note on a check that is up but under strain, such as an exhausted connection pool; present only while it applies, and never makes the check down
+	Warning *string `json:"warning,omitempty" yaml:"warning,omitempty"`
+}
+
+// HealthCheckStatus Whether the dependency is usable
+type HealthCheckStatus string
+
+// HealthForbiddenResponse Answer to a client outside the allowed set; it carries no check detail
+type HealthForbiddenResponse struct {
+	Status HealthForbiddenResponseStatus `json:"status" yaml:"status"`
+}
+
+// HealthForbiddenResponseStatus defines model for HealthForbiddenResponse.Status.
+type HealthForbiddenResponseStatus string
+
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
-	// Status Health status ("healthy")
-	Status *string `json:"status,omitempty" yaml:"status,omitempty"`
+	// Checks Result of each dependency check, keyed by check name (for example `database`)
+	Checks *map[string]HealthCheck `json:"checks,omitempty" yaml:"checks,omitempty"`
+
+	// Status Health status ("healthy" when every check is up, otherwise "unhealthy")
+	Status HealthResponseStatus `json:"status" yaml:"status"`
 
 	// Timestamp Timestamp of the health check
-	Timestamp *time.Time `json:"timestamp,omitempty" yaml:"timestamp,omitempty"`
+	Timestamp time.Time `json:"timestamp" yaml:"timestamp"`
 }
+
+// HealthResponseStatus Health status ("healthy" when every check is up, otherwise "unhealthy")
+type HealthResponseStatus string
 
 // UnauthorizedResponse defines model for UnauthorizedResponse.
 type UnauthorizedResponse struct {
@@ -131,9 +180,12 @@ type ServerInterface interface {
 	// Dump current configuration state
 	// (GET /config_dump)
 	GetConfigDump(w http.ResponseWriter, r *http.Request)
-	// Health check
+	// Liveness check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// Readiness check
+	// (GET /ready)
+	GetReady(w http.ResponseWriter, r *http.Request)
 	// Get xDS policy sync status
 	// (GET /xds_sync_status)
 	GetXDSSyncStatus(w http.ResponseWriter, r *http.Request)
@@ -173,6 +225,20 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetReady operation middleware
+func (siw *ServerInterfaceWrapper) GetReady(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetReady(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -324,6 +390,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc("GET "+options.BaseURL+"/config_dump", wrapper.GetConfigDump)
 	m.HandleFunc("GET "+options.BaseURL+"/health", wrapper.GetHealth)
+	m.HandleFunc("GET "+options.BaseURL+"/ready", wrapper.GetReady)
 	m.HandleFunc("GET "+options.BaseURL+"/xds_sync_status", wrapper.GetXDSSyncStatus)
 
 	return m
@@ -332,34 +399,45 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file
