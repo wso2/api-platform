@@ -158,7 +158,7 @@ func (s *LLMDeploymentService) ProvisionModelEndpoint(logger *slog.Logger) error
 		if err != nil {
 			return err
 		}
-		result, err := s.deployDefaultModelEndpoint(endpoint, "", logger)
+		result, err := s.deployDefaultModelEndpoint(endpoint, "", "", logger)
 		if err != nil {
 			if storage.IsConflictError(err) {
 				logger.Info("Default model endpoint was provisioned concurrently by another replica")
@@ -182,7 +182,8 @@ func (s *LLMDeploymentService) ProvisionModelEndpoint(logger *slog.Logger) error
 		return nil
 	}
 	stored.Spec.Context = &configured
-	if _, err := s.deployDefaultModelEndpoint(stored, existing.UUID, logger); err != nil {
+	// Moved as it stands: an endpoint an operator undeployed stays undeployed.
+	if _, err := s.deployDefaultModelEndpoint(stored, existing.UUID, existing.DesiredState, logger); err != nil {
 		return fmt.Errorf("failed to move the default model endpoint to context '%s': %w", configured, err)
 	}
 	logger.Info("Default model endpoint moved to the configured context", slog.String("context", configured))
@@ -230,7 +231,7 @@ func (s *LLMDeploymentService) newDefaultModelEndpoint(logger *slog.Logger) (api
 }
 
 func (s *LLMDeploymentService) deployDefaultModelEndpoint(endpoint api.ModelEndpointConfiguration, id string,
-	logger *slog.Logger) (*APIDeploymentResult, error) {
+	desiredState models.DesiredState, logger *slog.Logger) (*APIDeploymentResult, error) {
 	data, err := json.Marshal(endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode the default model endpoint: %w", err)
@@ -241,6 +242,7 @@ func (s *LLMDeploymentService) deployDefaultModelEndpoint(endpoint api.ModelEndp
 		Origin:       models.OriginGatewayAPI,
 		Logger:       logger,
 		Provisioning: true,
+		DesiredState: desiredState,
 	}
 	if id != "" {
 		params.ID = id
