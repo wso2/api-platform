@@ -45,6 +45,7 @@ import {
 import { SecondaryText } from '@/components/common/SecondaryText';
 import { EmptyState, ErrorState } from '@/components/StateViews';
 import { runtimeConfig } from '@/config/runtime';
+import { useTrackFeature, type FeatureDimensions } from '@/featureUsage';
 import { iconTileSx } from '@/theme/receipes';
 import { POLICY_DND_MIME, setDraggedPolicy } from './policyDnd';
 
@@ -146,14 +147,25 @@ function PolicySkeletonCard() {
  * click fallback (onSelect) for non-DnD attach.
  */
 export function AvailablePoliciesPanel({
+  artifactKind,
   onSelect,
   disabled = false,
 }: {
+  /** The kind of API whose policies page shows the catalog, for usage analytics. */
+  artifactKind: NonNullable<FeatureDimensions<'apip.policies.policy-hub-browse'>['artifact_kind']>;
   onSelect: (policy: PolicySummary) => void;
   /** Catalog stays browsable, but its policies can be neither dragged nor clicked to attach. */
   disabled?: boolean;
 }) {
   const intl = useIntl();
+  const trackFeature = useTrackFeature();
+  const openReported = useRef(false);
+  useEffect(() => {
+    // Once per visit to the catalog, however often identity re-renders this.
+    if (openReported.current) return;
+    openReported.current = true;
+    trackFeature('apip.policies.policy-hub-browse', { artifact_kind: artifactKind });
+  }, [artifactKind, trackFeature]);
   const [search, setSearch] = useState('');
   const [activeCategories, setActiveCategories] = useState<string[]>([]);
   const [debouncedSearch, setDebouncedSearch] = useState('');

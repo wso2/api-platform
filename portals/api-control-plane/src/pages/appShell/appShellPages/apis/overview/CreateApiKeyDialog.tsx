@@ -55,6 +55,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { CreateApiKeyBody } from '@/api/resources/apiKeys';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { useFormatters } from '@/i18n/useFormatters';
 
 import { useCreateApiKeyForKind, type ApiKeyApiKind } from './apiKeyKinds';
@@ -321,6 +322,7 @@ export function CreateApiKeyDialog({
   const intl = useIntl();
   const { shortDate } = useFormatters();
   const { notify } = useNotifications();
+  const trackFeature = useTrackFeature();
   const createMutation = useCreateApiKeyForKind(apiKind);
 
   const [name, setName] = useState('');
@@ -375,6 +377,9 @@ export function CreateApiKeyDialog({
     // request asked for.
     const expiresAt = expiryDate(new Date(), parsedDuration, unit);
 
+    trackFeature('apip.security.api-key-create-click', {
+      artifact_kind: apiKind === 'graphql' ? 'graphql-api' : 'rest-api',
+    });
     createMutation.mutate(
       apiId,
       { displayName: trimmedName, expiresIn: { duration: parsedDuration, unit } },

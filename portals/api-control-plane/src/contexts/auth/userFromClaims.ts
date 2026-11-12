@@ -100,6 +100,9 @@ export function userFromClaims(claims: Claims, mappings: ClaimMappings): AuthUse
     scopes: scopes(claims, mappings.scope),
   };
 
+  const subject = strClaim(claims, 'sub');
+  if (subject) user.id = subject;
+
   const role = roleList.join(' ');
   if (role) user.role = role;
 
