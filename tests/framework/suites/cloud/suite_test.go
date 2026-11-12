@@ -151,6 +151,9 @@ func TestCloudSuite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creating the cloud run starter: %v", err)
 	}
+	// The starter prepares only what the selected runners rely on, such as the API Portal for
+	// apip-portal, so a run of apip-basic alone leaves the organisation's portals alone.
+	starter.SelectRunners(selectedRunnerNames(narrowed))
 	// Cleanup runs after every runner has finished, also when a scenario failed or a runner
 	// panicked, and removes what the per-scenario cleanup left in the shared organisation.
 	t.Cleanup(func() {
@@ -198,6 +201,17 @@ func TestCloudSuite(t *testing.T) {
 	})
 }
 
+// selectedRunnerNames lists the runners of every block that survived the selection.
+func selectedRunnerNames(suite *topology.Resolved) []string {
+	names := []string{}
+	for _, block := range suite.Blocks {
+		for _, runner := range block.Runners {
+			names = append(names, runner.Name)
+		}
+	}
+	return names
+}
+
 func TestSuiteShapeReturnsResolvedBlockAndRunnerCounts(t *testing.T) {
 	dir := t.TempDir()
 	fixture := `
@@ -241,4 +255,13 @@ func TestRepoRootFindsWorkspaceRoot(t *testing.T) {
 	root := repoRoot(t)
 	_, err := os.Stat(filepath.Join(root, "go.work"))
 	require.NoError(t, err)
+}
+
+func TestSelectedRunnerNamesListsTheRunnersOfEveryBlock(t *testing.T) {
+	suite := &topology.Resolved{Blocks: []topology.ResolvedBlock{
+		{Runners: []topology.Runner{{Name: "apip-basic"}}},
+		{Runners: []topology.Runner{{Name: "apip-portal"}, {Name: "apip-deploy"}}},
+	}}
+	require.Equal(t, []string{"apip-basic", "apip-portal", "apip-deploy"}, selectedRunnerNames(suite))
+	require.Empty(t, selectedRunnerNames(&topology.Resolved{}))
 }

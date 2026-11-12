@@ -3032,6 +3032,18 @@ type starterPlatform struct {
 	failsWith string
 	// absent makes a gateway lookup answer 404, as when a refused create left nothing behind.
 	absent bool
+
+	// portals are the managed API Portals the organisation holds; the zero value is an
+	// organisation with one active portal, so tests of the gateway need not mention portals.
+	portals        []map[string]any
+	noPortals      bool
+	createdPortals []map[string]any
+	portalCreateAs int
+	portalPolls    int
+	portalActiveAt int
+	portalFails    bool
+	// portalAbsent makes a portal lookup answer 404, as when a refused create left nothing behind.
+	portalAbsent bool
 }
 
 func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
@@ -3076,7 +3088,36 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 				answer["status"], answer["statusReason"] = "FAILED", p.failsWith
 			}
 			_ = json.NewEncoder(w).Encode(answer)
-		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis", "/managed-api-portals"}, r.URL.Path):
+		case r.Method == http.MethodGet && r.URL.Path == "/managed-api-portals":
+			portals := p.portals
+			if portals == nil && !p.noPortals {
+				portals = []map[string]any{{"id": "existing-portal", "status": "active"}}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"list": portals})
+		case r.Method == http.MethodPost && r.URL.Path == "/managed-api-portals":
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			p.createdPortals = append(p.createdPortals, body)
+			if p.portalCreateAs != 0 {
+				w.WriteHeader(p.portalCreateAs)
+				_, _ = w.Write([]byte(`{"error":"conflict"}`))
+				return
+			}
+			w.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": body["handle"], "status": "pending"})
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/managed-api-portals/") && p.portalAbsent:
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/managed-api-portals/"):
+			p.portalPolls++
+			status := "pending"
+			if p.portalPolls >= p.portalActiveAt {
+				status = "active"
+			}
+			if p.portalFails {
+				status = "failed"
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": strings.TrimPrefix(r.URL.Path, "/managed-api-portals/"), "status": status})
+		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis"}, r.URL.Path):
 			// What the finalizer reads: this organisation holds none of it.
 			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{}})
 		default:
@@ -5118,4 +5159,169 @@ func TestAssertCloudResponseStatusAndErrorCode(t *testing.T) {
 
 	require.NoError(t, funnel.Publish(ctx, &httpx.Response{StatusCode: http.StatusUnauthorized, Body: []byte(`{}`)}))
 	require.ErrorContains(t, steps.assertCloudErrorCode(ctx, "UNAUTHORIZED"), "reading the error code")
+}
+
+func ensurePortalForTest(t *testing.T, platform *starterPlatform) (portalOutcome, error) {
+	return ensureDefaultPortal(context.Background(), platform.api(t), defaultPortalName+"-abcde234", slog.Default())
+}
+
+func TestEnsureDefaultPortalLeavesAnActivePortalAlone(t *testing.T) {
+	platform := &starterPlatform{portals: []map[string]any{
+		{"id": "broken", "status": "failed"},
+		{"id": "acme-portal", "status": "active"},
+	}}
+	got, err := ensurePortalForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, portalOutcome{ID: "acme-portal"}, got)
+	require.Empty(t, platform.createdPortals, "an organisation with a portal gets no second one")
+}
+
+func TestEnsureDefaultPortalWaitsForAPortalThatIsBeingBuilt(t *testing.T) {
+	platform := &starterPlatform{noPortals: true, portalActiveAt: 3, portals: []map[string]any{
+		{"id": "building", "status": "pending"},
+	}}
+	got, err := ensurePortalForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, portalOutcome{ID: "building"}, got, "a portal that is being built is waited for, not created again")
+	require.Empty(t, platform.createdPortals)
+	require.GreaterOrEqual(t, platform.portalPolls, 3)
+}
+
+func TestEnsureDefaultPortalCreatesOneWhenTheOrganisationHasNone(t *testing.T) {
+	platform := &starterPlatform{noPortals: true, portalActiveAt: 2}
+	got, err := ensurePortalForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, portalOutcome{ID: "dap-abcde234", Created: true}, got)
+	require.Len(t, platform.createdPortals, 1)
+	require.Equal(t, "dap-abcde234", platform.createdPortals[0]["name"])
+	require.Equal(t, "dap-abcde234", platform.createdPortals[0]["handle"])
+	require.GreaterOrEqual(t, platform.portalPolls, 2, "the portal is waited for until it is active")
+}
+
+func TestEnsureDefaultPortalIgnoresPortalsThatCannotServe(t *testing.T) {
+	platform := &starterPlatform{noPortals: true, portalActiveAt: 1, portals: []map[string]any{
+		{"id": "broken", "status": "failed"},
+		{"id": "going", "status": "deleting"},
+	}}
+	got, err := ensurePortalForTest(t, platform)
+	require.NoError(t, err)
+	require.True(t, got.Created, "a failed or deleting portal is no portal to publish to")
+	require.Len(t, platform.createdPortals, 1)
+}
+
+func TestEnsureDefaultPortalStopsAtOnceWhenThePortalFails(t *testing.T) {
+	platform := &starterPlatform{noPortals: true, portalFails: true}
+	_, err := ensurePortalForTest(t, platform)
+	require.ErrorContains(t, err, "failed to provision")
+}
+
+func TestEnsureDefaultPortalDoesNotWaitForAPortalAConflictLeftNowhere(t *testing.T) {
+	platform := &starterPlatform{noPortals: true, portalCreateAs: http.StatusConflict, portalAbsent: true}
+	_, err := ensurePortalForTest(t, platform)
+	require.ErrorContains(t, err, "creating the managed API Portal")
+	require.ErrorContains(t, err, "409")
+}
+
+func TestEnsureDefaultPortalWaitsForThePortalAConflictPointsAt(t *testing.T) {
+	platform := &starterPlatform{noPortals: true, portalCreateAs: http.StatusConflict, portalActiveAt: 1}
+	got, err := ensurePortalForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, "dap-abcde234", got.ID)
+}
+
+func TestStarterPreparesAPortalAndHandsItToTheFinalizer(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
+	topo := cloudAPIStub(t, platform.handler(t))
+	finalizer := NewFinalizer()
+	starter, err := NewStarter(finalizer)
+	require.NoError(t, err)
+
+	require.NoError(t, starter.Start(context.Background(), topo))
+
+	require.Len(t, platform.createdPortals, 1)
+	require.Equal(t, starter.portalName(), platform.createdPortals[0]["handle"])
+	id, created := starter.Portal()
+	require.Equal(t, starter.portalName(), id)
+	require.True(t, created)
+	require.True(t, finalizer.finals.Owns([]string{starter.portalName()}),
+		"the finalizer must recognise the portal the starter created")
+}
+
+func TestStarterLeavesPortalsAloneWhenThePortalRunnerIsNotSelected(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
+	topo := cloudAPIStub(t, platform.handler(t))
+	starter, err := NewStarter(NewFinalizer())
+	require.NoError(t, err)
+	starter.SelectRunners([]string{"apip-basic", "apip-project"})
+
+	require.NoError(t, starter.Start(context.Background(), topo))
+
+	require.Empty(t, platform.createdPortals, "no selected runner needs a portal")
+	id, created := starter.Portal()
+	require.Empty(t, id)
+	require.False(t, created)
+}
+
+func TestStarterPreparesAPortalWhenThePortalRunnerIsSelected(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
+	topo := cloudAPIStub(t, platform.handler(t))
+	starter, err := NewStarter(NewFinalizer())
+	require.NoError(t, err)
+	starter.SelectRunners([]string{"apip-basic", portalRunner})
+
+	require.NoError(t, starter.Start(context.Background(), topo))
+
+	require.Len(t, platform.createdPortals, 1)
+}
+
+func TestStarterSkipsThePortalWhenTheOrganisationAlreadyHasOne(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1,
+		portals: []map[string]any{{"id": "acme-portal", "status": "active"}}}
+	topo := cloudAPIStub(t, platform.handler(t))
+	starter, err := NewStarter(NewFinalizer())
+	require.NoError(t, err)
+	starter.SelectRunners([]string{portalRunner})
+
+	require.NoError(t, starter.Start(context.Background(), topo))
+
+	require.Empty(t, platform.createdPortals)
+	id, created := starter.Portal()
+	require.Equal(t, "acme-portal", id)
+	require.False(t, created)
+}
+
+func TestStarterPortalHandleIsValid(t *testing.T) {
+	starter, err := NewStarter(nil)
+	require.NoError(t, err)
+	handle := starter.portalName()
+	require.GreaterOrEqual(t, len(handle), 3)
+	require.LessOrEqual(t, len(handle), 40)
+	require.Regexp(t, `^[a-z0-9-]+$`, handle)
+}
+
+func TestFinalizerRemovesThePortalTheStarterCreatedAndKeepsOthers(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	stub := newLeftoverStub()
+	stub.lists["/managed-api-portals"] = []map[string]any{
+		{"id": "dap-abcde234", "name": "dap-abcde234", "handle": "dap-abcde234"},
+		{"id": "acme-portal", "name": "Acme portal", "handle": "acme-portal"},
+	}
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+	finalizer := NewFinalizer()
+	finalizer.Watch(base, "abcde234")
+
+	removed, err := finalizer.Finalize(context.Background())
+	require.NoError(t, err)
+	require.Contains(t, removed, "/managed-api-portals/dap-abcde234")
+	require.NotContains(t, removed, "/managed-api-portals/acme-portal")
 }

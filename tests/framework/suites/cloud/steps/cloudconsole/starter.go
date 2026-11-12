@@ -72,6 +72,16 @@ const gatewayPollInterval = 10 * time.Second
 // gatewayStatusActive is the status of a gateway that is connected and serves traffic.
 const gatewayStatusActive = "ACTIVE"
 
+// defaultPortalName is the base of the name and handle of the managed API Portal the starter
+// creates when the organisation has none. Like the gateway's, it carries the starter's own suffix
+// so the finalizer removes the portal at the end of the run. It is a valid portal handle on its
+// own: lower case letters, digits and dashes, between 3 and 40 characters.
+const defaultPortalName = "dap"
+
+// portalRunner is the runner whose scenarios rely on the managed API Portal the starter prepares.
+// A run that selects no such runner leaves the organisation's portals alone.
+const portalRunner = "apip-portal"
+
 // gatewayOutcome says which gateway the starter settled on and whether it created it.
 type gatewayOutcome struct {
 	// ID is the gateway the scenarios will find.
@@ -81,13 +91,24 @@ type gatewayOutcome struct {
 	Created bool
 }
 
+// portalOutcome says which managed API Portal the starter settled on and whether it created it.
+type portalOutcome struct {
+	// ID is the portal the scenarios will find.
+	ID string
+	// Created is true when the starter built the portal, so the finalizer removes it at the end of
+	// the run. A portal the organisation already had is false here and is never removed.
+	Created bool
+}
+
 // Starter makes sure the organisation a cloud run talks to holds the prerequisites the scenarios
-// rely on. Today that is one regular gateway to deploy to; the scenarios find it with "I find an
-// active APIP gateway" and never create it themselves, because a gateway takes minutes to build.
+// rely on: one regular gateway to deploy to and one managed API Portal to publish to. The
+// scenarios find them with "I find an active APIP gateway" and "I find an active managed API
+// Portal" and never create them themselves, because both take minutes to build.
 //
 // What the starter creates is named with a suffix of its own, which it hands to the Finalizer
 // before it creates anything, so the run-end sweep removes it even when the run fails early. A
-// gateway the organisation already had is never created by the starter and never removed.
+// gateway or portal the organisation already had is never created by the starter and never
+// removed.
 type Starter struct {
 	starter   *starter.Starter
 	client    *httpx.Client
@@ -95,8 +116,11 @@ type Starter struct {
 	suffix    string
 	log       *slog.Logger
 
-	mu      sync.Mutex
-	outcome gatewayOutcome
+	mu            sync.Mutex
+	outcome       gatewayOutcome
+	portalOutcome portalOutcome
+	// runners is the set of runners the run includes; nil means the whole suite.
+	runners map[string]bool
 }
 
 // NewStarter returns a starter that has prepared no organisation yet. The finalizer, when given,
@@ -121,7 +145,12 @@ func (s *Starter) gatewayDisplayName() string {
 	return defaultGatewayDisplayName + "-" + s.suffix
 }
 
-// Suffix is the name suffix of the gateway this starter creates, which a finalizer needs to find it.
+// portalName is the name, and so the handle, of the managed API Portal this starter creates.
+func (s *Starter) portalName() string {
+	return defaultPortalName + "-" + s.suffix
+}
+
+// Suffix is the name suffix of the gateway and portal this starter creates, which a finalizer needs to find it.
 func (s *Starter) Suffix() string { return s.suffix }
 
 // Gateway reports the gateway the last successful Start settled on and whether the starter created
@@ -130,6 +159,38 @@ func (s *Starter) Gateway() (id string, created bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.outcome.ID, s.outcome.Created
+}
+
+// Portal reports the managed API Portal the last successful Start settled on and whether the
+// starter created it.
+func (s *Starter) Portal() (id string, created bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.portalOutcome.ID, s.portalOutcome.Created
+}
+
+// SelectRunners tells the starter which runners the run includes, so it prepares only what they
+// rely on: the managed API Portal is prepared only when the "apip-portal" runner is among them.
+// Without a call, or with a nil list, the starter prepares for the whole suite. It must be called
+// before Start.
+func (s *Starter) SelectRunners(names []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if names == nil {
+		s.runners = nil
+		return
+	}
+	s.runners = make(map[string]bool, len(names))
+	for _, name := range names {
+		s.runners[name] = true
+	}
+}
+
+// needsPortal reports whether the run includes a runner that relies on the managed API Portal.
+func (s *Starter) needsPortal() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.runners == nil || s.runners[portalRunner]
 }
 
 // Start makes sure the organisation behind the block's platform endpoint holds its prerequisites.
@@ -153,7 +214,7 @@ func (s *Starter) StartAt(ctx context.Context, base string) error {
 		s.finalizer.Watch(base, s.suffix)
 	}
 	platform := organisationAPI{client: s.client, base: base, token: token}
-	return s.starter.Ensure(ctx, base, []starter.Prerequisite{
+	prerequisites := []starter.Prerequisite{
 		{Name: "default gateway", Ensure: func(ctx context.Context) error {
 			outcome, err := ensureDefaultGateway(ctx, platform, s.gatewayDisplayName(), s.log)
 			if err == nil {
@@ -163,7 +224,22 @@ func (s *Starter) StartAt(ctx context.Context, base string) error {
 			}
 			return err
 		}},
-	})
+	}
+	if s.needsPortal() {
+		prerequisites = append(prerequisites, starter.Prerequisite{
+			Name: "managed API Portal", Ensure: func(ctx context.Context) error {
+				outcome, err := ensureDefaultPortal(ctx, platform, s.portalName(), s.log)
+				if err == nil {
+					s.mu.Lock()
+					s.portalOutcome = outcome
+					s.mu.Unlock()
+				}
+				return err
+			}})
+	} else {
+		s.log.Info("no selected runner needs a managed API Portal; leaving the organisation's portals alone", "runner", portalRunner)
+	}
+	return s.starter.Ensure(ctx, base, prerequisites)
 }
 
 // organisationAPI sends authenticated requests to the platform's API for one organisation.
@@ -351,4 +427,111 @@ func awaitGatewayActive(ctx context.Context, platform organisationAPI, id string
 		},
 		func(status string) bool { return status == gatewayStatusActive },
 		"waiting for gateway "+id+" to become active")
+}
+
+// ensureDefaultPortal leaves the organisation with a managed API Portal that is active. A portal
+// that is still being built is waited for rather than duplicated; only when the organisation has
+// none that is active or being built is one created.
+func ensureDefaultPortal(ctx context.Context, platform organisationAPI, name string, log *slog.Logger) (portalOutcome, error) {
+	items, err := listCollection(ctx, platform.client, platform.base, platform.token, managedPortalsCollection)
+	if err != nil {
+		return portalOutcome{}, fmt.Errorf("listing the managed API Portals: %w", err)
+	}
+
+	var building []string
+	for _, item := range items {
+		id, _ := item["id"].(string)
+		if id == "" {
+			continue
+		}
+		switch status, _ := item["status"].(string); status {
+		case portalStatusActive:
+			log.Info("the organisation already has a managed API Portal; leaving it as it is", "portal", id)
+			return portalOutcome{ID: id}, nil
+		case portalStatusPending:
+			building = append(building, id)
+		}
+	}
+	if len(building) > 0 {
+		log.Info("waiting for a managed API Portal that is still being built", "portal", building[0])
+		return portalOutcome{ID: building[0]}, awaitPortalActive(ctx, platform, building[0])
+	}
+
+	id, err := createDefaultPortal(ctx, platform, name)
+	if err != nil {
+		return portalOutcome{}, err
+	}
+	log.Info("created the managed API Portal; waiting for it to become active", "portal", id)
+	return portalOutcome{ID: id, Created: true}, awaitPortalActive(ctx, platform, id)
+}
+
+// createDefaultPortal asks the platform for the managed API Portal and returns the id it answered
+// with. A conflict that leaves a portal of that handle in the organisation means another run has
+// just asked for the same portal, so that portal is the one to wait for.
+func createDefaultPortal(ctx context.Context, platform organisationAPI, name string) (string, error) {
+	body, err := json.Marshal(map[string]any{
+		"name":        name,
+		"handle":      name,
+		"description": "API Portal the APIP cloud integration tests publish to. Created by the suite's starter and removed by its finalizer.",
+	})
+	if err != nil {
+		return "", err
+	}
+	resp, err := platform.do(ctx, http.MethodPost, managedPortalsCollection, body)
+	if err != nil {
+		return "", err
+	}
+	switch resp.StatusCode {
+	case http.StatusCreated, http.StatusAccepted:
+		id, err := stringField(resp, "id")
+		if err != nil {
+			return "", fmt.Errorf("creating the managed API Portal: %w", err)
+		}
+		return id, nil
+	case http.StatusConflict:
+		// A conflict can also mean the platform refused the request for a reason of its own, so
+		// the portal must be there before it is waited for.
+		found, err := platform.get(ctx, managedPortalsCollection+"/"+url.PathEscape(name))
+		if err != nil {
+			return "", err
+		}
+		if found.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("creating the managed API Portal: %w", responseError(resp))
+		}
+		return name, nil
+	default:
+		return "", fmt.Errorf("creating the managed API Portal: %w", responseError(resp))
+	}
+}
+
+// awaitPortalActive waits until the managed API Portal reports active. A portal that reports
+// failed stops the wait at once, since it will not recover.
+func awaitPortalActive(ctx context.Context, platform organisationAPI, id string) error {
+	interval := platform.pollInterval
+	if interval <= 0 {
+		interval = portalPollInterval
+	}
+	return retry.Await(ctx, retry.Options{Timeout: portalBuildTimeout, Interval: interval},
+		func(ctx context.Context) (string, error) {
+			resp, err := platform.get(ctx, managedPortalsCollection+"/"+url.PathEscape(id))
+			if err != nil {
+				return "", retry.Transient(err)
+			}
+			if resp.StatusCode >= http.StatusInternalServerError || resp.StatusCode == http.StatusNotFound {
+				return "", retry.Transient(responseError(resp))
+			}
+			if resp.StatusCode != http.StatusOK {
+				return "", responseError(resp)
+			}
+			status, err := stringField(resp, "status")
+			if err != nil {
+				return "", err
+			}
+			if status == portalStatusFailed {
+				return "", fmt.Errorf("managed API Portal %q failed to provision; delete it and run again", id)
+			}
+			return status, nil
+		},
+		func(status string) bool { return status == portalStatusActive },
+		"waiting for managed API Portal "+id+" to become active")
 }
