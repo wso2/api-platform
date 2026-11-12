@@ -26,6 +26,8 @@ fi
 read_admin_password() {
   local password confirm
   if [ -n "${ADMIN_PASSWORD:-}" ]; then
+    valid_admin_password "${ADMIN_PASSWORD}" \
+      || { echo "ADMIN_PASSWORD can't contain spaces, quotes, or backslashes." >&2; exit 1; }
     printf '%s' "${ADMIN_PASSWORD}"
     return
   fi
@@ -39,6 +41,10 @@ read_admin_password() {
       echo "Enter a password." >&2
       continue
     fi
+    if ! valid_admin_password "${password}"; then
+      echo "Use a password without spaces, quotes, or backslashes." >&2
+      continue
+    fi
     read -r -s -p "Enter the password again: " confirm || { echo >&2; echo "No password entered." >&2; exit 1; }
     echo >&2
     [ "${password}" = "${confirm}" ] && break
@@ -47,9 +53,11 @@ read_admin_password() {
   printf '%s' "${password}"
 }
 
-# 2. First run only: store your admin password in Secrets Manager, then run the distribution's setup.
-#    --force regenerates the listener certificate and AES key, because the ones in the zip are public.
-if [ ! -f "${GATEWAY_DIR}/api-platform.env" ]; then
+# 2. First run, or after cleanup.sh deleted the admin secret: store your admin password in Secrets
+#    Manager, then run the distribution's setup. --force regenerates the listener certificate and
+#    AES key, because the ones in the zip are public.
+if [ ! -f "${GATEWAY_DIR}/api-platform.env" ] \
+  || ! aws secretsmanager describe-secret --secret-id "${ADMIN_SECRET}" >/dev/null 2>&1; then
   if ! aws secretsmanager describe-secret --secret-id "${ADMIN_SECRET}" >/dev/null 2>&1; then
     admin_password="$(read_admin_password)"
     printf '%s' "${admin_password}" | aws secretsmanager create-secret --name "${ADMIN_SECRET}" \
@@ -58,8 +66,14 @@ if [ ! -f "${GATEWAY_DIR}/api-platform.env" ]; then
     unset admin_password
     echo "Stored the admin password in Secrets Manager as ${ADMIN_SECRET}."
   fi
+  # setup.sh prints the admin password in its summary. Replace that line, so the password doesn't
+  # reach the terminal or a CI log. Errors still go to stderr.
   (cd "${GATEWAY_DIR}" && ADMIN_USERNAME=admin ADMIN_PASSWORD="$(aws secretsmanager get-secret-value --secret-id "${ADMIN_SECRET}" \
-    --query SecretString --output text)" ./scripts/setup.sh --force)
+    --query SecretString --output text)" ./scripts/setup.sh --force) \
+    | awk -v secret="${ADMIN_SECRET}" '
+        /admin login:/ { print "   Gateway-controller admin login:  admin (password in Secrets Manager as " secret ")"; next }
+        /will not be shown again/ { next }
+        { print }'
 fi
 
 # 3. Build images with the newer guardrail policy, then add the allowlist and credentials override and

@@ -16,9 +16,13 @@ if [ -f "${GATEWAY_DIR}/.sample-images" ]; then
 fi
 rm -rf "${ROOT_DIR}/.tools"   # The ap CLI that build-gateway-image.sh downloaded
 
-for secret in $(aws secretsmanager list-secrets --filters Key=name,Values=wso2-ai-gateway/ \
-    --query 'SecretList[].Name' --output text); do
-  aws secretsmanager delete-secret --secret-id "${secret}" --force-delete-without-recovery >/dev/null
-  echo "Deleted secret ${secret}"
+# Deletes only the secrets that the scripts created: the admin password and one key per application.
+secrets=("${ADMIN_SECRET}")
+for app in ${APPS}; do secrets+=("${SECRET_PREFIX}/${app}"); done
+for secret in "${secrets[@]}"; do
+  if aws secretsmanager describe-secret --secret-id "${secret}" >/dev/null 2>&1; then
+    aws secretsmanager delete-secret --secret-id "${secret}" --force-delete-without-recovery >/dev/null
+    echo "Deleted secret ${secret}"
+  fi
 done
 echo "Done. Now run terraform destroy."

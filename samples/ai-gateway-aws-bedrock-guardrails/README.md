@@ -41,13 +41,22 @@ terraform -chdir=terraform output -raw dashboard_url   # CloudWatch dashboard wi
 
 Terraform also creates an Amazon CloudWatch dashboard that graphs each guardrail's checks and the requests and responses that the guardrails block or mask. Metrics appear a few minutes after traffic. Add `-var="create_dashboard=false"` to skip it; `terraform destroy` removes it.
 
-`start-gateway.sh` runs `run-gateway.sh`, which starts the gateway in the background, confirms that `gateway-runtime` received your AWS credentials (it prints variable names only), and returns. Set `FOLLOW_LOGS=1` to follow the logs. Stop the gateway with `docker compose --env-file api-platform.env down` in the gateway folder.
+`start-gateway.sh` runs `run-gateway.sh`, which starts the gateway in the background, confirms that `gateway-runtime` received your AWS credentials (it prints variable names only), and returns. Set `FOLLOW_LOGS=1` to follow the logs. Stop the gateway with `docker compose --env-file .env --env-file api-platform.env down` in the gateway folder.
 
-`deploy-artifacts.sh` deploys `gateway/bedrock-provider.yaml` and the two proxy files, fills in the Terraform outputs, and stores each application's key in Secrets Manager without printing it. On its first run, `start-gateway.sh` asks you to choose an admin password for the management API (or reads `ADMIN_PASSWORD`) and keeps it in Secrets Manager. The proxies live at `https://localhost:8443/<proxy>`. Rerun `run-gateway.sh wso2apip-ai-gateway` to restart the gateway with fresh credentials when your AWS session expires.
+`deploy-artifacts.sh` deploys `gateway/bedrock-provider.yaml` and the two proxy files, fills in the Terraform outputs, and stores each application's key in Secrets Manager without printing it. On its first run, `start-gateway.sh` asks you to choose an admin password for the management API (or reads `ADMIN_PASSWORD`) and keeps it in Secrets Manager. The password can't contain spaces, quotes, or backslashes. The proxies live at `https://localhost:8443/<proxy>`. Rerun `./scripts/run-gateway.sh wso2apip-ai-gateway` to restart the gateway with fresh credentials when your AWS session expires.
 
 ## Gateway version and the guardrail policy
 
 The sample uses WSO2 AI Gateway 1.2.0, which ships `aws-bedrock-guardrail` v1.0.2. On first start, `run-gateway.sh` runs `build-gateway-image.sh`, which pins the policy to v1.3.0 in the gateway's `build.yaml` and builds new controller and runtime images with the [`ap` CLI](https://github.com/wso2/api-platform/releases/tag/ap%2Fv0.9.1). The script downloads `ap` v0.9.1 into `.tools/` in this folder, verifies its SHA-256 checksum, and doesn't add it to your `PATH`; `cleanup.sh` removes it. `ap` keeps its own settings in `~/.wso2ap/`. v1.3.0 adds `applicableStatusCodes`, so a response check skips error responses, such as a 422 from another guardrail. The generated `docker-compose.override.yaml` points the gateway at the built images.
+
+## What the guardrails check
+
+Each guardrail policy reads one text value from the message body, at its `jsonPath`. The sample checks the first text block of the last message (`$.messages[-1].content[0].text`) and the first text block of the model's reply (`$.output.message.content[0].text`). The policy can't select several values at once, so the guardrails don't check:
+
+- Earlier messages in a multi-turn conversation.
+- Additional content blocks in the last message or in the reply.
+
+Clients that send each prompt as a single text block in the last message get full coverage. If your clients send multi-turn history or several content blocks, also apply the guardrails in the application, or call the Amazon Bedrock `ApplyGuardrail` API on the full conversation.
 
 ## Clean up
 

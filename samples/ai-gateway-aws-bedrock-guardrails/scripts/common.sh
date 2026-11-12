@@ -23,6 +23,14 @@ export SECRET_PREFIX="wso2-ai-gateway/apps"
 export ADMIN_SECRET="wso2-ai-gateway/admin-password"
 export APPS="support-assistant employee-assistant"
 
+# deploy-artifacts.sh passes the admin password to curl in a .netrc file, which splits fields on
+# whitespace and treats quotes and backslashes specially. Returns 1 for a password with those characters.
+valid_admin_password() {
+  case "$1" in
+    *[[:space:]\"\\]*) return 1 ;;
+  esac
+}
+
 # Only these variables are substituted, so other ${...} text stays intact.
 # shellcheck disable=SC2016 # Single quotes are intentional: envsubst expands these names.
 export SUBST_VARS='${AWS_REGION} ${GATEWAY_ROLE_ARN} ${BASELINE_GUARDRAIL_ID} ${BASELINE_GUARDRAIL_VERSION} ${SUPPORT_GUARDRAIL_ID} ${SUPPORT_GUARDRAIL_VERSION}'

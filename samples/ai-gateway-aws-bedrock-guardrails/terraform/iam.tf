@@ -10,8 +10,8 @@ locals {
   # A cross-Region inference profile ID such as us.amazon.nova-2-lite-v1:0 routes to the
   # foundation model amazon.nova-2-lite-v1:0 in several Regions. IAM must allow the profile
   # and the model in every Region the profile can route to.
-  is_inference_profile  = can(regex("^(us|eu|apac|global)\\.", var.model_id))
-  foundation_model_id   = replace(var.model_id, "/^(us|eu|apac|global)\\./", "")
+  is_inference_profile  = can(regex("^(us|eu|apac|jp|au|global)\\.", var.model_id))
+  foundation_model_id   = replace(var.model_id, "/^(us|eu|apac|jp|au|global)\\./", "")
   inference_profile_arn = "arn:aws:bedrock:${var.region}:${data.aws_caller_identity.current.account_id}:inference-profile/${var.model_id}"
   model_arns = local.is_inference_profile ? [
     for r in var.model_regions : "arn:aws:bedrock:${r}::foundation-model/${local.foundation_model_id}"
