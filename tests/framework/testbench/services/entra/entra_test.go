@@ -34,6 +34,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -306,6 +307,39 @@ func statuses(log requestLog) []int {
 		out = append(out, r.Status)
 	}
 	return out
+}
+
+// guidPattern matches a lowercase GUID, the shape of Entra ID's trace_id and correlation_id.
+var guidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// Error bodies carry GUIDs as trace and correlation IDs, as Entra ID's do, so the tenant appears
+// in a gateway log only when the gateway logs it.
+func TestErrorIDsAreGUIDsWithoutTheTenant(t *testing.T) {
+	malformed := validForm(foundryScope)
+	malformed.Del("client_id")
+	cases := []struct {
+		tenant string
+		form   url.Values
+		status int
+	}{
+		{"guid-t1", malformed, http.StatusBadRequest},
+		{PrefixInvalidClient + "guid", validForm(foundryScope), http.StatusUnauthorized},
+		{PrefixThrottleOnce + "guid", validForm(foundryScope), http.StatusTooManyRequests},
+		{PrefixUnavailable + "guid", validForm(foundryScope), http.StatusServiceUnavailable},
+	}
+	seen := map[string]bool{}
+	for _, c := range cases {
+		rec := requestToken(t, New(), c.tenant, c.form)
+		require.Equal(t, c.status, rec.Code, rec.Body.String())
+		var e oauthError
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &e))
+		for _, id := range []string{e.TraceID, e.Correlation} {
+			require.Regexp(t, guidPattern, id, c.tenant)
+			require.NotContains(t, id, c.tenant)
+			require.False(t, seen[id], "every ID is fresh: %s", id)
+			seen[id] = true
+		}
+	}
 }
 
 func TestSlowWaitsAndStopsWhenCancelled(t *testing.T) {
