@@ -281,6 +281,33 @@ func TestModesAreChosenByTenantPrefix(t *testing.T) {
 	}
 }
 
+// A malformed request is answered 400 and recorded, but does not use up a tenant's one-time
+// failure: the first well-formed request still gets it.
+func TestAMalformedRequestDoesNotUseUpAOneTimeFailure(t *testing.T) {
+	svc := New()
+	tenant := PrefixRejectOnce + "x"
+	malformed := validForm(foundryScope)
+	malformed.Del("client_id")
+
+	require.Equal(t, http.StatusBadRequest, requestToken(t, svc, tenant, malformed).Code)
+	require.Equal(t, http.StatusUnauthorized, requestToken(t, svc, tenant, validForm(foundryScope)).Code)
+	tok := issued(t, requestToken(t, svc, tenant, validForm(foundryScope)))
+	require.Equal(t, 3, claimsOf(t, tok.AccessToken).N, "N counts every request for the tenant")
+
+	log := recorded(t, svc, tenant)
+	require.Equal(t, 3, log.Count, "the malformed request is still counted")
+	require.Equal(t, []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusOK}, statuses(log))
+}
+
+// statuses returns the status of every request in log, oldest first.
+func statuses(log requestLog) []int {
+	out := make([]int, 0, len(log.Requests))
+	for _, r := range log.Requests {
+		out = append(out, r.Status)
+	}
+	return out
+}
+
 func TestSlowWaitsAndStopsWhenCancelled(t *testing.T) {
 	svc := newWithSlowDelay(50 * time.Millisecond)
 	start := time.Now()
@@ -605,6 +632,21 @@ func TestIMDSModesAreChosenByResource(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A malformed IMDS request is answered 400 and recorded, but does not use up the identity's
+// one-time failure.
+func TestIMDSMalformedRequestDoesNotUseUpAOneTimeFailure(t *testing.T) {
+	svc := New()
+	query := imdsQuery(testManagedClientID, ResourceNotFoundOnce)
+
+	require.Equal(t, http.StatusBadRequest, imdsGet(t, svc, testBlock, query, nil).Code, "no Metadata header")
+	require.Equal(t, http.StatusNotFound, imdsGet(t, svc, testBlock, query, metadataTrue).Code)
+	require.Equal(t, http.StatusOK, imdsGet(t, svc, testBlock, query, metadataTrue).Code)
+
+	log := imdsRecorded(t, svc, testBlock, testManagedClientID)
+	require.Equal(t, 3, log.Count)
+	require.Equal(t, []int{http.StatusBadRequest, http.StatusNotFound, http.StatusOK}, statuses(log))
 }
 
 func TestResourceReportsTheTokenAppID(t *testing.T) {

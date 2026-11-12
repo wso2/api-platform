@@ -79,11 +79,8 @@ func (s *Service) imdsToken(block string, w http.ResponseWriter, r *http.Request
 	if identity == "" {
 		identity = SystemAssigned
 	}
-	n, status, admitted := s.admit(imdsLogKey(block, identity), req, func(n int) int {
-		if rejection != nil {
-			return http.StatusBadRequest
-		}
-		return imdsOutcome(req.Resource, n)
+	n, status, admitted := s.admit(imdsLogKey(block, identity), req, rejection == nil, func(eligible int) int {
+		return imdsOutcome(req.Resource, eligible)
 	})
 	if !admitted {
 		http.Error(w, "entra: tenant budget exhausted", http.StatusInsufficientStorage)
@@ -138,7 +135,8 @@ func validateIMDS(r *http.Request, q url.Values, req Request) *imdsRejection {
 	}
 }
 
-// imdsOutcome is the status the identity's n-th well-formed request for resource is answered with.
+// imdsOutcome is the status the identity's n-th well-formed request for resource is answered with;
+// malformed requests are not counted.
 func imdsOutcome(resource string, n int) int {
 	switch {
 	case resource == ResourceIdentityNotFound:

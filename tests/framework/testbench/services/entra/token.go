@@ -81,11 +81,8 @@ func (s *Service) token(tenant string, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	n, status, admitted := s.admit(tenant, req, func(n int) int {
-		if rejection != nil {
-			return http.StatusBadRequest
-		}
-		return outcome(tenant, n)
+	n, status, admitted := s.admit(tenant, req, rejection == nil, func(eligible int) int {
+		return outcome(tenant, eligible)
 	})
 	if !admitted {
 		http.Error(w, "entra: tenant budget exhausted", http.StatusInsufficientStorage)
@@ -154,7 +151,8 @@ func validate(req Request) *formRejection {
 	}
 }
 
-// outcome is the status the tenant's n-th well-formed token request is answered with.
+// outcome is the status the tenant's n-th well-formed token request is answered with; malformed
+// requests are not counted.
 func outcome(tenant string, n int) int {
 	switch {
 	case strings.HasPrefix(tenant, PrefixInvalidClient):
