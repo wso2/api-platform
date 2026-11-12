@@ -79,13 +79,19 @@ const maxRetainedRequests = 256
 // maxFormBytes bounds one token request body.
 const maxFormBytes = 64 << 10
 
-// Request is one recorded token request.
+// Request is one recorded token request: a client credentials request to the Entra ID token
+// endpoint, or a managed identity request to the IMDS endpoint.
 type Request struct {
 	ClientID            string `json:"clientId"`
 	Scope               string `json:"scope"`
 	GrantType           string `json:"grantType"`
 	ClientAssertionType string `json:"clientAssertionType"`
 	ClientAssertion     string `json:"clientAssertion"`
+	// Resource, APIVersion and Metadata are the IMDS request's resource and api-version query
+	// parameters and its Metadata header.
+	Resource   string `json:"resource,omitempty"`
+	APIVersion string `json:"apiVersion,omitempty"`
+	Metadata   string `json:"metadata,omitempty"`
 	// Status is the HTTP status the service answered the request with.
 	Status int `json:"status"`
 }
@@ -152,6 +158,7 @@ func (s *secure) TLSConfig() *tls.Config { return s.tlsConfig }
 func (s *Service) Handler() http.Handler {
 	routes := http.NewServeMux()
 	routes.HandleFunc("POST /oauth2/v2.0/token", s.scoped(s.token))
+	routes.HandleFunc("GET /metadata/identity/oauth2/token", s.scoped(s.imdsToken))
 	routes.HandleFunc("GET /test/requests", s.scoped(s.recorded))
 	for path, audience := range map[string]string{"/foundry": FoundryAudience, "/cognitive": CognitiveAudience} {
 		routes.HandleFunc(path, s.scoped(resource(audience)))
