@@ -116,7 +116,8 @@ func imdsLogKey(block, identity string) string {
 
 // validateIMDS checks a token request as IMDS does: the Metadata header, a query string that
 // parses cleanly (queryErr is ParseQuery's error), no repeated query parameter, the api-version, a
-// resource, and no X-Forwarded-For, which IMDS refuses so that a proxy cannot relay requests.
+// resource, and no X-Forwarded-For header, even an empty one, which IMDS refuses so that a proxy
+// cannot relay requests.
 func validateIMDS(r *http.Request, q url.Values, queryErr error, req Request) *imdsRejection {
 	name, repeated := repeatedParameter(q)
 	switch {
@@ -132,11 +133,17 @@ func validateIMDS(r *http.Request, q url.Values, queryErr error, req Request) *i
 		return &imdsRejection{"invalid_request", "The api-version is not supported"}
 	case req.Resource == "":
 		return &imdsRejection{"invalid_request", "Required query variable 'resource' is missing"}
-	case r.Header.Get("X-Forwarded-For") != "":
+	case hasHeader(r, "X-Forwarded-For"):
 		return &imdsRejection{"invalid_request", "Requests with an X-Forwarded-For header are not accepted"}
 	default:
 		return nil
 	}
+}
+
+// hasHeader reports whether r carries the header name at all, even with an empty value.
+func hasHeader(r *http.Request, name string) bool {
+	_, ok := r.Header[http.CanonicalHeaderKey(name)]
+	return ok
 }
 
 // imdsOutcome is the status the identity's n-th well-formed request for resource is answered with;

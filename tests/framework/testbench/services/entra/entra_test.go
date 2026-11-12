@@ -604,6 +604,7 @@ func TestIMDSRejectsAMalformedRequest(t *testing.T) {
 		{"another api-version", url.Values{"api-version": {"2019-01-01"}, "resource": {FoundryAudience}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request", ""},
 		{"no resource", url.Values{"api-version": {IMDSAPIVersion}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request", ""},
 		{"X-Forwarded-For", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"true"}, "X-Forwarded-For": {"10.0.0.1"}}, "invalid_request", ""},
+		{"an empty X-Forwarded-For", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"true"}, "X-Forwarded-For": {""}}, "invalid_request", "X-Forwarded-For"},
 		{"resource given twice", repeated("resource", CognitiveAudience), metadataTrue, "invalid_request", "'resource'"},
 		{"client_id given twice", repeated("client_id", "99999999-8888-7777-6666-555555555555"), metadataTrue, "invalid_request", "'client_id'"},
 		{"api-version given twice", repeated("api-version", IMDSAPIVersion), metadataTrue, "invalid_request", "'api-version'"},
