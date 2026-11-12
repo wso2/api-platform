@@ -184,11 +184,8 @@ type definitionDoc struct {
 // the types publish_api and get_api_definition serve.
 type documented interface {
 	definition(org, id string) (definitionDoc, error)
-	apiGateways(org, id string) ([]api.RESTAPIGatewayResponse, error)
+	apiGateways(org, id string, p page) ([]api.RESTAPIGatewayResponse, int, error)
 }
-
-// maxGatewaysPerAPI bounds the gateway list read for a listing's production URL.
-const maxGatewaysPerAPI = 100
 
 func (d direct) documentedType(t *apiType) (documented, error) {
 	doc, ok := d.apis[t.name].(documented)
@@ -206,12 +203,23 @@ func (d direct) getDefinition(_ context.Context, c caller, t *apiType, id string
 	return doc.definition(c.org, id)
 }
 
+// listAPIGateways reads every page of the API's gateways.
 func (d direct) listAPIGateways(_ context.Context, c caller, t *apiType, id string) ([]api.RESTAPIGatewayResponse, error) {
 	doc, err := d.documentedType(t)
 	if err != nil {
 		return nil, err
 	}
-	return doc.apiGateways(c.org, id)
+	var all []api.RESTAPIGatewayResponse
+	for p := (page{limit: maxPageLimit}); ; p.offset = len(all) {
+		got, total, err := doc.apiGateways(c.org, id, p)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, got...)
+		if len(got) == 0 || len(all) >= total {
+			return all, nil
+		}
+	}
 }
 
 func (d direct) listPortals(_ context.Context, c caller, p page) ([]api.ApiPortalListItem, int, error) {
@@ -285,12 +293,12 @@ func (r restAPIs) definition(org, id string) (definitionDoc, error) {
 	return definitionDoc{Content: text, ContentType: contentType}, nil
 }
 
-func (r restAPIs) apiGateways(org, id string) ([]api.RESTAPIGatewayResponse, error) {
-	res, err := r.apis.GetAPIGatewaysByHandle(id, org, maxGatewaysPerAPI, 0)
+func (r restAPIs) apiGateways(org, id string, p page) ([]api.RESTAPIGatewayResponse, int, error) {
+	res, err := r.apis.GetAPIGatewaysByHandle(id, org, p.limit, p.offset)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return res.List, nil
+	return res.List, res.Pagination.Total, nil
 }
 
 func (r restAPIs) list(org, projectID string, opts repository.ListOptions) ([]any, int, error) {
@@ -434,12 +442,12 @@ func (g graphQLAPIs) definition(org, id string) (definitionDoc, error) {
 	return definitionDoc{Content: sdl, ContentType: "application/graphql"}, nil
 }
 
-func (g graphQLAPIs) apiGateways(org, id string) ([]api.RESTAPIGatewayResponse, error) {
-	res, err := g.apis.GetAPIGateways(id, org, maxGatewaysPerAPI, 0)
+func (g graphQLAPIs) apiGateways(org, id string, p page) ([]api.RESTAPIGatewayResponse, int, error) {
+	res, err := g.apis.GetAPIGateways(id, org, p.limit, p.offset)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return res.List, nil
+	return res.List, res.Pagination.Total, nil
 }
 
 // checkSchemaSource refuses schemaSource "file" on create: it names an uploaded

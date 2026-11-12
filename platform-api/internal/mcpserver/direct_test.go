@@ -32,6 +32,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
+	"github.com/wso2/api-platform/platform-api/internal/pagination"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -493,4 +494,35 @@ func TestDirect_RESTDefinitionAndGateways(t *testing.T) {
 	mcpProxy, _ := apiTypeNamed("mcp-proxy")
 	_, err = env.getDefinition(ctx, env.caller, mcpProxy, "anything")
 	assert.ErrorContains(t, err, "has no definition document")
+}
+
+// pagedGateways is a documented type with more gateways than one page holds.
+type pagedGateways struct {
+	directAPIs
+	all   []api.RESTAPIGatewayResponse
+	reads int
+}
+
+func (p *pagedGateways) definition(string, string) (definitionDoc, error) {
+	return definitionDoc{}, nil
+}
+
+func (p *pagedGateways) apiGateways(_, _ string, pg page) ([]api.RESTAPIGatewayResponse, int, error) {
+	p.reads++
+	return pagination.Window(p.all, pg.limit, pg.offset), len(p.all), nil
+}
+
+// TestDirect_ListAPIGatewaysReadsEveryPage finds a gateway past the first page.
+func TestDirect_ListAPIGatewaysReadsEveryPage(t *testing.T) {
+	rest, err := apiTypeNamed("rest-api")
+	require.NoError(t, err)
+	fake := &pagedGateways{all: make([]api.RESTAPIGatewayResponse, 2*maxPageLimit+1)}
+	fake.all[len(fake.all)-1].IsDeployed = true
+	d := direct{apis: map[string]directAPIs{"rest-api": fake}}
+
+	gateways, err := d.listAPIGateways(context.Background(), caller{org: "org"}, rest, "api")
+	require.NoError(t, err)
+	assert.Len(t, gateways, len(fake.all))
+	assert.True(t, gateways[len(gateways)-1].IsDeployed, "the last page was read")
+	assert.Equal(t, 3, fake.reads)
 }
