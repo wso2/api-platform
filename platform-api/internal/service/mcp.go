@@ -208,7 +208,11 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
-		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+		var refCtx SecretRefContext
+		if projectUUID != nil {
+			refCtx.ProjectUUID = *projectUUID
+		}
+		if err := s.secretService.ValidateSecretRefsFor(orgUUID, refCtx, configJSON); err != nil {
 			return nil, err
 		}
 	}
@@ -415,7 +419,7 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
-		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+		if err := s.secretService.ValidateSecretRefsFor(orgUUID, secretRefContextFor(existing.ProjectUUID, existing.UUID), configJSON); err != nil {
 			return nil, err
 		}
 	}

@@ -21,6 +21,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -73,6 +74,7 @@ func (h *SecretHandler) CreateSecret(w http.ResponseWriter, r *http.Request) err
 		Value:       r.FormValue("value"),
 		Type:        r.FormValue("type"),
 	}
+	req.Scopes, _ = formScopes(r)
 	if req.Handle == "" || req.DisplayName == "" || req.Value == "" {
 		return apperror.ValidationFailed.New("id, displayName and value are required")
 	}
@@ -165,6 +167,7 @@ func (h *SecretHandler) UpdateSecret(w http.ResponseWriter, r *http.Request) err
 		Description: r.FormValue("description"),
 		Value:       r.FormValue("value"),
 	}
+	req.Scopes, req.ScopesSet = formScopes(r)
 	if req.Value == "" {
 		return apperror.ValidationFailed.New("value is required")
 	}
@@ -213,4 +216,34 @@ func (h *SecretHandler) DeleteSecret(w http.ResponseWriter, r *http.Request) err
 
 	w.WriteHeader(http.StatusNoContent)
 	return nil
+}
+
+// formScopes returns every "scopes" form value and whether the field was sent at
+// all. The field repeats, one scope per value ("org", "project:<id>",
+// "artifact:<kind>:<id>"); a single value may also list several scopes separated
+// by commas. Sending the field with no usable value means "the whole organization".
+func formScopes(r *http.Request) ([]string, bool) {
+	var raw []string
+	present := false
+	if r.MultipartForm != nil {
+		if vs, ok := r.MultipartForm.Value["scopes"]; ok {
+			present = true
+			raw = append(raw, vs...)
+		}
+	}
+	if !present {
+		if vs, ok := r.Form["scopes"]; ok {
+			present = true
+			raw = append(raw, vs...)
+		}
+	}
+	var out []string
+	for _, v := range raw {
+		for _, part := range strings.Split(v, ",") {
+			if p := strings.TrimSpace(part); p != "" {
+				out = append(out, p)
+			}
+		}
+	}
+	return out, present
 }

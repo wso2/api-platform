@@ -5769,8 +5769,18 @@ type SecretCreateRequest struct {
 	DisplayName string `json:"displayName" yaml:"displayName"`
 
 	// Id Handle (slug) used in {{ secret "id" }} placeholders. Immutable after creation.
-	Id   *string                  `json:"id,omitempty" yaml:"id,omitempty"`
-	Type *SecretCreateRequestType `json:"type,omitempty" yaml:"type,omitempty"`
+	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Scopes Which artifacts may reference the secret with `{{ secret "id" }}`. Each entry is one of:
+	// - `org`: every artifact in the organization (the default). Cannot be combined with other scopes.
+	// - `project:<project id>`: artifacts in that project.
+	// - `artifact:<kind>:<artifact id>`: that artifact only. Kind is one of RestApi, GraphQLApi,
+	//   LlmProvider, LlmProxy, Mcp, AgentProxy. Use this for LLM providers, which belong to no project.
+	//
+	// A reference from an artifact the secret is not available to is rejected as if the secret did not
+	// exist. In multipart requests, repeat the `scopes` field or send comma-separated values.
+	Scopes *SecretScopes            `json:"scopes,omitempty" yaml:"scopes,omitempty"`
+	Type   *SecretCreateRequestType `json:"type,omitempty" yaml:"type,omitempty"`
 
 	// Value Plaintext secret value — encrypted at rest, never returned in any response
 	Value *string `json:"value,omitempty" yaml:"value,omitempty"`
@@ -5795,13 +5805,33 @@ type SecretResponse struct {
 	CreatedBy *string `json:"createdBy,omitempty" yaml:"createdBy,omitempty"`
 
 	// DisplayName Human-readable name for the secret
-	DisplayName string     `json:"displayName" yaml:"displayName"`
-	Id          *string    `json:"id,omitempty" yaml:"id,omitempty"`
-	UpdatedAt   *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	DisplayName string  `json:"displayName" yaml:"displayName"`
+	Id          *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Scopes Which artifacts may reference the secret with `{{ secret "id" }}`. Each entry is one of:
+	// - `org`: every artifact in the organization (the default). Cannot be combined with other scopes.
+	// - `project:<project id>`: artifacts in that project.
+	// - `artifact:<kind>:<artifact id>`: that artifact only. Kind is one of RestApi, GraphQLApi,
+	//   LlmProvider, LlmProxy, Mcp, AgentProxy. Use this for LLM providers, which belong to no project.
+	//
+	// A reference from an artifact the secret is not available to is rejected as if the secret did not
+	// exist. In multipart requests, repeat the `scopes` field or send comma-separated values.
+	Scopes    *SecretScopes `json:"scopes,omitempty" yaml:"scopes,omitempty"`
+	UpdatedAt *time.Time    `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
 	// UpdatedBy User identifier of the user who last updated this resource
 	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 }
+
+// SecretScopes Which artifacts may reference the secret with `{{ secret "id" }}`. Each entry is one of:
+//   - `org`: every artifact in the organization (the default). Cannot be combined with other scopes.
+//   - `project:<project id>`: artifacts in that project.
+//   - `artifact:<kind>:<artifact id>`: that artifact only. Kind is one of RestApi, GraphQLApi,
+//     LlmProvider, LlmProxy, Mcp, AgentProxy. Use this for LLM providers, which belong to no project.
+//
+// A reference from an artifact the secret is not available to is rejected as if the secret did not
+// exist. In multipart requests, repeat the `scopes` field or send comma-separated values.
+type SecretScopes = []string
 
 // SecretSummary Secret metadata — never includes the plaintext value.
 type SecretSummary struct {
@@ -5816,9 +5846,19 @@ type SecretSummary struct {
 	Hash        *string                `json:"hash,omitempty" yaml:"hash,omitempty"`
 	Id          *string                `json:"id,omitempty" yaml:"id,omitempty"`
 	Provider    *SecretSummaryProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
-	Status      *SecretSummaryStatus   `json:"status,omitempty" yaml:"status,omitempty"`
-	Type        *SecretSummaryType     `json:"type,omitempty" yaml:"type,omitempty"`
-	UpdatedAt   *time.Time             `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+
+	// Scopes Which artifacts may reference the secret with `{{ secret "id" }}`. Each entry is one of:
+	// - `org`: every artifact in the organization (the default). Cannot be combined with other scopes.
+	// - `project:<project id>`: artifacts in that project.
+	// - `artifact:<kind>:<artifact id>`: that artifact only. Kind is one of RestApi, GraphQLApi,
+	//   LlmProvider, LlmProxy, Mcp, AgentProxy. Use this for LLM providers, which belong to no project.
+	//
+	// A reference from an artifact the secret is not available to is rejected as if the secret did not
+	// exist. In multipart requests, repeat the `scopes` field or send comma-separated values.
+	Scopes    *SecretScopes        `json:"scopes,omitempty" yaml:"scopes,omitempty"`
+	Status    *SecretSummaryStatus `json:"status,omitempty" yaml:"status,omitempty"`
+	Type      *SecretSummaryType   `json:"type,omitempty" yaml:"type,omitempty"`
+	UpdatedAt *time.Time           `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 }
 
 // SecretSummaryProvider defines model for SecretSummary.Provider.
@@ -5839,6 +5879,9 @@ type SecretUpdateRequest struct {
 
 	// Id Secret handle — if provided, must match the path parameter; returns 400 if they differ. The handle is immutable and cannot be changed via update.
 	Id *string `json:"id,omitempty" yaml:"id,omitempty"`
+
+	// Scopes Replaces the secret's scopes when sent; omit it to keep them. An empty value means "org".
+	Scopes *SecretScopes `json:"scopes,omitempty" yaml:"scopes,omitempty"`
 
 	// Value New plaintext secret value — re-encrypted at rest
 	Value *string `json:"value,omitempty" yaml:"value,omitempty"`

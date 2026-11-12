@@ -62,6 +62,14 @@ type SecretScope struct {
 	ScopeValue string `db:"scope_value"`
 }
 
+// SecretScopeInfo is what a {{ secret }} reference check needs to know about a
+// secret: its UUID, its status and the entities it is scoped to.
+type SecretScopeInfo struct {
+	UUID   string
+	Status string
+	Scopes []SecretScope
+}
+
 // SecretReference identifies a resource that references a secret.
 type SecretReference struct {
 	Type   string `json:"type"`

@@ -332,7 +332,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	// and fails the same way. A request that omitted the field carries nothing, so this
 	// does nothing; when it did carry something, it is exactly what the effective
 	// metadata below resolves to, and re-applying it is setting the same values twice.
-	if err := s.applyUpstreamOverrides(providerDeployment, requestMetadata, orgUUID); err != nil {
+	if err := s.applyUpstreamOverrides(providerDeployment, requestMetadata, orgUUID, provider.UUID); err != nil {
 		return nil, err
 	}
 
@@ -358,7 +358,7 @@ func (s *LLMProviderDeploymentService) DeployLLMProvider(providerID string, req 
 	// endpoint and vhosts are: the build is a snapshot of the provider's definition,
 	// and what a single gateway authenticates with is a property of the deployment
 	// rather than of that snapshot.
-	if err := s.applyUpstreamOverrides(providerDeployment, metadata, orgUUID); err != nil {
+	if err := s.applyUpstreamOverrides(providerDeployment, metadata, orgUUID, provider.UUID); err != nil {
 		return nil, err
 	}
 
@@ -851,12 +851,12 @@ func namingBuild(resp *api.DeploymentResponse, err error, buildID *string) (*api
 // and what it authenticates with. The provider's own definition is untouched, so a build
 // stays what it was.
 func (s *LLMProviderDeploymentService) applyUpstreamOverrides(
-	providerDeployment *dto.LLMProviderDeploymentYAML, metadata map[string]interface{}, orgUUID string) error {
+	providerDeployment *dto.LLMProviderDeploymentYAML, metadata map[string]interface{}, orgUUID, providerUUID string) error {
 
 	if err := applyUpstreamURLOverride(providerDeployment, metadata); err != nil {
 		return err
 	}
-	return s.applyUpstreamAuthOverride(providerDeployment, metadata, orgUUID)
+	return s.applyUpstreamAuthOverride(providerDeployment, metadata, orgUUID, providerUUID)
 }
 
 // applyUpstreamURLOverride replaces the backend this deployment routes to, under the same
@@ -905,7 +905,7 @@ func applyUpstreamURLOverride(
 // An absent or empty value leaves the provider's own credential in place, matching how
 // the endpoint and vhost overrides treat one.
 func (s *LLMProviderDeploymentService) applyUpstreamAuthOverride(
-	providerDeployment *dto.LLMProviderDeploymentYAML, metadata map[string]interface{}, orgUUID string) error {
+	providerDeployment *dto.LLMProviderDeploymentYAML, metadata map[string]interface{}, orgUUID, providerUUID string) error {
 
 	raw, given := metadata[constants.MetadataKeyUpstreamAuthValue]
 	if !given {
@@ -925,14 +925,16 @@ func (s *LLMProviderDeploymentService) applyUpstreamAuthOverride(
 			constants.MetadataKeyUpstreamAuthValue))
 	}
 	if s.secretService != nil {
-		if err := s.secretService.ValidateSecretRefs(orgUUID, value); err != nil {
+		// The secret must be available to the provider being deployed: org-wide, or
+		// scoped to this provider. An LLM provider belongs to no project.
+		if err := s.secretService.ValidateSecretRefsFor(orgUUID, SecretRefContext{ArtifactUUID: providerUUID}, value); err != nil {
 			// The validator names the handles it could not resolve, which is how it
 			// reports a whole config at once. Here there is exactly one, and the caller
 			// supplied it, so naming it back buys nothing and puts a secret handle into
 			// the response body and the request log. Say only that it did not resolve.
 			if apperror.ValidationFailed.Is(err) {
 				return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
-					"Metadata %q references a secret that does not exist in this organization.",
+					"Metadata %q references a secret that does not exist or is not available to this LLM provider.",
 					constants.MetadataKeyUpstreamAuthValue))
 			}
 			return err

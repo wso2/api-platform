@@ -27,6 +27,10 @@ type CreateSecretRequest struct {
 	Description string `form:"description"`
 	Value       string `form:"value"       binding:"required"`
 	Type        string `form:"type"`
+	// Scopes limits which artifacts may reference the secret through
+	// {{ secret "handle" }}: "org", "project:<project id>" or
+	// "artifact:<kind>:<artifact id>". Empty means the whole organization.
+	Scopes []string `form:"scopes"`
 }
 
 // UpdateSecretRequest is the request body for PUT /api/v0.9/secrets/{secretId}.
@@ -35,12 +39,17 @@ type UpdateSecretRequest struct {
 	DisplayName string `form:"displayName"`
 	Description string `form:"description"`
 	Value       string `form:"value" binding:"required"`
+	// Scopes, when ScopesSet, replaces the secret's scopes (see
+	// CreateSecretRequest.Scopes); when not set, the scopes are kept.
+	Scopes    []string `form:"scopes"`
+	ScopesSet bool     `form:"-"`
 }
 
 // SecretResponse is returned on POST and PUT.
 type SecretResponse struct {
 	Handle      string    `json:"id"`
 	DisplayName string    `json:"displayName"`
+	Scopes      []string  `json:"scopes,omitempty"`
 	CreatedBy   string    `json:"createdBy,omitempty"`
 	UpdatedBy   string    `json:"updatedBy,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
@@ -56,6 +65,7 @@ type SecretSummary struct {
 	Provider    string    `json:"provider"`
 	Status      string    `json:"status"`
 	Hash        string    `json:"hash"`
+	Scopes      []string  `json:"scopes,omitempty"`
 	CreatedBy   string    `json:"createdBy,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`

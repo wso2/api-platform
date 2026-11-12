@@ -72,6 +72,8 @@ type mockSecretRepo struct {
 	findRefsFn              func(orgID, handle string) ([]model.SecretReference, error)
 	listFn                  func(orgID string, limit, offset int, after *time.Time) ([]*model.Secret, error)
 	countFn                 func(orgID string) (int, error)
+	scopeInfoFn             func(orgID string, handles []string) (map[string]*model.SecretScopeInfo, error)
+	refArtifactsFn          func(orgID, handle string) ([]string, error)
 }
 
 func newMockRepo() *mockSecretRepo {
@@ -171,6 +173,48 @@ func (m *mockSecretRepo) Count(orgID string) (int, error) {
 		return m.countFn(orgID)
 	}
 	return len(m.secrets), nil
+}
+
+func (m *mockSecretRepo) GetScopeInfoByHandles(orgID string, handles []string) (map[string]*model.SecretScopeInfo, error) {
+	if m.scopeInfoFn != nil {
+		return m.scopeInfoFn(orgID, handles)
+	}
+	out := make(map[string]*model.SecretScopeInfo, len(handles))
+	for _, h := range handles {
+		if m.existsFn != nil {
+			// Tests that stub Exists predate scopes: an existing secret is an
+			// unscoped (org-wide) active one.
+			ok, err := m.existsFn(orgID, h)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				out[h] = &model.SecretScopeInfo{Status: model.SecretStatusActive}
+			}
+			continue
+		}
+		if s, ok := m.secrets[h]; ok {
+			out[h] = &model.SecretScopeInfo{UUID: s.UUID, Status: s.Status, Scopes: s.Scopes}
+		}
+	}
+	return out, nil
+}
+
+func (m *mockSecretRepo) ReplaceScopes(secretUUID string, scopes []model.SecretScope) error {
+	for _, s := range m.secrets {
+		if s.UUID == secretUUID {
+			s.Scopes = scopes
+			return nil
+		}
+	}
+	return apperror.SecretNotFound.New()
+}
+
+func (m *mockSecretRepo) FindRefArtifactUUIDs(orgID, handle string) ([]string, error) {
+	if m.refArtifactsFn != nil {
+		return m.refArtifactsFn(orgID, handle)
+	}
+	return nil, nil
 }
 
 // ---- Create tests -----------------------------------------------------------
