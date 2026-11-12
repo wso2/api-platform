@@ -115,8 +115,12 @@ session, and nothing new is deployed in them.
 | `client.ts`          | Framework-free, so the API Portal can reuse it. Drops unknown codes, undeclared dimensions and values outside an enum. Batches (20 actions or 3 s), flushes with `keepalive` when the page is hidden, keeps a bounded queue, never retries and never throws. |
 | `useTrackFeature.ts` | React glue. Creates the client from runtime config and exposes `trackFeature(code, dimensions)`.                                                                                                                                                             |
 
-The client sends no URL, referrer, IP or credentials of its own. The session
-cookie is what lets the gateway or BFF attach the user's token.
+Each action carries the page it happened on as `request.uri`, built by
+`buildAction` (`actions.ts`) and sent by `send` (`collector.ts`): the URL masked
+to its route template, keeping the origin and the deployment's base path, with
+no query string or fragment. The client sends no referrer, IP or credentials of
+its own. The session cookie is what lets the gateway or BFF attach the user's
+token.
 
 ### 5.2 Console backend: platform-api endpoint (proposed)
 
@@ -253,7 +257,7 @@ Content-Type: application/json
 {
   "actions": [
     {
-      "code": "apip.manage-apis.create-rest-api",
+      "code": "apip.manage-apis.rest-api-create-click",
       "occurredAt": "2026-11-09T07:15:00Z",
       "transactionId": "5f0c8a9e-3b1d-4c6e-9a2f-1d7e4b8c0a11",
       "dimensions": { "creation_method": "scratch" }
@@ -271,6 +275,12 @@ Content-Type: application/json
 There are no identity fields: the backend owns identity. `transactionId` is a
 random UUID made in the browser, so a resent batch can be deduplicated.
 
+The browser sends UI action codes only: features whose `portal` names
+`api-control-plane`, such as `rest-api-create-click`. The bare
+`apip.manage-apis.rest-api-create` is the endpoint feature
+(`platforms: ["api"]`), reported by Platform API itself as an API event, so the
+backend's validation refuses it from the browser.
+
 ### 7.2 MoesifSink → Moesif Events Proxy
 
 The proxy guide's `Action` schema, built by the backend:
@@ -278,26 +288,28 @@ The proxy guide's `Action` schema, built by the backend:
 ```json
 [
   {
-    "action_name": "apip.manage-apis.create-rest-api",
+    "action_name": "apip.manage-apis.rest-api-create-click",
     "request": { "time": "2026-11-09T07:15:00Z" },
     "company_id": "<organization UUID, from the token>",
     "user_id": "<Thunder user UUID, from the token>",
     "transaction_id": "5f0c8a9e-3b1d-4c6e-9a2f-1d7e4b8c0a11",
     "metadata": {
       "creation_method": "scratch",
-      "action": "REST API Creation",
+      "action": "REST API Creation Click",
       "category": "manage-apis",
       "tier": "core",
-      "event_category": "adoption",
+      "event_category": "engagement",
       "initiating_product": "apip",
-      "platform": "web"
+      "platform": "web",
+      "portal": "api-control-plane"
     }
   }
 ]
 ```
 
 The metadata keys after the feature's dimensions are the ones in the proxy
-guide's example, plus `platform` (`tracking.platforms` in the template).
+guide's example, plus `platform` (`tracking.platforms` in the template) and
+`portal` (the UI the action was taken in).
 
 ### 7.3 On-prem table
 
@@ -352,10 +364,10 @@ when the user clicks Continue, along with the choice in effect.
 
 ```mermaid
 flowchart LR
-    s1["1 · Open wizard<br/>apip.manage-apis.api-creation-wizard<br/>entry_point"]
-    s2["2 · Continue on API type<br/>apip.manage-apis.api-creation-wizard.select-api-type<br/>api_type = rest-api"]
-    s3["3 · Continue on definition<br/>apip.manage-apis.create-rest-api.select-creation-method<br/>creation_method = scratch"]
-    s4["4 · Click Create<br/>apip.manage-apis.create-rest-api<br/>creation_method = scratch"]
+    s1["1 · Open wizard<br/>apip.manage-apis.api-creation-wizard-open<br/>entry_point"]
+    s2["2 · Continue on API type<br/>apip.manage-apis.api-creation-wizard-api-type-select<br/>api_type = rest-api"]
+    s3["3 · Continue on definition<br/>apip.manage-apis.api-creation-wizard-creation-method-select<br/>creation_method = scratch"]
+    s4["4 · Click Create<br/>apip.manage-apis.rest-api-create-click<br/>creation_method = scratch"]
     s1 --> s2 --> s3 --> s4
 ```
 
@@ -364,13 +376,16 @@ flowchart LR
 | 1   | discovery      | `entry_point`: `api-list`, `api-list-empty-state`, `org-home`, `project-quick-actions`, or `direct` for a typed URL or reload. It travels as router state, so the URL stays clean. |
 | 2   | engagement     | Shared with GraphQL creation.                                                                                                                                                      |
 | 3   | engagement     | REST-specific. GraphQL gets its own step (`scratch` or `schema`) later.                                                                                                            |
-| 4   | adoption       | Fires on the Create click (a submission that passed form validation), so a create the server then rejects still counts. Retry on the progress screen does not count again.         |
+| 4   | engagement     | Fires on the Create click (a submission that passed form validation), so a create the server then rejects still counts. Retry on the progress screen does not count again.         |
 
 To build the funnel in Moesif, use those four actions in order. Filter step 2
 on `metadata.api_type = rest-api` and steps 3–4 on
 `metadata.creation_method = scratch`. Group by user or by company. Counting
-action 4 alone gives feature usage. The step actions have codes of their own,
-so they never inflate it.
+action 4 alone gives how often users try to create a REST API; the step actions
+have codes of their own, so they never inflate it. Whether the creation worked
+is the endpoint feature `apip.manage-apis.rest-api-create`, which Platform API
+reports with an `outcome`; count it with `outcome = success` for REST APIs
+actually created.
 
 **Form fields are not tracked.** Name and identifier are prefilled, every edit
 would be noise, and their values are customer text. Users who reach step 3 but

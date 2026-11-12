@@ -302,7 +302,7 @@ const trackFeature = useTrackFeature();
 
 <Button
   onClick={() => {
-    trackFeature('apip.manage-apis.api-delete', { api_type: 'rest-api' });
+    trackFeature('apip.manage-apis.api-delete-click', { api_type: 'rest-api' });
     confirmDelete();
   }}
 />;

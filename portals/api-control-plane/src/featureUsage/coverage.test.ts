@@ -28,12 +28,18 @@ import taxonomyYaml from './api-platform-taxonomy.yaml?raw';
  * entry never ships without its instrumentation.
  */
 
-/** The console's own source, without tests, the src/test helpers or the taxonomy module. */
+/**
+ * The console's own source, without tests, the src/test helpers, or this
+ * module's taxonomy and policy helpers (whose code literals are not call sites).
+ */
 const SOURCES = Object.entries(
   import.meta.glob<string>('../**/*.{ts,tsx}', { eager: true, import: 'default', query: '?raw' }),
 )
   // Files in this directory are keyed `./name.ts`, elsewhere `../dir/name.ts`.
-  .filter(([file]) => !/\.test\.tsx?$|^\.\.\/test\/|(^|\/)taxonomy(\.generated)?\.ts$/.test(file))
+  .filter(
+    ([file]) =>
+      !/\.test\.tsx?$|^\.\.\/test\/|^\.\/(taxonomy(\.generated)?|policies)\.ts$/.test(file),
+  )
   .map(([, text]) => text);
 
 /** Every `apip.…` string literal in the console's source. */
@@ -45,7 +51,10 @@ const referencedCodes = new Set(
 const policyNames = [...taxonomyYaml.matchAll(/values: \[([^\]]*)\]/g)]
   .flatMap((m) => [...m[1].matchAll(/"([a-z0-9-]+)"/g)].map((v) => v[1]))
   .concat(['analytics-header-filter', 'cors', 'subscription-validation']);
-const reportsPolicies = SOURCES.some((text) => text.includes('trackPolicyAttachment('));
+// A call site, not the helper's own declaration in policies.ts.
+const reportsPolicies = SOURCES.some((text) =>
+  /(?<!function\s)\btrackPolicyAttachment\(/.test(text),
+);
 const policyCodes = new Set<string>(
   reportsPolicies ? policyNames.map(policyFeatureOf).filter((code) => code !== undefined) : [],
 );
