@@ -160,6 +160,10 @@ func TestEnv_DisallowedSetAndUnsetAreIndistinguishable(t *testing.T) {
 
 func TestEnv_AllowedButUnsetFallsBackToDefault(t *testing.T) {
 	withEnvPolicy(t, "BACKEND_URL")
+	// t.Setenv registers restoration of any pre-existing value; then unset it so
+	// the test does not depend on the caller's environment.
+	t.Setenv("BACKEND_URL", "")
+	require.NoError(t, os.Unsetenv("BACKEND_URL"))
 	out, err := executeTemplate(t, `{{ env "BACKEND_URL" | default "http://fallback" }}`)
 	require.NoError(t, err)
 	assert.Equal(t, "http://fallback", out)
