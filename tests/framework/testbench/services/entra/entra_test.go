@@ -396,25 +396,52 @@ func TestRetentionIsBoundedButTheCountIsExact(t *testing.T) {
 	require.Len(t, log.Requests, maxRetainedRequests)
 }
 
+// requestTokensConcurrently sends n well-formed token requests for the tenant at once and returns
+// every response after all are answered. The goroutines only serve; the caller asserts.
+func requestTokensConcurrently(t *testing.T, svc *Service, tenant string, n int) []*httptest.ResponseRecorder {
+	t.Helper()
+	handler := svc.Handler()
+	body := validForm(foundryScope).Encode()
+	recs := make([]*httptest.ResponseRecorder, n)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := range recs {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/"+tenant+"/oauth2/v2.0/token", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		recs[i] = rec
+		wg.Go(func() {
+			<-start
+			handler.ServeHTTP(rec, req)
+		})
+	}
+	close(start)
+	wg.Wait()
+	return recs
+}
+
 func TestConcurrentTokenRequestsAreCountedExactly(t *testing.T) {
 	svc := New()
-	var wg sync.WaitGroup
-	tokens := make(chan string, 50)
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			tokens <- issued(t, requestToken(t, svc, "t1", validForm(foundryScope))).AccessToken
-		}()
-	}
-	wg.Wait()
-	close(tokens)
 	seen := map[int]bool{}
-	for tok := range tokens {
-		seen[claimsOf(t, tok).N] = true
+	for _, rec := range requestTokensConcurrently(t, svc, "t1", 50) {
+		seen[claimsOf(t, issued(t, rec).AccessToken).N] = true
 	}
 	require.Len(t, seen, 50, "every request gets its own sequence number")
 	require.Equal(t, 50, recorded(t, svc, "t1").Count)
+}
+
+// A one-time failure fails exactly one of many concurrent requests: the first one admitted.
+func TestConcurrentRequestsShareOneTimeFailure(t *testing.T) {
+	svc := New()
+	tenant := PrefixRejectOnce + "concurrent"
+	codes := map[int]int{}
+	for _, rec := range requestTokensConcurrently(t, svc, tenant, 50) {
+		codes[rec.Code]++
+	}
+	require.Equal(t, map[int]int{http.StatusUnauthorized: 1, http.StatusOK: 49}, codes)
+	log := recorded(t, svc, tenant)
+	require.Equal(t, 50, log.Count)
+	require.Equal(t, http.StatusUnauthorized, log.Requests[0].Status, "the request admitted first is the one that fails")
 }
 
 func TestReservedAndInvalidTenantsAreRejected(t *testing.T) {
