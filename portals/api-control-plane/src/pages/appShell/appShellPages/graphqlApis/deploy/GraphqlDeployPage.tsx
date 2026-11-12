@@ -48,8 +48,8 @@ const useUndeployForCard: UseDeploymentMutationHook = () => {
   const mutation = useUndeployDeployment();
   return {
     isPending: mutation.isPending,
-    mutate: ({ apiId, deploymentId }, options) =>
-      mutation.mutate({ graphqlApiId: apiId, deploymentId }, options),
+    mutate: ({ apiId, deploymentId, gatewayId }, options) =>
+      mutation.mutate({ graphqlApiId: apiId, deploymentId, gatewayId }, options),
   };
 };
 
@@ -57,8 +57,8 @@ const useRestoreForCard: UseDeploymentMutationHook = () => {
   const mutation = useRestoreDeployment();
   return {
     isPending: mutation.isPending,
-    mutate: ({ apiId, deploymentId }, options) =>
-      mutation.mutate({ graphqlApiId: apiId, deploymentId }, options),
+    mutate: ({ apiId, deploymentId, gatewayId }, options) =>
+      mutation.mutate({ graphqlApiId: apiId, deploymentId, gatewayId }, options),
   };
 };
 

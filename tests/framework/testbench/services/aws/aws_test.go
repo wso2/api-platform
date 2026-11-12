@@ -1085,15 +1085,33 @@ func TestInOutage(t *testing.T) {
 	require.True(t, inOutage(time.Unix(4009, 999_999_999)))
 }
 
-// Bedrock, the AWS Bedrock Guardrail policy's ApplyGuardrail, on its own port (bedrock.go). These
-// are the tests of the Bedrock service from before it moved into this package, unchanged but for
-// the names.
+// Bedrock, the AWS Bedrock Guardrail policy's ApplyGuardrail, on its own port (bedrock.go). The
+// first tests are those of the Bedrock service from before it moved into this package; their
+// requests are now signed and name the fixture guardrail.
 
-const bedrockApplyPath = "/guardrail/test-guardrail/version/DRAFT/apply"
+const bedrockApplyPath = "/guardrail/test-guardrail-id/version/DRAFT/apply"
 
+// bedrockApplyBody is an ApplyGuardrail request body for text.
+func bedrockApplyBody(text string) string {
+	content, _ := json.Marshal(text)
+	return `{"source":"INPUT","content":[{"text":{"text":` + string(content) + `}}]}`
+}
+
+// signedBedrockRequest is an ApplyGuardrail request for path, signed at at with the given
+// credential for the given service and region, as the AWS SDK signs it.
+func signedBedrockRequest(path, body, accessKeyID string, c credential, service, region string, at time.Time) *http.Request {
+	r := httptest.NewRequest(http.MethodPost, "http://testbench:3006"+path, strings.NewReader(body))
+	r.Host = "testbench:3006"
+	r.Header.Set("Content-Type", "application/json")
+	signRequest(r, []byte(body), accessKeyID, c, service, region, at)
+	return r
+}
+
+// bedrockApplyRequest is an ApplyGuardrail request for text to the fixture guardrail, signed now
+// with a permanent fixture credential.
 func bedrockApplyRequest(text string) *http.Request {
-	body := `{"source":"INPUT","content":[{"text":{"text":"` + text + `"}}]}`
-	return httptest.NewRequest(http.MethodPost, bedrockApplyPath, strings.NewReader(body))
+	return signedBedrockRequest(bedrockApplyPath, bedrockApplyBody(text), permanentKey,
+		fixtureCredentials[permanentKey], serviceBedrock, bedrockRegion, time.Now())
 }
 
 func decodeBedrockResponse(t *testing.T, recorder *httptest.ResponseRecorder) applyGuardrailResponse {
@@ -1148,6 +1166,7 @@ func TestApplyGuardrailSimulatedErrorKeywordsReturn500(t *testing.T) {
 	NewBedrock().Handler().ServeHTTP(recorder, bedrockApplyRequest("please simulate an error here"))
 
 	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+	require.Equal(t, "InternalServerException", errorCode(t, recorder))
 }
 
 func TestApplyGuardrailMaskedEmailIsAnonymizedThenRestorable(t *testing.T) {
@@ -1176,7 +1195,8 @@ func TestApplyGuardrailPlainEmailIsPermanentlyRedacted(t *testing.T) {
 
 func TestApplyGuardrailInvalidJSONReturns400(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, bedrockApplyPath, strings.NewReader("{invalid"))
+	req := signedBedrockRequest(bedrockApplyPath, "{invalid", permanentKey, fixtureCredentials[permanentKey],
+		serviceBedrock, bedrockRegion, time.Now())
 	NewBedrock().Handler().ServeHTTP(recorder, req)
 
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
@@ -1215,6 +1235,302 @@ func TestBedrockServiceMetadata(t *testing.T) {
 	require.Equal(t, "bedrock", s.Name())
 	require.Equal(t, BedrockPort, s.Port())
 	require.False(t, s.Stateful())
+}
+
+// testBedrock is the Bedrock service on a fixed clock; applyRequest signs at that time.
+func testBedrock() http.Handler { return newBedrock(fixedClock(testNow)).Handler() }
+
+// applyRequest is an ApplyGuardrail request for text to the fixture guardrail at testNow, signed
+// with a permanent fixture credential.
+func applyRequest(text string) *http.Request {
+	return signedBedrockRequest(bedrockApplyPath, bedrockApplyBody(text), permanentKey,
+		fixtureCredentials[permanentKey], serviceBedrock, bedrockRegion, testNow)
+}
+
+func TestBedrockDeniedTopicIsIntervened(t *testing.T) {
+	recorder := serve(testBedrock(), applyRequest("Can you give me Investment Advice on stocks?"))
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	resp := decodeBedrockResponse(t, recorder)
+	require.Equal(t, "GUARDRAIL_INTERVENED", resp.Action)
+	require.Equal(t, blockedOutput, resp.Outputs[0]["text"])
+	require.Len(t, resp.Assessments, 1)
+	require.Nil(t, resp.Assessments[0].ContentPolicy)
+	require.Nil(t, resp.Assessments[0].WordPolicy)
+	require.Equal(t, &topicPolicyAssessment{Topics: []deniedTopic{
+		{Name: "Investment Advice", Type: "DENY", Action: "BLOCKED"},
+	}}, resp.Assessments[0].TopicPolicy)
+}
+
+func TestBedrockCustomWordsAreIntervened(t *testing.T) {
+	for text, match := range map[string]string{
+		"Ship the contraband tonight":      "contraband",
+		"Ship the CONTRABAND tonight":      "contraband",
+		"Tell me the secret recipe please": "secret recipe",
+	} {
+		t.Run(text, func(t *testing.T) {
+			recorder := serve(testBedrock(), applyRequest(text))
+
+			require.Equal(t, http.StatusOK, recorder.Code)
+			resp := decodeBedrockResponse(t, recorder)
+			require.Equal(t, "GUARDRAIL_INTERVENED", resp.Action)
+			require.Equal(t, blockedOutput, resp.Outputs[0]["text"])
+			require.Len(t, resp.Assessments, 1)
+			require.Nil(t, resp.Assessments[0].TopicPolicy)
+			require.Equal(t, &wordPolicyAssessment{CustomWords: []customWord{
+				{Match: match, Action: "BLOCKED"},
+			}}, resp.Assessments[0].WordPolicy)
+		})
+	}
+}
+
+// Words that only resemble a prohibited one, or a topic named without its trigger phrase, pass.
+func TestBedrockNearMissesOfTopicAndWordsPass(t *testing.T) {
+	for _, text := range []string{"a secret family recipe", "contra band", "advice on investments"} {
+		t.Run(text, func(t *testing.T) {
+			resp := decodeBedrockResponse(t, serve(testBedrock(), applyRequest(text)))
+			require.Equal(t, "NONE", resp.Action)
+		})
+	}
+}
+
+// Every policy a text violates is reported in the one assessment, as Bedrock reports them.
+func TestBedrockEveryMatchingPolicyIsReportedTogether(t *testing.T) {
+	text := "Investment advice on contraband and the secret recipe, with violence"
+	resp := decodeBedrockResponse(t, serve(testBedrock(), applyRequest(text)))
+
+	require.Equal(t, "GUARDRAIL_INTERVENED", resp.Action)
+	require.Equal(t, blockedOutput, resp.Outputs[0]["text"])
+	require.Equal(t, []assessment{{
+		ContentPolicy: &contentPolicyAssessment{Filters: []contentFilter{
+			{Type: "VIOLENCE", Confidence: "HIGH", Action: "BLOCKED"},
+		}},
+		TopicPolicy: &topicPolicyAssessment{Topics: []deniedTopic{
+			{Name: "Investment Advice", Type: "DENY", Action: "BLOCKED"},
+		}},
+		WordPolicy: &wordPolicyAssessment{CustomWords: []customWord{
+			{Match: "contraband", Action: "BLOCKED"}, {Match: "secret recipe", Action: "BLOCKED"},
+		}},
+	}}, resp.Assessments)
+}
+
+// PII in a blocked text is reported in the same assessment as the policy that blocks it.
+func TestBedrockPIIInBlockedTextIsReportedWithTheBlock(t *testing.T) {
+	text := "Send graphic violence to jane.doe@example.com"
+	resp := decodeBedrockResponse(t, serve(testBedrock(), applyRequest(text)))
+
+	require.Equal(t, "GUARDRAIL_INTERVENED", resp.Action)
+	require.Equal(t, blockedOutput, resp.Outputs[0]["text"])
+	require.Len(t, resp.Assessments, 1)
+	require.NotNil(t, resp.Assessments[0].ContentPolicy)
+	require.Equal(t, &sensitiveInformationPolicyAssessment{PiiEntities: []piiEntity{
+		{Type: "EMAIL", Match: "jane.doe@example.com", Action: "ANONYMIZED"},
+	}}, resp.Assessments[0].SensitiveInformationPolicy)
+}
+
+func TestBedrockEachPIITypeIsAnonymized(t *testing.T) {
+	for text, want := range map[string]piiEntity{
+		"Write to Jane.Doe@EXAMPLE.com today": {Type: "EMAIL", Match: "Jane.Doe@EXAMPLE.com", Action: "ANONYMIZED"},
+		"Call 555-123-4567 after noon":        {Type: "PHONE", Match: "555-123-4567", Action: "ANONYMIZED"},
+		"SSN 123-45-6789 on file":             {Type: "US_SOCIAL_SECURITY_NUMBER", Match: "123-45-6789", Action: "ANONYMIZED"},
+	} {
+		t.Run(text, func(t *testing.T) {
+			resp := decodeBedrockResponse(t, serve(testBedrock(), applyRequest(text)))
+			require.Equal(t, "GUARDRAIL_INTERVENED", resp.Action)
+			require.Len(t, resp.Assessments, 1)
+			require.Equal(t, &sensitiveInformationPolicyAssessment{PiiEntities: []piiEntity{want}},
+				resp.Assessments[0].SensitiveInformationPolicy)
+			require.NotContains(t, resp.Outputs[0]["text"], want.Match)
+		})
+	}
+}
+
+// Every PII type in one text is reported in one assessment, in the order the matches appear.
+func TestBedrockMixedPIITypesAreReportedTogether(t *testing.T) {
+	text := "Email jane.doe@example.com, call 555-123-4567, SSN 123-45-6789, again 555-123-4567"
+	resp := decodeBedrockResponse(t, serve(testBedrock(), applyRequest(text)))
+
+	require.Equal(t, "GUARDRAIL_INTERVENED", resp.Action)
+	require.Len(t, resp.Assessments, 1)
+	require.Equal(t, []piiEntity{
+		{Type: "EMAIL", Match: "jane.doe@example.com", Action: "ANONYMIZED"},
+		{Type: "PHONE", Match: "555-123-4567", Action: "ANONYMIZED"},
+		{Type: "US_SOCIAL_SECURITY_NUMBER", Match: "123-45-6789", Action: "ANONYMIZED"},
+		{Type: "PHONE", Match: "555-123-4567", Action: "ANONYMIZED"},
+	}, resp.Assessments[0].SensitiveInformationPolicy.PiiEntities)
+	require.Equal(t, "Email *****, call *****, SSN *****, again *****", resp.Outputs[0]["text"])
+}
+
+// Values that only resemble a filtered type are not PII, and neither is an address at another
+// domain.
+func TestBedrockPIINearMissesPass(t *testing.T) {
+	for _, text := range []string{
+		"due 2025-01-01", "id 123456789", "call 5551234567", "ref 1234-567-8901",
+		"jane@example.org", "jane@example.community",
+	} {
+		t.Run(text, func(t *testing.T) {
+			resp := decodeBedrockResponse(t, serve(testBedrock(), applyRequest(text)))
+			require.Equal(t, "NONE", resp.Action)
+		})
+	}
+}
+
+// Bedrock accepts the fixture and STS-issued credentials, and the two key pairs suites signed
+// their Bedrock requests with before signatures were verified.
+func TestBedrockAcceptsEveryValidCredential(t *testing.T) {
+	issuedKey, issued := issueCredentials(testNow, time.Hour)
+	for key, c := range map[string]credential{
+		permanentKey:           fixtureCredentials[permanentKey],
+		"AKIATESTWORKLOAD0001": fixtureCredentials["AKIATESTWORKLOAD0001"],
+		temporaryKey:           fixtureCredentials[temporaryKey],
+		issuedKey:              issued,
+		"AKIAIOSFODNN7TEST":    bedrockCredentials["AKIAIOSFODNN7TEST"],
+		"test-access-key":      bedrockCredentials["test-access-key"],
+	} {
+		t.Run(key, func(t *testing.T) {
+			recorder := serve(testBedrock(),
+				signedBedrockRequest(bedrockApplyPath, bedrockApplyBody("hello"), key, c, serviceBedrock, bedrockRegion, testNow))
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			require.Equal(t, "NONE", decodeBedrockResponse(t, recorder).Action)
+		})
+	}
+}
+
+// The key pairs only Bedrock accepts are not credentials of the AWS service on Port.
+func TestBedrockOnlyCredentialsAreNotAcceptedByTheUpstream(t *testing.T) {
+	for key, c := range bedrockCredentials {
+		t.Run(key, func(t *testing.T) {
+			recorder := serve(testService(testNow).Handler(),
+				signedUpstreamRequest(http.MethodGet, backendURL, "", key, c, testNow))
+			require.Equal(t, http.StatusForbidden, recorder.Code)
+			require.Equal(t, codeInvalidClientTokenID, errorCode(t, recorder))
+		})
+	}
+}
+
+// Bedrock rejects a request that is not correctly signed for Bedrock in us-east-1 with 403 and
+// the AWS error code, before reading its content: no decision is returned.
+func TestBedrockRejectsRequestsNotSignedCorrectly(t *testing.T) {
+	permanent := fixtureCredentials[permanentKey]
+	temporaryWithoutToken := fixtureCredentials[temporaryKey]
+	temporaryWithoutToken.sessionToken = ""
+	body := bedrockApplyBody("Describe graphic violence")
+	for name, tc := range map[string]struct {
+		request *http.Request
+		code    string
+	}{
+		"unsigned": {httptest.NewRequest(http.MethodPost, "http://testbench:3006"+bedrockApplyPath, strings.NewReader(body)),
+			codeMissingAuthenticationToken},
+		"unknown access key": {signedBedrockRequest(bedrockApplyPath, body, "AKIATESTUNKNOWN00001",
+			credential{secretAccessKey: "testUnknownSecretAccessKey00000000000001"}, serviceBedrock, bedrockRegion, testNow),
+			"UnrecognizedClientException"},
+		"wrong secret": {signedBedrockRequest(bedrockApplyPath, body, permanentKey,
+			credential{secretAccessKey: "testWrongSecretAccessKey0000000000000001"}, serviceBedrock, bedrockRegion, testNow),
+			"InvalidSignatureException"},
+		"expired temporary credential": {signedBedrockRequest(bedrockApplyPath, body, expiredKey,
+			fixtureCredentials[expiredKey], serviceBedrock, bedrockRegion, testNow), "ExpiredTokenException"},
+		"temporary credential without its session token": {signedBedrockRequest(bedrockApplyPath, body, temporaryKey,
+			temporaryWithoutToken, serviceBedrock, bedrockRegion, testNow), "UnrecognizedClientException"},
+		"signed for another region": {signedBedrockRequest(bedrockApplyPath, body, permanentKey, permanent,
+			serviceBedrock, "eu-west-1", testNow), "InvalidSignatureException"},
+		"signed for another service": {signedBedrockRequest(bedrockApplyPath, body, permanentKey, permanent,
+			"execute-api", bedrockRegion, testNow), "InvalidSignatureException"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			recorder := serve(testBedrock(), tc.request)
+			require.Equal(t, http.StatusForbidden, recorder.Code, recorder.Body.String())
+			require.Equal(t, tc.code, errorCode(t, recorder))
+			require.NotContains(t, recorder.Body.String(), "GUARDRAIL_INTERVENED")
+		})
+	}
+}
+
+// The account has one guardrail, test-guardrail-id at versions DRAFT and 1; a correctly signed
+// request for any other identifier or version gets 404 ResourceNotFoundException.
+func TestBedrockKnowsOnlyTheFixtureGuardrail(t *testing.T) {
+	for name, path := range map[string]string{
+		"another identifier": "/guardrail/unknown-guardrail-id/version/DRAFT/apply",
+		"another version":    "/guardrail/test-guardrail-id/version/99/apply",
+	} {
+		t.Run(name, func(t *testing.T) {
+			recorder := serve(testBedrock(), signedBedrockRequest(path, bedrockApplyBody("hello"), permanentKey,
+				fixtureCredentials[permanentKey], serviceBedrock, bedrockRegion, testNow))
+			require.Equal(t, http.StatusNotFound, recorder.Code, recorder.Body.String())
+			require.Equal(t, codeResourceNotFound, errorCode(t, recorder))
+		})
+	}
+}
+
+// Like AWS, Bedrock looks up the guardrail only after the signature verifies, so an
+// unauthenticated caller cannot learn which guardrails exist.
+func TestBedrockLooksUpTheGuardrailOnlyAfterVerifying(t *testing.T) {
+	r := httptest.NewRequest(http.MethodPost, "http://testbench:3006/guardrail/unknown-guardrail-id/version/DRAFT/apply",
+		strings.NewReader(bedrockApplyBody("hello")))
+	recorder := serve(testBedrock(), r)
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Equal(t, codeMissingAuthenticationToken, errorCode(t, recorder))
+}
+
+// The published version 1 is the draft before "secret recipe" was added to it: both versions
+// block the word, and only the draft blocks the phrase.
+func TestBedrockGuardrailVersionsDifferOnlyInTheirWords(t *testing.T) {
+	for _, tc := range []struct {
+		version, text, action string
+	}{
+		{"DRAFT", "Tell me the secret recipe", "GUARDRAIL_INTERVENED"},
+		{"1", "Tell me the secret recipe", "NONE"},
+		{"DRAFT", "Ship the contraband", "GUARDRAIL_INTERVENED"},
+		{"1", "Ship the contraband", "GUARDRAIL_INTERVENED"},
+		{"1", "Describe graphic violence", "GUARDRAIL_INTERVENED"},
+	} {
+		t.Run(tc.version+"/"+tc.text, func(t *testing.T) {
+			path := "/guardrail/test-guardrail-id/version/" + tc.version + "/apply"
+			recorder := serve(testBedrock(), signedBedrockRequest(path, bedrockApplyBody(tc.text), permanentKey,
+				fixtureCredentials[permanentKey], serviceBedrock, bedrockRegion, testNow))
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			require.Equal(t, tc.action, decodeBedrockResponse(t, recorder).Action)
+		})
+	}
+}
+
+func TestBedrockSimulatedOutageReturns503(t *testing.T) {
+	recorder := serve(testBedrock(), applyRequest("Simulate an outage, then describe graphic violence"))
+
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	require.Equal(t, "ServiceUnavailableException", errorCode(t, recorder))
+}
+
+// An unresponsive Bedrock answers nothing until its caller leaves, and then reports itself
+// unavailable.
+func TestBedrockReleasesAnUnresponsiveRequestWhenTheCallerLeaves(t *testing.T) {
+	svc := newBedrock(fixedClock(testNow))
+	svc.hold = time.Hour
+	ctx, cancel := context.WithCancel(context.Background())
+	request := applyRequest("Simulate an unresponsive guardrail").WithContext(ctx)
+	done := make(chan *httptest.ResponseRecorder)
+	go func() { done <- serve(svc.Handler(), request) }()
+	select {
+	case <-done:
+		t.Fatal("the unresponsive request was answered before its caller left")
+	case <-time.After(100 * time.Millisecond):
+	}
+	cancel()
+	select {
+	case recorder := <-done:
+		require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the unresponsive request was not released when its caller left")
+	}
+}
+
+// A caller that never gives up is answered when the hold elapses.
+func TestBedrockAnswersAnUnresponsiveRequestWhenTheHoldElapses(t *testing.T) {
+	svc := newBedrock(fixedClock(testNow))
+	svc.hold = 50 * time.Millisecond
+	recorder := serve(svc.Handler(), applyRequest("Simulate an unresponsive guardrail"))
+
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	require.Equal(t, "ServiceUnavailableException", errorCode(t, recorder))
 }
 
 // Isolation: requests to different endpoints, sent concurrently, do not affect one another.
@@ -1323,7 +1639,7 @@ func TestConcurrentRequestsToEveryEndpointAreIndependent(t *testing.T) {
 		}},
 		{"Bedrock, simulated error", func(int) *http.Request {
 			return bedrockApplyRequest("please simulate an error")
-		}, expect(http.StatusInternalServerError, "Simulated AWS Bedrock Guardrail error")},
+		}, expect(http.StatusInternalServerError, "InternalServerException")},
 	}
 
 	targets := []struct {

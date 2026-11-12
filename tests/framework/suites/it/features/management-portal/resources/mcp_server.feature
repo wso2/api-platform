@@ -24,7 +24,7 @@ Feature: The Platform API's MCP tools
 
   Background:
     Given the gateway services are running
-    And I generate a unique value from "mcp-project" and store it as "project"
+    And I generate a unique resource name from "mcp-project" and store it as "project"
     And I create a project "${CTX:project}" on the control plane
 
   Scenario Outline: Each user sees the tools their role allows

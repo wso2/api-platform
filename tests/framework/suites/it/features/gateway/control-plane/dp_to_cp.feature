@@ -25,7 +25,7 @@ Feature: Data-plane to control-plane artifact push
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "dp2cp-project" and store it as "projectHandle"
+    And I generate a unique resource name from "dp2cp-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   Scenario: An LLM provider template created on the gateway is pushed to the control plane

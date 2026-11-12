@@ -536,6 +536,9 @@ export const navigationRegistry: NavigationDefinition[] = [
     label: 'Publish',
     group: CLUSTER.api,
     order: 55,
+    // Only for users who may publish: without it the page could only show the
+    // publication read-only. REST and GraphQL publishing are granted together.
+    permission: 'publishRestApiToApiPortal',
     icon: <Megaphone />,
     to: apiLevelTo(routes.apiPortals, routes.graphqlApiPublish),
     match: matchRoutes(
