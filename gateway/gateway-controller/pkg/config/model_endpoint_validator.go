@@ -53,6 +53,9 @@ var (
 	knownPathPlaceholder       = regexp.MustCompile(`^\{(upstreamModel|apiVersion(:[A-Za-z0-9._\-]+)?)\}$`)
 	knownParamPlaceholder      = regexp.MustCompile(`\{apiVersion(:[^{}]*)?\}`)
 	validParamDefault          = regexp.MustCompile(`^\{apiVersion(:[A-Za-z0-9._\-]+)?\}$`)
+	// apiVersionToken matches anything that starts like an {apiVersion} placeholder,
+	// so a misspelt one is refused rather than sent upstream as text.
+	apiVersionToken = regexp.MustCompile(`\{apiVersion[^{}]*\}?`)
 )
 
 // ModelEndpointValidator validates the parts of a model endpoint that need nothing
@@ -257,6 +260,11 @@ func ValidateModelEndpointTransformers(field string, entries *[]api.ModelEndpoin
 			if e.Params != nil && len(*e.Params) > 0 {
 				add(f+".params", "a transformer of type 'none' takes no params")
 			}
+			// Nothing rewrites the request, so it goes upstream on the endpoint's own
+			// dispatch paths; declared paths would be checked instead of those.
+			if e.UpstreamPaths != nil && len(*e.UpstreamPaths) > 0 {
+				add(f+".upstreamPaths", "a transformer of type 'none' takes no upstreamPaths")
+			}
 		} else {
 			errs = append(errs, validateTransformerTypeVersion(f, typ, version)...)
 		}
@@ -316,10 +324,15 @@ func validateParamPlaceholders(field string, v interface{}) []ValidationError {
 	switch val := v.(type) {
 	case string:
 		var errs []ValidationError
-		for _, ph := range knownParamPlaceholder.FindAllString(val, -1) {
-			if !validParamDefault.MatchString(ph) {
+		for _, ph := range apiVersionToken.FindAllString(val, -1) {
+			switch {
+			case validParamDefault.MatchString(ph):
+			case knownParamPlaceholder.MatchString(ph):
 				errs = append(errs, ValidationError{Field: field, Message: fmt.Sprintf("placeholder %s needs a "+
 					"non-empty default of letters, digits, '.', '_' or '-'", ph)})
+			default:
+				errs = append(errs, ValidationError{Field: field, Message: fmt.Sprintf("placeholder %s is not "+
+					"recognised; use {apiVersion} or {apiVersion:<default>}", ph)})
 			}
 		}
 		return errs

@@ -207,10 +207,11 @@ func TemplateMatches(tmpl *models.StoredLLMProviderTemplate, name string) bool {
 
 // targetPaths returns the paths a routed target is called on, and whether they are
 // known. For a provider that passes through, they are the endpoint's dispatch
-// paths with the model segment filled; for a transformer, the entry's declared
-// paths with their placeholders filled.
+// paths with the model segment filled, whatever its entry declares, since nothing
+// rewrites the path; for a transformer, the entry's declared paths with their
+// placeholders filled.
 func targetPaths(entry *api.ModelEndpointTransformer, tr *Transformer, t *Target, ep Endpoint) ([]string, bool, error) {
-	if entry != nil && entry.UpstreamPaths != nil && len(*entry.UpstreamPaths) > 0 {
+	if tr != nil && entry != nil && entry.UpstreamPaths != nil && len(*entry.UpstreamPaths) > 0 {
 		out := make([]string, 0, len(*entry.UpstreamPaths))
 		for _, p := range *entry.UpstreamPaths {
 			filled, err := fillString(p, t.Provider)
