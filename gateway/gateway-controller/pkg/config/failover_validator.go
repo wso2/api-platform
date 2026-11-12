@@ -61,30 +61,6 @@ func validateFailoverParams(policyName string, params map[string]interface{}, fi
 	return errors
 }
 
-// validateFailoverAgainstRequestTimeout reports a per-attempt timeout that does not fit inside
-// the operation's overall request timeout.
-//
-// Both bounds are in milliseconds. A per-attempt timeout at or above the request timeout means
-// a single slow target consumes the entire budget, and the request is cut off before a second
-// target is ever attempted — the policy is attached, configured, and silently unable to fail
-// over. That is worth refusing at deployment time rather than discovering during an outage.
-func validateFailoverAgainstRequestTimeout(params map[string]interface{}, requestTimeoutMs int64, fieldPath string) []ValidationError {
-	if params == nil || requestTimeoutMs <= 0 {
-		return nil
-	}
-	perAttempt, ok := failoverNumber(params["perAttemptTimeoutMs"])
-	if !ok || perAttempt < requestTimeoutMs {
-		return nil
-	}
-	return []ValidationError{{
-		Field: fieldPath + ".perAttemptTimeoutMs",
-		Message: fmt.Sprintf(
-			"perAttemptTimeoutMs (%d) must be less than the operation's request timeout (%d); "+
-				"otherwise one slow target consumes the whole budget and no fallback is ever attempted",
-			perAttempt, requestTimeoutMs),
-	}}
-}
-
 // failoverNumber reads a schema-declared integer out of the params map. JSON decoding yields
 // float64, template coercion can yield int, and both must be accepted.
 func failoverNumber(raw interface{}) (int64, bool) {
