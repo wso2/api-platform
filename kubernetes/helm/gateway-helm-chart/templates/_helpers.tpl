@@ -170,3 +170,96 @@ imagePullSecrets:
 {{- end }}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Resolve how the gateway-controller receives one of its secrets: the control-plane
+token or a database password. Each one is delivered either as an environment
+variable (source: env, the default) or as a file mounted from its Secret
+(source: file) that the controller reads with a {{ file }} interpolation token, so the
+value never enters the pod environment. File tokens are rendered into the controller-only
+controller-secrets.toml, never config.toml (see gateway-config.yaml). A missing key falls back to the chart
+default, so a release upgraded with --reuse-values (or values from the operator
+that predate these keys) renders exactly as before.
+
+File-mode settings are validated only when the secret is in use (the token always,
+a database password only for its storage.type), so a value that rendered before
+these keys existed still renders.
+
+Args (dict): root, which ("token" | "postgres" | "sqlserver")
+Returns YAML: field, nameField, name, key, source, mountPath, path, envVar, volume,
+inUse, token (the quoted TOML value config.toml assigns: an env or file token).
+*/}}
+{{- define "gateway-operator.controllerSecret" -}}
+{{- $c := .root.Values.gateway.controller -}}
+{{- $storageType := .root.Values.gateway.config.controller.storage.type -}}
+{{- $s := dict -}}
+{{- if eq .which "token" -}}
+{{- $t := default (dict) (default (dict) $c.controlPlane).token -}}
+{{- $s = dict "field" "gateway.controller.controlPlane.token" "nameField" "secretName" "name" (default "" $t.secretName) "key" (default "token" $t.key) "source" (default "env" $t.source) "mountPath" (default "/secrets/gateway-controller/controlplane" $t.mountPath) "envVar" "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN" "volume" "controlplane-token" "inUse" true -}}
+{{- if and (eq $s.source "file") $t.value -}}
+{{- fail "gateway.controller.controlPlane.token.value cannot be used with token.source=file: only a Secret can be mounted as a file. Put the token in a Secret and set token.secretName, or use token.source=env." -}}
+{{- end -}}
+{{- else if eq .which "postgres" -}}
+{{- $r := default (dict) (default (dict) $c.postgres).passwordSecretRef -}}
+{{- $s = dict "field" "gateway.controller.postgres.passwordSecretRef" "nameField" "name" "name" (default "" $r.name) "key" (default "password" $r.key) "source" (default "env" $r.source) "mountPath" (default "/secrets/gateway-controller/postgres" $r.mountPath) "envVar" "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD" "volume" "postgres-password" "inUse" (eq $storageType "postgres") -}}
+{{- else if eq .which "sqlserver" -}}
+{{- $r := default (dict) (default (dict) $c.sqlserver).passwordSecretRef -}}
+{{- $s = dict "field" "gateway.controller.sqlserver.passwordSecretRef" "nameField" "name" "name" (default "" $r.name) "key" (default "password" $r.key) "source" (default "env" $r.source) "mountPath" (default "/secrets/gateway-controller/sqlserver" $r.mountPath) "envVar" "APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD" "volume" "sqlserver-password" "inUse" (eq $storageType "sqlserver") -}}
+{{- else -}}
+{{- fail (printf "gateway-operator.controllerSecret: unknown secret %q" .which) -}}
+{{- end -}}
+{{- if not (has $s.source (list "env" "file")) -}}
+{{- fail (printf "%s.source must be \"env\" or \"file\", got %q" $s.field (toString $s.source)) -}}
+{{- end -}}
+{{- $mountPath := trimSuffix "/" (toString $s.mountPath) -}}
+{{- $path := printf "%s/%s" $mountPath $s.key -}}
+{{- if and (eq $s.source "file") $s.inUse -}}
+{{- if not $s.name -}}
+{{- fail (printf "%s.%s is required when %s.source is \"file\": the Secret is what gets mounted." $s.field $s.nameField $s.field) -}}
+{{- end -}}
+{{- if or (not (regexMatch `^[-._a-zA-Z0-9]+$` $s.key)) (eq $s.key ".") (eq $s.key "..") -}}
+{{- fail (printf "%s.key must be a Secret key name (letters, digits, '-', '_', '.'), got %q" $s.field $s.key) -}}
+{{- end -}}
+{{- if or (not (regexMatch `^(/[-_a-zA-Z0-9.]+)+$` $mountPath)) (regexMatch `(^|/)\.\.?(/|$)` $mountPath) -}}
+{{- fail (printf "%s.mountPath must be an absolute directory path of plain segments (no '.' or '..'), got %q" $s.field (toString $s.mountPath)) -}}
+{{- end -}}
+{{- if or (eq $mountPath "/etc/gateway-controller") (hasPrefix "/etc/gateway-controller/config.toml" $mountPath) (hasPrefix "/etc/gateway-controller/controller-secrets.toml" $mountPath) -}}
+{{- fail (printf "%s.mountPath must not be /etc/gateway-controller or overlap its config files; use a directory such as /secrets/gateway-controller/<name>." $s.field) -}}
+{{- end -}}
+{{- end -}}
+{{- $token := printf `'{{ env "%s" "" }}'` $s.envVar -}}
+{{- if eq $s.source "file" -}}
+{{- $token = printf `'{{ file "%s" }}'` $path -}}
+{{- end -}}
+{{- $_ := set $s "mountPath" $mountPath -}}
+{{- $_ := set $s "path" $path -}}
+{{- $_ := set $s "token" $token -}}
+{{- toYaml $s -}}
+{{- end -}}
+
+{{/*
+The gateway-controller secrets delivered as mounted files (source: file) that are in
+use, as YAML `mounts: [...]` with volume, secretName, key, mountPath for each. Fails
+when two of them, or one of them and a mount the chart already makes, share a
+mount path: Kubernetes rejects a pod with duplicate mount paths.
+
+Args: the root context.
+*/}}
+{{- define "gateway-operator.controllerSecretMounts" -}}
+{{- $c := .Values.gateway.controller -}}
+{{- $taken := dict -}}
+{{- if $c.deployment.volumeMountPath -}}{{- $_ := set $taken (trimSuffix "/" $c.deployment.volumeMountPath) "gateway.controller.deployment.volumeMountPath" -}}{{- end -}}
+{{- if and $c.encryptionKeys.enabled $c.encryptionKeys.mountPath -}}{{- $_ := set $taken (trimSuffix "/" $c.encryptionKeys.mountPath) "gateway.controller.encryptionKeys.mountPath" -}}{{- end -}}
+{{- $mounts := list -}}
+{{- range $which := list "token" "postgres" "sqlserver" -}}
+{{- $s := include "gateway-operator.controllerSecret" (dict "root" $ "which" $which) | fromYaml -}}
+{{- if and $s.inUse (eq $s.source "file") -}}
+{{- with (get $taken $s.mountPath) -}}
+{{- fail (printf "%s.mountPath %q is already used by %s; give each mounted secret its own directory." $s.field $s.mountPath .) -}}
+{{- end -}}
+{{- $_ := set $taken $s.mountPath (printf "%s.mountPath" $s.field) -}}
+{{- $mounts = append $mounts (dict "volume" $s.volume "secretName" $s.name "key" $s.key "mountPath" $s.mountPath) -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml (dict "mounts" $mounts) -}}
+{{- end -}}
