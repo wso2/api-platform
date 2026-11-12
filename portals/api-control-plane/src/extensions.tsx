@@ -206,6 +206,15 @@ export const HEADER_ACTIONS_SLOT = 'header.actions';
 export const HEADER_START_SLOT = 'header.start';
 
 /**
+ * Slot for an action on the project overview's heading, rendered at the right
+ * of the project's name. Consumed directly by `ProjectMetadata` (via `useSlot`),
+ * the same arrangement as `HEADER_ACTIONS_SLOT`: an entry carries only
+ * `render`, which receives the Port with the project in `projectHandle`. A
+ * deployment that registers nothing here leaves the heading as it is.
+ */
+export const PROJECT_HEADER_ACTIONS_SLOT = 'project.header.actions';
+
+/**
  * Slot for a headless, host-mounted policy hook, rendered on every in-shell
  * route.
  *
@@ -306,7 +315,8 @@ export const settingsTabExtensions = (
  * It has no route and no nav presence, so it carries none of the fields
  * `ApiControlPlaneExtension` needs — declaring them inert would say this entry
  * has a page when it does not. Mirrors `AIWorkspaceHeaderAction`, so the same
- * feature registers the same way in either portal.
+ * feature registers the same way in either portal. The project heading's
+ * actions (`PROJECT_HEADER_ACTIONS_SLOT`) take the same shape.
  */
 export type ApiControlPlaneHeaderAction = SlotEntry & {
   render: ExtensionRender;
