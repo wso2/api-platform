@@ -19,7 +19,10 @@
 package budget
 
 import (
+	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -49,16 +52,43 @@ const validBudget = `{
 
 func newTestService(t *testing.T, pushEnabled bool) (*Service, storage.Storage) {
 	t.Helper()
+	svc, db, _ := newTestServiceWithPath(t, pushEnabled)
+	return svc, db
+}
+
+// newTestServiceWithPath also returns the SQLite file, for tests that read the rows directly.
+func newTestServiceWithPath(t *testing.T, pushEnabled bool) (*Service, storage.Storage, string) {
+	t.Helper()
 	metrics.Init()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	path := filepath.Join(t.TempDir(), "gateway.db")
 	db, err := storage.NewStorage(storage.BackendConfig{
 		Type:       "sqlite",
-		SQLitePath: filepath.Join(t.TempDir(), "gateway.db"),
+		SQLitePath: path,
 		GatewayID:  "test-gateway",
 	}, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
-	return NewService(db, logger, pushEnabled), db
+	seedLLMProvider(t, db, "openai")
+	return NewService(db, logger, pushEnabled), db, path
+}
+
+// seedLLMProvider stores an LLM provider so budgets can name it.
+func seedLLMProvider(t *testing.T, db storage.Storage, name string) {
+	t.Helper()
+	provider := api.LLMProviderConfiguration{
+		ApiVersion: api.LLMProviderConfigurationApiVersionGatewayApiPlatformWso2Comv1,
+		Kind:       api.LLMProviderConfigurationKindLlmProvider,
+		Metadata:   api.Metadata{Name: name},
+	}
+	now := time.Now()
+	require.NoError(t, db.SaveConfig(&models.StoredConfig{
+		UUID: "0193f1c2-0000-7000-8000-" + fmt.Sprintf("%012x", len(name)), Kind: models.KindLlmProvider,
+		Handle: name, DisplayName: name, Version: "v1.0",
+		Configuration: provider, SourceConfiguration: provider,
+		DesiredState: models.StateDeployed, Origin: models.OriginGatewayAPI,
+		CreatedAt: now, UpdatedAt: now,
+	}))
 }
 
 func TestCreate_StoresBudgetWithDefaults(t *testing.T) {
@@ -304,4 +334,252 @@ func TestDelete(t *testing.T) {
 
 	err = svc.Delete("research-team-monthly", nil)
 	assert.True(t, errors.Is(err, ErrNotFound), "got %v", err)
+}
+
+func TestCreate_RejectsUnknownProvider(t *testing.T) {
+	svc, _ := newTestService(t, false)
+
+	_, err := svc.Create(CreateParams{Body: []byte(strings.Replace(validBudget, `"id": "openai"`, `"id": "mistral"`, 1))})
+
+	var invalid *ValidationError
+	require.True(t, errors.As(err, &invalid), "got %v", err)
+	assert.Equal(t, "spec.resource.id", invalid.Errors[0].Field)
+	assert.Contains(t, invalid.Errors[0].Message, `"mistral"`)
+}
+
+// budgetShape is one kind of budget the design offers, written as the spec a user sends.
+type budgetShape struct {
+	name string
+	spec map[string]any
+}
+
+func attributeConsumers(n int, allocation string) []any {
+	out := make([]any, n)
+	for i := range out {
+		out[i] = map[string]any{
+			"type": "attribute", "allocation": allocation,
+			"expression": fmt.Sprintf("request.Auth.Claims[\"team\"] == \"team-%d\"", i),
+		}
+	}
+	return out
+}
+
+func attributeExemptions(n int) []any {
+	out := make([]any, n)
+	for i := range out {
+		out[i] = map[string]any{"type": "attribute", "expression": fmt.Sprintf("request.Auth.Claims[\"sub\"] == \"svc-%d\"", i)}
+	}
+	return out
+}
+
+func limit(amount, period, action string) map[string]any {
+	return map[string]any{"amount": amount, "period": period, "action": action}
+}
+
+func supportedBudgetShapes() []budgetShape {
+	oneProvider := map[string]any{"type": "llmProvider", "allocation": "shared", "id": "openai"}
+	allProviders := map[string]any{"type": "llmProvider", "allocation": "shared"}
+	eachProvider := map[string]any{"type": "llmProvider", "allocation": "separate"}
+	return []budgetShape{
+		// Who pays: the whole gateway, a group sharing one pool, or each member on its own.
+		{"gateway-wide on one provider", map[string]any{"limit": limit("1000", "month", "block"), "resource": oneProvider}},
+		{"gateway-wide across all providers", map[string]any{"limit": limit("1000", "month", "block"), "resource": allProviders}},
+		{"each provider its own limit", map[string]any{"limit": limit("1000", "month", "block"), "resource": eachProvider}},
+		{"shared attribute consumer", map[string]any{"limit": limit("500.00", "month", "block"), "resource": oneProvider, "consumers": attributeConsumers(1, "shared")}},
+		{"separate attribute consumer", map[string]any{"limit": limit("25", "day", "block"), "resource": allProviders, "consumers": attributeConsumers(1, "separate")}},
+		{"separate consumer per separate provider", map[string]any{"limit": limit("25", "day", "block"), "resource": eachProvider, "consumers": attributeConsumers(1, "separate")}},
+		{"several consumers, mixed allocation", map[string]any{"limit": limit("300", "week", "block"), "resource": oneProvider,
+			"consumers": append(attributeConsumers(1, "shared"), attributeConsumers(2, "separate")...)}},
+		{"most consumers allowed", map[string]any{"limit": limit("300", "week", "block"), "resource": allProviders, "consumers": attributeConsumers(20, "shared")}},
+		// Exemptions.
+		{"one exemption", map[string]any{"limit": limit("1000", "month", "block"), "resource": oneProvider, "exemptions": attributeExemptions(1)}},
+		{"most exemptions allowed", map[string]any{"limit": limit("1000", "month", "block"), "resource": oneProvider, "exemptions": attributeExemptions(100)}},
+		// Periods, actions, threshold, state and amount bounds.
+		{"weekly", map[string]any{"limit": limit("70", "week", "block"), "resource": allProviders}},
+		{"daily", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders}},
+		{"warn only (allow)", map[string]any{"limit": limit("10", "day", "allow"), "resource": allProviders}},
+		{"block at 1 percent", map[string]any{"limit": map[string]any{"amount": "10", "period": "day", "action": "block", "blockAt": 1}, "resource": allProviders}},
+		{"block at 100 percent explicitly", map[string]any{"limit": map[string]any{"amount": "10", "period": "day", "action": "block", "blockAt": 100}, "resource": allProviders}},
+		{"inactive", map[string]any{"status": "inactive", "limit": limit("10", "day", "block"), "resource": allProviders}},
+		{"currency given", map[string]any{"limit": map[string]any{"amount": "10", "currency": "USD", "period": "day", "action": "block"}, "resource": allProviders}},
+		{"smallest amount", map[string]any{"limit": limit("0.01", "day", "block"), "resource": allProviders}},
+		{"largest amount", map[string]any{"limit": limit("999999999999.99", "month", "block"), "resource": allProviders}},
+		{"everything at once", map[string]any{"status": "active",
+			"limit":     map[string]any{"amount": "500.00", "currency": "USD", "period": "month", "action": "block", "blockAt": 95},
+			"resource":  oneProvider,
+			"consumers": attributeConsumers(3, "separate"), "exemptions": attributeExemptions(2)}},
+	}
+}
+
+// withDefaults adds the values the spec fills in when a request leaves them out.
+func withDefaults(spec map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range spec {
+		out[k] = v
+	}
+	if _, ok := out["status"]; !ok {
+		out["status"] = "active"
+	}
+	l := map[string]any{}
+	for k, v := range out["limit"].(map[string]any) {
+		l[k] = v
+	}
+	if _, ok := l["currency"]; !ok {
+		l["currency"] = "USD"
+	}
+	if _, ok := l["blockAt"]; !ok {
+		l["blockAt"] = 100
+	}
+	out["limit"] = l
+	return out
+}
+
+// normalise round-trips a value through JSON so numbers and slices compare by value.
+func normalise(t *testing.T, v any) any {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	require.NoError(t, err)
+	var out any
+	require.NoError(t, json.Unmarshal(raw, &out))
+	return out
+}
+
+type artifactRow struct {
+	kind, handle, displayName, version, desiredState, origin string
+	cpSyncStatus                                             sql.NullString
+	updatedAt                                                time.Time
+}
+
+func readRows(t *testing.T, raw *sql.DB, uuid string) (*artifactRow, string, bool) {
+	t.Helper()
+	var row artifactRow
+	err := raw.QueryRow(`SELECT kind, handle, display_name, version, desired_state, origin, cp_sync_status, updated_at
+		FROM artifacts WHERE uuid = ?`, uuid).Scan(&row.kind, &row.handle, &row.displayName, &row.version,
+		&row.desiredState, &row.origin, &row.cpSyncStatus, &row.updatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		var budgets int
+		require.NoError(t, raw.QueryRow(`SELECT COUNT(*) FROM budgets WHERE uuid = ?`, uuid).Scan(&budgets))
+		assert.Zero(t, budgets, "budgets row left behind after its artifacts row was deleted")
+		return nil, "", false
+	}
+	require.NoError(t, err)
+	var configuration string
+	require.NoError(t, raw.QueryRow(`SELECT configuration FROM budgets WHERE uuid = ? AND gateway_id = 'test-gateway'`, uuid).Scan(&configuration))
+	return &row, configuration, true
+}
+
+// TestBudgetShapes_RoundTripThroughStorage checks that every budget the design offers is accepted
+// and that what the REST layer takes is exactly what the artifacts and budgets tables hold,
+// through create, read, update and delete.
+func TestBudgetShapes_RoundTripThroughStorage(t *testing.T) {
+	for i, shape := range supportedBudgetShapes() {
+		t.Run(shape.name, func(t *testing.T) {
+			svc, _, dbPath := newTestServiceWithPath(t, true)
+			raw, err := sql.Open("sqlite3", dbPath)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = raw.Close() })
+
+			name := fmt.Sprintf("shape-%02d", i)
+			request := map[string]any{
+				"apiVersion": "gateway.api-platform.wso2.com/v1", "kind": "Budget",
+				"metadata": map[string]any{"name": name}, "spec": shape.spec,
+			}
+			body, err := json.Marshal(request)
+			require.NoError(t, err)
+			want := normalise(t, withDefaults(shape.spec))
+
+			// Create
+			created, err := svc.Create(CreateParams{Body: body})
+			require.NoError(t, err)
+
+			// The artifacts row carries the kind's identity and state; the budgets row the spec.
+			row, configuration, ok := readRows(t, raw, created.UUID)
+			require.True(t, ok)
+			assert.Equal(t, "Budget", row.kind)
+			assert.Equal(t, name, row.handle)
+			assert.Equal(t, name, row.displayName)
+			assert.Equal(t, "v1", row.version)
+			assert.Equal(t, "deployed", row.desiredState)
+			assert.Equal(t, "gateway_api", row.origin)
+			assert.Equal(t, "pending", row.cpSyncStatus.String)
+			var stored map[string]any
+			require.NoError(t, json.Unmarshal([]byte(configuration), &stored))
+			assert.Equal(t, want, normalise(t, stored["spec"]), "budgets.configuration spec")
+			assert.Equal(t, name, stored["metadata"].(map[string]any)["name"])
+
+			// Read returns the same spec.
+			got, err := svc.Get(name)
+			require.NoError(t, err)
+			assert.Equal(t, want, normalise(t, got.SourceConfiguration.(api.BudgetRequest).Spec), "GET spec")
+
+			// Update an editable field; the row changes and nothing else does.
+			updated := withDefaults(shape.spec)
+			updatedLimit := updated["limit"].(map[string]any)
+			updatedLimit["amount"] = "42.50"
+			updated["status"] = "inactive"
+			request["spec"] = updated
+			body, err = json.Marshal(request)
+			require.NoError(t, err)
+			_, err = svc.Update(UpdateParams{Name: name, Body: body})
+			require.NoError(t, err)
+
+			after, configuration, ok := readRows(t, raw, created.UUID)
+			require.True(t, ok)
+			assert.False(t, after.updatedAt.Before(row.updatedAt), "updated_at went backwards")
+			require.NoError(t, json.Unmarshal([]byte(configuration), &stored))
+			assert.Equal(t, normalise(t, updated), normalise(t, stored["spec"]), "budgets.configuration after update")
+
+			// Delete removes both rows.
+			require.NoError(t, svc.Delete(name, nil))
+			_, _, ok = readRows(t, raw, created.UUID)
+			assert.False(t, ok, "artifacts row still there after delete")
+		})
+	}
+}
+
+// TestBudgetShapes_RejectsUnsupported lists the shapes the design describes that this iteration
+// does not take, and the list limits, so a change that starts accepting one is noticed.
+func TestBudgetShapes_RejectsUnsupported(t *testing.T) {
+	allProviders := map[string]any{"type": "llmProvider", "allocation": "shared"}
+	consumerOf := func(kind string) []any {
+		return []any{map[string]any{"type": kind, "allocation": "shared", "expression": "true", "id": "x"}}
+	}
+	cases := []struct {
+		name  string
+		spec  map[string]any
+		field string
+	}{
+		{"agent consumer", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders, "consumers": consumerOf("agent")}, "spec.consumers[0].type"},
+		{"project consumer", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders, "consumers": consumerOf("project")}, "spec.consumers[0].type"},
+		{"API key consumer", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders, "consumers": consumerOf("apiKey")}, "spec.consumers[0].type"},
+		{"LLM proxy consumer", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders, "consumers": consumerOf("llmProxy")}, "spec.consumers[0].type"},
+		{"environments", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders, "environments": map[string]any{"ids": []any{"production"}}}, "spec"},
+		{"separate provider with id", map[string]any{"limit": limit("10", "day", "block"), "resource": map[string]any{"type": "llmProvider", "allocation": "separate", "id": "openai"}}, "spec.resource.id"},
+		{"too many consumers", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders, "consumers": attributeConsumers(21, "shared")}, "spec.consumers"},
+		{"too many exemptions", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders, "exemptions": attributeExemptions(101)}, "spec.exemptions"},
+		{"amount too large", map[string]any{"limit": limit("1000000000000", "day", "block"), "resource": allProviders}, "spec.limit.amount"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, db := newTestService(t, false)
+			body, err := json.Marshal(map[string]any{
+				"apiVersion": "gateway.api-platform.wso2.com/v1", "kind": "Budget",
+				"metadata": map[string]any{"name": "rejected"}, "spec": tc.spec,
+			})
+			require.NoError(t, err)
+
+			_, err = svc.Create(CreateParams{Body: body})
+
+			var invalid *ValidationError
+			require.True(t, errors.As(err, &invalid), "got %v", err)
+			fields := make([]string, 0, len(invalid.Errors))
+			for _, fe := range invalid.Errors {
+				fields = append(fields, fe.Field)
+			}
+			assert.Contains(t, fields, tc.field, "errors: %v", invalid.Errors)
+			stored, err := db.GetAllConfigsByKind(models.KindBudget)
+			require.NoError(t, err)
+			assert.Empty(t, stored, "a rejected budget was stored")
+		})
+	}
 }

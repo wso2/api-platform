@@ -72,6 +72,9 @@ func (s *Service) Create(params CreateParams) (*models.StoredConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := s.checkProviderExists(budget.Spec.Resource); err != nil {
+		return nil, err
+	}
 
 	id, err := utils.GenerateUUID()
 	if err != nil {
@@ -225,4 +228,24 @@ func fixedFieldChanges(stored, updated api.BudgetRequest) []FieldError {
 		errs = append(errs, FieldError{Field: "spec.consumers", Message: message})
 	}
 	return errs
+}
+
+// checkProviderExists rejects a budget whose resource names an LLM provider
+// that is not on this gateway.
+func (s *Service) checkProviderExists(resource api.BudgetResource) error {
+	if resource.Id == nil {
+		return nil
+	}
+	_, err := s.db.GetConfigByKindAndHandle(models.KindLlmProvider, *resource.Id)
+	switch {
+	case err == nil:
+		return nil
+	case storage.IsNotFoundError(err):
+		return &ValidationError{Errors: []FieldError{{
+			Field:   "spec.resource.id",
+			Message: fmt.Sprintf("no LLM provider named %q on this gateway", *resource.Id),
+		}}}
+	default:
+		return fmt.Errorf("failed to look up LLM provider %q: %w", *resource.Id, err)
+	}
 }

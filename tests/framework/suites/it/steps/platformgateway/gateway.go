@@ -1154,8 +1154,8 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.getResource)
 	sc.Step(`^I list all (LLM providers|LLM provider templates|MCP proxies|LLM proxies)$`,
 		g.listResources)
-	sc.Step(`^I update the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)" with configuration:$`, g.updateResource)
-	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`, g.deleteResource)
+	sc.Step(`^I update the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|Budget) "([^"]*)" with configuration:$`, g.updateResource)
+	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API|Budget) "([^"]*)"$`, g.deleteResource)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)"$`, g.serviceRequest)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" with body:$`, g.serviceRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until status (\d+)$`,
@@ -1495,6 +1495,7 @@ var resourceKinds = map[string]struct{ declared, collection string }{
 	"LLM proxy":             {"LlmProxy", collLLMProxies},
 	"Agent":                 {"Agent", collAgents},
 	"GraphQL API":           {"GraphQLApi", collGraphQLAPIs},
+	"Budget":                {"Budget", collBudgets},
 }
 
 // kindFromDefinition returns the top-level kind a definition declares.
@@ -2724,6 +2725,7 @@ const (
 	collLLMProxies   = "/llm-proxies"
 	collAgents       = "/agents"
 	collGraphQLAPIs  = "/graphql-apis"
+	collBudgets      = "/budgets"
 )
 
 // mutateResource creates, replaces or removes a controller resource and waits for the change
@@ -2758,7 +2760,9 @@ func (g *Gateway) mutateResource(
 	if resolvedID != "" {
 		path = collection + "/" + resolvedID
 	}
-	if method == http.MethodDelete {
+	if collection == collBudgets {
+		// Budgets are stored but not deployed to the router, so they never reach the dump.
+	} else if method == http.MethodDelete {
 		expectInDump(ctx, resolvedID, false)
 	} else if expandedBody != "" {
 		if h := handleFromDefinition(expandedBody); h != "" {
@@ -2891,6 +2895,8 @@ func cleanupKindForCollection(collection string) (cleanup.Kind, bool) {
 		return cleanup.KindAgent, true
 	case collGraphQLAPIs:
 		return cleanup.KindGraphQLAPI, true
+	case collBudgets:
+		return cleanup.KindBudget, true
 	default:
 		return cleanup.Kind{}, false
 	}
