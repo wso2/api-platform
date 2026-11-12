@@ -41,6 +41,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/assets"
 	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
+	"github.com/wso2/api-platform/tests/framework/core/topology"
 )
 
 // stagingDirName is the directory used for compose files and bind-mount sources.
@@ -59,10 +60,31 @@ const (
 	EnvComposeMemoryLimitMB = "APIP_MEMORY_LIMIT_MB"
 	EnvInstanceSuffix       = "INSTANCE"
 
+	// EnvTestbenchPartition is the block's testbench partition (topology.PartitionKeyOf of the
+	// block name), substituted into staged compose files so that a service can address a
+	// block-partitioned testbench route, such as https://testbench:3028/${TESTBENCH_PARTITION}/….
+	// It is the same key scenarios use for the block's partition.
+	EnvTestbenchPartition = "TESTBENCH_PARTITION"
+
 	defaultMaxComponentDBFileBytes int64 = 256 << 20
 )
 
 var maxComponentDBFileBytes = defaultMaxComponentDBFileBytes
+
+// composeSubstitutions returns the values substituted into a stack's staged compose files: the
+// definition's and the options' env, then the framework's own values, which they cannot override.
+func composeSubstitutions(spec *components.ComposeSpec, opts Options, suffix string) map[string]string {
+	substitutions := map[string]string{EnvComposeNetwork: opts.Network.Name()}
+	for k, v := range spec.Env {
+		substitutions[k] = v
+	}
+	for k, v := range opts.Env {
+		substitutions[k] = v
+	}
+	substitutions[EnvInstanceSuffix] = suffix
+	substitutions[EnvTestbenchPartition] = topology.PartitionKeyOf(opts.Network.Block())
+	return substitutions
+}
 
 func instanceSuffix(ordinal, replicas int) string {
 	if replicas <= 1 {
@@ -103,15 +125,7 @@ func LaunchCompose(
 	if suffix == "" {
 		suffix = instanceSuffix(opts.Ordinal, opts.Replicas)
 	}
-	// Values substituted into the staged compose file.
-	substitutions := map[string]string{EnvComposeNetwork: opts.Network.Name()}
-	for k, v := range spec.Env {
-		substitutions[k] = v
-	}
-	for k, v := range opts.Env {
-		substitutions[k] = v
-	}
-	substitutions[EnvInstanceSuffix] = suffix
+	substitutions := composeSubstitutions(spec, opts, suffix)
 
 	stageDir, err := stageComposeFiles(def, spec, opts.RepoRoot, substitutions)
 	if err != nil {

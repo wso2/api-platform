@@ -116,17 +116,26 @@ func (s *Service) token(tenant string, w http.ResponseWriter, r *http.Request) {
 // duplicated rejects a form that repeats a parameter, as Entra ID does (RFC 6749 section 3.1), naming
 // the first repeated parameter in sort order.
 func duplicated(f url.Values) *formRejection {
+	name, ok := repeatedParameter(f)
+	if !ok {
+		return nil
+	}
+	return &formRejection{"invalid_request",
+		fmt.Sprintf("AADSTS9000411: The request is not properly formatted. The parameter '%s' is duplicated.", name), 9000411}
+}
+
+// repeatedParameter returns the first parameter, in sort order, that v holds more than once.
+func repeatedParameter(v url.Values) (string, bool) {
 	var repeated []string
-	for k, v := range f {
-		if len(v) > 1 {
+	for k, values := range v {
+		if len(values) > 1 {
 			repeated = append(repeated, k)
 		}
 	}
 	if len(repeated) == 0 {
-		return nil
+		return "", false
 	}
-	return &formRejection{"invalid_request",
-		fmt.Sprintf("AADSTS9000411: The request is not properly formatted. The parameter '%s' is duplicated.", slices.Min(repeated)), 9000411}
+	return slices.Min(repeated), true
 }
 
 // validate checks the client credentials grant with a client assertion, as Entra ID does.

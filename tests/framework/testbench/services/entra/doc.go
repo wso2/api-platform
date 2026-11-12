@@ -49,19 +49,21 @@
 //	slow-             tokens after three seconds, or nothing if the caller gives up first
 //
 // The IMDS token endpoint stands in for the managed identity endpoint of a VM or AKS node. The
-// runtime's AZURE_IMDS_TOKEN_ENDPOINT is https://testbench:3028/imds/metadata/identity/oauth2/token;
-// the path's first segment is required but ignored, because that address is the same for every
-// scenario:
+// runtime's AZURE_IMDS_TOKEN_ENDPOINT is
+// https://testbench:3028/${TESTBENCH_PARTITION}/metadata/identity/oauth2/token, so each block's
+// gateway sends its IMDS requests under its own block's partition:
 //
-//	GET  /<any>/metadata/identity/oauth2/token?api-version=2018-02-01&resource=<r>[&client_id=<id>]
+//	GET  /<block>/metadata/identity/oauth2/token?api-version=2018-02-01&resource=<r>[&client_id=<id>]
+//	GET  /<block>/test/managed-identity/<client_id>   the block's requests for that identity
+//	GET  /<block>/test/managed-identity/system-assigned   the block's requests without client_id
 //
-// It checks the request as IMDS does: the Metadata: true header, api-version 2018-02-01, a
-// resource, and no X-Forwarded-For; anything else is answered with 400. It answers in IMDS's shape,
-// with every number as a string. Its tokens carry the resource as the audience, "managed-identity"
-// as the tenant and the client_id, or "system-assigned" without one, as the appid. Every request
-// is recorded under mi-<client_id> (or mi-system-assigned) and read from /<key>/test/requests, so
-// a scenario names its own identity, a fresh UUID, instead of a tenant. The resource selects how
-// it answers:
+// It checks the request as IMDS does: the Metadata: true header, no repeated query parameter,
+// api-version 2018-02-01, a resource, and no X-Forwarded-For; anything else is answered with 400.
+// It answers in IMDS's shape, with every number as a string. Its tokens carry the resource as the
+// audience, "managed-identity" as the tenant and the client_id, or "system-assigned" without one,
+// as the appid. Counters and request logs belong to the block and the identity together, so a
+// scenario that names its own identity, a fresh UUID, owns its log, and blocks sharing a
+// testbench never see each other's requests. The resource selects how it answers:
 //
 //	api://not-found-once       404 for the identity's first request, then tokens
 //	api://gone-once            410 for the first request, then tokens

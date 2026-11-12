@@ -22,6 +22,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 )
@@ -32,12 +33,9 @@ const (
 	IMDSAPIVersion = "2018-02-01"
 	// ManagedIdentityTenant is the tid of every token issued through the IMDS endpoint.
 	ManagedIdentityTenant = "managed-identity"
-	// SystemAssigned is the appid of a token requested without client_id, and the suffix of the
-	// system-assigned identity's request log key.
+	// SystemAssigned is the appid of a token requested without client_id, and the identity under
+	// which the block logs those requests: /<block>/test/managed-identity/system-assigned.
 	SystemAssigned = "system-assigned"
-	// ManagedIdentityLogPrefix prefixes a managed identity's request log key: mi-<client_id>, or
-	// mi-system-assigned. The log is read from /<key>/test/requests.
-	ManagedIdentityLogPrefix = "mi-"
 )
 
 // Resources that select how the IMDS endpoint answers. Any other resource gets a token.
@@ -64,10 +62,10 @@ type imdsRejection struct {
 	description string
 }
 
-// imdsToken serves GET /metadata/identity/oauth2/token as IMDS does. The path partition is
-// ignored: the request log is keyed by the identity, since the gateway's IMDS address is the same
-// for every scenario.
-func (s *Service) imdsToken(_ string, w http.ResponseWriter, r *http.Request) {
+// imdsToken serves GET /<block>/metadata/identity/oauth2/token as IMDS does. Each block's gateway
+// sends its IMDS requests under its own block's partition, so the counters that pick a fail-once
+// answer, and the request logs, belong to the block and the identity together.
+func (s *Service) imdsToken(block string, w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	req := Request{
 		ClientID:   q.Get("client_id"),
@@ -75,13 +73,13 @@ func (s *Service) imdsToken(_ string, w http.ResponseWriter, r *http.Request) {
 		APIVersion: q.Get("api-version"),
 		Metadata:   r.Header.Get("Metadata"),
 	}
-	rejection := validateIMDS(r, req)
+	rejection := validateIMDS(r, q, req)
 
-	key := ManagedIdentityLogPrefix + SystemAssigned
-	if req.ClientID != "" {
-		key = ManagedIdentityLogPrefix + req.ClientID
+	identity := req.ClientID
+	if identity == "" {
+		identity = SystemAssigned
 	}
-	n, status, admitted := s.admit(key, req, func(n int) int {
+	n, status, admitted := s.admit(imdsLogKey(block, identity), req, func(n int) int {
 		if rejection != nil {
 			return http.StatusBadRequest
 		}
@@ -105,12 +103,28 @@ func (s *Service) imdsToken(_ string, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// validateIMDS checks a token request as IMDS does: the Metadata header, the api-version, a
-// resource, and no X-Forwarded-For, which IMDS refuses so that a proxy cannot relay requests.
-func validateIMDS(r *http.Request, req Request) *imdsRejection {
+// imdsRecorded reports GET /<block>/test/managed-identity/<identity> as {"count": n, "requests":
+// [...]}: the block's IMDS requests for a client ID, or for SystemAssigned.
+func (s *Service) imdsRecorded(block string, w http.ResponseWriter, r *http.Request) {
+	s.writeLog(w, imdsLogKey(block, r.PathValue("identity")))
+}
+
+// imdsLogKey is the state key of a block's identity. A tenant is a single path segment, so a key
+// with a "/" never meets a tenant's.
+func imdsLogKey(block, identity string) string {
+	return block + "/" + identity
+}
+
+// validateIMDS checks a token request as IMDS does: the Metadata header, no repeated query
+// parameter, the api-version, a resource, and no X-Forwarded-For, which IMDS refuses so that a
+// proxy cannot relay requests.
+func validateIMDS(r *http.Request, q url.Values, req Request) *imdsRejection {
+	name, repeated := repeatedParameter(q)
 	switch {
 	case req.Metadata != "true":
 		return &imdsRejection{"bad_request_102", "Required metadata header not specified"}
+	case repeated:
+		return &imdsRejection{"invalid_request", "The query parameter '" + name + "' is duplicated"}
 	case req.APIVersion == "":
 		return &imdsRejection{"invalid_request", "Required query variable 'api-version' is missing"}
 	case req.APIVersion != IMDSAPIVersion:
