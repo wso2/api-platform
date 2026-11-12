@@ -200,8 +200,10 @@ gateway:
           # ConfigMap in plaintext; to keep it in a Secret while using a DSN, reference
           # the injected token in the DSN and keep passwordSecretRef set, e.g.:
           #   dsn: 'postgres://user:{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD" }}@host:5432/dbname?sslmode=require'
+          # or, with gateway.controller.postgres.passwordSecretRef.source=file, the mounted file:
+          #   dsn: 'postgres://user:{{ file "/secrets/gateway-controller/postgres/password" }}@host:5432/dbname?sslmode=require'
           # (The chart fails to render if a DSN is set alongside passwordSecretRef but
-          # does not reference the token.)
+          # does not reference the token for its source.)
           dsn: ""
 
           host: ""
@@ -233,8 +235,10 @@ gateway:
           # ConfigMap in plaintext; to keep it in a Secret while using a DSN, reference
           # the injected token in the DSN and keep passwordSecretRef set, e.g.:
           #   dsn: 'sqlserver://user:{{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD" }}@host:1433?database=gateway'
+          # or, with gateway.controller.sqlserver.passwordSecretRef.source=file, the mounted file:
+          #   dsn: 'sqlserver://user:{{ file "/secrets/gateway-controller/sqlserver/password" }}@host:1433?database=gateway'
           # (The chart fails to render if a DSN is set alongside passwordSecretRef but
-          # does not reference the token.)
+          # does not reference the token for its source.)
           dsn: ""
 
           host: ""
@@ -768,9 +772,23 @@ gateway:
       # a non-default port here (e.g. "host.docker.internal:8443"); 443 is assumed if omitted.
       host: host.docker.internal:8443
       token:
+        # How the controller receives the token:
+        #   env  (default) - as the env var APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN, from
+        #                    secretName/key, or from the literal value below
+        #   file - the secretName Secret's key is mounted read-only at <mountPath>/<key> and
+        #          the controller reads it with a {{ file }} token (in its own
+        #          controller-secrets.toml, not the config.toml the policy engine also loads),
+        #          so the token never enters the pod environment. Requires secretName; value
+        #          cannot be used.
+        source: env
         value: ""
         secretName: ""
         key: token
+        # Directory the Secret key is mounted in when source is file. Must be inside a
+        # directory the controller's {{ file }} token may read: /secrets/gateway-controller
+        # (default) or /etc/gateway-controller, or one listed in APIP_CONFIG_FILE_SOURCE_ALLOWLIST
+        # (set it through deployment.extraEnv). Otherwise the controller refuses to start.
+        mountPath: /secrets/gateway-controller/controlplane
     # TLS certificate configuration for downstream (listener) HTTPS
     tls:
       # Enable TLS certificate management
@@ -866,23 +884,43 @@ gateway:
       # Mount path inside the container — must match controller.encryption.providers[].keys[].file paths
       mountPath: /app/data/aesgcm-keys
     # PostgreSQL password secret reference (used when gateway.config.controller.storage.type=postgres
-    # and gateway.config.controller.storage.postgres.dsn is NOT set). The password is injected from
-    # this Secret rather than stored in the ConfigMap (see README). It has NO effect when a dsn is set
-    # unless the dsn references the injected token {{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD" }};
-    # the chart fails to render if a dsn is set alongside this without referencing the token.
+    # and gateway.config.controller.storage.postgres.dsn is NOT set). The password is read from
+    # this Secret rather than stored in the ConfigMap (see README), in one of two ways (source):
+    #   env  (default) - injected as the env var APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD
+    #   file - the Secret key is mounted read-only at <mountPath>/<key> and the controller reads it
+    #          with a {{ file }} token (in controller-secrets.toml, which also takes the dsn line),
+    #          so the password never enters the pod environment
+    # It has NO effect when a dsn is set unless the dsn references the password: with source env,
+    # {{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD" }}; with source file,
+    # {{ file "/secrets/gateway-controller/postgres/password" }} (that is, <mountPath>/<key>).
+    # The chart fails to render if a dsn is set alongside this without referencing it.
     postgres:
       passwordSecretRef:
         name: ""
         key: password
+        source: env
+        # Used when source is file. Must be inside a directory the controller's {{ file }} token
+        # may read (/secrets/gateway-controller by default; see controlPlane.token.mountPath).
+        mountPath: /secrets/gateway-controller/postgres
     # SQL Server password secret reference (used when gateway.config.controller.storage.type=sqlserver
-    # and gateway.config.controller.storage.database.dsn is NOT set). The password is injected from
-    # this Secret rather than stored in the ConfigMap (see README). It has NO effect when a dsn is set
-    # unless the dsn references the injected token {{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD" }};
-    # the chart fails to render if a dsn is set alongside this without referencing the token.
+    # and gateway.config.controller.storage.database.dsn is NOT set). The password is read from
+    # this Secret rather than stored in the ConfigMap (see README), in one of two ways (source):
+    #   env  (default) - injected as the env var APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD
+    #   file - the Secret key is mounted read-only at <mountPath>/<key> and the controller reads it
+    #          with a {{ file }} token (in controller-secrets.toml, which also takes the dsn line),
+    #          so the password never enters the pod environment
+    # It has NO effect when a dsn is set unless the dsn references the password: with source env,
+    # {{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD" }}; with source file,
+    # {{ file "/secrets/gateway-controller/sqlserver/password" }} (that is, <mountPath>/<key>).
+    # The chart fails to render if a dsn is set alongside this without referencing it.
     sqlserver:
       passwordSecretRef:
         name: ""
         key: password
+        source: env
+        # Used when source is file. Must be inside a directory the controller's {{ file }} token
+        # may read (/secrets/gateway-controller by default; see controlPlane.token.mountPath).
+        mountPath: /secrets/gateway-controller/sqlserver
     metrics:
       # Whether the controller's own Prometheus metrics HTTP server actually starts.
       # Defaults to false to match the gateway-controller binary's own code default
