@@ -384,13 +384,17 @@ func (g graphQLAPIs) create(org, user string, payload []byte) (any, error) {
 // update sends the merged API back. A read never returns the SDL, so a payload
 // that does not set a new schema would otherwise re-resolve it from nothing:
 // the stored SDL is sent with it, unless the API is set to introspect its
-// upstream, which re-reads the schema on every save anyway. An API made from
-// an SDL file keeps schemaSource "file", which the service takes as SDL text;
-// any other source is sent as "inline", since a read never returns the sdlUrl.
+// upstream, which re-reads the schema on every save anyway. The SDL is sent as
+// "inline", as the console's metadata save does: a read never returns the
+// sdlUrl, and a JSON payload carries no file, so "file" is saved as "inline" too.
 func (g graphQLAPIs) update(org, user, id string, whole []byte) (any, error) {
 	req, err := decode[api.GraphQLAPI](whole, "graphql-api")
 	if err != nil {
 		return nil, err
+	}
+	inline := api.GraphQLAPISchemaSourceInline
+	if req.SchemaSource != nil && *req.SchemaSource == api.GraphQLAPISchemaSourceFile {
+		req.SchemaSource = &inline
 	}
 	newSchema := strings.TrimSpace(valueOf(req.Sdl)) != "" || strings.TrimSpace(valueOf(req.SdlUrl)) != ""
 	introspect := req.SchemaSource != nil && *req.SchemaSource == api.GraphQLAPISchemaSourceIntrospection
@@ -399,11 +403,7 @@ func (g graphQLAPIs) update(org, user, id string, whole []byte) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		source := api.GraphQLAPISchemaSourceInline
-		if req.SchemaSource != nil && *req.SchemaSource == api.GraphQLAPISchemaSourceFile {
-			source = api.GraphQLAPISchemaSourceFile
-		}
-		req.SchemaSource, req.Sdl = &source, &sdl
+		req.SchemaSource, req.Sdl = &inline, &sdl
 	}
 	return g.apis.Update(org, id, user, req)
 }
