@@ -85,8 +85,6 @@ func TestSetLegacyLimit(t *testing.T) {
 			40, "MONTH", true},
 		{"only other conditions", []SubscriptionPlanCondition{{ID: "tool-calls", Type: ConditionTypeToolCallCount,
 			Params: []byte(`{"limits":[{"count":9,"timeAmount":1,"timeUnit":"HOUR"}],"onExceed":"reject"}`)}}, 0, "", true},
-		{"an event-count condition is not a request limit", []SubscriptionPlanCondition{{ID: ConditionIDEvents, Type: ConditionTypeEventCount,
-			Params: []byte(`{"limits":[{"count":9,"timeAmount":1,"timeUnit":"HOUR"}],"onExceed":"allow"}`)}}, 0, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

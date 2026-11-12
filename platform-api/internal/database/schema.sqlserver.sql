@@ -128,7 +128,7 @@ IF COL_LENGTH(N'dbo.subscription_plans', N'description') IS NULL
 ALTER TABLE dbo.subscription_plans ADD description VARCHAR(1023);
 
 -- Subscription plan conditions (one row per condition, in sort_order). condition_type is
--- request-count, tool-call-count, token-count, event-count or custom. params is JSON, for example
+-- request-count, tool-call-count, token-count or custom. params is JSON, for example
 -- {"limits":[{"count":100,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}.
 -- Replaces subscription_plan_limits; a plan with no rows here is read from that table if it exists.
 -- organization_uuid uses NO ACTION (multiple cascade paths); deleting an

@@ -877,14 +877,6 @@ func (s *PublicationService) syncPortalPlans(ctx context.Context, portal *model.
 		}
 		return PlanSyncResult{}, portalPushError(err)
 	}
-	// The event limits taken from the portal's copies are saved here, which moves those plans to
-	// conditions. The publish goes on when that fails: the next one takes them again.
-	for _, plan := range created.EventLimitsAdopted {
-		if err := s.subscriptionPlanRepo.Update(plan); err != nil {
-			s.slogger.Warn("Failed to save the event limit taken from the API Portal's copy of a subscription plan",
-				"plan", plan.Handle, "error", err)
-		}
-	}
 	return created, nil
 }
 

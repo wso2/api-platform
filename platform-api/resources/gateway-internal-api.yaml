@@ -1654,7 +1654,7 @@ components:
           example: requests
         type:
           type: string
-          enum: [request-count, tool-call-count, token-count, event-count, custom]
+          enum: [request-count, tool-call-count, token-count, custom]
         params:
           type: object
           additionalProperties: true

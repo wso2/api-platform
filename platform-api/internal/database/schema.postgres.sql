@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
 ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS description VARCHAR(1023);
 
 -- Subscription plan conditions (one row per condition, in sort_order). condition_type is
--- request-count, tool-call-count, token-count, event-count or custom. params is JSON, for example
+-- request-count, tool-call-count, token-count or custom. params is JSON, for example
 -- {"limits":[{"count":100,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}.
 -- Replaces subscription_plan_limits; a plan with no rows here is read from that table if it exists.
 CREATE TABLE IF NOT EXISTS subscription_plan_conditions (

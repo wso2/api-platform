@@ -438,9 +438,9 @@ func planEditInUseMessage(name string) string {
 //   - An existing plan must keep its pricing (reconcilePricing); its name, description and conditions
 //     are updated when they differ, so an echo of a change made here changes nothing.
 //
-// Portals that predate conditions send only limits (limitWindows); those change only the request-count
-// and event-count conditions (portalConditions). Meters used by the prices must already exist here.
-func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name, description string, conditions *[]model.SubscriptionPlanCondition, limitWindows model.LegacyLimitWindows, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error) {
+// Portals that predate conditions send only request limits (requestWindows); those change only the
+// request-count condition (portalConditions). Meters used by the prices must already exist here.
+func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name, description string, conditions *[]model.SubscriptionPlanCondition, requestWindows []model.ConditionWindow, pricing *model.SubscriptionPlanPricing, occurredAt time.Time) (*model.SubscriptionPlan, error) {
 	// Stored trimmed, so compare trimmed: a name with edge spaces would otherwise update on every event.
 	name = strings.TrimSpace(name)
 	// A portal on SQLite may hold a longer description than the column; keep the plan in sync.
@@ -459,7 +459,7 @@ func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name, d
 		return nil, err
 	}
 	if existing == nil {
-		planConditions, err := portalConditions(nil, conditions, limitWindows)
+		planConditions, err := portalConditions(nil, conditions, requestWindows)
 		if err != nil {
 			return nil, err
 		}
@@ -488,7 +488,7 @@ func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name, d
 	if err != nil {
 		return nil, err
 	}
-	planConditions, err := portalConditions(current, conditions, limitWindows)
+	planConditions, err := portalConditions(current, conditions, requestWindows)
 	if err != nil {
 		return nil, err
 	}
@@ -515,32 +515,24 @@ func (s *SubscriptionPlanService) UpsertPlanFromWebhook(orgUUID, handle, name, d
 }
 
 // portalConditions returns the conditions a portal event gives the plan: the event's conditions, or,
-// from an older portal, the current ones with only the request-count and event-count conditions
-// replaced by its limits.
-func portalConditions(current []model.SubscriptionPlanCondition, conditions *[]model.SubscriptionPlanCondition, limitWindows model.LegacyLimitWindows) ([]model.SubscriptionPlanCondition, error) {
+// from an older portal, the current ones with only the request-count condition replaced by its limits
+// (keeping onExceed, which that portal can't set).
+func portalConditions(current []model.SubscriptionPlanCondition, conditions *[]model.SubscriptionPlanCondition, requestWindows []model.ConditionWindow) ([]model.SubscriptionPlanCondition, error) {
 	if conditions != nil {
 		return normalizeConditions(*conditions)
 	}
-	out := withPortalLimit(current, model.ConditionTypeEventCount, limitWindows.Events)
-	out = withPortalLimit(out, model.ConditionTypeRequestCount, limitWindows.Requests)
-	return normalizeConditions(out)
-}
-
-// withPortalLimit replaces the condition of the given type with these windows, keeping its onExceed,
-// which an older portal can't set. No windows remove it.
-func withPortalLimit(current []model.SubscriptionPlanCondition, conditionType string, windows []model.ConditionWindow) []model.SubscriptionPlanCondition {
-	if len(windows) == 0 {
-		return withLimitCondition(current, conditionType, nil)
+	if len(requestWindows) == 0 {
+		return normalizeConditions(withRequestLimit(current, nil))
 	}
 	stopOnQuotaReach := true
-	if c := model.FindCondition(current, conditionType); c != nil {
+	if c := model.FindCondition(current, model.ConditionTypeRequestCount); c != nil {
 		var params model.ConditionLimits
 		if err := json.Unmarshal(c.Params, &params); err == nil {
 			stopOnQuotaReach = params.OnExceed != model.ConditionOnExceedAllow
 		}
 	}
-	limit := model.NewLimitCondition(conditionType, windows, stopOnQuotaReach)
-	return withLimitCondition(current, conditionType, &limit)
+	requestLimit := model.NewRequestCountCondition(requestWindows, stopOnQuotaReach)
+	return normalizeConditions(withRequestLimit(current, &requestLimit))
 }
 
 // reconcilePricing accepts an event for a plan that is already here only when it carries the

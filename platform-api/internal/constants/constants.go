@@ -347,11 +347,10 @@ const (
 	ThrottleLimitUnitMonth  = "MONTH"
 )
 
-// Limit types of the old "limits" field and the API Portal's limits. REQUEST_COUNT maps to the plan's
-// request-count condition and EVENT_COUNT, from the API Portal only, to its event-count condition.
+// Limit types of the old "limits" field and the API Portal's limits. Only REQUEST_COUNT is used:
+// it maps to the plan's request-count condition.
 const (
 	LimitTypeRequestCount = "REQUEST_COUNT"
-	LimitTypeEventCount   = "EVENT_COUNT"
 	LimitTypeBandwidth    = "BANDWIDTH"
 	LimitTypeTotalToken   = "TOTAL_TOKEN_COUNT"
 )

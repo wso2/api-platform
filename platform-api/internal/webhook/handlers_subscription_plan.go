@@ -56,28 +56,16 @@ type subscriptionPlanLimit struct {
 	TimeAmount int    `json:"time_amount"`
 }
 
-// limitWindows maps the portal's REQUEST_COUNT limits to request-count windows and its EVENT_COUNT
-// limits to event-count windows. Other limit types are ignored.
-func limitWindows(limits []subscriptionPlanLimit) model.LegacyLimitWindows {
-	return model.LegacyLimitWindows{
-		Requests: windowsOfType(limits, constants.LimitTypeRequestCount),
-		Events:   windowsOfType(limits, constants.LimitTypeEventCount),
-	}
-}
-
-// windowsOfType maps the portal's limits of one type to condition windows. A limit with no time unit is
-// per MINUTE (the portal's YAML shorthand); unlimited, unsupported and repeated-length limits are skipped.
-func windowsOfType(limits []subscriptionPlanLimit, limitType string) []model.ConditionWindow {
+// requestWindows maps the portal's REQUEST_COUNT limits to request-count windows. Unlimited, unsupported
+// and repeated-length limits are skipped.
+func requestWindows(limits []subscriptionPlanLimit) []model.ConditionWindow {
 	var windows []model.ConditionWindow
 	seen := map[string]bool{}
 	for _, l := range limits {
-		if !strings.EqualFold(strings.TrimSpace(l.LimitType), limitType) || l.LimitCount < 1 {
+		if !strings.EqualFold(l.LimitType, constants.LimitTypeRequestCount) || l.LimitCount < 1 {
 			continue
 		}
 		unit := strings.ToUpper(strings.TrimSpace(l.TimeUnit))
-		if unit == "" {
-			unit = constants.ThrottleLimitUnitMinute
-		}
 		if !constants.ValidThrottleLimitUnits[unit] {
 			continue
 		}
@@ -124,7 +112,7 @@ func (r *Receiver) handleSubscriptionPlanUpserted(ctx context.Context, env *Enve
 			return err
 		}
 	}
-	_, err := r.plans.UpsertPlanFromWebhook(env.OrgID, d.Handle, name, d.Description, d.Conditions, limitWindows(d.Limits), pricing, occurredAt(env))
+	_, err := r.plans.UpsertPlanFromWebhook(env.OrgID, d.Handle, name, d.Description, d.Conditions, requestWindows(d.Limits), pricing, occurredAt(env))
 	return err
 }
 

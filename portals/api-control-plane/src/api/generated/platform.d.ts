@@ -5814,7 +5814,7 @@ export interface components {
             stopOnQuotaReach: boolean;
         };
         /**
-         * @description One condition of a subscription plan. A built-in condition (request-count, tool-call-count, token-count, event-count) has the id its type fixes (requests, tool-calls, tokens, events), so the policy that enforces it finds it in every plan; params holds its limits. A custom condition has an id the admin gives it and key-value pairs as params, which a policy the customer writes reads. event-count counts the events (WebSocket messages, WebSub deliveries) of async APIs; no policy enforces it yet.
+         * @description One condition of a subscription plan. A built-in condition (request-count, tool-call-count, token-count) has the id its type fixes (requests, tool-calls, tokens), so the policy that enforces it finds it in every plan; params holds its limits. A custom condition has an id the admin gives it and key-value pairs as params, which a policy the customer writes reads.
          * @example {
          *       "id": "requests",
          *       "type": "request-count",
@@ -5842,7 +5842,7 @@ export interface components {
              */
             id?: string;
             /** @enum {string} */
-            type: "request-count" | "tool-call-count" | "token-count" | "event-count" | "custom";
+            type: "request-count" | "tool-call-count" | "token-count" | "custom";
             /** @description For a built-in type, a SubscriptionPlanConditionLimits object. For a custom condition, any JSON object of key-value pairs, at most 4096 bytes. */
             params: {
                 [key: string]: unknown;
@@ -5865,7 +5865,7 @@ export interface components {
         };
         SubscriptionPlanConditionWindow: {
             /**
-             * @description The requests, tool calls, tokens or events allowed in the window.
+             * @description The requests, tool calls or tokens allowed in the window.
              * @example 100
              */
             count: number;
@@ -5896,7 +5896,7 @@ export interface components {
              * @example 100 requests per minute and 10,000 tool calls per day
              */
             description?: string;
-            /** @description What the plan allows, in order. A plan has at most one condition of each built-in type (request-count, tool-call-count, token-count, event-count) and any number of custom conditions. The policies attached to an API enforce them; a plan with no conditions is unlimited. Send either conditions or limits, not both. */
+            /** @description What the plan allows, in order. A plan has at most one condition of each built-in type (request-count, tool-call-count, token-count) and any number of custom conditions. The policies attached to an API enforce them; a plan with no conditions is unlimited. Send either conditions or limits, not both. */
             conditions?: components["schemas"]["SubscriptionPlanCondition"][];
             /**
              * @deprecated
@@ -5926,7 +5926,7 @@ export interface components {
              * @example 100 requests per minute and 10,000 tool calls per day
              */
             description?: string;
-            /** @description What the plan allows, in order. A plan has at most one condition of each built-in type (request-count, tool-call-count, token-count, event-count) and any number of custom conditions. The policies attached to an API enforce them; a plan with no conditions is unlimited. On update, an omitted conditions leaves them unchanged and [] removes them all. Send either conditions or limits, not both. A plan saved before conditions is returned with its request limit as a request-count condition. */
+            /** @description What the plan allows, in order. A plan has at most one condition of each built-in type (request-count, tool-call-count, token-count) and any number of custom conditions. The policies attached to an API enforce them; a plan with no conditions is unlimited. On update, an omitted conditions leaves them unchanged and [] removes them all. Send either conditions or limits, not both. A plan saved before conditions is returned with its request limit as a request-count condition. */
             conditions?: components["schemas"]["SubscriptionPlanCondition"][];
             /**
              * @deprecated
