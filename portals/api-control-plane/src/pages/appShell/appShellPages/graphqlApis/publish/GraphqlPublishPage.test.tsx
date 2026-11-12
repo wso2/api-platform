@@ -141,12 +141,10 @@ describe('GraphqlPublishPage', () => {
       expect(writes.definition.last()?.body).toBe('type Query { country: String }');
     });
 
-    it.each([
-      ['does not parse', 'type Query {'],
-      ['is empty', ''],
-      ['has no Query type', 'type Country { name: String }'],
-    ])('opens the publish page instead when the API’s SDL %s', async (_case, sdl) => {
-      const writes = serveFreshApi(sdl);
+    // Only an empty SDL falls back to the publish page. A non-empty one is sent as saved, because the
+    // server already validated it on upload and validates it again on publish.
+    it('opens the publish page instead when the API’s SDL is empty', async () => {
+      const writes = serveFreshApi('');
       const { user } = renderPage();
 
       await user.click(await screen.findByRole('button', { name: 'Publish' }));
