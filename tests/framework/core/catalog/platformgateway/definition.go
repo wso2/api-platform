@@ -71,7 +71,7 @@ func PlatformGateway() *components.Definition {
 				"aws-credentials": "tests/framework/core/catalog/platformgateway/resources/aws/credentials",
 				// The federated service account token the azure-authentication policy reads through
 				// AZURE_FEDERATED_TOKEN_FILE. A block overrides this with
-				// resources/azure/identity-token-empty to give the runtime an unreadable token.
+				// resources/azure/identity-token-empty to give the runtime an empty token.
 				"azure-identity-token": azureIdentityTokenFile,
 			},
 			GeneratedFiles: gatewayGeneratedFiles(),

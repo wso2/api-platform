@@ -85,7 +85,7 @@ func (s *Service) imdsToken(block string, w http.ResponseWriter, r *http.Request
 		return imdsOutcome(req.Resource, eligible)
 	})
 	if !admitted {
-		http.Error(w, "entra: tenant budget exhausted", http.StatusInsufficientStorage)
+		http.Error(w, "entra: partition budget exhausted", http.StatusInsufficientStorage)
 		return
 	}
 
