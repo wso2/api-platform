@@ -17,11 +17,23 @@
  */
 
 import { useState, type FC } from 'react';
-import { Box, Button, FormHelperText, Tooltip, Typography } from '@wso2/oxygen-ui';
+import {
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  FormHelperText,
+  IconButton,
+  Tooltip,
+  Typography,
+} from '@wso2/oxygen-ui';
 import { Edit, Plus, Trash2 } from '@wso2/oxygen-ui-icons-react';
 import { MAX_KEY_MANAGERS } from '../config/keyManagers';
 import type { GatewayKeyManager } from '../types';
-import KeyManagerDialog from './KeyManagerDialog';
+import KeyManagerDialog, { type KeyManagerDialogProps } from './KeyManagerDialog';
 import { secondaryTextSx } from './styles';
 
 export type KeyManagersSectionProps = {
@@ -33,11 +45,10 @@ export type KeyManagersSectionProps = {
   readOnly?: boolean;
   /** Whether the shown list is an unsaved edit. */
   modified?: boolean;
+  /** Reads an issuer's discovery document for the add and edit dialog. */
+  discover: KeyManagerDialogProps['discover'];
   onChange: (keyManagers: GatewayKeyManager[]) => void;
 };
-
-const LAST_ONE =
-  'Keep at least one key manager. Without one, every API that uses JWT authentication on this gateway refuses all tokens.';
 
 /**
  * The identity providers the gateway accepts JWTs from, as a field of the JWT
@@ -53,10 +64,13 @@ const KeyManagersSection: FC<KeyManagersSectionProps> = ({
   loadError,
   readOnly = false,
   modified = false,
+  discover,
   onChange,
 }) => {
   /** The index being edited, `'new'` while adding, `null` with the dialog closed. */
   const [dialog, setDialog] = useState<number | 'new' | null>(null);
+  /** The index awaiting delete confirmation, so a stray click removes nothing. */
+  const [pendingDelete, setPendingDelete] = useState<number | null>(null);
   const list = keyManagers ?? [];
   const editing = typeof dialog === 'number' ? list[dialog] : null;
   const others = list.filter((_, index) => index !== dialog);
@@ -113,7 +127,7 @@ const KeyManagersSection: FC<KeyManagersSectionProps> = ({
         >
           {list.length === 0 ? (
             <Typography variant="body2" sx={{ ...secondaryTextSx, px: 1.5, py: 1.25 }}>
-              None. Add the identity provider whose tokens this gateway should accept.
+              No key managers configured. Add an identity provider to accept its tokens.
             </Typography>
           ) : (
             list.map((keyManager, index) => (
@@ -122,16 +136,15 @@ const KeyManagersSection: FC<KeyManagersSectionProps> = ({
                 keyManager={keyManager}
                 divided={index > 0}
                 readOnly={readOnly}
-                lastOne={list.length === 1}
                 onEdit={() => setDialog(index)}
-                onDelete={() => onChange(list.filter((_, i) => i !== index))}
+                onDelete={() => setPendingDelete(index)}
               />
             ))
           )}
         </Box>
       ) : null}
       <FormHelperText sx={{ ...secondaryTextSx, mx: 0 }}>
-        Checked against the issuer of each token.
+        Tokens are validated against the issuer of each key manager.
       </FormHelperText>
 
       <KeyManagerDialog
@@ -139,26 +152,50 @@ const KeyManagersSection: FC<KeyManagersSectionProps> = ({
         editing={editing}
         others={others}
         knownUris={knownUris}
+        discover={discover}
         onCancel={() => setDialog(null)}
         onSubmit={submit}
       />
+
+      <Dialog open={pendingDelete !== null} onClose={() => setPendingDelete(null)}>
+        <DialogTitle>Delete Key Manager</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete {pendingDelete !== null ? list[pendingDelete]?.name : ''}? The
+            gateway stops accepting its tokens once you save and apply.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingDelete(null)} variant="outlined" color="secondary">
+            Cancel
+          </Button>
+          <Button
+            color="error"
+            onClick={() => {
+              if (pendingDelete !== null) onChange(list.filter((_, i) => i !== pendingDelete));
+              setPendingDelete(null);
+            }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
 
-/** One key manager: its name, issuer and key source, with Edit and Delete. */
+/** One key manager by name, with Edit and Delete; Edit shows its issuer and URLs. */
 const KeyManagerRow: FC<{
   keyManager: GatewayKeyManager;
   divided: boolean;
   readOnly: boolean;
-  lastOne: boolean;
   onEdit: () => void;
   onDelete: () => void;
-}> = ({ keyManager, divided, readOnly, lastOne, onEdit, onDelete }) => (
+}> = ({ keyManager, divided, readOnly, onEdit, onDelete }) => (
   <Box
     role="listitem"
     sx={{
-      alignItems: 'flex-start',
+      alignItems: 'center',
       borderTop: divided ? 1 : 0,
       borderColor: 'divider',
       display: 'flex',
@@ -167,47 +204,32 @@ const KeyManagerRow: FC<{
       py: 1.25,
     }}
   >
-    <Box sx={{ flex: 1, minWidth: 0 }}>
-      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-        {keyManager.name}
-      </Typography>
-      <Detail label="Issuer" value={keyManager.issuer} />
-      {keyManager.jwksUri ? (
-        <Detail label="JWKS URL" value={keyManager.jwksUri} />
-      ) : (
-        <Detail label="Public key" value="PEM" />
-      )}
-    </Box>
-    <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
-      <Button size="small" startIcon={<Edit size={14} />} disabled={readOnly} onClick={onEdit}>
-        Edit
-      </Button>
-      <Tooltip title={lastOne ? LAST_ONE : ''}>
-        <Box component="span">
-          <Button
+    <Typography variant="body2" sx={{ flex: 1, fontWeight: 500, minWidth: 0, overflowWrap: 'anywhere' }}>
+      {keyManager.name}
+    </Typography>
+    <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+      {/* The span keeps each tooltip working while its button is disabled. */}
+      <Tooltip title="Edit">
+        <span style={{ display: 'inline-flex' }}>
+          <IconButton size="small" disabled={readOnly} onClick={onEdit} aria-label={`Edit ${keyManager.name}`}>
+            <Edit size={16} />
+          </IconButton>
+        </span>
+      </Tooltip>
+      <Tooltip title="Delete">
+        <span style={{ display: 'inline-flex' }}>
+          <IconButton
             size="small"
             color="error"
-            startIcon={<Trash2 size={14} />}
-            disabled={readOnly || lastOne}
+            disabled={readOnly}
             onClick={onDelete}
             aria-label={`Delete ${keyManager.name}`}
           >
-            Delete
-          </Button>
-        </Box>
+            <Trash2 size={16} />
+          </IconButton>
+        </span>
       </Tooltip>
     </Box>
-  </Box>
-);
-
-const Detail: FC<{ label: string; value: string }> = ({ label, value }) => (
-  <Box sx={{ display: 'flex', gap: 1 }}>
-    <Typography variant="caption" sx={{ ...secondaryTextSx, flex: '0 0 64px' }}>
-      {label}
-    </Typography>
-    <Typography variant="caption" sx={{ ...secondaryTextSx, minWidth: 0, overflowWrap: 'anywhere' }}>
-      {value}
-    </Typography>
   </Box>
 );
 

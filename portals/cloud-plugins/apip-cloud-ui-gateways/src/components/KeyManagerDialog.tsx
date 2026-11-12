@@ -16,28 +16,29 @@
  * under the License.
  */
 
-import { useEffect, useState, type FC } from 'react';
+import { useEffect, useRef, useState, type FC } from 'react';
 import {
+  Alert,
   Box,
   Button,
-  Collapse,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
   FormHelperText,
-  Radio,
-  RadioGroup,
   TextField,
   Typography,
 } from '@wso2/oxygen-ui';
 import {
   normalizeKeyManager,
+  sameKeyManagers,
   validateKeyManager,
+  wellKnownUrlError,
+  wellKnownUrlOf,
   type KeyManagerErrors,
 } from '../config/keyManagers';
-import type { GatewayKeyManager } from '../types';
+import type { GatewayKeyManager, KeyManagerDiscovery } from '../types';
 import { inputSx, secondaryTextSx } from './styles';
 
 export type KeyManagerDialogProps = {
@@ -48,6 +49,8 @@ export type KeyManagerDialogProps = {
   others: GatewayKeyManager[];
   /** JWKS URLs the gateway already trusts, which keep their scheme. */
   knownUris: string[];
+  /** Reads an issuer's discovery document, at `wellKnownUrl` when given. */
+  discover: (issuer: string, wellKnownUrl?: string) => Promise<KeyManagerDiscovery>;
   onCancel: () => void;
   onSubmit: (keyManager: GatewayKeyManager) => void;
 };
@@ -55,75 +58,119 @@ export type KeyManagerDialogProps = {
 type Draft = {
   name: string;
   issuer: string;
-  source: 'jwks' | 'publicKey';
+  wellKnownUrl: string;
   jwksUri: string;
-  publicKey: string;
-  scopeClaim: string;
-  scopeClaimSeparator: string;
 };
+
+type FieldKey = keyof Draft;
+
+/**
+ * Adding one starts at its name and issuer; the URLs follow from the issuer's
+ * discovery document, or from the user when it cannot be read. An edit opens
+ * on every field.
+ */
+type Step = 'identify' | 'details';
 
 const toDraft = (km: GatewayKeyManager | null): Draft => ({
   name: km?.name ?? '',
   issuer: km?.issuer ?? '',
-  source: km?.publicKey ? 'publicKey' : 'jwks',
+  wellKnownUrl: km?.issuer ? wellKnownUrlOf(km.issuer) : '',
   jwksUri: km?.jwksUri ?? '',
-  publicKey: km?.publicKey ?? '',
-  scopeClaim: km?.scopeClaim ?? '',
-  scopeClaimSeparator: km?.scopeClaimSeparator ?? '',
 });
 
 const fromDraft = (draft: Draft): GatewayKeyManager => ({
   name: draft.name,
   issuer: draft.issuer,
-  ...(draft.source === 'jwks' ? { jwksUri: draft.jwksUri } : { publicKey: draft.publicKey }),
-  scopeClaim: draft.scopeClaim,
-  scopeClaimSeparator: draft.scopeClaimSeparator,
+  jwksUri: draft.jwksUri,
 });
 
 /**
  * Adds or edits one key manager. Nothing is sent from here: the entry joins the
  * drawer's unsaved changes and goes out with "Save and apply", so several edits
- * cost one gateway restart.
+ * cost one gateway restart. The well-known URL only finds the JWKS URL; it is
+ * not saved.
  */
 const KeyManagerDialog: FC<KeyManagerDialogProps> = ({
   open,
   editing,
   others,
   knownUris,
+  discover,
   onCancel,
   onSubmit,
 }) => {
   const [draft, setDraft] = useState<Draft>(() => toDraft(editing));
-  const [advanced, setAdvanced] = useState(false);
-  /** Errors show once the user has tried to submit, not while they type the first character. */
-  const [submitted, setSubmitted] = useState(false);
+  const [step, setStep] = useState<Step>(editing ? 'details' : 'identify');
+  const [fetching, setFetching] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  /** Fields left once: a required field says so only after the user has been there. */
+  const [touched, setTouched] = useState<Set<FieldKey>>(new Set());
+  /** Drops the answer to a lookup the dialog has moved on from. */
+  const lookup = useRef(0);
 
   useEffect(() => {
     if (!open) return;
+    lookup.current += 1;
     setDraft(toDraft(editing));
-    setAdvanced(Boolean(editing?.scopeClaim || editing?.scopeClaimSeparator));
-    setSubmitted(false);
+    setStep(editing ? 'details' : 'identify');
+    setFetching(false);
+    setFetchError(null);
+    setTouched(new Set());
   }, [editing, open]);
 
   const candidate = fromDraft(draft);
-  const errors: KeyManagerErrors = validateKeyManager(candidate, others, knownUris);
-  const shown = submitted ? errors : {};
+  const errors: KeyManagerErrors & { wellKnownUrl?: string } = {
+    ...validateKeyManager(candidate, others, knownUris),
+    wellKnownUrl: wellKnownUrlError(draft.wellKnownUrl),
+  };
+  const errorOf = (key: FieldKey): string | undefined => {
+    const error = errors[key as keyof typeof errors];
+    return error && (touched.has(key) || draft[key].trim() !== '') ? error : undefined;
+  };
+  const identified = !errors.name && !errors.issuer;
+  const valid = !fetching && Object.values(errors).every((error) => !error);
+  /** An edit that changes nothing has nothing to save. */
+  const changed = !editing || !sameKeyManagers([normalizeKeyManager(candidate)], [editing]);
+  const complete = valid && changed;
+
   const set = (key: keyof Draft) => (value: string) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
+  const fetchDetails = async (wellKnownUrl?: string) => {
+    const id = ++lookup.current;
+    setFetching(true);
+    setFetchError(null);
+    try {
+      const found = await discover(draft.issuer.trim(), wellKnownUrl?.trim() || undefined);
+      if (id !== lookup.current) return;
+      setDraft((current) => ({
+        ...current,
+        issuer: found.issuer,
+        wellKnownUrl: found.wellKnownUrl,
+        jwksUri: found.jwksUri,
+      }));
+    } catch (error) {
+      if (id !== lookup.current) return;
+      setFetchError(
+        error instanceof Error && error.message ? error.message : 'The request failed.'
+      );
+    }
+    setFetching(false);
+    setStep('details');
+  };
+
   const submit = () => {
-    setSubmitted(true);
-    if (Object.keys(errors).length > 0) return;
+    if (!complete) return;
     onSubmit(normalizeKeyManager(candidate));
   };
 
   const field = (
-    key: 'name' | 'issuer' | 'jwksUri' | 'publicKey' | 'scopeClaim' | 'scopeClaimSeparator',
+    key: FieldKey,
     label: string,
     help: string,
-    extra: { multiline?: boolean; placeholder?: string } = {}
+    extra: { placeholder?: string } = {}
   ) => {
-    const error = key in shown ? shown[key as keyof KeyManagerErrors] : undefined;
+    const error = errorOf(key);
     return (
       <Box>
         <Typography component="label" htmlFor={`km-${key}`} variant="body2" sx={{ display: 'block', mb: 0.75 }}>
@@ -133,12 +180,12 @@ const KeyManagerDialog: FC<KeyManagerDialogProps> = ({
           id={`km-${key}`}
           fullWidth
           size="small"
+          disabled={fetching}
           error={Boolean(error)}
-          multiline={extra.multiline}
-          minRows={extra.multiline ? 4 : undefined}
           placeholder={extra.placeholder}
           sx={inputSx(false)}
           value={draft[key]}
+          onBlur={() => setTouched((current) => new Set(current).add(key))}
           onChange={(event) => set(key)(event.target.value)}
         />
         {error ? (
@@ -156,56 +203,56 @@ const KeyManagerDialog: FC<KeyManagerDialogProps> = ({
     <Dialog open={open} onClose={onCancel} fullWidth maxWidth="sm">
       <DialogTitle>{editing ? `Edit ${editing.name}` : 'Add key manager'}</DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: '8px !important' }}>
-        {field('name', 'Name', "What an API's JWT policy names it by.")}
-        {field('issuer', 'Issuer', "Must match the tokens' iss claim exactly.")}
-        <Box>
-          <Typography variant="body2" sx={{ mb: 0.5 }}>
-            Signing keys
-          </Typography>
-          <RadioGroup
-            row
-            value={draft.source}
-            onChange={(event) => set('source')(event.target.value)}
-          >
-            <FormControlLabel value="jwks" control={<Radio size="small" />} label="JWKS URL" />
-            <FormControlLabel value="publicKey" control={<Radio size="small" />} label="Public key" />
-          </RadioGroup>
-        </Box>
-        {draft.source === 'jwks'
-          ? field('jwksUri', 'JWKS URL', 'Where the gateway fetches the signing keys. https.', {
-              placeholder: 'https://idp.example.com/.well-known/jwks.json',
-            })
-          : field('publicKey', 'Public key', 'A PEM public key or certificate.', {
-              multiline: true,
-              placeholder: '-----BEGIN PUBLIC KEY-----',
-            })}
-        <Box>
-          <Button size="small" onClick={() => setAdvanced((value) => !value)} sx={{ px: 0 }}>
-            {advanced ? 'Hide advanced' : 'Advanced'}
-          </Button>
-          <Collapse in={advanced}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
-              {field(
-                'scopeClaim',
-                'Scope claim',
-                'The claim scopes are read from. Default: the scope and scp claims.'
-              )}
-              {field(
-                'scopeClaimSeparator',
-                'Scope separator',
-                'Splits a string scope claim. Default: a space.'
-              )}
+        {field('name', 'Name', 'Identifier used to reference this key manager in API policies.')}
+        {field('issuer', 'Issuer', 'Must exactly match the iss claim in issued tokens.', {
+          placeholder: 'https://idp.example.com',
+        })}
+        {step === 'details' ? (
+          <>
+            {fetchError ? (
+              <Alert severity="warning">
+                Couldn&apos;t fetch the identity provider&apos;s details: {fetchError} Enter the URLs
+                below, or correct the well-known URL and fetch again.
+              </Alert>
+            ) : null}
+            <Box>
+              {field('wellKnownUrl', 'Well-known URL', 'OpenID Connect discovery endpoint of the identity provider.', {
+                placeholder: 'https://idp.example.com/.well-known/openid-configuration',
+              })}
+              <Button
+                size="small"
+                disabled={!identified || Boolean(errors.wellKnownUrl) || fetching}
+                onClick={() => void fetchDetails(draft.wellKnownUrl)}
+                startIcon={fetching ? <CircularProgress size={16} color="inherit" /> : undefined}
+                sx={{ px: 0 }}
+              >
+                {fetching ? 'Fetching…' : 'Fetch again'}
+              </Button>
             </Box>
-          </Collapse>
-        </Box>
+            {field('jwksUri', 'JWKS URL', 'HTTPS endpoint from which signing keys are retrieved.', {
+              placeholder: 'https://idp.example.com/.well-known/jwks.json',
+            })}
+          </>
+        ) : null}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button variant="outlined" color="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button variant="contained" onClick={submit}>
-          {editing ? 'Done' : 'Add'}
-        </Button>
+        {step === 'details' ? (
+          <Button variant="contained" disabled={!complete} onClick={submit}>
+            {editing ? 'Done' : 'Add'}
+          </Button>
+        ) : (
+          <Button
+            variant="contained"
+            disabled={!identified || fetching}
+            onClick={() => void fetchDetails()}
+            startIcon={fetching ? <CircularProgress size={16} color="inherit" /> : undefined}
+          >
+            {fetching ? 'Fetching…' : 'Continue'}
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );

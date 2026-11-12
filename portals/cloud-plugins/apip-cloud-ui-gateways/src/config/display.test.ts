@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { defaultText, helperText, optionLabel } from './display';
+import { helperText, optionLabel } from './display';
 import type { EditableField } from '../types';
 
 const TLS: EditableField = {
@@ -31,23 +31,15 @@ const TLS: EditableField = {
 };
 
 describe('display', () => {
-  it('shows enum values and defaults by their labels', () => {
+  it('shows enum values by their labels', () => {
     expect(optionLabel(TLS, 'TLS1_3')).toBe('TLS 1.3');
     expect(optionLabel(TLS, 'TLS1_4')).toBe('TLS1_4');
-    expect(defaultText(TLS)).toBe('TLS 1.2');
   });
 
-  it('shows a boolean default as On or Off', () => {
-    expect(defaultText({ default: true, path: 'a', type: 'boolean' })).toBe('On');
-    expect(defaultText({ default: false, path: 'a', type: 'boolean' })).toBe('Off');
-  });
-
-  it('puts the hint before the default, and leaves out what is absent', () => {
+  it('shows the hint alone, without the default', () => {
     expect(helperText({ ...TLS, hint: 'Backends on older TLS are refused.' })).toBe(
-      'Backends on older TLS are refused. Default: TLS 1.2.'
+      'Backends on older TLS are refused.'
     );
-    expect(helperText(TLS)).toBe('Default: TLS 1.2.');
-    expect(helperText({ path: 'a', type: 'integer', default: 10 })).toBe('Default: 10.');
-    expect(helperText({ path: 'a', type: 'boolean' })).toBe('');
+    expect(helperText(TLS)).toBe('');
   });
 });

@@ -23,8 +23,10 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Collapse,
   Divider,
   Drawer,
+  Grid,
   IconButton,
   LinearProgress,
   Tooltip,
@@ -32,8 +34,8 @@ import {
   alpha,
   type Theme,
 } from '@wso2/oxygen-ui';
-import { X } from '@wso2/oxygen-ui-icons-react';
-import { readConfiguration, writeConfiguration } from '../config/api';
+import { ChevronDown, ChevronUp, X } from '@wso2/oxygen-ui-icons-react';
+import { discoverKeyManager, readConfiguration, writeConfiguration } from '../config/api';
 import { sameKeyManagers } from '../config/keyManagers';
 import { isChange, shownValue } from '../config/defaults';
 import { isApplying } from '../config/status';
@@ -153,6 +155,8 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   const [config, setConfig] = useState<GatewayConfiguration | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** Whether the JWT section shows its settings below the key managers. */
+  const [jwtAdvancedOpen, setJwtAdvancedOpen] = useState(false);
   /** Only the paths the user has touched. The request body is a sparse patch of exactly these. */
   const [drafts, setDrafts] = useState<ConfigValues>({});
   const [saving, setSaving] = useState(false);
@@ -407,6 +411,9 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
         saved={keyManagers ?? []}
         readOnly={locked}
         modified={keyManagerChange !== null}
+        discover={(issuer, wellKnownUrl) =>
+          discoverKeyManager(apiFetch, config.id, issuer, wellKnownUrl)
+        }
         onChange={setKeyManagerDraft}
       />
     </SettingsCell>
@@ -546,23 +553,50 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
 
           {sections.map((section, index) => {
             const isJwt = section.fields.some((field) => field.path.startsWith(JWT_PATH_PREFIX));
+            const cells = section.fields.map((field) => (
+              <SettingsCell key={field.path}>
+                <SettingField
+                  field={field}
+                  value={currentValue(field)}
+                  error={errors[field.path]}
+                  modified={field.path in patch}
+                  readOnly={locked}
+                  onChange={(value) => setDraft(field.path, value)}
+                />
+              </SettingsCell>
+            ));
+            // The key managers lead the JWT section; its settings wait under Advanced
+            // settings, opened for the user when one of them is in error or unsaved.
+            const advancedOpen =
+              jwtAdvancedOpen ||
+              section.fields.some((field) => Boolean(errors[field.path]) || field.path in patch);
             return (
               <Box key={`${section.group ?? ''}-${index}`}>
                 {index > 0 ? <Divider /> : null}
                 <SettingsSection title={section.group} description={descriptionOf(section.group)}>
-                  {section.fields.map((field) => (
-                    <SettingsCell key={field.path}>
-                      <SettingField
-                        field={field}
-                        value={currentValue(field)}
-                        error={errors[field.path]}
-                        modified={field.path in patch}
-                        readOnly={locked}
-                        onChange={(value) => setDraft(field.path, value)}
-                      />
-                    </SettingsCell>
-                  ))}
-                  {isJwt ? keyManagerField : null}
+                  {isJwt ? (
+                    <>
+                      {keyManagerField}
+                      <SettingsCell wide>
+                        <Button
+                          size="small"
+                          onClick={() => setJwtAdvancedOpen(!advancedOpen)}
+                          endIcon={advancedOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          aria-expanded={advancedOpen}
+                          sx={{ px: 0 }}
+                        >
+                          Advanced settings
+                        </Button>
+                        <Collapse in={advancedOpen}>
+                          <Grid container columnSpacing={2} rowSpacing={2.5} sx={{ pt: 1.5 }}>
+                            {cells}
+                          </Grid>
+                        </Collapse>
+                      </SettingsCell>
+                    </>
+                  ) : (
+                    cells
+                  )}
                 </SettingsSection>
               </Box>
             );

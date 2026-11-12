@@ -28,6 +28,28 @@ export type KeyManagerErrors = Partial<
   Record<'name' | 'issuer' | 'jwksUri' | 'publicKey', string>
 >;
 
+/** An absolute http or https URL. */
+export const isHttpUrl = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'https:' || url.protocol === 'http:') && url.hostname !== '';
+  } catch {
+    return false;
+  }
+};
+
+/** Where an issuer's OpenID discovery document lives by default. */
+export const wellKnownUrlOf = (issuer: string): string =>
+  `${issuer.trim().replace(/\/+$/, '')}/.well-known/openid-configuration`;
+
+/** A well-known URL as the dialog checks it: required, and a URL. */
+export const wellKnownUrlError = (value: string): string | undefined => {
+  const url = value.trim();
+  if (!url) return 'Required.';
+  if (url.length > MAX_JWKS_URI) return `At most ${MAX_JWKS_URI} characters.`;
+  return isHttpUrl(url) ? undefined : 'Must be a URL.';
+};
+
 /** Whether two lists are the same entries in the same order. */
 export const sameKeyManagers = (a: GatewayKeyManager[], b: GatewayKeyManager[]): boolean =>
   a.length === b.length &&
@@ -37,9 +59,7 @@ export const sameKeyManagers = (a: GatewayKeyManager[], b: GatewayKeyManager[]):
       km.name === other.name &&
       km.issuer === other.issuer &&
       (km.jwksUri ?? '') === (other.jwksUri ?? '') &&
-      (km.publicKey ?? '') === (other.publicKey ?? '') &&
-      (km.scopeClaim ?? '') === (other.scopeClaim ?? '') &&
-      (km.scopeClaimSeparator ?? '') === (other.scopeClaimSeparator ?? '')
+      (km.publicKey ?? '') === (other.publicKey ?? '')
     );
   });
 
@@ -65,6 +85,7 @@ export function validateKeyManager(
   }
   if (!issuer) errors.issuer = 'Required.';
   else if (issuer.length > MAX_ISSUER) errors.issuer = `At most ${MAX_ISSUER} characters.`;
+  else if (!isHttpUrl(issuer)) errors.issuer = 'Must be a URL.';
   else if (others.some((other) => other.issuer === issuer)) {
     errors.issuer = 'Another key manager has this issuer.';
   }
@@ -73,7 +94,7 @@ export function validateKeyManager(
   if (km.jwksUri !== undefined) {
     if (!uri) errors.jwksUri = 'Required.';
     else if (uri.length > MAX_JWKS_URI) errors.jwksUri = `At most ${MAX_JWKS_URI} characters.`;
-    else if (!knownUris.includes(uri) && !/^https:\/\/[^\s/]+/.test(uri)) {
+    else if (!knownUris.includes(uri) && !(isHttpUrl(uri) && uri.startsWith('https://'))) {
       errors.jwksUri = 'Must be an https URL.';
     }
   } else if (!publicKey) {
@@ -89,7 +110,5 @@ export const normalizeKeyManager = (km: GatewayKeyManager): GatewayKeyManager =>
   const out: GatewayKeyManager = { name: km.name.trim(), issuer: km.issuer.trim() };
   if (km.jwksUri !== undefined) out.jwksUri = km.jwksUri.trim();
   else out.publicKey = km.publicKey?.trim() ?? '';
-  if (km.scopeClaim?.trim()) out.scopeClaim = km.scopeClaim.trim();
-  if (km.scopeClaimSeparator) out.scopeClaimSeparator = km.scopeClaimSeparator;
   return out;
 };

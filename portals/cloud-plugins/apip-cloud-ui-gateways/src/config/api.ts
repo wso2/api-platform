@@ -17,7 +17,12 @@
  */
 
 import type { ApiFetch } from '../hostPort';
-import type { ConfigValues, GatewayConfiguration, GatewayKeyManager } from '../types';
+import type {
+  ConfigValues,
+  GatewayConfiguration,
+  GatewayKeyManager,
+  KeyManagerDiscovery,
+} from '../types';
 
 const configurationPath = (gatewayId: string) =>
   `/managed-gateways/${encodeURIComponent(gatewayId)}/configuration`;
@@ -66,3 +71,22 @@ export const writeConfiguration = (
     })
   );
 
+/**
+ * Reads an issuer's discovery document through the platform, which the browser
+ * could not fetch past most identity providers' CORS policies. `wellKnownUrl`
+ * overrides `<issuer>/.well-known/openid-configuration`.
+ */
+export async function discoverKeyManager(
+  apiFetch: ApiFetch,
+  gatewayId: string,
+  issuer: string,
+  wellKnownUrl?: string
+): Promise<KeyManagerDiscovery> {
+  const found = await apiFetch<KeyManagerDiscovery>(
+    'POST',
+    `/managed-gateways/${encodeURIComponent(gatewayId)}/key-managers/discover`,
+    { issuer, ...(wellKnownUrl ? { wellKnownUrl } : {}) }
+  );
+  if (!found) throw new Error('The discovery service returned an empty response.');
+  return found;
+}

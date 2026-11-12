@@ -22,21 +22,8 @@ import type { EditableField } from '../types';
 export const optionLabel = (field: EditableField, value: string): string =>
   field.labels?.[value] ?? value;
 
-/** The platform default as the form shows it, or `undefined` when none is published. */
-export const defaultText = (field: EditableField): string | undefined => {
-  if (field.default === undefined) return undefined;
-  if (typeof field.default === 'boolean') return field.default ? 'On' : 'Off';
-  if (field.type === 'enum') return optionLabel(field, String(field.default));
-  return String(field.default);
-};
-
 /**
- * The line under a field: the platform's short hint, then what an unset field
- * runs with. The longer description is not part of it; it sits behind the label.
+ * The line under a field: the platform's short hint. The longer description is
+ * not part of it; it sits behind the label.
  */
-export const helperText = (field: EditableField): string => {
-  const shownDefault = defaultText(field);
-  return [field.hint, shownDefault === undefined ? '' : `Default: ${shownDefault}.`]
-    .filter(Boolean)
-    .join(' ');
-};
+export const helperText = (field: EditableField): string => field.hint ?? '';

@@ -18,7 +18,14 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { normalizeKeyManager, sameKeyManagers, validateKeyManager } from './keyManagers';
+import {
+  isHttpUrl,
+  normalizeKeyManager,
+  sameKeyManagers,
+  validateKeyManager,
+  wellKnownUrlError,
+  wellKnownUrlOf,
+} from './keyManagers';
 
 const thunder = {
   issuer: 'http://thunder.local:8080',
@@ -62,6 +69,31 @@ describe('sameKeyManagers and normalizeKeyManager', () => {
   });
 
   it('trims, and keeps only the key source in use', () => {
-    expect(normalizeKeyManager({ ...asgardeo, name: ' asgardeo ', scopeClaim: ' ' })).toEqual(asgardeo);
+    expect(normalizeKeyManager({ ...asgardeo, name: ' asgardeo ', issuer: ` ${asgardeo.issuer} ` })).toEqual(asgardeo);
+  });
+});
+
+describe('URLs', () => {
+  it('accepts absolute http and https URLs only', () => {
+    expect(isHttpUrl('https://idp.example.com/oauth2/token')).toBe(true);
+    expect(isHttpUrl('http://thunder.local:8080')).toBe(true);
+    expect(isHttpUrl('idp.example.com')).toBe(false);
+    expect(isHttpUrl('ftp://idp.example.com')).toBe(false);
+  });
+
+  it('refuses an issuer that is not a URL', () => {
+    expect(validateKeyManager({ ...asgardeo, issuer: 'acme' }, [], []).issuer).toBe('Must be a URL.');
+  });
+
+  it('derives the well-known URL from the issuer', () => {
+    expect(wellKnownUrlOf(' https://idp.example.com/t/acme/ ')).toBe(
+      'https://idp.example.com/t/acme/.well-known/openid-configuration'
+    );
+  });
+
+  it('needs a well-known URL that is a URL', () => {
+    expect(wellKnownUrlError(' ')).toBe('Required.');
+    expect(wellKnownUrlError('not a url')).toBe('Must be a URL.');
+    expect(wellKnownUrlError('https://idp.example.com/.well-known/openid-configuration')).toBeUndefined();
   });
 });

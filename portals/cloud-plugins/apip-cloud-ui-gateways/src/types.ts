@@ -242,8 +242,14 @@ export type GatewayKeyManager = {
   jwksUri?: string;
   /** A PEM public key or certificate, for an IdP with no JWKS endpoint. */
   publicKey?: string;
-  scopeClaim?: string;
-  scopeClaimSeparator?: string;
+};
+
+/** What an issuer's OpenID discovery document says about it. */
+export type KeyManagerDiscovery = {
+  /** The document's own issuer, which tokens carry. */
+  issuer: string;
+  wellKnownUrl: string;
+  jwksUri: string;
 };
 
 
