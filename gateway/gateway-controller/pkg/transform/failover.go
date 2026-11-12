@@ -311,9 +311,14 @@ func toInt(raw interface{}) (int, bool) {
 // BuildProviderClusterMap returns the provider alias to cluster mapping the failover policy needs
 // to construct a priority group for any model at request time.
 //
-// Keyed by the alias an author writes in a target's `provider` field — an LlmProxy
-// additionalProviders[].as value, or the provider id when no alias is set. The empty key is the
-// API's own main upstream, used by a target that names no provider.
+// Keyed by the alias an author writes in a target's `provider` field. BOTH LlmProxy provider
+// shapes reach this the same way: a canonical `providers[].alias` and a legacy
+// `additionalProviders[].as` both become an attachment's EffectiveName, which falls back to the
+// provider id when no alias is set, and that name is what the upstream definition is created
+// under. Keying on the definition name rather than on either raw shape is what keeps the two
+// from diverging here. On a RestApi the same field names an upstreamDefinition directly.
+//
+// The empty key is the API's own main upstream, used by a target that names no provider.
 //
 // The cluster depends on the PROVIDER alone, never the model, which is what makes this map
 // sufficient: a "*" member changes the model and keeps its provider, so the policy can build a
