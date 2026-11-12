@@ -1,0 +1,4 @@
+# Config dump asserts a fresh gateway has no APIs, so this block's gateway does not provision
+# the default model endpoint. Released gateways without Models ignore the setting.
+[controller.models.endpoint]
+provision = false
