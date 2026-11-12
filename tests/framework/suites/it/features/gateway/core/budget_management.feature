@@ -176,3 +176,285 @@ Feature: Budget management
       | spec.resource.id    | no-such-provider          |
     Then the response status code should be 400
     And the JSON response field "errors[0].field" should be "spec.resource.id"
+
+  @BUDGET-010 @BUDGET-011 @BUDGET-012 @BUDGET-013
+  Scenario: An active budget reaches the policy engine, follows its edits and is withdrawn when deactivated or deleted
+    Given I generate a unique resource name from "bgt-xds" and store it as "budgetName"
+    When I create Budget from "resources/templates/budget.yaml" with values:
+      | apiVersion          | ${CTX:gatewaySpecVersion} |
+      | name                | ${CTX:budgetName}         |
+      | amount              | "500.00"                  |
+      | period              | month                     |
+      | action              | block                     |
+      | resource.allocation | shared                    |
+      | spec.limit.blockAt  | 95                        |
+      | spec.consumers      | [{"type":"attribute","allocation":"separate","expression":"request.Auth.Claims[\"sub\"] != \"\""}] |
+    Then the response status code should be 201
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
+    Then the JSON response array "lazy_resources.resources_by_type.Budget" item with "id" equal to "${CTX:budgetName}" should have "resource.limit.amount" equal to "500.00"
+    And the JSON response array "lazy_resources.resources_by_type.Budget" item with "id" equal to "${CTX:budgetName}" should have "resource.limit.blockAt" equal to "95"
+    And the JSON response array "lazy_resources.resources_by_type.Budget" item with "id" equal to "${CTX:budgetName}" should have "resource.resource.allocation" equal to "shared"
+    And the JSON response array "lazy_resources.resources_by_type.Budget" item with "id" equal to "${CTX:budgetName}" should have "resource.consumers[0].allocation" equal to "separate"
+
+    When I update Budget "${CTX:budgetName}" from "resources/templates/budget.yaml" with values:
+      | apiVersion          | ${CTX:gatewaySpecVersion} |
+      | name                | ${CTX:budgetName}         |
+      | amount              | "650.00"                  |
+      | period              | month                     |
+      | action              | block                     |
+      | resource.allocation | shared                    |
+      | spec.limit.blockAt  | 95                        |
+      | spec.consumers      | [{"type":"attribute","allocation":"separate","expression":"request.Auth.Claims[\"sub\"] != \"\""}] |
+    Then the response status code should be 200
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" has "limit.amount" equal to "650.00"
+    Then the response status code should be 200
+
+    When I update Budget "${CTX:budgetName}" from "resources/templates/budget.yaml" with values:
+      | apiVersion          | ${CTX:gatewaySpecVersion} |
+      | name                | ${CTX:budgetName}         |
+      | amount              | "650.00"                  |
+      | period              | month                     |
+      | action              | block                     |
+      | resource.allocation | shared                    |
+      | spec.status         | inactive                  |
+      | spec.limit.blockAt  | 95                        |
+      | spec.consumers      | [{"type":"attribute","allocation":"separate","expression":"request.Auth.Claims[\"sub\"] != \"\""}] |
+    Then the response status code should be 200
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is absent
+    Then the response status code should be 200
+
+    When I update Budget "${CTX:budgetName}" from "resources/templates/budget.yaml" with values:
+      | apiVersion          | ${CTX:gatewaySpecVersion} |
+      | name                | ${CTX:budgetName}         |
+      | amount              | "650.00"                  |
+      | period              | month                     |
+      | action              | block                     |
+      | resource.allocation | shared                    |
+      | spec.limit.blockAt  | 95                        |
+      | spec.consumers      | [{"type":"attribute","allocation":"separate","expression":"request.Auth.Claims[\"sub\"] != \"\""}] |
+    Then the response status code should be 200
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
+    Then the response status code should be 200
+
+    When I delete the Budget "${CTX:budgetName}"
+    Then the response status code should be 200
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is absent
+    Then the response status code should be 200
+
+  # Each chat-cached call costs $0.00065; a $0.01 budget blocking at 1% is used up by one call.
+  @BUDGET-014
+  Scenario: A Block budget refuses requests once its block point is spent
+    Given I generate a unique resource name from "bgt-block-provider" and store it as "providerName"
+    And I generate a unique API version from "bgt-block" and store it as "providerVersion"
+    And I generate a unique API context from "/bgt-block" and store it as "providerContext"
+    And I generate a unique resource name from "bgt-block" and store it as "budgetName"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}  |
+      | name               | ${CTX:providerName}        |
+      | displayName        | ${CTX:providerName}        |
+      | version            | ${CTX:providerVersion}     |
+      | template           | openai                     |
+      | spec.context       | ${CTX:providerContext}     |
+      | spec.upstream.url  | http://testbench:3008      |
+      | accessControl.mode | allow_all                  |
+      | spec.policies      | [{"name":"llm-cost","version":"v1","paths":[{"path":"/*","methods":["*"]}]}] |
+    Then the response status code should be 201
+    When I create Budget from "resources/templates/budget.yaml" with values:
+      | apiVersion          | ${CTX:gatewaySpecVersion} |
+      | name                | ${CTX:budgetName}         |
+      | amount              | "0.01"                    |
+      | period              | day                       |
+      | action              | block                     |
+      | resource.allocation | shared                    |
+      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.limit.blockAt  | 1                         |
+    Then the response status code should be 201
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
+    Then the response status code should be 200
+    # A request without a model is not priced, so it shows the route is live without spending.
+    And I send a "POST" request to "${CTX:providerContext}/unknown-llm/v1/no-model-field" until status 200 with body:
+      """
+      {"messages":[{"role":"user","content":"Hello"}]}
+      """
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # The charge lands when the response ends, so the next request may still be admitted.
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" until status 429 with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the JSON response field "code" should be "BUDGET_EXCEEDED"
+    And the JSON response field "budgets[0].budget" should be "${CTX:budgetName}"
+    And the JSON response field "budgets[0].limit" should be "0.01"
+    And the JSON response field "budgets[0].period" should be "day"
+    And the response header "Retry-After" should exist
+
+  @BUDGET-015
+  Scenario: An Allow budget never refuses
+    Given I generate a unique resource name from "bgt-allow-provider" and store it as "providerName"
+    And I generate a unique API version from "bgt-allow" and store it as "providerVersion"
+    And I generate a unique API context from "/bgt-allow" and store it as "providerContext"
+    And I generate a unique resource name from "bgt-allow" and store it as "budgetName"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}  |
+      | name               | ${CTX:providerName}        |
+      | displayName        | ${CTX:providerName}        |
+      | version            | ${CTX:providerVersion}     |
+      | template           | openai                     |
+      | spec.context       | ${CTX:providerContext}     |
+      | spec.upstream.url  | http://testbench:3008      |
+      | accessControl.mode | allow_all                  |
+      | spec.policies      | [{"name":"llm-cost","version":"v1","paths":[{"path":"/*","methods":["*"]}]}] |
+    Then the response status code should be 201
+    When I create Budget from "resources/templates/budget.yaml" with values:
+      | apiVersion          | ${CTX:gatewaySpecVersion} |
+      | name                | ${CTX:budgetName}         |
+      | amount              | "0.01"                    |
+      | period              | day                       |
+      | action              | allow                     |
+      | resource.allocation | shared                    |
+      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.limit.blockAt  | 1                         |
+    Then the response status code should be 201
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
+    Then the response status code should be 200
+    # A request without a model is not priced, so it shows the route is live without spending.
+    And I send a "POST" request to "${CTX:providerContext}/unknown-llm/v1/no-model-field" until status 200 with body:
+      """
+      {"messages":[{"role":"user","content":"Hello"}]}
+      """
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the response status code should be 200
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the response status code should be 200
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the response status code should be 200
+
+  @BUDGET-016
+  Scenario: An inactive budget neither refuses nor reaches the policy engine
+    Given I generate a unique resource name from "bgt-inactive-provider" and store it as "providerName"
+    And I generate a unique API version from "bgt-inactive" and store it as "providerVersion"
+    And I generate a unique API context from "/bgt-inactive" and store it as "providerContext"
+    And I generate a unique resource name from "bgt-inactive" and store it as "budgetName"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}  |
+      | name               | ${CTX:providerName}        |
+      | displayName        | ${CTX:providerName}        |
+      | version            | ${CTX:providerVersion}     |
+      | template           | openai                     |
+      | spec.context       | ${CTX:providerContext}     |
+      | spec.upstream.url  | http://testbench:3008      |
+      | accessControl.mode | allow_all                  |
+      | spec.policies      | [{"name":"llm-cost","version":"v1","paths":[{"path":"/*","methods":["*"]}]}] |
+    Then the response status code should be 201
+    When I create Budget from "resources/templates/budget.yaml" with values:
+      | apiVersion          | ${CTX:gatewaySpecVersion} |
+      | name                | ${CTX:budgetName}         |
+      | amount              | "0.01"                    |
+      | period              | day                       |
+      | action              | block                     |
+      | resource.allocation | shared                    |
+      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.limit.blockAt  | 1                         |
+      | spec.status         | inactive                  |
+    Then the response status code should be 201
+    # A request without a model is not priced, so it shows the route is live without spending.
+    And I send a "POST" request to "${CTX:providerContext}/unknown-llm/v1/no-model-field" until status 200 with body:
+      """
+      {"messages":[{"role":"user","content":"Hello"}]}
+      """
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the response status code should be 200
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the response status code should be 200
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the response status code should be 200
+    When I send a "GET" request to the "policy-engine" service at "/config_dump"
+    Then the lazy resources should not contain resource "${CTX:budgetName}" of type "Budget"
+
+  @BUDGET-017 @BUDGET-018
+  Scenario: Separate allowances are used up one by one and exempt traffic is never refused
+    Given I generate a unique resource name from "bgt-separate-provider" and store it as "providerName"
+    And I generate a unique API version from "bgt-separate" and store it as "providerVersion"
+    And I generate a unique API context from "/bgt-separate" and store it as "providerContext"
+    And I generate a unique resource name from "bgt-separate" and store it as "budgetName"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}  |
+      | name               | ${CTX:providerName}        |
+      | displayName        | ${CTX:providerName}        |
+      | version            | ${CTX:providerVersion}     |
+      | template           | openai                     |
+      | spec.context       | ${CTX:providerContext}     |
+      | spec.upstream.url  | http://testbench:3008      |
+      | accessControl.mode | allow_all                  |
+      | spec.policies      | [{"name":"llm-cost","version":"v1","paths":[{"path":"/*","methods":["*"]}]}] |
+    Then the response status code should be 201
+    When I create Budget from "resources/templates/budget.yaml" with values:
+      | apiVersion          | ${CTX:gatewaySpecVersion} |
+      | name                | ${CTX:budgetName}         |
+      | amount              | "0.01"                    |
+      | period              | day                       |
+      | action              | block                     |
+      | resource.allocation | shared                    |
+      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.limit.blockAt  | 1                         |
+      | spec.consumers      | [{"type":"attribute","allocation":"separate","expression":"request.Headers[\"x-team\"][0]"}] |
+      | spec.exemptions     | [{"type":"attribute","expression":"request.Headers[\"x-budget-exempt\"][0] == \"yes\""}] |
+    Then the response status code should be 201
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
+    Then the response status code should be 200
+    Given I set header "x-team" to "team-a"
+    # A request without a model is not priced, so it shows the route is live without spending.
+    And I send a "POST" request to "${CTX:providerContext}/unknown-llm/v1/no-model-field" until status 200 with body:
+      """
+      {"messages":[{"role":"user","content":"Hello"}]}
+      """
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the response status code should be 200
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" until status 429 with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the JSON response field "budgets[0].budget" should be "${CTX:budgetName}"
+
+    # Another team has its own allowance.
+    Given I set header "x-team" to "team-b"
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Exempt traffic is left out of the budget.
+    Given I set header "x-team" to "team-a"
+    And I set header "x-budget-exempt" to "yes"
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the response status code should be 200

@@ -35,6 +35,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/budget"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
 const testBudgetBody = `{
@@ -59,7 +60,7 @@ func newBudgetTestServer(t *testing.T) *APIServer {
 	}, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
-	return &APIServer{db: db, logger: logger, budgetService: budget.NewService(db, logger, false)}
+	return &APIServer{db: db, logger: logger, budgetService: budget.NewService(db, utils.NewBudgetPublisher(db, newTestLazyResourceManager()), logger, false)}
 }
 
 func postBudget(server *APIServer, body string) *httptest.ResponseRecorder {

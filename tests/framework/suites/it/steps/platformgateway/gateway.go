@@ -528,8 +528,52 @@ func providerTemplateMappingMatches(body []byte, provider, template string) bool
 func (g *Gateway) serviceRequestUntilLazyResourceAbsent(
 	ctx context.Context, method, service, path, resourceID, resourceType string,
 ) error {
+	return g.serviceRequestUntilLazyResource(ctx, method, service, path, resourceID, resourceType, "be removed",
+		func(body []byte, id, kind string) bool { return lazyResourceAbsent(body, id, kind) })
+}
+
+// serviceRequestUntilLazyResourcePresent polls a policy-engine config dump until the specified
+// resource type contains the requested resource ID.
+func (g *Gateway) serviceRequestUntilLazyResourcePresent(
+	ctx context.Context, method, service, path, resourceID, resourceType string,
+) error {
+	return g.serviceRequestUntilLazyResource(ctx, method, service, path, resourceID, resourceType, "be present",
+		func(body []byte, id, kind string) bool { _, ok := lazyResourceBody(body, id, kind); return ok })
+}
+
+// serviceRequestUntilLazyResourceField polls a policy-engine config dump until a field of the
+// specified resource, a dotted path inside its body, has the expected value.
+func (g *Gateway) serviceRequestUntilLazyResourceField(
+	ctx context.Context, method, service, path, resourceID, resourceType, field, want string,
+) error {
+	field, err := stepscommon.Expand(ctx, field)
+	if err != nil {
+		return err
+	}
+	want, err = stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	return g.serviceRequestUntilLazyResource(ctx, method, service, path, resourceID, resourceType,
+		fmt.Sprintf("have %s %q", field, want),
+		func(body []byte, id, kind string) bool {
+			resource, ok := lazyResourceBody(body, id, kind)
+			if !ok {
+				return false
+			}
+			got, ok := lazyResourceField(resource, field)
+			return ok && got == want
+		})
+}
+
+// serviceRequestUntilLazyResource polls a policy-engine config dump until accept holds for the
+// specified resource, then publishes the last response.
+func (g *Gateway) serviceRequestUntilLazyResource(
+	ctx context.Context, method, service, path, resourceID, resourceType, wantText string,
+	matches func(body []byte, resourceID, resourceType string) bool,
+) error {
 	if strings.ToUpper(method) != http.MethodGet || service != "policy-engine" {
-		return fmt.Errorf("lazy-resource deletion readiness requires a GET request to the policy-engine")
+		return fmt.Errorf("lazy-resource readiness requires a GET request to the policy-engine")
 	}
 	url, err := g.serviceURL(ctx, service, path)
 	if err != nil {
@@ -544,7 +588,7 @@ func (g *Gateway) serviceRequestUntilLazyResourceAbsent(
 		return err
 	}
 	accept := func(resp *httpx.Response) bool {
-		return resp != nil && resp.Succeeded() && lazyResourceAbsent(resp.Body, resourceID, resourceType)
+		return resp != nil && resp.Succeeded() && matches(resp.Body, resourceID, resourceType)
 	}
 	last, err := retry.Until(ctx, retry.Options{Interval: 200 * time.Millisecond},
 		func(ctx context.Context) (*httpx.Response, error) {
@@ -557,12 +601,49 @@ func (g *Gateway) serviceRequestUntilLazyResourceAbsent(
 			return resp, nil
 		}, accept)
 	if err != nil {
-		return fmt.Errorf("waiting for lazy resource %q of type %q to be removed: %w", resourceID, resourceType, err)
+		return fmt.Errorf("waiting for lazy resource %q of type %q to %s: %w", resourceID, resourceType, wantText, err)
 	}
 	if !accept(last) {
-		return fmt.Errorf("lazy resource %q of type %q was not removed", resourceID, resourceType)
+		return fmt.Errorf("lazy resource %q of type %q did not %s", resourceID, resourceType, wantText)
 	}
 	return g.funnel.Publish(ctx, last)
+}
+
+// lazyResourceBody returns the body of the specified resource in a policy-engine config dump.
+func lazyResourceBody(body []byte, resourceID, resourceType string) (map[string]any, bool) {
+	var dump configDump
+	if err := json.Unmarshal(body, &dump); err != nil {
+		return nil, false
+	}
+	for _, resource := range dump.Lazy.ResourcesByType[resourceType] {
+		if resource.ID == resourceID {
+			return resource.Resource, true
+		}
+	}
+	return nil, false
+}
+
+// lazyResourceField reads a dotted path from a resource body as text; numbers are written
+// without a fraction when they are whole.
+func lazyResourceField(resource map[string]any, field string) (string, bool) {
+	var value any = resource
+	for _, part := range strings.Split(field, ".") {
+		object, ok := value.(map[string]any)
+		if !ok {
+			return "", false
+		}
+		if value, ok = object[part]; !ok {
+			return "", false
+		}
+	}
+	switch v := value.(type) {
+	case string:
+		return v, true
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), true
+	default:
+		return fmt.Sprint(v), true
+	}
 }
 
 func lazyResourceAbsent(body []byte, resourceID, resourceType string) bool {
@@ -1175,6 +1256,10 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.serviceRequestUntilProviderTemplateMapping)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until lazy resource "([^"]*)" of type "([^"]*)" is absent$`,
 		g.serviceRequestUntilLazyResourceAbsent)
+	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until lazy resource "([^"]*)" of type "([^"]*)" is present$`,
+		g.serviceRequestUntilLazyResourcePresent)
+	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until lazy resource "([^"]*)" of type "([^"]*)" has "([^"]*)" equal to "([^"]*)"$`,
+		g.serviceRequestUntilLazyResourceField)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should (contain|not contain) (request|response) header "([^"]*)"(?: with value "([^"]*)")?$`,
 		g.analyticsHeader)
 	sc.Step(`^I reset the analytics collector$`, g.resetAnalyticsCollector)

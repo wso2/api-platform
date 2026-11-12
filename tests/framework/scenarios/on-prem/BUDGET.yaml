@@ -109,3 +109,102 @@ scenarios:
       refs:
         - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
           scenario: "A budget naming a provider the gateway does not have is rejected"
+  - id: BUDGET-010
+    title: "Create an active budget; it reaches the policy engine as a lazy resource of type Budget with its limit, resource and consumers."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "An active budget reaches the policy engine, follows its edits and is withdrawn when deactivated or deleted"
+  - id: BUDGET-011
+    title: "Update an active budget; the policy engine receives the new values."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "An active budget reaches the policy engine, follows its edits and is withdrawn when deactivated or deleted"
+  - id: BUDGET-012
+    title: "Deactivate a budget; it is withdrawn from the policy engine but kept and listed, and reactivating sends it again."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "An active budget reaches the policy engine, follows its edits and is withdrawn when deactivated or deleted"
+  - id: BUDGET-013
+    title: "Delete a budget; it is withdrawn from the policy engine."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "An active budget reaches the policy engine, follows its edits and is withdrawn when deactivated or deleted"
+  - id: BUDGET-014
+    title: "A Block budget on an LLM provider is used up; the next call is refused with 429 BUDGET_EXCEEDED listing the budget, its limit and period, and Retry-After."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "A Block budget refuses requests once its block point is spent"
+  - id: BUDGET-015
+    title: "An Allow budget is used up; calls are still served."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "An Allow budget never refuses"
+  - id: BUDGET-016
+    title: "An inactive budget is used up; calls are still served and the budget is not in the policy engine."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "An inactive budget neither refuses nor reaches the policy engine"
+  - id: BUDGET-017
+    title: "A budget allocated separately by a request attribute: one value is used up and refused, another value is still served."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "Separate allowances are used up one by one and exempt traffic is never refused"
+  - id: BUDGET-018
+    title: "Traffic matching an exemption is served even when its allowance is used up."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "Separate allowances are used up one by one and exempt traffic is never refused"

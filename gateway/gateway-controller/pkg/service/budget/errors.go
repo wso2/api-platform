@@ -28,6 +28,8 @@ var (
 	ErrNotFound = errors.New("budget not found")
 	// ErrReadOnly is returned when changing a budget that came from the control plane.
 	ErrReadOnly = errors.New("the budget comes from the control plane and is read-only here")
+	// ErrPublish is returned when a change is saved but the policy engine could not be updated.
+	ErrPublish = errors.New("budget saved but failed to update the policy engine")
 )
 
 // FieldError is one validation failure.
