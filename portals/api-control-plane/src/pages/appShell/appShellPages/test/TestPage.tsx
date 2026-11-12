@@ -17,17 +17,28 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { Card, PageTitle, Stack, ToggleButton, ToggleButtonGroup } from '@wso2/oxygen-ui';
-import { LucideBookOpenCheck, Rocket, SquareTerminal } from '@wso2/oxygen-ui-icons-react';
+import { Button, Card, PageTitle, Stack } from '@wso2/oxygen-ui';
+import { Download, LucideBookOpenCheck, Rocket, SquareTerminal } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
 
+import { SegmentedControl } from '@/components/common/SegmentedControl';
 import { parseSpecContent, useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
 import { useDeployments } from '@/api/resources/restApis/deployments';
-import { useRestApiGateways } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
+import {
+  useInvokeRestApiOnGateway,
+  useRestApiGateways,
+} from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
 import { isTestKeyExpired, KEY_COUNTDOWN_TICK_MS, testKeyRemainingMs } from './utils/testApiKey';
 import { useTestApiKey } from './utils/useTestApiKey';
 import { isApiError } from '@/api/core/errors';
+import {
+  ApiTestConsole,
+  createDirectTransport,
+  downloadOpenApi,
+  type ConsoleAutoParam,
+  type ConsoleSendRequest,
+} from '@/components/ApiTestConsole';
 import { AppPage } from '@/components/AppPage';
 import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
@@ -45,7 +56,9 @@ import { GatewaySection } from './components/GatewaySection';
 import { buildConsoleRequest, firstOperationOf } from './utils/operationRequest';
 import { TestKeySection } from './components/TestKeySection';
 import { emptyRequest, withTarget, type ConsoleRequest, type KeyValueRow } from './utils/types';
-import TestConsoleSpecViewer from './console/TestConsoleSpecViewer';
+import { CallModeSwitch } from './console/CallModeSwitch';
+import { createRelayTransport } from './console/utils/relayTransport';
+import { toConsoleRequest } from './utils/toConsoleRequest';
 import { useCan } from '@/permissions';
 
 const messages = defineMessages({
@@ -62,6 +75,11 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.curlView',
     defaultMessage: 'cURL view',
     description: 'Toggle option showing the command builder.',
+  },
+  downloadOpenApi: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.downloadOpenApi',
+    defaultMessage: 'Download OpenAPI',
+    description: 'Button that saves the API’s OpenAPI definition as a file. A command.',
   },
   deployAction: {
     id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.deployAction',
@@ -90,6 +108,17 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.loading',
     defaultMessage: 'Loading test console',
     description: 'Shown while the API and its definition are being fetched.',
+  },
+  routeDirect: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.routeDirect',
+    defaultMessage: 'direct',
+    description:
+      'Short note beside a response: the request was sent from the browser straight to the gateway.',
+  },
+  routeProxy: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.routeProxy',
+    defaultMessage: 'via proxy',
+    description: 'Short note beside a response: the request was relayed through the portal server.',
   },
   scopePrompt: {
     id: 'apiControlPlane.pages.appShell.appShellPages.test.TestPage.scopePrompt',
@@ -145,6 +174,7 @@ function TestConsole() {
   const definitionQuery = useRestApiOpenApi(restApiId);
   const gatewaysQuery = useRestApiGateways(restApiId);
   const deploymentsQuery = useDeployments(restApiId);
+  const { mutateAsync: invoke } = useInvokeRestApiOnGateway({ orgId: params.orgHandle ?? '' });
 
   /** API `api-key-auth` configuration, if present. */
   const apiKeyAuth = useMemo(() => apiKeyAuthOf(apiQuery.data), [apiQuery.data]);
@@ -304,10 +334,47 @@ function TestConsole() {
     [headerName],
   );
 
-  /** Live sync from the Console view's try-out form. */
-  const handleConsoleRequestChange = useCallback((next: ConsoleRequest) => {
-    setRequest(next);
-  }, []);
+  /** The credentials the page injects, in the console's own terms. Shown locked and masked. */
+  const autoHeaders = useMemo<ConsoleAutoParam[]>(
+    () =>
+      extraHeaders.map((header) => ({
+        name: header.name,
+        secret: header.secret,
+        value: header.value,
+      })),
+    [extraHeaders],
+  );
+  const autoQuery = useMemo<ConsoleAutoParam[]>(
+    () =>
+      extraQueryParams.map((param) => ({
+        name: param.name,
+        secret: param.secret,
+        value: param.value,
+      })),
+    [extraQueryParams],
+  );
+
+  /** How the console's requests leave the browser. Swapped as a whole, never mixed. */
+  const transport = useMemo(
+    () =>
+      callMode === 'direct'
+        ? createDirectTransport(intl)
+        : createRelayTransport({
+            gatewayId: selectedGateway?.id ?? '',
+            intl,
+            invoke,
+            restApiId: restApiId ?? '',
+          }),
+    [callMode, intl, invoke, restApiId, selectedGateway?.id],
+  );
+
+  /** Live sync from the Console view, so the cURL view shows the same request. */
+  const handleConsoleRequestChange = useCallback(
+    (next: ConsoleSendRequest) => {
+      setRequest(toConsoleRequest(next, autoHeaders, autoQuery));
+    },
+    [autoHeaders, autoQuery],
+  );
 
   // Wait for deployment and API state to avoid a console flash without an endpoint.
   if (apiQuery.isPending || deploymentUnknown) {
@@ -378,31 +445,23 @@ function TestConsole() {
         </PageTitle.SubHeader>
         {!definitionMissing && (
           <PageTitle.Actions>
-            <ToggleButtonGroup
+            <SegmentedControl
               aria-label={intl.formatMessage(messages.viewLabel)}
-              exclusive
-              onChange={(_event, next) => next && setView(next as ConsoleView)}
-              size="medium"
+              onChange={setView}
+              options={[
+                {
+                  icon: <LucideBookOpenCheck size={16} />,
+                  label: <FormattedMessage {...messages.consoleView} />,
+                  value: 'console',
+                },
+                {
+                  icon: <SquareTerminal size={16} />,
+                  label: <FormattedMessage {...messages.curlView} />,
+                  value: 'curl',
+                },
+              ]}
               value={view}
-              color="primary"
-            >
-              <ToggleButton value="console">
-                <Stack alignItems="center" direction="row" spacing={1}>
-                  <LucideBookOpenCheck size={16} />
-                  <span>
-                    <FormattedMessage {...messages.consoleView} />
-                  </span>
-                </Stack>
-              </ToggleButton>
-              <ToggleButton value="curl">
-                <Stack alignItems="center" direction="row" spacing={1}>
-                  <SquareTerminal size={16} />
-                  <span>
-                    <FormattedMessage {...messages.curlView} />
-                  </span>
-                </Stack>
-              </ToggleButton>
-            </ToggleButtonGroup>
+            />
           </PageTitle.Actions>
         )}
       </PageTitle>
@@ -410,6 +469,23 @@ function TestConsole() {
       <Stack spacing={2}>
         <Card variant="outlined">
           <GatewaySection
+            actions={
+              <Stack alignItems="center" direction="row" flexWrap="wrap" gap={1.5}>
+                {activeView === 'console' && canRelay && (
+                  <CallModeSwitch mode={callMode} onChange={setCallMode} />
+                )}
+                {spec && (
+                  <Button
+                    onClick={() => downloadOpenApi(spec)}
+                    size="small"
+                    startIcon={<Download size={16} />}
+                    variant="outlined"
+                  >
+                    <FormattedMessage {...messages.downloadOpenApi} />
+                  </Button>
+                )}
+              </Stack>
+            }
             endpoint={baseUrl}
             gateways={gateways}
             onSelect={setSelectedGatewayId}
@@ -433,23 +509,35 @@ function TestConsole() {
         {!spec && !definitionMissing ? (
           <ErrorState title={intl.formatMessage(messages.definitionUnavailable)} />
         ) : spec && activeView === 'console' ? (
-          <Card sx={{ p: 2 }} variant="outlined">
-            <TestConsoleSpecViewer
-              baseUrl={baseUrl}
-              callMode={callMode}
-              extraHeaders={extraHeaders}
-              extraQueryParams={extraQueryParams}
-              // The BFF resolves the target from these three values; see
-              // console/utils/proxyTransport.
-              gatewayId={selectedGateway?.id ?? ''}
-              onCallModeChange={setCallMode}
-              onRequestChange={handleConsoleRequestChange}
-              orgHandle={params.orgHandle ?? ''}
-              restApiId={restApiId ?? ''}
-              secretHeaderName={headerName}
-              spec={spec}
-            />
-          </Card>
+          // Legacy Swagger-UI console, kept in ./console but no longer shown. To bring it back,
+          // import TestConsoleSpecViewer from './console/TestConsoleSpecViewer' and render it here
+          // in place of ApiTestConsole:
+          // <Card sx={{ p: 2 }} variant="outlined">
+          //   <TestConsoleSpecViewer
+          //     baseUrl={baseUrl}
+          //     callMode={callMode}
+          //     extraHeaders={extraHeaders}
+          //     extraQueryParams={extraQueryParams}
+          //     gatewayId={selectedGateway?.id ?? ''}
+          //     onCallModeChange={setCallMode}
+          //     onRequestChange={handleConsoleRequestChange}
+          //     orgHandle={params.orgHandle ?? ''}
+          //     restApiId={restApiId ?? ''}
+          //     secretHeaderName={headerName}
+          //     spec={spec}
+          //   />
+          // </Card>
+          <ApiTestConsole
+            autoHeaders={autoHeaders}
+            autoQuery={autoQuery}
+            baseUrl={baseUrl}
+            onRequestChange={handleConsoleRequestChange}
+            routeLabel={intl.formatMessage(
+              callMode === 'direct' ? messages.routeDirect : messages.routeProxy,
+            )}
+            spec={spec}
+            transport={transport}
+          />
         ) : (
           <CurlBuilder
             onChange={handleBuilderChange}

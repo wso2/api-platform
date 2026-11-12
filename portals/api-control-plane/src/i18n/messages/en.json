@@ -788,6 +788,349 @@
     "defaultMessage": "Spectral rules passed",
     "description": "A passed check in the animated API Designer preview. Spectral is a tool name."
   },
+  "apiControlPlane.components.ApiTestConsole.ApiTestConsole.noOperations": {
+    "defaultMessage": "This API’s definition has no operations to test."
+  },
+  "apiControlPlane.components.ApiTestConsole.ApiTestConsole.unexpected": {
+    "defaultMessage": "The request could not be sent. Try again."
+  },
+  "apiControlPlane.components.ApiTestConsole.OperationSidebar.all": {
+    "defaultMessage": "All",
+    "description": "Method filter option that shows every operation."
+  },
+  "apiControlPlane.components.ApiTestConsole.OperationSidebar.endpointCount": {
+    "defaultMessage": "{count, plural, one {# endpoint} other {# endpoints}}"
+  },
+  "apiControlPlane.components.ApiTestConsole.OperationSidebar.fieldCount": {
+    "defaultMessage": "{count, plural, one {# field} other {# fields}}"
+  },
+  "apiControlPlane.components.ApiTestConsole.OperationSidebar.lastResponse": {
+    "defaultMessage": "Last response: {status}",
+    "description": "Accessible description of the chip showing the most recent response status."
+  },
+  "apiControlPlane.components.ApiTestConsole.OperationSidebar.methodFilter": {
+    "defaultMessage": "Filter by method",
+    "description": "Accessible label for the HTTP method filter above the operation list."
+  },
+  "apiControlPlane.components.ApiTestConsole.OperationSidebar.noMatches": {
+    "defaultMessage": "No endpoints match."
+  },
+  "apiControlPlane.components.ApiTestConsole.OperationSidebar.schemas": {
+    "defaultMessage": "Schemas",
+    "description": "Heading of the list of data models the API defines."
+  },
+  "apiControlPlane.components.ApiTestConsole.OperationSidebar.searchLabel": {
+    "defaultMessage": "Search endpoints",
+    "description": "Accessible label and placeholder of the endpoint search box."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.addHeader": {
+    "defaultMessage": "Add header",
+    "description": "Button that adds a blank row to the request headers. A command."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.anyValue": {
+    "defaultMessage": "— any —",
+    "description": "Option that leaves an enumerated parameter unset."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.arrayHint": {
+    "defaultMessage": "Separate values with commas."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.auto": {
+    "defaultMessage": "Auto",
+    "description": "Badge on a header or parameter the console adds itself, such as the test key."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.autoHint": {
+    "defaultMessage": "Added by the console. The value is hidden."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.bodyEditor": {
+    "defaultMessage": "Request body",
+    "description": "Accessible name of the request body text editor."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.bodyTab": {
+    "defaultMessage": "Body",
+    "description": "Tab for the request body."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.cancel": {
+    "defaultMessage": "Cancel",
+    "description": "Button that stops a request in flight. A command."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.cancelHint": {
+    "defaultMessage": "Cancel ({shortcut})",
+    "description": "Tooltip of the Cancel button. The placeholder is the keyboard shortcut: the Escape key."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.chooseFile": {
+    "defaultMessage": "Choose file",
+    "description": "Button that opens a file picker. A command."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.contentType": {
+    "defaultMessage": "Content type",
+    "description": "Accessible label for the request body media-type selector."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.copied": {
+    "defaultMessage": "Copied",
+    "description": "Shown briefly on a copy button after it has copied."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.copy": {
+    "defaultMessage": "Copy",
+    "description": "Button that copies the request URL. A command."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.copyUrl": {
+    "defaultMessage": "Copy request URL",
+    "description": "Accessible label and tooltip of the button copying the request URL."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.deprecated": {
+    "defaultMessage": "Deprecated",
+    "description": "Badge on an operation or parameter the API marks as deprecated."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.edit": {
+    "defaultMessage": "Edit",
+    "description": "Toggle option showing the request body editor."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.format": {
+    "defaultMessage": "Format",
+    "description": "Button that pretty-prints the JSON body. A command."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.headerName": {
+    "defaultMessage": "Header name"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.headerValue": {
+    "defaultMessage": "Header value"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.headersTab": {
+    "defaultMessage": "Headers",
+    "description": "Tab for the request headers."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.invalidJson": {
+    "defaultMessage": "✕ Not valid JSON",
+    "description": "Live check beside the body editor: the text is not valid JSON. The cross marks failure."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.noFile": {
+    "defaultMessage": "No file chosen"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.noParams": {
+    "defaultMessage": "This endpoint takes no parameters."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.paramColumn": {
+    "defaultMessage": "Parameter",
+    "description": "Column heading above the parameter names."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.paramsTab": {
+    "defaultMessage": "Params",
+    "description": "Tab for the request parameters."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.problemBoolean": {
+    "defaultMessage": "Must be true or false"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.problemEnum": {
+    "defaultMessage": "Choose one of the listed values"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.problemFile": {
+    "defaultMessage": "Choose a file"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.problemHeaderForbidden": {
+    "defaultMessage": "This header is set by the browser or gateway and cannot be sent from here"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.problemHeaderName": {
+    "defaultMessage": "Not a valid header name"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.problemHeaderValue": {
+    "defaultMessage": "The value cannot contain line breaks"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.problemInteger": {
+    "defaultMessage": "Must be a whole number"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.problemJson": {
+    "defaultMessage": "The body is not valid JSON"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.problemMax": {
+    "defaultMessage": "Must be at most {max}"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.problemMin": {
+    "defaultMessage": "Must be at least {min}"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.problemNumber": {
+    "defaultMessage": "Must be a number"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.problemPath": {
+    "defaultMessage": "This endpoint’s path cannot be called from the console"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.problemRequired": {
+    "defaultMessage": "Required"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.problemXml": {
+    "defaultMessage": "The body is not well-formed XML"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.removeFile": {
+    "defaultMessage": "Remove file",
+    "description": "Accessible label of the button that clears a chosen file."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.removeHeader": {
+    "defaultMessage": "Remove header",
+    "description": "Accessible label of the button that deletes a header row."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.requestTabs": {
+    "defaultMessage": "Request sections",
+    "description": "Accessible label for the tabs that switch between parameters, headers and body."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.required": {
+    "defaultMessage": "required",
+    "description": "Marks a parameter that must be provided. Lower-case adjective."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.reset": {
+    "defaultMessage": "Reset to example",
+    "description": "Button that restores the body to the documented example. A command."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.schema": {
+    "defaultMessage": "Schema",
+    "description": "Toggle option showing the structure of the request body."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.send": {
+    "defaultMessage": "Send",
+    "description": "Button that sends the request. A command."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.sendHint": {
+    "defaultMessage": "Send ({shortcut})",
+    "description": "Tooltip of the Send button. The placeholder is the keyboard shortcut: Command (or Ctrl) plus Return."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.urlLabel": {
+    "defaultMessage": "Request URL",
+    "description": "Accessible name of the request URL display."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.validJson": {
+    "defaultMessage": "✓ Valid JSON"
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.valueColumn": {
+    "defaultMessage": "Value",
+    "description": "Column heading above the parameter values."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.viewLabel": {
+    "defaultMessage": "Body editor or schema",
+    "description": "Accessible label for the toggle between the body editor and its schema."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.binary": {
+    "defaultMessage": "This response is not text, so it is not shown."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.bodyLabel": {
+    "defaultMessage": "Response body",
+    "description": "Accessible name of the region showing the response body."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.bodyTab": {
+    "defaultMessage": "Body",
+    "description": "Tab showing the response body."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.clear": {
+    "defaultMessage": "Clear",
+    "description": "Button that discards the shown response. A command."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.copied": {
+    "defaultMessage": "Copied",
+    "description": "Shown briefly on a copy button after it has copied."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.copy": {
+    "defaultMessage": "Copy",
+    "description": "Button that copies the response body. A command."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.curl": {
+    "defaultMessage": "cURL"
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.download": {
+    "defaultMessage": "Download",
+    "description": "Button that saves the response body as a file. A command."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.emptyBody": {
+    "defaultMessage": "The response has no body."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.emptyHint": {
+    "defaultMessage": "Press Send to run this request. Possible responses:"
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.failed": {
+    "defaultMessage": "The request did not complete",
+    "description": "Heading above the reason a request could not be completed (not an error status from the API)."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.headersLabel": {
+    "defaultMessage": "Response headers",
+    "description": "Accessible name of the region listing response headers."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.headersTab": {
+    "defaultMessage": "Headers",
+    "description": "Tab listing the response headers."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.requestTab": {
+    "defaultMessage": "Request",
+    "description": "Tab showing the request that produced the response."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.requestUrl": {
+    "defaultMessage": "Request URL"
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.response": {
+    "defaultMessage": "Response",
+    "description": "Heading of the response section."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.responseTabs": {
+    "defaultMessage": "Response sections",
+    "description": "Accessible label for the tabs that switch between body, headers and request."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.time": {
+    "defaultMessage": "{ms, number} ms"
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.truncated": {
+    "defaultMessage": "The response is larger than the console shows, so it was cut off."
+  },
+  "apiControlPlane.components.ApiTestConsole.ResponsePanel.waiting": {
+    "defaultMessage": "Waiting for the gateway…"
+  },
+  "apiControlPlane.components.ApiTestConsole.SchemaViews.example": {
+    "defaultMessage": "Example",
+    "description": "Toggle option showing an example payload."
+  },
+  "apiControlPlane.components.ApiTestConsole.SchemaViews.exampleLabel": {
+    "defaultMessage": "Example payload",
+    "description": "Accessible name for the region showing an example payload."
+  },
+  "apiControlPlane.components.ApiTestConsole.SchemaViews.noExample": {
+    "defaultMessage": "No example is documented for this response."
+  },
+  "apiControlPlane.components.ApiTestConsole.SchemaViews.noFields": {
+    "defaultMessage": "This schema has no fields to list."
+  },
+  "apiControlPlane.components.ApiTestConsole.SchemaViews.required": {
+    "defaultMessage": "required",
+    "description": "Marks a schema field that must be provided. Lower-case adjective."
+  },
+  "apiControlPlane.components.ApiTestConsole.SchemaViews.schema": {
+    "defaultMessage": "Schema",
+    "description": "Toggle option showing the structure of a payload, and the heading of the schema page."
+  },
+  "apiControlPlane.components.ApiTestConsole.SchemaViews.usedBy": {
+    "defaultMessage": "Used by:",
+    "description": "Heading above the list of operations that use a schema."
+  },
+  "apiControlPlane.components.ApiTestConsole.SchemaViews.viewLabel": {
+    "defaultMessage": "Example or schema",
+    "description": "Accessible label for the toggle between an example and its schema."
+  },
+  "apiControlPlane.components.ApiTestConsole.transport.bodyTooLarge": {
+    "defaultMessage": "This request body is too large to send from the console. Use the cURL command instead."
+  },
+  "apiControlPlane.components.ApiTestConsole.transport.directUnreachable": {
+    "defaultMessage": "The browser could not reach the gateway. Check that it is running and allows cross-origin requests (CORS), or switch to “Through proxy”."
+  },
+  "apiControlPlane.components.ApiTestConsole.transport.invalidHeader": {
+    "defaultMessage": "A header on this request is not allowed. Remove it and try again."
+  },
+  "apiControlPlane.components.ApiTestConsole.transport.invalidTarget": {
+    "defaultMessage": "This request cannot be sent as written. Check the path, headers and parameters.",
+    "description": "Shown when the console refused to send a request it could not prove stays on the selected gateway."
+  },
+  "apiControlPlane.components.ApiTestConsole.transport.redirect": {
+    "defaultMessage": "The gateway answered with a redirect. The console does not follow redirects.",
+    "description": "Redirects are not followed so a request can never be steered to another host."
+  },
+  "apiControlPlane.components.ApiTestConsole.transport.timeout": {
+    "defaultMessage": "The gateway did not respond in time."
+  },
+  "apiControlPlane.components.ApiTestConsole.transport.unexpected": {
+    "defaultMessage": "The request could not be sent. Try again."
+  },
   "apiControlPlane.components.DocumentsIllustration.added": {
     "defaultMessage": "Added",
     "description": "Badge on the sample document in the animated documents preview."
@@ -4990,6 +5333,10 @@
     "defaultMessage": "This API’s deployments could not be loaded.",
     "description": "Shown when fetching the gateways or deployments failed — distinct from the API genuinely not being deployed anywhere."
   },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.downloadOpenApi": {
+    "defaultMessage": "Download OpenAPI",
+    "description": "Button that saves the API’s OpenAPI definition as a file. A command."
+  },
   "apiControlPlane.pages.appShell.appShellPages.test.TestPage.loading": {
     "defaultMessage": "Loading test console",
     "description": "Shown while the API and its definition are being fetched."
@@ -4997,6 +5344,14 @@
   "apiControlPlane.pages.appShell.appShellPages.test.TestPage.notDeployedTitle": {
     "defaultMessage": "You must deploy the API to start testing.",
     "description": "Heading of the empty state shown when the API is not deployed anywhere, so there is no endpoint to send requests to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.routeDirect": {
+    "defaultMessage": "direct",
+    "description": "Short note beside a response: the request was sent from the browser straight to the gateway."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.test.TestPage.routeProxy": {
+    "defaultMessage": "via proxy",
+    "description": "Short note beside a response: the request was relayed through the portal server."
   },
   "apiControlPlane.pages.appShell.appShellPages.test.TestPage.scopePrompt": {
     "defaultMessage": "The test console runs against a single API.",
@@ -5200,6 +5555,26 @@
   "apiControlPlane.pages.test.console.BodyEditor.valid": {
     "defaultMessage": "Valid {format}",
     "description": "Validation message confirming the body parses. {format} is JSON or XML, not translated."
+  },
+  "apiControlPlane.pages.test.console.CallModeSwitch.callModeLabel": {
+    "defaultMessage": "Send requests through the proxy or directly",
+    "description": "Accessible label for the toggle between the two ways of sending a request."
+  },
+  "apiControlPlane.pages.test.console.CallModeSwitch.directHint": {
+    "defaultMessage": "Requests go straight from your browser, so the gateway must be reachable from this machine and allow this origin with a CORS policy.",
+    "description": "Tooltip shown while Direct is selected. States what the user takes on by choosing it — the browser, not the portal, now has to reach the gateway."
+  },
+  "apiControlPlane.pages.test.console.CallModeSwitch.directMode": {
+    "defaultMessage": "Direct",
+    "description": "Toggle option sending the request from the browser straight to the gateway. An adverb describing how the request travels, not a command."
+  },
+  "apiControlPlane.pages.test.console.CallModeSwitch.proxyHint": {
+    "defaultMessage": "Requests go through the portal server, so the gateway does not need a CORS policy.",
+    "description": "Tooltip shown while Through proxy is selected. Explains the benefit of the default, so the user can tell what they would give up by switching."
+  },
+  "apiControlPlane.pages.test.console.CallModeSwitch.proxyMode": {
+    "defaultMessage": "Through proxy",
+    "description": "Toggle option relaying the request via the portal server. Describes the route a request takes, not a command."
   },
   "apiControlPlane.pages.test.console.CopyButton.copied": {
     "defaultMessage": "Copied",
@@ -5460,6 +5835,51 @@
   "apiControlPlane.pages.test.console.proxyTransport.upstreamTimeout": {
     "defaultMessage": "The gateway did not respond in time."
   },
+  "apiControlPlane.pages.test.console.relayTransport.apiNotFound": {
+    "defaultMessage": "This API could not be found. Try reloading the page.",
+    "description": "Shown when the control plane does not return the API being tested."
+  },
+  "apiControlPlane.pages.test.console.relayTransport.busy": {
+    "defaultMessage": "The portal is handling too many test requests right now. Try again in a moment.",
+    "description": "Shown when the portal-side relay is at capacity. Not a gateway failure."
+  },
+  "apiControlPlane.pages.test.console.relayTransport.gatewayNoEndpoint": {
+    "defaultMessage": "The selected gateway has no endpoint configured."
+  },
+  "apiControlPlane.pages.test.console.relayTransport.gatewayNotDeployed": {
+    "defaultMessage": "This API is not deployed to the selected gateway. Deploy it first, then try again.",
+    "description": "Actionable: the gateway exists but the API has not been deployed to it."
+  },
+  "apiControlPlane.pages.test.console.relayTransport.gatewayUnsupportedScheme": {
+    "defaultMessage": "The selected gateway’s endpoint is not an HTTP address, so it cannot be called from here."
+  },
+  "apiControlPlane.pages.test.console.relayTransport.invalidRequest": {
+    "defaultMessage": "This request cannot be sent as written. Check the path, headers and parameters.",
+    "description": "Shown when the portal refused to send the request the form describes."
+  },
+  "apiControlPlane.pages.test.console.relayTransport.noTarget": {
+    "defaultMessage": "Select a deployed gateway before sending a request."
+  },
+  "apiControlPlane.pages.test.console.relayTransport.sessionExpired": {
+    "defaultMessage": "Your session has expired. Sign in again to continue testing."
+  },
+  "apiControlPlane.pages.test.console.relayTransport.targetNotAllowed": {
+    "defaultMessage": "The portal is not configured to reach this gateway. Ask an administrator to allow it.",
+    "description": "Shown only when the egress policy refuses the target — an operator setting, not something the user can fix. Deliberately vague about the policy itself."
+  },
+  "apiControlPlane.pages.test.console.relayTransport.tooLarge": {
+    "defaultMessage": "This request is too large to send from the console. Use the cURL command instead."
+  },
+  "apiControlPlane.pages.test.console.relayTransport.unexpected": {
+    "defaultMessage": "The request could not be sent. Try again."
+  },
+  "apiControlPlane.pages.test.console.relayTransport.unreachable": {
+    "defaultMessage": "The portal could not reach this gateway.",
+    "description": "Shown when the relay itself failed. Deliberately distinct from a gateway that answered with an error status."
+  },
+  "apiControlPlane.pages.test.console.relayTransport.upstreamTimeout": {
+    "defaultMessage": "The gateway did not respond in time."
+  },
   "apiControlPlane.permissions.useCan.denied": {
     "defaultMessage": "You don't have permission to perform this action.",
     "description": "Shown when the signed-in user's scopes do not allow an action; as a tooltip on the disabled control, and as a toast when the server refuses the request. Deliberately does not name the missing scope: that would tell a probing caller what to look for, and means nothing to the person reading it."
@@ -5659,9 +6079,6 @@
   "appShell.header.signOut": {
     "defaultMessage": "Sign out"
   },
-  "appShell.header.title": {
-    "defaultMessage": "API Platform"
-  },
   "appShell.insightsPage.feature": {
     "defaultMessage": "API insights",
     "description": "Feature name shown on the Coming Soon placeholder when API-scoped Insights is not available yet in cloud."
@@ -5680,6 +6097,10 @@
   },
   "appShell.runtimeLogsPage.subHeader": {
     "defaultMessage": "Runtime logs for {apiHandler}."
+  },
+  "branding.BrandLockup.name": {
+    "defaultMessage": "<bold>API</bold> Management",
+    "description": "Product name in the brand lockup. API is bold, Management regular — keep the bold tag around the equivalent of API."
   },
   "components.comingSoon.body": {
     "defaultMessage": "{feature} will be available soon."

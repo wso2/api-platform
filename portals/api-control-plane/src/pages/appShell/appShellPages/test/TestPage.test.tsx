@@ -46,30 +46,26 @@ import { TestPage } from './TestPage';
  * captured and asserted on explicitly.
  */
 
-vi.mock('./console/TestConsoleSpecViewer', () => ({
-  // `callMode` is surfaced as an attribute because it is what the page hands
-  // the transport: asserting the switch's own highlight would only prove the
-  // button moved, not that the next request would travel differently.
-  //
-  // The switch itself now lives inside the viewer, beside swagger's Execute
-  // button, so the page can no longer reach it. The stand-in button below
-  // plays its part: it exercises the page's half of the wiring — callback to
-  // state to persistence — while the control's own behaviour is covered in
-  // console/ExecuteModeSwitch.test.tsx.
-  default: ({
+vi.mock('@/components/ApiTestConsole', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/ApiTestConsole')>()),
+  // The route label is surfaced as an attribute because it is what the page
+  // derives from the transport it hands the console: asserting the switch's own
+  // highlight would only prove the button moved, not that the next request
+  // would travel differently. The switch is the page's real one, passed in as
+  // `toolbar`, so clicking it exercises the whole wiring — callback to state to
+  // persistence.
+  ApiTestConsole: ({
     baseUrl,
-    callMode,
-    onCallModeChange,
+    routeLabel,
+    toolbar,
   }: {
     baseUrl: string;
-    callMode: string;
-    onCallModeChange: (mode: string) => void;
+    routeLabel: string;
+    toolbar?: React.ReactNode;
   }) => (
-    <div data-callmode={callMode} data-testid="spec-viewer">
+    <div data-route={routeLabel} data-testid="spec-viewer">
       {baseUrl}
-      <button onClick={() => onCallModeChange('direct')} type="button">
-        stand-in: switch to direct
-      </button>
+      {toolbar}
     </div>
   ),
 }));
@@ -553,7 +549,7 @@ describe('TestPage — proxy or direct', () => {
     const viewer = await screen.findByTestId('spec-viewer');
     // The relay is what makes a cloud-managed gateway testable at all, so a
     // first visit must not land on the mode that needs a CORS policy.
-    expect(viewer).toHaveAttribute('data-callmode', 'proxy');
+    expect(viewer).toHaveAttribute('data-route', 'via proxy');
     expectNoRenderLoop();
   });
 
@@ -563,12 +559,12 @@ describe('TestPage — proxy or direct', () => {
     const { user } = renderPage();
     await screen.findByTestId('spec-viewer');
 
-    await user.click(screen.getByRole('button', { name: /stand-in: switch to direct/i }));
+    await user.click(screen.getByRole('button', { name: /^direct$/i }));
 
     // The attribute is the whole point: the switch has to reach the transport,
     // not just repaint.
     await waitFor(() =>
-      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-callmode', 'direct'),
+      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-route', 'direct'),
     );
     expectNoRenderLoop();
   });
@@ -578,9 +574,9 @@ describe('TestPage — proxy or direct', () => {
 
     const first = renderPage();
     await screen.findByTestId('spec-viewer');
-    await first.user.click(screen.getByRole('button', { name: /stand-in: switch to direct/i }));
+    await first.user.click(screen.getByRole('button', { name: /^direct$/i }));
     await waitFor(() =>
-      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-callmode', 'direct'),
+      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-route', 'direct'),
     );
     first.unmount();
 
@@ -590,7 +586,7 @@ describe('TestPage — proxy or direct', () => {
     // the gateway, which does not change between page loads. Re-picking it
     // every visit would make the escape hatch tiring to use.
     await waitFor(() =>
-      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-callmode', 'direct'),
+      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-route', 'direct'),
     );
     expectNoRenderLoop();
   });
