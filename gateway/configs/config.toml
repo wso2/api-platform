@@ -23,6 +23,11 @@ path = '{{ env "APIP_GW_CONTROLLER_STORAGE_SQLITE_PATH" "./data/gateway.db" }}'
 [policy_engine.logging]
 level = "info"
 
+# Restrict which environment variables {{ env "NAME" }} in artifact specs may read.
+# Unset = any variable (default). See config-template.toml for the full description.
+[policy_engine.env_access]
+# allow_list = ["BACKEND_URL"]
+
 [controller.logging]
 level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
 

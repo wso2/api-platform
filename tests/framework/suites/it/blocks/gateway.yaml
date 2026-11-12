@@ -214,6 +214,10 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/core/template_functions_typed.feature
+      - name: template-env-allow-list
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/template_env_allow_list.feature
 
   # Which hostnames the HTTPS listener asks for a client certificate is state of the whole
   # gateway, so runners take turns, and each block below sets its own downstream_tls value. These
