@@ -193,7 +193,6 @@ describe('SubscriptionPlansTab', () => {
       const platinum = aSubscriptionPlan({
         conditions: [
           { id: 'requests', params: window1k, type: 'request-count' },
-          { id: 'events', params: window1k, type: 'event-count' },
           { id: 'tokens', params: { ...window1k, tokenType: 'total' }, type: 'token-count' },
           { id: 'region', params: { zone: 'eu' }, type: 'custom' },
         ],
@@ -209,9 +208,8 @@ describe('SubscriptionPlansTab', () => {
       });
 
       await screen.findByText('Platinum');
-      // A REST API never counts events or tokens, so only the custom condition is left unenforced.
+      // A REST API never counts tokens, so only the custom condition is left unenforced.
       expect(note()).toHaveTextContent('Custom conditions have no policy that enforces them yet.');
-      expect(note()).not.toHaveTextContent('Event count');
       expect(note()).not.toHaveTextContent('Token count');
     });
 
@@ -222,7 +220,6 @@ describe('SubscriptionPlansTab', () => {
       };
       const platinum = aSubscriptionPlan({
         conditions: [
-          { id: 'events', params: window1k, type: 'event-count' },
           { id: 'tokens', params: { ...window1k, tokenType: 'total' }, type: 'token-count' },
         ],
         displayName: 'Platinum',
@@ -239,7 +236,6 @@ describe('SubscriptionPlansTab', () => {
 
       await screen.findByText('Platinum');
       expect(note()).toHaveTextContent('Token count conditions have no policy that enforces them yet.');
-      expect(note()).not.toHaveTextContent('Event count');
     });
 
     it('shows nothing when the API has subscription-validation', async () => {

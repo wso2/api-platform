@@ -110,13 +110,9 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotApplicableTokens',
     defaultMessage: 'Only LLM proxies count tokens; nothing to attach on this API.',
   },
-  noteNotApplicableEvents: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotApplicableEvents',
-    defaultMessage: 'Only event APIs (WebSub, WebSocket) count events; nothing to attach on this API.',
-  },
   noteNotApplicableRequests: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotApplicableRequests',
-    defaultMessage: 'Event APIs count events, not requests; nothing to attach on this API.',
+    defaultMessage: 'Event APIs (WebSub, WebSocket) do not count requests; nothing to attach on this API.',
   },
   noteNoPolicy: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNoPolicy',
@@ -163,7 +159,6 @@ const STATUS: Record<
 };
 
 const NOT_APPLICABLE_NOTE: Record<string, MessageDescriptor> = {
-  'event-count': messages.noteNotApplicableEvents,
   'request-count': messages.noteNotApplicableRequests,
   'token-count': messages.noteNotApplicableTokens,
   'tool-call-count': messages.noteNotApplicableTools,

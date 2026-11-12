@@ -2137,11 +2137,8 @@
     "defaultMessage": "No policy reads it yet",
     "description": "Note on a custom plan condition, which only a policy written to read its ID uses."
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotApplicableEvents": {
-    "defaultMessage": "Only event APIs (WebSub, WebSocket) count events; nothing to attach on this API."
-  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotApplicableRequests": {
-    "defaultMessage": "Event APIs count events, not requests; nothing to attach on this API."
+    "defaultMessage": "Event APIs (WebSub, WebSocket) do not count requests; nothing to attach on this API."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.PlanPolicyNotes.noteNotApplicableTokens": {
     "defaultMessage": "Only LLM proxies count tokens; nothing to attach on this API."
@@ -2813,7 +2810,7 @@
     "description": "Tooltip line of a condition that lets requests through once a limit is used up."
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.label": {
-    "defaultMessage": "{type, select, requests {Requests} events {Events} toolCalls {Tool calls} total {Tokens} prompt {Prompt tokens} completion {Completion tokens} other {Custom}}",
+    "defaultMessage": "{type, select, requests {Requests} toolCalls {Tool calls} total {Tokens} prompt {Prompt tokens} completion {Completion tokens} other {Custom}}",
     "description": "Name on a condition chip: what the condition counts, or Custom."
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.moreAria": {
@@ -2928,7 +2925,7 @@
     "defaultMessage": "{name} = {value}"
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.summary.window": {
-    "defaultMessage": "{count} {what, select, events {events} toolCalls {tool calls} total {tokens} prompt {prompt tokens} completion {completion tokens} other {requests}} per {amount, plural, one {{unit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {unit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
+    "defaultMessage": "{count} {what, select, toolCalls {tool calls} total {tokens} prompt {prompt tokens} completion {completion tokens} other {requests}} per {amount, plural, one {{unit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {unit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}",
     "description": "One limit of a condition, e.g. \"1,000 requests per minute\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.tokenType.label": {
@@ -2938,11 +2935,11 @@
     "defaultMessage": "{tokenType, select, prompt {Prompt tokens} completion {Completion tokens} other {Total tokens}}"
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.type.description": {
-    "defaultMessage": "{type, select, requestCount {REST APIs only. Counts every request.} eventCount {WebSocket and WebSub APIs only. Counts every event.} toolCallCount {MCP proxies only. Counts tools/call.} tokenCount {LLM proxies only. Counts model tokens.} other {An ID and key-value pairs, read by a policy your team writes.}}",
+    "defaultMessage": "{type, select, requestCount {REST APIs only. Counts every request.} toolCallCount {MCP proxies only. Counts tools/call.} tokenCount {LLM proxies only. Counts model tokens.} other {An ID and key-value pairs, read by a policy your team writes.}}",
     "description": "What a condition type counts, and on which APIs, in the Add condition menu."
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.type.name": {
-    "defaultMessage": "{type, select, requestCount {Request count} eventCount {Event count} toolCallCount {Tool-call count} tokenCount {Token count} other {Custom}}"
+    "defaultMessage": "{type, select, requestCount {Request count} toolCallCount {Tool-call count} tokenCount {Token count} other {Custom}}"
   },
   "apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.window.amount": {
     "defaultMessage": "Window length"
@@ -4213,7 +4210,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.RequiredPoliciesNote.unenforced": {
     "defaultMessage": "{types} conditions have no policy that enforces them yet.",
-    "description": "{types} is a list of plan condition type names, such as \"Token count and Event count\"."
+    "description": "{types} is a list of plan condition type names, such as \"Tool-call count and Token count\"."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.apiDefinitionChanged": {
     "defaultMessage": "Differs from the API’s specification.",
@@ -4542,7 +4539,7 @@
     "defaultMessage": "Create plan"
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.description": {
-    "defaultMessage": "Plans set the conditions an app subscribes to, such as how many requests, tool calls, tokens or events it can use in a time window. Enable one on the APIs you publish."
+    "defaultMessage": "Plans set the conditions an app subscribes to, such as how many requests, tool calls or tokens it can use in a time window. Enable one on the APIs you publish."
   },
   "apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.title": {
     "defaultMessage": "Create your first subscription plan"

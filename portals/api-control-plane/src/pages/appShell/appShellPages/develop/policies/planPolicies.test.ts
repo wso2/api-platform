@@ -42,7 +42,6 @@ const custom = (id: string): PlanCondition => ({ id, params: { tier: 'gold' }, t
 describe('CONDITION_POLICIES', () => {
   it('maps request-count to subscription-validation and nothing else to a policy yet', () => {
     expect(CONDITION_POLICIES.builtIn).toEqual({
-      'event-count': null,
       'request-count': SUBSCRIPTION_VALIDATION,
       'token-count': null,
       'tool-call-count': null,
@@ -189,13 +188,13 @@ describe('unenforcedConditionTypes', () => {
         {
           conditions: [
             limit('request-count', 'requests'),
-            limit('event-count', 'events'),
+            limit('tool-call-count', 'tool-calls'),
             limit('token-count', 'tokens'),
           ],
         },
         {},
       ]),
-    ).toEqual(['event-count', 'token-count', 'custom']);
+    ).toEqual(['tool-call-count', 'token-count', 'custom']);
   });
 
   it('is empty for plans whose conditions are all enforced', () => {
@@ -212,7 +211,6 @@ describe('conditions by kind of API', () => {
         limit('request-count', 'requests'),
         limit('tool-call-count', 'tool-calls'),
         limit('token-count', 'tokens'),
-        limit('event-count', 'events'),
         custom('region'),
       ],
     },
@@ -231,7 +229,6 @@ describe('conditions by kind of API', () => {
     expect(appliesTo({ type: 'tool-call-count' }, 'mcp')).toBe(true);
     expect(appliesTo({ type: 'token-count' }, 'graphql')).toBe(false);
     expect(appliesTo({ type: 'token-count' }, 'llm')).toBe(true);
-    expect(appliesTo({ type: 'event-count' }, 'rest')).toBe(false);
     expect(appliesTo({ type: 'request-count' }, 'event')).toBe(false);
     expect(appliesTo({ type: 'custom' }, 'rest')).toBe(true);
     expect(appliesTo({ type: 'tool-call-count' })).toBe(true);
@@ -241,7 +238,6 @@ describe('conditions by kind of API', () => {
     const result = planEnforcement(plans, new Set([SUBSCRIPTION_VALIDATION]), new Set(), 'rest');
     expect(result.rows.map((row) => [row.id, row.status])).toEqual([
       ['requests', 'enforced'],
-      ['events', 'notApplicable'],
       ['tool-calls', 'notApplicable'],
       ['tokens', 'notApplicable'],
       ['region', 'noPolicy'],
@@ -263,6 +259,6 @@ describe('conditions by kind of API', () => {
   it('leaves out of the unenforced list the conditions the kind never counts', () => {
     expect(unenforcedConditionTypes(plans, 'rest')).toEqual(['custom']);
     expect(unenforcedConditionTypes(plans, 'llm')).toEqual(['token-count', 'custom']);
-    expect(unenforcedConditionTypes(plans)).toEqual(['event-count', 'tool-call-count', 'token-count', 'custom']);
+    expect(unenforcedConditionTypes(plans)).toEqual(['tool-call-count', 'token-count', 'custom']);
   });
 });

@@ -56,7 +56,7 @@ const silver = aSubscriptionPlan({
 });
 /** Not offered by the API: its conditions must not show. */
 const bronze = aSubscriptionPlan({
-  conditions: [{ id: 'events', params: window1k, type: 'event-count' }],
+  conditions: [{ id: 'bronze-tokens', params: window1k, type: 'token-count' }],
   displayName: 'Bronze',
   id: 'bronze',
 });
@@ -119,7 +119,7 @@ describe('PlanPolicyNotes', () => {
       .map((item) => item.querySelector('.MuiChip-label')?.textContent);
     expect(ids).toEqual(['requests', 'tool-calls', 'tokens', 'business-hours']);
     // Bronze was deleted from the deprecated listing, and portal-c is only a draft.
-    expect(screen.queryByText('events')).not.toBeInTheDocument();
+    expect(screen.queryByText('bronze-tokens')).not.toBeInTheDocument();
   });
 
   it('says what enforces each condition when subscription-validation is attached', async () => {

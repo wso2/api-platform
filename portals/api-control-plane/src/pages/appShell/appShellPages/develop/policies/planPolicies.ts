@@ -36,14 +36,13 @@ export const SUBSCRIPTION_VALIDATION = 'subscription-validation';
  * change when a policy for another condition lands: `null` means no policy enforces it yet, and a
  * custom condition is read only by a policy listed under its ID.
  * subscription-validation v1 applies the plan's request limit (request-count); nothing reads
- * tool-call, token or event counts, or any custom condition, yet.
+ * tool-call or token counts, or any custom condition, yet.
  */
 export const CONDITION_POLICIES: {
   builtIn: Record<BuiltInType, string | null>;
   customById: Readonly<Record<string, string>>;
 } = {
   builtIn: {
-    'event-count': null,
     'request-count': SUBSCRIPTION_VALIDATION,
     'token-count': null,
     'tool-call-count': null,
@@ -55,12 +54,10 @@ export const CONDITION_POLICIES: {
 export type ApiKind = 'rest' | 'graphql' | 'mcp' | 'llm' | 'event';
 
 /**
- * Where each built-in condition is counted. A REST or GraphQL API never sees a tool call, a token
- * count or an event, so a plan's tool-call-count, token-count or event-count condition does not apply
- * to it, and no policy for it is needed there. Custom conditions apply wherever a policy reads them.
+ * Where each built-in condition is counted. A REST or GraphQL API never sees a tool call or a token
+ * count, so a plan's tool-call-count or token-count condition does not apply to it, and no policy for it is needed there. Custom conditions apply wherever a policy reads them.
  */
 export const CONDITION_APPLIES_TO: Record<BuiltInType, readonly ApiKind[]> = {
-  'event-count': ['event'],
   'request-count': ['rest', 'graphql', 'mcp', 'llm'],
   'token-count': ['llm'],
   'tool-call-count': ['mcp'],

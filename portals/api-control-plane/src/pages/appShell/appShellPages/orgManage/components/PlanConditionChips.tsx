@@ -33,7 +33,7 @@ const messages = defineMessages({
   label: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.label',
     defaultMessage:
-      '{type, select, requests {Requests} events {Events} toolCalls {Tool calls} total {Tokens} prompt {Prompt tokens} completion {Completion tokens} other {Custom}}',
+      '{type, select, requests {Requests} toolCalls {Tool calls} total {Tokens} prompt {Prompt tokens} completion {Completion tokens} other {Custom}}',
     description: 'Name on a condition chip: what the condition counts, or Custom.',
   },
   moreAria: {
@@ -85,7 +85,6 @@ export type ConditionChip = {
 };
 
 const LABEL_KEYS: Record<string, string> = {
-  'event-count': 'events',
   'request-count': 'requests',
   'tool-call-count': 'toolCalls',
 };

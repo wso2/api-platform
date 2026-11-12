@@ -40,7 +40,6 @@ export type ConditionLimits = {
 
 /** The id each built-in type fixes, so the policy that enforces it finds it in every plan. */
 export const BUILT_IN_IDS: Record<BuiltInType, string> = {
-  'event-count': 'events',
   'request-count': 'requests',
   'token-count': 'tokens',
   'tool-call-count': 'tool-calls',
@@ -49,7 +48,6 @@ export const BUILT_IN_IDS: Record<BuiltInType, string> = {
 /** The built-in types, in the order the API Portal offers them. */
 export const BUILT_IN_TYPES: BuiltInType[] = [
   'request-count',
-  'event-count',
   'tool-call-count',
   'token-count',
 ];

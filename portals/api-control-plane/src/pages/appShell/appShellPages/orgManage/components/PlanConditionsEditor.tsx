@@ -44,7 +44,6 @@ import {
   Infinity as InfinityIcon,
   Plus,
   Puzzle,
-  Radio,
   Trash2,
   Wrench,
   X,
@@ -202,13 +201,13 @@ const messages = defineMessages({
   typeDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.type.description',
     defaultMessage:
-      '{type, select, requestCount {REST APIs only. Counts every request.} eventCount {WebSocket and WebSub APIs only. Counts every event.} toolCallCount {MCP proxies only. Counts tools/call.} tokenCount {LLM proxies only. Counts model tokens.} other {An ID and key-value pairs, read by a policy your team writes.}}',
+      '{type, select, requestCount {REST APIs only. Counts every request.} toolCallCount {MCP proxies only. Counts tools/call.} tokenCount {LLM proxies only. Counts model tokens.} other {An ID and key-value pairs, read by a policy your team writes.}}',
     description: 'What a condition type counts, and on which APIs, in the Add condition menu.',
   },
   typeName: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.type.name',
     defaultMessage:
-      '{type, select, requestCount {Request count} eventCount {Event count} toolCallCount {Tool-call count} tokenCount {Token count} other {Custom}}',
+      '{type, select, requestCount {Request count} toolCallCount {Tool-call count} tokenCount {Token count} other {Custom}}',
   },
   unitOption: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.window.unitOption',
@@ -233,14 +232,13 @@ const messages = defineMessages({
   windowSummary: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.summary.window',
     defaultMessage:
-      '{count} {what, select, events {events} toolCalls {tool calls} total {tokens} prompt {prompt tokens} completion {completion tokens} other {requests}} per {amount, plural, one {{unit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {unit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}',
+      '{count} {what, select, toolCalls {tool calls} total {tokens} prompt {prompt tokens} completion {completion tokens} other {requests}} per {amount, plural, one {{unit, select, MINUTE {minute} HOUR {hour} DAY {day} other {month}}} other {# {unit, select, MINUTE {minutes} HOUR {hours} DAY {days} other {months}}}}',
     description: 'One limit of a condition, e.g. "1,000 requests per minute".',
   },
 });
 
 const TYPE_ICONS: Record<ConditionType, ReactNode> = {
   custom: <Puzzle size={16} />,
-  'event-count': <Radio size={16} />,
   'request-count': <Activity size={16} />,
   'token-count': <Coins size={16} />,
   'tool-call-count': <Wrench size={16} />,
@@ -249,7 +247,6 @@ const TYPE_ICONS: Record<ConditionType, ReactNode> = {
 /** The ICU select key of each condition type (ICU keys take no hyphens). */
 const TYPE_KEYS: Record<ConditionType, string> = {
   custom: 'custom',
-  'event-count': 'eventCount',
   'request-count': 'requestCount',
   'token-count': 'tokenCount',
   'tool-call-count': 'toolCallCount',
@@ -260,7 +257,6 @@ export const conditionTypeName = (intl: IntlShape, type: ConditionType): string 
   intl.formatMessage(messages.typeName, { type: TYPE_KEYS[type] });
 
 const WHAT: Record<string, string> = {
-  'event-count': 'events',
   'request-count': 'requests',
   'tool-call-count': 'toolCalls',
 };

@@ -1078,7 +1078,6 @@ describe('SubscriptionPlanFormDialog conditions', () => {
     await user.click(screen.getByRole('button', { name: 'Add condition' }));
     expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
       'Request countREST APIs only. Counts every request.',
-      'Event countWebSocket and WebSub APIs only. Counts every event.',
       'Tool-call countMCP proxies only. Counts tools/call.',
       'Token countLLM proxies only. Counts model tokens.',
       'CustomAn ID and key-value pairs, read by a policy your team writes.',
@@ -1090,7 +1089,7 @@ describe('SubscriptionPlanFormDialog conditions', () => {
     expect(card('Request count')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Add condition' }));
     const names = (await screen.findAllByRole('menuitem')).map((item) => item.textContent ?? '');
-    expect(names).toHaveLength(4);
+    expect(names).toHaveLength(3);
     expect(names.some((name) => name.startsWith('Request count'))).toBe(false);
   });
 
@@ -1387,9 +1386,9 @@ describe('SubscriptionPlanFormDialog conditions', () => {
   it('keeps the last limit of a condition: remove the condition instead', async () => {
     const { user } = setup();
 
-    await addCondition(user, 'Event count');
-    expect(within(card('Event count')).getByRole('button', { name: 'Remove limit' })).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: 'Remove Event count condition' }));
+    await addCondition(user, 'Tool-call count');
+    expect(within(card('Tool-call count')).getByRole('button', { name: 'Remove limit' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Remove Tool-call count condition' }));
     expect(screen.getByText('No conditions: this plan is unlimited.')).toBeInTheDocument();
   });
 

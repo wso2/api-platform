@@ -44,7 +44,7 @@ const messages = defineMessages({
     defaultMessage:
       '{types} conditions have no policy that enforces them yet.',
     description:
-      '{types} is a list of plan condition type names, such as "Token count and Event count".',
+      '{types} is a list of plan condition type names, such as "Tool-call count and Token count".',
   },
 });
 

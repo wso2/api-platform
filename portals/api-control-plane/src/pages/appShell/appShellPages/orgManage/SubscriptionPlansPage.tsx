@@ -139,7 +139,7 @@ const messages = defineMessages({
   emptyDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.description',
     defaultMessage:
-      'Plans set the conditions an app subscribes to, such as how many requests, tool calls, tokens or events it can use in a time window. Enable one on the APIs you publish.',
+      'Plans set the conditions an app subscribes to, such as how many requests, tool calls or tokens it can use in a time window. Enable one on the APIs you publish.',
   },
   emptyTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.empty.title',
