@@ -78,11 +78,11 @@ const toDraft = (km: GatewayKeyManager | null): Draft => ({
   jwksUri: km?.jwksUri ?? '',
 });
 
-const fromDraft = (draft: Draft): GatewayKeyManager => ({
-  name: draft.name,
-  issuer: draft.issuer,
-  jwksUri: draft.jwksUri,
-});
+/** A saved entry's `publicKey` stays its key source until a JWKS URL is entered. */
+const fromDraft = (draft: Draft, publicKey?: string): GatewayKeyManager =>
+  publicKey !== undefined && draft.jwksUri.trim() === ''
+    ? { name: draft.name, issuer: draft.issuer, publicKey }
+    : { name: draft.name, issuer: draft.issuer, jwksUri: draft.jwksUri };
 
 /**
  * Adds or edits one key manager. Nothing is sent from here: the entry joins the
@@ -108,6 +108,9 @@ const KeyManagerDialog: FC<KeyManagerDialogProps> = ({
   /** Drops the answer to a lookup the dialog has moved on from. */
   const lookup = useRef(0);
 
+  // Keyed on the name, which is unique: a poll hands over a fresh object for the
+  // same manager, and that must not wipe what the user is typing.
+  const editingName = editing?.name ?? null;
   useEffect(() => {
     if (!open) return;
     lookup.current += 1;
@@ -116,9 +119,11 @@ const KeyManagerDialog: FC<KeyManagerDialogProps> = ({
     setFetching(false);
     setFetchError(null);
     setTouched(new Set());
-  }, [editing, open]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingName, open]);
 
-  const candidate = fromDraft(draft);
+  const savedPublicKey = editing?.jwksUri ? undefined : editing?.publicKey;
+  const candidate = fromDraft(draft, savedPublicKey);
   const errors: KeyManagerErrors & { wellKnownUrl?: string } = {
     ...validateKeyManager(candidate, others, knownUris),
     wellKnownUrl: wellKnownUrlError(draft.wellKnownUrl),
@@ -128,7 +133,10 @@ const KeyManagerDialog: FC<KeyManagerDialogProps> = ({
     return error && (touched.has(key) || draft[key].trim() !== '') ? error : undefined;
   };
   const identified = !errors.name && !errors.issuer;
-  const valid = !fetching && Object.values(errors).every((error) => !error);
+  // The well-known URL is not saved; only fetching needs it to be right.
+  const valid =
+    !fetching &&
+    Object.entries(errors).every(([key, error]) => key === 'wellKnownUrl' || !error);
   /** An edit that changes nothing has nothing to save. */
   const changed = !editing || !sameKeyManagers([normalizeKeyManager(candidate)], [editing]);
   const complete = valid && changed;
@@ -187,13 +195,16 @@ const KeyManagerDialog: FC<KeyManagerDialogProps> = ({
           value={draft[key]}
           onBlur={() => setTouched((current) => new Set(current).add(key))}
           onChange={(event) => set(key)(event.target.value)}
+          slotProps={{ htmlInput: { 'aria-describedby': `km-${key}-help` } }}
         />
         {error ? (
-          <FormHelperText error sx={{ mx: 0 }}>
+          <FormHelperText id={`km-${key}-help`} error sx={{ mx: 0 }}>
             {error}
           </FormHelperText>
         ) : (
-          <FormHelperText sx={{ ...secondaryTextSx, mx: 0 }}>{help}</FormHelperText>
+          <FormHelperText id={`km-${key}-help`} sx={{ ...secondaryTextSx, mx: 0 }}>
+            {help}
+          </FormHelperText>
         )}
       </Box>
     );
@@ -229,9 +240,16 @@ const KeyManagerDialog: FC<KeyManagerDialogProps> = ({
                 {fetching ? 'Fetching…' : 'Fetch again'}
               </Button>
             </Box>
-            {field('jwksUri', 'JWKS URL', 'HTTPS endpoint from which signing keys are retrieved.', {
-              placeholder: 'https://idp.example.com/.well-known/jwks.json',
-            })}
+            {field(
+              'jwksUri',
+              'JWKS URL',
+              savedPublicKey !== undefined
+                ? 'Uses its saved public key. Enter a JWKS URL to use that instead.'
+                : 'HTTPS endpoint from which signing keys are retrieved.',
+              {
+                placeholder: 'https://idp.example.com/.well-known/jwks.json',
+              }
+            )}
           </>
         ) : null}
       </DialogContent>

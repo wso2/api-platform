@@ -83,7 +83,10 @@ const SettingField: FC<SettingFieldProps> = ({
 }) => {
   const label = field.label || field.path;
   const labelId = useId();
+  const helpId = useId();
   const outline = inputSx(modified);
+  const help = helperText(field);
+  const describedBy = error || help ? helpId : undefined;
 
   /*
    * Every control is named by the visible label through `aria-labelledby`, so a
@@ -95,7 +98,7 @@ const SettingField: FC<SettingFieldProps> = ({
       case 'enum':
         return (
           <Select
-            inputProps={{ 'aria-labelledby': labelId }}
+            inputProps={{ 'aria-labelledby': labelId, 'aria-describedby': describedBy }}
             disabled={readOnly}
             displayEmpty
             fullWidth
@@ -119,7 +122,7 @@ const SettingField: FC<SettingFieldProps> = ({
               checked={value === true}
               disabled={readOnly}
               size="small"
-              inputProps={{ 'aria-labelledby': labelId }}
+              inputProps={{ 'aria-labelledby': labelId, 'aria-describedby': describedBy }}
               onChange={(event) => onChange(event.target.checked)}
             />
             <Typography
@@ -141,7 +144,12 @@ const SettingField: FC<SettingFieldProps> = ({
             type="number"
             sx={outline}
             slotProps={{
-              htmlInput: { 'aria-labelledby': labelId, min: field.min, max: field.max },
+              htmlInput: {
+                'aria-labelledby': labelId,
+                'aria-describedby': describedBy,
+                min: field.min,
+                max: field.max,
+              },
             }}
             value={inputText(value)}
             // An emptied input becomes '' rather than 0 or "unedited": the
@@ -171,7 +179,9 @@ const SettingField: FC<SettingFieldProps> = ({
             fullWidth
             size="small"
             sx={outline}
-            slotProps={{ htmlInput: { 'aria-labelledby': labelId } }}
+            slotProps={{
+              htmlInput: { 'aria-labelledby': labelId, 'aria-describedby': describedBy },
+            }}
             value={inputText(value)}
             onChange={(event) => onChange(event.target.value)}
           />
@@ -184,7 +194,6 @@ const SettingField: FC<SettingFieldProps> = ({
 
   const rendered = control();
   if (!rendered) return null;
-  const help = helperText(field);
 
   return (
     <Box>
@@ -211,11 +220,13 @@ const SettingField: FC<SettingFieldProps> = ({
       </Box>
       {rendered}
       {error ? (
-        <FormHelperText error sx={{ mx: 0 }}>
+        <FormHelperText id={helpId} error sx={{ mx: 0 }}>
           {error}
         </FormHelperText>
       ) : help ? (
-        <FormHelperText sx={{ ...secondaryTextSx, mx: 0 }}>{help}</FormHelperText>
+        <FormHelperText id={helpId} sx={{ ...secondaryTextSx, mx: 0 }}>
+          {help}
+        </FormHelperText>
       ) : null}
     </Box>
   );

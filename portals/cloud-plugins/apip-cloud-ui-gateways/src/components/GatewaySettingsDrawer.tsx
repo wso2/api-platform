@@ -171,6 +171,12 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   /** The user's edited key manager list, `null` until edited; the saved one comes with `config`. */
   const [keyManagerDraft, setKeyManagerDraft] = useState<GatewayKeyManager[] | null>(null);
+  /**
+   * The saved list the draft was started from. The draft replaces the whole
+   * list, so if a refresh brings in a different one, saving would undo
+   * someone else's change.
+   */
+  const [keyManagerBase, setKeyManagerBase] = useState<GatewayKeyManager[] | null>(null);
 
   /**
    * Bumped by every read AND every write, so a response can tell whether it is
@@ -334,6 +340,16 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
 
   const save = async () => {
     if (!config || !gatewayId) return;
+    if (
+      keyManagerChange &&
+      keyManagerBase &&
+      !sameKeyManagers(keyManagerBase, config.keyManagers ?? [])
+    ) {
+      setSaveError(
+        'The key managers were changed elsewhere since you started editing them. Discard your changes and make them again.'
+      );
+      return;
+    }
     // Invalidates any read still in flight: what the write returns is newer
     // than anything a GET started before it can report.
     const mine = ++generation.current;
@@ -361,6 +377,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
       if (mine === generation.current) setConfig(written);
       setDrafts({});
       setKeyManagerDraft(null);
+      setKeyManagerBase(null);
       notify('Configuration saved.', 'success');
     } catch (error) {
       const message =
@@ -414,7 +431,10 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
         discover={(issuer, wellKnownUrl) =>
           discoverKeyManager(apiFetch, config.id, issuer, wellKnownUrl)
         }
-        onChange={setKeyManagerDraft}
+        onChange={(next) => {
+          if (keyManagerDraft === null) setKeyManagerBase(keyManagers);
+          setKeyManagerDraft(next);
+        }}
       />
     </SettingsCell>
   ) : null;
@@ -639,6 +659,7 @@ const GatewaySettingsDrawer: FC<GatewaySettingsDrawerProps> = ({
               onClick={() => {
                 setDrafts({});
                 setKeyManagerDraft(null);
+                setKeyManagerBase(null);
                 setServerErrors({});
                 setSaveError(null);
               }}

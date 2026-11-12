@@ -69,8 +69,11 @@ const KeyManagersSection: FC<KeyManagersSectionProps> = ({
 }) => {
   /** The index being edited, `'new'` while adding, `null` with the dialog closed. */
   const [dialog, setDialog] = useState<number | 'new' | null>(null);
-  /** The index awaiting delete confirmation, so a stray click removes nothing. */
-  const [pendingDelete, setPendingDelete] = useState<number | null>(null);
+  /**
+   * The name awaiting delete confirmation, so a stray click removes nothing. A
+   * name, not an index: a refresh can reorder the list under the open dialog.
+   */
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const list = keyManagers ?? [];
   const editing = typeof dialog === 'number' ? list[dialog] : null;
   const others = list.filter((_, index) => index !== dialog);
@@ -137,7 +140,7 @@ const KeyManagersSection: FC<KeyManagersSectionProps> = ({
                 divided={index > 0}
                 readOnly={readOnly}
                 onEdit={() => setDialog(index)}
-                onDelete={() => setPendingDelete(index)}
+                onDelete={() => setPendingDelete(keyManager.name)}
               />
             ))
           )}
@@ -161,7 +164,7 @@ const KeyManagersSection: FC<KeyManagersSectionProps> = ({
         <DialogTitle>Delete Key Manager</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete {pendingDelete !== null ? list[pendingDelete]?.name : ''}? The
+            Are you sure you want to delete {pendingDelete ?? ''}? The
             gateway stops accepting its tokens once you save and apply.
           </DialogContentText>
         </DialogContent>
@@ -172,7 +175,7 @@ const KeyManagersSection: FC<KeyManagersSectionProps> = ({
           <Button
             color="error"
             onClick={() => {
-              if (pendingDelete !== null) onChange(list.filter((_, i) => i !== pendingDelete));
+              if (pendingDelete !== null) onChange(list.filter((km) => km.name !== pendingDelete));
               setPendingDelete(null);
             }}
           >
