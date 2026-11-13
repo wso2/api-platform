@@ -41,7 +41,10 @@ ap gateway image build --name my-gateway
 ap gateway image build --name my-gateway --path ./my-policies --repository myregistry
 
 # Build with platform specification
-ap gateway image build --name my-gateway --platform linux/amd64`
+ap gateway image build --name my-gateway --platform linux/amd64
+
+# Build with podman instead of docker (or set WSO2AP_CONTAINER_ENGINE=podman)
+ap gateway image build --name my-gateway --container-engine podman`
 )
 
 var (
@@ -57,15 +60,19 @@ var (
 	noCache                  bool
 	platform                 string
 	outputDir                string
+	containerEngineFlag      string
 
 	// Computed values
-	imageTag string
+	imageTag        string
+	containerEngine string
 )
 
 var buildCmd = &cobra.Command{
-	Use:     BuildCmdLiteral,
-	Short:   "Build gateway Docker image with policies",
-	Long:    "Build a WSO2 API Platform Gateway Docker image with specified policies from build file.",
+	Use:   BuildCmdLiteral,
+	Short: "Build gateway images with policies",
+	Long: "Build WSO2 API Platform Gateway images with the policies specified in the build file.\n\n" +
+		"The images are built with docker by default. Use --container-engine or the " +
+		utils.EnvContainerEngine + " environment variable to build with podman or buildah instead.",
 	Example: BuildCmdExample,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runBuildCommand(); err != nil {
@@ -79,11 +86,13 @@ func init() {
 	// Optional flags with defaults
 	buildCmd.Flags().StringVar(&gatewayName, "name", "", "Gateway name (defaults to directory name)")
 	buildCmd.Flags().StringVarP(&buildFilePath, "path", "p", ".", "Path to directory containing build files (default: current directory)")
-	buildCmd.Flags().StringVar(&imageRepository, "repository", utils.DefaultImageRepository, "Docker image repository")
+	buildCmd.Flags().StringVar(&imageRepository, "repository", utils.DefaultImageRepository, "Image repository")
 	buildCmd.Flags().BoolVar(&push, "push", false, "Push image to registry after build")
 	buildCmd.Flags().BoolVar(&noCache, "no-cache", false, "Build without using cache")
 	buildCmd.Flags().StringVar(&platform, "platform", "", "Target platform (e.g., linux/amd64)")
 	buildCmd.Flags().StringVar(&outputDir, "output-dir", "", "Output directory for build artifacts")
+	buildCmd.Flags().StringVar(&containerEngineFlag, "container-engine", "",
+		"Container engine to build with: docker, podman or buildah (default: $"+utils.EnvContainerEngine+", else docker)")
 }
 
 // initializeDefaults sets smart defaults for gateway name and constructs the image tag
@@ -132,20 +141,17 @@ func runBuildCommand() error {
 	fmt.Println("=== Gateway Image Build ===")
 	fmt.Println()
 
-	// Step 1: Check Docker availability
-	fmt.Println("[1/8] Checking Docker Availability")
-	if err := utils.IsDockerAvailable(); err != nil {
-		return fmt.Errorf("Docker is not available: %w", err)
+	// Step 1: Resolve and check the container engine
+	fmt.Println("[1/6] Checking Container Engine")
+	engine, source, err := utils.ResolveContainerEngine(containerEngineFlag)
+	if err != nil {
+		return err
 	}
-	fmt.Println("  ✓ Docker is available")
-
-	// Check docker buildx if platform is specified
-	if platform != "" {
-		if err := utils.IsDockerBuildxAvailable(); err != nil {
-			return fmt.Errorf("docker buildx is not available but required for --platform flag: %w\n\nPlease install docker buildx or remove the --platform flag", err)
-		}
-		fmt.Println("  ✓ Docker buildx is available")
+	containerEngine = engine
+	if err := utils.CheckContainerEngine(containerEngine, platform != ""); err != nil {
+		return err
 	}
+	fmt.Printf("  ✓ %s is available (from %s)\n", containerEngine, source)
 
 	fmt.Println()
 	return runUnifiedBuild()
@@ -201,6 +207,7 @@ func runUnifiedBuild() error {
 
 	// Display resolved images used for the build
 	fmt.Println("  Resolved images:")
+	fmt.Printf("    • Container engine:   %s\n", containerEngine)
 	fmt.Printf("    • Builder:            %s\n", gatewayBuilder)
 	fmt.Printf("    • Gateway Controller: %s\n", gatewayControllerBaseImg)
 	fmt.Printf("    • Gateway Runtime:    %s\n\n", gatewayRuntimeBaseImg)
@@ -233,7 +240,7 @@ func runUnifiedBuild() error {
 
 	fmt.Printf("  ✓ Workspace ready: %s\n\n", tempDir)
 
-	// Step 6: Run Docker build (gateway-builder + image build)
+	// Step 6: Run the gateway-builder and build the images
 	fmt.Println("[6/6] Building Gateway Images")
 	if err := runDockerBuild(tempDir); err != nil {
 		return fmt.Errorf("failed to build gateway images: %w", err)
@@ -267,17 +274,14 @@ func displayBuildSummary(processed []policy.ProcessedPolicy) {
 	fmt.Printf("  • %s/%s-gateway-controller:%s\n", imageRepository, gatewayName, gatewayVersion)
 	fmt.Println()
 
-	// Where images are
-	if push {
+	// Where images are: --platform builds are always pushed
+	if push || platform != "" {
 		fmt.Printf("✓ Images pushed to registry: %s\n", imageRepository)
-		if platform != "" {
-			fmt.Printf("  Platform: %s\n", platform)
-		}
 	} else {
-		fmt.Println("✓ Images available in local Docker")
-		if platform != "" {
-			fmt.Printf("  Platform: %s\n", platform)
-		}
+		fmt.Printf("✓ Images available in local %s image storage\n", containerEngine)
+	}
+	if platform != "" {
+		fmt.Printf("  Platform: %s\n", platform)
 	}
 	fmt.Println()
 
@@ -308,6 +312,7 @@ func runDockerBuild(tempDir string) error {
 		Push:                       push,
 		LogFilePath:                logFilePath,
 		OutputCopyDir:              outputDir,
+		ContainerEngine:            containerEngine,
 	}
 
 	// Run the build
