@@ -58,6 +58,19 @@ type attemptBaselineStore struct {
 type baselineEntry struct {
 	baseline requestBaseline
 	expires  time.Time
+
+	// servingCluster is the cluster of the LAST attempt that reached the upstream position.
+	//
+	// LAST write wins, where the baseline above is FIRST write wins, and the asymmetry is the
+	// point: the baseline is attempt 1's shape, while the serving cluster is whichever attempt
+	// ended up answering. Envoy stops retrying once an attempt is committed, so the last one
+	// recorded is the one whose response the client receives (FR-037h).
+	//
+	// Recorded rather than inferred. The downstream response carries x-envoy-attempt-count, a
+	// number, and indexing the published ranking by it is unsafe: Probe G measured Envoy
+	// substituting the configured group at a POSITION when a name does not resolve, so the
+	// index can be right about position and wrong about target, silently.
+	servingCluster string
 }
 
 func newAttemptBaselineStore() *attemptBaselineStore {
@@ -158,4 +171,44 @@ func (s *attemptBaselineStore) sweepLocked() {
 			delete(s.entries, id)
 		}
 	}
+}
+
+// RememberServingCluster records the cluster of the attempt currently running, overwriting any
+// earlier one.
+//
+// Unlike Remember, LAST write wins: each attempt supersedes the previous, so when the retries
+// stop the stored value is the attempt that served. A no-op when the request has no entry, which
+// means the request id is empty or the entry expired — the downstream phase then finds nothing
+// and unwinds no chain, which is the same behaviour as before this existed.
+func (s *attemptBaselineStore) RememberServingCluster(requestID, cluster string) {
+	if requestID == "" || cluster == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entry, ok := s.entries[requestID]
+	if !ok || !entry.expires.After(s.now()) {
+		return
+	}
+	entry.servingCluster = cluster
+	s.entries[requestID] = entry
+}
+
+// ServingCluster returns the cluster of the last attempt that reached the upstream position.
+//
+// ok=false means no attempt was recorded for this request: it never reached the upstream
+// position at all (no per-attempt chain, so nothing to unwind), or the entry expired.
+func (s *attemptBaselineStore) ServingCluster(requestID string) (string, bool) {
+	if requestID == "" {
+		return "", false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entry, ok := s.entries[requestID]
+	if !ok || !entry.expires.After(s.now()) || entry.servingCluster == "" {
+		return "", false
+	}
+	return entry.servingCluster, true
 }

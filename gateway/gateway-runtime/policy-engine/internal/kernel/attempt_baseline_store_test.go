@@ -150,3 +150,53 @@ func TestAttemptBaselineStore_ConcurrentAccess(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// FR-037h. The serving cluster is LAST write wins, where the baseline is FIRST write wins.
+// The asymmetry is the whole point: the baseline is attempt 1's shape, while the serving cluster
+// is whichever attempt ended up answering — Envoy stops retrying once one is committed, so the
+// last recorded is the one whose response the client receives.
+func TestAttemptBaselineStore_ServingClusterLastWriteWins(t *testing.T) {
+	store := newAttemptBaselineStore()
+	store.Remember("req-1", requestBaseline{Path: "/v1/chat"})
+
+	store.RememberServingCluster("req-1", "cluster_openai")
+	store.RememberServingCluster("req-1", "cluster_anthropic") // the retry that served
+
+	got, ok := store.ServingCluster("req-1")
+	if !ok || got != "cluster_anthropic" {
+		t.Fatalf("ServingCluster = %q (ok=%v), want the LAST attempt's cluster", got, ok)
+	}
+
+	// And the baseline is untouched by it — different fact, different write policy.
+	baseline, known := store.Lookup("req-1")
+	if !known || baseline.Path != "/v1/chat" {
+		t.Fatalf("baseline Path = %q, want attempt 1's", baseline.Path)
+	}
+}
+
+// A request that never reached the upstream position has no serving cluster, so the response
+// phase unwinds nothing — the ordinary case for every API without per-attempt work.
+func TestAttemptBaselineStore_NoServingClusterWithoutAnAttempt(t *testing.T) {
+	store := newAttemptBaselineStore()
+	store.Remember("req-1", requestBaseline{Path: "/v1/chat"})
+
+	if got, ok := store.ServingCluster("req-1"); ok {
+		t.Fatalf("ServingCluster = %q, want none recorded", got)
+	}
+	if _, ok := store.ServingCluster("unknown"); ok {
+		t.Fatal("an unknown request must report no serving cluster")
+	}
+}
+
+// Writing a serving cluster for a request with no entry is a no-op rather than an invention:
+// the entry is written by the same attempt that would record this, so its absence means the
+// request id is empty or the entry expired mid-request.
+func TestAttemptBaselineStore_ServingClusterNeedsAnEntry(t *testing.T) {
+	store := newAttemptBaselineStore()
+
+	store.RememberServingCluster("req-1", "cluster_openai")
+
+	if _, ok := store.ServingCluster("req-1"); ok {
+		t.Fatal("recorded a serving cluster for a request with no baseline entry")
+	}
+}
