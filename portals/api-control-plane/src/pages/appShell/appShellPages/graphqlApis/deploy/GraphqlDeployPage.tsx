@@ -114,6 +114,7 @@ function GraphqlDeployPageContent() {
       apiId={graphqlApiHandler}
       apiNotFoundTitle={apiNotFoundTitle}
       apiPending={apiQuery.isPending}
+      artifactKind="graphql-api"
       deployments={deploymentsQuery.data?.list ?? []}
       deploymentsFetching={deploymentsQuery.isFetching}
       mutations={GRAPHQL_DEPLOY_MUTATIONS}

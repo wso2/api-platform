@@ -101,6 +101,7 @@ const renderCard = (deployments: DeploymentFixture[], onToggleExpand = vi.fn()) 
     <ApiScopeProvider orgId={ORG}>
       <GatewayDeployCard
         apiId={API}
+        artifactKind="graphql-api"
         deployments={deployments}
         gateway={gateway}
         isExpanded

@@ -36,6 +36,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/featureusage"
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/pdk"
@@ -70,6 +71,10 @@ type Deps struct {
 
 	// PluginTools are the tools plugins add, or use to replace built-in ones.
 	PluginTools []pdk.MCPTool
+
+	// FeatureUsage returns the feature-usage reporter, looked up on every call
+	// because it is built after the MCP server. Nil reports nothing.
+	FeatureUsage func() featureusage.Reporter
 }
 
 // Server holds the tools and the checks every tool call goes through.
@@ -87,6 +92,7 @@ type Server struct {
 	takesAPIType map[string]bool
 	schemas      map[string]apiSchemaOut // by API type, for get_api_schema
 	sdk          *mcp.Server
+	featureUsage func() featureusage.Reporter
 }
 
 // New builds the MCP server. It fails when a tool names a route that has no
@@ -101,6 +107,7 @@ func New(d Deps) (*Server, error) {
 		logger:       d.Logger,
 		routes:       map[string][]string{},
 		takesAPIType: map[string]bool{},
+		featureUsage: d.FeatureUsage,
 	}
 	if s.logger == nil {
 		s.logger = slog.Default()

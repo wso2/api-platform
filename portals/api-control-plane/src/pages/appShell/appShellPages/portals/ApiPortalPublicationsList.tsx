@@ -26,6 +26,7 @@ import { useApiPublications, type PublicationSummaryItem } from '@/api/resources
 import { PortalPublishIllustration } from '@/components/illustrations/PortalPublishIllustration';
 import { EmptyState, LoadingState } from '@/components/StateViews';
 import { useExtensions } from '@/extensions';
+import { useTrackFeature } from '@/featureUsage';
 import { routes } from '@/routes/paths';
 import { useActionPermission, useCan } from '@/permissions';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
@@ -135,6 +136,7 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
   const publishPermission = target.definitionKind === 'graphql' ? graphqlPublish : restPublish;
   // One-click Publish saves a draft first, which needs its own scope.
   const canSaveDraft = useCan('saveApiPublicationDraft');
+  const trackFeature = useTrackFeature();
 
   const [search, setSearch] = useState('');
   // One-click publishes still running, by organization, API and portal. Held here and run outside the cards,
@@ -144,6 +146,7 @@ export function ApiPortalPublicationsList({ apiName, target: targetProp }: ApiPo
   const startPublish = (publication: PublicationSummaryItem) => {
     const { apiPortalId } = publication;
     if (!apiPortalId) return;
+    trackFeature('apip.lifecycle.api-publish-click', { api_type: target.apiType });
     setPublishing((running) =>
       new Map(running).set(runningKey(orgHandle, target, apiPortalId), {
         apiPortalId,

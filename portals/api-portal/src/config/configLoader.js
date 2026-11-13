@@ -1307,4 +1307,19 @@ function warnWebhookDeliveryTlsSkip(cfg) {
 
 warnWebhookDeliveryTlsSkip(config);
 
+/**
+ * Surfaces auth.local.tls_skip_verify in the startup log whenever it is on. Local auth is
+ * the first-run mode; skipping certificate checks for the Platform API is for that setup only.
+ */
+function warnLocalAuthTlsSkip(cfg) {
+    if (cfg.auth?.mode === 'local' && cfg.auth?.local?.tlsSkipVerify === true) {
+        process.stderr.write(
+            '[WARN] auth.local.tls_skip_verify = true: logins do not verify the Platform ' +
+            "API's TLS certificate. First-run / development only.\n"
+        );
+    }
+}
+
+warnLocalAuthTlsSkip(config);
+
 module.exports = { config, KNOWN_ARTIFACT_TYPES, AUTHORIZATION_MODES, ORG_HANDLE_PATTERN, RESERVED_ORG_HANDLES };
