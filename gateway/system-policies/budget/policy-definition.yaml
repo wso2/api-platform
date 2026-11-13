@@ -1,15 +1,16 @@
 name: wso2_apip_sys_budget
 version: v1.0.0
 description: |
-  Enforces budgets: spend limits on LLM traffic. Attached by the gateway controller to
-  every LLM provider route, never by an API author; the controller also adds llm-cost
-  to provider routes that do not price their responses.
+  Enforces budgets: spend limits on LLM traffic. Placed by the gateway controller on
+  every LLM provider route, never by an API author, the way llm-cost-based-ratelimit
+  sits: after authentication and just before the policy that prices the response. The
+  controller adds llm-cost to provider routes that do not price their responses.
 
   The active budgets reach the policy engine as lazy resources of type Budget. For each
   request the policy finds the budgets that cover it (the LLM provider, every consumer
-  expression, no exemption) and the allowance each one charges. Once authentication has
-  run (request body phase) it refuses with 429 BUDGET_EXCEEDED when a Block budget's
-  allowance has spent its block point (amount x blockAt %). Allow budgets never refuse.
+  expression, no exemption) and the allowance each one charges. In the request-header
+  phase it refuses with 429 BUDGET_EXCEEDED when a Block budget's allowance has spent its
+  block point (amount x blockAt %). Allow budgets never refuse. It never reads a body.
 
   When the response ends it charges the cost llm-cost published (x-llm-cost) to every
   allowance it matched, in the period the request was admitted in; a request without a
@@ -22,12 +23,7 @@ description: |
 parameters:
   type: object
   additionalProperties: false
-  properties:
-    api_kind:
-      type: string
-      description: >
-        Injected by the gateway controller (not set by users): the kind of API this
-        policy chain belongs to (LlmProvider). Not read by the policy.
+  properties: {}
 
 systemParameters:
   type: object

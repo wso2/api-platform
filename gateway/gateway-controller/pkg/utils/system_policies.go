@@ -23,7 +23,6 @@ import (
 
 	config "github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
@@ -42,9 +41,6 @@ type systemPolicyConfig struct {
 	Version string
 	// Enabled returns true if this system policy should be injected given the config.
 	Enabled func(*config.Config) bool
-	// APIKinds limits the policy to chains of these API kinds, read from the "api_kind"
-	// shared parameter. Empty means every kind.
-	APIKinds []string
 	// Parameters contains the default parameters for the policy (can be overridden by additionalProps)
 	Parameters map[string]interface{}
 	// ExecutionCondition contains the execution condition for the policy
@@ -113,34 +109,6 @@ var defaultSystemPolicies = []systemPolicyConfig{
 		// failure, so it is also appended to every API's fault chain. See FaultPath.
 		FaultPath: true,
 	},
-	{
-		// Budget system policy: always on for LLM provider traffic. With no budgets
-		// published it admits every request. Not on LLM proxies: a proxy call reaches
-		// its provider's route over the internal loopback and is counted there, once.
-		Name:     constants.BUDGET_SYSTEM_POLICY_NAME,
-		Version:  constants.BUDGET_SYSTEM_POLICY_VERSION,
-		Enabled:  func(cfg *config.Config) bool { return cfg != nil },
-		APIKinds: []string{models.KindLlmProvider},
-	},
-}
-
-// appliesTo reports whether a system policy belongs in a chain: it is enabled, and the
-// chain's API kind (the "api_kind" shared parameter) is one it is limited to, if any.
-func (sysPol systemPolicyConfig) appliesTo(cfg *config.Config, additionalProps map[string]any) bool {
-	if !sysPol.Enabled(cfg) {
-		return false
-	}
-	if len(sysPol.APIKinds) == 0 {
-		return true
-	}
-	shared, _ := additionalProps[SharedParamsKey].(map[string]interface{})
-	kind, _ := shared["api_kind"].(string)
-	for _, k := range sysPol.APIKinds {
-		if k == kind {
-			return true
-		}
-	}
-	return false
 }
 
 // mergeParameters efficiently merges parameters with the following precedence (highest to lowest):
@@ -225,7 +193,7 @@ func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.
 	// Fast path: no enabled policies, return early
 	enabledCount := 0
 	for _, sysPol := range defaultSystemPolicies {
-		if sysPol.appliesTo(cfg, additionalProps) {
+		if sysPol.Enabled(cfg) {
 			enabledCount++
 		}
 	}
@@ -238,7 +206,7 @@ func InjectSystemPolicies(policies []policyenginev1.PolicyInstance, cfg *config.
 
 	// Collect enabled system policies with merged parameters
 	for _, sysPol := range defaultSystemPolicies {
-		if sysPol.appliesTo(cfg, additionalProps) {
+		if sysPol.Enabled(cfg) {
 			systemPolicies = append(systemPolicies, buildSystemPolicyInstance(sysPol, cfg, additionalProps))
 		}
 	}
@@ -299,7 +267,7 @@ func FaultSystemPolicies(cfg *config.Config, additionalProps map[string]any) []p
 	}
 	var out []policyenginev1.PolicyInstance
 	for _, sysPol := range defaultSystemPolicies {
-		if sysPol.FaultPath && sysPol.appliesTo(cfg, additionalProps) {
+		if sysPol.FaultPath && sysPol.Enabled(cfg) {
 			out = append(out, buildSystemPolicyInstance(sysPol, cfg, additionalProps))
 		}
 	}

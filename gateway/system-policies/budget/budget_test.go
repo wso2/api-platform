@@ -120,7 +120,7 @@ type call struct {
 	headers  map[string][]string
 }
 
-func (c call) context() *policy.RequestContext {
+func (c call) context() *policy.RequestHeaderContext {
 	shared := &policy.SharedContext{Metadata: map[string]any{}}
 	if c.provider != "" {
 		shared.Metadata[metadataProviderName] = c.provider
@@ -128,7 +128,7 @@ func (c call) context() *policy.RequestContext {
 	if c.subject != "" || c.claims != nil {
 		shared.AuthContext = &policy.AuthContext{Authenticated: true, AuthType: "jwt", Subject: c.subject, TypedProperties: c.claims}
 	}
-	return &policy.RequestContext{SharedContext: shared, Headers: policy.NewHeaders(c.headers), Path: "/chat/completions", Method: http.MethodPost}
+	return &policy.RequestHeaderContext{SharedContext: shared, Headers: policy.NewHeaders(c.headers), Path: "/chat/completions", Method: http.MethodPost}
 }
 
 // send admits the call and, when it is admitted, ends its response with the given cost.
@@ -136,7 +136,7 @@ func (c call) context() *policy.RequestContext {
 func send(t *testing.T, p *BudgetSystemPolicy, c call, cost string) *policy.ImmediateResponse {
 	t.Helper()
 	req := c.context()
-	action := p.OnRequestBody(context.Background(), req, nil)
+	action := p.OnRequestHeaders(context.Background(), req, nil)
 	if refused, ok := action.(policy.ImmediateResponse); ok {
 		return &refused
 	}
@@ -319,7 +319,7 @@ func TestProxyLoopbackCallsAreCountedAndOtherRoutesSkipped(t *testing.T) {
 func TestUnpricedRequestsChargeNothingButAreCounted(t *testing.T) {
 	p, _, _ := testPolicy(t, budgetBody("all", testBudgetUUID, "1", "day", "block", allProviders, nil))
 	req := call{provider: "openai"}.context()
-	p.OnRequestBody(context.Background(), req, nil)
+	p.OnRequestHeaders(context.Background(), req, nil)
 	req.Metadata[metadataLLMCost] = "0.0000000000"
 	req.Metadata[metadataLLMCostStatus] = "not_calculated"
 	p.OnResponseBody(context.Background(), &policy.ResponseContext{SharedContext: req.SharedContext}, nil)
@@ -333,7 +333,7 @@ func TestUnpricedRequestsChargeNothingButAreCounted(t *testing.T) {
 func TestARequestIsChargedOnce(t *testing.T) {
 	p, _, _ := testPolicy(t, budgetBody("all", testBudgetUUID, "10", "day", "block", allProviders, nil))
 	req := call{provider: "openai"}.context()
-	p.OnRequestBody(context.Background(), req, nil)
+	p.OnRequestHeaders(context.Background(), req, nil)
 	req.Metadata[metadataLLMCost] = "1"
 	req.Metadata[metadataLLMCostStatus] = costStatusCalculated
 	p.OnResponseBodyChunk(context.Background(), &policy.ResponseStreamContext{SharedContext: req.SharedContext}, &policy.StreamBody{Chunk: []byte("x")}, nil)
@@ -350,7 +350,7 @@ func TestChargedToThePeriodItWasAdmittedIn(t *testing.T) {
 	p, _, now := testPolicy(t, budgetBody("all", testBudgetUUID, "10", "day", "block", allProviders, nil))
 	req := call{provider: "openai"}.context()
 	*now = time.Date(2026, 11, 11, 23, 59, 59, 0, time.UTC)
-	p.OnRequestBody(context.Background(), req, nil)
+	p.OnRequestHeaders(context.Background(), req, nil)
 	*now = time.Date(2026, 11, 12, 0, 0, 1, 0, time.UTC)
 	req.Metadata[metadataLLMCost] = "3"
 	req.Metadata[metadataLLMCostStatus] = costStatusCalculated

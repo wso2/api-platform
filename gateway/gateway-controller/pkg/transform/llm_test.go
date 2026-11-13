@@ -28,7 +28,7 @@ import (
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
-func TestWithLLMCost(t *testing.T) {
+func TestWithBudgetEnforcement(t *testing.T) {
 	withCost := map[string]models.PolicyDefinition{
 		"llm-cost|v1.2.0": {Name: "llm-cost", Version: "v1.2.0"},
 	}
@@ -39,7 +39,10 @@ func TestWithLLMCost(t *testing.T) {
 		}
 		return out
 	}
+	auth := policyenginev1.PolicyInstance{Name: "api-key-auth", Version: "v1"}
 	guardrail := policyenginev1.PolicyInstance{Name: "pii-masking", Version: "v1"}
+	costLimit := policyenginev1.PolicyInstance{Name: "llm-cost-based-ratelimit", Version: "v1"}
+	const budget = "wso2_apip_sys_budget@v1"
 
 	cases := []struct {
 		name  string
@@ -48,22 +51,28 @@ func TestWithLLMCost(t *testing.T) {
 		defs  map[string]models.PolicyDefinition
 		want  []string
 	}{
-		{"provider without a price gets llm-cost last", models.KindLlmProvider,
-			[]policyenginev1.PolicyInstance{guardrail}, withCost, []string{"pii-masking@v1", "llm-cost@v1"}},
-		{"provider already priced keeps its chain", models.KindLlmProvider,
-			[]policyenginev1.PolicyInstance{{Name: "llm-cost", Version: "v1"}, guardrail}, withCost, []string{"llm-cost@v1", "pii-masking@v1"}},
+		{"an unpriced provider gets the budget policy, then llm-cost, after its own policies", models.KindLlmProvider,
+			[]policyenginev1.PolicyInstance{auth, guardrail}, withCost,
+			[]string{"api-key-auth@v1", "pii-masking@v1", budget, "llm-cost@v1"}},
+		{"a priced provider gets the budget policy just before its llm-cost, as the cost rate limit sits", models.KindLlmProvider,
+			[]policyenginev1.PolicyInstance{auth, costLimit, {Name: "llm-cost", Version: "v1"}, guardrail}, withCost,
+			[]string{"api-key-auth@v1", "llm-cost-based-ratelimit@v1", budget, "llm-cost@v1", "pii-masking@v1"}},
 		{"azure pricing counts as priced", models.KindLlmProvider,
-			[]policyenginev1.PolicyInstance{{Name: "azure-llm-cost", Version: "v1"}}, withCost, []string{"azure-llm-cost@v1"}},
-		{"proxies are left alone", models.KindLlmProxy,
-			[]policyenginev1.PolicyInstance{guardrail}, withCost, []string{"pii-masking@v1"}},
+			[]policyenginev1.PolicyInstance{auth, {Name: "azure-llm-cost", Version: "v1"}}, withCost,
+			[]string{"api-key-auth@v1", budget, "azure-llm-cost@v1"}},
+		{"a build without llm-cost gets the budget policy alone", models.KindLlmProvider,
+			[]policyenginev1.PolicyInstance{auth}, map[string]models.PolicyDefinition{},
+			[]string{"api-key-auth@v1", budget}},
+		{"an empty provider chain", models.KindLlmProvider,
+			nil, withCost, []string{budget, "llm-cost@v1"}},
+		{"proxies are left alone: their calls are counted on the provider route", models.KindLlmProxy,
+			[]policyenginev1.PolicyInstance{auth, guardrail}, withCost, []string{"api-key-auth@v1", "pii-masking@v1"}},
 		{"REST APIs are left alone", models.KindRestApi,
-			nil, withCost, nil},
-		{"a build without llm-cost is left alone", models.KindLlmProvider,
-			[]policyenginev1.PolicyInstance{guardrail}, map[string]models.PolicyDefinition{}, []string{"pii-masking@v1"}},
+			[]policyenginev1.PolicyInstance{auth}, withCost, []string{"api-key-auth@v1"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := withLLMCost(tc.kind, tc.chain, tc.defs, config.BuildLatestVersionIndex(tc.defs))
+			got := withBudgetEnforcement(tc.kind, tc.chain, tc.defs, config.BuildLatestVersionIndex(tc.defs))
 			assert.Equal(t, tc.want, names(got))
 		})
 	}

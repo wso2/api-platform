@@ -142,11 +142,13 @@ func (t *LLMTransformer) extractLLMMetadata(cfg *models.StoredConfig) *models.LL
 	return meta
 }
 
-// withLLMCost appends llm-cost to an LLM provider route's chain when the route does not
-// price its responses already (llm-cost or azure-llm-cost), so budgets see the cost of
-// every call. Appended last, it runs first in the response phase. A gateway build without
-// llm-cost leaves the chain as it is.
-func withLLMCost(
+// withBudgetEnforcement places the budget system policy on an LLM provider route the way
+// llm-cost-based-ratelimit sits: after the route's authentication, so its request-header
+// phase sees the caller, and just before the policy that prices the response, so in the
+// reverse-order response phase it reads the cost that policy published. A route that does
+// not price its responses (llm-cost or azure-llm-cost) gets llm-cost appended after it; a
+// gateway build without llm-cost gets the budget policy alone, which then charges $0.
+func withBudgetEnforcement(
 	kind string,
 	chain []policyenginev1.PolicyInstance,
 	definitions map[string]models.PolicyDefinition,
@@ -155,16 +157,26 @@ func withLLMCost(
 	if kind != models.KindLlmProvider {
 		return chain
 	}
-	for _, p := range chain {
+	budget := policyenginev1.PolicyInstance{
+		Name:       constants.BUDGET_SYSTEM_POLICY_NAME,
+		Version:    constants.BUDGET_SYSTEM_POLICY_VERSION,
+		Enabled:    true,
+		Parameters: map[string]interface{}{},
+	}
+	out := make([]policyenginev1.PolicyInstance, 0, len(chain)+2)
+	for i, p := range chain {
 		if p.Name == constants.LLM_COST_POLICY_NAME || p.Name == constants.AZURE_LLM_COST_POLICY_NAME {
-			return chain
+			out = append(out, chain[:i]...)
+			out = append(out, budget)
+			return append(out, chain[i:]...)
 		}
 	}
+	out = append(append(out, chain...), budget)
 	if _, ok := latestVersions[constants.LLM_COST_POLICY_NAME]; !ok {
-		return chain
+		return out
 	}
 	cost := resolvePolicyInstances(definitions, latestVersions,
 		&[]api.Policy{{Name: constants.LLM_COST_POLICY_NAME, Version: constants.LLM_COST_POLICY_VERSION}},
 		policyv1alpha.LevelRoute)
-	return append(chain, cost...)
+	return append(out, cost...)
 }

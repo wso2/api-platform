@@ -272,9 +272,11 @@ const (
 	JWKS_SYSTEM_POLICY_NAME = "wso2_apip_sys_jwks"
 
 	// BUDGET_SYSTEM_POLICY_NAME is the in-repo policy that enforces budgets
-	// (gateway/system-policies/budget). It is a defaultSystemPolicies entry limited
-	// to LLM provider chains: an LLM proxy call reaches its provider's route over the
-	// internal loopback, so it is counted there, once.
+	// (gateway/system-policies/budget). Like the A2A policy it is not a
+	// defaultSystemPolicies entry: the LLM transform places it on every LLM provider
+	// route, after authentication and just before the policy that prices the
+	// response, the way llm-cost-based-ratelimit sits. An LLM proxy call reaches its
+	// provider's route over the internal loopback, so it is counted there, once.
 	BUDGET_SYSTEM_POLICY_NAME    = "wso2_apip_sys_budget"
 	BUDGET_SYSTEM_POLICY_VERSION = "v1"
 

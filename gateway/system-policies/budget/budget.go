@@ -22,10 +22,11 @@
 // An LLM proxy call reaches its provider's route over the internal loopback, so it is
 // counted there, once.
 //
-// A request is admitted in the request body phase, after every header-phase policy has run,
-// because system policies come first in the chain and authentication must have filled the
-// auth context the consumer expressions read. The cost is charged when the response ends:
-// response phases run in reverse chain order, so llm-cost has published x-llm-cost by then.
+// It sits in the chain the way llm-cost-based-ratelimit does: after the route's
+// authentication, so the request-header phase, where a request is admitted or refused, sees
+// the caller; and just before the policy that prices the response. Response phases run in
+// reverse chain order, so when the response ends llm-cost has published x-llm-cost and the
+// policy charges it. It never reads a body.
 //
 // Spend is kept in memory in this policy engine. It resets on restart and is not shared with
 // other gateways; the shared spend tracker replaces it.
@@ -86,12 +87,12 @@ func GetPolicyV2(metadata policy.PolicyMetadata, params map[string]any) (policy.
 	return GetPolicy(metadata, params)
 }
 
-// Mode buffers the request body, the phase admission runs in, and streams the response,
-// charging when it ends, as llm-cost does.
+// Mode admits in the request-header phase and charges when the streamed response ends, as
+// llm-cost-based-ratelimit does. Bodies are never read: the cost comes from metadata.
 func (p *BudgetSystemPolicy) Mode() policy.ProcessingMode {
 	return policy.ProcessingMode{
-		RequestHeaderMode:  policy.HeaderModeSkip,
-		RequestBodyMode:    policy.BodyModeBuffer,
+		RequestHeaderMode:  policy.HeaderModeProcess,
+		RequestBodyMode:    policy.BodyModeSkip,
 		ResponseHeaderMode: policy.HeaderModeSkip,
 		ResponseBodyMode:   policy.BodyModeStream,
 	}
@@ -100,11 +101,11 @@ func (p *BudgetSystemPolicy) Mode() policy.ProcessingMode {
 // admitted is one allowance a request was admitted against, in the period it was admitted in.
 type admitted = spendKey
 
-// OnRequestBody finds the budgets that cover the request and refuses it when a Block
+// OnRequestHeaders finds the budgets that cover the request and refuses it when a Block
 // budget's allowance has spent its block point.
-func (p *BudgetSystemPolicy) OnRequestBody(_ context.Context, reqCtx *policy.RequestContext, _ map[string]any) policy.RequestAction {
+func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.RequestHeaderContext, _ map[string]any) policy.RequestHeaderAction {
 	if reqCtx == nil || reqCtx.SharedContext == nil {
-		return policy.UpstreamRequestModifications{}
+		return policy.UpstreamRequestHeaderModifications{}
 	}
 	var headers map[string][]string
 	if reqCtx.Headers != nil {
@@ -112,11 +113,11 @@ func (p *BudgetSystemPolicy) OnRequestBody(_ context.Context, reqCtx *policy.Req
 	}
 	provider, _ := reqCtx.Metadata[metadataProviderName].(string)
 	if provider == "" {
-		return policy.UpstreamRequestModifications{}
+		return policy.UpstreamRequestHeaderModifications{}
 	}
 	budgets := p.catalog.current()
 	if len(budgets) == 0 {
-		return policy.UpstreamRequestModifications{}
+		return policy.UpstreamRequestHeaderModifications{}
 	}
 
 	now := p.now().UTC()
@@ -150,7 +151,7 @@ func (p *BudgetSystemPolicy) OnRequestBody(_ context.Context, reqCtx *policy.Req
 		}
 		reqCtx.Metadata[metadataAllowances] = keys
 	}
-	return policy.UpstreamRequestModifications{}
+	return policy.UpstreamRequestHeaderModifications{}
 }
 
 // NeedsMoreResponseData is false: the cost is read from metadata, not the body.
