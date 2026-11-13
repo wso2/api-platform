@@ -60,7 +60,12 @@ func newBudgetTestServer(t *testing.T) *APIServer {
 	}, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
-	return &APIServer{db: db, logger: logger, budgetService: budget.NewService(db, utils.NewBudgetPublisher(db, newTestLazyResourceManager()), &mockEventHub{}, "test-gateway", logger, false)}
+	publisher := utils.NewBudgetPublisher(db, newTestLazyResourceManager())
+	return &APIServer{
+		db: db, logger: logger, store: storage.NewConfigStore(),
+		budgetPublisher: publisher,
+		budgetService:   budget.NewService(db, publisher, &mockEventHub{}, "test-gateway", logger, false),
+	}
 }
 
 func postBudget(server *APIServer, body string) *httptest.ResponseRecorder {
@@ -161,4 +166,27 @@ func TestCreateBudget_DuplicateNameConflicts(t *testing.T) {
 	rec := postBudget(server, testBudgetBody)
 
 	assert.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
+}
+
+func TestConfigDumpListsBudgets(t *testing.T) {
+	server := newBudgetTestServer(t)
+	require.Equal(t, http.StatusCreated, postBudget(server, testBudgetBody).Code)
+	paused := strings.NewReplacer(`"research-team-monthly"`, `"paused-daily"`, `"limit":`, `"status": "inactive", "limit":`).Replace(testBudgetBody)
+	require.Equal(t, http.StatusCreated, postBudget(server, paused).Code)
+
+	dump, err := server.BuildConfigDumpResponse(server.logger)
+
+	require.NoError(t, err)
+	require.NotNil(t, dump.Budgets)
+	budgets := *dump.Budgets
+	require.Len(t, budgets, 2)
+	assert.Equal(t, 2, *dump.Statistics.TotalBudgets)
+	// Name order; only the active budget is enforced.
+	assert.Equal(t, "paused-daily", (*budgets[0].Configuration)["metadata"].(map[string]interface{})["name"])
+	assert.False(t, *budgets[0].Metadata.Enforced)
+	assert.Equal(t, "research-team-monthly", (*budgets[1].Configuration)["metadata"].(map[string]interface{})["name"])
+	assert.True(t, *budgets[1].Metadata.Enforced)
+	assert.Equal(t, "gateway_api", *budgets[1].Metadata.Origin)
+	assert.Equal(t, "500.00", (*budgets[1].Configuration)["spec"].(map[string]interface{})["limit"].(map[string]interface{})["amount"])
+	assert.NotNil(t, budgets[1].Id)
 }

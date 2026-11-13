@@ -433,3 +433,91 @@ func TestPeriods(t *testing.T) {
 		t.Errorf("a Sunday belongs to the week that started %s", got)
 	}
 }
+
+func TestAnalyticsNameMatchedBudgetsAndCostStatus(t *testing.T) {
+	p, _, _ := testPolicy(t,
+		budgetBody("b-openai", testBudgetUUID, "1", "day", "block", oneProvider("openai"), nil),
+		budgetBody("a-all", otherUUID, "100", "day", "allow", allProviders, nil),
+	)
+
+	// Admitted: every matched budget, in name order.
+	req := call{provider: "openai"}.context()
+	mods, ok := p.OnRequestHeaders(context.Background(), req, nil).(policy.UpstreamRequestHeaderModifications)
+	if !ok {
+		t.Fatal("admitted request was not forwarded")
+	}
+	if got := mods.AnalyticsMetadata[analyticsBudgetNames]; !equalAny(got, []any{"a-all", "b-openai"}) {
+		t.Fatalf("names %v", got)
+	}
+	req.Metadata[metadataLLMCost] = "1"
+	req.Metadata[metadataLLMCostStatus] = costStatusCalculated
+	chunk := p.OnResponseBodyChunk(context.Background(), &policy.ResponseStreamContext{SharedContext: req.SharedContext}, &policy.StreamBody{EndOfStream: true}, nil).(policy.ForwardResponseChunk)
+	if got := chunk.AnalyticsMetadata[analyticsBudgetCostStatus]; got != costStatusPriced {
+		t.Fatalf("cost status %v", got)
+	}
+
+	// Refused: the refusal carries the names too.
+	refused, ok := p.OnRequestHeaders(context.Background(), call{provider: "openai"}.context(), nil).(policy.ImmediateResponse)
+	if !ok {
+		t.Fatal("not refused")
+	}
+	if got := refused.AnalyticsMetadata[analyticsBudgetNames]; !equalAny(got, []any{"a-all", "b-openai"}) {
+		t.Fatalf("refusal names %v", got)
+	}
+
+	// Another provider: only the budget that covers it.
+	mods, _ = p.OnRequestHeaders(context.Background(), call{provider: "anthropic"}.context(), nil).(policy.UpstreamRequestHeaderModifications)
+	if got := mods.AnalyticsMetadata[analyticsBudgetNames]; !equalAny(got, []any{"a-all"}) {
+		t.Fatalf("anthropic names %v", got)
+	}
+	// Not covered: nothing is added.
+	mods, _ = p.OnRequestHeaders(context.Background(), call{}.context(), nil).(policy.UpstreamRequestHeaderModifications)
+	if mods.AnalyticsMetadata != nil {
+		t.Fatalf("an uncovered request got analytics %v", mods.AnalyticsMetadata)
+	}
+	resp := p.OnResponseBody(context.Background(), &policy.ResponseContext{SharedContext: (call{}).context().SharedContext}, nil).(policy.DownstreamResponseModifications)
+	if resp.AnalyticsMetadata != nil {
+		t.Fatalf("an uncovered response got analytics %v", resp.AnalyticsMetadata)
+	}
+}
+
+func TestUnpricedReasons(t *testing.T) {
+	cases := []struct {
+		name        string
+		usageStatus string
+		want        string
+	}{
+		{"usage but no price", usageStatusExtracted, costStatusMissingPrice},
+		{"no usage in the response", "no_usage", costStatusUsageUnavailable},
+		{"llm-cost did not run", "", costStatusUsageUnavailable},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p, _, _ := testPolicy(t, budgetBody("all", testBudgetUUID, "10", "day", "block", allProviders, nil))
+			req := call{provider: "openai"}.context()
+			p.OnRequestHeaders(context.Background(), req, nil)
+			req.Metadata[metadataLLMCost] = "0.0000000000"
+			req.Metadata[metadataLLMCostStatus] = "not_calculated"
+			if tc.usageStatus != "" {
+				req.Metadata[metadataUsageStatus] = tc.usageStatus
+			}
+			resp := p.OnResponseBody(context.Background(), &policy.ResponseContext{SharedContext: req.SharedContext}, nil).(policy.DownstreamResponseModifications)
+			if got := resp.AnalyticsMetadata[analyticsBudgetCostStatus]; got != tc.want {
+				t.Fatalf("cost status %v, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func equalAny(got any, want []any) bool {
+	list, ok := got.([]any)
+	if !ok || len(list) != len(want) {
+		return false
+	}
+	for i := range list {
+		if list[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}

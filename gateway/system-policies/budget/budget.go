@@ -55,6 +55,21 @@ const (
 	// metadataAllowances carries the allowances a request was admitted against to the
 	// response phase.
 	metadataAllowances = "x-wso2-budget-allowances"
+	// metadataUsageStatus is published by llm-cost's usage extraction (sdk/ai llmusage):
+	// "extracted" when the response carried token usage.
+	metadataUsageStatus  = "llm:usage:status"
+	usageStatusExtracted = "extracted"
+)
+
+// Analytics properties added to the request's analytics event: the budgets it counted
+// against, never allowance values, and how it was priced.
+const (
+	analyticsBudgetNames      = "budgetNames"
+	analyticsBudgetCostStatus = "budgetCostStatus"
+
+	costStatusPriced           = "priced"
+	costStatusMissingPrice     = "missing_price"
+	costStatusUsageUnavailable = "usage_unavailable"
 )
 
 // BudgetSystemPolicy enforces budgets. Every attachment shares one instance, so spend is
@@ -124,11 +139,13 @@ func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.
 	vars := activation(headers, reqCtx.Path, reqCtx.Method, reqCtx.Metadata, reqCtx.AuthContext)
 	var keys []admitted
 	var exhausted []*budget
+	var names []any
 	for _, b := range budgets {
 		allowances, ok := b.matches(provider, vars)
 		if !ok {
 			continue
 		}
+		names = append(names, b.name)
 		start := periodStart(b.period, now)
 		used := false
 		for _, allowance := range allowances {
@@ -142,16 +159,20 @@ func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.
 			exhausted = append(exhausted, b)
 		}
 	}
+	if len(names) == 0 {
+		return policy.UpstreamRequestHeaderModifications{}
+	}
+	analytics := map[string]any{analyticsBudgetNames: names}
 	if len(exhausted) > 0 {
-		return refusal(exhausted, now)
+		refused := refusal(exhausted, now)
+		refused.AnalyticsMetadata = analytics
+		return refused
 	}
-	if len(keys) > 0 {
-		if reqCtx.Metadata == nil {
-			reqCtx.Metadata = map[string]any{}
-		}
-		reqCtx.Metadata[metadataAllowances] = keys
+	if reqCtx.Metadata == nil {
+		reqCtx.Metadata = map[string]any{}
 	}
-	return policy.UpstreamRequestHeaderModifications{}
+	reqCtx.Metadata[metadataAllowances] = keys
+	return policy.UpstreamRequestHeaderModifications{AnalyticsMetadata: analytics}
 }
 
 // NeedsMoreResponseData is false: the cost is read from metadata, not the body.
@@ -162,7 +183,7 @@ func (p *BudgetSystemPolicy) OnResponseBodyChunk(
 	_ context.Context, respCtx *policy.ResponseStreamContext, chunk *policy.StreamBody, _ map[string]any,
 ) policy.StreamingResponseAction {
 	if chunk != nil && chunk.EndOfStream && respCtx != nil {
-		p.charge(respCtx.SharedContext)
+		return policy.ForwardResponseChunk{AnalyticsMetadata: p.charge(respCtx.SharedContext)}
 	}
 	return policy.ForwardResponseChunk{}
 }
@@ -170,21 +191,22 @@ func (p *BudgetSystemPolicy) OnResponseBodyChunk(
 // OnResponseBody charges a request whose response was delivered whole.
 func (p *BudgetSystemPolicy) OnResponseBody(_ context.Context, respCtx *policy.ResponseContext, _ map[string]any) policy.ResponseAction {
 	if respCtx != nil {
-		p.charge(respCtx.SharedContext)
+		return policy.DownstreamResponseModifications{AnalyticsMetadata: p.charge(respCtx.SharedContext)}
 	}
 	return policy.DownstreamResponseModifications{}
 }
 
 // charge adds the cost llm-cost published to every allowance the request was admitted
 // against; without a calculated cost the request is charged $0 and counted as unpriced.
-// It charges once: the allowances are removed from the metadata.
-func (p *BudgetSystemPolicy) charge(shared *policy.SharedContext) {
+// It charges once: the allowances are removed from the metadata. It returns the analytics
+// property naming how the request was priced, or nil when no budget covered it.
+func (p *BudgetSystemPolicy) charge(shared *policy.SharedContext) map[string]any {
 	if shared == nil || shared.Metadata == nil {
-		return
+		return nil
 	}
 	keys, _ := shared.Metadata[metadataAllowances].([]admitted)
 	if len(keys) == 0 {
-		return
+		return nil
 	}
 	delete(shared.Metadata, metadataAllowances)
 
@@ -194,12 +216,22 @@ func (p *BudgetSystemPolicy) charge(shared *policy.SharedContext) {
 	cost, err := strconv.ParseFloat(costText, 64)
 	if status != costStatusCalculated || err != nil || cost < 0 || math.IsNaN(cost) || math.IsInf(cost, 0) {
 		p.tracker.countUnpriced(keys, now)
-		return
+		return map[string]any{analyticsBudgetCostStatus: unpricedReason(shared)}
 	}
 	p.tracker.charge(keys, cost, now)
+	return map[string]any{analyticsBudgetCostStatus: costStatusPriced}
 }
 
-// refusalBody is the 429 body: each used-up budget once, in handle order; allowances are
+// unpricedReason tells a response without usage from one whose model has no price: the
+// usage extraction llm-cost runs records whether the response carried token usage.
+func unpricedReason(shared *policy.SharedContext) string {
+	if status, _ := shared.Metadata[metadataUsageStatus].(string); status == usageStatusExtracted {
+		return costStatusMissingPrice
+	}
+	return costStatusUsageUnavailable
+}
+
+// refusalBody is the 429 body: each used-up budget once, in name order; allowances are
 // never shown.
 type refusalBody struct {
 	Code    string          `json:"code"`

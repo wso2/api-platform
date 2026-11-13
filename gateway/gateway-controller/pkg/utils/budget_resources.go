@@ -96,6 +96,16 @@ func (p *BudgetPublisher) Publish(correlationID string) error {
 	return nil
 }
 
+// PublishedNames returns the names of the budgets published to the policy engine.
+func (p *BudgetPublisher) PublishedNames() map[string]bool {
+	published := p.resources.GetResourcesByType(LazyResourceTypeBudget)
+	names := make(map[string]bool, len(published))
+	for name := range published {
+		names[name] = true
+	}
+	return names
+}
+
 // budgetResource builds the published resource for a stored budget. It reports false for an
 // inactive budget, which is not published.
 func budgetResource(cfg *models.StoredConfig) (*storage.LazyResource, bool, error) {

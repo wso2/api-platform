@@ -2846,7 +2846,8 @@ func (g *Gateway) mutateResource(
 		path = collection + "/" + resolvedID
 	}
 	if collection == collBudgets {
-		// Budgets are stored but not deployed to the router, so they never reach the dump.
+		// Dump expectations are checked against whichever config dump a step reads, the
+		// policy engine's too, and an inactive budget never reaches the policy engine.
 	} else if method == http.MethodDelete {
 		expectInDump(ctx, resolvedID, false)
 	} else if expandedBody != "" {

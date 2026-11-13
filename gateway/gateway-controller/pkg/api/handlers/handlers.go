@@ -62,6 +62,7 @@ type APIServer struct {
 	restAPIService              *restapi.RestAPIService
 	agentService                *agent.AgentService
 	budgetService               *budget.Service
+	budgetPublisher             *utils.BudgetPublisher
 	store                       *storage.ConfigStore
 	db                          storage.Storage
 	snapshotManager             *xds.SnapshotManager
@@ -193,6 +194,7 @@ func NewAPIServer(
 	server.llmDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
 
 	server.agentService = agentService
+	server.budgetPublisher = budgets
 	server.budgetService = budget.NewService(db, budgets, eventHub, gatewayID, logger, systemConfig.Controller.ControlPlane.DeploymentSyncEnabled)
 	server.AgentHandler = NewAgentHandler(agentService, logger)
 
@@ -572,6 +574,12 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 		})
 	}
 
+	budgets, err := s.configDumpBudgets()
+	if err != nil {
+		log.Error("Failed to list budgets for config dump", slog.Any("error", err))
+		return nil, err
+	}
+
 	// Calculate statistics
 	totalApis := len(apisSlice)
 	totalPolicies := len(policies)
@@ -588,13 +596,16 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 		Apis:         &apisSlice,
 		Policies:     &policies,
 		Certificates: &certificates,
+		Budgets:      &budgets,
 		Statistics: &struct {
 			TotalApis             *int `json:"totalApis,omitempty" yaml:"totalApis,omitempty"`
+			TotalBudgets          *int `json:"totalBudgets,omitempty" yaml:"totalBudgets,omitempty"`
 			TotalCertificateBytes *int `json:"totalCertificateBytes,omitempty" yaml:"totalCertificateBytes,omitempty"`
 			TotalCertificates     *int `json:"totalCertificates,omitempty" yaml:"totalCertificates,omitempty"`
 			TotalPolicies         *int `json:"totalPolicies,omitempty" yaml:"totalPolicies,omitempty"`
 		}{
 			TotalApis:             &totalApis,
+			TotalBudgets:          ptr(len(budgets)),
 			TotalPolicies:         &totalPolicies,
 			TotalCertificates:     &totalCertificates,
 			TotalCertificateBytes: &totalBytes,

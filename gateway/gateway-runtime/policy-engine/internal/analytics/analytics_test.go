@@ -1676,3 +1676,34 @@ func TestPrepareAnalyticEvent_DestinationDropsQueryString(t *testing.T) {
 		})
 	}
 }
+
+func TestPrepareAnalyticEvent_WithBudgetMetadata(t *testing.T) {
+	analytics := NewAnalytics(&config.Config{})
+	names, err := structpb.NewList([]interface{}{"research-monthly", "org-daily"})
+	require.NoError(t, err)
+
+	logEntry := createLogEntryWithMetadataValues(map[string]*structpb.Value{
+		constants.BudgetNamesMetadataKey:      structpb.NewListValue(names),
+		constants.BudgetCostStatusMetadataKey: structpb.NewStringValue("missing_price"),
+	})
+
+	event := analytics.prepareAnalyticEvent(logEntry)
+
+	require.NotNil(t, event)
+	assert.Equal(t, map[string]interface{}{
+		"names":      []string{"research-monthly", "org-daily"},
+		"costStatus": "missing_price",
+	}, event.Properties[constants.BudgetPropertyKey])
+}
+
+func TestPrepareAnalyticEvent_WithoutBudgetMetadata(t *testing.T) {
+	analytics := NewAnalytics(&config.Config{})
+
+	event := analytics.prepareAnalyticEvent(createLogEntryWithMetadataValues(map[string]*structpb.Value{
+		constants.GuardrailNameMetadataKey: structpb.NewStringValue("word-count-guardrail"),
+	}))
+
+	require.NotNil(t, event)
+	_, exists := event.Properties[constants.BudgetPropertyKey]
+	assert.False(t, exists, "an event no budget covered has no budget property")
+}
