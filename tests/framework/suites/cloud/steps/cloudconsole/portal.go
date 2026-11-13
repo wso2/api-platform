@@ -47,6 +47,9 @@ const (
 	keyRefusedAPIPortalID = "cloudRefusedAPIPortalID"
 	// keyAbsentAPIPortalID names a portal the scenario never creates.
 	keyAbsentAPIPortalID = "cloudAbsentAPIPortalID"
+	// keyOtherEnvironment names an environment of the organisation other than the one the runner's
+	// portals sign consumers in on.
+	keyOtherEnvironment = "cloudOtherEnvironment"
 	// keyAbsentPortalEnvironment names a login environment the organisation does not have.
 	keyAbsentPortalEnvironment = "cloudAbsentPortalEnvironment"
 

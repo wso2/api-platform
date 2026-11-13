@@ -377,7 +377,7 @@ scenarios:
       status: automated
       refs:
         - feature: suites/cloud/features/apip_portal.feature
-          scenario: "A deleted portal stops serving"
+          scenario: "A deleted portal stops serving and its handle can be used again"
   - id: ID_APIP_PORTAL_045
     title: "Managed API Portal routes refuse a request without a valid token."
     priority: P1
@@ -414,7 +414,7 @@ scenarios:
       status: automated
       refs:
         - feature: suites/cloud/features/apip_portal.feature
-          scenario: "The handle of a deleted portal can be used again"
+          scenario: "A deleted portal stops serving and its handle can be used again"
   - id: ID_APIP_PORTAL_049
     title: "A draft whose displayName, version or description is at its limit is saved."
     priority: P2

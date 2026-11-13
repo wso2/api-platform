@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strconv"
@@ -29,6 +30,7 @@ import (
 
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
+	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
 
 const (
@@ -103,6 +105,7 @@ func (s *Steps) registerPortalManageSteps(sc stepRegistrar) {
 	sc.Step(`^I try to update the synthetic managed API Portal with (an empty name|an empty login environment|a name longer than 255 characters|a description longer than 1023 characters|a handle)$`, s.tryDefectiveUpdate)
 	sc.Step(`^I rotate the key of the synthetic managed API Portal$`, s.rotateRunnerPortalKey)
 	sc.Step(`^I (update|rotate the key of) a managed API Portal that does not exist$`, s.changeAbsentPortal)
+	sc.Step(`^the organisation has an environment other than the portal's login environment$`, s.findOtherEnvironment)
 	sc.Step(`^the managed API Portal answer should carry its details$`, s.assertPortalDetails)
 	sc.Step(`^the managed API Portal answer should expose no secret$`, s.assertPortalAnswerHasNoSecret)
 	sc.Step(`^the managed API Portal answer should locate the synthetic managed API Portal$`, s.assertPortalLocation)
@@ -331,4 +334,30 @@ func (s *Steps) assertPortalLocation(ctx context.Context) error {
 		return fmt.Errorf("the Location header is %q, want a URL ending in %s/%s", location, managedPortalsCollection, handle)
 	}
 	return nil
+}
+
+// findOtherEnvironment records an environment of the organisation that is not the one the
+// runner's portals sign consumers in on, so a scenario can change the login environment to a
+// valid one. An organisation with a single environment cannot test that, and the scenario is
+// skipped there.
+func (s *Steps) findOtherEnvironment(ctx context.Context) error {
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/environments", nil)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return responseError(resp)
+	}
+	items, err := listItems(resp)
+	if err != nil {
+		return fmt.Errorf("decoding the organisation's environments: %w", err)
+	}
+	for _, item := range items {
+		if name, _ := item["name"].(string); name != "" && name != portalLoginEnvironment {
+			return tcontext.Set(ctx, keyOtherEnvironment, name)
+		}
+	}
+	slog.Warn("skipping: the organisation has no environment besides the portals' login environment",
+		"environment", portalLoginEnvironment, "environments", len(items))
+	return godog.ErrSkip
 }

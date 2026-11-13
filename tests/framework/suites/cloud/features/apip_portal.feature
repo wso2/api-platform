@@ -193,9 +193,10 @@ Feature: APIP cloud managed API Portal and consumer sign-in
   Scenario: Turning self sign-up off is accepted and finishes, it cannot be combined with a login environment change, and it can be turned on again
     Given I obtain an APIP cloud console token
     And the runner has an active synthetic managed API Portal
+    And the organisation has an environment other than the portal's login environment
     When I update the synthetic managed API Portal with:
-      | selfSignup       | false          |
-      | loginEnvironment | no-environment |
+      | selfSignup       | false                        |
+      | loginEnvironment | ${CTX:cloudOtherEnvironment} |
     Then the cloud API response status code should be 400
     And the synthetic managed API Portal should still be active
     When I update the synthetic managed API Portal with:
@@ -794,8 +795,8 @@ Feature: APIP cloud managed API Portal and consumer sign-in
       | POST   | without a token     | /managed-api-portals/absent-portal/rotate-key |
       | POST   | with a forged token | /managed-api-portals/absent-portal/rotate-key |
 
-  @ID_APIP_PORTAL_044 @layer:cloud-owned
-  Scenario: A deleted portal stops serving
+  @ID_APIP_PORTAL_044 @ID_APIP_PORTAL_048 @layer:cloud-owned
+  Scenario: A deleted portal stops serving and its handle can be used again
     Given I obtain an APIP cloud console token
     And the runner has an active synthetic managed API Portal
     When I request "/api-portal/health" from the synthetic managed API Portal
@@ -804,9 +805,5 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the managed API Portal deletion should be accepted
     And the synthetic managed API Portal should eventually be gone
     And the synthetic managed API Portal should no longer serve
-
-  @ID_APIP_PORTAL_048 @layer:cloud-owned
-  Scenario: The handle of a deleted portal can be used again
-    Given I obtain an APIP cloud console token
     When I request a managed API Portal under the handle of the deleted synthetic managed API Portal
     Then the synthetic managed API Portal should be accepted for provisioning

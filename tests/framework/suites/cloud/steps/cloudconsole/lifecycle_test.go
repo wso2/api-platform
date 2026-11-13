@@ -5039,7 +5039,9 @@ func TestUnpublishSettled(t *testing.T) {
 		want bool
 	}{
 		"unpublished":       {&httpx.Response{StatusCode: http.StatusNoContent}, true},
-		"no API":            {&httpx.Response{StatusCode: http.StatusNotFound}, true},
+		"no API":            {&httpx.Response{StatusCode: http.StatusNotFound, Body: []byte(`{"code":"API_NOT_FOUND"}`)}, false},
+		"no portal":         {&httpx.Response{StatusCode: http.StatusNotFound, Body: []byte(`{"code":"API_PORTAL_NOT_FOUND"}`)}, true},
+		"unreadable 404":    {&httpx.Response{StatusCode: http.StatusNotFound, Body: []byte(`not json`)}, true},
 		"nothing published": {&httpx.Response{StatusCode: http.StatusConflict, Body: []byte(`{"code":"PUBLICATION_STATE_CONFLICT"}`)}, true},
 		"portal conflict":   {&httpx.Response{StatusCode: http.StatusConflict, Body: []byte(`{"code":"PUBLICATION_PORTAL_CONFLICT"}`)}, false},
 		"unreadable":        {&httpx.Response{StatusCode: http.StatusConflict, Body: []byte(`not json`)}, false},
@@ -5650,4 +5652,75 @@ func TestStarterStillFailsTheRunWhenTheGatewayCannotBePrepared(t *testing.T) {
 	starter, err := startStarterAgainst(t, platform)
 	require.ErrorContains(t, err, "default gateway")
 	require.NoError(t, starter.PortalUnavailable(), "the portal was never attempted")
+}
+
+func TestSaveDefinitionAcceptsOnlyAnswersAContentRefusalCanGive(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var status int
+	var code string
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if status == http.StatusNoContent {
+			w.WriteHeader(status)
+			return
+		}
+		writeJSON(w, status, map[string]string{"code": code})
+	})
+	local.Set(keyAPIPortalID, "portal-1")
+	local.Set(keyAPIID, "api-1")
+	for name, tc := range map[string]struct {
+		kind    string
+		status  int
+		code    string
+		wantErr bool
+	}{
+		"stored":                          {"invalid", http.StatusNoContent, "", false},
+		"refused for its content":         {"invalid", http.StatusBadRequest, publicationValidationFailed, false},
+		"OpenAPI refused for its content": {"OpenAPI", http.StatusBadRequest, publicationValidationFailed, false},
+		"bad request for another reason":  {"invalid", http.StatusBadRequest, "API_NOT_FOUND", true},
+		"no token":                        {"invalid", http.StatusUnauthorized, "unauthorized", true},
+		"server error":                    {"OpenAPI", http.StatusInternalServerError, "internal_error", true},
+		"a valid definition is stored":    {"valid", http.StatusNoContent, "", false},
+		"a valid definition is refused":   {"valid", http.StatusBadRequest, publicationValidationFailed, true},
+	} {
+		status, code = tc.status, tc.code
+		err := steps.saveDefinition(ctx, tc.kind, "synthetic REST API")
+		if tc.wantErr {
+			require.Error(t, err, name)
+		} else {
+			require.NoError(t, err, name)
+		}
+	}
+}
+
+func TestFindOtherEnvironmentRecordsAnEnvironmentThePortalDoesNotUse(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	environments := []map[string]any{{"name": portalLoginEnvironment, "id": portalLoginEnvironment}}
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/environments", r.URL.Path)
+		writeJSON(w, http.StatusOK, map[string]any{"list": environments})
+	})
+	require.ErrorIs(t, steps.findOtherEnvironment(ctx), godog.ErrSkip, "a single environment cannot test a change of environment")
+
+	environments = append(environments, map[string]any{"name": "staging", "id": "staging"})
+	require.NoError(t, steps.findOtherEnvironment(ctx))
+	got, err := requiredValue(ctx, keyOtherEnvironment)
+	require.NoError(t, err)
+	require.Equal(t, "staging", got)
+}
+
+func TestDeletingTheAPIDropsItsPublicationCleanup(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodDelete, r.Method)
+		w.WriteHeader(http.StatusNoContent)
+	})
+	local.Set(keyAPIPortalID, "portal-1")
+	local.Set(keyAPIID, "api-1")
+	require.NoError(t, registry.Register(cleanup.Resource{Kind: cloudPublicationKind, ID: "portal-1/rest-api/api-1", Actor: resourceActor}))
+	require.NoError(t, registry.Register(cleanup.Resource{Kind: cloudPublicationKind, ID: "portal-1/rest-api/another-api", Actor: resourceActor}))
+
+	require.NoError(t, steps.deleteAPI(ctx))
+	pending := registry.Pending()
+	require.Len(t, pending, 1, "only the deleted API's publication is dropped")
+	require.Equal(t, "portal-1/rest-api/another-api", pending[0].ID)
 }

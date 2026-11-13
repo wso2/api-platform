@@ -505,8 +505,9 @@ func definitionFor(kind, apiType, title string) ([]byte, string, error) {
 	}
 }
 
-// saveDefinition requires a valid definition to be stored. Any other is sent and its answer is
-// left unchecked: refused now or stored and refused at publish, the publish fails the same way.
+// saveDefinition requires a valid definition to be stored. Any other is either stored or refused
+// for its content at once (400 PUBLICATION_VALIDATION_FAILED), and the publish refuses it the same
+// way; any other answer is an error.
 func (s *Steps) saveDefinition(ctx context.Context, kind, subject string) error {
 	target, err := targetOf(ctx, subject)
 	if err != nil {
@@ -520,10 +521,26 @@ func (s *Steps) saveDefinition(ctx context.Context, kind, subject string) error 
 	if err != nil {
 		return err
 	}
-	if kind == "valid" && resp.StatusCode != http.StatusNoContent {
-		return responseError(resp)
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
 	}
-	return nil
+	if kind != "valid" && refusedAtSave(resp) {
+		return nil
+	}
+	return responseError(resp)
+}
+
+// publicationValidationFailed is the error code of a draft part the control plane refuses.
+const publicationValidationFailed = "PUBLICATION_VALIDATION_FAILED"
+
+// refusedAtSave reports whether the answer is the control plane refusing the saved content for
+// what it is. Any other answer, such as a 401 or a 500, is a failed upload, not a refusal.
+func refusedAtSave(resp *httpx.Response) bool {
+	if resp.StatusCode != http.StatusBadRequest {
+		return false
+	}
+	code, err := stringField(resp, "code")
+	return err == nil && code == publicationValidationFailed
 }
 
 // landingPage carries raw HTML, which the control plane strips before storing it.
@@ -654,9 +671,14 @@ func (s *Steps) publishGraphQLThroughRESTRoute(ctx context.Context) error {
 // publicationStateConflict is the error code of an unpublish that found nothing to unpublish.
 const publicationStateConflict = "PUBLICATION_STATE_CONFLICT"
 
+// apiNotFound is the error code of a request for an API the platform no longer has.
+const apiNotFound = "API_NOT_FOUND"
+
 // unpublishRequest builds the cleanup request for a publication id. An unpublish that finds
-// nothing published, or no API, leaves nothing behind; any other conflict, such as the portal
-// still holding subscriptions to the API, means the listing is still there.
+// nothing published, or no portal, leaves nothing behind. A missing API does not: the platform
+// answers before it asks the portal to remove the listing, so the listing may remain. Any other
+// conflict, such as the portal still holding subscriptions to the API, means the listing is still
+// there.
 func unpublishRequest(id string) (string, string, func(*httpx.Response) bool, error) {
 	parts, err := splitPublicationID(id)
 	if err != nil {
@@ -667,14 +689,17 @@ func unpublishRequest(id string) (string, string, func(*httpx.Response) bool, er
 }
 
 func unpublishSettled(resp *httpx.Response) bool {
-	if resp.Succeeded() || resp.StatusCode == http.StatusNotFound {
+	if resp.Succeeded() {
 		return true
 	}
-	if resp.StatusCode != http.StatusConflict {
-		return false
-	}
 	code, err := stringField(resp, "code")
-	return err == nil && code == publicationStateConflict
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		return err != nil || code != apiNotFound
+	case http.StatusConflict:
+		return err == nil && code == publicationStateConflict
+	}
+	return false
 }
 
 // forgedToken is shaped like a console token but signed by no key the cloud trusts.

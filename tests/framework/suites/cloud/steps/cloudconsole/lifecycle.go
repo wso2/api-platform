@@ -440,6 +440,11 @@ func (s *Steps) deleteAPI(ctx context.Context) error {
 	if resp.StatusCode == http.StatusNotFound {
 		deregister(ctx, cleanup.KindAPI, id)
 	}
+	// Deleting an API removes its publication, which the scenarios assert. Without an API there
+	// is nothing left for the publication's own cleanup to unpublish.
+	if portal, err := requiredValue(ctx, keyAPIPortalID); err == nil {
+		deregister(ctx, cloudPublicationKind, publicationTarget{portal: portal, apiType: "rest-api", api: id}.id())
+	}
 	return nil
 }
 
