@@ -71,7 +71,8 @@ next to the billing, cloud and marketing-consent routes:
 
 - **Context:** `/_api/api-management/feature-usage`, a fixed path like the
   billing, cloud and marketing-consent routes beside it. `featureUsageCollectorPath`
-  below resolves to the same path.
+  below is the same fixed path, not derived from `apip_console_proxy_context`,
+  so overriding that variable can't point the console away from the route.
 - **Upstream:** `${internal_gateway_url}/moesif-collector`.
 - **Policy:** the same `oauth2-session-proxy` as the other api-management
   routes.
@@ -88,7 +89,8 @@ In the `apip-console` release binding, add these to `api-platform.env.config.js`
 window.__RUNTIME_CONFIG__ = {
   // …existing keys (authMode, platformApiBaseUrl, …)
   featureUsageTrackingEnabled: '${apip_console_feature_usage_enabled:=false}',
-  featureUsageCollectorPath: '${apip_console_proxy_context:=/_api/api-management}/feature-usage',
+  // Fixed, as the route's context is: it must name exactly that route.
+  featureUsageCollectorPath: '/_api/api-management/feature-usage',
 };
 ```
 
