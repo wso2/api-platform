@@ -2248,3 +2248,22 @@ func TestMCPUnusedSiblingKeyIsSwept(t *testing.T) {
 		t.Errorf("wso2.mcp.resource_uri = %v, want the unused sibling to be swept", got["wso2.mcp.resource_uri"])
 	}
 }
+
+func TestBuildRecordBudget(t *testing.T) {
+	event := restEvent()
+	event.API.APIType = "LlmProvider"
+	event.Properties[constants.BudgetPropertyKey] = map[string]interface{}{
+		"names":      []string{"research-monthly", "org-daily"},
+		"costStatus": "usage_unavailable",
+	}
+
+	o := &OTel{cfg: testOTelConfig("http://collector/v1/logs")}
+	got := attrMap(t, o.buildRecord(event))
+
+	if names, _ := got["wso2.budget.names"].([]string); len(names) != 2 || names[0] != "research-monthly" || names[1] != "org-daily" {
+		t.Errorf("wso2.budget.names = %v", got["wso2.budget.names"])
+	}
+	if got["wso2.budget.cost_status"] != "usage_unavailable" {
+		t.Errorf("wso2.budget.cost_status = %v", got["wso2.budget.cost_status"])
+	}
+}

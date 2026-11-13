@@ -316,6 +316,11 @@ func (m *Moesif) Publish(event *dto.Event) {
 		} else {
 			slog.Warn("AI Token Usage data cannot be found in the event properties")
 		}
+
+		// Budgets the request counted against and how it was priced: metadata.budget.*
+		if budget, ok := event.Properties[constants.BudgetPropertyKey].(map[string]interface{}); ok && len(budget) > 0 {
+			metadataMap["budget"] = budget
+		}
 	}
 
 	// MCP Analytics

@@ -20,10 +20,13 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"sort"
 
+	adminapi "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/admin"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -168,4 +171,44 @@ func budgetValidationResponse(invalid *budget.ValidationError) api.ErrorResponse
 		details = append(details, api.ValidationError{Field: &field, Message: &message})
 	}
 	return api.ErrorResponse{Status: "error", Message: "Budget validation failed", Errors: &details}
+}
+
+// configDumpBudgets lists the stored budgets for the config dump, in name order, each
+// marked enforced when it is published to the policy engine.
+func (s *APIServer) configDumpBudgets() ([]adminapi.ConfigDumpBudgetItem, error) {
+	if s.budgetService == nil {
+		return []adminapi.ConfigDumpBudgetItem{}, nil
+	}
+	cfgs, err := s.budgetService.List()
+	if err != nil {
+		return nil, err
+	}
+	published := map[string]bool{}
+	if s.budgetPublisher != nil {
+		published = s.budgetPublisher.PublishedNames()
+	}
+	sort.Slice(cfgs, func(i, j int) bool { return cfgs[i].Handle < cfgs[j].Handle })
+	items := make([]adminapi.ConfigDumpBudgetItem, 0, len(cfgs))
+	for _, cfg := range cfgs {
+		configuration, err := toGenericMap(cfg.SourceConfiguration)
+		if err != nil {
+			return nil, fmt.Errorf("budget %q: %w", cfg.Handle, err)
+		}
+		id, err := uuidToOpenAPIUUID(cfg.UUID)
+		if err != nil {
+			return nil, fmt.Errorf("budget %q: %w", cfg.Handle, err)
+		}
+		createdAt, updatedAt := cfg.CreatedAt, cfg.UpdatedAt
+		items = append(items, adminapi.ConfigDumpBudgetItem{
+			Id:            id,
+			Configuration: &configuration,
+			Metadata: &adminapi.ConfigDumpBudgetMetadata{
+				Origin:    ptr(string(cfg.Origin)),
+				Enforced:  ptr(published[cfg.Handle]),
+				CreatedAt: &createdAt,
+				UpdatedAt: &updatedAt,
+			},
+		})
+	}
+	return items, nil
 }

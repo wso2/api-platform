@@ -230,3 +230,25 @@ scenarios:
       refs:
         - feature: suites/it/features/gateway/core/budget_management.feature
           scenario: "A call through an LLM proxy is charged once, on its provider's budget"
+  - id: BUDGET-021
+    title: "A call an Allow budget covers is published with metadata.budget.names naming the budget and metadata.budget.costStatus priced; a call to a provider without a budget carries no budget property."
+    priority: P2
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/observability/analytics_budget.feature
+          scenario: "A request a budget covers names the budget and its cost status; others carry no budget"
+  - id: BUDGET-022
+    title: "A call through an LLM proxy is published once, as the proxy's event, carrying metadata.budget.names and metadata.budget.costStatus from the provider hop where the budget counted it."
+    priority: P2
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/observability/analytics_budget.feature
+          scenario: "A call through an LLM proxy publishes the budget on the proxy's event"

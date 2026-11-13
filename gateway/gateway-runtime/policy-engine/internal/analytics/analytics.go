@@ -129,6 +129,9 @@ type Analytics struct {
 	// a miss, falling back to decoding headers from the access-log entry's own
 	// metadata, so every existing caller keeps working unchanged.
 	correlationStore *correlation.Store
+	// loopback holds what an LLM proxy call's suppressed provider hop carried (budget,
+	// cost) until the proxy's own event for the same request takes it.
+	loopback *loopbackCarryover
 }
 
 // SetCorrelationStore wires the ext_proc↔ALS correlation store into this
@@ -197,6 +200,7 @@ func NewAnalytics(cfg *config.Config) *Analytics {
 	return &Analytics{
 		cfg:        cfg,
 		publishers: publishers,
+		loopback:   newLoopbackCarryover(),
 	}
 }
 
@@ -233,8 +237,10 @@ func (c *Analytics) Process(event *v3.HTTPAccessLogEntry) {
 			"apiType", apiType,
 			"correlationId", correlationID,
 		)
+		c.loopback.keep(event.GetRequest().GetRequestId(), analyticEvent)
 		return
 	}
+	c.loopback.apply(event.GetRequest().GetRequestId(), analyticEvent)
 
 	for _, publisher := range c.publishers {
 		publisher.Publish(analyticEvent)
@@ -601,6 +607,12 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	}
 	if guardrailName, exists := keyValuePairsFromMetadata[constants.GuardrailNameMetadataKey]; exists && guardrailName != "" {
 		event.Properties[constants.GuardrailNameMetadataKey] = guardrailName
+	}
+
+	// Forward the budget system policy's properties: the budgets the request counted
+	// against (handles only, never allowance values) and how it was priced.
+	if budget := budgetProperty(typedValuePairsFromMetadata); budget != nil {
+		event.Properties[constants.BudgetPropertyKey] = budget
 	}
 
 	// Only a POST invokes a model. Reading a stored result back (GET /responses/{id}) returns
@@ -1191,4 +1203,34 @@ func (c *Analytics) getAnonymousApp() *dto.Application {
 	application.KeyType = anonymousValue
 	application.ApplicationOwner = anonymousValue
 	return application
+}
+
+// budgetProperty builds the event's "budget" property from the budget system policy's
+// analytics metadata: {"names": [...], "costStatus": "..."}, each only when set. It
+// returns nil when the request was not covered by any budget.
+func budgetProperty(values map[string]interface{}) map[string]interface{} {
+	budget := map[string]interface{}{}
+	switch names := values[constants.BudgetNamesMetadataKey].(type) {
+	case []interface{}:
+		list := make([]string, 0, len(names))
+		for _, n := range names {
+			if name, ok := n.(string); ok && name != "" {
+				list = append(list, name)
+			}
+		}
+		if len(list) > 0 {
+			budget["names"] = list
+		}
+	case string:
+		if names != "" {
+			budget["names"] = strings.Split(names, ",")
+		}
+	}
+	if status, ok := values[constants.BudgetCostStatusMetadataKey].(string); ok && status != "" {
+		budget["costStatus"] = status
+	}
+	if len(budget) == 0 {
+		return nil
+	}
+	return budget
 }
