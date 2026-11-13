@@ -153,6 +153,9 @@ package-event-gateway: ## Package event gateway as a self-contained zip (wso2api
 	 cp event-gateway/gateway-runtime/configs/channels.yaml "$$DIST/configs/event-gateway/channels.yaml" && \
 	 cp gateway/gateway-controller/certificates/default-listener.crt "$$DIST/certificates/" && \
 	 cp event-gateway/docker-compose.yaml "$$DIST/docker-compose.yaml" && \
+	 mkdir -p "$$DIST/scripts" && \
+	 cp event-gateway/scripts/setup.sh "$$DIST/scripts/setup.sh" && \
+	 chmod +x "$$DIST/scripts/setup.sh" && \
 	 cd "$$STAGE" && zip -r "$(CURDIR)/wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION).zip" wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION)/ && \
 	 rm -rf "$$STAGE"
 	@echo "Created: wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION).zip"

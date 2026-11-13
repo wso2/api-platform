@@ -54,14 +54,10 @@ From the `event-gateway/` directory:
 cp .env.example .env
 # edit .env and set GATEWAY_REGISTRATION_TOKEN
 
-# Generates the HTTPS listener certificate/key at ../gateway/gateway-controller/listener-certs,
-# which this stack's gateway-controller and event-gateway services both mount. Safe to rerun;
-# only regenerates with --force.
-../gateway/scripts/setup.sh --certs-only
-
-# setup.sh locks the key to the main gateway's own container UID (10001) on Linux.
-# event-gateway's runtime container runs as a different UID, so widen it here too.
-chmod 644 ../gateway/gateway-controller/listener-certs/default-listener.key
+# Generates the HTTPS listener certificate/key at ./listener-certs, which this
+# stack's gateway-controller and event-gateway services both mount. Safe to
+# rerun; only regenerates with --force.
+./scripts/setup.sh
 
 docker compose up
 ```
@@ -621,8 +617,7 @@ running:
 
 ```bash
 cd event-gateway
-../gateway/scripts/setup.sh --certs-only
-chmod 644 ../gateway/gateway-controller/listener-certs/default-listener.key
+./scripts/setup.sh
 docker compose up -d
 ```
 
