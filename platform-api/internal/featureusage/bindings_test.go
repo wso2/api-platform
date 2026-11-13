@@ -170,7 +170,7 @@ func TestCheckBindingsRejectsAMistake(t *testing.T) {
 func TestCheckBindingsRejectsAStringDimensionFromTheRequest(t *testing.T) {
 	tax, err := ParseTaxonomy([]byte(`product:
   id: "apip"
-  name: "WSO2 API Platform"
+  name: "API Platform"
 features:
   - code: "apip.policies.policy-attach"
     name: "Policy attach"
