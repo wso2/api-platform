@@ -44,6 +44,46 @@ const CSRF_COOKIE_NAME = 'XSRF-TOKEN';
 // Hence: expire both names at both paths.
 const CLEARED_COOKIE_PATHS = [constants.ROUTE.BASE_PATH, '/'];
 
+// Number of proxy hops in front of the portal whose X-Forwarded-* headers are trusted
+// (Express `trust proxy`). One: the hop that terminates TLS for us, kgateway in the
+// cloud or the operator's own load balancer on-prem. That is what lets req.secure, and
+// with it the cookies' Secure flag below, follow the scheme the browser actually used.
+const TRUSTED_PROXY_HOPS = 1;
+
+/**
+ * Cookie options for express-session's session cookie.
+ *
+ * secure: 'auto' sets Secure whenever the request arrived over HTTPS, terminated by
+ * this process or by the trusted proxy. Keying it to server.https.enabled instead left
+ * it off wherever TLS ends upstream, which is every cloud portal.
+ */
+function sessionCookieOptions({ designMode = false } = {}) {
+    return {
+        secure: designMode ? false : 'auto',
+        httpOnly: true,
+        // Lax still sends the cookie on the top-level redirect back from the IdP.
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 1000,
+        // Must match the paths the browser actually requests — a mismatched cookie path
+        // is a silent login loop. See app.js on why the session mount matches it.
+        path: constants.ROUTE.BASE_PATH,
+    };
+}
+
+/**
+ * Cookie options for the browser-readable XSRF cookie. res.cookie has no 'auto', so
+ * Secure follows req.secure, which honours the trusted proxy the same way.
+ */
+function csrfCookieOptions(req, { designMode = false } = {}) {
+    return {
+        sameSite: 'lax',
+        secure: req.secure && !designMode,
+        // Same scope as the session cookie — the double-submit token is only ever echoed
+        // back from pages served under BASE_PATH.
+        path: constants.ROUTE.BASE_PATH,
+    };
+}
+
 /**
  * Expires the session and CSRF cookies at every path they may have been written at.
  * Call on any path that ends a session (logout, logout landing, a 401 that destroys it).
@@ -59,5 +99,8 @@ module.exports = {
     SESSION_COOKIE_NAME,
     CSRF_COOKIE_NAME,
     CLEARED_COOKIE_PATHS,
+    TRUSTED_PROXY_HOPS,
+    sessionCookieOptions,
+    csrfCookieOptions,
     clearPortalCookies,
 };

@@ -579,16 +579,11 @@ const loadDocsPage = async (req, res, next) => {
 // Origin (scheme + host) the browser used for this request, for the rare case a
 // rendered page needs an absolute self-referencing URL rather than a path.
 //
-// X-Forwarded-Proto is honoured explicitly because the app does not enable
-// Express's `trust proxy`, so req.protocol otherwise reports the scheme of the
-// connection reaching this process — 'http' for any deployment where TLS is
-// terminated upstream, which would render an unusable mixed-content URL. A
-// spoofed header only affects the scheme in the spoofer's own page render;
-// nothing server-side is authorized off this value.
+// req.protocol follows the TLS-terminating proxy's X-Forwarded-Proto (app.js trusts
+// that one hop), so a deployment that terminates TLS upstream still renders an https
+// URL rather than an unusable mixed-content one.
 function requestOrigin(req) {
-    const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
-    const protocol = forwardedProto || req.protocol;
-    return `${protocol}://${req.get('host')}`;
+    return `${req.protocol}://${req.get('host')}`;
 }
 
 const TRYOUT_CAPABLE_TYPES = new Set([
