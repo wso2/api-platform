@@ -575,6 +575,26 @@ blocks:
         features:
           - features/gateway/observability/mcp_analytics.feature
 
+  # The management and admin MCP endpoints are switched on (gateway-controller-mcp.toml), a
+  # controller setting gateway-core's runners must not see.
+  - name: gateway-controller-mcp
+    parallel: 2
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-controller-mcp.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: gateway-controller-mcp
+        tags: "gateway-version>1.2.1"
+        features:
+          - features/gateway/mcp-server/controller_mcp.feature
+      - name: gateway-controller-admin-mcp
+        tags: "gateway-version>1.2.1"
+        features:
+          - features/gateway/mcp-server/controller_admin_mcp.feature
+
   # The listener's request header timeout is 5s (backend-timeout.toml), a gateway-wide setting
   # gateway-core's runners must not see.
   - name: backend-timeout

@@ -39,6 +39,7 @@ var managementCollections = map[cleanup.Kind]string{
 	cleanup.KindLLMProviderTemplate: "/llm-provider-templates",
 	cleanup.KindMCPProxy:            "/mcp-proxies",
 	cleanup.KindAgent:               "/agents",
+	cleanup.KindGraphQLAPI:          "/graphql-apis",
 	cleanup.KindCertificate:         certificatesCollection,
 	cleanup.KindSecret:              "/secrets",
 	cleanup.KindSubscription:        "/subscriptions",

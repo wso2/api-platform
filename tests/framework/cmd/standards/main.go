@@ -55,6 +55,8 @@ var cleanupCreationMethods = map[string]struct{}{
 	"createAPI":                  {},
 	"createJSONAPI":              {},
 	"createResourceFromTemplate": {},
+	"deployAPIThroughMCP":        {},
+	"trackMCPToolResource":       {},
 }
 
 func main() {

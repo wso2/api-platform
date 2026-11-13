@@ -21,6 +21,64 @@ servers:
     description: Docker/Kubernetes admin server
 
 paths:
+  /mcp:
+    post:
+      summary: Administrative Model Context Protocol endpoint
+      description: |
+        Single MCP endpoint (Streamable HTTP, MCP 2026-07-28) exposing read-only
+        gateway status and configuration-dump tools to MCP clients.
+      operationId: handleAdminMcp
+      tags:
+        - MCP
+      security:
+        - basicAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        description: A single JSON-RPC 2.0 message.
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: JSON-RPC response.
+          content:
+            application/json:
+              schema:
+                type: object
+        "400":
+          description: Body was not a single JSON-RPC message.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: |
+            Missing or invalid credentials. Carries a `WWW-Authenticate: Bearer`
+            challenge naming the protected resource metadata document.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnauthorizedResponse"
+        "403":
+          description: |
+            The caller lacks the required role, or lacks a scope required by the
+            requested tool. Carries an RFC 6750 `insufficient_scope` challenge so
+            a client can step up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForbiddenResponse"
+        "404":
+          description: The MCP endpoint is not enabled on this gateway.
+        "413":
+          description: Request body exceeds the configured maximum size.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /config_dump:
     get:
       summary: Dump current configuration state
@@ -122,6 +180,15 @@ security:
 
 components:
   securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        OAuth 2.0 bearer token validated against `controller.auth.idp`. The admin
+        server shares the management API's authentication middleware, so a JWT is
+        accepted on every admin endpoint; it is named explicitly here because the
+        MCP endpoint is an OAuth protected resource and its challenges assume it.
     basicAuth:
       type: http
       scheme: basic
