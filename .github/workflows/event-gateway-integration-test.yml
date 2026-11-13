@@ -76,7 +76,13 @@ jobs:
       # for their HTTPS listener. The file is no longer committed (it's generated per install),
       # so every compose file used below needs it generated before the first `docker compose up`.
       - name: Generate gateway listener TLS certificate
-        run: ./gateway/scripts/setup.sh --certs-only
+        run: |
+          ./gateway/scripts/setup.sh --certs-only
+          # setup.sh restricts the key to UID 10001 (the main gateway's fixed container
+          # UID) via setfacl. event-gateway-runtime runs as a different, non-root UID
+          # ("egw") and reads this same key through the bind mount above, so widen it
+          # here rather than loosening setup.sh's hardening for its primary consumer.
+          chmod 644 gateway/gateway-controller/listener-certs/default-listener.key
 
       - name: Read version
         id: version

@@ -59,6 +59,10 @@ cp .env.example .env
 # only regenerates with --force.
 ../gateway/scripts/setup.sh --certs-only
 
+# setup.sh locks the key to the main gateway's own container UID (10001) on Linux.
+# event-gateway's runtime container runs as a different UID, so widen it here too.
+chmod 644 ../gateway/gateway-controller/listener-certs/default-listener.key
+
 docker compose up
 ```
 
@@ -618,6 +622,7 @@ running:
 ```bash
 cd event-gateway
 ../gateway/scripts/setup.sh --certs-only
+chmod 644 ../gateway/gateway-controller/listener-certs/default-listener.key
 docker compose up -d
 ```
 
