@@ -4983,13 +4983,16 @@ func TestActiveAPIPortalID(t *testing.T) {
 	id, err := activeAPIPortalID([]map[string]any{
 		{"id": "pending-portal", "status": "pending"},
 		{"id": "", "status": "active"},
+		{"id": "syn-portal-abc-1", "status": "active"},
 		{"id": "live-portal", "status": "active"},
 	})
 	require.NoError(t, err)
-	require.Equal(t, "live-portal", id)
+	require.Equal(t, "live-portal", id, "a portal a scenario created is never the one to publish to")
 
 	_, err = activeAPIPortalID(nil)
 	require.ErrorContains(t, err, "no managed API Portal")
+	_, err = activeAPIPortalID([]map[string]any{{"id": "syn-portal-abc-1", "status": "active"}})
+	require.ErrorContains(t, err, "no managed API Portal that a scenario did not create")
 	_, err = activeAPIPortalID([]map[string]any{{"id": "failed-portal", "status": "failed"}})
 	require.ErrorContains(t, err, "failed-portal: failed")
 }
@@ -5440,15 +5443,23 @@ func TestRequirePortalDetailsNamesWhatIsMissing(t *testing.T) {
 	require.ErrorContains(t, err, "status")
 }
 
-func TestRequireNoSecretNamesTheMarkerNotTheBody(t *testing.T) {
-	require.NoError(t, requireNoSecret([]byte(`{"id":"syn-portal-1","name":"Synthetic","status":"active"}`)))
+func TestRequireNoSecretChecksFieldNamesAndNamesTheMarkerNotTheBody(t *testing.T) {
 	for _, body := range []string{
-		`{"sharedKey":"x"}`, `{"shared_key":"x"}`, `{"clientSecret":"x"}`, `{"dbPassword":"x"}`, `{"note":"the Secret is here"}`,
+		`{"id":"syn-portal-1","name":"Synthetic","status":"active"}`,
+		`{"name":"Secrets documentation","description":"The password policy and the shared key rules."}`,
+		`{"list":[{"id":"a","description":"client_secret is rotated yearly"}]}`,
+	} {
+		require.NoError(t, requireNoSecret([]byte(body)), body)
+	}
+	for _, body := range []string{
+		`{"sharedKey":"x"}`, `{"shared_key":"x"}`, `{"clientSecret":"x"}`, `{"dbPassword":"x"}`,
+		`{"list":[{"id":"a","sharedKey":"x"}]}`, `{"nested":{"deeper":{"client_secret":"x"}}}`,
 	} {
 		err := requireNoSecret([]byte(body))
 		require.Error(t, err, body)
 		require.NotContains(t, err.Error(), `"x"`, "the error never repeats the body")
 	}
+	require.ErrorContains(t, requireNoSecret([]byte("not json")), "not JSON")
 }
 
 func TestAssertPortalLocationNamesTheRunnerPortal(t *testing.T) {
@@ -5511,6 +5522,8 @@ func TestThumbnailDefectsAreRefusableContent(t *testing.T) {
 	large := thumbnailDefects["larger than 2 MiB"]()
 	require.Greater(t, len(large), thumbnailMaxBytes)
 	require.Equal(t, pngSignature, large[:len(pngSignature)])
+	_, err := png.Decode(bytes.NewReader(large))
+	require.NoError(t, err, "the oversized thumbnail is a real image, so only its size can refuse it")
 
 	valid, err := thumbnailPNG()
 	require.NoError(t, err)

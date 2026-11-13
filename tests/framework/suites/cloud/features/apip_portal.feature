@@ -724,8 +724,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And I save a valid definition on the publication draft of the synthetic REST API
     And I publish the synthetic REST API on the managed API Portal
     Then the cloud API response status code should be 200
-    When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}.md" from the synthetic managed API Portal until status 200
-    Then the portal answer should contain "Edited ${CTX:cloudAPIID}"
+    When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}.md" from the synthetic managed API Portal until status 200 containing "Edited ${CTX:cloudAPIID}"
 
   @ID_APIP_PORTAL_058 @layer:inherited
   Scenario: A deprecated API is still served by the portal

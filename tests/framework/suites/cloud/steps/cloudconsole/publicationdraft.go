@@ -21,6 +21,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
+	"math/rand/v2"
 	"net/http"
 	"sort"
 	"strings"
@@ -43,9 +46,24 @@ var pngSignature = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 // scenario describes it.
 var thumbnailDefects = map[string]func() []byte{
 	"text declared as PNG": func() []byte { return []byte(notAnImage) },
-	"larger than 2 MiB": func() []byte {
-		return append(append([]byte{}, pngSignature...), make([]byte, thumbnailMaxBytes+1024)...)
-	},
+	"larger than 2 MiB":    oversizedPNG,
+}
+
+// oversizedPNG returns a PNG that decodes and is larger than thumbnailMaxBytes, so a refusal can
+// only come from the size limit. Random pixels do not compress, so an image of this size always
+// passes the limit; the seed is fixed, so every run sends the same bytes.
+func oversizedPNG() []byte {
+	const side = 1024
+	random := rand.New(rand.NewPCG(1, 2))
+	img := image.NewNRGBA(image.Rect(0, 0, side, side))
+	for i := range img.Pix {
+		img.Pix[i] = byte(random.UintN(256))
+	}
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, img); err != nil {
+		panic(fmt.Sprintf("encoding the oversized thumbnail: %v", err))
+	}
+	return encoded.Bytes()
 }
 
 // registerPublicationDraftSteps binds the steps that probe what a publication draft accepts and

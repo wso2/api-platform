@@ -56,7 +56,7 @@ var portalServePollInterval = 3 * time.Second
 // visitor or as the control plane would, and the checks that follow a portal's deletion.
 func (s *Steps) registerPortalRuntimeSteps(sc stepRegistrar) {
 	sc.Step(`^I request "([^"]*)" from the synthetic managed API Portal$`, s.requestFromPortal)
-	sc.Step(`^I request "([^"]*)" from the synthetic managed API Portal until status (\d+)$`, s.requestFromPortalUntilStatus)
+	sc.Step(`^I request "([^"]*)" from the synthetic managed API Portal until status (\d+)(?: containing "([^"]*)")?$`, s.requestFromPortalUntilStatus)
 	sc.Step(`^I request "([^"]*)" from the synthetic managed API Portal with a wrong shared key$`, s.requestFromPortalWithWrongSharedKey)
 	sc.Step(`^I follow the front door of the synthetic managed API Portal to its view$`, s.followPortalFrontDoor)
 	sc.Step(`^the portal answer should (contain|not contain) "([^"]*)"$`, s.assertPortalAnswerText)
@@ -141,13 +141,18 @@ func (s *Steps) requestFromPortalWithWrongSharedKey(ctx context.Context, path st
 
 // requestFromPortalUntilStatus repeats an anonymous GET of a path of the runner's portal until it
 // answers with the status, and publishes that answer.
-func (s *Steps) requestFromPortalUntilStatus(ctx context.Context, path string, status int) error {
+func (s *Steps) requestFromPortalUntilStatus(ctx context.Context, path string, status int, text string) error {
 	path, err := expandCloudValue(ctx, path)
 	if err != nil {
 		return err
 	}
+	if text, err = expandCloudValue(ctx, text); err != nil {
+		return err
+	}
 	httpx.ClearPublished(ctx)
-	accept := func(resp *httpx.Response) bool { return resp != nil && resp.StatusCode == status }
+	accept := func(resp *httpx.Response) bool {
+		return resp != nil && resp.StatusCode == status && strings.Contains(string(resp.Body), text)
+	}
 	resp, err := retry.Until(ctx, retry.Options{Timeout: portalServeTimeout, Interval: portalServePollInterval},
 		func(ctx context.Context) (*httpx.Response, error) {
 			resp, err := s.portalRequest(ctx, http.MethodGet, path, nil)
@@ -157,12 +162,20 @@ func (s *Steps) requestFromPortalUntilStatus(ctx context.Context, path string, s
 			return resp, nil
 		}, accept)
 	if err != nil {
-		return fmt.Errorf("waiting for the portal to answer %s with %d: %w", path, status, err)
+		return fmt.Errorf("waiting for the portal to answer %s with %d%s: %w", path, status, containing(text), err)
 	}
 	if !accept(resp) {
-		return fmt.Errorf("the portal never answered %s with %d; the last answer was %s", path, status, resp.Describe())
+		return fmt.Errorf("the portal never answered %s with %d%s; the last answer was %s", path, status, containing(text), resp.Describe())
 	}
 	return s.publishPortalAnswer(ctx, resp)
+}
+
+// containing words the text an answer must carry, or nothing when none is required.
+func containing(text string) string {
+	if text == "" {
+		return ""
+	}
+	return fmt.Sprintf(" and containing %q", text)
 }
 
 // portalViewPath returns the organisation and view of a portal path of the form

@@ -142,20 +142,30 @@ func (s *Steps) findActiveAPIPortal(ctx context.Context) error {
 	return tcontext.Set(ctx, keyAPIPortalID, id)
 }
 
+// syntheticPortalPrefix starts the handle of every portal a scenario creates for itself. Those
+// portals belong to the runner, are deleted by its last scenario and are not the portal the
+// publication scenarios publish to.
+const syntheticPortalPrefix = "syn-portal-"
+
+// activeAPIPortalID returns the first active portal that no scenario created: the portal the
+// starter prepared or one the organisation already had.
 func activeAPIPortalID(items []map[string]any) (string, error) {
 	statuses := make([]string, 0, len(items))
 	for _, item := range items {
 		id, _ := item["id"].(string)
 		status, _ := item["status"].(string)
+		if strings.HasPrefix(id, syntheticPortalPrefix) {
+			continue
+		}
 		if strings.TrimSpace(id) != "" && status == "active" {
 			return id, nil
 		}
 		statuses = append(statuses, fmt.Sprintf("%s: %s", id, status))
 	}
-	if len(items) == 0 {
-		return "", fmt.Errorf("the organization has no managed API Portal")
+	if len(statuses) == 0 {
+		return "", fmt.Errorf("the organization has no managed API Portal that a scenario did not create")
 	}
-	return "", fmt.Errorf("no active managed API Portal among %d listed: %s", len(items), strings.Join(statuses, "; "))
+	return "", fmt.Errorf("no active managed API Portal among %d listed: %s", len(statuses), strings.Join(statuses, "; "))
 }
 
 func (s *Steps) createPlan(ctx context.Context) error {

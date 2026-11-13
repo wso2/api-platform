@@ -38,9 +38,10 @@ const (
 	portalDescriptionMaxLength = 1023
 )
 
-// portalSecretMarkers are fragments of a field name or value that a managed API Portal's answer
-// must never carry: the shared key between the control plane and the portal, and the credentials
-// of the portal's identity-provider client.
+// portalSecretMarkers are fragments of a field name that a managed API Portal's answer must never
+// carry: the shared key between the control plane and the portal, and the credentials of the
+// portal's identity-provider client. Only field names are checked, so an ordinary name or
+// description such as "Secrets documentation" is not taken for a leak.
 var portalSecretMarkers = []string{"sharedkey", "shared_key", "clientsecret", "client_secret", "password", "secret"}
 
 // portalCreateBodyDefects turn a valid portal create body into one the platform must refuse before
@@ -277,16 +278,42 @@ func (s *Steps) assertPortalAnswerHasNoSecret(ctx context.Context) error {
 	return requireNoSecret(resp.Body)
 }
 
-// requireNoSecret fails when a body carries any of the portal secret markers. The matching marker
-// is named, never the body.
+// requireNoSecret fails when any field name of a JSON body, at any depth, carries one of the portal
+// secret markers. The matching marker is named, never the body.
 func requireNoSecret(body []byte) error {
-	text := strings.ToLower(string(body))
-	for _, marker := range portalSecretMarkers {
-		if strings.Contains(text, marker) {
-			return fmt.Errorf("the managed API Portal answer carries %q, which would reveal a secret of the portal", marker)
-		}
+	var document any
+	if err := json.Unmarshal(body, &document); err != nil {
+		return fmt.Errorf("the managed API Portal answer is not JSON, so it cannot be checked for secrets: %w", err)
+	}
+	if marker := secretMarkerIn(document); marker != "" {
+		return fmt.Errorf("the managed API Portal answer has a field named after %q, which would reveal a secret of the portal", marker)
 	}
 	return nil
+}
+
+// secretMarkerIn returns the first portal secret marker found in a field name of the value, or "".
+func secretMarkerIn(value any) string {
+	switch typed := value.(type) {
+	case map[string]any:
+		for name, nested := range typed {
+			lower := strings.ToLower(name)
+			for _, marker := range portalSecretMarkers {
+				if strings.Contains(lower, marker) {
+					return marker
+				}
+			}
+			if marker := secretMarkerIn(nested); marker != "" {
+				return marker
+			}
+		}
+	case []any:
+		for _, nested := range typed {
+			if marker := secretMarkerIn(nested); marker != "" {
+				return marker
+			}
+		}
+	}
+	return ""
 }
 
 // assertPortalLocation checks the published answer's Location header names the runner's portal.
