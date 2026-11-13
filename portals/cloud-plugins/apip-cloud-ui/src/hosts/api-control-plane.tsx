@@ -20,7 +20,7 @@ import {
 } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
 import { MarketingConsentGate } from '@wso2-enterprise/apip-cloud-ui-marketing-consent';
 import { AppSwitcherButton } from '@wso2-enterprise/apip-cloud-ui-app-switcher';
-import { SettingsButton } from '@wso2-enterprise/apip-cloud-ui-settings';
+import { ManageProjectButton, SettingsButton } from '@wso2-enterprise/apip-cloud-ui-settings';
 import { nameFromPort } from '@wso2-enterprise/apip-cloud-ui-user-profile';
 import {
   EntitlementsGate,
@@ -36,6 +36,7 @@ import {
   PAGE_API_DEPLOY_SLOT,
   PAGE_GRAPHQL_API_DEPLOY_SLOT,
   PAGE_GATEWAYS_SLOT,
+  PROJECT_HEADER_ACTIONS_SLOT,
   type ApiControlPlaneCloudEntry,
   type ApiControlPlaneExtension,
 } from '../../../../api-control-plane/src/extensions';
@@ -64,6 +65,14 @@ const CLOUD_DEPLOY_SCOPES = [
   'ap:graphql_api:deployment:manage',
   'ap:graphql_api:manage',
 ] as const;
+
+/**
+ * Scopes that change a project (the accepted list of UpdateProject): one of them
+ * is needed for the Manage project button, as the WSO2 Cloud console shows its
+ * own Manage button only to someone who may change the project. Project delete
+ * is left out: WSO2 Cloud's roles do not grant it.
+ */
+const MANAGE_PROJECT_SCOPES = ['ap:project:update', 'ap:project:manage'] as const;
 
 /** Cloud console branding used by the host header and login page. */
 export const cloudBrandLogo: BrandLogo = {
@@ -220,6 +229,10 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
     // one, so that portal's header is unchanged. Ordered after the trial badge, and
     // the header lays its action slot out ahead of the theme switcher, so the icon
     // sits between them.
+    //
+    // The project overview's Manage project button, which opens the WSO2 Cloud
+    // console's manage page for the project, where it is edited and deleted. Shown
+    // with a project in scope and to someone who may change it (MANAGE_PROJECT_SCOPES).
     id: 'settings',
     version: '0.1.0',
     extensions: [
@@ -228,6 +241,18 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         slot: HEADER_ACTIONS_SLOT,
         order: 20,
         render: () => <SettingsButton />,
+      },
+      {
+        id: 'manage-project-button',
+        slot: PROJECT_HEADER_ACTIONS_SLOT,
+        order: 10,
+        render: (port) =>
+          port.projectHandle && port.permissions.canAny(MANAGE_PROJECT_SCOPES) ? (
+            <ManageProjectButton
+              consoleUrl={runtimeConfig.cloudConsoleUrl}
+              projectHandle={port.projectHandle}
+            />
+          ) : null,
       },
     ],
   }),

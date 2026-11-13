@@ -37,8 +37,11 @@ const messages = defineMessages({
 /** How long the button stays in its confirmed state after a copy. */
 const COPIED_FEEDBACK_MS = 1500;
 
-/** A shell command block with a copy-to-clipboard button in its corner. */
-export function CopyableCommand({ code }: { code: string }) {
+/**
+ * A shell command block with a copy-to-clipboard button in its corner.
+ * `onCopy` runs after each successful copy; a write the clipboard refused is not one.
+ */
+export function CopyableCommand({ code, onCopy }: { code: string; onCopy?: () => void }) {
   const intl = useIntl();
   const [copied, setCopied] = useState(false);
 
@@ -54,6 +57,7 @@ export function CopyableCommand({ code }: { code: string }) {
       setCopied(true);
       window.clearTimeout(resetTimer.current);
       resetTimer.current = window.setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+      onCopy?.();
     } catch {
       // No clipboard permission (or no clipboard at all, over plain HTTP). The
       // command is still on screen and selectable, so there is nothing useful

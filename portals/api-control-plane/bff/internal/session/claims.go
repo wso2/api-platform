@@ -170,6 +170,9 @@ func UserFromClaims(claims, idClaims map[string]any, m ClaimMapping) User {
 	roleList := strSliceClaim(claims, m.Roles)
 
 	u := User{
+		// The access token's subject first, as the console reads it behind a
+		// gateway; an id_token names the same subject.
+		ID:      first(strClaim(claims, "sub"), strClaim(idClaims, "sub")),
 		Name:    first(get(m.DisplayName), get(m.Username), get(m.Email), get("sub")),
 		Email:   get(m.Email),
 		Role:    strings.Join(roleList, " "),

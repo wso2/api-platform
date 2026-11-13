@@ -322,6 +322,7 @@ func registerUIDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) 
 	reg.RegisterDeleter(cleanup.KindAPIKey, deleteAPIKey(auth))
 	reg.RegisterDeleter(cleanup.KindAPI, platformAPIDeleter(auth, "/api/v0.9/rest-apis"))
 	reg.RegisterDeleter(managementportal.KindGraphQLAPI, platformAPIDeleter(auth, "/api/v0.9/graphql-apis"))
+	reg.RegisterDeleter(managementportal.KindAPIPortal, platformAPIDeleter(auth, "/api/v0.9/api-portals"))
 	secondOrganization := &platformAPIAuth{topo: topo, client: client, secondOrganization: true}
 	reg.RegisterDeleter(managementportal.KindSecondOrganizationRESTAPI,
 		platformAPIDeleter(secondOrganization, "/api/v0.9/rest-apis"))

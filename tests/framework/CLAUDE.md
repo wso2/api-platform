@@ -481,6 +481,9 @@ To add a feature to the suite:
    `blocks/<products>.yaml` with the same header as the other files, list it in
    `blockFiles`, and add it to the table above.
 
+- Keep a general-purpose block first in each block file. When a step package changes, CI runs
+  the first block of every file as a sample (`cmd/affectedblocks`), to catch a step hook that
+  fails in blocks without that package's product.
 - Do not put blocks back in `it-suite.yaml`.
 - Block names are unique across all the files; the loader rejects a duplicate.
 - Feature paths in a block file are relative to `suites/it`, the same as in `it-suite.yaml`.

@@ -32,10 +32,12 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 
 COPY . .
+# The build needs about 3 GB of heap. Node's default is sized from the machine's memory and
+# is about 2.2 GB on a 12 GB Docker VM, so set it rather than depend on the build host.
 RUN if [ "$ENABLE_COVERAGE" = "true" ]; then \
         NODE_OPTIONS=--max-old-space-size=8192 VITE_COVERAGE=true VITE_APP_BASE_PATH=/ npm run build -- --sourcemap hidden; \
     else \
-        VITE_APP_BASE_PATH=/ npm run build; \
+        NODE_OPTIONS=--max-old-space-size=4096 VITE_APP_BASE_PATH=/ npm run build; \
     fi
 
 ###########################

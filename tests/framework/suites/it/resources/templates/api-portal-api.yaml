@@ -1,0 +1,8 @@
+id: ${VALUE:id}
+name: ${VALUE:name}
+version: v1.0
+type: REST
+status: PUBLISHED
+endPoints:
+  productionURL: https://backend.example.invalid
+  sandboxURL: https://sandbox.example.invalid

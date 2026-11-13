@@ -29,6 +29,7 @@ import {
 import { AppPage } from '@/components/AppPage';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
+import { useTrackFeature } from '@/featureUsage';
 import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { resuppliedSchemaSource } from '../utils/graphqlApiMetadataUpdate';
@@ -144,6 +145,7 @@ function GraphqlApiEditPageContent() {
   // until apiQuery resolves.
   const sdlQuery = useGraphQLApiSdl(graphqlApiHandler);
   const updateApi = useUpdateGraphQLApi();
+  const trackFeature = useTrackFeature();
 
   const detailPath = routes.graphqlApi(
     params.orgHandle ?? '',
@@ -176,6 +178,7 @@ function GraphqlApiEditPageContent() {
   }
 
   const save = (values: GraphqlApiBasicInfoFormValues) => {
+    trackFeature('apip.manage-apis.api-update-click', { api_type: 'graphql-api' });
     updateApi.mutate(
       { graphqlApiId: graphqlApiHandler, body: toUpdateBody(api, sdl, values) },
       {
