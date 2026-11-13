@@ -1239,9 +1239,20 @@ platform capability; model failover is its first consumer, not its only one.
   specifier is the only generator of a route retry policy. A future feature that adds another
   MUST revisit this rule, or per-provider work silently becomes once-per-request.
 
-  Independently of the above, an upstream filter IS still required for any cluster carrying
-  authored `providers[].policies` — those are per-attempt by definition (FR-012f) and their
-  placement is not a choice.
+  This extends to the publisher's own `providers[].policies`. Those are documented as running
+  once per upstream attempt, and with one attempt that is the same statement as once per request;
+  "only on attempts routed to this provider" is the execution condition they already carry
+  downstream. So a proxy with no failover places them downstream too and generates no upstream
+  filter at all — one condition for the filter rather than two. Probe E3 measured the filter at
+  ~0.6ms warm and 17ms on a cold stream, per request, which is what the equivalence buys back.
+
+  Where they are placed downstream they MUST precede the transformer and the credential, so no
+  policy in the chain sits after the key and can read it (FR-039).
+
+  Nothing MUST synthesise the reserved `wso2.attempt` namespace for a downstream chain. Its
+  PRESENCE is how a policy detects that it is at the per-attempt position — the failover policy
+  branches on exactly that — so writing it where the position is not in use would make every
+  such policy take the wrong branch. Its absence downstream is accurate information.
 - **FR-037h** *(supersedes FR-037a's reasoning, 2026-11-13)*: A provider's response work MUST be
   performed by **unwinding the serving attempt's upstream chain at the head of the downstream
   response chain**, in reverse order, before the route's own response policies run.

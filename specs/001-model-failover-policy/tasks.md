@@ -275,6 +275,21 @@ because they now apply to every author-written upstream policy:
   sees the cluster on every attempt — record requestID to cluster there, same pattern and TTL as
   `attemptBaselineStore`.
 
+- [ ] T030z **End-to-end proof that a cross-vendor failover response is translated back
+  (FR-037h).** T030w's unwind is covered by unit tests for its lookup and no-op paths, and by the
+  placement tests either side of it — but nothing yet asserts the thing that matters: a client
+  sending OpenAI shape to a proxy that fails over to Anthropic receives OpenAI shape back.
+
+  It cannot be written against the current fixtures. Every failover IT backend is an echo server,
+  so the assertions are request-path echoes and a response-shape failure is invisible by
+  construction — which is exactly how this gap survived with the flag enabled in the IT config.
+  Needs a testbench service returning a genuinely vendor-shaped body (the existing `openai`
+  service returns OpenAI shape; an Anthropic-shaped responder does not exist), then a scenario
+  asserting the client sees `choices[]` and not `content_block`.
+
+  Until it exists, the unwind is verified at the unit level only. Treat that as the open risk in
+  this feature, not as coverage.
+
 - [x] T030y **DONE 2026-11-13 — health scope recorded as a decision (FR-018i).** Per-attachment,
   not global. Global per-provider health reads as the obvious choice and is wrong here: grading is
   by status code, and `429` — the dominant trigger — is per-credential, so one API's throttled key
