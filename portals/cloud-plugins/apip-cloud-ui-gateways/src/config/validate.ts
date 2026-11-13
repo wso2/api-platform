@@ -83,7 +83,8 @@ export function validateFieldValue(
     case 'enum': {
       const permitted = field.values ?? [];
       if (typeof value !== 'string' || !permitted.includes(value)) {
-        return `Must be one of ${permitted.join(', ')}`;
+        const shown = permitted.map((option) => field.labels?.[option] ?? option);
+        return `Must be one of ${shown.join(', ')}`;
       }
       return null;
     }
@@ -148,6 +149,14 @@ export function validateFieldValue(
       }
       if (UNRENDERABLE.test(value)) {
         return 'Must not contain control characters or line separators';
+      }
+      if (field.format === 'text' && /[\t\n\r]/.test(value)) {
+        return 'Must be one line, without tabs';
+      }
+      if (field.format === 'header-value') {
+        // The platform's checkHeaderValue: printable ASCII, no surrounding space.
+        if (!/^[\x20-\x7e]*$/.test(value)) return 'Must be printable ASCII';
+        if (value.trim() !== value) return 'Must not start or end with a space';
       }
       return null;
     }

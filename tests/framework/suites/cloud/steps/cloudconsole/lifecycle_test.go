@@ -2458,14 +2458,6 @@ func TestJudgeRejection(t *testing.T) {
 	require.Empty(t, judgeRejection(good), "no expected fragment means any message that names the setting")
 }
 
-func TestConfigValuesFromTable(t *testing.T) {
-	values, err := configValuesFromTable(valuesTable(t, []string{"a.b", "true"}, []string{"c", "text"}, []string{"d", "null"}))
-	require.NoError(t, err)
-	require.Equal(t, map[string]any{"a.b": true, "c": "text", "d": nil}, values)
-	_, err = configValuesFromTable(valuesTable(t, []string{"a", "1"}, []string{"a", "2"}))
-	require.Error(t, err)
-}
-
 func TestValidateConfigurationDocument(t *testing.T) {
 	encode := func(document map[string]any) []byte {
 		raw, err := json.Marshal(document)
@@ -2542,7 +2534,7 @@ func TestAwaitConfigurationReadable(t *testing.T) {
 	require.Equal(t, 2, reads, "a gateway whose release does not exist yet is waited for")
 }
 
-func TestWriteGatewayConfigurationAndLongString(t *testing.T) {
+func TestWriteLongString(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
 	var bodies []map[string]map[string]any
 	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
@@ -2551,14 +2543,11 @@ func TestWriteGatewayConfigurationAndLongString(t *testing.T) {
 		bodies = append(bodies, body)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request", "message": "no"})
 	})
-	require.Error(t, steps.writeGatewayConfiguration(ctx, valuesTable(t, []string{"a", "1"})), "no active gateway was found")
+	require.Error(t, steps.writeLongString(ctx, "gateway.config_toml", 8193), "no active gateway was found")
 	local.Set(keyGatewayID, "dev-gw")
-	require.NoError(t, steps.writeGatewayConfiguration(ctx, valuesTable(t, []string{"a", "1"}, []string{"b", "null"})))
-	require.Equal(t, map[string]any{"a": float64(1), "b": nil}, bodies[0]["values"])
-	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusBadRequest))
-
 	require.NoError(t, steps.writeLongString(ctx, "gateway.config_toml", 8193))
-	require.Len(t, bodies[1]["values"]["gateway.config_toml"], 8193)
+	require.Len(t, bodies[0]["values"]["gateway.config_toml"], 8193)
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusBadRequest))
 	require.Error(t, steps.writeLongString(ctx, "gateway.config_toml", 0))
 }
 

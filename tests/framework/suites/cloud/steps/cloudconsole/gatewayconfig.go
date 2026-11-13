@@ -329,21 +329,6 @@ func (s *Steps) assertConfigurationDocument(ctx context.Context) error {
 	return nil
 }
 
-// writeGatewayConfiguration writes the settings of a table to the synthetic gateway and
-// publishes the response without requiring success.
-func (s *Steps) writeGatewayConfiguration(ctx context.Context, table *godog.Table) error {
-	id, err := configurationGateway(ctx)
-	if err != nil {
-		return err
-	}
-	values, err := configValuesFromTable(table)
-	if err != nil {
-		return err
-	}
-	_, err = s.doAuthenticated(ctx, http.MethodPut, configurationPath(id), map[string]any{"values": values})
-	return err
-}
-
 // writeLongString writes a string of the given length to one setting and publishes the response.
 func (s *Steps) writeLongString(ctx context.Context, path string, length int) error {
 	id, err := configurationGateway(ctx)
