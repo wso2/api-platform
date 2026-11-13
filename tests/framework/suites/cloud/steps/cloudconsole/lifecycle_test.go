@@ -4220,6 +4220,14 @@ func TestRequestDefectivePortalBreaksOneRuleAndRegistersTheHandleFirst(t *testin
 			require.Empty(t, name)
 			require.Regexp(t, `^[a-z0-9-]{3,40}$`, handle, "only the name is wrong")
 		},
+		"a name longer than 255 characters": func(handle, name string) {
+			require.Len(t, name, portalNameMaxLength+1)
+			require.Regexp(t, `^[a-z0-9-]{3,40}$`, handle, "only the name is wrong")
+		},
+		"a description longer than 1023 characters": func(handle, _ string) {
+			require.Regexp(t, `^[a-z0-9-]{3,40}$`, handle, "only the description is wrong")
+			require.Len(t, sent["description"], portalDescriptionMaxLength+1)
+		},
 	}
 	require.Len(t, checks, len(portalRequestDefects), "every defect is checked")
 	for defect, check := range checks {
@@ -5324,4 +5332,160 @@ func TestFinalizerRemovesThePortalTheStarterCreatedAndKeepsOthers(t *testing.T) 
 	require.NoError(t, err)
 	require.Contains(t, removed, "/managed-api-portals/dap-abcde234")
 	require.NotContains(t, removed, "/managed-api-portals/acme-portal")
+}
+
+func TestSendDefectiveCreateBodyRegistersThePortalAndDropsItWhenRefused(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	for _, tc := range []struct {
+		defect string
+		check  func(t *testing.T, raw []byte)
+	}{
+		{"an unknown field", func(t *testing.T, raw []byte) {
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(raw, &body))
+			require.Equal(t, true, body["unexpected"])
+		}},
+		{"an organization field", func(t *testing.T, raw []byte) {
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(raw, &body))
+			require.Contains(t, body, "organization")
+		}},
+		{"a name that is not text", func(t *testing.T, raw []byte) {
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(raw, &body))
+			require.EqualValues(t, 42, body["name"])
+		}},
+		{"malformed JSON", func(t *testing.T, raw []byte) {
+			require.False(t, json.Valid(raw))
+		}},
+	} {
+		t.Run(tc.defect, func(t *testing.T) {
+			var registeredAtRequest []string
+			var registry *cleanup.Registry
+			status := http.StatusBadRequest
+			steps, ctx, _, reg := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+				raw, err := io.ReadAll(r.Body)
+				require.NoError(t, err)
+				tc.check(t, raw)
+				registeredAtRequest = registeredPortals(registry)
+				writeJSON(w, status, map[string]string{"code": "invalid_request"})
+			})
+			registry = reg
+			require.NoError(t, steps.sendDefectiveCreateBody(ctx, tc.defect))
+			require.Len(t, registeredAtRequest, 1, "the portal is registered before the request")
+			require.Empty(t, registeredPortals(registry), "a refused portal is dropped from cleanup")
+
+			status = http.StatusAccepted
+			require.NoError(t, steps.sendDefectiveCreateBody(ctx, tc.defect))
+			require.Len(t, registeredPortals(registry), 1, "a portal the platform took against expectation stays registered")
+		})
+	}
+	steps, ctx, _, _ := cloudSteps(t, func(http.ResponseWriter, *http.Request) {})
+	require.ErrorContains(t, steps.sendDefectiveCreateBody(ctx, "no such defect"), "the defects are")
+}
+
+func TestPortalUpdateBodyTypesTheFields(t *testing.T) {
+	body, err := portalUpdateBody(map[string]string{"name": "New", "description": "", "selfSignup": "false", "loginEnvironment": "dev"})
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"name": "New", "description": "", "selfSignup": false, "loginEnvironment": "dev"}, body)
+
+	_, err = portalUpdateBody(map[string]string{"selfSignup": "maybe"})
+	require.ErrorContains(t, err, "true or false")
+	_, err = portalUpdateBody(map[string]string{"handle": "x"})
+	require.ErrorContains(t, err, "unsupported managed API Portal update field")
+}
+
+func TestUpdateRunnerPortalPutsTheTableToThePortal(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var method, path string
+	var sent map[string]any
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		method, path = r.Method, r.URL.Path
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+		writeJSON(w, http.StatusAccepted, map[string]any{"status": portalStatusPending})
+	})
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	require.NoError(t, steps.updateRunnerPortal(ctx, valuesTable(t, []string{"selfSignup", "false"})))
+	require.Equal(t, http.MethodPut, method)
+	require.Equal(t, managedPortalsCollection+"/syn-portal-1", path)
+	require.Equal(t, map[string]any{"selfSignup": false}, sent)
+}
+
+func TestPortalUpdateDefectsBreakARule(t *testing.T) {
+	require.Len(t, portalUpdateDefects["a name longer than 255 characters"]["name"], portalNameMaxLength+1)
+	require.Len(t, portalUpdateDefects["a description longer than 1023 characters"]["description"], portalDescriptionMaxLength+1)
+	require.Empty(t, portalUpdateDefects["an empty name"]["name"])
+	require.Contains(t, portalUpdateDefects["a handle"], "handle")
+
+	_, body := portalRequestDefects["a name longer than 255 characters"]("syn-portal-1")
+	require.Len(t, body["name"], portalNameMaxLength+1)
+	_, body = portalRequestDefects["a description longer than 1023 characters"]("syn-portal-1")
+	require.Len(t, body["description"], portalDescriptionMaxLength+1)
+}
+
+func TestRequirePortalDetailsNamesWhatIsMissing(t *testing.T) {
+	complete := map[string]any{}
+	for _, field := range portalDetailFields {
+		complete[field] = "value"
+	}
+	require.NoError(t, requirePortalDetails(complete))
+
+	delete(complete, "url")
+	complete["status"] = " "
+	err := requirePortalDetails(complete)
+	require.ErrorContains(t, err, "url")
+	require.ErrorContains(t, err, "status")
+}
+
+func TestRequireNoSecretNamesTheMarkerNotTheBody(t *testing.T) {
+	require.NoError(t, requireNoSecret([]byte(`{"id":"syn-portal-1","name":"Synthetic","status":"active"}`)))
+	for _, body := range []string{
+		`{"sharedKey":"x"}`, `{"shared_key":"x"}`, `{"clientSecret":"x"}`, `{"dbPassword":"x"}`, `{"note":"the Secret is here"}`,
+	} {
+		err := requireNoSecret([]byte(body))
+		require.Error(t, err, body)
+		require.NotContains(t, err.Error(), `"x"`, "the error never repeats the body")
+	}
+}
+
+func TestAssertPortalLocationNamesTheRunnerPortal(t *testing.T) {
+	steps, ctx, _, _ := cloudSteps(t, func(http.ResponseWriter, *http.Request) {})
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	for location, wantErr := range map[string]bool{
+		"/api/v0.9/managed-api-portals/syn-portal-1": false,
+		"/api/v0.9/managed-api-portals/other":        true,
+		"":                                           true,
+	} {
+		header := http.Header{}
+		if location != "" {
+			header.Set("Location", location)
+		}
+		require.NoError(t, steps.funnel.Publish(ctx, &httpx.Response{StatusCode: http.StatusAccepted, Headers: header}))
+		err := steps.assertPortalLocation(ctx)
+		if wantErr {
+			require.ErrorContains(t, err, "Location header", location)
+		} else {
+			require.NoError(t, err, location)
+		}
+	}
+}
+
+func TestPortalViewPathReadsTheOrganisationAndView(t *testing.T) {
+	for path, want := range map[string][2]string{
+		"/api-portal/acme/views/default":       {"acme", "default"},
+		"/api-portal/acme/views/default/":      {"acme", "default"},
+		"/api-portal/acme/views/default/login": {"acme", "default"},
+	} {
+		org, view, ok := portalViewPath(path)
+		require.True(t, ok, path)
+		require.Equal(t, want, [2]string{org, view}, path)
+	}
+	for _, path := range []string{"/api-portal/", "/api-portal/acme", "/api-portal/acme/views", "/other/acme/views/default", "/api-portal//views/default"} {
+		_, _, ok := portalViewPath(path)
+		require.False(t, ok, path)
+	}
 }

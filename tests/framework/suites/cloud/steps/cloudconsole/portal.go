@@ -112,6 +112,14 @@ var portalRequestDefects = map[string]func(handle string) (string, map[string]an
 	"no name": func(handle string) (string, map[string]any) {
 		return handle, portalRequestBody(handle, "")
 	},
+	"a name longer than 255 characters": func(handle string) (string, map[string]any) {
+		return handle, portalRequestBody(handle, strings.Repeat("n", portalNameMaxLength+1))
+	},
+	"a description longer than 1023 characters": func(handle string) (string, map[string]any) {
+		body := portalRequestBody(handle, "Synthetic "+handle)
+		body["description"] = strings.Repeat("d", portalDescriptionMaxLength+1)
+		return handle, body
+	},
 }
 
 func portalRequestDefectNames() string {
@@ -141,6 +149,8 @@ func (s *Steps) registerPortalSteps(sc stepRegistrar) {
 	sc.Step(`^I delete the synthetic managed API Portal$`, s.deleteRunnerPortal)
 	sc.Step(`^the managed API Portal deletion should be accepted$`, s.assertPortalDeletionAccepted)
 	sc.Step(`^the synthetic managed API Portal should eventually be gone$`, s.awaitPortalGone)
+	s.registerPortalManageSteps(sc)
+	s.registerPortalRuntimeSteps(sc)
 }
 
 // portalPath is the route of one managed API Portal.

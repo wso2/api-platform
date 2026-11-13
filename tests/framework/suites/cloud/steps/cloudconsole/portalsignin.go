@@ -103,7 +103,7 @@ func (b *portalBrowser) send(ctx context.Context, method, target string, body []
 		}
 		headers["Cookie"] = strings.Join(pairs, "; ")
 	}
-	request := httpx.Request{Method: method, URL: parsed.String(), Headers: headers, Body: body}
+	request := httpx.Request{Method: method, URL: parsed.String(), Headers: headers, Body: body, TLS: portalTLS(parsed)}
 	if body != nil {
 		request.ContentType = "application/json"
 		headers["Accept"] = "application/json"
@@ -275,6 +275,9 @@ type identityFlowStep struct {
 	Assertion      string            `json:"assertion,omitempty"`
 	FailureReason  string            `json:"failureReason,omitempty"`
 	SessionData    []identitySession `json:"sessionData,omitempty"`
+
+	// raw is the answer as the identity provider sent it, which holds the prompt's inputs.
+	raw []byte
 }
 
 // identitySession is an SSO session the flow reports, which the callback carries back.
@@ -318,6 +321,7 @@ func (b *portalBrowser) takeFlowAction(ctx context.Context, target string, curre
 	if answer.ExecutionID == "" {
 		answer.ExecutionID = current.ExecutionID
 	}
+	answer.raw = resp.Body
 	return answer, "", nil
 }
 
@@ -335,6 +339,34 @@ func joinURLPath(base *url.URL, path string) string {
 	return joined.String()
 }
 
+// beginFlow opens the portal's sign-in in a new browser, follows it to the identity provider and
+// starts the flow there. It returns the browser, the identity provider's base URL, the identifier
+// of the authorization request and the flow's first prompt.
+func (s *Steps) beginFlow(ctx context.Context) (*portalBrowser, *url.URL, string, identityFlowStep, error) {
+	browser, _, err := s.openSignIn(ctx)
+	if err != nil {
+		return nil, nil, "", identityFlowStep{}, err
+	}
+	resp, err := browser.send(ctx, http.MethodGet, browser.authorize.String(), nil)
+	if err != nil {
+		return nil, nil, "", identityFlowStep{}, err
+	}
+	started, err := redirectTarget(resp)
+	if err != nil {
+		return nil, nil, "", identityFlowStep{}, fmt.Errorf("the identity provider did not start a sign-in: %w", err)
+	}
+	executionID, authID := started.Query().Get("executionId"), started.Query().Get("authId")
+	if executionID == "" || authID == "" {
+		return nil, nil, "", identityFlowStep{}, fmt.Errorf("the identity provider started no sign-in flow: %s", resp.Describe())
+	}
+	base := identityBase(browser.authorize)
+	var step identityFlowStep
+	if _, err := browser.postJSON(ctx, joinURLPath(base, identityFlowPath), map[string]string{"executionId": executionID}, &step); err != nil {
+		return nil, nil, "", identityFlowStep{}, err
+	}
+	return browser, base, authID, step, nil
+}
+
 // signIn drives a consumer's sign-in, as the identity provider's sign-in page drives it: the
 // authorization request, the flow's prompts with the given actions, the callback that turns the
 // flow's assertion into the portal's code, and the portal's callback that turns the code into a
@@ -342,25 +374,8 @@ func joinURLPath(base *url.URL, path string) string {
 // the portal is not called back. The last answer is published.
 func (s *Steps) signIn(ctx context.Context, actions []flowAction) error {
 	httpx.ClearPublished(ctx)
-	browser, _, err := s.openSignIn(ctx)
+	browser, base, authID, step, err := s.beginFlow(ctx)
 	if err != nil {
-		return err
-	}
-	resp, err := browser.send(ctx, http.MethodGet, browser.authorize.String(), nil)
-	if err != nil {
-		return err
-	}
-	started, err := redirectTarget(resp)
-	if err != nil {
-		return fmt.Errorf("the identity provider did not start a sign-in: %w", err)
-	}
-	executionID, authID := started.Query().Get("executionId"), started.Query().Get("authId")
-	if executionID == "" || authID == "" {
-		return fmt.Errorf("the identity provider started no sign-in flow: %s", resp.Describe())
-	}
-	base := identityBase(browser.authorize)
-	var step identityFlowStep
-	if _, err := browser.postJSON(ctx, joinURLPath(base, identityFlowPath), map[string]string{"executionId": executionID}, &step); err != nil {
 		return err
 	}
 	// The callback carries every SSO session the flow reported, and an empty list when none.

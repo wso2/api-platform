@@ -126,6 +126,16 @@ func (s *Steps) findActiveAPIPortal(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	tcontext.Remove(ctx, keyAPIPortalURL)
+	for _, item := range items {
+		if item["id"] == id {
+			if portalURL, _ := item["url"].(string); portalURL != "" {
+				if err := tcontext.Set(ctx, keyAPIPortalURL, portalURL); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	return tcontext.Set(ctx, keyAPIPortalID, id)
 }
 

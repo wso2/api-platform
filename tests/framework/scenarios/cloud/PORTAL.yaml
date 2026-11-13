@@ -114,3 +114,137 @@ scenarios:
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A deleted portal is torn down and leaves the list"
+  - id: ID_APIP_PORTAL_012
+    title: "An active portal answers at its URL and sends a visitor to its view."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "An active portal answers at its URL and sends a visitor to its view"
+  - id: ID_APIP_PORTAL_013
+    title: "A portal's name and description change in place."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A portal's name and description change in place"
+  - id: ID_APIP_PORTAL_014
+    title: "After the shared key is rotated the control plane still publishes to the portal."
+    priority: P1
+    cloud:
+      status: known-issue
+      issue: "wso2cloud-deployment: the apip-platform-api Component's gateway allowlist has no POST /api/v0.9/managed-api-portals/{apiPortalId}/rotate-key operation (also on upstream main), so the gateway answers 404 {\"error\":\"Not Found\"} (observed 2026-11-13). No tracker link yet."
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "After the shared key is rotated the control plane still publishes to the portal"
+  - id: ID_APIP_PORTAL_036
+    title: "A create body that breaks the request's shape is refused and leaves nothing behind."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A create body that breaks the request's shape is refused and leaves nothing behind"
+  - id: ID_APIP_PORTAL_037
+    title: "A portal's answers carry its details and never a secret."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A portal's answers carry its details and never a secret"
+  - id: ID_APIP_PORTAL_038
+    title: "The portal's management routes refuse a caller that does not hold the control plane's key."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "The portal's management routes refuse a caller that does not hold the control plane's key"
+  - id: ID_APIP_PORTAL_039
+    title: "An update that breaks the rules is refused and leaves the portal as it was."
+    priority: P2
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "An update that breaks the rules is refused and leaves the portal as it was"
+  - id: ID_APIP_PORTAL_040
+    title: "Changing a portal that does not exist returns not found."
+    priority: P2
+    cloud:
+      status: known-issue
+      issue: "apim-saas: PUT /managed-api-portals/{id} on a portal that does not exist answers 500 internal_error instead of 404 not_found, and rotate-key answers a bare 404 without the not_found code (observed 2026-11-13). No tracker link yet."
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "Changing a portal that does not exist returns not found"
+  - id: ID_APIP_PORTAL_041
+    title: "Turning self sign-up off is accepted and finishes, it cannot be combined with a login environment change, and it can be turned on again."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "Turning self sign-up off is accepted and finishes, it cannot be combined with a login environment change, and it can be turned on again"
+  - id: ID_APIP_PORTAL_042
+    title: "A published API is served by the portal and leaves it when unpublished."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A published API is served by the portal and leaves it when unpublished"
+  - id: ID_APIP_PORTAL_043
+    title: "Deleting a published API removes its publication and its page on the portal."
+    priority: P1
+    cloud:
+      status: known-issue
+      issue: "api-platform (platform-api): deleting a published API does not unpublish it from the API Portal, so the portal keeps serving the deleted API (its .md page answers 200 after the control plane reports the publication gone). Observed 2026-11-13 on the local cloud. No tracker link yet."
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "Deleting a published API removes its publication and its page on the portal"
+  - id: ID_APIP_PORTAL_044
+    title: "A deleted portal stops serving."
+    priority: P2
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A deleted portal stops serving"
+  - id: ID_APIP_PORTAL_045
+    title: "Managed API Portal routes refuse a request without a valid token."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "Managed API Portal routes refuse a request <credential>"
+  - id: ID_APIP_PORTAL_046
+    title: "The rotate-key route refuses a request without a valid token."
+    priority: P1
+    cloud:
+      status: known-issue
+      issue: "wso2cloud-deployment: same missing rotate-key allowlist operation as ID_APIP_PORTAL_014; an unauthenticated request answers 404 instead of 401 (observed 2026-11-13). No tracker link yet."
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "The rotate-key route refuses a request <credential>"
+  - id: ID_APIP_PORTAL_047
+    title: "A portal with self sign-up off does not offer sign-up on its sign-in, and one with it on does."
+    priority: P1
+    cloud:
+      status: known-issue
+      issue: "Local cloud limitation, not a product defect: the local cluster runs no control-plane Thunder, so portals it builds get inert sign-in settings (sign-in redirects to consumer-login-not-configured.invalid) and the sign-in cannot start; the same cause keeps the sign-in scenarios failing locally. Run on dev."
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A portal with self sign-up off does not offer sign-up on its sign-in, and one with it on does"
+  - id: ID_APIP_PORTAL_048
+    title: "The handle of a deleted portal can be used again."
+    priority: P1
+    cloud:
+      status: known-issue
+      issue: "apim-saas: creating a portal under the handle of one just deleted answers 500 internal_error because the cloud platform API refuses the runtime Resource with 409 (observed 2026-11-13, right after the deleted portal read 404; the Resource was gone a few minutes later). Delete returns before the Resource is gone and create maps the 409 to 500. No tracker link yet."
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "The handle of a deleted portal can be used again"

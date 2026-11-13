@@ -28,7 +28,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
   # consumer is a user of the organisation's identity provider that the cloud API cannot remove,
   # so the runner signs up one consumer and the later sign-in scenarios reuse it.
 
-  @TC_APIP_PORTAL_009 @TC_APIP_PORTAL_018 @ID_APIP_PORTAL_001
+  @TC_APIP_PORTAL_009 @TC_APIP_PORTAL_018 @ID_APIP_PORTAL_001 @layer:cloud-owned
   Scenario Outline: A portal request that breaks the naming rules is refused and leaves nothing behind
     Given I obtain an APIP cloud console token
     When I request a managed API Portal that has "<defect>"
@@ -36,25 +36,29 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And the refused managed API Portal should not be listed
 
     Examples:
-      | defect                             |
-      | an uppercase handle                |
-      | a handle with an underscore        |
-      | a handle shorter than 3 characters |
-      | a handle longer than 40 characters |
-      | no name                            |
+      | defect                                    |
+      | an uppercase handle                       |
+      | a handle with an underscore               |
+      | a handle shorter than 3 characters        |
+      | a handle longer than 40 characters        |
+      | no name                                   |
+      | a name longer than 255 characters         |
+      | a description longer than 1023 characters |
 
-  @TC_APIP_PORTAL_017 @ID_APIP_PORTAL_002
+  @TC_APIP_PORTAL_017 @ID_APIP_PORTAL_002 @layer:cloud-owned
   Scenario: A portal whose consumers would sign in on an environment the organisation does not have is refused
     Given I obtain an APIP cloud console token
     When I request a managed API Portal whose login environment does not exist
     Then the cloud API response status code should be 400
     And the refused managed API Portal should not be listed
 
-  @TC_APIP_PORTAL_001 @TC_APIP_PORTAL_002 @TC_APIP_PORTAL_015 @ID_APIP_PORTAL_003
+  @TC_APIP_PORTAL_001 @TC_APIP_PORTAL_002 @TC_APIP_PORTAL_015 @ID_APIP_PORTAL_003 @layer:cloud-owned
   Scenario: A portal requested with a name and a handle is built and becomes active
     Given I obtain an APIP cloud console token
     When I request a synthetic managed API Portal for the runner
     Then the synthetic managed API Portal should be accepted for provisioning
+    And the managed API Portal answer should locate the synthetic managed API Portal
+    And the managed API Portal answer should expose no secret
     And the synthetic managed API Portal should become active
     And the cloud API response should report:
       | loginEnvironment | development |
@@ -62,7 +66,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And the synthetic managed API Portal should report an HTTPS URL
     And the managed API Portal list should include the synthetic managed API Portal
 
-  @TC_APIP_PORTAL_008 @ID_APIP_PORTAL_004
+  @TC_APIP_PORTAL_008 @ID_APIP_PORTAL_004 @layer:cloud-owned
   Scenario: A portal whose handle is already in use is refused
     Given I obtain an APIP cloud console token
     And the runner has an active synthetic managed API Portal
@@ -70,7 +74,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the cloud API response status code should be 409
     And the synthetic managed API Portal should still be active
 
-  @TC_APIP_PORTAL_013 @ID_APIP_PORTAL_005
+  @TC_APIP_PORTAL_013 @ID_APIP_PORTAL_005 @layer:cloud-owned
   Scenario: Reading a portal that does not exist returns not found
     Given I obtain an APIP cloud console token
     And the runner has an active synthetic managed API Portal
@@ -79,8 +83,165 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     When I read a managed API Portal that does not exist
     Then the cloud API response status code should be 404
 
+  @ID_APIP_PORTAL_036 @layer:cloud-owned
+  Scenario Outline: A create body that breaks the request's shape is refused and leaves nothing behind
+    Given I obtain an APIP cloud console token
+    When I send a managed API Portal create request with <defect>
+    Then the cloud API response status code should be 400
+    And the refused managed API Portal should not be listed
+
+    Examples:
+      | defect                  |
+      | an unknown field        |
+      | an organization field   |
+      | a name that is not text |
+      | malformed JSON          |
+
+  @ID_APIP_PORTAL_037 @layer:cloud-owned
+  Scenario: A portal's answers carry its details and never a secret
+    Given I obtain an APIP cloud console token
+    And the runner has an active synthetic managed API Portal
+    When I read the synthetic managed API Portal
+    Then the cloud API response status code should be 200
+    And the managed API Portal answer should carry its details
+    And the managed API Portal answer should expose no secret
+    And the managed API Portal list should include the synthetic managed API Portal
+    And the managed API Portal answer should expose no secret
+
+  @TC_APIP_PORTAL_003 @ID_APIP_PORTAL_012 @layer:cloud-owned
+  Scenario: An active portal answers at its URL and sends a visitor to its view
+    Given I obtain an APIP cloud console token
+    And the runner has an active synthetic managed API Portal
+    When I request "/api-portal/health" from the synthetic managed API Portal
+    Then the cloud API response status code should be 200
+    And the cloud API response should report:
+      | status | ok |
+    When I follow the front door of the synthetic managed API Portal to its view
+    And I request "/outside-the-portal" from the synthetic managed API Portal
+    Then the cloud API response status code should be 404
+
+  @ID_APIP_PORTAL_038 @layer:cloud-owned
+  Scenario: The portal's management routes refuse a caller that does not hold the control plane's key
+    Given I obtain an APIP cloud console token
+    And the runner has an active synthetic managed API Portal
+    When I request "/api-portal/health" from the synthetic managed API Portal
+    Then the cloud API response status code should be 200
+    When I request "/api-portal/api/v0.9/webhook-subscribers" from the synthetic managed API Portal
+    Then the cloud API response status code should be 401
+    When I request "/api-portal/api/v0.9/webhook-subscribers" from the synthetic managed API Portal with a wrong shared key
+    Then the cloud API response status code should be 401
+
+  @TC_APIP_PORTAL_004 @ID_APIP_PORTAL_013 @layer:cloud-owned
+  Scenario: A portal's name and description change in place
+    Given I obtain an APIP cloud console token
+    And the runner has an active synthetic managed API Portal
+    When I update the synthetic managed API Portal with:
+      | name        | Renamed ${CTX:cloudAPIPortalID}  |
+      | description | Changed by the APIP cloud test. |
+    Then the cloud API response status code should be 200
+    And the cloud API response should report:
+      | id          | ${CTX:cloudAPIPortalID}          |
+      | name        | Renamed ${CTX:cloudAPIPortalID}  |
+      | description | Changed by the APIP cloud test. |
+    And the synthetic managed API Portal should still be active
+    When I read the synthetic managed API Portal
+    Then the cloud API response should report:
+      | name        | Renamed ${CTX:cloudAPIPortalID}  |
+      | description | Changed by the APIP cloud test. |
+
+  @ID_APIP_PORTAL_039 @layer:cloud-owned
+  Scenario Outline: An update that breaks the rules is refused and leaves the portal as it was
+    Given I obtain an APIP cloud console token
+    And the runner has an active synthetic managed API Portal
+    When I try to update the synthetic managed API Portal with <defect>
+    Then the cloud API response status code should be 400
+    And the synthetic managed API Portal should still be active
+
+    Examples:
+      | defect                                    |
+      | an empty name                             |
+      | an empty login environment                |
+      | a name longer than 255 characters         |
+      | a description longer than 1023 characters |
+      | a handle                                  |
+
+  @known-issue
+  @ID_APIP_PORTAL_040 @layer:cloud-owned
+  Scenario Outline: Changing a portal that does not exist returns not found
+    Given I obtain an APIP cloud console token
+    When I <change> a managed API Portal that does not exist
+    Then the cloud API response status code should be 404
+    And the cloud API error code should be "not_found"
+
+    Examples:
+      | change            |
+      | update            |
+      | rotate the key of |
+
+  @known-issue
+  @TC_APIP_PORTAL_005 @ID_APIP_PORTAL_014 @layer:cloud-owned
+  Scenario: After the shared key is rotated the control plane still publishes to the portal
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And the runner has an active synthetic managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    And I save a publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    When I rotate the key of the synthetic managed API Portal
+    Then the cloud API response status code should be 202
+    And the synthetic managed API Portal should become active
+    When I publish the synthetic REST API on the managed API Portal
+    Then the cloud API response status code should be 201
+    And the synthetic REST API should be PUBLISHED on the managed API Portal
+
+  @ID_APIP_PORTAL_041 @layer:cloud-owned
+  Scenario: Turning self sign-up off is accepted and finishes, it cannot be combined with a login environment change, and it can be turned on again
+    Given I obtain an APIP cloud console token
+    And the runner has an active synthetic managed API Portal
+    When I update the synthetic managed API Portal with:
+      | selfSignup       | false          |
+      | loginEnvironment | no-environment |
+    Then the cloud API response status code should be 400
+    And the synthetic managed API Portal should still be active
+    When I update the synthetic managed API Portal with:
+      | selfSignup | false |
+    Then the cloud API response status code should be 202
+    And the cloud API response should report:
+      | status | pending |
+    When the synthetic managed API Portal should become active
+    And I read the synthetic managed API Portal
+    Then the cloud API response should report:
+      | selfSignup | false |
+    When I update the synthetic managed API Portal with:
+      | selfSignup | true |
+    Then the cloud API response status code should be 202
+    And the synthetic managed API Portal should become active
+    When I read the synthetic managed API Portal
+    Then the cloud API response should report:
+      | selfSignup | true |
+
+  # The portals the local cloud builds name no identity provider for consumers, so their sign-in
+  # cannot start there. This runs after the portal's sign-up has been turned off and on again.
+  @known-issue
+  @ID_APIP_PORTAL_047 @layer:cloud-owned
+  Scenario: A portal with self sign-up off does not offer sign-up on its sign-in, and one with it on does
+    Given I obtain an APIP cloud console token
+    And the runner has an active synthetic managed API Portal
+    And the sign-in of the synthetic managed API Portal should offer sign-up
+    When I update the synthetic managed API Portal with:
+      | selfSignup | false |
+    Then the cloud API response status code should be 202
+    And the synthetic managed API Portal should become active
+    And the sign-in of the synthetic managed API Portal should not offer sign-up
+    When I update the synthetic managed API Portal with:
+      | selfSignup | true |
+    Then the cloud API response status code should be 202
+    And the synthetic managed API Portal should become active
+    And the sign-in of the synthetic managed API Portal should offer sign-up
+
   @skip
-  @TC_APIP_PORTALRT_024 @ID_APIP_PORTAL_006
+  @TC_APIP_PORTALRT_024 @ID_APIP_PORTAL_006 @layer:cloud-owned
   Scenario: A visitor who opens the portal's sign-in is sent to its identity provider
     Given I obtain an APIP cloud console token
     And the runner has an active synthetic managed API Portal
@@ -88,7 +249,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the visitor should be sent to the portal's identity provider to sign in
 
   @skip
-  @TC_APIP_PORTALRT_025 @ID_APIP_PORTAL_007
+  @TC_APIP_PORTALRT_025 @ID_APIP_PORTAL_007 @layer:cloud-owned
   Scenario: A consumer signs up from the portal's sign-in page and is signed in
     Given I obtain an APIP cloud console token
     And the runner has an active synthetic managed API Portal
@@ -97,7 +258,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And a visitor without the consumer's session should be sent to sign in
 
   @skip
-  @TC_APIP_PORTALRT_019 @ID_APIP_PORTAL_008
+  @TC_APIP_PORTALRT_019 @ID_APIP_PORTAL_008 @layer:cloud-owned
   Scenario: A consumer who signed up signs in again with a username and password
     Given I obtain an APIP cloud console token
     And the runner has an active synthetic managed API Portal
@@ -105,7 +266,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the consumer should be signed in to the synthetic managed API Portal
 
   @skip
-  @TC_APIP_PORTALRT_026 @ID_APIP_PORTAL_009
+  @TC_APIP_PORTALRT_026 @ID_APIP_PORTAL_009 @layer:cloud-owned
   Scenario: A wrong password does not sign the consumer in
     Given I obtain an APIP cloud console token
     And the runner has an active synthetic managed API Portal
@@ -116,7 +277,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the consumer should be signed in to the synthetic managed API Portal
 
   @skip
-  @TC_APIP_PORTALRT_027 @ID_APIP_PORTAL_010
+  @TC_APIP_PORTALRT_027 @ID_APIP_PORTAL_010 @layer:cloud-owned
   Scenario: Signing out ends the consumer's session
     Given I obtain an APIP cloud console token
     And the runner has an active synthetic managed API Portal
@@ -125,7 +286,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     When I sign out of the synthetic managed API Portal
     Then the consumer should not be signed in to the synthetic managed API Portal
 
-  @TC_APIP_PORTAL_007 @ID_APIP_PORTAL_011
+  @TC_APIP_PORTAL_007 @ID_APIP_PORTAL_011 @layer:cloud-owned
   Scenario: A deleted portal is torn down and leaves the list
     Given I obtain an APIP cloud console token
     And the runner has an active synthetic managed API Portal
@@ -133,8 +294,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the managed API Portal deletion should be accepted
     And the synthetic managed API Portal should eventually be gone
 
-  @known-issue
-  @TC_APIP_PUB_001 @ID_APIP_PORTAL_022
+  @TC_APIP_PUB_001 @ID_APIP_PORTAL_022 @layer:inherited
   Scenario: A REST API is published and unpublished, and its draft is kept
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -157,8 +317,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the cloud API response status code should be 409
     And the cloud API error code should be "PUBLICATION_STATE_CONFLICT"
 
-  @known-issue
-  @TC_APIP_PUB_002 @ID_APIP_PORTAL_023
+  @TC_APIP_PUB_002 @ID_APIP_PORTAL_023 @layer:inherited
   Scenario: Republishing with a newly created plan offers it alongside the first
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -172,12 +331,12 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And I create another synthetic subscription plan
     When I save a publication draft of the synthetic REST API with:
       | subscriptionPlanIds | ["${CTX:cloudSubscriptionPlanID}", "${CTX:cloudSecondSubscriptionPlanID}"] |
+    And I save a valid definition on the publication draft of the synthetic REST API
     And I publish the synthetic REST API on the managed API Portal
     Then the cloud API response status code should be 200
     And the publication of the synthetic REST API should offer both synthetic subscription plans
 
-  @known-issue
-  @TC_APIP_PUB_003 @ID_APIP_PORTAL_024
+  @TC_APIP_PUB_003 @ID_APIP_PORTAL_024 @layer:inherited
   Scenario: Republishing an edited draft replaces the listing
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -191,13 +350,13 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     When I save a publication draft of the synthetic REST API with:
       | displayName | Edited ${CTX:cloudAPIID}       |
       | description | Edited by the APIP cloud test. |
+    And I save a valid definition on the publication draft of the synthetic REST API
     And I publish the synthetic REST API on the managed API Portal
     Then the cloud API response status code should be 200
     And the synthetic REST API should be PUBLISHED on the managed API Portal
     And the publication of the synthetic REST API should have the display name "Edited ${CTX:cloudAPIID}"
 
-  @known-issue
-  @TC_APIP_PUB_004 @ID_APIP_PORTAL_025
+  @TC_APIP_PUB_004 @ID_APIP_PORTAL_025 @layer:inherited
   Scenario: Deprecating a published API changes only its status, and only once
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -217,8 +376,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the cloud API response status code should be 409
     And the cloud API error code should be "PUBLICATION_STATE_CONFLICT"
 
-  @known-issue
-  @TC_APIP_PUB_005 @ID_APIP_PORTAL_026
+  @TC_APIP_PUB_005 @ID_APIP_PORTAL_026 @layer:inherited
   Scenario: A document, a landing page and a thumbnail are published, and an unselected document is removed
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -237,12 +395,12 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And the publication of the synthetic REST API should have a landing page and a thumbnail
     When I save a publication draft of the synthetic REST API with:
       | docIds | [] |
+    And I save a valid definition on the publication draft of the synthetic REST API
     And I publish the synthetic REST API on the managed API Portal
     Then the cloud API response status code should be 200
     And the publication of the synthetic REST API should not include the synthetic document
 
-  @known-issue
-  @TC_APIP_PUB_006 @ID_APIP_PORTAL_027
+  @TC_APIP_PUB_006 @ID_APIP_PORTAL_027 @layer:inherited
   Scenario: A GraphQL API is published, deprecated and unpublished
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -268,8 +426,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
   # Drafts and the checks made before publishing. Nothing below reaches the managed API Portal: a
   # draft stays on the control plane, and every publish is refused before the portal is called.
 
-  @known-issue
-  @TC_APIP_PUBV_001 @ID_APIP_PORTAL_028
+  @TC_APIP_PUBV_001 @ID_APIP_PORTAL_028 @layer:inherited
   Scenario: A saved draft keeps its details, its definition and a landing page without raw HTML
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -282,7 +439,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the publication draft of the synthetic REST API should keep its details and definition
     And the landing page of the publication draft of the synthetic REST API should have no raw HTML
 
-  @TC_APIP_PUBV_002 @ID_APIP_PORTAL_029
+  @TC_APIP_PUBV_002 @ID_APIP_PORTAL_029 @layer:inherited
   Scenario Outline: A draft naming something that does not exist is refused
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -299,7 +456,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
       | API               | 404    | API_NOT_FOUND                 |
       | API Portal        | 404    | API_PORTAL_NOT_FOUND          |
 
-  @TC_APIP_PUBV_003 @ID_APIP_PORTAL_030
+  @TC_APIP_PUBV_003 @ID_APIP_PORTAL_030 @layer:inherited
   Scenario: Publishing needs a saved draft with a valid definition
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -319,7 +476,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And the cloud API error code should be "PUBLICATION_VALIDATION_FAILED"
     And the synthetic REST API should not be published on the managed API Portal
 
-  @TC_APIP_PUBV_004 @ID_APIP_PORTAL_031
+  @TC_APIP_PUBV_004 @ID_APIP_PORTAL_031 @layer:inherited
   Scenario Outline: An API that was never published can be neither unpublished nor deprecated
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -335,7 +492,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
       | unpublish |
       | deprecate |
 
-  @TC_APIP_PUBV_005 @ID_APIP_PORTAL_032
+  @TC_APIP_PUBV_005 @ID_APIP_PORTAL_032 @layer:inherited
   Scenario: An inactive subscription plan cannot be offered, even when it was active when the draft was saved
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -353,7 +510,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the cloud API response status code should be 400
     And the cloud API error code should be "PUBLICATION_VALIDATION_FAILED"
 
-  @TC_APIP_PUBV_006 @ID_APIP_PORTAL_033
+  @TC_APIP_PUBV_006 @ID_APIP_PORTAL_033 @layer:inherited
   Scenario: A subscription plan offered by a draft cannot be deleted
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -365,7 +522,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the cloud API response status code should be 409
     And the cloud API error code should be "SUBSCRIPTION_PLAN_IN_USE"
 
-  @TC_APIP_PUBV_007 @ID_APIP_PORTAL_034
+  @TC_APIP_PUBV_007 @ID_APIP_PORTAL_034 @layer:inherited
   Scenario: A GraphQL draft is published only through its own route, and only with a GraphQL definition
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -383,7 +540,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And the cloud API error code should be "PUBLICATION_VALIDATION_FAILED"
     And the synthetic GraphQL API should not be published on the managed API Portal
 
-  @TC_APIP_PUBV_008 @ID_APIP_PORTAL_035
+  @TC_APIP_PUBV_008 @ID_APIP_PORTAL_035 @layer:cloud-owned
   Scenario Outline: Publication routes refuse a request <credential>
     Given I obtain an APIP cloud console token
     And I find the default APIP project
@@ -403,3 +560,99 @@ Feature: APIP cloud managed API Portal and consumer sign-in
       | PUT    | with a forged token | /api-portals/${CTX:cloudAPIPortalID}/apis/rest-api/${CTX:cloudAPIID}/draft              |
       | POST   | with a forged token | /api-portals/${CTX:cloudAPIPortalID}/apis/graphql-api/${CTX:cloudAPIID}/publish         |
       | POST   | with a forged token | /api-portals/${CTX:cloudAPIPortalID}/apis/rest-api/${CTX:cloudAPIID}/deprecate          |
+
+  @ID_APIP_PORTAL_042 @layer:cloud-owned
+  Scenario: A published API is served by the portal and leaves it when unpublished
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    And I save a publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I follow the front door of the synthetic managed API Portal to its view
+    When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}.md" from the synthetic managed API Portal
+    Then the cloud API response status code should be 404
+    When I publish the synthetic REST API on the managed API Portal
+    Then the cloud API response status code should be 201
+    When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}/docs/specification.json" from the synthetic managed API Portal until status 200
+    Then the cloud API response should report:
+      | openapi | 3.0.3 |
+    And the portal answer should contain "/ping"
+    When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}.md" from the synthetic managed API Portal until status 200
+    Then the portal answer should contain "${CTX:cloudAPIID}"
+    When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/apis.md" from the synthetic managed API Portal until status 200
+    Then the portal answer should contain "${CTX:cloudAPIID}"
+    When I unpublish the synthetic REST API on the managed API Portal
+    Then the cloud API response status code should be 204
+    When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}.md" from the synthetic managed API Portal until status 404
+    And I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}/docs/specification.json" from the synthetic managed API Portal until status 404
+    And I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/apis.md" from the synthetic managed API Portal until status 200
+    Then the portal answer should not contain "${CTX:cloudAPIID}"
+
+  @known-issue
+  @ID_APIP_PORTAL_043 @layer:cloud-owned
+  Scenario: Deleting a published API removes its publication and its page on the portal
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    And I save a publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I follow the front door of the synthetic managed API Portal to its view
+    And I publish the synthetic REST API on the managed API Portal
+    And the cloud API response status code should be 201
+    And I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}.md" from the synthetic managed API Portal until status 200
+    When I delete the synthetic REST API
+    Then the synthetic REST API should not be published on the managed API Portal
+    And I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}.md" from the synthetic managed API Portal until status 404
+
+  @ID_APIP_PORTAL_045 @layer:cloud-owned
+  Scenario Outline: Managed API Portal routes refuse a request <credential>
+    Given I obtain an APIP cloud console token
+    When I send a "<method>" request <credential> to the managed API Portal path "<path>"
+    Then the cloud API response status code should be 401
+
+    Examples:
+      | method | credential          | path                               |
+      | POST   | without a token     | /managed-api-portals               |
+      | GET    | without a token     | /managed-api-portals/absent-portal |
+      | PUT    | without a token     | /managed-api-portals/absent-portal |
+      | DELETE | without a token     | /managed-api-portals/absent-portal |
+      | GET    | with a forged token | /managed-api-portals               |
+      | POST   | with a forged token | /managed-api-portals               |
+      | GET    | with a forged token | /managed-api-portals/absent-portal |
+      | PUT    | with a forged token | /managed-api-portals/absent-portal |
+      | DELETE | with a forged token | /managed-api-portals/absent-portal |
+
+  @known-issue
+  @ID_APIP_PORTAL_046 @layer:cloud-owned
+  Scenario Outline: The rotate-key route refuses a request <credential>
+    Given I obtain an APIP cloud console token
+    When I send a "<method>" request <credential> to the managed API Portal path "<path>"
+    Then the cloud API response status code should be 401
+
+    Examples:
+      | method | credential          | path                                          |
+      | POST   | without a token     | /managed-api-portals/absent-portal/rotate-key |
+      | POST   | with a forged token | /managed-api-portals/absent-portal/rotate-key |
+
+  @ID_APIP_PORTAL_044 @layer:cloud-owned
+  Scenario: A deleted portal stops serving
+    Given I obtain an APIP cloud console token
+    And the runner has an active synthetic managed API Portal
+    When I request "/api-portal/health" from the synthetic managed API Portal
+    Then the cloud API response status code should be 200
+    When I delete the synthetic managed API Portal
+    Then the managed API Portal deletion should be accepted
+    And the synthetic managed API Portal should eventually be gone
+    And the synthetic managed API Portal should no longer serve
+
+  # Uses the handle of the portal the scenario above deleted.
+  @known-issue
+  @ID_APIP_PORTAL_048 @layer:cloud-owned
+  Scenario: The handle of a deleted portal can be used again
+    Given I obtain an APIP cloud console token
+    When I request a managed API Portal under the handle of the deleted synthetic managed API Portal
+    Then the synthetic managed API Portal should be accepted for provisioning
