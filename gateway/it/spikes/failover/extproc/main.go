@@ -1,10 +1,10 @@
 // Throwaway ext_proc server for Probe E.
 //
 // Answers three questions the Lua probes could not:
-//   1. Is ext_proc invoked once per RETRY ATTEMPT at the upstream position?
-//   2. Do request_attributes carry PER-ATTEMPT target identity (xds.cluster_name,
-//      upstream.address), or the first attempt's values?
-//   3. What does the extra gRPC round trip cost per attempt?
+//  1. Is ext_proc invoked once per RETRY ATTEMPT at the upstream position?
+//  2. Do request_attributes carry PER-ATTEMPT target identity (xds.cluster_name,
+//     upstream.address), or the first attempt's values?
+//  3. What does the extra gRPC round trip cost per attempt?
 //
 // Question 2 decides whether the attempt-index-into-chain workaround that Probe D
 // forced survives into the real design, or gets deleted.
@@ -15,6 +15,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"sort"
 	"strconv"
 	"time"
@@ -127,7 +128,12 @@ func (s *server) Process(stream extproc.ExternalProcessor_ProcessServer) error {
 
 		// PROBE I: ask Envoy to turn the body phase ON via mode_override,
 		// exactly as the production upstream dispatcher does.
-		if resp.GetRequestHeaders() != nil {
+		//
+		// Gated, because a probe that only asks "was this position invoked at all" does not
+		// want it: requesting BUFFERED and then not answering the body message stalls the
+		// attempt until the route timeout, which reads as a 504 and hides the very thing
+		// being measured. Set PROBE_BODY_MODE=off for a headers-only run.
+		if resp.GetRequestHeaders() != nil && os.Getenv("PROBE_BODY_MODE") != "off" {
 			resp.ModeOverride = &extprocconfig.ProcessingMode{
 				RequestHeaderMode:  extprocconfig.ProcessingMode_SEND,
 				RequestBodyMode:    extprocconfig.ProcessingMode_BUFFERED,

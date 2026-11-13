@@ -1025,6 +1025,72 @@ nothing was tried (unattempted member), the outcome already looked fine (post-he
 health rather than inferring it — active health checks — which is where the Agent Router
 comparison also points.
 
+## Probe T2 — is the upstream filter invoked for a REFUSED attempt? (2026-11-13)
+
+Probe E measured "ext_proc runs once per attempt" against a provider returning **500** — a real
+HTTP response. It left open whether the per-attempt position is reached at all when the attempt's
+connection never establishes, which is a different path through Envoy: the upstream HTTP filter
+chain hangs off the cluster, and a connect failure may be resolved before the chain runs.
+
+`t2-connect-refused.yaml` points `provider_a` at a live container on a **closed port**, so the
+kernel answers with an instant RST. A reachable-but-closed port matters: a non-resolving hostname
+is a DNS failure, which Envoy answers with a local reply and never retries, so it would measure
+something else entirely.
+
+### Measured
+
+| Run | provider_a | Result |
+|---|---|---|
+| Control (`e1-upstream-extproc.yaml`, `A_FAIL=true`) | returns 500 | `200`, **2 calls** — attempt 1 `provider_a`, attempt 2 `provider_b` |
+| T2, single request | connection refused | `200`, **1 call** — attempt 2 only |
+| T2, five identical requests | connection refused | **attempt 1 present in 3 of 5** |
+
+The decisive line, from a run where it appeared:
+
+```
+PROBE call attempt=1 path=/chat/completions
+  xds.cluster_name = "provider_a"
+  upstream.address = "172.28.0.11:9999"      <- the refused port
+```
+
+### Answer: yes, but not every time
+
+**The upstream filter IS invoked for an attempt whose connection is refused.** It is not reliably
+invoked — the single-request run showed only attempt 2, and reading that one run alone produced
+the opposite (wrong) conclusion. Repeating it is what settled it.
+
+Treat "3 of 5" as *observed and intermittent*, NOT as a rate: see the confound below.
+
+### Consequence
+
+`handleUpstreamRequestHeaders` captures attempt 1's request shape as the baseline every later
+attempt resets to. When attempt 1 is skipped, attempt 2 becomes its own baseline and the engine
+logs "per-attempt baseline missing on a retry". That is CORRECT behaviour for this case — attempt
+2 genuinely is the first attempt the filter saw — but the warning reads as a defect and will fire
+intermittently in any deployment whose leading target is transport-dead. Worth softening the
+wording rather than changing the behaviour.
+
+Nothing about grading changes: the attempt counter increments either way, so the downstream
+response phase still attributes attempt 1 as a failure (see "What the policy can and cannot see").
+
+### Confound, stated rather than hidden
+
+Four of the five T2 requests returned `504` at `total=5030ms`, exactly `per_try_timeout: 5s`,
+with `provider_b` answering in 45ms on the run that succeeded. The timeout is in the harness —
+most likely the probe server's stream handling — not in the providers and not in Envoy's retry
+path. It perturbs timing, which is why the 3-of-5 ratio is not a measurement of anything.
+
+The positive observation is unaffected: an `attempt=1` call naming the refused cluster either
+appeared in the log or it did not, and it did.
+
+### Harness changes this probe needed
+
+- `extproc/main.go` gained `PROBE_BODY_MODE`. The server unconditionally asked Envoy for a
+  BUFFERED body (added for Probe I) and never answered the body message, so every request hung to
+  the per-try timeout and returned 504 — which made the CONTROL run look broken before any
+  variable was introduced. Default unchanged; `PROBE_BODY_MODE=off` gives a headers-only run.
+- `extproc-server` is no longer committed. Rebuild per the README before running Probe E or T2.
+
 ## Post-header failures: what Envoy can and cannot do (2026-10-28)
 
 Searched upstream rather than assuming. Two separate problems, with different answers.
