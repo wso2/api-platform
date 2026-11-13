@@ -356,6 +356,24 @@ max_idle_conns = 2
 conn_max_lifetime = "30m"
 conn_max_idle_time = "5m"
 
+[controller.counters]
+# Shared counters the policy engines report to (budgets count spend here).
+# How long a counter is kept after its last add.
+retention = "960h"
+
+[controller.counters.redis]
+# Without Redis the counters live in this controller's memory: shared only by its own
+# policy engines and lost on restart. Enable Redis (or Valkey) so every gateway sharing
+# it sees the same totals. Only gateway-controllers connect to it.
+enabled = '{{ env "APIP_GW_CONTROLLER_COUNTERS_REDIS_ENABLED" "false" }}'
+address = '{{ env "APIP_GW_CONTROLLER_COUNTERS_REDIS_ADDRESS" "localhost:6379" }}'
+username = '{{ env "APIP_GW_CONTROLLER_COUNTERS_REDIS_USERNAME" "" }}'
+password = '{{ env "APIP_GW_CONTROLLER_COUNTERS_REDIS_PASSWORD" "" }}'
+db = 0
+key_prefix = "apip:counters:"
+tls = false
+dial_timeout = "5s"
+
 # =============================================================================
 # ROUTER CONFIGURATION
 # =============================================================================

@@ -252,3 +252,36 @@ scenarios:
       refs:
         - feature: suites/it/features/gateway/observability/analytics_budget.feature
           scenario: "A call through an LLM proxy publishes the budget on the proxy's event"
+  - id: BUDGET-023
+    title: "With the gateway-controller's counters in Redis, a used-up Block budget still refuses after the gateway-controller and gateway-runtime restart, including a $0 request."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_redis.feature
+          scenario: "Spend survives a gateway restart when the counters are in Redis"
+  - id: BUDGET-024
+    title: "Two gateways with their own databases and one Redis count a budget's spend together: spend through the first gateway refuses the same budget on the second, including a $0 request."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_redis_multigateway.feature
+          scenario: "Spend through one gateway refuses the same budget on another gateway sharing Redis"
+  - id: BUDGET-025
+    title: "On an LLM provider secured with jwt-auth, a budget allocated separately by the token subject refuses one user's used-up allowance while another user is served, and a request without a token is refused by jwt-auth (401), not the budget."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_jwt.feature
+          scenario: "A per-user budget on a jwt-auth route charges each token subject and runs after authentication"

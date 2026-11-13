@@ -58,7 +58,7 @@ policies:
       version: v1.1.0
       gomodule: github.com/wso2/gateway-controllers/policies/json-xml-mediator@v1
     - name: jwt-auth
-      version: v1.4.0
+      version: v1.6.0
       gomodule: github.com/wso2/gateway-controllers/policies/jwt-auth@v1
     - name: llm-cost
       version: v1.2.0
@@ -76,7 +76,7 @@ policies:
       version: v1.2.0
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-acl-list@v1
     - name: mcp-auth
-      version: v1.5.0
+      version: v1.5.1
       gomodule: github.com/wso2/gateway-controllers/policies/mcp-auth@v1
     - name: mcp-authz
       version: v1.4.0

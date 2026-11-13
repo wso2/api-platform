@@ -20,6 +20,10 @@ definition of something. Put it in root `common/` instead when anything outside
   definitions; the policy engine uses it to resolve incoming requests to
   operations. A mismatch between the two ends is a routing bug, which is why the
   table is spelled exactly once, here.
+- `counterproto/` — the wire contract of the shared counter service
+  (`sdk/core/counters`): the messages a policy engine and its gateway-controller
+  exchange on the counter sync stream, a JSON codec for gRPC, and the method name.
+  Both ends must encode the same messages, so they are defined once, here.
 
 ## Usage
 

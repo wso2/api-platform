@@ -19,8 +19,9 @@
 package budget
 
 import (
-	"sync"
 	"time"
+
+	"github.com/wso2/api-platform/sdk/core/counters"
 )
 
 // Budget periods, as in the Budget kind's spec.limit.period.
@@ -63,72 +64,67 @@ type spendKey struct {
 	periodStart time.Time
 }
 
-// keepPeriods is how long spend is kept after its period started; it covers the longest
-// period with room to spare.
-const keepPeriods = 40 * 24 * time.Hour
+// Counter namespaces: USD charged, and requests charged $0 because they had no price.
+const (
+	namespaceSpend    = "budget"
+	namespaceUnpriced = "budget-unpriced"
+)
 
-// tracker holds spend in memory: USD charged and requests charged $0 because they had no
-// price, per allowance and period. It is shared by every route in this policy engine.
+// counterService is the part of sdk/core/counters the tracker uses.
+type counterService interface {
+	Add(key counters.Key, delta float64)
+	Total(key counters.Key) (float64, bool)
+}
+
+// installedCounters uses the counter service the policy engine installed: synced with the
+// gateway-controller, which keeps the totals in Redis when one is configured, so every
+// gateway sharing it sees one total.
+type installedCounters struct{}
+
+func (installedCounters) Add(key counters.Key, delta float64)    { counters.Add(key, delta) }
+func (installedCounters) Total(key counters.Key) (float64, bool) { return counters.Total(key) }
+
+// tracker charges spend per allowance and period to the shared counters.
 type tracker struct {
-	mu        sync.Mutex
-	spent     map[spendKey]float64
-	unpriced  map[spendKey]int64
-	lastPrune time.Time
+	counters counterService
 }
 
-func newTracker() *tracker {
-	return &tracker{spent: map[spendKey]float64{}, unpriced: map[spendKey]int64{}}
+func newTracker(c counterService) *tracker {
+	return &tracker{counters: c}
 }
 
-// spentIn returns the USD charged to key so far.
+func spendCounter(key spendKey) counters.Key {
+	return counters.Key{Namespace: namespaceSpend, ID: key.allowance, Window: key.periodStart}
+}
+
+func unpricedCounter(key spendKey) counters.Key {
+	return counters.Key{Namespace: namespaceUnpriced, ID: key.allowance, Window: key.periodStart}
+}
+
+// spentIn returns the USD charged to key so far, across every gateway sharing the store,
+// plus this engine's charges not yet reported. Before the shared total first arrives it
+// is only this engine's charges: a first request is admitted at once.
 func (t *tracker) spentIn(key spendKey) float64 {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.spent[key]
+	total, _ := t.counters.Total(spendCounter(key))
+	return total
 }
 
 // unpricedIn returns the requests charged $0 to key so far.
 func (t *tracker) unpricedIn(key spendKey) int64 {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.unpriced[key]
+	total, _ := t.counters.Total(unpricedCounter(key))
+	return int64(total)
 }
 
 // charge adds cost to every key.
-func (t *tracker) charge(keys []spendKey, cost float64, now time.Time) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+func (t *tracker) charge(keys []spendKey, cost float64) {
 	for _, key := range keys {
-		t.spent[key] += cost
+		t.counters.Add(spendCounter(key), cost)
 	}
-	t.pruneLocked(now)
 }
 
 // countUnpriced records one request charged $0 against every key.
-func (t *tracker) countUnpriced(keys []spendKey, now time.Time) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+func (t *tracker) countUnpriced(keys []spendKey) {
 	for _, key := range keys {
-		t.unpriced[key]++
-	}
-	t.pruneLocked(now)
-}
-
-// pruneLocked drops periods that started more than keepPeriods ago, at most once an hour.
-func (t *tracker) pruneLocked(now time.Time) {
-	if now.Sub(t.lastPrune) < time.Hour {
-		return
-	}
-	t.lastPrune = now
-	cutoff := now.Add(-keepPeriods)
-	for key := range t.spent {
-		if key.periodStart.Before(cutoff) {
-			delete(t.spent, key)
-		}
-	}
-	for key := range t.unpriced {
-		if key.periodStart.Before(cutoff) {
-			delete(t.unpriced, key)
-		}
+		t.counters.Add(unpricedCounter(key), 1)
 	}
 }

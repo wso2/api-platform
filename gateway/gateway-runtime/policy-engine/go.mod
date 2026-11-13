@@ -71,3 +71,7 @@ replace github.com/wso2/api-platform/common => ../../../common
 replace github.com/wso2/api-platform/gateway/common => ../../common
 
 replace github.com/wso2/api-platform/httpkit => ../../../httpkit
+
+// TEMPORARY: the shared counter service (sdk/core/counters) is not in a released
+// sdk/core yet. Remove once sdk/core is released with it and the require is bumped.
+replace github.com/wso2/api-platform/sdk/core => ../../../sdk/core

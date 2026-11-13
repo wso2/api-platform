@@ -301,6 +301,8 @@ func (b *Base) registerBaseSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) or (\d+)$`, b.sendUntilStatusOneOf)
 	sc.Step(`^I send a "([^"]*)" request to the (first|second) gateway "([^"]*)" until status (\d+)$`,
 		b.sendUntilStatusAt)
+	sc.Step(`^I send a "([^"]*)" request to the (first|second) gateway "([^"]*)" until status (\d+) with body:$`,
+		b.sendUntilStatusAtWithBody)
 	sc.Step(`^I send a "([^"]*)" request to (?:the (first|second) gateway )?"([^"]*)" and it never returns status (\d+)$`,
 		b.sendNeverStatusAt)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+) with body:$`,
@@ -618,6 +620,38 @@ func (b *Base) sendUntilStatusAt(ctx context.Context, method, ordinalWord, path 
 	return stepscommon.AwaitResponse(ctx, func(ctx context.Context) (*httpx.Response, error) {
 		resp, sendErr := b.funnel.Send(ctx, httpx.Request{
 			Method: strings.ToUpper(method), URL: url, Headers: headers, Host: b.requestHost(ctx),
+		})
+		if sendErr != nil {
+			return nil, retry.Transient(sendErr)
+		}
+		return resp, nil
+	}, func(resp *httpx.Response) bool {
+		return resp != nil && resp.StatusCode == want
+	}, fmt.Sprintf("waiting for %s %s to return %d", strings.ToUpper(method), url, want))
+}
+
+// sendUntilStatusAtWithBody polls one gateway replica's data plane with a body until it
+// returns the status.
+func (b *Base) sendUntilStatusAtWithBody(
+	ctx context.Context, method, ordinalWord, path string, want int, body *godog.DocString,
+) error {
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return err
+	}
+	url, err := b.gatewayURLAt(ordinalWord, resolved)
+	if err != nil {
+		return err
+	}
+	headers := b.scenarioHeaders(ctx)
+	payload, err := b.expandBody(ctx, body, headers)
+	if err != nil {
+		return err
+	}
+	return stepscommon.AwaitResponse(ctx, func(ctx context.Context) (*httpx.Response, error) {
+		resp, sendErr := b.funnel.Send(ctx, httpx.Request{
+			Method: strings.ToUpper(method), URL: url, Body: payload, Headers: headers,
+			Host: b.requestHost(ctx),
 		})
 		if sendErr != nil {
 			return nil, retry.Transient(sendErr)

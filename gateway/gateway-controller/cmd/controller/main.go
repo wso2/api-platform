@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/controlplane"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/counters"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/immutable"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/logger"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
@@ -608,6 +609,14 @@ func main() {
 		}
 		serverOpts = append(serverOpts, policyxds.WithMTLS(policyXDSTLSConfig, cfg.Controller.PolicyServer.TLS.AllowedClientIdentities))
 	}
+	// The shared counter store the policy engines report to (budgets count spend in it).
+	counterStore, err := newCounterStore(cfg.Controller.Counters, log)
+	if err != nil {
+		log.Error("Refusing to start: the counter store is not reachable", slog.Any("error", err))
+		os.Exit(1)
+	}
+	defer func() { _ = counterStore.Close() }()
+	serverOpts = append(serverOpts, policyxds.WithCounterStore(counterStore))
 	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, subscriptionSnapshotManager, nil, cfg.Controller.PolicyServer.Port, log, serverOpts...)
 	go func() {
 		if err := policyXDSServer.Start(); err != nil {
@@ -1281,4 +1290,19 @@ func deprecatedManagementPathMiddleware(newBasePath string) api.MiddlewareFunc {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// newCounterStore returns the Redis counter store when it is enabled, and otherwise an
+// in-memory one shared only by this controller's policy engines.
+func newCounterStore(cfg config.CountersConfig, log *slog.Logger) (counters.Store, error) {
+	if !cfg.Redis.Enabled {
+		log.Info("Counters are kept in memory: shared by this controller's policy engines only and lost on restart")
+		return counters.NewMemory(cfg.Retention), nil
+	}
+	store, err := counters.NewRedis(cfg.Redis, cfg.Retention)
+	if err != nil {
+		return nil, err
+	}
+	log.Info("Counters are kept in Redis", slog.String("address", cfg.Redis.Address))
+	return store, nil
 }

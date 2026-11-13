@@ -56,6 +56,9 @@ func RegisterDeleters(reg *cleanup.Registry, topo *runtime.Topology) {
 	for kind, collection := range managementCollections {
 		reg.RegisterDeleter(kind, func(ctx context.Context, res cleanup.Resource) error {
 			endpoint, err := managementEndpointOf(topo)
+			if res.ByOrdinal {
+				endpoint, err = managementEndpointAt(topo, res.Replica)
+			}
 			if err != nil {
 				return err
 			}
@@ -70,6 +73,26 @@ type managementEndpoint struct {
 	adminURL      string
 	version       string
 	authorization string
+}
+
+// managementEndpointAt addresses the gateway controller of one replica of the topology's
+// gateway, by zero-based ordinal.
+func managementEndpointAt(topo *runtime.Topology, replica int) (managementEndpoint, error) {
+	version, err := topo.ComponentVersion("platform-gateway")
+	if err != nil {
+		return managementEndpoint{}, err
+	}
+	endpoint := managementEndpoint{
+		version:       version,
+		authorization: BasicAuthHeader(topo.Admin.Username, topo.Admin.Password),
+	}
+	if endpoint.restURL, err = topo.URLAt("platform-gateway", replica, "rest"); err != nil {
+		return managementEndpoint{}, err
+	}
+	if endpoint.adminURL, err = topo.URLAt("platform-gateway", replica, "admin"); err != nil {
+		return managementEndpoint{}, err
+	}
+	return endpoint, nil
 }
 
 func managementEndpointOf(topo *runtime.Topology) (managementEndpoint, error) {

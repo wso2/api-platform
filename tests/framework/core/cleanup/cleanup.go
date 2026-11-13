@@ -109,6 +109,12 @@ type Resource struct {
 	// Description is optional context for a leak warning — a name, a tenant.
 	Description string
 
+	// Replica is the zero-based ordinal of the component replica that holds the resource,
+	// used when ByOrdinal is set: a block running more than one replica addresses each by
+	// ordinal.
+	Replica   int
+	ByOrdinal bool
+
 	cleanupFailures int
 }
 

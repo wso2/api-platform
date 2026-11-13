@@ -1159,6 +1159,26 @@ func (g *Gateway) adminURL(path string) (string, error) {
 	return base + gatewayAdminBasePath(g.topo) + path, nil
 }
 
+// controllerURLAt returns a management API URL on the gateway controller of one gateway
+// replica by zero-based ordinal, or of the only gateway with defaultReplica.
+func (g *Gateway) controllerURLAt(ctx context.Context, replica int, path string) (string, error) {
+	if replica == defaultReplica {
+		return g.serviceURL(ctx, "gateway-controller", path)
+	}
+	base, err := g.topo.URLAt("platform-gateway", replica, "rest")
+	if err != nil {
+		return "", err
+	}
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	if resolved != "" && !strings.HasPrefix(resolved, "/") {
+		resolved = "/" + resolved
+	}
+	return base + gatewayManagementBasePath(g.topo) + resolved, nil
+}
+
 func (g *Gateway) adminURLAt(ordinalWord, path string) (string, error) {
 	ordinal, err := gatewayOrdinal(ordinalWord)
 	if err != nil {
@@ -2827,7 +2847,21 @@ const (
 func (g *Gateway) mutateResource(
 	ctx context.Context, method, collection, id string, body *godog.DocString,
 ) error {
-	markGatewayChanged(ctx)
+	return g.mutateResourceAt(ctx, defaultReplica, method, collection, id, body)
+}
+
+// defaultReplica addresses the block's only gateway, as steps that name no replica do.
+const defaultReplica = -1
+
+// mutateResourceAt sends a mutation to the gateway controller of one gateway replica by
+// zero-based ordinal, or of the only gateway with defaultReplica. Settling and config dump
+// expectations follow the only gateway: a step that names a replica sets neither.
+func (g *Gateway) mutateResourceAt(
+	ctx context.Context, replica int, method, collection, id string, body *godog.DocString,
+) error {
+	if replica == defaultReplica {
+		markGatewayChanged(ctx)
+	}
 	resolvedID, err := stepscommon.Expand(ctx, id)
 	if err != nil {
 		return err
@@ -2845,9 +2879,10 @@ func (g *Gateway) mutateResource(
 	if resolvedID != "" {
 		path = collection + "/" + resolvedID
 	}
-	if collection == collBudgets {
+	if collection == collBudgets || replica != defaultReplica {
 		// Dump expectations are checked against whichever config dump a step reads, the
 		// policy engine's too, and an inactive budget never reaches the policy engine.
+		// Dump steps read the first gateway, so another replica's resources set none.
 	} else if method == http.MethodDelete {
 		expectInDump(ctx, resolvedID, false)
 	} else if expandedBody != "" {
@@ -2855,7 +2890,7 @@ func (g *Gateway) mutateResource(
 			expectInDump(ctx, h, true)
 		}
 	}
-	url, err := g.serviceURL(ctx, "gateway-controller", path)
+	url, err := g.controllerURLAt(ctx, replica, path)
 	if err != nil {
 		return err
 	}
@@ -2887,9 +2922,10 @@ func (g *Gateway) mutateResource(
 		if kind, ok := cleanupKindForCollection(collection); ok && resourceID != "" {
 			if err := cleanup.Register(ctx, cleanup.Resource{
 				Kind: kind, ID: resourceID, Actor: "admin",
-				Description: "created by " + scenarioLabel(ctx),
+				Description: "created by " + scenarioLabel(ctx), Replica: max(replica, 0),
+				ByOrdinal: replica != defaultReplica,
 			}); err != nil {
-				deleteURL, urlErr := g.serviceURL(ctx, "gateway-controller", collection+"/"+resourceID)
+				deleteURL, urlErr := g.controllerURLAt(ctx, replica, collection+"/"+resourceID)
 				if urlErr == nil {
 					if deleteErr := g.compensateDelete(ctx, deleteURL, g.scenarioHeaders(ctx)); deleteErr != nil {
 						return fmt.Errorf("registering %s %q for cleanup: %w; compensation failed: %v",
@@ -2909,7 +2945,7 @@ func (g *Gateway) mutateResource(
 		if resourceID == "" {
 			return nil // a create without a known id has nothing to poll for
 		}
-		pollURL, err := g.serviceURL(ctx, "gateway-controller", target)
+		pollURL, err := g.controllerURLAt(ctx, replica, target)
 		if err != nil {
 			return err
 		}

@@ -6422,6 +6422,13 @@ components:
           maxLength: 253
           pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'
           example: research-team-monthly
+        annotations:
+          type: object
+          description: >-
+            Non-identifying metadata, as on the gateway's other kinds. gateway.api-platform.wso2.com/artifact-id
+            sets the budget's UUID, which cannot change afterwards; without it the gateway assigns one.
+          additionalProperties:
+            type: string
 
     BudgetSpec:
       type: object

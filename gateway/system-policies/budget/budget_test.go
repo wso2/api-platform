@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wso2/api-platform/sdk/core/counters"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
 
@@ -107,6 +108,7 @@ func testPolicy(t *testing.T, bodies ...map[string]any) (*BudgetSystemPolicy, *f
 	source := &fakeSource{}
 	source.set(bodies...)
 	p := newPolicy(source)
+	p.tracker = newTracker(counters.NewMemory())
 	now := wednesdayNoon
 	p.now = func() time.Time { return now }
 	return p, source, &now
@@ -191,7 +193,7 @@ func TestAllowBudgetNeverRefuses(t *testing.T) {
 			t.Fatal("an Allow budget refused")
 		}
 	}
-	shared := uuid.NewSHA1(uuid.MustParse(testBudgetUUID), nil).String()
+	shared := sharedAllowance("watch")
 	if got := p.tracker.spentIn(spendKey{shared, periodStart(periodDay, wednesdayNoon)}); got != 15 {
 		t.Fatalf("spent %v, want 15", got)
 	}
@@ -293,12 +295,12 @@ func TestSeparateProviders(t *testing.T) {
 }
 
 func TestAllowanceUUIDs(t *testing.T) {
-	b := &budget{uuid: uuid.MustParse(testBudgetUUID)}
-	if got, want := b.allowanceUUID(nil), uuid.NewSHA1(b.uuid, []byte("")).String(); got != want {
+	b := &budget{name: "team", spendID: uuid.NewSHA1(spendNamespace, []byte("team"))}
+	if got, want := b.allowanceUUID(nil), uuid.NewSHA1(b.spendID, []byte("")).String(); got != want {
 		t.Fatalf("shared %s, want %s", got, want)
 	}
 	got := b.allowanceUUID([]allocated{{valueTypeLLMProvider, "openai"}, {valueTypeAttribute, "alice@wso2.com"}})
-	want := uuid.NewSHA1(b.uuid, []byte("attribute=alice%40wso2.com|llmProvider=openai")).String()
+	want := uuid.NewSHA1(b.spendID, []byte("attribute=alice%40wso2.com|llmProvider=openai")).String()
 	if got != want {
 		t.Fatalf("separate %s, want %s", got, want)
 	}
@@ -324,7 +326,7 @@ func TestUnpricedRequestsChargeNothingButAreCounted(t *testing.T) {
 	req.Metadata[metadataLLMCostStatus] = "not_calculated"
 	p.OnResponseBody(context.Background(), &policy.ResponseContext{SharedContext: req.SharedContext}, nil)
 
-	key := spendKey{uuid.NewSHA1(uuid.MustParse(testBudgetUUID), nil).String(), periodStart(periodDay, wednesdayNoon)}
+	key := spendKey{sharedAllowance("all"), periodStart(periodDay, wednesdayNoon)}
 	if p.tracker.spentIn(key) != 0 || p.tracker.unpricedIn(key) != 1 {
 		t.Fatalf("spent %v unpriced %d", p.tracker.spentIn(key), p.tracker.unpricedIn(key))
 	}
@@ -340,7 +342,7 @@ func TestARequestIsChargedOnce(t *testing.T) {
 	p.OnResponseBodyChunk(context.Background(), &policy.ResponseStreamContext{SharedContext: req.SharedContext}, &policy.StreamBody{EndOfStream: true}, nil)
 	p.OnResponseBody(context.Background(), &policy.ResponseContext{SharedContext: req.SharedContext}, nil)
 
-	key := spendKey{uuid.NewSHA1(uuid.MustParse(testBudgetUUID), nil).String(), periodStart(periodDay, wednesdayNoon)}
+	key := spendKey{sharedAllowance("all"), periodStart(periodDay, wednesdayNoon)}
 	if got := p.tracker.spentIn(key); got != 1 {
 		t.Fatalf("spent %v, want 1", got)
 	}
@@ -356,7 +358,7 @@ func TestChargedToThePeriodItWasAdmittedIn(t *testing.T) {
 	req.Metadata[metadataLLMCostStatus] = costStatusCalculated
 	p.OnResponseBody(context.Background(), &policy.ResponseContext{SharedContext: req.SharedContext}, nil)
 
-	shared := uuid.NewSHA1(uuid.MustParse(testBudgetUUID), nil).String()
+	shared := sharedAllowance("all")
 	if got := p.tracker.spentIn(spendKey{shared, time.Date(2026, 11, 11, 0, 0, 0, 0, time.UTC)}); got != 3 {
 		t.Fatalf("admitted period spent %v, want 3", got)
 	}
@@ -520,4 +522,27 @@ func equalAny(got any, want []any) bool {
 		}
 	}
 	return true
+}
+
+// sharedAllowance is the allowance ID of a shared budget, from its name.
+func sharedAllowance(name string) string {
+	return uuid.NewSHA1(uuid.NewSHA1(spendNamespace, []byte(name)), nil).String()
+}
+
+func TestSpendIsSharedByNameNotUUID(t *testing.T) {
+	// The same budget created on two gateways: one name, two UUIDs.
+	one, _, _ := testPolicy(t, budgetBody("team", testBudgetUUID, "1", "day", "block", allProviders, nil))
+	other, _, _ := testPolicy(t, budgetBody("team", otherUUID, "1", "day", "block", allProviders, nil))
+	renamed, _, _ := testPolicy(t, budgetBody("team-2", testBudgetUUID, "1", "day", "block", allProviders, nil))
+	ids := func(p *BudgetSystemPolicy) []string {
+		names, _ := p.catalog.current()[0].matches("openai", activation(nil, "", "", nil, nil))
+		return names
+	}
+
+	if a, b := ids(one), ids(other); len(a) != 1 || len(b) != 1 || a[0] != b[0] {
+		t.Fatalf("same name, different UUIDs: allowances %v and %v differ", a, b)
+	}
+	if a, c := ids(one), ids(renamed); a[0] == c[0] {
+		t.Fatal("different names share an allowance")
+	}
 }
