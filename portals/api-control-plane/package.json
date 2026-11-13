@@ -61,12 +61,12 @@
     "react-dom": "19.2.3",
     "react-intl": "10.1.20",
     "react-markdown": "10.1.0",
-    "react-router-dom": "7.9.4",
+    "react-router-dom": "7.18.5",
     "react-syntax-highlighter": "16.1.2",
     "rehype-raw": "7.0.0",
     "rehype-sanitize": "6.0.0",
     "remark-gfm": "4.0.1",
-    "swagger-ui-react": "5.32.14"
+    "swagger-ui-react": "5.34.1"
   },
   "devDependencies": {
     "@eslint/js": "9.26.0",
@@ -102,6 +102,10 @@
     "vitest": "2.1.8"
   },
   "overrides": {
-    "dompurify": "3.4.17"
+    "dompurify": "3.4.17",
+    "lodash": "4.18.1",
+    "@redocly/openapi-core": {
+      "js-yaml": "4.3.2"
+    }
   }
 }
