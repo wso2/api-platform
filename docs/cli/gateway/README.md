@@ -678,7 +678,8 @@ ap gateway image build \
   [--no-cache] \
   [--platform <platform>] \
   [--offline] \
-  [--output-dir <output_dir>]
+  [--output-dir <output_dir>] \
+  [--container-engine <docker|podman|buildah>]
 ```
 
 Example:
