@@ -272,3 +272,67 @@ func TestPolicySecretResolverWithoutAStoreResolvesNothing(t *testing.T) {
 		t.Errorf("paths = %v, want none", paths)
 	}
 }
+
+// The same path can carry one attachment on GET and another on POST, each with
+// its own parameters. Matching on the path alone would hand one method's
+// credential to the other.
+func TestPreserveOperationPolicySecretsDoesNotCrossMethodSets(t *testing.T) {
+	stored := []model.OperationPolicy{{
+		Name:    "aws-authentication",
+		Version: "v0",
+		Paths: []model.OperationPolicyPath{
+			{Path: "/chat", Methods: []string{"GET"}, Params: map[string]interface{}{"awsSecretAccessKey": "get-secret"}},
+			{Path: "/chat", Methods: []string{"POST"}, Params: map[string]interface{}{"awsSecretAccessKey": "post-secret"}},
+		},
+	}}
+	updated := []model.OperationPolicy{{
+		Name:    "aws-authentication",
+		Version: "v0",
+		Paths: []model.OperationPolicyPath{
+			{Path: "/chat", Methods: []string{"POST"}, Params: map[string]interface{}{"awsSecretAccessKey": ""}},
+		},
+	}}
+
+	preserveOperationPolicySecrets(awsResolver(), stored, updated)
+
+	if got := updated[0].Paths[0].Params["awsSecretAccessKey"]; got != "post-secret" {
+		t.Errorf("POST secret = %v, want the value stored against POST", got)
+	}
+}
+
+// A re-scoped attachment is not the same attachment. There is no reading of a
+// partial overlap under which carrying the credential across is right.
+func TestPreserveOperationPolicySecretsSkipsAPartialMethodOverlap(t *testing.T) {
+	stored := []model.OperationPolicy{{
+		Name:    "aws-authentication",
+		Version: "v0",
+		Paths: []model.OperationPolicyPath{
+			{Path: "/chat", Methods: []string{"GET", "POST"}, Params: map[string]interface{}{"awsSecretAccessKey": "a-stored-secret"}},
+		},
+	}}
+	updated := []model.OperationPolicy{{
+		Name:    "aws-authentication",
+		Version: "v0",
+		Paths: []model.OperationPolicyPath{
+			{Path: "/chat", Methods: []string{"POST"}, Params: map[string]interface{}{"awsSecretAccessKey": ""}},
+		},
+	}}
+
+	preserveOperationPolicySecrets(awsResolver(), stored, updated)
+
+	if got := updated[0].Paths[0].Params["awsSecretAccessKey"]; got != "" {
+		t.Errorf("secret = %v, want it left for the caller to re-supply", got)
+	}
+}
+
+func TestSameMethodSetIgnoresOrderAndRepetition(t *testing.T) {
+	if !sameMethodSet([]string{"GET", "POST"}, []string{"POST", "GET", "POST"}) {
+		t.Error("the same methods in a different order were treated as different")
+	}
+	if !sameMethodSet(nil, nil) {
+		t.Error("two attachments naming no method were treated as different")
+	}
+	if sameMethodSet([]string{"GET"}, nil) {
+		t.Error("an attachment naming no method matched one naming GET")
+	}
+}

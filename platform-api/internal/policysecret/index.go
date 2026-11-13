@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 )
 
 // policyKey identifies a policy as an attachment names it.
@@ -153,24 +154,58 @@ func pathsEqual(a, b Path) bool {
 // repository layer and of the manifest's other fields.
 type Loader func(orgID string) ([][]byte, error)
 
+// DefaultTTL bounds how long a replica serves an index it has already built.
+//
+// Invalidate reaches the replica that handled the manifest report and no other,
+// so on every other replica the cached index is only as fresh as this. The
+// window is a window of under-withholding — a parameter a policy's new version
+// declares write-only is still returned by a replica holding the previous
+// index — which is why it is short rather than merely finite. Reads inside it
+// are served from memory; one read per organization per TTL reloads.
+const DefaultTTL = 30 * time.Second
+
+// cachedIndex is one organization's resolved index, with what it takes to tell
+// whether it is still the right answer.
+type cachedIndex struct {
+	index *Index
+	// generation is the value Invalidate had reached when the build that
+	// produced this index started. A build whose generation no longer matches
+	// read manifests that have since been replaced.
+	generation uint64
+	expiresAt  time.Time
+}
+
 // Store is the per-organization cache of resolved indexes.
 //
 // A policy definition changes only when a gateway reports a new manifest, which
 // is rare and observable, so the index is built on first use and held until
-// that happens. Without the cache, every read of every API would re-read every
-// gateway manifest in the organization to answer a question whose answer almost
-// never changes.
+// that happens or until it expires. Without the cache, every read of every API
+// would re-read every gateway manifest in the organization to answer a question
+// whose answer almost never changes.
 //
-// It is per replica and holds nothing a restart cannot rebuild.
+// It is per replica and holds nothing a restart cannot rebuild. It is not a
+// cluster-wide view: see DefaultTTL for what that costs and what bounds it.
 type Store struct {
-	mu     sync.RWMutex
-	byOrg  map[string]*Index
-	loader Loader
+	mu    sync.RWMutex
+	byOrg map[string]cachedIndex
+	// generations counts invalidations per organization, so a build that
+	// started before one cannot publish the index it read.
+	generations map[string]uint64
+	loader      Loader
+	ttl         time.Duration
+	// now is injectable so expiry can be tested without sleeping.
+	now func() time.Time
 }
 
 // NewStore returns a Store that builds its indexes with loader.
 func NewStore(loader Loader) *Store {
-	return &Store{byOrg: map[string]*Index{}, loader: loader}
+	return &Store{
+		byOrg:       map[string]cachedIndex{},
+		generations: map[string]uint64{},
+		loader:      loader,
+		ttl:         DefaultTTL,
+		now:         time.Now,
+	}
 }
 
 // For returns the resolver for an organization, building its index if this
@@ -182,42 +217,60 @@ func NewStore(loader Loader) *Store {
 // indistinguishable, in the response it produces, from one that answers
 // correctly for a policy with no secrets.
 func (s *Store) For(orgID string) (Resolver, error) {
-	s.mu.RLock()
-	cached, ok := s.byOrg[orgID]
-	s.mu.RUnlock()
-	if ok {
-		return cached, nil
-	}
+	// Bounded: a build races an invalidation only while a manifest is being
+	// reported, so one retry settles it. The attempt that still loses does not
+	// publish what it built — it answers this request and leaves the cache for
+	// the next read to fill, which is correct but not worth spinning for.
+	const attempts = 2
 
-	manifests, err := s.loader(orgID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load gateway manifests for organization: %w", err)
-	}
-	index, err := NewIndex(manifests)
-	if err != nil {
-		return nil, err
-	}
+	for attempt := 0; ; attempt++ {
+		s.mu.RLock()
+		cached, ok := s.byOrg[orgID]
+		generation := s.generations[orgID]
+		s.mu.RUnlock()
+		if ok && cached.generation == generation && s.now().Before(cached.expiresAt) {
+			return cached.index, nil
+		}
 
-	s.mu.Lock()
-	// A concurrent build may have stored one first. Either is correct — both
-	// read the same manifests — so the first one in wins and the other is
-	// dropped, which keeps a resolver already handed out from being orphaned
-	// by this one.
-	if existing, ok := s.byOrg[orgID]; ok {
-		index = existing
-	} else {
-		s.byOrg[orgID] = index
+		manifests, err := s.loader(orgID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load gateway manifests for organization: %w", err)
+		}
+		index, err := NewIndex(manifests)
+		if err != nil {
+			return nil, err
+		}
+
+		s.mu.Lock()
+		if s.generations[orgID] != generation {
+			// A manifest was reported while this build was reading the previous
+			// one. Publishing now would reinstate exactly what the invalidation
+			// was there to drop, and would hold it for a full TTL.
+			s.mu.Unlock()
+			if attempt+1 < attempts {
+				continue
+			}
+			return index, nil
+		}
+		s.byOrg[orgID] = cachedIndex{
+			index:      index,
+			generation: generation,
+			expiresAt:  s.now().Add(s.ttl),
+		}
+		s.mu.Unlock()
+		return index, nil
 	}
-	s.mu.Unlock()
-	return index, nil
 }
 
 // Invalidate drops an organization's index, so the next read rebuilds it.
 //
 // Called when a gateway reports a manifest: that is the only thing that changes
-// which parameters a policy declares write-only.
+// which parameters a policy declares write-only. Advancing the generation is
+// what stops a build already in flight from publishing the manifests this call
+// has just superseded.
 func (s *Store) Invalidate(orgID string) {
 	s.mu.Lock()
+	s.generations[orgID]++
 	delete(s.byOrg, orgID)
 	s.mu.Unlock()
 }

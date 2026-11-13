@@ -183,9 +183,10 @@ func preserveGlobalPolicySecrets(resolver policysecret.Resolver, stored, updated
 
 // preserveOperationPolicySecrets is the per-path counterpart.
 //
-// Paths are matched on the path expression itself, not on position: an update
-// that adds, removes or reorders paths still has each surviving path's secrets
-// carried forward, and a newly added path has none to carry.
+// Paths are matched on what the gateway routes on — the path expression and the
+// set of methods — not on position: an update that adds, removes or reorders
+// paths still has each surviving path's secrets carried forward, and a newly
+// added path has none to carry.
 func preserveOperationPolicySecrets(resolver policysecret.Resolver, stored, updated []model.OperationPolicy) {
 	for i := range updated {
 		paths := resolver.WriteOnlyPaths(updated[i].Name, updated[i].Version)
@@ -197,7 +198,7 @@ func preserveOperationPolicySecrets(resolver policysecret.Resolver, stored, upda
 				continue
 			}
 			for u := range updated[i].Paths {
-				storedPath := findStoredOperationPath(stored[j].Paths, updated[i].Paths[u].Path)
+				storedPath := findStoredOperationPath(stored[j].Paths, updated[i].Paths[u])
 				if storedPath == nil {
 					continue
 				}
@@ -211,10 +212,12 @@ func preserveOperationPolicySecrets(resolver policysecret.Resolver, stored, upda
 	}
 }
 
-// findStoredOperationPath returns the stored entry for a path expression.
-func findStoredOperationPath(stored []model.OperationPolicyPath, path string) *model.OperationPolicyPath {
+// findStoredOperationPath returns the stored entry addressing the same path and
+// the same methods.
+func findStoredOperationPath(stored []model.OperationPolicyPath,
+	updated model.OperationPolicyPath) *model.OperationPolicyPath {
 	for i := range stored {
-		if stored[i].Path == path {
+		if stored[i].Path == updated.Path && sameMethodSet(stored[i].Methods, updated.Methods) {
 			return &stored[i]
 		}
 	}
@@ -234,7 +237,7 @@ func preserveLLMPolicySecrets(resolver policysecret.Resolver, stored, updated []
 				continue
 			}
 			for u := range updated[i].Paths {
-				storedPath := findStoredLLMPath(stored[j].Paths, updated[i].Paths[u].Path)
+				storedPath := findStoredLLMPath(stored[j].Paths, updated[i].Paths[u])
 				if storedPath == nil {
 					continue
 				}
@@ -248,14 +251,49 @@ func preserveLLMPolicySecrets(resolver policysecret.Resolver, stored, updated []
 	}
 }
 
-// findStoredLLMPath returns the stored entry for a path expression.
-func findStoredLLMPath(stored []model.LLMPolicyPath, path string) *model.LLMPolicyPath {
+// findStoredLLMPath returns the stored entry addressing the same path and the
+// same methods.
+func findStoredLLMPath(stored []model.LLMPolicyPath,
+	updated model.LLMPolicyPath) *model.LLMPolicyPath {
 	for i := range stored {
-		if stored[i].Path == path {
+		if stored[i].Path == updated.Path && sameMethodSet(stored[i].Methods, updated.Methods) {
 			return &stored[i]
 		}
 	}
 	return nil
+}
+
+// sameMethodSet reports whether two method lists address the same methods,
+// ignoring order and repetition.
+//
+// A path expression alone does not identify an attachment: the same path can
+// carry one policy on GET and another on POST, each with its own parameters, so
+// matching on the path alone would hand one method's credential to another.
+//
+// Equality is required rather than overlap. A partial overlap — stored on
+// {GET, POST}, updated on {POST} — is a re-scoped attachment, not the same one,
+// and there is no reading of it under which carrying the credential across is
+// unambiguously right: the caller is changing what the attachment covers and
+// re-supplies its secrets. Two empty lists match, which is what an attachment
+// that names no method has always meant.
+func sameMethodSet(stored, updated []string) bool {
+	if len(stored) == 0 && len(updated) == 0 {
+		return true
+	}
+	counts := make(map[string]struct{}, len(stored))
+	for _, method := range stored {
+		counts[method] = struct{}{}
+	}
+	for _, method := range updated {
+		if _, ok := counts[method]; !ok {
+			return false
+		}
+	}
+	seen := make(map[string]struct{}, len(updated))
+	for _, method := range updated {
+		seen[method] = struct{}{}
+	}
+	return len(seen) == len(counts)
 }
 
 // blankProviderPolicySecrets empties the declared write-only parameters in a

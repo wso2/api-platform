@@ -44,9 +44,11 @@ type Path []string
 
 // ArrayMarker is the Path element standing for every element of an array.
 //
-// It cannot collide with a real property name: JSON Schema property names reach
-// us from a policy definition's `properties` map, and "[]" is not a name any
-// definition in the catalog uses or could usefully use.
+// Nothing stops a schema naming a property "[]", so the marker is not resolved
+// by spelling alone: it addresses elements only where the value it is applied
+// to is actually an array, and anywhere else it is treated as the property name
+// it reads as. Resolving on spelling would leave a property so named returned
+// in full, which is the one outcome this package exists to prevent.
 const ArrayMarker = "[]"
 
 // Resolver answers which of a policy's parameters its definition declares
@@ -105,12 +107,27 @@ func walkSchema(node any, prefix Path, out *[]Path) {
 	if !ok {
 		return
 	}
-	if writeOnly, _ := obj["writeOnly"].(bool); writeOnly && len(prefix) > 0 {
+	writeOnly, _ := obj["writeOnly"].(bool)
+	if writeOnly && len(prefix) > 0 {
 		*out = append(*out, prefix)
 	}
 	if properties, ok := obj["properties"].(map[string]any); ok {
 		for name, child := range properties {
-			walkSchema(child, extend(prefix, name), out)
+			childPath := extend(prefix, name)
+			// A declaration on the root says the whole parameter map is
+			// credential material. There is no path that addresses the map
+			// itself — an empty path would mean "everything" to Blank and
+			// "nothing" to the traversal — so it is expanded into one path per
+			// parameter, which blanks and preserves exactly the same values.
+			//
+			// This reaches what `properties` names. A root declared write-only
+			// with no `properties` at all describes a free-form map whose keys
+			// are not knowable from the schema; such a definition is not in the
+			// catalog, and would need addressing here before one could be.
+			if writeOnly && len(prefix) == 0 {
+				*out = append(*out, childPath)
+			}
+			walkSchema(child, childPath, out)
 		}
 	}
 	if items, ok := obj["items"]; ok {
@@ -167,11 +184,11 @@ func blankAt(container any, path Path) {
 	}
 	head, rest := path[0], path[1:]
 
-	if head == ArrayMarker {
-		elements, ok := container.([]any)
-		if !ok {
-			return
-		}
+	// The array marker addresses an array's elements. A map reached by the same
+	// element is a property whose name happens to be the marker's spelling, and
+	// it is blanked as any other property would be: falling through rather than
+	// returning here is what keeps such a property from being read back in full.
+	if elements, ok := container.([]any); ok && head == ArrayMarker {
 		for i, element := range elements {
 			if len(rest) == 0 {
 				elements[i] = zeroOf(element)
@@ -256,24 +273,20 @@ func preserveAt(stored, updated any, path Path) {
 	}
 	head, rest := path[0], path[1:]
 
-	if head == ArrayMarker {
-		storedElements, okStored := stored.([]any)
-		updatedElements, okUpdated := updated.([]any)
-		if !okStored || !okUpdated || len(storedElements) != len(updatedElements) {
-			// Element identity across an edited array is not something a
-			// parameter map carries: there is no key to match on, and matching
-			// by position once the length has changed would attach one entry's
-			// credential to another. A caller reordering or resizing such an
-			// array re-supplies its secrets.
-			return
-		}
-		for i := range updatedElements {
-			if len(rest) == 0 {
-				updatedElements[i] = preservedValue(storedElements[i], updatedElements[i], true)
-				continue
-			}
-			preserveAt(storedElements[i], updatedElements[i], rest)
-		}
+	// An array's elements carry no identity a parameter map can be matched on.
+	// Position is not identity: a caller who reorders an array sends the same
+	// number of elements in a different order, and carrying values across by
+	// position then attaches one element's credential to another — silently,
+	// and to an element the caller may not control. Nothing is carried forward
+	// inside an array; a caller editing one re-supplies its secrets. Blanking
+	// is unaffected, so the values are still withheld on read.
+	//
+	// A map reached by the marker is a property named for the marker's
+	// spelling, not an array, and falls through to the map handling below.
+	if _, isArray := stored.([]any); isArray && head == ArrayMarker {
+		return
+	}
+	if _, isArray := updated.([]any); isArray && head == ArrayMarker {
 		return
 	}
 

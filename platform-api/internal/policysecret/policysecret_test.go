@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"sort"
 	"testing"
+	"time"
 )
 
 // awsAuthenticationSchema is the shape aws-authentication carries: write-only
@@ -291,26 +292,9 @@ func TestPreserveLeavesUndeclaredParametersAlone(t *testing.T) {
 	}
 }
 
-// An edited array has no key to match elements on, so a resized one re-supplies
-// its secrets rather than having them attached by position.
-func TestPreserveSkipsArraysWhoseLengthChanged(t *testing.T) {
-	stored := map[string]any{"backends": []any{
-		map[string]any{"apiKey": "one-secret"},
-		map[string]any{"apiKey": "two-secret"},
-	}}
-	updated := map[string]any{"backends": []any{
-		map[string]any{"apiKey": ""},
-	}}
-
-	Preserve(stored, updated, []Path{{"backends", ArrayMarker, "apiKey"}})
-
-	only := updated["backends"].([]any)[0].(map[string]any)
-	if only["apiKey"] != "" {
-		t.Errorf("apiKey = %v, want it left empty rather than matched by position", only["apiKey"])
-	}
-}
-
-func TestPreserveMatchesArrayElementsOfEqualLength(t *testing.T) {
+// An array's elements carry no identity to match on, so nothing is carried
+// forward inside one and the caller re-supplies its secrets.
+func TestPreserveNeverCarriesSecretsInsideAnArray(t *testing.T) {
 	stored := map[string]any{"backends": []any{
 		map[string]any{"apiKey": "one-secret"},
 		map[string]any{"apiKey": "two-secret"},
@@ -323,11 +307,34 @@ func TestPreserveMatchesArrayElementsOfEqualLength(t *testing.T) {
 	Preserve(stored, updated, []Path{{"backends", ArrayMarker, "apiKey"}})
 
 	elements := updated["backends"].([]any)
-	if got := elements[0].(map[string]any)["apiKey"]; got != "one-secret" {
-		t.Errorf("backends[0].apiKey = %v, want the stored value", got)
+	if got := elements[0].(map[string]any)["apiKey"]; got != "" {
+		t.Errorf("backends[0].apiKey = %v, want it left empty for the caller to re-supply", got)
 	}
 	if got := elements[1].(map[string]any)["apiKey"]; got != "two-rotated" {
 		t.Errorf("backends[1].apiKey = %v, want the newly supplied value", got)
+	}
+}
+
+// Equal length is not proof of identity. A reordered array would otherwise
+// attach each element's credential to the element that took its position.
+func TestPreserveDoesNotCrossSecretsAcrossReorderedElements(t *testing.T) {
+	stored := map[string]any{"backends": []any{
+		map[string]any{"id": "one", "apiKey": "one-secret"},
+		map[string]any{"id": "two", "apiKey": "two-secret"},
+	}}
+	updated := map[string]any{"backends": []any{
+		map[string]any{"id": "two", "apiKey": ""},
+		map[string]any{"id": "one", "apiKey": ""},
+	}}
+
+	Preserve(stored, updated, []Path{{"backends", ArrayMarker, "apiKey"}})
+
+	for _, element := range updated["backends"].([]any) {
+		backend := element.(map[string]any)
+		if backend["apiKey"] != "" {
+			t.Errorf("id %v received %v; no credential may cross array positions",
+				backend["id"], backend["apiKey"])
+		}
 	}
 }
 
@@ -346,6 +353,58 @@ func TestBlankThenPreserveRoundTripsToTheStoredValue(t *testing.T) {
 	}
 	if asRead["region"] != "eu-west-1" {
 		t.Errorf("region = %v, want the caller's edit", asRead["region"])
+	}
+}
+
+// A property named for the array marker's spelling is a property, not an array.
+// Resolving the marker by spelling alone would leave it returned in full.
+func TestBlankEmptiesAPropertyNamedLikeTheArrayMarker(t *testing.T) {
+	schema := mustSchema(t, `{"type": "object", "properties": {
+      "[]": {"type": "string", "writeOnly": true}}}`)
+
+	paths := PathsFromParameterSchema(schema)
+	blanked := Blank(map[string]any{"[]": "a-stored-secret"}, paths)
+
+	if blanked["[]"] != "" {
+		t.Errorf("the \"[]\" property = %v, want the empty string", blanked["[]"])
+	}
+}
+
+func TestPreserveCarriesAPropertyNamedLikeTheArrayMarker(t *testing.T) {
+	stored := map[string]any{"[]": "a-stored-secret"}
+	updated := map[string]any{"[]": ""}
+
+	Preserve(stored, updated, []Path{{"[]"}})
+
+	if updated["[]"] != "a-stored-secret" {
+		t.Errorf("the \"[]\" property = %v, want the stored value", updated["[]"])
+	}
+}
+
+// A root declared write-only says every parameter is credential material.
+func TestPathsFromParameterSchemaExpandsARootDeclaration(t *testing.T) {
+	schema := mustSchema(t, `{"type": "object", "writeOnly": true, "properties": {
+      "username": {"type": "string"},
+      "password": {"type": "string"}}}`)
+
+	want := []string{`["password"]`, `["username"]`}
+	if got := sortedPaths(PathsFromParameterSchema(schema)); !reflect.DeepEqual(got, want) {
+		t.Fatalf("write-only paths = %v, want one per parameter", got)
+	}
+}
+
+func TestBlankEmptiesEveryParameterUnderARootDeclaration(t *testing.T) {
+	schema := mustSchema(t, `{"type": "object", "writeOnly": true, "properties": {
+      "username": {"type": "string"},
+      "password": {"type": "string"}}}`)
+	params := map[string]any{"username": "admin", "password": "a-stored-secret"}
+
+	blanked := Blank(params, PathsFromParameterSchema(schema))
+
+	for _, key := range []string{"username", "password"} {
+		if blanked[key] != "" {
+			t.Errorf("%s = %v, want the empty string", key, blanked[key])
+		}
 	}
 }
 
@@ -474,5 +533,70 @@ func TestStoreReportsALoadFailureRatherThanResolvingNothing(t *testing.T) {
 
 	if _, err := store.For("org-a"); err == nil {
 		t.Fatal("For succeeded despite the manifests being unreadable")
+	}
+}
+
+// A build that read manifests an invalidation has since superseded must not
+// publish them. Without the generation guard it would, and the superseded
+// declarations would then be served for a full TTL.
+func TestStoreDoesNotPublishAnIndexInvalidatedMidBuild(t *testing.T) {
+	before := []byte(`[{"name": "basic-auth", "version": "v1.1.0", "writeOnlyParams": [["password"]]}]`)
+	after := []byte(`[{"name": "basic-auth", "version": "v1.1.0",
+	  "writeOnlyParams": [["password"], ["clientSecret"]]}]`)
+
+	var store *Store
+	loads := 0
+	store = NewStore(func(string) ([][]byte, error) {
+		loads++
+		if loads == 1 {
+			// A manifest lands while this build is reading the previous one.
+			store.Invalidate("org-a")
+			return [][]byte{before}, nil
+		}
+		return [][]byte{after}, nil
+	})
+
+	if _, err := store.For("org-a"); err != nil {
+		t.Fatalf("For returned %v", err)
+	}
+
+	// The superseded build must not be what a later read is served.
+	resolver, err := store.For("org-a")
+	if err != nil {
+		t.Fatalf("For returned %v", err)
+	}
+	if got := len(resolver.WriteOnlyPaths("basic-auth", "v1.1.0")); got != 2 {
+		t.Errorf("paths = %d, want the 2 of the manifest that superseded the build", got)
+	}
+}
+
+// Invalidate reaches the replica that handled the manifest report and no other,
+// so a cached index expires rather than being held until restart.
+func TestStoreRebuildsAnExpiredIndex(t *testing.T) {
+	manifest := []byte(`[{"name": "basic-auth", "version": "v1.1.1", "writeOnlyParams": [["password"]]}]`)
+	loads := 0
+	store := NewStore(func(string) ([][]byte, error) {
+		loads++
+		return [][]byte{manifest}, nil
+	})
+	now := time.Now()
+	store.now = func() time.Time { return now }
+
+	if _, err := store.For("org-a"); err != nil {
+		t.Fatalf("For returned %v", err)
+	}
+	if _, err := store.For("org-a"); err != nil {
+		t.Fatalf("For returned %v", err)
+	}
+	if loads != 1 {
+		t.Fatalf("manifests loaded %d times inside the TTL, want them cached", loads)
+	}
+
+	now = now.Add(DefaultTTL + time.Second)
+	if _, err := store.For("org-a"); err != nil {
+		t.Fatalf("For returned %v", err)
+	}
+	if loads != 2 {
+		t.Errorf("manifests loaded %d times after expiry, want a reload", loads)
 	}
 }
