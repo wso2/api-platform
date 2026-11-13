@@ -362,8 +362,11 @@ func (p *Publisher) dropped(feature string, attempts int, err error) {
 // NewFromConfig returns the Reporter cfg describes: Noop when reporting is
 // turned off or no collector is configured, otherwise a Publisher whose token endpoint and collector calls go
 // through the process's shared, SSRF-guarded outbound client policy, with
-// redirects refused (both requests carry credentials). It must run after the
-// shared client is initialized.
+// redirects refused (both requests carry credentials). Both URLs come from the
+// operator's config and are often in-cluster, so they use the operator variant
+// of that policy: private addresses stay reachable even under "public_only",
+// while metadata addresses are still refused. It must run after the shared
+// client is initialized.
 func NewFromConfig(cfg config.FeatureUsage, attributor Attributor, logger *slog.Logger) (Reporter, error) {
 	if !cfg.Enabled {
 		logger.Info("Feature usage reporting is turned off (feature_usage.enabled = false)", slog.String("party", logParty))
@@ -374,7 +377,7 @@ func NewFromConfig(cfg config.FeatureUsage, attributor Attributor, logger *slog.
 			slog.String("party", logParty))
 		return Noop(), nil
 	}
-	httpClient, err := utils.NewUpstreamClientWithTimeout(cfg.RequestTimeout)
+	httpClient, err := utils.NewOperatorUpstreamClientWithTimeout(cfg.RequestTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("feature usage: outbound HTTP client: %w", err)
 	}
