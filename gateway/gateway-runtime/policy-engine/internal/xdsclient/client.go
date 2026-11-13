@@ -312,18 +312,12 @@ func (c *Client) dial() (*grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(c.ctx, c.config.ConnectTimeout)
 	defer cancel()
 
-	var opts []grpc.DialOption
-
-	// Configure TLS or insecure
-	if c.config.TLSEnabled {
-		tlsConfig, err := c.loadTLSConfig()
-		if err != nil {
-			return nil, fmt.Errorf("failed to load TLS config: %w", err)
-		}
-		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
-	} else {
-		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// Loaded on every dial, so certificate files rotated on disk are picked up.
+	creds, err := TransportCredentials(c.config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load TLS config: %w", err)
 	}
+	opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
 
 	// The ADS stream is idle between config pushes, and the client only
 	// writes after it receives a response. Without keepalive a connection

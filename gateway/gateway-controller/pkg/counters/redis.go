@@ -97,9 +97,12 @@ func (r *Redis) key(k counterproto.Key) string {
 	return r.prefix + "{c}:" + escape(k.Namespace) + ":" + escape(k.ID) + ":" + strconv.FormatInt(k.Window, 10)
 }
 
+// keyPartEscaper keeps a key part from running into the next.
+var keyPartEscaper = strings.NewReplacer("%", "%25", ":", "%3A")
+
 // escape keeps a key part from running into the next.
 func escape(s string) string {
-	return strings.NewReplacer("%", "%25", ":", "%3A").Replace(s)
+	return keyPartEscaper.Replace(s)
 }
 
 // Sync applies adds once per (source, reportID) and returns the totals of keys.

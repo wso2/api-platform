@@ -765,3 +765,20 @@ func TestCreate_RejectsAnInvalidArtifactID(t *testing.T) {
 	var invalid *ValidationError
 	require.True(t, errors.As(err, &invalid), "got %v", err)
 }
+
+func TestCreate_ArtifactIDOfAnotherArtifactConflictsOnTheID(t *testing.T) {
+	svc, db := newTestService(t, false)
+	seedLLMProvider(t, db, "other-provider")
+	stored, err := db.GetConfigByKindAndHandle(models.KindLlmProvider, "other-provider")
+	require.NoError(t, err)
+	other := stored.UUID
+
+	body := strings.Replace(validBudget, `"metadata": {"name": "research-team-monthly"}`,
+		`"metadata": {"name": "research-team-monthly", "annotations": {"gateway.api-platform.wso2.com/artifact-id": "`+other+`"}}`, 1)
+	_, err = svc.Create(CreateParams{Body: []byte(body)})
+	require.Error(t, err)
+	assert.True(t, storage.IsConflictError(err), "got %v", err)
+	assert.Contains(t, err.Error(), "artifact ID")
+	assert.Contains(t, err.Error(), `"other-provider"`)
+	assert.NotContains(t, err.Error(), "a budget named")
+}

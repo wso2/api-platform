@@ -76,6 +76,7 @@ func TestServiceAcknowledgesReportsAndReturnsTotals(t *testing.T) {
 		}))
 		resp := &counterproto.SyncResponse{}
 		require.NoError(t, stream.RecvMsg(resp), "round %d", i)
+		assert.True(t, resp.OK)
 		assert.Equal(t, "r1", resp.ReportID)
 		require.Len(t, resp.Totals, 1)
 		assert.Equal(t, want, resp.Totals[0].Total)
@@ -90,6 +91,18 @@ func TestServiceDoesNotAcknowledgeWhenTheStoreFails(t *testing.T) {
 	resp := &counterproto.SyncResponse{}
 	require.NoError(t, stream.RecvMsg(resp))
 
+	assert.False(t, resp.OK)
 	assert.Empty(t, resp.ReportID, "the engine must keep the adds and send them again")
+	assert.Empty(t, resp.Totals)
+}
+
+func TestServiceAnswersAnEmptySyncWithoutTheStore(t *testing.T) {
+	stream := openStream(t, failingStore{}) // any store call would fail
+
+	require.NoError(t, stream.SendMsg(&counterproto.SyncRequest{Source: "engine-1"}))
+	resp := &counterproto.SyncResponse{}
+	require.NoError(t, stream.RecvMsg(resp))
+
+	assert.True(t, resp.OK, "an idle engine's sync is answered without touching the store")
 	assert.Empty(t, resp.Totals)
 }

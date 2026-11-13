@@ -98,6 +98,10 @@ type SyncRequest struct {
 
 // SyncResponse goes from the controller to the policy engine.
 type SyncResponse struct {
+	// OK reports that the store answered: Totals are current, and the request's adds,
+	// if any, are applied. False when the store failed; the engine then keeps its
+	// report and sends it again.
+	OK bool `json:"ok,omitempty"`
 	// ReportID acknowledges the request's adds: they are in Totals.
 	ReportID string  `json:"reportId,omitempty"`
 	Totals   []Total `json:"totals,omitempty"`

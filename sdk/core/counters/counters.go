@@ -17,8 +17,13 @@
 
 // Package counters is the gateway's shared counter service as policies see it:
 // named totals that every policy engine of a gateway, and every gateway sharing a
-// store, adds to and reads. Budgets count spend with it; a quota or a rate limit
-// could count requests the same way.
+// store, adds to and reads. Budgets count spend with it; a token or request quota
+// could count the same way.
+//
+// Totals are shared with about a second of lag and reads use the engine's local copy,
+// so a limit built on them can be overshot by what arrives within that second. Use
+// them for long-window limits (per day, week or month), not for strict short-window
+// rate limiting, which needs a check against the store on every request.
 //
 // This package is only the contract. The policy engine implements it: Add keeps the
 // amount in memory and the engine sends the sums to its gateway-controller about once

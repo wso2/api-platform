@@ -60,8 +60,8 @@ func Register(server *grpc.Server, store Store, allowed map[string]bool, logger 
 }
 
 // sync answers each SyncRequest with the totals of its keys, after applying its adds.
-// When the store fails, the response carries no ReportID, so the engine keeps the adds
-// and sends them again.
+// When the store fails, the response is not OK and carries no ReportID, so the engine
+// keeps the adds and sends them again.
 func (s *service) sync(_ any, stream grpc.ServerStream) error {
 	ctx := stream.Context()
 	if s.allowed != nil {
@@ -78,11 +78,20 @@ func (s *service) sync(_ any, stream grpc.ServerStream) error {
 			return err
 		}
 		resp := &counterproto.SyncResponse{}
+		if len(req.Adds) == 0 && len(req.Keys) == 0 {
+			// An idle engine: nothing to apply or read, so the store is not called.
+			resp.OK = true
+			if err := stream.SendMsg(resp); err != nil {
+				return err
+			}
+			continue
+		}
 		totals, err := s.store.Sync(ctx, req.Source, req.ReportID, req.Adds, req.Keys)
 		if err != nil {
 			s.logger.Error("Failed to sync counters", slog.String("source", req.Source),
 				slog.String("report_id", req.ReportID), slog.Any("error", err))
 		} else {
+			resp.OK = true
 			resp.ReportID = req.ReportID
 			resp.Totals = totals
 		}

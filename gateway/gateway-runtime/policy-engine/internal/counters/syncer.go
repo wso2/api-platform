@@ -40,8 +40,10 @@ func init() {
 type Syncer struct {
 	Service       *Service
 	ServerAddress string
-	Credentials   credentials.TransportCredentials
-	Interval      time.Duration
+	// Credentials returns the transport credentials for each new stream, so certificate
+	// files rotated on disk are picked up on reconnect, as the xDS stream does.
+	Credentials func() (credentials.TransportCredentials, error)
+	Interval    time.Duration
 	// Timeout bounds one request and its response.
 	Timeout    time.Duration
 	MaxBackoff time.Duration
@@ -54,9 +56,14 @@ type Syncer struct {
 func (s *Syncer) Run(ctx context.Context) {
 	backoff := s.Interval
 	for ctx.Err() == nil {
-		err := s.stream(ctx)
+		synced, err := s.stream(ctx)
 		if ctx.Err() != nil {
 			return
+		}
+		if synced {
+			// The stream worked before it broke: reconnect quickly, not after the
+			// backoff earlier failures built up.
+			backoff = s.Interval
 		}
 		s.Logger.Warn("Counter sync with the gateway-controller stopped; retrying",
 			slog.Any("error", err), slog.Duration("retry_in", backoff))
@@ -72,10 +79,15 @@ func (s *Syncer) Run(ctx context.Context) {
 	}
 }
 
-// stream opens one stream and syncs on it until it fails.
-func (s *Syncer) stream(ctx context.Context) error {
+// stream opens one stream and syncs on it until it fails. synced reports whether at
+// least one sync succeeded on it.
+func (s *Syncer) stream(ctx context.Context) (synced bool, err error) {
+	creds, err := s.Credentials()
+	if err != nil {
+		return false, fmt.Errorf("loading TLS credentials: %w", err)
+	}
 	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(s.Credentials),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithDefaultCallOptions(grpc.CallContentSubtype(counterproto.CodecName)),
 	}
 	if s.dialer != nil {
@@ -83,7 +95,7 @@ func (s *Syncer) stream(ctx context.Context) error {
 	}
 	conn, err := grpc.NewClient(s.ServerAddress, opts...)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer conn.Close()
 	streamCtx, cancel := context.WithCancel(ctx)
@@ -92,17 +104,18 @@ func (s *Syncer) stream(ctx context.Context) error {
 		&grpc.StreamDesc{StreamName: counterproto.SyncMethod, ServerStreams: true, ClientStreams: true},
 		counterproto.FullSyncMethod)
 	if err != nil {
-		return err
+		return false, err
 	}
 	ticker := time.NewTicker(s.Interval)
 	defer ticker.Stop()
 	for {
 		if err := s.syncOnce(stream); err != nil {
-			return err
+			return synced, err
 		}
+		synced = true
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return synced, ctx.Err()
 		case <-ticker.C:
 		}
 	}

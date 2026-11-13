@@ -3097,8 +3097,9 @@ func (c *Config) validateHTTPListenerConfig() error {
 
 // validate checks the counter store settings.
 func (c CountersConfig) validate() error {
-	if c.Retention < 0 {
-		return fmt.Errorf("controller.counters.retention must not be negative")
+	// Redis expiries are whole seconds: under a second would delete counters at once.
+	if c.Retention < 0 || (c.Retention > 0 && c.Retention < time.Second) {
+		return fmt.Errorf("controller.counters.retention must be 0 (40 days) or at least 1s, got %s", c.Retention)
 	}
 	if c.Redis.Enabled && strings.TrimSpace(c.Redis.Address) == "" {
 		return fmt.Errorf("controller.counters.redis.address is required when controller.counters.redis.enabled is true")

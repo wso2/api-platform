@@ -76,7 +76,7 @@ func parseGraphQLAPIDeployment(parser *config.Parser, data []byte, contentType s
 	}
 	handle := graphqlConfig.Metadata.Name
 	kind := string(graphqlConfig.Kind)
-	annotationArtifactID := annotationValue(graphqlConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
+	annotationArtifactID := AnnotationValue(graphqlConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
 	return graphqlConfig, handle, kind, annotationArtifactID, nil
 }
 

@@ -30,36 +30,61 @@ import (
 	"github.com/wso2/api-platform/gateway/common/counterproto"
 )
 
-// watchFor is how long a counter keeps being synced after this engine last used it.
-const watchFor = 10 * time.Minute
+// DefaultIdleTimeout is how long a counter keeps being synced after this engine last
+// used it, when no other is configured.
+const DefaultIdleTimeout = 10 * time.Minute
+
+// entry is what this engine keeps for one counter it uses.
+type entry struct {
+	// total is the shared total from the last sync; synced is false until one arrives.
+	total  float64
+	synced bool
+	// pending holds adds not yet in a report.
+	pending float64
+	// expiresAt is pushed forward on every use; past it, with nothing left to report,
+	// the counter is no longer synced and is forgotten.
+	expiresAt time.Time
+}
 
 // Service implements sdk/core/counters.Service.
 type Service struct {
 	mu sync.Mutex
 	// source names this engine to the controller for the life of the process.
-	source string
-	seq    uint64
-	// pending holds adds not yet in a report.
-	pending map[sdkcounters.Key]float64
+	source      string
+	idleTimeout time.Duration
+	seq         uint64
+	entries     map[sdkcounters.Key]*entry
 	// inflight is the report sent and not yet acknowledged; resent as is until it is.
 	inflight   map[sdkcounters.Key]float64
 	inflightID string
-	totals     map[sdkcounters.Key]float64
-	known      map[sdkcounters.Key]bool
-	lastUsed   map[sdkcounters.Key]time.Time
 	now        func() time.Time
 }
 
-// NewService returns an empty Service. source must be unique per engine process.
-func NewService(source string) *Service {
-	return &Service{
-		source:   source,
-		pending:  map[sdkcounters.Key]float64{},
-		totals:   map[sdkcounters.Key]float64{},
-		known:    map[sdkcounters.Key]bool{},
-		lastUsed: map[sdkcounters.Key]time.Time{},
-		now:      time.Now,
+// NewService returns an empty Service. source must be unique per engine process;
+// idleTimeout is how long a counter keeps being synced after its last use
+// (DefaultIdleTimeout when not positive).
+func NewService(source string, idleTimeout time.Duration) *Service {
+	if idleTimeout <= 0 {
+		idleTimeout = DefaultIdleTimeout
 	}
+	return &Service{
+		source:      source,
+		idleTimeout: idleTimeout,
+		entries:     map[sdkcounters.Key]*entry{},
+		now:         time.Now,
+	}
+}
+
+// use returns the counter's entry, creating it, and pushes its expiry forward.
+// Callers hold mu.
+func (s *Service) use(key sdkcounters.Key) *entry {
+	e := s.entries[key]
+	if e == nil {
+		e = &entry{}
+		s.entries[key] = e
+	}
+	e.expiresAt = s.now().Add(s.idleTimeout)
+	return e
 }
 
 // Add adds delta to the counter; it is reported on the next sync.
@@ -67,8 +92,7 @@ func (s *Service) Add(key sdkcounters.Key, delta float64) {
 	key = normalize(key)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.pending[key] += delta
-	s.lastUsed[key] = s.now()
+	s.use(key).pending += delta
 }
 
 // Total returns the last shared total plus this engine's adds not yet in it. ok is
@@ -77,20 +101,28 @@ func (s *Service) Total(key sdkcounters.Key) (float64, bool) {
 	key = normalize(key)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.lastUsed[key] = s.now()
-	return s.totals[key] + s.inflight[key] + s.pending[key], s.known[key]
+	e := s.use(key)
+	return e.total + s.inflight[key] + e.pending, e.synced
 }
 
 // nextRequest builds the request for this sync: the report in flight, or a new one
-// from the pending adds, and every counter used recently.
+// from the pending adds, and every counter still in use. Counters past their expiry
+// with nothing left to report are forgotten.
 func (s *Service) nextRequest() *counterproto.SyncRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
-	if s.inflight == nil && len(s.pending) > 0 {
-		s.seq++
-		s.inflight, s.pending = s.pending, map[sdkcounters.Key]float64{}
-		s.inflightID = strconv.FormatUint(s.seq, 10)
+	if s.inflight == nil {
+		report := map[sdkcounters.Key]float64{}
+		for key, e := range s.entries {
+			if e.pending != 0 {
+				report[key], e.pending = e.pending, 0
+			}
+		}
+		if len(report) > 0 {
+			s.seq++
+			s.inflight, s.inflightID = report, strconv.FormatUint(s.seq, 10)
+		}
 	}
 	req := &counterproto.SyncRequest{Source: s.source}
 	if s.inflight != nil {
@@ -99,11 +131,9 @@ func (s *Service) nextRequest() *counterproto.SyncRequest {
 			req.Adds = append(req.Adds, counterproto.Add{Key: wire(key), Delta: delta})
 		}
 	}
-	for key, used := range s.lastUsed {
-		if now.Sub(used) > watchFor && s.inflight[key] == 0 && s.pending[key] == 0 {
-			delete(s.lastUsed, key)
-			delete(s.totals, key)
-			delete(s.known, key)
+	for key, e := range s.entries {
+		if now.After(e.expiresAt) && e.pending == 0 && s.inflight[key] == 0 {
+			delete(s.entries, key)
 			continue
 		}
 		req.Keys = append(req.Keys, wire(key))
@@ -111,20 +141,23 @@ func (s *Service) nextRequest() *counterproto.SyncRequest {
 	return req
 }
 
-// apply takes in a response: an acknowledged report is now part of the totals.
-func (s *Service) apply(req *counterproto.SyncRequest, resp *counterproto.SyncResponse) {
+// apply takes in a response: totals of the counters still in use, and an acknowledged
+// report, now part of those totals.
+func (s *Service) apply(_ *counterproto.SyncRequest, resp *counterproto.SyncResponse) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if resp.ReportID == "" {
-		return // not applied; the report stays in flight and is sent again
+	if !resp.OK {
+		return // the store failed; the report stays in flight and is sent again
 	}
-	if resp.ReportID == s.inflightID {
+	// Totals apply on every sync, with adds or without, so an engine that has nothing
+	// to report still sees what other gateways spend.
+	if resp.ReportID != "" && resp.ReportID == s.inflightID {
 		s.inflight, s.inflightID = nil, ""
 	}
 	for _, t := range resp.Totals {
-		key := local(t.Key)
-		s.totals[key] = t.Total
-		s.known[key] = true
+		if e := s.entries[local(t.Key)]; e != nil {
+			e.total, e.synced = t.Total, true
+		}
 	}
 }
 

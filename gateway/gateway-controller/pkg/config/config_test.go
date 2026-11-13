@@ -3102,3 +3102,20 @@ func TestLoadConfig_ShippedRouterHealthSectionIsValid(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, ClientList{"127.0.0.1", "::1"}, cfg.Router.Health.AllowedClients)
 }
+
+func TestCountersConfigRetention(t *testing.T) {
+	for _, tc := range []struct {
+		retention time.Duration
+		ok        bool
+	}{
+		{0, true}, {time.Second, true}, {40 * 24 * time.Hour, true},
+		{500 * time.Millisecond, false}, {-time.Hour, false},
+	} {
+		err := CountersConfig{Retention: tc.retention}.validate()
+		if tc.ok {
+			assert.NoError(t, err, "retention %s", tc.retention)
+		} else {
+			assert.ErrorContains(t, err, "controller.counters.retention", "retention %s", tc.retention)
+		}
+	}
+}

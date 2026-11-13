@@ -790,6 +790,12 @@ ciphers = '{{ env "POLICY_ENGINE_XDS_CLIENT_TLS_CIPHERS" (env "XDS_CLIENT_TLS_CI
 # classical entry in this same list.
 ecdh_curves = '{{ env "POLICY_ENGINE_XDS_CLIENT_TLS_ECDH_CURVES" (env "XDS_CLIENT_TLS_ECDH_CURVES" "X25519MLKEM768,X25519,P-256") }}'
 
+[policy_engine.counters]
+# How long a shared counter (budget spend) keeps being synced with the gateway-controller
+# after this policy engine last used it. Longer keeps totals fresh across pauses in
+# traffic; shorter means fewer reads from Redis.
+idle_timeout = "10m"
+
 [policy_engine.file_config]
 path = ""
 

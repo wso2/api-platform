@@ -601,6 +601,7 @@ type PolicyEngine struct {
 	Metrics        MetricsConfig        `koanf:"metrics"`
 	ConfigMode     ConfigModeConfig     `koanf:"config_mode"`
 	XDS            XDSConfig            `koanf:"xds"`
+	Counters       CountersConfig       `koanf:"counters"`
 	FileConfig     FileConfigConfig     `koanf:"file_config"`
 	Logging        LoggingConfig        `koanf:"logging"`
 	PythonExecutor PythonExecutorConfig `koanf:"python_executor"`
@@ -998,6 +999,15 @@ type ConfigModeConfig struct {
 }
 
 // XDSConfig holds xDS client configuration
+// CountersConfig configures the shared counters this engine syncs with its
+// gateway-controller (budgets count spend in them).
+type CountersConfig struct {
+	// IdleTimeout is how long a counter keeps being synced after this engine last used
+	// it; 0 means the default, 10 minutes. Longer keeps totals fresh across pauses in
+	// traffic; shorter means fewer reads.
+	IdleTimeout time.Duration `koanf:"idle_timeout"`
+}
+
 type XDSConfig struct {
 	// ConnectTimeout is the timeout for establishing initial connection
 	ConnectTimeout time.Duration `koanf:"connect_timeout"`
@@ -1365,6 +1375,9 @@ func defaultConfig() *Config {
 					Enabled:    false,
 					EcdhCurves: "X25519MLKEM768,X25519,P-256",
 				},
+			},
+			Counters: CountersConfig{
+				IdleTimeout: 10 * time.Minute,
 			},
 			FileConfig: FileConfigConfig{
 				Path: "",
@@ -1755,6 +1768,11 @@ func (c *Config) validateXDSConfig() error {
 
 	if c.PolicyEngine.XDS.KeepaliveTimeout <= 0 {
 		return fmt.Errorf("xds.keepalive_timeout must be positive")
+	}
+
+	// Zero falls back to the default (internal/counters.DefaultIdleTimeout).
+	if c.PolicyEngine.Counters.IdleTimeout < 0 {
+		return fmt.Errorf("counters.idle_timeout must not be negative")
 	}
 
 	if c.PolicyEngine.XDS.TLS.Enabled {

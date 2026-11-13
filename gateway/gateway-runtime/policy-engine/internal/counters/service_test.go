@@ -24,12 +24,14 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
@@ -44,7 +46,7 @@ func key(id string) sdkcounters.Key {
 }
 
 func TestTotalCombinesSharedInflightAndPending(t *testing.T) {
-	s := NewService("engine-1")
+	s := NewService("engine-1", 0)
 	s.Add(key("a"), 1)
 
 	total, ok := s.Total(key("a"))
@@ -60,7 +62,7 @@ func TestTotalCombinesSharedInflightAndPending(t *testing.T) {
 	assert.Equal(t, 3.0, total, "in flight and pending both count")
 
 	// The controller applied the report and other engines' spend: total 10.
-	s.apply(req, &counterproto.SyncResponse{ReportID: "1", Totals: []counterproto.Total{{Key: wire(key("a")), Total: 10}}})
+	s.apply(req, &counterproto.SyncResponse{OK: true, ReportID: "1", Totals: []counterproto.Total{{Key: wire(key("a")), Total: 10}}})
 
 	total, ok = s.Total(key("a"))
 	assert.Equal(t, 12.0, total, "shared 10 plus the 2 not yet reported")
@@ -68,7 +70,7 @@ func TestTotalCombinesSharedInflightAndPending(t *testing.T) {
 }
 
 func TestReportIsResentUntilAcknowledged(t *testing.T) {
-	s := NewService("engine-1")
+	s := NewService("engine-1", 0)
 	s.Add(key("a"), 1)
 	first := s.nextRequest()
 
@@ -79,7 +81,7 @@ func TestReportIsResentUntilAcknowledged(t *testing.T) {
 	assert.Equal(t, first.ReportID, again.ReportID)
 	assert.Equal(t, first.Adds, again.Adds, "the same adds, so the store applies them once")
 
-	s.apply(again, &counterproto.SyncResponse{ReportID: again.ReportID})
+	s.apply(again, &counterproto.SyncResponse{OK: true, ReportID: again.ReportID})
 	next := s.nextRequest()
 	assert.Equal(t, "2", next.ReportID)
 	require.Len(t, next.Adds, 1)
@@ -87,19 +89,19 @@ func TestReportIsResentUntilAcknowledged(t *testing.T) {
 }
 
 func TestIdleCountersStopBeingSynced(t *testing.T) {
-	s := NewService("engine-1")
+	s := NewService("engine-1", 0)
 	now := november
 	s.now = func() time.Time { return now }
 	s.Total(key("a"))
 	assert.Len(t, s.nextRequest().Keys, 1)
 
-	now = now.Add(watchFor + time.Second)
+	now = now.Add(DefaultIdleTimeout + time.Second)
 
 	assert.Empty(t, s.nextRequest().Keys)
 }
 
 func TestKeysForTheSameWindowAreEqual(t *testing.T) {
-	s := NewService("engine-1")
+	s := NewService("engine-1", 0)
 	s.Add(sdkcounters.Key{Namespace: "budget", ID: "a", Window: november.In(time.FixedZone("x", 3600))}, 1)
 	total, _ := s.Total(key("a"))
 	assert.Equal(t, 1.0, total)
@@ -130,7 +132,7 @@ func (c *stubController) sync(_ any, stream grpc.ServerStream) error {
 				c.totals[a.Key] += a.Delta
 			}
 		}
-		resp := &counterproto.SyncResponse{ReportID: req.ReportID}
+		resp := &counterproto.SyncResponse{OK: true, ReportID: req.ReportID}
 		for _, k := range req.Keys {
 			resp.Totals = append(resp.Totals, counterproto.Total{Key: k, Total: c.totals[k]})
 		}
@@ -165,10 +167,10 @@ func TestTwoEnginesShareTotalsThroughTheController(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	engines := []*Service{NewService("engine-1"), NewService("engine-2")}
+	engines := []*Service{NewService("engine-1", 0), NewService("engine-2", 0)}
 	for _, s := range engines {
 		syncer := &Syncer{
-			Service: s, ServerAddress: "passthrough:///bufnet", Credentials: insecure.NewCredentials(),
+			Service: s, ServerAddress: "passthrough:///bufnet", Credentials: insecureCredentials,
 			Interval: 20 * time.Millisecond, Timeout: time.Second, MaxBackoff: 100 * time.Millisecond,
 			Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), dialer: dialer,
 		}
@@ -186,4 +188,117 @@ func TestTwoEnginesShareTotalsThroughTheController(t *testing.T) {
 		}
 		return true
 	}, 5*time.Second, 20*time.Millisecond, "both engines see 1.0, the first report counted once although its acknowledgement was lost")
+}
+
+func insecureCredentials() (credentials.TransportCredentials, error) {
+	return insecure.NewCredentials(), nil
+}
+
+func TestAnEngineWithNothingToReportStillGetsTotals(t *testing.T) {
+	s := NewService("engine-1", 0)
+	_, known := s.Total(key("a")) // used, but never added to
+	require.False(t, known)
+	req := s.nextRequest()
+	require.Empty(t, req.ReportID)
+	require.Len(t, req.Keys, 1)
+
+	s.apply(req, &counterproto.SyncResponse{OK: true, Totals: []counterproto.Total{{Key: wire(key("a")), Total: 9}}})
+	total, known := s.Total(key("a"))
+	assert.True(t, known)
+	assert.Equal(t, 9.0, total, "another gateway's spend arrives without this engine adding")
+
+	s.apply(s.nextRequest(), &counterproto.SyncResponse{})
+	total, _ = s.Total(key("a"))
+	assert.Equal(t, 9.0, total, "a failed sync keeps the last total")
+}
+
+func TestAReadOnlyEngineSeesAnotherEnginesSpend(t *testing.T) {
+	stub := &stubController{totals: map[counterproto.Key]float64{}, applied: map[string]bool{}}
+	dialer := startStub(t, stub)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	spender, reader := NewService("engine-1", 0), NewService("engine-2", 0)
+	for _, s := range []*Service{spender, reader} {
+		syncer := &Syncer{
+			Service: s, ServerAddress: "passthrough:///bufnet", Credentials: insecureCredentials,
+			Interval: 20 * time.Millisecond, Timeout: time.Second, MaxBackoff: 100 * time.Millisecond,
+			Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), dialer: dialer,
+		}
+		go syncer.Run(ctx)
+	}
+	spender.Add(key("a"), 0.75)
+	reader.Total(key("a"))
+
+	require.Eventually(t, func() bool {
+		total, ok := reader.Total(key("a"))
+		return ok && total == 0.75
+	}, 5*time.Second, 20*time.Millisecond, "the engine that only reads sees the other engine's spend")
+}
+
+func TestSyncerReloadsCredentialsAndResetsBackoff(t *testing.T) {
+	stub := &stubController{totals: map[counterproto.Key]float64{}, applied: map[string]bool{}}
+	dialer := startStub(t, stub)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var loads atomic.Int32
+	syncer := &Syncer{
+		Service: NewService("engine-1", 0), ServerAddress: "passthrough:///bufnet",
+		Credentials: func() (credentials.TransportCredentials, error) {
+			loads.Add(1)
+			return insecure.NewCredentials(), nil
+		},
+		Interval: 10 * time.Millisecond, Timeout: 50 * time.Millisecond, MaxBackoff: time.Hour,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		dialer: func(ctx context.Context, addr string) (net.Conn, error) {
+			conn, err := dialer(ctx, addr)
+			if err != nil {
+				return nil, err
+			}
+			// Break every connection after a short while, as a controller restart does.
+			time.AfterFunc(40*time.Millisecond, func() { _ = conn.Close() })
+			return conn, nil
+		},
+	}
+	go syncer.Run(ctx)
+
+	// With MaxBackoff an hour, a backoff that kept doubling across healthy streams would
+	// stall reconnects; reset after each working stream, they keep happening.
+	require.Eventually(t, func() bool { return loads.Load() >= 5 }, 5*time.Second, 10*time.Millisecond,
+		"each reconnect loads the credentials again and comes back quickly")
+}
+
+func TestIdleTimeoutIsConfigurableAndUsePushesItForward(t *testing.T) {
+	s := NewService("engine-1", time.Minute)
+	now := november
+	s.now = func() time.Time { return now }
+	s.Total(key("a"))
+
+	now = now.Add(50 * time.Second)
+	s.Total(key("a")) // used again: expiry moves to 50s + 1m
+	now = now.Add(50 * time.Second)
+	assert.Len(t, s.nextRequest().Keys, 1, "still in use 50s after its last use")
+
+	now = now.Add(11 * time.Second)
+	assert.Empty(t, s.nextRequest().Keys, "forgotten a minute after its last use")
+	_, synced := s.Total(key("a"))
+	assert.False(t, synced, "a forgotten counter starts again without a shared total")
+}
+
+func TestAnExpiredCounterWithUnreportedSpendIsKept(t *testing.T) {
+	s := NewService("engine-1", time.Minute)
+	now := november
+	s.now = func() time.Time { return now }
+	s.Add(key("a"), 1)
+	first := s.nextRequest()
+	require.Len(t, first.Adds, 1)
+
+	now = now.Add(2 * time.Minute)
+	again := s.nextRequest() // not acknowledged yet
+	assert.Equal(t, first.ReportID, again.ReportID)
+	assert.Len(t, again.Keys, 1, "kept until its spend is acknowledged")
+
+	s.apply(again, &counterproto.SyncResponse{OK: true, ReportID: again.ReportID})
+	assert.Empty(t, s.nextRequest().Keys)
 }

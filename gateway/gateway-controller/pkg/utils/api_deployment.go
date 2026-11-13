@@ -239,7 +239,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		handle = restConfig.Metadata.Name
 		kind = string(restConfig.Kind)
 		parsedConfig = restConfig
-		annotationArtifactID = annotationValue(restConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
+		annotationArtifactID = AnnotationValue(restConfig.Metadata.Annotations, commonconstants.AnnotationArtifactID)
 	default:
 		if fn, ok := kindDeployParsers[resolvedKind]; ok {
 			var err error
@@ -723,8 +723,8 @@ func RegisterKindVhostSentinelResolver(goTypeName string, fn KindVhostSentinelRe
 	kindVhostSentinelResolvers[goTypeName] = fn
 }
 
-// annotationValue safely reads a single annotation key from a pointer-to-map.
-func annotationValue(annotations *map[string]string, key string) string {
+// AnnotationValue safely reads a single annotation key from a pointer-to-map.
+func AnnotationValue(annotations *map[string]string, key string) string {
 	if annotations == nil {
 		return ""
 	}

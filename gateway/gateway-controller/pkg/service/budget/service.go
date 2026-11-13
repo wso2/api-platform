@@ -121,6 +121,11 @@ func (s *Service) Create(params CreateParams) (*models.StoredConfig, error) {
 	if s.pushEnabled {
 		cfg.CPSyncStatus = models.CPSyncStatusPending
 	}
+	if artifactID(budget.Metadata) != "" {
+		if err := s.checkIDFree(id); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := s.db.SaveConfig(cfg); err != nil {
 		if storage.IsConflictError(err) {
@@ -257,6 +262,20 @@ func (s *Service) publish(action, name, correlationID string, log *slog.Logger) 
 	return nil
 }
 
+// checkIDFree rejects an artifact-id annotation that names an artifact already stored,
+// of any kind: the database would refuse the row, and the conflict is the ID, not the name.
+func (s *Service) checkIDFree(id string) error {
+	existing, err := s.db.GetConfig(id)
+	if err == nil && existing != nil {
+		return fmt.Errorf("%w: artifact ID %q is already used by %s %q",
+			storage.ErrConflict, id, existing.Kind, existing.Handle)
+	}
+	if err != nil && !storage.IsNotFoundError(err) {
+		return fmt.Errorf("failed to check budget ID %q: %w", id, err)
+	}
+	return nil
+}
+
 // budgetID is the UUID of a budget created through the gateway: the artifact-id
 // annotation when given, as for the gateway's other kinds, and otherwise a new one. The
 // shared spend is keyed by the budget's name, not this UUID, so the same budget on every
@@ -279,10 +298,7 @@ func budgetID(metadata api.BudgetMetadata) (string, error) {
 }
 
 func artifactID(metadata api.BudgetMetadata) string {
-	if metadata.Annotations == nil {
-		return ""
-	}
-	return (*metadata.Annotations)[constants.AnnotationArtifactID]
+	return utils.AnnotationValue(metadata.Annotations, constants.AnnotationArtifactID)
 }
 
 // fixedFieldChanges lists the fields that differ but cannot change after

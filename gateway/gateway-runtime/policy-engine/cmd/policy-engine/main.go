@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/httpkit/httpclient"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/admin"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
@@ -557,20 +558,22 @@ func initializeXDSClient(ctx context.Context, cfg *config.Config, serverAddr str
 // gateway-controller in the background until ctx is done.
 func startCounterSync(ctx context.Context, cfg *config.Config, serverAddr string) error {
 	xdsConfig := xdsClientConfig(cfg, serverAddr)
-	creds, err := xdsclient.TransportCredentials(xdsConfig)
-	if err != nil {
+	// Load once up front so bad TLS settings fail startup; each stream reloads them.
+	if _, err := xdsclient.TransportCredentials(xdsConfig); err != nil {
 		return err
 	}
-	service := counters.NewService(uuid.NewString())
+	service := counters.NewService(uuid.NewString(), cfg.PolicyEngine.Counters.IdleTimeout)
 	sdkcounters.Install(service)
 	syncer := &counters.Syncer{
 		Service:       service,
 		ServerAddress: serverAddr,
-		Credentials:   creds,
-		Interval:      time.Second,
-		Timeout:       xdsConfig.RequestTimeout,
-		MaxBackoff:    xdsConfig.MaxReconnectDelay,
-		Logger:        slog.Default(),
+		Credentials: func() (credentials.TransportCredentials, error) {
+			return xdsclient.TransportCredentials(xdsConfig)
+		},
+		Interval:   time.Second,
+		Timeout:    xdsConfig.RequestTimeout,
+		MaxBackoff: xdsConfig.MaxReconnectDelay,
+		Logger:     slog.Default(),
 	}
 	go syncer.Run(ctx)
 	return nil
