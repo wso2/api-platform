@@ -15,7 +15,7 @@ opposed to a failing one, which is the distinction that decides whether failover
                         enough to trip anything, yet arbitrarily slow overall.
 """
 import json, os, sys, time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 NAME = os.environ.get("PROVIDER", "unknown")
 ALWAYS_FAIL = os.environ.get("ALWAYS_FAIL", "false").lower() == "true"
@@ -84,4 +84,9 @@ class H(BaseHTTPRequestHandler):
         pass
 
 
-HTTPServer(("0.0.0.0", 8080), H).serve_forever()
+# THREADING, deliberately. The single-threaded HTTPServer serves one connection at a time, and
+# protocol_version "HTTP/1.1" keeps that connection alive - so once Envoy's pool holds one, a
+# second connection waits in the listen backlog until it is dropped. Against a per_try_timeout
+# that surfaces as an intermittent 504 from a provider that is working perfectly, which reads as
+# a result rather than as the harness stalling. Found 2026-11-13 while measuring Probe T2.
+ThreadingHTTPServer(("0.0.0.0", 8080), H).serve_forever()

@@ -1039,11 +1039,19 @@ something else entirely.
 
 ### Measured
 
+Re-run 2026-11-13 after fixing the harness fault described below. Earlier numbers from this probe
+were taken against a rig that intermittently stalled; they are superseded.
+
 | Run | provider_a | Result |
 |---|---|---|
 | Control (`e1-upstream-extproc.yaml`, `A_FAIL=true`) | returns 500 | `200`, **2 calls** — attempt 1 `provider_a`, attempt 2 `provider_b` |
-| T2, single request | connection refused | `200`, **1 call** — attempt 2 only |
-| T2, five identical requests | connection refused | **attempt 1 present in 3 of 5** |
+| T2 single request | connection refused | `200`, **1 call** — attempt 2 only |
+| T2 × 10, clean rig | connection refused | attempt 1 present in **5 of 10** |
+| T2 × 20, clean rig | connection refused | attempt 1 present in **10 of 20** |
+
+All 30 clean-rig requests returned `200` with `attempts=2`, zero 5xx, 36–46ms. The dead provider
+refuses in 4ms (verified from inside the network with a raw socket connect), so the connect
+failure itself is instant and clean.
 
 The decisive line, from a run where it appeared:
 
@@ -1053,13 +1061,18 @@ PROBE call attempt=1 path=/chat/completions
   upstream.address = "172.28.0.11:9999"      <- the refused port
 ```
 
-### Answer: yes, but not every time
+### Answer: yes, about half the time
 
-**The upstream filter IS invoked for an attempt whose connection is refused.** It is not reliably
-invoked — the single-request run showed only attempt 2, and reading that one run alone produced
-the opposite (wrong) conclusion. Repeating it is what settled it.
+**The upstream filter IS invoked for an attempt whose connection is refused** — and the second
+target's call happens on 20 of 20, so the instrument is not dropping records.
 
-Treat "3 of 5" as *observed and intermittent*, NOT as a rate: see the confound below.
+Reading a SINGLE request settles it the wrong way: the one-shot run showed only attempt 2, and
+that was first reported as "the filter is not invoked for a refused connection". It took
+repetition to correct.
+
+Not alternating, but clustered — runs of three or four requests share a behaviour before it
+flips, which points at connection-pool state rather than a per-request coin flip. Not chased
+further: the question was whether the position can be reached at all, and it can.
 
 ### Consequence
 
@@ -1067,21 +1080,12 @@ Treat "3 of 5" as *observed and intermittent*, NOT as a rate: see the confound b
 attempt resets to. When attempt 1 is skipped, attempt 2 becomes its own baseline and the engine
 logs "per-attempt baseline missing on a retry". That is CORRECT behaviour for this case — attempt
 2 genuinely is the first attempt the filter saw — but the warning reads as a defect and will fire
-intermittently in any deployment whose leading target is transport-dead. Worth softening the
-wording rather than changing the behaviour.
+on roughly half the requests whose leading target is transport-dead. Worth softening the wording
+rather than changing the behaviour.
 
-Nothing about grading changes: the attempt counter increments either way, so the downstream
-response phase still attributes attempt 1 as a failure (see "What the policy can and cannot see").
-
-### Confound, stated rather than hidden
-
-Four of the five T2 requests returned `504` at `total=5030ms`, exactly `per_try_timeout: 5s`,
-with `provider_b` answering in 45ms on the run that succeeded. The timeout is in the harness —
-most likely the probe server's stream handling — not in the providers and not in Envoy's retry
-path. It perturbs timing, which is why the 3-of-5 ratio is not a measurement of anything.
-
-The positive observation is unaffected: an `attempt=1` call naming the refused cluster either
-appeared in the log or it did not, and it did.
+Nothing about grading changes: the attempt counter increments either way (`attempts=2` on every
+request above, including those where attempt 1 was never seen), so the downstream response phase
+still attributes attempt 1 as a failure.
 
 ### Harness changes this probe needed
 
@@ -1090,6 +1094,15 @@ appeared in the log or it did not, and it did.
   the per-try timeout and returned 504 — which made the CONTROL run look broken before any
   variable was introduced. Default unchanged; `PROBE_BODY_MODE=off` gives a headers-only run.
 - `extproc-server` is no longer committed. Rebuild per the README before running Probe E or T2.
+- **`backend.py` now uses `ThreadingHTTPServer`.** It was `HTTPServer` — single-threaded — with
+  `protocol_version = "HTTP/1.1"`, so once Envoy's connection pool held one keep-alive connection
+  the fake provider could not accept a second, and later requests sat in the listen backlog until
+  `per_try_timeout` cut them. That surfaced as an intermittent `504` (`flags=URX,UT`,
+  `why=upstream_per_try_timeout`) from a provider that was working perfectly — the stall was the
+  harness, not Envoy, and it reads as a result. Before the fix, 4 of 5 and then 5 of 8 requests
+  were lost to it. After: 30 of 30 clean. This affected every probe using `backend.py` under
+  load, so earlier timing-sensitive numbers taken with concurrent or back-to-back requests should
+  be treated with the same suspicion.
 
 ## Post-header failures: what Envoy can and cannot do (2026-10-28)
 
