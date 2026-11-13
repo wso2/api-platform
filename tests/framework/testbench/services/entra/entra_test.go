@@ -300,6 +300,23 @@ func TestAMalformedRequestDoesNotUseUpAOneTimeFailure(t *testing.T) {
 	require.Equal(t, []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusOK}, statuses(log))
 }
 
+// A malformed request does not use up a refresh-soon- tenant's early refresh either: the first
+// token still carries refresh_in, though N counts the malformed request.
+func TestAMalformedRequestDoesNotUseUpTheEarlyRefresh(t *testing.T) {
+	svc := New()
+	tenant := PrefixRefreshSoon + "x"
+	malformed := validForm(foundryScope)
+	malformed.Del("client_id")
+
+	require.Equal(t, http.StatusBadRequest, requestToken(t, svc, tenant, malformed).Code)
+	first := issued(t, requestToken(t, svc, tenant, validForm(foundryScope)))
+	require.NotNil(t, first.RefreshIn, "the first token carries refresh_in")
+	require.Equal(t, refreshSoonSeconds, *first.RefreshIn)
+	require.Equal(t, 2, claimsOf(t, first.AccessToken).N, "N counts every request for the tenant")
+	second := issued(t, requestToken(t, svc, tenant, validForm(foundryScope)))
+	require.Nil(t, second.RefreshIn, "only the first token is marked for an early refresh")
+}
+
 // statuses returns the status of every request in log, oldest first.
 func statuses(log requestLog) []int {
 	out := make([]int, 0, len(log.Requests))
