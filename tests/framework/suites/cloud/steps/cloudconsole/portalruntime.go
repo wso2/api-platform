@@ -60,6 +60,9 @@ func (s *Steps) registerPortalRuntimeSteps(sc stepRegistrar) {
 	sc.Step(`^I request "([^"]*)" from the synthetic managed API Portal with a wrong shared key$`, s.requestFromPortalWithWrongSharedKey)
 	sc.Step(`^I follow the front door of the synthetic managed API Portal to its view$`, s.followPortalFrontDoor)
 	sc.Step(`^the portal answer should (contain|not contain) "([^"]*)"$`, s.assertPortalAnswerText)
+	sc.Step(`^the portal answer should send the visitor to the identity provider for a silent sign-in$`, s.assertSilentSignInRedirect)
+	sc.Step(`^the portal answer should carry no "([^"]*)" header$`, s.assertPortalAnswerLacksHeader)
+	sc.Step(`^the portal answer header "([^"]*)" should contain "([^"]*)"$`, s.assertPortalAnswerHeader)
 	sc.Step(`^the sign-in of the synthetic managed API Portal should (offer|not offer) sign-up$`, s.assertSignUpOffer)
 	sc.Step(`^the synthetic managed API Portal should no longer serve$`, s.awaitPortalStopsServing)
 	sc.Step(`^I request a managed API Portal under the handle of the deleted synthetic managed API Portal$`, s.requestPortalUnderDeletedHandle)
@@ -230,6 +233,60 @@ func (s *Steps) assertPortalAnswerText(ctx context.Context, relation, text strin
 	return nil
 }
 
+// assertSilentSignInRedirect checks the published portal answer sends a visitor with no session to
+// the identity provider's authorization endpoint, on another host, to be signed in silently with an
+// existing identity provider session: a portal in identity-provider mode asks the identity
+// provider before it shows a visitor any page.
+func (s *Steps) assertSilentSignInRedirect(ctx context.Context) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	portal, err := portalBaseURL(ctx)
+	if err != nil {
+		return err
+	}
+	next, err := redirectTarget(resp)
+	if err != nil {
+		return fmt.Errorf("the portal did not redirect the visitor: %w", err)
+	}
+	if sameOrigin(next, portal) {
+		return fmt.Errorf("the portal kept the visitor on the portal: %s", next.Redacted())
+	}
+	if !strings.HasSuffix(strings.TrimRight(next.Path, "/"), identityAuthorizePath) {
+		return fmt.Errorf("the portal sent the visitor to %s, which is not an authorization endpoint", next.Redacted())
+	}
+	query := next.Query()
+	if query.Get("prompt") != "none" || query.Get("response_type") != "code" {
+		return fmt.Errorf("the authorization request asks for prompt %q and response_type %q, want a silent sign-in for a code", query.Get("prompt"), query.Get("response_type"))
+	}
+	return nil
+}
+
+// assertPortalAnswerLacksHeader checks the published portal answer carries no such header.
+func (s *Steps) assertPortalAnswerLacksHeader(ctx context.Context, header string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	if values := resp.Headers.Values(header); len(values) > 0 {
+		return fmt.Errorf("the portal answer carries a %s header: %s", header, resp.Describe())
+	}
+	return nil
+}
+
+// assertPortalAnswerHeader checks a header of the published portal answer contains the text.
+func (s *Steps) assertPortalAnswerHeader(ctx context.Context, header, text string) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	if got := resp.Headers.Get(header); !strings.Contains(strings.ToLower(got), strings.ToLower(text)) {
+		return fmt.Errorf("the portal answer header %s is %q, want it to contain %q: %s", header, got, text, resp.Describe())
+	}
+	return nil
+}
+
 // signUpOffered opens the portal's sign-in as a new visitor, takes the sign-up action on its first
 // prompt and reports whether the identity provider answered with a registration prompt, which asks
 // for an email address the sign-in prompt does not. Nothing is submitted, so no consumer is
@@ -289,8 +346,11 @@ func (s *Steps) awaitPortalStopsServing(ctx context.Context) error {
 }
 
 // requestPortalUnderDeletedHandle asks for a portal under the handle of the runner's portal, which
-// was deleted, and publishes the answer. The handle is registered for runner cleanup before the
-// request, and the registration is dropped again when the platform refuses the request.
+// was deleted, and publishes the answer. The platform reads a deleted portal as gone while the
+// cloud is still tearing down its runtime, and refuses a create under the handle until that ends,
+// so a refusal that a later attempt may clear (a conflict or a server error) is repeated within the
+// portal deletion budget. The handle is registered for runner cleanup before the request, and the
+// registration is dropped again when the platform finally refuses the request.
 func (s *Steps) requestPortalUnderDeletedHandle(ctx context.Context) error {
 	handle, err := runnerPortal(ctx)
 	if err != nil {
@@ -299,7 +359,15 @@ func (s *Steps) requestPortalUnderDeletedHandle(ctx context.Context) error {
 	if err := cleanup.RegisterRunner(ctx, portalResource(handle)); err != nil {
 		return fmt.Errorf("registering managed API Portal %q for cleanup: %w", handle, err)
 	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, managedPortalsCollection, portalRequestBody(handle, "Synthetic "+handle))
+	resp, err := retry.Until(ctx, retry.Options{Timeout: portalDeletionTimeout, Interval: portalPollInterval},
+		func(ctx context.Context) (*httpx.Response, error) {
+			resp, err := s.doAuthenticated(ctx, http.MethodPost, managedPortalsCollection, portalRequestBody(handle, "Synthetic "+handle))
+			if err != nil {
+				return nil, retry.Transient(err)
+			}
+			return resp, nil
+		},
+		func(resp *httpx.Response) bool { return resp != nil && !portalCreateMayClear(resp.StatusCode) })
 	if err != nil {
 		return err
 	}
@@ -307,4 +375,10 @@ func (s *Steps) requestPortalUnderDeletedHandle(ctx context.Context) error {
 		deregister(ctx, kindAPIPortal, handle)
 	}
 	return nil
+}
+
+// portalCreateMayClear reports whether a refused portal create can succeed when repeated: a
+// conflict with a runtime still being torn down, or a server error.
+func portalCreateMayClear(status int) bool {
+	return status == http.StatusConflict || status >= http.StatusInternalServerError
 }

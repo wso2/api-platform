@@ -221,6 +221,49 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the cloud API response should report:
       | selfSignup | true |
 
+  @ID_APIP_PORTAL_054 @layer:core-smoke
+  Scenario: A visitor to the default view of a provisioned portal is signed in silently and its AI discovery file answers
+    Given I obtain an APIP cloud console token
+    And the runner has an active synthetic managed API Portal
+    And I follow the front door of the synthetic managed API Portal to its view
+    When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}" from the synthetic managed API Portal
+    Then the cloud API response status code should be 302
+    And the portal answer should send the visitor to the identity provider for a silent sign-in
+    When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/llms.txt" from the synthetic managed API Portal
+    Then the cloud API response status code should be 200
+
+  @ID_APIP_PORTAL_055 @layer:core-smoke
+  Scenario: A path outside the portal and a page it does not have are not found while its AI discovery file loads
+    Given I obtain an APIP cloud console token
+    And the runner has an active synthetic managed API Portal
+    And I follow the front door of the synthetic managed API Portal to its view
+    When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/llms.txt" from the synthetic managed API Portal
+    Then the cloud API response status code should be 200
+    When I request "/not-the-portal/apis" from the synthetic managed API Portal
+    Then the cloud API response status code should be 404
+    And the portal answer header "Content-Type" should contain "text/plain"
+    And the portal answer should contain "Not Found"
+    When I request "/api-portal/${CTX:cloudPortalOrg}/no-such-page" from the synthetic managed API Portal
+    Then the cloud API response status code should be 404
+    And the portal answer header "Content-Type" should contain "text/html"
+    And the portal answer should contain "Page not found"
+    And the portal answer should not contain "stack"
+
+  @ID_APIP_PORTAL_056 @layer:core-smoke
+  Scenario: The portal's answers name no internals
+    Given I obtain an APIP cloud console token
+    And the runner has an active synthetic managed API Portal
+    And I follow the front door of the synthetic managed API Portal to its view
+    When I request "/api-portal/health" from the synthetic managed API Portal
+    Then the cloud API response status code should be 200
+    And the portal answer should carry no "X-Powered-By" header
+    When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}" from the synthetic managed API Portal
+    Then the cloud API response status code should be 302
+    And the portal answer should carry no "X-Powered-By" header
+    When I request "/api-portal/api/v0.9/webhook-subscribers" from the synthetic managed API Portal
+    Then the cloud API response status code should be 401
+    And the portal answer should carry no "X-Powered-By" header
+
   # The portals the local cloud builds name no identity provider for consumers, so their sign-in
   # cannot start there. This runs after the portal's sign-up has been turned off and on again.
   @known-issue
@@ -561,6 +604,95 @@ Feature: APIP cloud managed API Portal and consumer sign-in
       | POST   | with a forged token | /api-portals/${CTX:cloudAPIPortalID}/apis/graphql-api/${CTX:cloudAPIID}/publish         |
       | POST   | with a forged token | /api-portals/${CTX:cloudAPIPortalID}/apis/rest-api/${CTX:cloudAPIID}/deprecate          |
 
+  @ID_APIP_PORTAL_049 @layer:inherited
+  Scenario Outline: A draft whose <field> is at its limit is saved
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    When I try to save a publication draft of the synthetic REST API with a <field> of <length> characters
+    Then the cloud API response status code should be 200
+
+    Examples:
+      | field       | length |
+      | displayName | 255    |
+      | version     | 30     |
+      | description | 1023   |
+
+  @ID_APIP_PORTAL_050 @layer:inherited
+  Scenario Outline: A draft whose <field> is empty or over its limit is refused
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    When I try to save a publication draft of the synthetic REST API with a <field> of <length> characters
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "PUBLICATION_VALIDATION_FAILED"
+    When I save a publication draft of the synthetic REST API
+    Then the cloud API response status code should be 200
+
+    Examples:
+      | field       | length |
+      | displayName | 0      |
+      | displayName | 256    |
+      | version     | 0      |
+      | version     | 31     |
+      | description | 1024   |
+
+  @ID_APIP_PORTAL_051 @layer:inherited
+  Scenario: A saved draft keeps its description, visibility, endpoints and owners
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    When I save a publication draft of the synthetic REST API with:
+      | description     | Metadata round trip.                                                                                                                            |
+      | agentVisibility | HIDDEN                                                                                                                                          |
+      | tags            | ["alpha", "beta"]                                                                                                                               |
+      | endpoints       | {"productionUrl": "https://prod.example.com", "sandboxUrl": "https://sandbox.example.com"}                                                    |
+      | owners          | {"businessOwner": "Pat Doe", "businessOwnerEmail": "pat@example.com", "technicalOwner": "Sam Roe", "technicalOwnerEmail": "sam@example.com"} |
+    Then the publication draft of the synthetic REST API should report:
+      | description                | Metadata round trip.        |
+      | agentVisibility            | HIDDEN                      |
+      | endpoints.productionUrl    | https://prod.example.com    |
+      | endpoints.sandboxUrl       | https://sandbox.example.com |
+      | owners.businessOwner       | Pat Doe                     |
+      | owners.businessOwnerEmail  | pat@example.com             |
+      | owners.technicalOwner      | Sam Roe                     |
+      | owners.technicalOwnerEmail | sam@example.com             |
+
+  @ID_APIP_PORTAL_052 @layer:inherited
+  Scenario: A draft refuses a definition of an unsupported type and a thumbnail that is not an image or is too large
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    And I save a publication draft of the synthetic REST API
+    And I save a PNG thumbnail on the publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    When I save a definition of type "text/plain" on the publication draft of the synthetic REST API
+    Then the cloud API response status code should be 400
+    When I save a thumbnail that is text declared as PNG on the publication draft of the synthetic REST API
+    Then the cloud API response status code should be 400
+    When I save a thumbnail that is larger than 2 MiB on the publication draft of the synthetic REST API
+    Then the cloud API response status code should be 413
+
+  @ID_APIP_PORTAL_053 @layer:inherited
+  Scenario: A saved draft returns its definition and thumbnail unchanged
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    And I save a publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I save a PNG thumbnail on the publication draft of the synthetic REST API
+    Then the publication draft of the synthetic REST API should return the definition and the thumbnail it was saved with
+
   @ID_APIP_PORTAL_042 @layer:cloud-owned
   Scenario: A published API is served by the portal and leaves it when unpublished
     Given I obtain an APIP cloud console token
@@ -589,6 +721,47 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}/docs/specification.json" from the synthetic managed API Portal until status 404
     And I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/apis.md" from the synthetic managed API Portal until status 200
     Then the portal answer should not contain "${CTX:cloudAPIID}"
+
+  @ID_APIP_PORTAL_057 @layer:inherited
+  Scenario: A republished edit is what the portal serves
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    And I save a publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I follow the front door of the synthetic managed API Portal to its view
+    And I publish the synthetic REST API on the managed API Portal
+    And the cloud API response status code should be 201
+    And I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}.md" from the synthetic managed API Portal until status 200
+    When I save a publication draft of the synthetic REST API with:
+      | displayName | Edited ${CTX:cloudAPIID} |
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I publish the synthetic REST API on the managed API Portal
+    Then the cloud API response status code should be 200
+    When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}.md" from the synthetic managed API Portal until status 200
+    Then the portal answer should contain "Edited ${CTX:cloudAPIID}"
+
+  @ID_APIP_PORTAL_058 @layer:inherited
+  Scenario: A deprecated API is still served by the portal
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    And I save a publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I follow the front door of the synthetic managed API Portal to its view
+    And I publish the synthetic REST API on the managed API Portal
+    And the cloud API response status code should be 201
+    And I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}.md" from the synthetic managed API Portal until status 200
+    When I deprecate the synthetic REST API on the managed API Portal
+    Then the cloud API response status code should be 200
+    When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}.md" from the synthetic managed API Portal until status 200
+    Then the portal answer should contain "${CTX:cloudAPIID}"
+    When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}/docs/specification.json" from the synthetic managed API Portal until status 200
+    Then the portal answer should contain "/ping"
 
   @known-issue
   @ID_APIP_PORTAL_043 @layer:cloud-owned
@@ -626,7 +799,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
       | PUT    | with a forged token | /managed-api-portals/absent-portal |
       | DELETE | with a forged token | /managed-api-portals/absent-portal |
 
-  @known-issue
   @ID_APIP_PORTAL_046 @layer:cloud-owned
   Scenario Outline: The rotate-key route refuses a request <credential>
     Given I obtain an APIP cloud console token
@@ -650,7 +822,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And the synthetic managed API Portal should no longer serve
 
   # Uses the handle of the portal the scenario above deleted.
-  @known-issue
   @ID_APIP_PORTAL_048 @layer:cloud-owned
   Scenario: The handle of a deleted portal can be used again
     Given I obtain an APIP cloud console token

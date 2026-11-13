@@ -5489,3 +5489,108 @@ func TestPortalViewPathReadsTheOrganisationAndView(t *testing.T) {
 		require.False(t, ok, path)
 	}
 }
+
+func TestDraftBodyTakesObjectsAndVisibility(t *testing.T) {
+	body, err := draftBody("api-1", "plan-1", map[string]string{
+		"agentVisibility": "HIDDEN",
+		"endpoints":       `{"productionUrl":"https://prod.example.com"}`,
+		"owners":          `{"businessOwner":"Pat"}`,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "HIDDEN", body["agentVisibility"])
+	require.Equal(t, map[string]any{"productionUrl": "https://prod.example.com"}, body["endpoints"])
+	require.Equal(t, map[string]any{"businessOwner": "Pat"}, body["owners"])
+
+	_, err = draftBody("api-1", "plan-1", map[string]string{"owners": "not json"})
+	require.ErrorContains(t, err, "must be a JSON object")
+}
+
+func TestThumbnailDefectsAreRefusableContent(t *testing.T) {
+	require.NotEqual(t, pngSignature, thumbnailDefects["text declared as PNG"]()[:1])
+	large := thumbnailDefects["larger than 2 MiB"]()
+	require.Greater(t, len(large), thumbnailMaxBytes)
+	require.Equal(t, pngSignature, large[:len(pngSignature)])
+
+	valid, err := thumbnailPNG()
+	require.NoError(t, err)
+	require.Equal(t, pngSignature, valid[:len(pngSignature)])
+	require.Less(t, len(valid), thumbnailMaxBytes)
+}
+
+func TestTrySaveDraftWithLengthSendsTheFieldAtThatLength(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var sent map[string]any
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPut, r.Method)
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "PUBLICATION_VALIDATION_FAILED"})
+	})
+	local.Set(keyAPIPortalID, "portal-1")
+	local.Set(keyAPIID, "api-1")
+	local.Set(keyPlanID, "plan-1")
+	for field, length := range map[string]int{"displayName": 256, "version": 31, "description": 0} {
+		require.NoError(t, steps.trySaveDraftWithLength(ctx, field, length))
+		require.Len(t, sent[field], length, field)
+	}
+	require.ErrorContains(t, steps.trySaveDraftWithLength(ctx, "tags", 1), "must be a JSON array")
+}
+
+func TestSaveDefectiveThumbnailRejectsAnUnknownDefect(t *testing.T) {
+	steps, ctx, _, _ := cloudSteps(t, func(http.ResponseWriter, *http.Request) {})
+	require.ErrorContains(t, steps.saveDefectiveThumbnail(ctx, "no such defect"), "unknown thumbnail defect")
+}
+
+func TestAssertSilentSignInRedirectChecksTheAuthorizationRequest(t *testing.T) {
+	steps, ctx, local, _ := cloudSteps(t, func(http.ResponseWriter, *http.Request) {})
+	local.Set(keyAPIPortalURL, "https://abc-portal.example.com")
+	for location, want := range map[string]string{
+		"https://idp.example.com/oauth2/authorize?prompt=none&response_type=code&client_id=c": "",
+		"https://idp.example.com/oauth2/authorize?response_type=code&client_id=c":             "silent sign-in",
+		"https://idp.example.com/login?prompt=none&response_type=code":                        "not an authorization endpoint",
+		"https://abc-portal.example.com/api-portal/org/views/default/login":                   "kept the visitor on the portal",
+		"": "did not redirect",
+	} {
+		header := http.Header{}
+		if location != "" {
+			header.Set("Location", location)
+		}
+		status := http.StatusFound
+		if location == "" {
+			status = http.StatusOK
+		}
+		require.NoError(t, steps.funnel.Publish(ctx, &httpx.Response{StatusCode: status, Headers: header, URL: "https://abc-portal.example.com/api-portal/org/views/default"}))
+		err := steps.assertSilentSignInRedirect(ctx)
+		if want == "" {
+			require.NoError(t, err, location)
+		} else {
+			require.ErrorContains(t, err, want, location)
+		}
+	}
+}
+
+func TestRequestPortalUnderDeletedHandleRepeatsARefusalThatMayClear(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	fastPortalPolls(t)
+	for _, tc := range []struct {
+		name     string
+		answers  []int
+		attempts int
+		kept     bool
+	}{
+		{"a conflict and a server error clear", []int{http.StatusConflict, http.StatusInternalServerError, http.StatusAccepted}, 3, true},
+		{"a client error is final", []int{http.StatusBadRequest}, 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			attempts := 0
+			steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+				answer := tc.answers[min(attempts, len(tc.answers)-1)]
+				attempts++
+				writeJSON(w, answer, map[string]string{"id": "syn-portal-1", "status": portalStatusPending})
+			})
+			local.Set(keyAPIPortalID, "syn-portal-1")
+			require.NoError(t, steps.requestPortalUnderDeletedHandle(ctx))
+			require.Equal(t, tc.attempts, attempts)
+			require.Equal(t, tc.kept, len(registeredPortals(registry)) == 1)
+		})
+	}
+}

@@ -135,7 +135,7 @@ scenarios:
     priority: P1
     cloud:
       status: known-issue
-      issue: "wso2cloud-deployment: the apip-platform-api Component's gateway allowlist has no POST /api/v0.9/managed-api-portals/{apiPortalId}/rotate-key operation (also on upstream main), so the gateway answers 404 {\"error\":\"Not Found\"} (observed 2026-11-13). No tracker link yet."
+      issue: "apim-saas: rotating the shared key always fails. portal_secret.go PATCHes the key hash with Content-Type application/json, but secret-manager-api requires application/merge-patch+json and answers 415, so the rotation cannot be undone and the portal reads failed (observed 2026-11-13). No tracker link yet."
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "After the shared key is rotated the control plane still publishes to the portal"
@@ -176,7 +176,7 @@ scenarios:
     priority: P2
     cloud:
       status: known-issue
-      issue: "apim-saas: PUT /managed-api-portals/{id} on a portal that does not exist answers 500 internal_error instead of 404 not_found, and rotate-key answers a bare 404 without the not_found code (observed 2026-11-13). No tracker link yet."
+      issue: "apim-saas: PUT and rotate-key on a portal that does not exist answer 500 internal_error instead of 404 not_found; the handler does not map the API_PORTAL_NOT_FOUND error these two paths return (observed 2026-11-13). No tracker link yet."
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "Changing a portal that does not exist returns not found"
@@ -201,7 +201,7 @@ scenarios:
     priority: P1
     cloud:
       status: known-issue
-      issue: "api-platform (platform-api): deleting a published API does not unpublish it from the API Portal, so the portal keeps serving the deleted API (its .md page answers 200 after the control plane reports the publication gone). Observed 2026-11-13 on the local cloud. No tracker link yet."
+      issue: "api-platform: deleting an API (platform-api service/api.go DeleteAPI) removes its local publication rows but never unpublishes it from the portal, so the portal keeps serving the deleted API (observed 2026-11-13). No tracker link yet."
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "Deleting a published API removes its publication and its page on the portal"
@@ -225,8 +225,7 @@ scenarios:
     title: "The rotate-key route refuses a request without a valid token."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "wso2cloud-deployment: same missing rotate-key allowlist operation as ID_APIP_PORTAL_014; an unauthenticated request answers 404 instead of 401 (observed 2026-11-13). No tracker link yet."
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "The rotate-key route refuses a request <credential>"
@@ -235,7 +234,7 @@ scenarios:
     priority: P1
     cloud:
       status: known-issue
-      issue: "Local cloud limitation, not a product defect: the local cluster runs no control-plane Thunder, so portals it builds get inert sign-in settings (sign-in redirects to consumer-login-not-configured.invalid) and the sign-in cannot start; the same cause keeps the sign-in scenarios failing locally. Run on dev."
+      issue: "Local setup, not a product defect: apip-platform-api has no CP_THUNDER_* settings on the local cloud, so the portals it builds get inert sign-in settings (consumer-login-not-configured.invalid) by design and their sign-in cannot start. Needs CP Thunder credentials in the local deployment. Not checked on dev."
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A portal with self sign-up off does not offer sign-up on its sign-in, and one with it on does"
@@ -243,8 +242,87 @@ scenarios:
     title: "The handle of a deleted portal can be used again."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "apim-saas: creating a portal under the handle of one just deleted answers 500 internal_error because the cloud platform API refuses the runtime Resource with 409 (observed 2026-11-13, right after the deleted portal read 404; the Resource was gone a few minutes later). Delete returns before the Resource is gone and create maps the 409 to 500. No tracker link yet."
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "The handle of a deleted portal can be used again"
+  - id: ID_APIP_PORTAL_049
+    title: "A draft whose displayName, version or description is at its limit is saved."
+    priority: P2
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A draft whose <field> is at its limit is saved"
+  - id: ID_APIP_PORTAL_050
+    title: "A draft whose displayName, version or description is empty or over its limit is refused."
+    priority: P2
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A draft whose <field> is empty or over its limit is refused"
+  - id: ID_APIP_PORTAL_051
+    title: "A saved draft keeps its description, visibility, endpoints and owners."
+    priority: P2
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A saved draft keeps its description, visibility, endpoints and owners"
+  - id: ID_APIP_PORTAL_052
+    title: "A draft refuses a definition of an unsupported type and a thumbnail that is not an image or is too large."
+    priority: P2
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A draft refuses a definition of an unsupported type and a thumbnail that is not an image or is too large"
+  - id: ID_APIP_PORTAL_053
+    title: "A saved draft returns its definition and thumbnail unchanged."
+    priority: P2
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A saved draft returns its definition and thumbnail unchanged"
+  - id: ID_APIP_PORTAL_054
+    title: "A visitor to the default view of a provisioned portal is signed in silently and its AI discovery file answers."
+    priority: P3
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A visitor to the default view of a provisioned portal is signed in silently and its AI discovery file answers"
+  - id: ID_APIP_PORTAL_055
+    title: "A path outside the portal and a page it does not have are not found while its AI discovery file loads."
+    priority: P3
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A path outside the portal and a page it does not have are not found while its AI discovery file loads"
+  - id: ID_APIP_PORTAL_056
+    title: "The portal's answers name no internals."
+    priority: P3
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "The portal's answers name no internals"
+  - id: ID_APIP_PORTAL_057
+    title: "A republished edit is what the portal serves."
+    priority: P2
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A republished edit is what the portal serves"
+  - id: ID_APIP_PORTAL_058
+    title: "A deprecated API is still served by the portal."
+    priority: P2
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A deprecated API is still served by the portal"

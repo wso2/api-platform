@@ -74,7 +74,10 @@ const subjectPattern = `(synthetic REST API|synthetic GraphQL API)`
 var draftListKeys = map[string]bool{"subscriptionPlanIds": true, "docIds": true, "tags": true}
 
 // draftTextKeys are the draft fields a values table sets as text.
-var draftTextKeys = map[string]bool{"displayName": true, "version": true, "description": true}
+var draftTextKeys = map[string]bool{"displayName": true, "version": true, "description": true, "agentVisibility": true}
+
+// draftObjectKeys are the draft fields a values table sets as JSON objects.
+var draftObjectKeys = map[string]bool{"endpoints": true, "owners": true}
 
 func (s *Steps) publicationStepDefinitions() []stepDefinition {
 	return []stepDefinition{
@@ -377,6 +380,12 @@ func draftBody(api, plan string, overrides map[string]string) (map[string]any, e
 		switch {
 		case draftTextKeys[key]:
 			body[key] = value
+		case draftObjectKeys[key]:
+			var object map[string]any
+			if err := json.Unmarshal([]byte(value), &object); err != nil {
+				return nil, fmt.Errorf("draft field %q must be a JSON object: %w", key, err)
+			}
+			body[key] = object
 		case draftListKeys[key]:
 			var list []string
 			if err := json.Unmarshal([]byte(value), &list); err != nil {
@@ -544,12 +553,26 @@ func (s *Steps) saveThumbnail(ctx context.Context, subject string) error {
 	return nil
 }
 
-// thumbnailForm is a multipart form holding a 1x1 PNG.
-func thumbnailForm() ([]byte, string, error) {
+// thumbnailPNG is a 1x1 PNG.
+func thumbnailPNG() ([]byte, error) {
 	var img bytes.Buffer
 	if err := png.Encode(&img, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		return nil, err
+	}
+	return img.Bytes(), nil
+}
+
+// thumbnailForm is a multipart form holding a 1x1 PNG.
+func thumbnailForm() ([]byte, string, error) {
+	img, err := thumbnailPNG()
+	if err != nil {
 		return nil, "", err
 	}
+	return thumbnailFormOf(img)
+}
+
+// thumbnailFormOf is a multipart form that declares its file as a PNG whatever the bytes are.
+func thumbnailFormOf(content []byte) ([]byte, string, error) {
 	body := &bytes.Buffer{}
 	form := multipart.NewWriter(body)
 	header := textproto.MIMEHeader{}
@@ -559,7 +582,7 @@ func thumbnailForm() ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	if _, err := part.Write(img.Bytes()); err != nil {
+	if _, err := part.Write(content); err != nil {
 		return nil, "", err
 	}
 	if err := form.Close(); err != nil {

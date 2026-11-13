@@ -151,6 +151,7 @@ func (s *Steps) registerPortalSteps(sc stepRegistrar) {
 	sc.Step(`^the synthetic managed API Portal should eventually be gone$`, s.awaitPortalGone)
 	s.registerPortalManageSteps(sc)
 	s.registerPortalRuntimeSteps(sc)
+	s.registerPublicationDraftSteps(sc)
 }
 
 // portalPath is the route of one managed API Portal.
