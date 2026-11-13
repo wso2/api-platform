@@ -100,4 +100,26 @@ describe('usage plans helpers', () => {
     expect(withPoliciesAdded(added, ['subscription-validation'])).toHaveLength(2);
     expect(withPoliciesRemoved(added, ['subscription-validation'])).toEqual([cors]);
   });
+
+  it('adds a policy two keys name only once, with the first key’s defaults', () => {
+    const added = withPoliciesAdded([], ['subscription-validation', 'subscription-validation@v1']);
+    expect(added).toEqual([
+      { name: 'subscription-validation', params: { subscriptionKeyHeader: 'Subscription-Key' }, version: 'v1' },
+    ]);
+  });
+
+  it('puts subscription-validation before the attached policies that depend on it', () => {
+    const cors = { name: 'cors', params: {}, version: 'v1' };
+    const guard = { name: 'region-guard', params: {}, version: 'v1' };
+    const added = withPoliciesAdded([cors, guard], ['subscription-validation'], [
+      'subscription-validation',
+      'region-guard@v1',
+    ]);
+    expect(added.map((policy) => policy.name)).toEqual(['cors', 'subscription-validation', 'region-guard']);
+    // With nothing depending on it, it goes at the end.
+    expect(withPoliciesAdded([cors], ['subscription-validation']).map((p) => p.name)).toEqual([
+      'cors',
+      'subscription-validation',
+    ]);
+  });
 });

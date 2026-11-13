@@ -20,6 +20,7 @@ import {
   Alert,
   Avatar,
   Box,
+  Button,
   Chip,
   DataGrid,
   ListingTable,
@@ -29,7 +30,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { Shield } from '@wso2/oxygen-ui-icons-react';
-import { useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useParams } from 'react-router-dom';
 
@@ -59,7 +60,13 @@ import {
 import { PlanConditionChips, tipSlotProps } from '../../orgManage/components/PlanConditionChips';
 import { pricingSummary, summaryMeterIds } from '../../orgManage/components/pricingFormat';
 import { SelectionSummary } from '../../portals/components/SelectionSummary';
-import { type ApiKind, parsePolicyKey, policyAttachment, policyLabel } from './planPolicies';
+import {
+  type ApiKind,
+  parsePolicyKey,
+  policyAttachment,
+  policyLabel,
+  requiredPolicies,
+} from './planPolicies';
 import { PolicyName } from '../policies/PolicyChip';
 import { SaveBar } from '../SaveBar';
 import { useDirtyTracking } from '../useDirtyTracking';
@@ -180,6 +187,15 @@ const messages = defineMessages({
     defaultMessage: 'The selected plans',
     description: 'Stands for a plan name in the attach dialog when several plans were attached at once.',
   },
+  sdlError: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.sdlError',
+    defaultMessage: 'Unable to load the API’s schema, so the plans and policies can’t be saved yet.',
+    description: 'GraphQL Usage Plans: the schema is resupplied on save and failed to load.',
+  },
+  sdlRetry: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.sdlRetry',
+    defaultMessage: 'Retry',
+  },
   attachTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachTitle',
     defaultMessage: 'Attach required policies?',
@@ -187,7 +203,7 @@ const messages = defineMessages({
   attachMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachMessage',
     defaultMessage:
-      '{count, plural, one {{plan} is} other {{plan} are}} enforced by these policies, which this API does not have yet.',
+      '{count, plural, one {{plan} needs} other {{plan} need}} these policies, which this API does not have yet.',
     description: '{plan} is a plan name (or "The selected plans"); the list of policies follows.',
   },
   attachQuestion: {
@@ -374,8 +390,10 @@ type PlanAttachmentProps = {
   kind: ApiKind;
   readOnly: boolean;
   saving: boolean;
-  /** Save blocked for now (e.g. the API id, or a GraphQL schema still loading). */
+  /** Save blocked for now (e.g. the API id, or a GraphQL schema not loaded). */
   saveDisabled?: boolean;
+  /** Shown under the title, e.g. why Save is blocked. */
+  notice?: ReactNode;
   /** Stores the plans and API-level policies; calls `onSaved` once they are stored. */
   onSave: (planIds: string[], policies: Policy[], onSaved: () => void) => void;
 };
@@ -392,6 +410,7 @@ function PlanAttachmentPanel({
   attachedPlanIds,
   kind,
   onSave,
+  notice,
   operations = [],
   readOnly,
   saveDisabled = false,
@@ -480,7 +499,9 @@ function PlanAttachmentPanel({
   const confirmPrompt = () => {
     if (!prompt) return;
     if (prompt.action === 'attach') {
-      setPolicies(withPoliciesAdded(policies, prompt.names));
+      // subscription-validation goes before the attached policies the ticked plans rely on.
+      const ticked = planIds.flatMap((id) => plansById.get(id) ?? []);
+      setPolicies(withPoliciesAdded(policies, prompt.names, requiredPolicies(ticked, kind)));
       notify(intl.formatMessage(messages.policiesAttached), 'success');
     } else {
       setPolicies(withPoliciesRemoved(policies, prompt.names));
@@ -629,6 +650,7 @@ function PlanAttachmentPanel({
         </PageTitle.SubHeader>
       </PageTitle>
 
+      {notice}
       {plansBody}
 
       {plansQuery.data && missing.length > 0 && (
@@ -732,13 +754,18 @@ export const graphqlUsagePlansMetadata = (
   planIds: string[],
   policies: Policy[],
   sdl: string | undefined,
-) => ({
-  ...withAttachedPlans(api, planIds),
-  policies: policies.map(withMajorPolicyVersion),
-  ...(api.schemaSource !== 'introspection' && api.schemaSource !== undefined
-    ? { schemaSource: 'inline' as const, sdl: sdl ?? '' }
-    : { schemaSource: 'introspection' as const }),
-});
+) => {
+  const needsSdl = api.schemaSource !== 'introspection' && api.schemaSource !== undefined;
+  // Never resupply an empty schema in place of the API's own: no SDL, no update.
+  if (needsSdl && !sdl) return null;
+  return {
+    ...withAttachedPlans(api, planIds),
+    policies: policies.map(withMajorPolicyVersion),
+    ...(needsSdl
+      ? { schemaSource: 'inline' as const, sdl: sdl as string }
+      : { schemaSource: 'introspection' as const }),
+  };
+};
 
 /**
  * Develop › Usage Plans for a GraphQL API. Saved as the GraphQL Policies page saves: the whole API
@@ -750,23 +777,35 @@ export function GraphqlUsagePlansPanel({ api }: { api: GraphQLApiDetail }) {
   const sdlQuery = useGraphQLApiSdl(api.id);
   const needsSdlForSave = api.schemaSource !== 'introspection' && api.schemaSource !== undefined;
   const canUpdate = useCan('UpdateGraphQLAPI');
+  const intl = useIntl();
   return (
     <PlanAttachmentPanel
       apiPolicies={api.policies ?? []}
       attachedPlanIds={attachedPlanIdsOf(api)}
       kind="graphql"
+      notice={
+        needsSdlForSave && sdlQuery.error ? (
+          <Alert
+            action={
+              <Button color="inherit" onClick={() => void sdlQuery.refetch()} size="small">
+                <FormattedMessage {...messages.sdlRetry} />
+              </Button>
+            }
+            severity="error"
+          >
+            {intl.formatMessage(messages.sdlError)}
+          </Alert>
+        ) : undefined
+      }
       onSave={(planIds, policies, onSaved) => {
         if (!api.id) return;
-        update.mutate(
-          {
-            graphqlApiId: api.id,
-            body: { metadata: graphqlUsagePlansMetadata(api, planIds, policies, sdlQuery.data) },
-          },
-          { onSuccess: onSaved },
-        );
+        const metadata = graphqlUsagePlansMetadata(api, planIds, policies, sdlQuery.data);
+        if (!metadata) return;
+        update.mutate({ graphqlApiId: api.id, body: { metadata } }, { onSuccess: onSaved });
       }}
       readOnly={Boolean(api.readOnly) || !canUpdate}
-      saveDisabled={!api.id || (needsSdlForSave && sdlQuery.isPending)}
+      // A schema stored inline or from a file is resupplied as SDL: no save until it has loaded.
+      saveDisabled={!api.id || (needsSdlForSave && !sdlQuery.data)}
       saving={update.isPending}
     />
   );

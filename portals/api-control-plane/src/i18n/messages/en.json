@@ -2639,7 +2639,7 @@
     "defaultMessage": "Attach policies"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachMessage": {
-    "defaultMessage": "{count, plural, one {{plan} is} other {{plan} are}} enforced by these policies, which this API does not have yet.",
+    "defaultMessage": "{count, plural, one {{plan} needs} other {{plan} need}} these policies, which this API does not have yet.",
     "description": "{plan} is a plan name (or \"The selected plans\"); the list of policies follows."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachQuestion": {
@@ -2727,6 +2727,13 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.scopePrompt": {
     "defaultMessage": "Usage plans are attached to a single API.",
     "description": "Explains why an API must be picked before this page can render."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.sdlError": {
+    "defaultMessage": "Unable to load the API’s schema, so the plans and policies can’t be saved yet.",
+    "description": "GraphQL Usage Plans: the schema is resupplied on save and failed to load."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.sdlRetry": {
+    "defaultMessage": "Retry"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.selectAll": {
     "defaultMessage": "Attach all plans"

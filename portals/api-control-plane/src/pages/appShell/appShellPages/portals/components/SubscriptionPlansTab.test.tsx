@@ -186,6 +186,19 @@ describe('SubscriptionPlansTab', () => {
       expect(screen.getByRole('checkbox', { name: /Bronze/ })).toHaveAttribute('aria-checked', 'false');
     });
 
+    it('keeps a saved plan detached since listed after it is unticked, so it can be ticked again', async () => {
+      server.use(collection(PLANS_PATH, [bronze, gold]));
+
+      renderTab({
+        attachedPlanIds: ['bronze'],
+        savedPlanIds: ['gold'],
+        values: values({ subscriptionPlanIds: [] }),
+      });
+
+      await screen.findByText('Gold');
+      expect(screen.getByRole('checkbox', { name: /Gold/ })).toHaveAttribute('aria-checked', 'false');
+    });
+
     it('points to Usage Plans when no plan is attached', async () => {
       server.use(collection(PLANS_PATH, [bronze, gold]));
 

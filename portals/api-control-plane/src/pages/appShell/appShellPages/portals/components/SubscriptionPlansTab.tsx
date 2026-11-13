@@ -139,12 +139,13 @@ export function SubscriptionPlansTab({
   const savedSet = new Set(savedPlanIds ?? selectedIds);
   const allPlans = (plansQuery.data?.list ?? []).filter((plan): plan is DisplayablePlan => Boolean(plan.id));
   const attachedSet = attachedPlanIds ? new Set(attachedPlanIds) : undefined;
-  // The plans the draft offers: the API's usage plans when known, or a plan the selection still
-  // holds although it was detached since (shown ticked, so it can be unticked).
+  // The plans the draft offers: the API's usage plans when known, or a plan the saved selection or
+  // the current one holds although it was detached since, so it can be unticked, and ticked again
+  // until the draft is saved.
   const activePlans = allPlans.filter(
     (plan) =>
       plan.status === 'ACTIVE' &&
-      (!attachedSet || attachedSet.has(plan.id) || selectedSet.has(plan.id)),
+      (!attachedSet || attachedSet.has(plan.id) || selectedSet.has(plan.id) || savedSet.has(plan.id)),
   );
   const shownDeleted = readOnly ? deletedPlans : [];
   const rank = (plan: DisplayablePlan) => {

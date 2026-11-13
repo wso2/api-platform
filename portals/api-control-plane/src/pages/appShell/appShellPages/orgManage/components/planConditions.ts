@@ -99,13 +99,14 @@ export const isBuiltInType = (type: string): type is BuiltInType =>
 /** A window being edited. Numeric fields stay strings while the user types. */
 export type WindowDraft = { key: number; count: string; timeAmount: string; timeUnit: TimeUnit };
 
-/** A key-value pair of a custom condition. `saved` is the value it was loaded with, sent back as it
- * was while its text is untouched (so a saved "00123" stays a string). */
+/** A key-value pair of a custom condition. `saved` is the name and value it was loaded with, each
+ * sent back as it was while untouched (so a saved "00123" stays a string, and " region " keeps its
+ * spaces). */
 export type PairDraft = {
   key: number;
   name: string;
   value: string;
-  saved?: { text: string; value: unknown };
+  saved?: { name: string; text: string; value: unknown };
 };
 
 /** A condition being edited. A built-in one uses `windows`, `onExceed` and (token-count)
@@ -139,7 +140,7 @@ const valueText = (value: unknown) => (typeof value === 'string' ? value : JSON.
 export const newPair = (name = '', value?: unknown): PairDraft => {
   if (value === undefined) return { key: newKey(), name, value: '' };
   const text = valueText(value);
-  return { key: newKey(), name, saved: { text, value }, value: text };
+  return { key: newKey(), name, saved: { name, text, value }, value: text };
 };
 
 /** A new condition of the given type: a built-in one starts with one empty window, a custom one
@@ -185,15 +186,34 @@ export const draftsFromConditions = (conditions: PlanCondition[] | undefined): C
     };
   });
 
-/** A typed value: a number, true or false, a JSON object or list, or else the text as it is. */
+/** Whether `text`, a decimal number, is held exactly by a JavaScript number (at most 15 significant
+ * digits, and an integer within the safe range): otherwise it is kept as text, not rounded. */
+const exactNumber = (text: string, value: number): boolean => {
+  if (!Number.isFinite(value)) return false;
+  if (Number.isInteger(value) && !Number.isSafeInteger(value)) return false;
+  const digits = text.replace(/^-/, '').replace('.', '').replace(/^0+/, '');
+  return digits.length <= 15;
+};
+
+/** A typed value: a number (when exact), true or false, a JSON object or list, or else the text as
+ * it is. A JSON value with a number it can't hold exactly is kept as text too. */
 export const parseValue = (text: string): unknown => {
-  if (/^-?\d+(\.\d+)?$/.test(text)) return Number(text);
+  if (/^-?\d+(\.\d+)?$/.test(text)) {
+    const value = Number(text);
+    return exactNumber(text, value) ? value : text;
+  }
   if (text === 'true' || text === 'false') return text === 'true';
   if (/^[[{]/.test(text)) {
     try {
-      return JSON.parse(text) as unknown;
+      return JSON.parse(text, (_key, value: unknown, context?: { source?: string }) => {
+        if (typeof value !== 'number') return value;
+        // Where the browser gives the number's source text, check it digit for digit.
+        const source = context?.source ?? String(value);
+        if (!exactNumber(source.replace(/[eE].*$/, ''), value)) throw new Error('inexact number');
+        return value;
+      }) as unknown;
     } catch {
-      // Not JSON: kept as text.
+      // Not JSON, or a number it can't hold exactly: kept as text.
     }
   }
   return text;
@@ -354,7 +374,8 @@ export const checkConditions = (drafts: ConditionDraft[]): ConditionsCheck => {
       // No prototype, so a key such as `__proto__` is kept as a key of its own and sent.
       const params = Object.create(null) as Record<string, unknown>;
       for (const pair of draft.pairs) {
-        const name = pair.name.trim();
+        // A saved name left untouched is sent as it was, spaces too; a typed one is trimmed.
+        const name = pair.saved && pair.saved.name === pair.name ? pair.name : pair.name.trim();
         const text = pair.value.trim();
         // A row left empty is not a value.
         if (!name && !text) continue;

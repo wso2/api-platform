@@ -110,10 +110,35 @@ export const missingPolicies = (
 ): string[] =>
   plans.length === 0 ? [] : requiredPolicies(plans, kind).filter((name) => !attachment.attached.has(name));
 
-/** `policies` with the policies of `keys` added at the end, in that order, each once. */
-export const withPoliciesAdded = (policies: readonly Policy[], keys: readonly string[]): Policy[] => {
+/**
+ * `policies` with the policies of `keys` added, each once: two keys for the same policy (a custom
+ * condition naming `subscription-validation@v1` next to the built-in `subscription-validation`) add
+ * it once, with the first key's defaults. subscription-validation goes before the first attached
+ * policy in `dependents` (the policies the plans need, which read what it records); the others are
+ * added at the end, in order.
+ */
+export const withPoliciesAdded = (
+  policies: readonly Policy[],
+  keys: readonly string[],
+  dependents: readonly string[] = [],
+): Policy[] => {
   const present = keysOf(policies);
-  return [...policies, ...keys.filter((key) => !present.has(key)).map(defaultPolicy)];
+  const addedNames = new Set<string>();
+  const added: Policy[] = [];
+  for (const key of keys) {
+    if (present.has(key)) continue;
+    const policy = defaultPolicy(key);
+    if (addedNames.has(policy.name)) continue;
+    addedNames.add(policy.name);
+    added.push(policy);
+  }
+  const validation = added.find((policy) => policy.name === SUBSCRIPTION_VALIDATION);
+  const rest = added.filter((policy) => policy !== validation);
+  if (!validation) return [...policies, ...rest];
+  const dependent = new Set(dependents.filter((key) => parsePolicyKey(key).name !== SUBSCRIPTION_VALIDATION));
+  const at = policies.findIndex((policy) => [...keysOf([policy])].some((key) => dependent.has(key)));
+  if (at < 0) return [...policies, validation, ...rest];
+  return [...policies.slice(0, at), validation, ...policies.slice(at), ...rest];
 };
 
 /** `policies` without any matching `keys` (a name, or `name@v<major>`). */

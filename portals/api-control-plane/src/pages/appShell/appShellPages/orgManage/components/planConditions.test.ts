@@ -159,6 +159,14 @@ describe('checkConditions: custom values', () => {
     expect(checkConditions([tier]).body?.[0].params).toEqual({ code: '007', flag: true });
   });
 
+  it('sends an untouched saved name as it was, and trims one the admin types', () => {
+    const [tier] = draftsFromConditions([{ id: 'tier', params: { ' region ': 'eu' }, type: 'custom' }]);
+    expect(checkConditions([tier]).body?.[0].params).toEqual({ ' region ': 'eu' });
+
+    tier.pairs[0].name = ' zone ';
+    expect(checkConditions([tier]).body?.[0].params).toEqual({ zone: 'eu' });
+  });
+
   it('keeps a key named __proto__ as a key of its own, through to the JSON sent', () => {
     const draft = custom('tier', [
       ['__proto__', 'gold'],
@@ -198,6 +206,15 @@ describe('parseValue', () => {
     expect(parseValue('{"a":1}')).toEqual({ a: 1 });
     expect(parseValue('{not json')).toBe('{not json');
     expect(parseValue('UTC')).toBe('UTC');
+  });
+
+  it('keeps a number it can’t hold exactly as text, on its own or inside JSON', () => {
+    expect(parseValue('9'.repeat(400))).toBe('9'.repeat(400));
+    expect(parseValue('9007199254740993')).toBe('9007199254740993');
+    expect(parseValue('0.1234567890123456789')).toBe('0.1234567890123456789');
+    expect(parseValue('1.25')).toBe(1.25);
+    expect(parseValue('{"id":12345678901234567890}')).toBe('{"id":12345678901234567890}');
+    expect(parseValue('{"limit":50}')).toEqual({ limit: 50 });
   });
 });
 

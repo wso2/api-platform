@@ -26,6 +26,7 @@ import {
   aRestApi,
   aSubscriptionPlan,
   collection,
+  failure,
   recorder,
   resource,
 } from '@/test/msw';
@@ -115,7 +116,7 @@ describe('UsagePlansPanel', () => {
     await user.click(await boxOf('Gold'));
 
     const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent('Gold is enforced by these policies, which this API does not have yet.');
+    expect(dialog).toHaveTextContent('Gold needs these policies, which this API does not have yet.');
     expect(within(dialog).getAllByRole('listitem').map((item) => item.getAttribute('aria-label'))).toEqual([
       'subscription-validation v1',
     ]);
@@ -165,7 +166,7 @@ describe('UsagePlansPanel', () => {
     await user.click(await screen.findByRole('checkbox', { name: 'Attach all plans' }));
 
     const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent('The selected plans are enforced by these policies, which this API does not have yet.');
+    expect(dialog).toHaveTextContent('The selected plans need these policies, which this API does not have yet.');
     await user.click(within(dialog).getByRole('button', { name: 'Skip' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(await boxOf('Gold')).toBeChecked();
@@ -200,7 +201,10 @@ describe('UsagePlansPanel', () => {
 });
 
 describe('GraphqlUsagePlansPanel', () => {
-  const renderGraphql = (overrides: Parameters<typeof aGraphQLApiDetail>[0] = {}) => {
+  const renderGraphql = (
+    overrides: Parameters<typeof aGraphQLApiDetail>[0] = {},
+    sdl = resource('/graphql-apis/:graphqlApiId/sdl', { sdl: 'type Query { a: String }' }),
+  ) => {
     const api = aGraphQLApiDetail({
       id: 'countries',
       policies: [],
@@ -208,7 +212,7 @@ describe('GraphqlUsagePlansPanel', () => {
       subscriptionPlans: [],
       ...overrides,
     });
-    server.use(resource('/graphql-apis/:graphqlApiId/sdl', { sdl: 'type Query { a: String }' }));
+    server.use(sdl);
     return {
       api,
       ...renderWithProviders(
@@ -257,6 +261,23 @@ describe('GraphqlUsagePlansPanel', () => {
       sdl: 'type Query { a: String }',
       subscriptionPlans: [],
     });
+    // No SDL for an inline schema: nothing to send, rather than an empty schema.
+    expect(graphqlUsagePlansMetadata(inline, [], [], undefined)).toBeNull();
+    expect(graphqlUsagePlansMetadata(inline, [], [], '')).toBeNull();
+  });
+
+  it('keeps Save off and offers a retry while an inline schema can’t be loaded', async () => {
+    const { user } = renderGraphql(
+      { schemaSource: 'inline' },
+      failure('get', '/graphql-apis/:graphqlApiId/sdl', 500, 'INTERNAL_ERROR'),
+    );
+    expect(
+      await screen.findByText('Unable to load the API’s schema, so the plans and policies can’t be saved yet.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    await user.click(await boxOf('Gold'));
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Skip' }));
+    expect(await screen.findByRole('button', { name: 'Save changes' })).toBeDisabled();
   });
 
   it('cannot change a gateway-owned GraphQL API', async () => {
