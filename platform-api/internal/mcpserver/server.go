@@ -58,7 +58,14 @@ type Deps struct {
 	Deployments *service.DeploymentService
 	Gateways    *service.GatewayService
 	Identity    *service.IdentityService
+	// Documents holds a REST API's OpenAPI document.
+	Documents *service.APIDocumentService
+	// Portals and Publications publish APIs to API Portals.
+	Portals      *service.APIPortalService
+	Publications *service.PublicationService
 
+	GraphQLAPIs            *service.GraphQLAPIService
+	GraphQLAPIDeployments  *service.GraphQLAPIDeploymentService
 	LLMProviders           *service.LLMProviderService
 	LLMProviderDeployments *service.LLMProviderDeploymentService
 	LLMProxies             *service.LLMProxyService
@@ -90,8 +97,11 @@ type Server struct {
 	// routes, {c} stands for the API type's collection.
 	routes       map[string][]string
 	takesAPIType map[string]bool
-	schemas      map[string]apiSchemaOut // by API type, for get_api_schema
-	sdk          *mcp.Server
+	// toolTypes narrows the API types for a tool that serves only some, such as
+	// publish_api.
+	toolTypes map[string]func(*apiType) bool
+	schemas   map[string]apiSchemaOut // by API type, for get_api_schema
+	sdk       *mcp.Server
 	featureUsage func() featureusage.Reporter
 }
 
@@ -107,6 +117,7 @@ func New(d Deps) (*Server, error) {
 		logger:       d.Logger,
 		routes:       map[string][]string{},
 		takesAPIType: map[string]bool{},
+		toolTypes:    map[string]func(*apiType) bool{},
 		featureUsage: d.FeatureUsage,
 	}
 	if s.logger == nil {
@@ -166,7 +177,7 @@ func add[In, Out any](s *Server, srv *mcp.Server, t *mcp.Tool, routes []string,
 	_, s.takesAPIType[t.Name] = any(*new(In)).(typedInput)
 	schema, _ := t.InputSchema.(*jsonschema.Schema)
 	if schema == nil { // a plugin tool comes with its own
-		schema = s.inputSchema(inputSchemaFor[In](), s.takesAPIType[t.Name])
+		schema = s.inputSchema(inputSchemaFor[In](), t.Name, s.takesAPIType[t.Name])
 	}
 	destructive := t.Annotations != nil && t.Annotations.DestructiveHint != nil && *t.Annotations.DestructiveHint
 	if destructive {
@@ -251,11 +262,41 @@ func (s *Server) routesFor(tool string, in any) ([]string, error) {
 	if !ok {
 		return s.routes[tool], nil
 	}
-	t, err := apiTypeNamed(ti.typeName())
+	t, err := s.apiTypeFor(tool, ti.typeName())
 	if err != nil {
 		return nil, err
 	}
 	return t.expand(s.routes[tool]), nil
+}
+
+// typesFor returns the API types a tool serves: all of them, narrowed for a
+// tool that serves only some.
+func (s *Server) typesFor(tool string) []apiType {
+	only := s.toolTypes[tool]
+	if only == nil {
+		return apiTypes
+	}
+	var out []apiType
+	for i := range apiTypes {
+		if only(&apiTypes[i]) {
+			out = append(out, apiTypes[i])
+		}
+	}
+	return out
+}
+
+// apiTypeFor returns the named API type when the tool serves it.
+func (s *Server) apiTypeFor(tool, name string) (*apiType, error) {
+	for _, t := range s.typesFor(tool) {
+		if t.name == name {
+			return &t, nil
+		}
+	}
+	served := make([]string, 0, len(apiTypes))
+	for _, t := range s.typesFor(tool) {
+		served = append(served, t.name)
+	}
+	return nil, fail("apiType %q is not supported by %s; use one of: %s", name, tool, strings.Join(served, ", "))
 }
 
 // missingScope returns the scopes a route needs when the caller holds none of
@@ -282,7 +323,7 @@ func (s *Server) routeScopes(route string) []string {
 // canUseAnyType reports whether the caller may use an API tool for at least
 // one API type.
 func (s *Server) canUseAnyType(c caller, tool string) bool {
-	return slices.ContainsFunc(apiTypes, func(t apiType) bool {
+	return slices.ContainsFunc(s.typesFor(tool), func(t apiType) bool {
 		return s.missingScope(c, t.expand(s.routes[tool])) == ""
 	})
 }
@@ -322,7 +363,7 @@ func (s *Server) allRoutes(tool string) []string {
 		return s.routes[tool]
 	}
 	var all []string
-	for _, t := range apiTypes {
+	for _, t := range s.typesFor(tool) {
 		all = append(all, t.expand(s.routes[tool])...)
 	}
 	return all
@@ -371,6 +412,7 @@ func inputSchemaFor[In any]() *jsonschema.Schema {
 var inputTitles = map[string]string{
 	"apiType":     "API Type",
 	"apiId":       "API",
+	"apiPortalId": "API Portal",
 	"projectId":   "Project",
 	"gatewayId":   "Gateway",
 	"payload":     "Payload",
@@ -381,14 +423,15 @@ var inputTitles = map[string]string{
 }
 
 // inputSchema adds titles to every input and, for an API tool, the list of API
-// types that are switched on.
-func (s *Server) inputSchema(sch *jsonschema.Schema, takesAPIType bool) *jsonschema.Schema {
+// types the tool serves.
+func (s *Server) inputSchema(sch *jsonschema.Schema, tool string, takesAPIType bool) *jsonschema.Schema {
 	for name, p := range sch.Properties {
 		p.Title = inputTitles[name]
 	}
 	if takesAPIType {
-		enum := make([]any, 0, len(apiTypes))
-		for _, t := range apiTypes {
+		types := s.typesFor(tool)
+		enum := make([]any, 0, len(types))
+		for _, t := range types {
 			enum = append(enum, t.name)
 		}
 		sch.Properties["apiType"].Enum = enum

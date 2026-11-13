@@ -187,7 +187,7 @@ func TestToolsList_ShowsOnlyWhatTheCallerMayUse(t *testing.T) {
 	assert.ElementsMatch(t, []string{"list_projects", "get_api_schema"}, names)
 
 	names = toolNames(t, connect(t, s, who(testOrg, "ap:rest_api:manage", "ap:project:manage", "ap:gateway:manage")))
-	assert.Len(t, names, 14)
+	assert.Len(t, names, 15)
 }
 
 // TestToolsList_ListsEveryAPIType checks that an API tool shows all API types
@@ -229,7 +229,7 @@ func TestScopeChecksOff_EveryToolIsOpen(t *testing.T) {
 	s, _ := newTestServer(t)
 	s.auth.Authorization.Enabled = false
 	cs := connect(t, s, who(testOrg))
-	assert.Len(t, toolNames(t, cs), 14)
+	assert.Len(t, toolNames(t, cs), 18)
 	res, text := call(t, cs, "list_projects", nil)
 	assert.False(t, res.IsError, text)
 	assert.Contains(t, text, `"id":"default"`)
@@ -238,15 +238,16 @@ func TestScopeChecksOff_EveryToolIsOpen(t *testing.T) {
 // TestToolRiskLevels pins each tool's risk level.
 func TestToolRiskLevels(t *testing.T) {
 	s, _ := newTestServer(t)
-	scopes := []string{"ap:rest_api:manage", "ap:project:manage", "ap:gateway:manage"}
 	expected := map[string]*mcp.ToolAnnotations{
 		"list_apis": read, "get_api": read, "get_api_schema": read, "list_api_deployments": read,
+		"get_api_definition": read, "list_api_portals": read,
 		"list_projects": read, "list_gateways": read, "get_gateway": read,
 		"create_api": write, "create_project": write,
-		"update_api": writeRepeat, "deploy_api": writeRepeat,
+		"update_api": writeRepeat, "deploy_api": writeRepeat, "publish_api": writeRepeat,
 		"undeploy_api": destructiveRepeat, "delete_api": destructiveRepeat, "delete_project": destructiveRepeat,
+		"unpublish_api": destructiveRepeat,
 	}
-	listed, err := connect(t, s, who(testOrg, scopes...)).ListTools(context.Background(), nil)
+	listed, err := connect(t, s, who(testOrg, allScopes(t, s)...)).ListTools(context.Background(), nil)
 	require.NoError(t, err)
 	require.Len(t, listed.Tools, len(expected))
 	for _, tool := range listed.Tools {
@@ -424,10 +425,10 @@ func TestCheckRoutes_RefusesARouteWithNoScopes(t *testing.T) {
 // TestToolContract follows the console agent's main lint rules.
 func TestToolContract(t *testing.T) {
 	s, _ := newTestServer(t)
-	res, err := connect(t, s, who(testOrg, "ap:rest_api:manage", "ap:project:manage", "ap:gateway:manage")).
-		ListTools(context.Background(), nil)
+	res, err := connect(t, s, who(testOrg, allScopes(t, s)...)).ListTools(context.Background(), nil)
 	require.NoError(t, err)
-	verbNoun := regexp.MustCompile(`^(list|get|create|update|delete|deploy|undeploy)_[a-z_]+$`)
+	require.Len(t, res.Tools, 18)
+	verbNoun := regexp.MustCompile(`^(list|get|create|update|delete|deploy|undeploy|publish|unpublish)_[a-z_]+$`)
 	for _, tool := range res.Tools {
 		assert.Regexp(t, verbNoun, tool.Name)
 		assert.LessOrEqual(t, len(tool.Title), 40, tool.Name)

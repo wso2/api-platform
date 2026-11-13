@@ -24,7 +24,10 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/pagination"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/service"
@@ -33,9 +36,12 @@ import (
 // direct calls the same service methods the REST handlers call, and repeats
 // the handler checks the services do not make.
 type direct struct {
-	projects *service.ProjectService
-	gateways *service.GatewayService
-	apis     map[string]directAPIs // by API type
+	projects     *service.ProjectService
+	gateways     *service.GatewayService
+	documents    *service.APIDocumentService
+	portals      *service.APIPortalService
+	publications *service.PublicationService
+	apis         map[string]directAPIs // by API type
 }
 
 // directAPIs is one API type's services. It is the only per-type code.
@@ -53,10 +59,14 @@ type directAPIs interface {
 // newDirect fails when an API type has no adapter, so no call has to check.
 func newDirect(d Deps) (direct, error) {
 	dir := direct{
-		projects: d.Projects,
-		gateways: d.Gateways,
+		projects:     d.Projects,
+		gateways:     d.Gateways,
+		documents:    d.Documents,
+		portals:      d.Portals,
+		publications: d.Publications,
 		apis: map[string]directAPIs{
-			"rest-api":     restAPIs{apis: d.APIs, deploys: d.Deployments},
+			"rest-api":     restAPIs{apis: d.APIs, deploys: d.Deployments, documents: d.Documents},
+			"graphql-api":  graphQLAPIs{apis: d.GraphQLAPIs, deploys: d.GraphQLAPIDeployments},
 			"llm-provider": llmProviders{providers: d.LLMProviders, deploys: d.LLMProviderDeployments},
 			"llm-proxy":    llmProxies{proxies: d.LLMProxies, deploys: d.LLMProxyDeployments},
 			"mcp-proxy":    mcpProxies{proxies: d.MCPProxies, deploys: d.MCPProxyDeployments},
@@ -164,10 +174,131 @@ func (d direct) getGateway(_ context.Context, c caller, id string) (*api.Gateway
 	return d.gateways.GetGateway(id, c.org)
 }
 
+// definitionDoc is an API's definition document, as a portal listing stores it.
+type definitionDoc struct {
+	Content     string
+	ContentType string // application/json, application/yaml or application/graphql
+}
+
+// documented is an API type with a definition document and gateways to read:
+// the types publish_api and get_api_definition serve.
+type documented interface {
+	definition(org, id string) (definitionDoc, error)
+	apiGateways(org, id string, p page) ([]api.RESTAPIGatewayResponse, int, error)
+}
+
+func (d direct) documentedType(t *apiType) (documented, error) {
+	doc, ok := d.apis[t.name].(documented)
+	if !ok {
+		return nil, fail("%s has no definition document", t.name)
+	}
+	return doc, nil
+}
+
+func (d direct) getDefinition(_ context.Context, c caller, t *apiType, id string) (definitionDoc, error) {
+	doc, err := d.documentedType(t)
+	if err != nil {
+		return definitionDoc{}, err
+	}
+	return doc.definition(c.org, id)
+}
+
+// listAPIGateways reads every page of the API's gateways.
+func (d direct) listAPIGateways(_ context.Context, c caller, t *apiType, id string) ([]api.RESTAPIGatewayResponse, error) {
+	doc, err := d.documentedType(t)
+	if err != nil {
+		return nil, err
+	}
+	var all []api.RESTAPIGatewayResponse
+	for p := (page{limit: maxPageLimit}); ; p.offset = len(all) {
+		got, total, err := doc.apiGateways(c.org, id, p)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, got...)
+		if len(got) == 0 || len(all) >= total {
+			return all, nil
+		}
+	}
+}
+
+func (d direct) listPortals(_ context.Context, c caller, p page) ([]api.ApiPortalListItem, int, error) {
+	res, err := d.portals.ListAPIPortals(c.org, p.limit, p.offset, "", "", "")
+	if err != nil {
+		return nil, 0, err
+	}
+	return res.List, res.Pagination.Total, nil
+}
+
+// getDraft returns the API's draft listing on the portal, or nil when it has none.
+func (d direct) getDraft(_ context.Context, c caller, t *apiType, id, portalID string) (*model.Publication, error) {
+	draft, err := d.publications.GetDraft(t.name, id, portalID, c.org)
+	if apperror.APIPublicationDraftNotFound.Is(err) {
+		return nil, nil
+	}
+	return draft, err
+}
+
+func (d direct) saveDraft(_ context.Context, c caller, t *apiType, id, portalID string, draft *model.Publication) error {
+	_, err := d.publications.SaveDraftDetails(t.name, id, portalID, c.org, c.user, draft, draft.SubscriptionPlanIds, draft.DocIds)
+	return err
+}
+
+// hasDraftDefinition reports whether the draft already holds a definition, as
+// one saved in the console does.
+func (d direct) hasDraftDefinition(_ context.Context, c caller, t *apiType, id, portalID string) (bool, error) {
+	_, err := d.publications.GetDraftDefinition(t.name, id, portalID, c.org)
+	if apperror.NotFound.Is(err) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func (d direct) saveDraftDefinition(_ context.Context, c caller, t *apiType, id, portalID string, doc definitionDoc) error {
+	return d.publications.SaveDraftDefinition(t.name, id, portalID, c.org, c.user, doc.ContentType, []byte(doc.Content))
+}
+
+func (d direct) publish(ctx context.Context, c caller, t *apiType, id, portalID string) (*model.Publication, error) {
+	pub, _, err := d.publications.Publish(ctx, t.name, id, portalID, c.org, c.user)
+	return pub, err
+}
+
+func (d direct) unpublish(ctx context.Context, c caller, t *apiType, id, portalID string) error {
+	return d.publications.Unpublish(ctx, t.name, id, portalID, c.org, c.user)
+}
+
 // restAPIs is the rest-api type: the APIService and the DeploymentService.
 type restAPIs struct {
-	apis    *service.APIService
-	deploys *service.DeploymentService
+	apis      *service.APIService
+	deploys   *service.DeploymentService
+	documents *service.APIDocumentService
+}
+
+// definition returns the API's OpenAPI document, as GET /rest-apis/{id}/openapi does.
+func (r restAPIs) definition(org, id string) (definitionDoc, error) {
+	artifactUUID, err := r.apis.GetArtifactUUID(id, org)
+	if err != nil {
+		return definitionDoc{}, err
+	}
+	_, content, err := r.documents.GetDocumentWithContent(artifactUUID, constants.DocumentHandleDefinition, org,
+		constants.DocumentTypeDefinition)
+	if err != nil {
+		return definitionDoc{}, err
+	}
+	text := strings.TrimSpace(string(content))
+	contentType := "application/yaml"
+	if strings.HasPrefix(text, "{") {
+		contentType = "application/json"
+	}
+	return definitionDoc{Content: text, ContentType: contentType}, nil
+}
+
+func (r restAPIs) apiGateways(org, id string, p page) ([]api.RESTAPIGatewayResponse, int, error) {
+	res, err := r.apis.GetAPIGatewaysByHandle(id, org, p.limit, p.offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	return res.List, res.Pagination.Total, nil
 }
 
 func (r restAPIs) list(org, projectID string, opts repository.ListOptions) ([]any, int, error) {
@@ -216,6 +347,123 @@ func (r restAPIs) deploy(org, user, id string, req *api.DeployRequest) (*api.Dep
 
 func (r restAPIs) undeploy(org, user, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
 	return r.deploys.UndeployDeploymentByHandle(id, deploymentID, gatewayID, org, user)
+}
+
+// graphQLAPIs is the graphql-api type. The REST API takes it as multipart, so
+// it can carry an SDL file; the tools send the same fields as JSON, and the
+// SDL inline, from a URL, or by introspection.
+type graphQLAPIs struct {
+	apis    *service.GraphQLAPIService
+	deploys *service.GraphQLAPIDeploymentService
+}
+
+func (g graphQLAPIs) list(org, projectID string, opts repository.ListOptions) ([]any, int, error) {
+	res, err := g.apis.List(org, projectID, opts)
+	if err != nil {
+		return nil, 0, err
+	}
+	return anyList(res.List), res.Pagination.Total, nil
+}
+
+// get returns the detail view, as GET /graphql-apis/{id} does. It leaves out
+// the SDL, which get_api_definition returns.
+func (g graphQLAPIs) get(org, id string) (any, error) { return g.apis.GetDetail(org, id) }
+
+func (g graphQLAPIs) create(org, user string, payload []byte) (any, error) {
+	req, err := decode[api.CreateGraphQLAPIRequest](payload, "graphql-api")
+	if err != nil {
+		return nil, err
+	}
+	// The REST handler's checks (handler/graphql_api.go).
+	switch {
+	case strings.TrimSpace(req.DisplayName) == "":
+		return nil, fail("displayName is required")
+	case strings.TrimSpace(req.Version) == "":
+		return nil, fail("version is required")
+	case strings.TrimSpace(req.ProjectId) == "":
+		return nil, fail("projectId is required")
+	}
+	if err := checkSchemaSource(req.SchemaSource); err != nil {
+		return nil, err
+	}
+	return g.apis.Create(org, user, req)
+}
+
+// update sends the merged API back. A read never returns the SDL, so a payload
+// that does not set a new schema would otherwise re-resolve it from nothing:
+// the stored SDL is sent with it, unless the API is set to introspect its
+// upstream, which re-reads the schema on every save anyway. The SDL is sent as
+// "inline", as the console's metadata save does: a read never returns the
+// sdlUrl, and a JSON payload carries no file, so "file" is saved as "inline" too.
+func (g graphQLAPIs) update(org, user, id string, whole []byte) (any, error) {
+	req, err := decode[api.GraphQLAPI](whole, "graphql-api")
+	if err != nil {
+		return nil, err
+	}
+	inline := api.GraphQLAPISchemaSourceInline
+	if req.SchemaSource != nil && *req.SchemaSource == api.GraphQLAPISchemaSourceFile {
+		req.SchemaSource = &inline
+	}
+	newSchema := strings.TrimSpace(valueOf(req.Sdl)) != "" || strings.TrimSpace(valueOf(req.SdlUrl)) != ""
+	introspect := req.SchemaSource != nil && *req.SchemaSource == api.GraphQLAPISchemaSourceIntrospection
+	if !newSchema && !introspect {
+		sdl, err := g.apis.GetSDL(org, id)
+		if err != nil {
+			return nil, err
+		}
+		req.SchemaSource, req.Sdl = &inline, &sdl
+	}
+	return g.apis.Update(org, id, user, req)
+}
+
+func (g graphQLAPIs) delete(org, user, id string) error { return g.apis.Delete(org, id, user) }
+
+func (g graphQLAPIs) deployments(org, id, gatewayID, status string) ([]api.DeploymentResponse, error) {
+	res, err := g.deploys.GetGraphQLAPIDeployments(id, org, optional(gatewayID), optional(status))
+	if err != nil {
+		return nil, err
+	}
+	return res.List, nil
+}
+
+func (g graphQLAPIs) deploy(org, user, id string, req *api.DeployRequest) (*api.DeploymentResponse, error) {
+	return g.deploys.DeployGraphQLAPI(id, req, org, user)
+}
+
+func (g graphQLAPIs) undeploy(org, _, id, deploymentID, gatewayID string) (*api.DeploymentResponse, error) {
+	return g.deploys.UndeployGraphQLAPIDeployment(id, deploymentID, gatewayID, org)
+}
+
+func (g graphQLAPIs) definition(org, id string) (definitionDoc, error) {
+	sdl, err := g.apis.GetSDL(org, id)
+	if err != nil {
+		return definitionDoc{}, err
+	}
+	return definitionDoc{Content: sdl, ContentType: "application/graphql"}, nil
+}
+
+func (g graphQLAPIs) apiGateways(org, id string, p page) ([]api.RESTAPIGatewayResponse, int, error) {
+	res, err := g.apis.GetAPIGateways(id, org, p.limit, p.offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	return res.List, res.Pagination.Total, nil
+}
+
+// checkSchemaSource refuses schemaSource "file" on create: it names an uploaded
+// SDL file, which a JSON payload cannot carry.
+func checkSchemaSource[T ~string](source *T) error {
+	if source != nil && string(*source) == "file" {
+		return fail("schemaSource \"file\" needs an uploaded file; send the SDL as sdl with schemaSource \"inline\", or use \"url\" or \"introspection\"")
+	}
+	return nil
+}
+
+func valueOf(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // llmProviders is the llm-provider type. A provider belongs to the

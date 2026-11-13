@@ -134,6 +134,30 @@ func TestPluginTool_ReplacesAnAPITypeBuiltIn(t *testing.T) {
 	assert.False(t, res.IsError, text)
 }
 
+type typedEchoInput struct {
+	APIType string `json:"apiType" jsonschema:"The API type."`
+}
+
+// A plugin's publish_api is not held to the built-in's types: its schema lists
+// every API type, so the SDK lets an mcp-proxy call through to the plugin.
+func TestPluginTool_ReplacementServesEveryAPIType(t *testing.T) {
+	tool := echoTool("publish_api", func(context.Context, pdk.MCPCall) (any, error) { return map[string]string{}, nil })
+	tool.Input = typedEchoInput{}
+	s, err := newPluginServer(t, tool)
+	require.NoError(t, err)
+	cs := connect(t, s, who(testOrg, "ap:project:read"))
+
+	tools, err := cs.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+	for _, listed := range tools.Tools {
+		if listed.Name == "publish_api" {
+			assert.Contains(t, enumOf(t, listed.InputSchema, "apiType"), "mcp-proxy")
+		}
+	}
+	res, text := call(t, cs, "publish_api", map[string]any{"apiType": "mcp-proxy"})
+	assert.False(t, res.IsError, text)
+}
+
 func TestNew_RefusesAMalformedPluginTool(t *testing.T) {
 	run := func(context.Context, pdk.MCPCall) (any, error) { return nil, nil }
 	with := func(change func(*pdk.MCPTool)) pdk.MCPTool {
