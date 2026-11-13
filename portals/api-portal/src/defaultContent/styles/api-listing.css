@@ -323,7 +323,8 @@
   border: 1px solid var(--border-strong);
   color: var(--primary);
   border-radius: 1.25rem;
-  padding: 0.6875rem 0.875rem;
+  /* As tall as the Subscribe button (.dp-btn), whose padding has no border around it. */
+  padding: calc(0.6875rem - 1px) 0.875rem;
   font-size: 0.875rem;
   font-weight: 600;
   line-height: 1;

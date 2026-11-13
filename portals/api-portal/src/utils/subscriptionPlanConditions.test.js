@@ -181,7 +181,7 @@ test('plan cards show each window of the built-in conditions', () => {
     assert.deepEqual(displayLimits(undefined), []);
 });
 
-test('the plans table shows one chip per condition, with every limit for its hover card', () => {
+test('the plans table shows one chip per limit window, and one per custom condition with its values', () => {
     const chips = conditionChips(normalizeConditions([
         { type: 'request-count', params: { limits: [w(344, 1, 'MINUTE'), w(43543, 2, 'HOUR')], onExceed: 'allow' } },
         limitsOf('tool-call-count', w(9000, 1, 'DAY')),
@@ -189,12 +189,14 @@ test('the plans table shows one chip per condition, with every limit for its hov
         { id: 'business-hours', type: 'custom', params: { peakStart: '08:00', peakLimit: 50 } },
         { id: 'empty', type: 'custom', params: {} },
     ]));
+    // A request count with two windows is two chips; "+N" lists details, so each keeps its window.
     assert.deepEqual(chips, [
-        { label: 'Requests', first: '344 / min', more: 1, details: ['344 / min', '43,543 / 2 hr', 'Allowed past the limit'] },
-        { label: 'Tool calls', first: '9,000 / day', more: 0, details: ['9,000 / day'] },
-        { label: 'Prompt tokens', first: '1,000,000 / mo', more: 0, details: ['1,000,000 / mo'] },
-        { label: 'Custom', first: 'business-hours', more: 0, details: ['peakLimit = 50', 'peakStart = 08:00'], custom: true },
-        { label: 'Custom', first: 'empty', more: 0, details: ['No values'], custom: true },
+        { label: 'Requests', first: '344 / min', details: ['344 / min', 'Allowed past the limit'] },
+        { label: 'Requests', first: '43,543 / 2 hr', details: ['43,543 / 2 hr', 'Allowed past the limit'] },
+        { label: 'Tool calls', first: '9,000 / day', details: ['9,000 / day'] },
+        { label: 'Prompt tokens', first: '1,000,000 / mo', details: ['1,000,000 / mo'] },
+        { label: 'Custom', first: 'business-hours', details: ['peakLimit = 50', 'peakStart = 08:00'], custom: true },
+        { label: 'Custom', first: 'empty', details: ['No values'], custom: true },
     ]);
     assert.deepEqual(conditionChips(undefined), []);
 });

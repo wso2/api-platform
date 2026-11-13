@@ -24,9 +24,15 @@
       <span class="aov-recommended-badge" style="display:none;">RECOMMENDED</span>
       {{/unless}}
     </div>
+    {{!-- A card shows the plan's name and description only; Subscribe, Switch plan and View subscription
+          are the page header's (plan-picker.js). The limits, price and buttons stay in the card, hidden:
+          the header's dialog and paid checkout (plan-checkout.js) work through them. --}}
+    {{#if description}}<p class="aov-plan-desc">{{description}}</p>{{/if}}
+    <div class="aov-plan-hidden" hidden>
     {{> plan-limits}}
     {{> plan-price}}
-    <div class="position-relative">
+    </div>
+    <div class="position-relative" hidden>
       {{#if ../isAuthenticated}}
         {{#if (isCurrentPlan id @root.subscriptions)}}
         <button type="button"
@@ -183,7 +189,7 @@
       <span class="mc-unsub-icon"><i class="bi bi-exclamation-triangle-fill"></i></span>
       <h2 id="apiUnsubTitle" class="mc-unsub-title">Unsubscribe from plan?</h2>
     </div>
-    <p id="apiUnsubDesc" class="mc-unsub-desc">Your applications will lose access to this API and any tokens will stop working. You can re-subscribe at any time.</p>
+    <p id="apiUnsubDesc" class="mc-unsub-desc">You'll lose access to this API, and its subscription token will stop working. You can subscribe again at any time.</p>
     <div class="mc-unsub-actions">
       <button id="apiUnsubKeepBtn" class="dp-btn dp-btn--outline">Cancel</button>
       <button id="apiUnsubConfirmBtn" class="dp-btn mc-unsub-confirm-btn">Unsubscribe</button>
@@ -198,7 +204,7 @@
       <span class="mc-unsub-icon"><i class="bi bi-exclamation-triangle-fill"></i></span>
       <h2 class="mc-unsub-title" id="apiRegenerateTitle">Regenerate token?</h2>
     </div>
-    <p class="mc-unsub-desc">Your current token will be invalidated immediately. Any applications using it will need to be updated with the new token.</p>
+    <p class="mc-unsub-desc">Your current token stops working right away. Replace it with the new token wherever you use it.</p>
     <div class="mc-unsub-actions">
       <button id="apiRegenerateCancelBtn" class="dp-btn dp-btn--outline">Cancel</button>
       <button id="apiRegenerateConfirmBtn" class="dp-btn mc-unsub-confirm-btn">Regenerate</button>

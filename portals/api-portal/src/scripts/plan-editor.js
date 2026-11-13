@@ -32,18 +32,17 @@
   var MAX_CONDITIONS = 20;
   var MAX_WINDOWS = 10;
 
-  /* The condition types: what the chooser cards and the Add condition menu offer. */
+  /* The condition types: what the chooser cards and the Add condition menu offer, one simple line
+     each, as in the Management Portal. */
   var TYPES = [
-    { type: 'request-count', name: 'Request count', icon: 'bi-activity', scope: 'REST API only',
-      desc: 'Requests per period, for the whole REST API.', menu: 'REST APIs only. Counts every request.' },
-    { type: 'tool-call-count', name: 'Tool-call count', icon: 'bi-wrench', scope: 'MCP only',
-      desc: 'MCP tools/call per period, for the whole MCP proxy. initialize and tools/list are not counted.',
-      menu: 'MCP proxies only. Counts tools/call.' },
-    { type: 'token-count', name: 'Token count', icon: 'bi-coin', scope: 'LLM only',
-      desc: 'LLM tokens per period: total, prompt or completion.', menu: 'LLM proxies only. Counts model tokens.' },
+    { type: 'request-count', name: 'Request count', icon: 'bi-activity',
+      desc: 'Limits how many requests a subscriber makes.' },
+    { type: 'tool-call-count', name: 'Tool-call count', icon: 'bi-wrench',
+      desc: 'Limits how many MCP tools a subscriber calls.' },
+    { type: 'token-count', name: 'Token count', icon: 'bi-coin',
+      desc: 'Limits how many LLM tokens a subscriber uses.' },
     { type: 'custom', name: 'Custom', icon: 'bi-puzzle',
-      desc: 'Your own key-value pairs, read by a policy your team writes.',
-      menu: 'An ID and key-value pairs, read by a policy your team writes.' },
+      desc: 'Your own condition, read by a policy you write.' },
   ];
   var TYPE_OF = {};
   TYPES.forEach(function (t) { TYPE_OF[t.type] = t; });
@@ -79,7 +78,8 @@
     var row = document.createElement('div');
     row.className = 'cfg-limit-row pln-window';
     var unitOpts = TIME_UNITS.map(function(u){
-      return '<option value="'+u+'"'+(w&&w.timeUnit===u?' selected':'')+'>'+u+'</option>';
+      var label = UNIT_WORDS[u].charAt(0).toUpperCase() + UNIT_WORDS[u].slice(1);
+      return '<option value="'+u+'"'+(w&&w.timeUnit===u?' selected':'')+'>'+label+'</option>';
     }).join('');
     row.innerHTML =
       '<input type="number" class="cfg-form-input cfg-form-input--mono cfg-limit-count" aria-label="Count" '+
@@ -156,7 +156,7 @@
     var what = whatOf(el);
     var parts = windowsOf(el).map(function (w) { return w.count.toLocaleString() + ' ' + what + ' per ' + per(w.amount, w.unit); });
     if (!parts.length) return 'No limit yet';
-    if (el.querySelector('.pol-condition-on-exceed').value === 'allow') parts.push('overage allowed');
+    if (!el.querySelector('.pol-condition-on-exceed').checked) parts.push('overage allowed');
     return parts.join(' · ');
   }
 
@@ -223,13 +223,18 @@
         tt.value = params.tokenType || 'total';
         controls.appendChild(tt);
       }
-      var ex = document.createElement('select');
-      ex.className = 'cfg-form-input pol-condition-on-exceed'; ex.setAttribute('aria-label', 'When a limit is reached');
-      [['reject', 'Reject when reached'], ['allow', 'Allow when reached']].forEach(function (o) {
-        var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; ex.appendChild(op);
-      });
-      ex.value = params.onExceed || 'reject';
-      controls.appendChild(ex);
+      // After the limits, as in the Management Portal: a bordered row with a switch, on = block (429).
+      var block = document.createElement('div'); block.className = 'pln-block-row';
+      block.innerHTML =
+        '<div class="pln-block-text">'+
+          '<div class="pln-block-title">Block requests when quota is reached</div>'+
+          '<div class="pln-block-help">Reject requests that exceed the limit.</div>'+
+        '</div>'+
+        '<div class="form-check form-switch m-0">'+
+          '<input class="form-check-input pol-condition-on-exceed" type="checkbox" role="switch" '+
+            'aria-label="Block requests when quota is reached" />'+
+        '</div>';
+      block.querySelector('.pol-condition-on-exceed').checked = params.onExceed !== 'allow';
       var windows = document.createElement('div'); windows.className = 'pln-windows';
       var limits = params.limits && params.limits.length ? params.limits : [null];
       limits.forEach(function (w) { windows.appendChild(makeWindowRow(w)); });
@@ -240,7 +245,8 @@
         if (windows.children.length >= MAX_WINDOWS) return;
         var row = makeWindowRow(null); windows.appendChild(row); row.querySelector('.cfg-limit-count').focus(); refresh();
       });
-      body.appendChild(controls); body.appendChild(windows); body.appendChild(addLimit);
+      if (controls.children.length) body.appendChild(controls);
+      body.appendChild(windows); body.appendChild(addLimit); body.appendChild(block);
     }
 
     el.appendChild(head);
@@ -287,7 +293,6 @@
     var top = document.createElement('span'); top.className = 'pln-type-top';
     var ic = document.createElement('span'); ic.className = 'pln-cond-icon'; ic.appendChild(icon(t.icon));
     top.appendChild(ic);
-    if (t.scope) { var sc = document.createElement('span'); sc.className = 'pln-scope'; sc.textContent = t.scope; top.appendChild(sc); }
     var nm = document.createElement('span'); nm.className = 'pln-type-name'; nm.textContent = t.name;
     var ds = document.createElement('span'); ds.className = 'pln-type-desc'; ds.textContent = t.desc;
     card.appendChild(top); card.appendChild(nm); card.appendChild(ds);
@@ -310,7 +315,7 @@
       var text = document.createElement('span'); text.className = 'pln-menu-text';
       var nm = document.createElement('span'); nm.className = 'pln-type-name'; nm.textContent = t.name;
       if (added) { var b = document.createElement('span'); b.className = 'pln-added'; b.textContent = 'Added'; nm.appendChild(b); }
-      var ds = document.createElement('span'); ds.className = 'pln-type-desc'; ds.textContent = t.menu;
+      var ds = document.createElement('span'); ds.className = 'pln-type-desc'; ds.textContent = t.desc;
       text.appendChild(nm); text.appendChild(ds);
       item.appendChild(ic); item.appendChild(text);
       item.addEventListener('click', function () { addCondition(t.type); });
@@ -377,7 +382,7 @@
         limits.push({ count: count, timeAmount: amount, timeUnit: row.querySelector('.cfg-limit-unit').value });
       });
       if (limits.length === 0) throw new Error(t.name + ' needs at least one limit, or remove it.');
-      var p = { limits: limits, onExceed: el.querySelector('.pol-condition-on-exceed').value };
+      var p = { limits: limits, onExceed: el.querySelector('.pol-condition-on-exceed').checked ? 'reject' : 'allow' };
       var tokenType = el.querySelector('.pol-condition-token-type');
       if (tokenType) p.tokenType = tokenType.value;
       return { id: BUILT_IN_IDS[el.dataset.type], type: el.dataset.type, params: p };
@@ -1173,7 +1178,7 @@
       // Custom conditions are for policies; subscribers don't see them.
       if (el.dataset.type === 'custom') return;
       var what = whatOf(el);
-      var allow = el.querySelector('.pol-condition-on-exceed').value === 'allow';
+      var allow = !el.querySelector('.pol-condition-on-exceed').checked;
       windowsOf(el).forEach(function (w) {
         items.push({ text: w.count.toLocaleString('en-US') + ' ' + what + ' / ' + per(w.amount, w.unit), allow: allow });
       });

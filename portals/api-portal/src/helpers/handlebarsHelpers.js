@@ -176,6 +176,12 @@ const helpers = {
     isMiddle: (index, length) => index === Math.floor(length / 2),
     maskToken: (token) => (!token || token.length <= 4) ? '****' : '****' + token.slice(-4),
     isCurrentPlan: (planName, subs) => Array.isArray(subs) && !!planName && subs.some(s => (s.policyName || s.subscriptionPlanName) === planName),
+    // The plan the user is subscribed to on this API, or '' (the Subscribe / Switch plan dialog's data-current).
+    currentPlanId: (subs) => (Array.isArray(subs) && subs.length ? (subs[0].policyName || subs[0].subscriptionPlanName || '') : ''),
+    // What the Subscribe / Switch plan dialog needs of each plan: its name and description, and whether it is paid.
+    pickerPlans: (plans) => (Array.isArray(plans) ? plans : [])
+        .filter(p => p && p.id)
+        .map(p => ({ id: p.id, displayName: p.displayName || p.id, description: p.description || '', paid: !!p.paid })),
     currentYear: () => new Date().getFullYear(),
     pageHead: function(options) {
         if (this.slots) {

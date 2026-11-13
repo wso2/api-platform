@@ -940,3 +940,132 @@
   font-weight: 600;
 }
 .aov-usage-pricing-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text); }
+
+/* ── Subscribe / Switch plan dialog (plan-picker.js): the API's plans, by name and description ── */
+.mc-unsub-dialog.plan-picker { width: 32rem; padding: 1.5rem 1.5rem 1.375rem; outline: none; }
+.plan-picker-head { display: flex; align-items: flex-start; gap: .875rem; }
+.plan-picker-head-icon {
+  flex: none; width: 2.5rem; height: 2.5rem; border-radius: .75rem; display: flex; align-items: center;
+  justify-content: center; font-size: 1.125rem; color: var(--accent-dark); background: var(--accent-surface);
+}
+.plan-picker-heading { flex: 1; min-width: 0; }
+.plan-picker-title { margin: 0; font-size: 1.125rem; font-weight: 700; color: var(--text-strong); line-height: 1.3; }
+.plan-picker-sub { margin: .1875rem 0 0; font-size: .8125rem; line-height: 1.5; color: var(--text-muted); }
+.plan-picker-close {
+  flex: none; width: 2rem; height: 2rem; margin: -.25rem -.25rem 0 0; border: 0; border-radius: .5rem;
+  background: transparent; color: var(--text-muted); display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.plan-picker-close:hover { background: var(--surface-sunken); color: var(--text-strong); }
+.plan-picker-list {
+  display: flex; flex-direction: column; gap: .625rem; margin-top: 1.25rem;
+  max-height: min(50vh, 26rem); overflow-y: auto; padding: 2px; /* room for the selected border */
+}
+.plan-picker-option {
+  display: flex; align-items: center; gap: .875rem; margin: 0; cursor: pointer;
+  border: 1px solid var(--border); border-radius: .875rem; padding: .875rem 1rem; background: var(--white);
+  transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+.plan-picker-option:hover { border-color: var(--border-strong); box-shadow: 0 4px 14px color-mix(in srgb, var(--ink, #0f1b2d) 7%, transparent); }
+.plan-picker-option:has(input:checked) {
+  border-color: var(--primary); background: color-mix(in srgb, var(--primary) 5%, var(--white));
+  box-shadow: 0 0 0 1px var(--primary) inset;
+}
+.plan-picker-icon {
+  flex: none; width: 2.25rem; height: 2.25rem; border-radius: .625rem; display: flex; align-items: center;
+  justify-content: center; font-size: .9375rem; color: var(--primary); background: var(--surface-sunken);
+}
+.plan-picker-option:has(input:checked) .plan-picker-icon { color: var(--white); background: var(--primary); }
+.plan-picker-text { flex: 1; display: flex; flex-direction: column; gap: .1875rem; min-width: 0; }
+.plan-picker-name { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.plan-picker-name-text { font-weight: 600; color: var(--text-strong); font-size: .9375rem; }
+.plan-picker-desc {
+  font-size: .8125rem; color: var(--text-muted); line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.plan-picker-note { font-size: .75rem; color: var(--text-subtle); }
+/* The choice: a round check on the right, filled with a white tick when chosen. */
+.plan-picker-radio {
+  appearance: none; -webkit-appearance: none; flex: none; margin: 0; width: 1.375rem; height: 1.375rem;
+  border: 1.5px solid var(--border-strong); border-radius: 50%; background: var(--white); cursor: pointer;
+  display: grid; place-content: center; transition: background-color .15s ease, border-color .15s ease;
+}
+.plan-picker-radio::before {
+  content: ""; width: .375rem; height: .6875rem; margin-top: -.125rem; border: solid var(--white);
+  border-width: 0 2px 2px 0; transform: rotate(45deg) scale(0); transition: transform .12s ease;
+}
+.plan-picker-radio:checked { background: var(--primary); border-color: var(--primary); }
+.plan-picker-radio:checked::before { transform: rotate(45deg) scale(1); }
+.plan-picker-radio:focus { outline: none; }
+.plan-picker-radio:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent); }
+.plan-picker-option--disabled { cursor: default; background: var(--surface-sunken); }
+.plan-picker-option--disabled:hover { border-color: var(--border); box-shadow: none; }
+.plan-picker-option--disabled .plan-picker-radio { visibility: hidden; }
+.plan-picker-option--disabled .plan-picker-icon { color: var(--text-subtle); background: var(--white); }
+.plan-picker-option--disabled .plan-picker-name-text, .plan-picker-option--disabled .plan-picker-desc { color: var(--text-subtle); }
+.plan-picker-pill {
+  font-size: .6875rem; font-weight: 600; color: var(--success); background: var(--success-surface);
+  border-radius: 1rem; padding: .0625rem .5rem;
+}
+.plan-picker-actions {
+  display: flex; justify-content: flex-end; gap: .75rem; margin: 1.375rem -1.5rem -1.375rem; padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border); background: var(--surface-sunken); border-radius: 0 0 1rem 1rem;
+}
+.plan-picker-actions .dp-btn:focus { outline: none; box-shadow: none; }
+.plan-picker-actions .dp-btn:focus-visible { outline: 2px solid var(--primary-light); outline-offset: 2px; }
+/* Until a plan is picked: a plain disabled button, not a faded gradient. */
+.plan-picker-confirm:disabled {
+  background: var(--white); color: var(--text-subtle); border: 1px solid var(--border); opacity: 1;
+}
+
+/* ── Subscription token dialog: shown once, right after subscribing ── */
+.sub-token-overlay {
+  position: fixed; inset: 0; z-index: 1080; display: flex; align-items: center; justify-content: center;
+  padding: 1rem; background: color-mix(in srgb, var(--ink, #0f1b2d) 45%, transparent);
+}
+.sub-token-dialog {
+  width: 30rem; max-width: 100%; background: var(--white); border-radius: 1rem;
+  padding: 1.5rem 1.625rem 1.375rem; box-shadow: 0 24px 60px color-mix(in srgb, var(--ink, #0f1b2d) 30%, transparent);
+}
+.sub-token-head { display: flex; align-items: center; gap: .875rem; }
+.sub-token-icon {
+  width: 2.5rem; height: 2.5rem; flex: none; border-radius: .6875rem; display: flex; align-items: center;
+  justify-content: center; background: var(--success-surface); color: var(--success); font-size: 1.25rem;
+}
+.sub-token-heading { flex: 1; min-width: 0; }
+.sub-token-title { margin: 0; font-size: 1.0625rem; font-weight: 700; color: var(--text-strong); line-height: 1.3; }
+.sub-token-sub { margin: .125rem 0 0; font-size: .8125rem; color: var(--text-muted); }
+.sub-token-sub strong { color: var(--text-strong); font-weight: 600; }
+.sub-token-close {
+  flex: none; align-self: flex-start; width: 2rem; height: 2rem; border: 0; border-radius: .5rem; background: transparent;
+  color: var(--text-muted); display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.sub-token-close:hover { background: var(--surface-sunken); color: var(--text-strong); }
+.sub-token-label {
+  margin: 1.25rem 0 .375rem; font-size: .75rem; font-weight: 600; letter-spacing: .02em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.sub-token-field {
+  display: flex; align-items: center; gap: .5rem; padding: .625rem .5rem .625rem .875rem;
+  background: var(--surface-sunken); border: 1px solid var(--border); border-radius: .625rem;
+}
+.sub-token-value {
+  flex: 1; min-width: 0; font-family: var(--font-family-mono); font-size: .8125rem; color: var(--text-strong);
+  background: none; padding: 0; word-break: break-all; line-height: 1.5;
+}
+.sub-token-copy { flex: none; }
+.sub-token-hint {
+  display: flex; gap: .5rem; align-items: flex-start; margin: .75rem 0 0; font-size: .8125rem; line-height: 1.5;
+  color: var(--text-muted);
+}
+.sub-token-hint .bi { color: var(--primary); margin-top: .125rem; }
+.sub-token-hint code {
+  font-family: var(--font-family-mono); font-size: .78rem; color: var(--text-strong);
+  background: var(--surface-sunken); border: 1px solid var(--border); border-radius: .3125rem; padding: 0 .3125rem;
+}
+.sub-token-actions { display: flex; justify-content: flex-end; margin-top: 1.25rem; }
+.sub-token-done {
+  border: 0; border-radius: 1.25rem; padding: .5625rem 1.5rem; font-size: .875rem; font-weight: 600; cursor: pointer;
+  color: var(--white); background: var(--primary);
+}
+.sub-token-done:hover { opacity: .92; }
+.sub-token-done:focus-visible, .sub-token-close:focus-visible { outline: 2px solid var(--primary-light); outline-offset: 2px; }

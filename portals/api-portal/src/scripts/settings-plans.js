@@ -19,6 +19,67 @@
 
 
 (function () {
+  /* ── a plan's name and description are one line; the full text shows on hover only when cut ── */
+  document.addEventListener('mouseover', function(e) {
+    var el = e.target.closest && e.target.closest('.cfg-plan-name, .cfg-plan-desc');
+    if (!el) return;
+    if (el.scrollWidth > el.clientWidth) el.title = el.textContent.trim();
+    else el.removeAttribute('title');
+  });
+
+  /* ── condition chips: the first two fit, or the ones that do not move into "+N" ── */
+  function tipRow(title, details) {
+    var row = document.createElement('span');
+    row.className = 'cfg-cond-tip-row';
+    row.dataset.moved = 'true';
+    var t = document.createElement('span'); t.className = 'cfg-cond-tip-title'; t.textContent = title;
+    var d = document.createElement('span'); d.className = 'cfg-cond-tip-line'; d.textContent = details;
+    row.appendChild(t); row.appendChild(d);
+    return row;
+  }
+  function moreChip(box) {
+    var more = box.querySelector('.cfg-cond-chip--more');
+    if (more) return more;
+    more = document.createElement('span');
+    more.className = 'cfg-cond-chip cfg-cond-chip--more';
+    more.tabIndex = 0;
+    more.dataset.added = 'true';
+    more.innerHTML = '<span class="cfg-cond-chip-more"></span><span class="cfg-cond-tip" role="tooltip"></span>';
+    box.appendChild(more);
+    return more;
+  }
+  function setMoreCount(more) {
+    var n = more.querySelectorAll('.cfg-cond-tip-row').length;
+    more.querySelector('.cfg-cond-chip-more').textContent = '+' + n;
+    more.setAttribute('aria-label', n + ' more conditions');
+  }
+  function fitChips(box) {
+    // Back to what the server rendered, then move chips from the end while the row overflows.
+    box.querySelectorAll('.cfg-cond-tip-row[data-moved]').forEach(function(r) { r.remove(); });
+    box.querySelectorAll('.cfg-cond-chip[hidden]').forEach(function(c) { c.hidden = false; });
+    var added = box.querySelector('.cfg-cond-chip--more[data-added]');
+    if (added) added.remove();
+    var more = box.querySelector('.cfg-cond-chip--more');
+    if (more) setMoreCount(more);
+    box.classList.add('is-measuring');
+    var chips = Array.prototype.slice.call(box.querySelectorAll('.cfg-cond-chip:not(.cfg-cond-chip--more)'));
+    while (chips.length > 1 && box.scrollWidth > box.clientWidth) {
+      var chip = chips.pop();
+      chip.hidden = true;
+      more = moreChip(box);
+      more.querySelector('.cfg-cond-tip').prepend(tipRow(chip.dataset.tipTitle, chip.dataset.tipDetails));
+      setMoreCount(more);
+    }
+    box.classList.remove('is-measuring');
+  }
+  function fitAllChips() { document.querySelectorAll('.cfg-plans-table .cfg-cond-chips').forEach(fitChips); }
+  var fitTimer;
+  window.addEventListener('resize', function() { clearTimeout(fitTimer); fitTimer = setTimeout(fitAllChips, 100); });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fitAllChips);
+  else fitAllChips();
+  // The plans panel may be shown after load (settings tabs): fit it when it becomes visible.
+  window.addEventListener('hashchange', function() { setTimeout(fitAllChips, 0); });
+
   /* ── delete; adding and editing a plan open its own page ── */
   var pendingDelPlanId = null;
   document.addEventListener('click', function(e) {

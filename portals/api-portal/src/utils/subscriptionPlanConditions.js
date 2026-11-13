@@ -315,20 +315,21 @@ const TOKEN_NAMES = { total: 'Tokens', prompt: 'Prompt tokens', completion: 'Com
 const SHORT_UNITS = { MINUTE: 'min', HOUR: 'hr', DAY: 'day', MONTH: 'mo' };
 
 /**
- * One chip per condition for the plans table: its first limit and how many more it has, with every
- * limit (or a custom condition's values) for the chip's hover card.
+ * One chip per limit window for the plans table (a request count with two windows is two chips), and
+ * one per custom condition, with its values for the "+N" hover card.
  */
-const conditionChips = (conditions) => (conditions || []).map((c) => {
+const conditionChips = (conditions) => (conditions || []).flatMap((c) => {
     const params = c.params || {};
     if (c.type === TYPE.CUSTOM) {
         const values = Object.entries(params).map(([k, v]) => `${k} = ${typeof v === 'string' ? v : JSON.stringify(v)}`);
-        return { label: 'Custom', first: c.id, more: 0, details: values.length ? values : ['No values'], custom: true };
+        return [{ label: 'Custom', first: c.id, details: values.length ? values : ['No values'], custom: true }];
     }
     const name = c.type === TYPE.TOKEN_COUNT ? TOKEN_NAMES[params.tokenType] || 'Tokens' : CHIP_NAMES[c.type] || c.type;
     const windows = (params.limits || []).map((w) =>
         `${Number(w.count).toLocaleString('en-US')} / ${w.timeAmount > 1 ? w.timeAmount + ' ' : ''}${SHORT_UNITS[w.timeUnit] || String(w.timeUnit).toLowerCase()}`);
-    const details = windows.concat(params.onExceed === 'allow' ? ['Allowed past the limit'] : []);
-    return { label: name, first: windows[0] || 'No limit', more: Math.max(windows.length - 1, 0), details };
+    const allowed = params.onExceed === 'allow' ? ['Allowed past the limit'] : [];
+    if (windows.length === 0) return [{ label: name, first: 'No limit', details: ['No limit'] }];
+    return windows.map((window) => ({ label: name, first: window, details: [window, ...allowed] }));
 });
 
 const UNIT_WORDS = { MINUTE: 'minute', HOUR: 'hour', DAY: 'day', MONTH: 'month' };

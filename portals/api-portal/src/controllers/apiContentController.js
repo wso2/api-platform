@@ -96,6 +96,8 @@ const loadAPIs = async (req, res, next) => {
             for (const metaData of metaDataList) {
                 const listedApiId = metaData.subscriptionPlans?.length ? await apiDao.getId(orgId, metaData.id) : null;
                 metaData.subscriptionPlanDetails = await util.appendSubscriptionPlanDetails(orgId, metaData.subscriptionPlans, listedApiId);
+                // Subscriptions name the API by its uuid; the card is keyed by handle.
+                metaData.listedApiId = listedApiId;
             }
 
             // Load subscriptions for APIs with subscription plans (single call for all)
@@ -107,7 +109,7 @@ const loadAPIs = async (req, res, next) => {
                     for (const metaData of metaDataList) {
                         const hasPlans = (metaData.subscriptionPlans || []).length > 0;
                         if (hasPlans) {
-                            metaData.hasSubscription = subscribedApiIds.has(metaData.id);
+                            metaData.hasSubscription = subscribedApiIds.has(metaData.listedApiId || metaData.id);
                         }
                     }
                 } catch (err) {

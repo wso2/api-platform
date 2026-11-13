@@ -14,7 +14,7 @@
         </div>
 
         <div class="cfg-table-wrap">
-          <table class="cfg-table">
+          <table class="cfg-table cfg-plans-table">
             <thead>
               <tr>
                 <th>Name</th>
@@ -34,32 +34,27 @@
                 data-pricing="{{{jsonAttr pricing}}}"
                 data-refid="{{refId}}">
                 <td>
-                  <div style="font-size:.875rem;font-weight:600;color:#1a2433;">{{displayName}}</div>
-                  {{#if description}}<div class="cfg-plan-desc" title="{{description}}">{{description}}</div>{{/if}}
+                  <div class="cfg-plan-name">{{displayName}}</div>
+                  {{!-- One line; settings-plans.js adds the full text as a hover title only when it is cut. --}}
+                  {{#if description}}<div class="cfg-plan-desc">{{description}}</div>{{/if}}
                 </td>
                 <td>
                   {{#if conditionChips.length}}
                   <div class="cfg-cond-chips">
                     {{#conditionChips}}
-                    {{!-- One chip per condition; hovering or focusing it lists every limit. --}}
-                    <span class="cfg-cond-chip" tabindex="0">
+                    {{!-- One chip per limit window; the chip shows it all, so no hover card. --}}
+                    <span class="cfg-cond-chip" data-tip-title="{{tip.title}}" data-tip-details="{{tip.details}}">
                       <span class="cfg-cond-chip-name">{{label}}</span>
                       <span class="cfg-cond-chip-value">{{first}}</span>
-                      {{#if more}}<span class="cfg-cond-chip-more">+{{more}}</span>{{/if}}
-                      <span class="cfg-cond-tip" role="tooltip">
-                        <span class="cfg-cond-tip-title">{{label}}{{#if custom}} · {{first}}{{/if}}</span>
-                        {{#details}}<span class="cfg-cond-tip-line">{{this}}</span>{{/details}}
-                      </span>
                     </span>
                     {{/conditionChips}}
                     {{#if moreConditions.length}}
+                    {{!-- Only "+N" has a hover card: the chips it hides, one per line. --}}
                     <span class="cfg-cond-chip cfg-cond-chip--more" tabindex="0" aria-label="{{moreConditions.length}} more conditions">
                       <span class="cfg-cond-chip-more">+{{moreConditions.length}}</span>
                       <span class="cfg-cond-tip" role="tooltip">
-                        <span class="cfg-cond-tip-title">More conditions</span>
                         {{#moreConditions}}
-                        <span class="cfg-cond-tip-sub">{{title}}</span>
-                        {{#details}}<span class="cfg-cond-tip-line">{{this}}</span>{{/details}}
+                        <span class="cfg-cond-tip-row"><span class="cfg-cond-tip-title">{{title}}</span><span class="cfg-cond-tip-line">{{details}}</span></span>
                         {{/moreConditions}}
                       </span>
                     </span>

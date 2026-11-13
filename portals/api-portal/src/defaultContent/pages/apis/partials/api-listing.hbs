@@ -76,9 +76,9 @@
 
       {{#apiMetadata}}
       <div class="col-lg-4 col-md-6 col-sm-12" id="apiCard-{{id}}">
-        <div class="api-card d-flex flex-column{{#if hasSubscription}} api-card--subscribed{{/if}}">
+        <div class="api-card d-flex flex-column">
 
-          {{#if hasSubscription}}<div class="api-card-ribbon-wrap"><div class="api-card-ribbon-label">Subscribed</div></div>{{/if}}
+          {{!-- No ribbon on listing cards: "View subscription" in the footer says it; the details page marks the plan. --}}
 
           <!-- Top: icon + name + version + type badge -->
           <div class="api-card-top" data-href="{{../baseUrl}}/api/{{id}}" style="cursor:pointer;">
@@ -145,9 +145,17 @@
               <i class="bi bi-check-circle"></i> View subscription
             </a>
             {{else if @root.access.offerSubscribe}}
+            {{#if @root.access.signedIn}}
+            {{!-- Opens the plan dialog (plan-picker.js): each plan's name and description, to pick one and subscribe. --}}
+            <button type="button" class="dp-btn dp-btn--primary" data-plan-picker
+              data-api-id="{{id}}" data-org-id="{{@root.orgId}}" data-api-name="{{or title name}}"
+              data-plans="{{jsonAttr (pickerPlans subscriptionPlanDetails)}}"
+              data-detail-url="{{../baseUrl}}/api/{{id}}">Subscribe</button>
+            {{else}}
             <a href="{{../baseUrl}}/api/{{id}}#subscriptionPlans"
                class="dp-btn dp-btn--primary"
                >Subscribe</a>
+            {{/if}}
             {{/if}}
           </div>
           {{/if}}
