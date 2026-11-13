@@ -20,14 +20,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
   I want to create a managed API Portal that my consumers can sign up and sign in to
   So that portal creation, its refusals, consumer sign-in and portal deletion are verified
 
-  # The refusals run first, while the runner holds no portal: the organisation's plan may allow a
-  # single portal, and the plan is checked before the request is.
-  # The creation scenario then builds one portal for the runner, because a build takes minutes.
-  # Every later scenario uses that portal and the last one deletes it. When the platform fails the
-  # build, the creation scenario reports it and the later scenarios build one replacement. A
-  # consumer is a user of the organisation's identity provider that the cloud API cannot remove,
-  # so the runner signs up one consumer and the later sign-in scenarios reuse it.
-
   @TC_APIP_PORTAL_009 @TC_APIP_PORTAL_018 @ID_APIP_PORTAL_001 @layer:cloud-owned
   Scenario Outline: A portal request that breaks the naming rules is refused and leaves nothing behind
     Given I obtain an APIP cloud console token
@@ -165,6 +157,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
       | a description longer than 1023 characters |
       | a handle                                  |
 
+  # apim-saas: Update and RotateSharedKey return the records 404 unmapped, so the platform answers 500 instead of 404.
   @known-issue
   @ID_APIP_PORTAL_040 @layer:cloud-owned
   Scenario Outline: Changing a portal that does not exist returns not found
@@ -178,6 +171,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
       | update            |
       | rotate the key of |
 
+  # apim-saas: the key-hash PATCH to secret-manager-api is sent as application/json, not application/merge-patch+json, and gets 415.
   @known-issue
   @TC_APIP_PORTAL_005 @ID_APIP_PORTAL_014 @layer:cloud-owned
   Scenario: After the shared key is rotated the control plane still publishes to the portal
@@ -264,8 +258,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the cloud API response status code should be 401
     And the portal answer should carry no "X-Powered-By" header
 
-  # The portals the local cloud builds name no identity provider for consumers, so their sign-in
-  # cannot start there. This runs after the portal's sign-up has been turned off and on again.
+  # Local cloud only: it has no CP Thunder, so the portal sign-in names no identity provider (consumer-login-not-configured.invalid).
   @known-issue
   @ID_APIP_PORTAL_047 @layer:cloud-owned
   Scenario: A portal with self sign-up off does not offer sign-up on its sign-in, and one with it on does
@@ -283,7 +276,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And the synthetic managed API Portal should become active
     And the sign-in of the synthetic managed API Portal should offer sign-up
 
-  @skip
   @TC_APIP_PORTALRT_024 @ID_APIP_PORTAL_006 @layer:cloud-owned
   Scenario: A visitor who opens the portal's sign-in is sent to its identity provider
     Given I obtain an APIP cloud console token
@@ -291,7 +283,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     When I open the sign-in page of the synthetic managed API Portal as a new visitor
     Then the visitor should be sent to the portal's identity provider to sign in
 
-  @skip
   @TC_APIP_PORTALRT_025 @ID_APIP_PORTAL_007 @layer:cloud-owned
   Scenario: A consumer signs up from the portal's sign-in page and is signed in
     Given I obtain an APIP cloud console token
@@ -300,7 +291,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the consumer should be signed in to the synthetic managed API Portal
     And a visitor without the consumer's session should be sent to sign in
 
-  @skip
   @TC_APIP_PORTALRT_019 @ID_APIP_PORTAL_008 @layer:cloud-owned
   Scenario: A consumer who signed up signs in again with a username and password
     Given I obtain an APIP cloud console token
@@ -308,7 +298,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     When I sign in to the synthetic managed API Portal as the consumer
     Then the consumer should be signed in to the synthetic managed API Portal
 
-  @skip
   @TC_APIP_PORTALRT_026 @ID_APIP_PORTAL_009 @layer:cloud-owned
   Scenario: A wrong password does not sign the consumer in
     Given I obtain an APIP cloud console token
@@ -319,7 +308,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     When I sign in to the synthetic managed API Portal as the consumer
     Then the consumer should be signed in to the synthetic managed API Portal
 
-  @skip
   @TC_APIP_PORTALRT_027 @ID_APIP_PORTAL_010 @layer:cloud-owned
   Scenario: Signing out ends the consumer's session
     Given I obtain an APIP cloud console token
@@ -464,10 +452,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the cloud API response status code should be 204
     And the synthetic GraphQL API should not be published on the managed API Portal
     And the publication draft of the synthetic GraphQL API should still exist
-
-
-  # Drafts and the checks made before publishing. Nothing below reaches the managed API Portal: a
-  # draft stays on the control plane, and every publish is refused before the portal is called.
 
   @TC_APIP_PUBV_001 @ID_APIP_PORTAL_028 @layer:inherited
   Scenario: A saved draft keeps its details, its definition and a landing page without raw HTML
@@ -763,6 +747,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}/docs/specification.json" from the synthetic managed API Portal until status 200
     Then the portal answer should contain "/ping"
 
+  # api-platform: DeleteAPI never unpublishes the API from the portal, so the page stays served.
   @known-issue
   @ID_APIP_PORTAL_043 @layer:cloud-owned
   Scenario: Deleting a published API removes its publication and its page on the portal
@@ -821,7 +806,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And the synthetic managed API Portal should eventually be gone
     And the synthetic managed API Portal should no longer serve
 
-  # Uses the handle of the portal the scenario above deleted.
   @ID_APIP_PORTAL_048 @layer:cloud-owned
   Scenario: The handle of a deleted portal can be used again
     Given I obtain an APIP cloud console token

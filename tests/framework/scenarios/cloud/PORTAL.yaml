@@ -23,12 +23,29 @@
 #   exempt       the layer deliberately does not test the ID, for `reason`
 #   planned      not automated in this layer yet
 # Refs are feature paths relative to tests/framework plus the exact scenario name.
+#
+# Each entry also names its portal layer (`layer`), the same value the scenario carries as a
+# `@layer:<name>` tag. The three layers separate what the cloud wrapper owns from what it only
+# passes through:
+#   cloud-owned   behaviour the cloud adds around the API Portal: managed-portal create, read,
+#                 update, rotate-key and delete, provisioning, the control plane's publication
+#                 routes, token checks, and what a portal serves for a published API
+#   inherited     behaviour the portal product has on its own, checked once through the cloud
+#                 so the wrapper does not break it: draft validation and limits, publish,
+#                 republish, deprecate and unpublish rules, definitions and thumbnails
+#   core-smoke    a light check that the provisioned portal's own pages and routes answer
+#                 (AI discovery file, not-found pages, no internals in headers)
+#
+# The scenarios share one portal per runner and run in feature-file order: the refusals first,
+# while the runner holds no portal, then the creation scenario, which builds the portal, and
+# last the deletion scenarios. The portal consumer is created once and reused.
 code: PORTAL
 title: APIP Cloud Managed API Portal and Consumer Sign-in
 scenarios:
   - id: ID_APIP_PORTAL_001
     title: "A portal request that breaks the naming rules is refused and leaves nothing behind."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -37,6 +54,7 @@ scenarios:
   - id: ID_APIP_PORTAL_002
     title: "A portal whose consumers would sign in on an environment the organisation does not have is refused."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -45,6 +63,7 @@ scenarios:
   - id: ID_APIP_PORTAL_003
     title: "A portal requested with a name and a handle is built and becomes active."
     priority: P0
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -53,6 +72,7 @@ scenarios:
   - id: ID_APIP_PORTAL_004
     title: "A portal whose handle is already in use is refused."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -61,6 +81,7 @@ scenarios:
   - id: ID_APIP_PORTAL_005
     title: "Reading a portal that does not exist returns not found."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -69,6 +90,7 @@ scenarios:
   - id: ID_APIP_PORTAL_006
     title: "A visitor who opens the portal's sign-in is sent to its identity provider."
     priority: P0
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -77,6 +99,7 @@ scenarios:
   - id: ID_APIP_PORTAL_007
     title: "A consumer signs up from the portal's sign-in page and is signed in."
     priority: P0
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -85,6 +108,7 @@ scenarios:
   - id: ID_APIP_PORTAL_008
     title: "A consumer who signed up signs in again with a username and password."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -93,6 +117,7 @@ scenarios:
   - id: ID_APIP_PORTAL_009
     title: "A wrong password does not sign the consumer in."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -101,6 +126,7 @@ scenarios:
   - id: ID_APIP_PORTAL_010
     title: "Signing out ends the consumer's session."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -109,6 +135,7 @@ scenarios:
   - id: ID_APIP_PORTAL_011
     title: "A deleted portal is torn down and leaves the list."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -117,6 +144,7 @@ scenarios:
   - id: ID_APIP_PORTAL_012
     title: "An active portal answers at its URL and sends a visitor to its view."
     priority: P0
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -125,6 +153,7 @@ scenarios:
   - id: ID_APIP_PORTAL_013
     title: "A portal's name and description change in place."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -133,15 +162,143 @@ scenarios:
   - id: ID_APIP_PORTAL_014
     title: "After the shared key is rotated the control plane still publishes to the portal."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: known-issue
       issue: "apim-saas: rotating the shared key always fails. portal_secret.go PATCHes the key hash with Content-Type application/json, but secret-manager-api requires application/merge-patch+json and answers 415, so the rotation cannot be undone and the portal reads failed (observed 2026-11-13). No tracker link yet."
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "After the shared key is rotated the control plane still publishes to the portal"
+  - id: ID_APIP_PORTAL_022
+    title: "A REST API is published and unpublished, and its draft is kept."
+    priority: P0
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A REST API is published and unpublished, and its draft is kept"
+  - id: ID_APIP_PORTAL_023
+    title: "Republishing with a newly created plan offers it alongside the first."
+    priority: P1
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "Republishing with a newly created plan offers it alongside the first"
+  - id: ID_APIP_PORTAL_024
+    title: "Republishing an edited draft replaces the listing."
+    priority: P1
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "Republishing an edited draft replaces the listing"
+  - id: ID_APIP_PORTAL_025
+    title: "Deprecating a published API changes only its status, and only once."
+    priority: P1
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "Deprecating a published API changes only its status, and only once"
+  - id: ID_APIP_PORTAL_026
+    title: "A document, a landing page and a thumbnail are published, and an unselected document is removed."
+    priority: P1
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A document, a landing page and a thumbnail are published, and an unselected document is removed"
+  - id: ID_APIP_PORTAL_027
+    title: "A GraphQL API is published, deprecated and unpublished."
+    priority: P1
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A GraphQL API is published, deprecated and unpublished"
+  - id: ID_APIP_PORTAL_028
+    title: "A saved draft keeps its details, its definition and a landing page without raw HTML."
+    priority: P1
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A saved draft keeps its details, its definition and a landing page without raw HTML"
+  - id: ID_APIP_PORTAL_029
+    title: "A draft naming something that does not exist is refused."
+    priority: P2
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A draft naming something that does not exist is refused"
+  - id: ID_APIP_PORTAL_030
+    title: "Publishing needs a saved draft with a valid definition."
+    priority: P1
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "Publishing needs a saved draft with a valid definition"
+  - id: ID_APIP_PORTAL_031
+    title: "An API that was never published can be neither unpublished nor deprecated."
+    priority: P2
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "An API that was never published can be neither unpublished nor deprecated"
+  - id: ID_APIP_PORTAL_032
+    title: "An inactive subscription plan cannot be offered, even when it was active when the draft was saved."
+    priority: P2
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "An inactive subscription plan cannot be offered, even when it was active when the draft was saved"
+  - id: ID_APIP_PORTAL_033
+    title: "A subscription plan offered by a draft cannot be deleted."
+    priority: P2
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A subscription plan offered by a draft cannot be deleted"
+  - id: ID_APIP_PORTAL_034
+    title: "A GraphQL draft is published only through its own route, and only with a GraphQL definition."
+    priority: P2
+    layer: inherited
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "A GraphQL draft is published only through its own route, and only with a GraphQL definition"
+  - id: ID_APIP_PORTAL_035
+    title: "Publication routes refuse a request <credential>."
+    priority: P1
+    layer: cloud-owned
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_portal.feature
+          scenario: "Publication routes refuse a request <credential>"
   - id: ID_APIP_PORTAL_036
     title: "A create body that breaks the request's shape is refused and leaves nothing behind."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -150,6 +307,7 @@ scenarios:
   - id: ID_APIP_PORTAL_037
     title: "A portal's answers carry its details and never a secret."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -158,6 +316,7 @@ scenarios:
   - id: ID_APIP_PORTAL_038
     title: "The portal's management routes refuse a caller that does not hold the control plane's key."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -166,6 +325,7 @@ scenarios:
   - id: ID_APIP_PORTAL_039
     title: "An update that breaks the rules is refused and leaves the portal as it was."
     priority: P2
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -174,15 +334,17 @@ scenarios:
   - id: ID_APIP_PORTAL_040
     title: "Changing a portal that does not exist returns not found."
     priority: P2
+    layer: cloud-owned
     cloud:
       status: known-issue
-      issue: "apim-saas: PUT and rotate-key on a portal that does not exist answer 500 internal_error instead of 404 not_found; the handler does not map the API_PORTAL_NOT_FOUND error these two paths return (observed 2026-11-13). No tracker link yet."
+      issue: "apim-saas: PUT and rotate-key on a portal that does not exist answer 500 internal_error instead of 404 not_found; Service.Update and Service.RotateSharedKey return the records client's 404 as is instead of mapping it to NotFoundError as Get and Delete do, so the handler's mapErr falls through to 500 (observed 2026-11-13). No tracker link yet."
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "Changing a portal that does not exist returns not found"
   - id: ID_APIP_PORTAL_041
     title: "Turning self sign-up off is accepted and finishes, it cannot be combined with a login environment change, and it can be turned on again."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -191,6 +353,7 @@ scenarios:
   - id: ID_APIP_PORTAL_042
     title: "A published API is served by the portal and leaves it when unpublished."
     priority: P0
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -199,6 +362,7 @@ scenarios:
   - id: ID_APIP_PORTAL_043
     title: "Deleting a published API removes its publication and its page on the portal."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: known-issue
       issue: "api-platform: deleting an API (platform-api service/api.go DeleteAPI) removes its local publication rows but never unpublishes it from the portal, so the portal keeps serving the deleted API (observed 2026-11-13). No tracker link yet."
@@ -208,6 +372,7 @@ scenarios:
   - id: ID_APIP_PORTAL_044
     title: "A deleted portal stops serving."
     priority: P2
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -216,6 +381,7 @@ scenarios:
   - id: ID_APIP_PORTAL_045
     title: "Managed API Portal routes refuse a request without a valid token."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -224,6 +390,7 @@ scenarios:
   - id: ID_APIP_PORTAL_046
     title: "The rotate-key route refuses a request without a valid token."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -232,6 +399,7 @@ scenarios:
   - id: ID_APIP_PORTAL_047
     title: "A portal with self sign-up off does not offer sign-up on its sign-in, and one with it on does."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: known-issue
       issue: "Local setup, not a product defect: apip-platform-api has no CP_THUNDER_* settings on the local cloud, so the portals it builds get inert sign-in settings (consumer-login-not-configured.invalid) by design and their sign-in cannot start. Needs CP Thunder credentials in the local deployment. Not checked on dev."
@@ -241,6 +409,7 @@ scenarios:
   - id: ID_APIP_PORTAL_048
     title: "The handle of a deleted portal can be used again."
     priority: P1
+    layer: cloud-owned
     cloud:
       status: automated
       refs:
@@ -249,6 +418,7 @@ scenarios:
   - id: ID_APIP_PORTAL_049
     title: "A draft whose displayName, version or description is at its limit is saved."
     priority: P2
+    layer: inherited
     cloud:
       status: automated
       refs:
@@ -257,6 +427,7 @@ scenarios:
   - id: ID_APIP_PORTAL_050
     title: "A draft whose displayName, version or description is empty or over its limit is refused."
     priority: P2
+    layer: inherited
     cloud:
       status: automated
       refs:
@@ -265,6 +436,7 @@ scenarios:
   - id: ID_APIP_PORTAL_051
     title: "A saved draft keeps its description, visibility, endpoints and owners."
     priority: P2
+    layer: inherited
     cloud:
       status: automated
       refs:
@@ -273,6 +445,7 @@ scenarios:
   - id: ID_APIP_PORTAL_052
     title: "A draft refuses a definition of an unsupported type and a thumbnail that is not an image or is too large."
     priority: P2
+    layer: inherited
     cloud:
       status: automated
       refs:
@@ -281,6 +454,7 @@ scenarios:
   - id: ID_APIP_PORTAL_053
     title: "A saved draft returns its definition and thumbnail unchanged."
     priority: P2
+    layer: inherited
     cloud:
       status: automated
       refs:
@@ -289,6 +463,7 @@ scenarios:
   - id: ID_APIP_PORTAL_054
     title: "A visitor to the default view of a provisioned portal is signed in silently and its AI discovery file answers."
     priority: P3
+    layer: core-smoke
     cloud:
       status: automated
       refs:
@@ -297,6 +472,7 @@ scenarios:
   - id: ID_APIP_PORTAL_055
     title: "A path outside the portal and a page it does not have are not found while its AI discovery file loads."
     priority: P3
+    layer: core-smoke
     cloud:
       status: automated
       refs:
@@ -305,6 +481,7 @@ scenarios:
   - id: ID_APIP_PORTAL_056
     title: "The portal's answers name no internals."
     priority: P3
+    layer: core-smoke
     cloud:
       status: automated
       refs:
@@ -313,6 +490,7 @@ scenarios:
   - id: ID_APIP_PORTAL_057
     title: "A republished edit is what the portal serves."
     priority: P2
+    layer: inherited
     cloud:
       status: automated
       refs:
@@ -321,6 +499,7 @@ scenarios:
   - id: ID_APIP_PORTAL_058
     title: "A deprecated API is still served by the portal."
     priority: P2
+    layer: inherited
     cloud:
       status: automated
       refs:

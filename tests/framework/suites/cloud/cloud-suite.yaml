@@ -41,6 +41,6 @@ blocks:
         features:
           - features/apip_secrets.feature
       - name: apip-portal
-        tags: "~@known-issue && ~@skip"
+        tags: "~@known-issue"
         features:
           - features/apip_portal.feature
