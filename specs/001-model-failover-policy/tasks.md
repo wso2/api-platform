@@ -250,7 +250,7 @@ because they now apply to every author-written upstream policy:
 
 - [x] T030u **DONE 2026-11-12 (committed 875c1c2; spec corrected on the docs branch).** Correct FR-044 and the `classify.go` comment that implements it. Both claimed a chain of transport-dead members goes unrecorded because Envoy never invokes ext_proc for its own replies. Measured 2026-10-28 and now asserted by `TestOnResponseHeaders_ExhaustedChainChargesEveryMember`: the terminal reply travels back through the downstream chain, the response phase runs, and all N members are charged — three dead members produced three suspensions. The claim was reasoned, never measured. Also pins the real asymmetry: attempts 1..N-1 are charged WITHOUT consulting the status, only the final attempt is judged on it, and Envoy's `retry_on` carries `5xx` unconditionally — so narrowing `statusCodes` below that leaves the last member of an exhausted chain recorded as having answered (`TestOnResponseHeaders_NarrowedStatusCodesSpareTheFinalTarget`). The limit that genuinely remains is a host that does not RESOLVE.
 
-- [ ] T030v **Remove `per_attempt_provider_policies` and derive placement from what is attached (FR-012h).**
+- [x] T030v **DONE 2026-11-13 (3f0140c54).** Remove `per_attempt_provider_policies` and derive placement from what is attached (FR-012h).**
   Probed 2026-11-13: the flag never enabled per-attempt placement, it only DELETED the downstream
   copy. The per-provider map and `buildUpstreamPolicyChains` run ungated, so with the shipped
   default every multi-provider LlmProxy carries the transformer and credential in BOTH chains —
@@ -260,7 +260,7 @@ because they now apply to every author-written upstream policy:
   filter is still required for any cluster carrying authored `providers[].policies`, which is a
   separate condition and already correct in `attachUpstreamChainTo`.
 
-- [ ] T030w **Unwind the serving attempt's upstream chain at the head of the downstream response
+- [x] T030w **DONE 2026-11-13 (513ad5866).** Unwind the serving attempt's upstream chain at the head of the downstream response
   chain (FR-037h).** The transformer is one bidirectional policy; per-attempt placement runs only
   its request half, because the upstream filter is generated response-SKIP and the engine's
   upstream switch bare-acks anything else. Without this, T030v would move the transformer off the
@@ -268,7 +268,7 @@ because they now apply to every author-written upstream policy:
   Executes the serving cluster's upstream chain in reverse (`ExecuteResponseHeaderPolicies`
   already iterates in reverse) before the route's own response policies.
 
-- [ ] T030x **Record the serving cluster per attempt in the engine (FR-037h).** T030w needs to know
+- [x] T030x **DONE 2026-11-13 (513ad5866).** Record the serving cluster per attempt in the engine (FR-037h).** T030w needs to know
   which cluster actually served. The response carries `x-envoy-attempt-count`, a number, not a
   cluster; indexing the published ranking by it is unsafe because Probe G showed Envoy substitutes
   the configured group at a POSITION when a name does not resolve. The upstream dispatcher already
