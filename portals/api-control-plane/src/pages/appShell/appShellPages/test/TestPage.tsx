@@ -418,6 +418,7 @@ function TestConsole() {
           />
           {needsApiKey && (
             <TestKeySection
+              artifactKind="rest-api"
               error={Boolean(testApiKey.error)}
               keyName={headerName}
               loading={testApiKey.isPending}

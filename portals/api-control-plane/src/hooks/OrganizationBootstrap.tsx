@@ -52,11 +52,13 @@ export function OrganizationBootstrap() {
   // too, so nothing is read until the lookup has actually answered.
   const existing = useOrganization(isAuthenticated ? handle : undefined);
   const bootstrap = useBootstrapOrganization();
-  const started = useRef(false);
+  // The organization registration was started for: a session that moves into
+  // another organization may need that one registered too.
+  const started = useRef<string | undefined>(undefined);
   const refetchExisting = existing.refetch;
 
   useEffect(() => {
-    if (!isAuthenticated || !handle || started.current) return;
+    if (!isAuthenticated || !handle || started.current === handle) return;
     if (existing.isPending || existing.data) return;
     // Not-found is the only answer that means "register it". Anything else — an
     // expired session, a denial, the platform being unreachable — says nothing about
@@ -64,7 +66,7 @@ export function OrganizationBootstrap() {
     // transient failure into a write attempt.
     if (!isErrorCode(existing.error, ErrorCode.NOT_FOUND)) return;
 
-    started.current = true;
+    started.current = handle;
     bootstrap.mutate(
       {
         id: handle,
@@ -81,7 +83,7 @@ export function OrganizationBootstrap() {
             return;
           }
           // Anything else may be transient; allow a later attempt.
-          started.current = false;
+          started.current = undefined;
         },
       },
     );

@@ -1,0 +1,600 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# Gateway blocks: the gateway on its own, with no control plane or API Portal. testbench,
+# tls-backend and a2a-trip-planner are helper services and do not change the file.
+#
+# Adding a test:
+#   1. Add the test to an existing runner below that fits it, or else add a runner to an
+#      existing block that fits: one whose product settings (overlay) and isolation the test
+#      can run with. Most tests fit the generic gateway-core block.
+#   2. Only if no block fits, add a new block. This is the last resort: the test needs a
+#      product setting (an overlay) the other runners must not see, or must run alone (it
+#      restarts a product, counts metrics, or expects an empty product). Say why in a comment
+#      above the block.
+#   3. A test that needs a different set of products is not added here. A new combination
+#      (a new file) is an even worse last resort; see it-suite.yaml.
+# Feature paths are relative to suites/it, as in it-suite.yaml.
+
+blocks:
+  # The generic gateway block. Most gateway tests fit here; a test that needs a gateway setting
+  # the other runners must not see, or must run alone, goes in a block that has it.
+  - name: gateway-core
+    parallel: 12
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-core.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    wiring:
+      platform-gateway:
+        signingKeys: true
+    runners:
+      - name: gateway-jwks
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/jwks.feature
+      - name: api-error-responses
+        features:
+          - features/gateway/core/api_error_responses.feature
+      - name: request-id-response
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/request_id_response.feature
+      - name: health
+        features:
+          - features/gateway/core/health.feature
+      - name: api-management
+        features:
+          - features/gateway/core/api_management.feature
+      - name: api-deploy
+        features:
+          - features/gateway/core/api_deploy.feature
+      - name: upstream-url-validation
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/routes/upstream_url_validation.feature
+      - name: api-keys
+        features:
+          - features/gateway/security/api_keys.feature
+      - name: subscription-management
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/subscription_management.feature
+      - name: subscription-plan-management
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/subscription_plan_management.feature
+      # The ap CLI built from this checkout, driving the gateway through its management and
+      # admin APIs. The CLI follows the current contracts, so it is not run against 1.1.0.
+      - name: ap-cli-gateway
+        tags: "gateway-version>1.1.0"
+        features:
+          - features/cli/gateway/management.feature
+          - features/cli/gateway/apply.feature
+          - features/cli/gateway/rest_api.feature
+          - features/cli/gateway/mcp.feature
+          - features/cli/gateway/image_build.feature
+      - name: ap-cli-subscription
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/cli/gateway/subscription.feature
+      - name: api-with-policies
+        features:
+          - features/gateway/core/api_with_policies.feature
+      - name: search-deployments
+        features:
+          - features/gateway/core/search_deployments.feature
+      - name: lazy-resources-xds
+        features:
+          - features/gateway/core/lazy_resources_xds.feature
+      - name: route-path-matching
+        features:
+          - features/gateway/routes/route_path_matching.feature
+      - name: route-path-matching-prefix
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/routes/route_path_matching_prefix.feature
+      - name: path-normalization
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/routes/path_normalization.feature
+      - name: header-routing
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/routes/header_routing.feature
+      - name: sandbox-routing
+        features:
+          - features/gateway/routes/sandbox_routing.feature
+      - name: sandbox-upstream-first-url
+        tags: "gateway-version<1.2.0"
+        features:
+          - features/gateway/routes/sandbox_upstream_first_url.feature
+      - name: sandbox-upstream-url-validation
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/routes/sandbox_upstream_url_validation.feature
+      - name: cel-conditions
+        features:
+          - features/gateway/core/cel_conditions.feature
+      - name: certificates
+        tags: "gateway-version>1.2.0;~@certificate-refusal-1.2.0"
+        features:
+          - features/gateway/security/certificates.feature
+      - name: certificates-1.2.0
+        tags: "gateway-version<=1.2.0;~@certificate-refusal-current"
+        features:
+          - features/gateway/security/certificates.feature
+      - name: secrets
+        features:
+          - features/gateway/security/secrets.feature
+      - name: llm-provider-global-ratelimit
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/ai-workspace-gateway/llm/llm_provider_global_ratelimit.feature
+      - name: llm-provider-management
+        features:
+          - features/ai-workspace-gateway/llm/llm_provider.feature
+      - name: llm-provider-policy-validation
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/ai-workspace-gateway/llm/llm_provider_policy_validation.feature
+      - name: llm-provider-template-management
+        features:
+          - features/ai-workspace-gateway/llm/llm_provider_template.feature
+      - name: llm-proxy-management
+        features:
+          - features/ai-workspace-gateway/llm/llm_proxy.feature
+      - name: llm-proxy-policy-validation
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/ai-workspace-gateway/llm/llm_proxy_policy_validation.feature
+      - name: llm-policy-path-specificity
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/ai-workspace-gateway/llm/llm_policy_path_specificity.feature
+      - name: mcp-deploy
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_deploy.feature
+      - name: mcp-spec-versions
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_spec_versions.feature
+      - name: mcp-resolver
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_resolver.feature
+      # No version gate: a session surviving the gateway is behaviour every supported release
+      # has, and the era a proxy declares is what these scenarios vary instead.
+      - name: mcp-legacy-upstream
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_legacy_upstream.feature
+      # Gated where its sibling above is not: this feature deploys a 2026-07-28 proxy, and 1.2.0
+      # rejects that specVersion outright, so the era comparison is unreachable on that release.
+      - name: mcp-legacy-upstream-modern-client
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_legacy_upstream_modern_client.feature
+      - name: mcp-upstream-auth
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_upstream_auth.feature
+      - name: graphql-deploy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/graphql/deploy.feature
+      - name: graphql-api-keys
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/graphql/api_keys.feature
+      - name: policy-engine-admin
+        features:
+          - features/gateway/core/policy_engine_admin.feature
+        tags: "~@known-issue"
+      - name: template-functions
+        features:
+          - features/gateway/core/template_functions.feature
+      - name: template-functions-typed
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/core/template_functions_typed.feature
+      - name: template-env-allow-list
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/template_env_allow_list.feature
+
+  # Which hostnames the HTTPS listener asks for a client certificate is state of the whole
+  # gateway, so runners take turns, and each block below sets its own downstream_tls value. These
+  # settings do not depend on the database, so these three repeat on one engine only; the default
+  # (no flag set) case lives in the gateway-mtls-hostnames block, which sweeps every engine.
+  - name: gateway-mtls-hostnames-required
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-dedicated-hostname.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-hostnames-required
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/hostnames_required.feature
+
+  - name: gateway-mtls-hostnames-all-connections
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-all-connections.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-hostnames-all-connections
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/hostnames_all_connections.feature
+
+  - name: gateway-mtls-hostnames-all-connections-required
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-all-connections-dedicated-hostname.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-hostnames-all-connections-required
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/hostnames_all_connections_required.feature
+
+  # Mutual TLS scenarios change the client authority pool and whether the HTTPS listener
+  # asks for a certificate, which is state of the whole gateway, so runners take turns.
+  - name: gateway-mtls
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-auth
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/auth.feature
+      - name: mtls-client-ca-pool
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/client_ca_pool.feature
+      - name: mtls-pool-references
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/pool_references.feature
+      - name: mtls-listener
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/listener.feature
+      - name: mtls-header-relay
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/header_relay.feature
+      - name: mtls-outbound
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/outbound.feature
+      - name: mtls-default-identity-off
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/default_identity_off.feature
+
+  # The relayed client certificate header is believed from any connection here, a gateway-wide
+  # setting the other mutual TLS blocks must not see.
+  - name: gateway-mtls-trust-any
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-header-trust-any.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: mtls-header-bypass
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/header_bypass.feature
+
+  # Mutual TLS outcomes in the access log, analytics and metrics. The block reads gateway-wide
+  # certificate gauges and its own JSON access log lines, so runners take turns. The overlay never
+  # touches present_default_identity, which also covers the on/default-identity scenario.
+  - name: gateway-mtls-observability-default-identity
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-observability.toml
+        db: sqlite
+      - name: testbench
+      - name: tls-backend
+    runners:
+      - name: mtls-observability
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/observability.feature
+      - name: mtls-default-identity-on
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/default_identity.feature
+
+  # The mutual TLS scenarios on a gateway with two controllers sharing one PostgreSQL
+  # database. One serves the management API; the other alone feeds the runtime, so every
+  # certificate and API change reaches the runtime through the event path between them.
+  - name: gateway-mtls-ha
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-ha.toml
+        db: postgres
+      - name: testbench
+      - name: tls-backend
+    wiring:
+      platform-gateway:
+        controllers: 2
+    runners:
+      - name: mtls-auth
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/auth.feature
+      - name: mtls-client-ca-pool
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/client_ca_pool.feature
+      - name: mtls-pool-references
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/pool_references.feature
+      - name: mtls-listener
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/listener.feature
+      - name: mtls-header-relay
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/header_relay.feature
+      - name: mtls-observability
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/observability.feature
+      - name: mtls-outbound
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/outbound.feature
+
+  # Config dump asserts the gateway's total API count starts at zero, which no other runner
+  # may be free to disturb - it needs a gateway to itself rather than gateway-core's shared one.
+  - name: config-dump
+    parallel: 1
+    components:
+      - name: platform-gateway
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: config-dump
+        features:
+          - features/gateway/core/config_dump.feature
+
+  # The default (no downstream_tls override) mtls-hostnames case deploys APIs on the gateway's
+  # shared default vhost and relies on its own testbench backend's timing, which gateway-core's
+  # ~50 concurrent runners contend for - it needs a gateway and testbench to itself.
+  - name: gateway-mtls-hostnames
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mtls-event-hub.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: mtls-hostnames
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/mtls/hostnames.feature
+
+  # Metrics are turned on (metrics.toml) and their counts read, so runners take turns on a
+  # gateway of their own.
+  - name: gateway-metrics
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/metrics.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: metrics
+        features:
+          - features/gateway/observability/metrics.feature
+
+  # The gateway returns no request ID in responses and serves no JWKS endpoint
+  # (request-id-response.toml), settings gateway-core's runners must not see.
+  - name: gateway-request-id-disabled
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/request-id-response.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: request-id-disabled
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/request_id_response_disabled.feature
+      - name: jwks-disabled
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/security/jwks_disabled.feature
+
+  # Buffered bodies above gRPC's 4 MiB default reach the policy engine only on Gateways whose
+  # ext_proc server sizes its message limits from the body ceilings; released 1.2.0 does not.
+  - name: gateway-request-body-size
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/request-body-size.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: request-body-size
+        # Excludes the @known-issue over-limit scenario, which flakes between 413 and 500
+        # (https://github.com/wso2/api-platform/issues/4061).
+        tags: "gateway-version>1.2.0;~@known-issue"
+        features:
+          - features/gateway/core/request_body_size.feature
+
+  # This block is the only scenario that restricts router.vhosts.main/sandbox to
+  # *.wso2.com/*-sandbox.wso2.com. Keep it out of gateway-core, because gateway-core runners
+  # that deploy an API without a request Host rely on the unrestricted default.
+  - name: vhost-routing-single
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/vhost-routing-single.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: vhost-routing-single
+        features:
+          - features/gateway/routes/vhost_routing_single.feature
+
+  # The gateway serves two domains for main and sandbox traffic (vhost-routing-multi.toml).
+  # Kept out of gateway-core for the same reason as vhost-routing-single.
+  - name: vhost-routing-multi
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/vhost-routing-multi.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: vhost-routing-multi
+        features:
+          - features/gateway/routes/vhost_routing_multi.feature
+      - name: vhost-routing-multiple-production-hosts
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/routes/vhost_routing_multiple_production_hosts.feature
+
+  # Hosts the Agent (A2A) and analytics runners, which share this overlay and component set.
+  # Serialized (parallel: 1): the analytics counters must not see concurrent traffic from other
+  # runners sharing this gateway.
+  - name: mcp-agent-policies-analytics
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/mcp-jwt-auth.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+      - name: a2a-trip-planner
+    runners:
+      - name: agent-deploy
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_deploy.feature
+      - name: agent-policies
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_policies.feature
+      - name: agent-card
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_card.feature
+      - name: agent-api-keys
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_api_keys.feature
+      - name: agent-streaming
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_streaming.feature
+      - name: mcp-policies
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/ai-workspace-gateway/mcp/mcp_policies.feature
+      - name: graphql-policies
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/graphql/policies.feature
+      - name: agent-analytics
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_analytics.feature
+      - name: analytics-basic
+        features:
+          - features/gateway/observability/analytics_basic.feature
+      - name: analytics-llm
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/observability/analytics_llm.feature
+      # Released gateways up to 1.2.0 do not publish the ai_context block.
+      - name: analytics-ai-context
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/analytics_ai_context.feature
+      - name: graphql-analytics
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/graphql/analytics.feature
+      - name: subscription-analytics
+        features:
+          - features/gateway/observability/subscription_analytics.feature
+      - name: subscription-analytics-billing-customer
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/subscription_analytics_billing_customer.feature
+      - name: mcp-analytics
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/mcp_analytics.feature
+
+  # The listener's request header timeout is 5s (backend-timeout.toml), a gateway-wide setting
+  # gateway-core's runners must not see.
+  - name: backend-timeout
+    parallel: 2
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/backend-timeout.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: upstream-connect-timeout
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/routes/upstream_connect_timeout.feature
+      - name: backend-route-timeout
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/routes/backend_timeout.feature
+      - name: llm-backend-timeout
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/ai-workspace-gateway/llm/llm_backend_timeout.feature

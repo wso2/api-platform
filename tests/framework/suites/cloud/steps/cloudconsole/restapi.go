@@ -37,6 +37,11 @@ import (
 const (
 	defaultAPIOperations = `[{"name":"getPost","request":{"method":"GET","path":"/posts/1"}}]`
 	newVersionAPILabel   = "new API version"
+
+	// backendEnv overrides the backend the synthetic REST APIs call.
+	backendEnv = "CLOUD_IT_BACKEND_URL"
+	// defaultBackend is the testbench backend service, which answers any path with the request it received.
+	defaultBackend = "https://development-wso2cloud.gateway.dev.cloud.wso2.com/apip-testbench-mocks/backend"
 )
 
 // apiRef names the scenario-state keys that describe one synthetic REST API, so a step can act on
@@ -124,11 +129,15 @@ func newAPIDefinition(ctx context.Context, id, projectID string, overrides map[s
 	if err := json.Unmarshal([]byte(defaultAPIOperations), &operations); err != nil {
 		return nil, err
 	}
+	backend, err := testbenchURL(backendEnv, defaultBackend)
+	if err != nil {
+		return nil, err
+	}
 	definition := map[string]any{
 		"id": id, "displayName": "Synthetic " + id,
 		"description": "Created and deleted by the APIP cloud integration test. Safe to delete.",
 		"context":     "/" + id + "/v1", "version": "1.0.0", "projectId": projectID,
-		"upstream":   map[string]any{"main": map[string]string{"url": "https://jsonplaceholder.typicode.com"}},
+		"upstream":   map[string]any{"main": map[string]string{"url": backend}},
 		"security":   map[string]bool{"enabled": false},
 		"operations": operations,
 	}

@@ -203,10 +203,7 @@ func ensureDefaultGateway(ctx context.Context, platform organisationAPI, display
 	environments := environmentsOf(paths)
 
 	pin := strings.TrimSpace(os.Getenv(cloudGatewayPinEnv))
-	filters := []gatewayFilter{regularGatewaysOnly, notSyntheticGateway, inPipelineEnvironments(environments)}
-	if pin != "" {
-		filters = append(filters, pinnedGateway(pin))
-	}
+	filters := append(gatewayFilters(pin), inPipelineEnvironments(environments))
 	items, err := listCollectionQuery(ctx, platform.client, platform.base, platform.token, "/managed-gateways",
 		url.Values{"functionalityType": {regularGatewayKind}})
 	if err != nil {

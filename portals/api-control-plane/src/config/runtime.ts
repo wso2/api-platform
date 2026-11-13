@@ -182,6 +182,19 @@ export type RuntimeConfig = {
   sanitizeHtmlDocsEnabled: boolean;
   sanitizeHtmlDocsAdditionalAllowedTags: string[];
   sanitizeHtmlDocsAdditionalAllowedAttributes: Record<string, string[]>;
+  /**
+   * Feature-usage tracking: UI actions published to Moesif from the browser
+   * (see `src/featureUsage`). Off by default, so an on-prem install reports
+   * nothing; it takes effect only together with `featureUsageCollectorPath`.
+   */
+  featureUsageTrackingEnabled: boolean;
+  /**
+   * Same-origin path of the gateway route that forwards actions to the Moesif
+   * collector, e.g. `/_api/api-management/feature-usage`. The route adds the
+   * Moesif Application ID inside the cluster, so the browser never holds it.
+   * Empty unless it is a plain absolute path: never another origin.
+   */
+  featureUsageCollectorPath: string;
 };
 
 type LegacyWindowConfig = Partial<{
@@ -235,6 +248,8 @@ type LegacyWindowConfig = Partial<{
   authLogoutUrl: string;
   authLogoutStyle: string;
   authClaimMappings: string | Record<string, unknown>;
+  authOrganizationsUrl: string;
+  authSwitchOrganizationUrls: string | string[];
   FEATURE_FLAGS: string;
   environmentName: string;
   apiPlatformHomePage: string;
@@ -249,6 +264,10 @@ type LegacyWindowConfig = Partial<{
   sanitizeHtmlDocsEnabled: boolean | string;
   sanitizeHtmlDocsAdditionalAllowedTags: string;
   sanitizeHtmlDocsAdditionalAllowedAttributes: string;
+  FEATURE_USAGE_TRACKING_ENABLED: string;
+  featureUsageTrackingEnabled: boolean | string;
+  FEATURE_USAGE_COLLECTOR_PATH: string;
+  featureUsageCollectorPath: string;
 }>;
 
 declare global {
@@ -325,6 +344,17 @@ const readFeatureList = (value: unknown): string[] =>
     .filter(Boolean);
 
 const readBoolean = (value: boolean | string | undefined) => value === true || value === 'true';
+
+/**
+ * A same-origin absolute path (`/a/b`), without a trailing slash; anything else
+ * (another origin, a protocol-relative `//host`, a query or fragment) reads as
+ * empty, so a misconfiguration turns the feature off rather than sending
+ * elsewhere.
+ */
+const readSameOriginPath = (value: string | undefined): string => {
+  const path = (value ?? '').trim().replace(/\/+$/, '');
+  return /^\/(?!\/)[^?#\s\\]*$/.test(path) ? path : '';
+};
 
 const readSanitizeHtmlDocsEnabled = (value: boolean | string | undefined) =>
   String(value ?? '').trim().toLowerCase() !== 'false';
@@ -418,6 +448,10 @@ export const runtimeConfig: RuntimeConfig = {
     logoutUrl: fromWindow().authLogoutUrl || import.meta.env.VITE_AUTH_LOGOUT_URL,
     logoutStyle: fromWindow().authLogoutStyle || import.meta.env.VITE_AUTH_LOGOUT_STYLE,
     claimMappings: fromWindow().authClaimMappings || import.meta.env.VITE_AUTH_CLAIM_MAPPINGS,
+    organizationsUrl:
+      fromWindow().authOrganizationsUrl || import.meta.env.VITE_AUTH_ORGANIZATIONS_URL,
+    switchOrganizationUrls:
+      fromWindow().authSwitchOrganizationUrls || import.meta.env.VITE_AUTH_SWITCH_ORGANIZATION_URLS,
   }),
   defaultLocale:
     fromWindow().DEFAULT_LOCALE ||
@@ -540,5 +574,15 @@ export const runtimeConfig: RuntimeConfig = {
   sanitizeHtmlDocsAdditionalAllowedAttributes: parseJsonRecordOfStringArrays(
     fromWindow().sanitizeHtmlDocsAdditionalAllowedAttributes ??
       import.meta.env.VITE_SANITIZE_HTML_DOCS_ADDITIONAL_ALLOWED_ATTRIBUTES,
+  ),
+  featureUsageTrackingEnabled: readBoolean(
+    fromWindow().FEATURE_USAGE_TRACKING_ENABLED ||
+      fromWindow().featureUsageTrackingEnabled ||
+      import.meta.env.VITE_FEATURE_USAGE_TRACKING_ENABLED,
+  ),
+  featureUsageCollectorPath: readSameOriginPath(
+    fromWindow().FEATURE_USAGE_COLLECTOR_PATH ||
+      fromWindow().featureUsageCollectorPath ||
+      import.meta.env.VITE_FEATURE_USAGE_COLLECTOR_PATH,
   ),
 };

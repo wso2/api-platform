@@ -95,7 +95,7 @@ afterEach(() => {
 describe('AvailablePoliciesPanel', () => {
   it('shows placeholder cards while loading, then the policies, with no paging buttons', async () => {
     serveCatalog([]);
-    const { container } = renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    const { container } = renderWithProviders(<AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />);
 
     expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument();
     expect(await screen.findByText('Policy 01')).toBeInTheDocument();
@@ -107,7 +107,7 @@ describe('AvailablePoliciesPanel', () => {
   it('loads the next page when the end of the list scrolls into view', async () => {
     const requests: URLSearchParams[] = [];
     serveCatalog(requests);
-    renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    renderWithProviders(<AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />);
 
     await screen.findByText('Policy 20');
     expect(screen.queryByText('Policy 21')).not.toBeInTheDocument();
@@ -121,7 +121,7 @@ describe('AvailablePoliciesPanel', () => {
   it('asks the hub to search the whole catalog once typing settles', async () => {
     const requests: URLSearchParams[] = [];
     serveCatalog(requests);
-    const { user } = renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    const { user } = renderWithProviders(<AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />);
     await screen.findByText('Policy 01');
 
     await user.type(screen.getByPlaceholderText('Search policies'), 'jwt');
@@ -153,7 +153,7 @@ describe('AvailablePoliciesPanel', () => {
         );
       }),
     );
-    const { user } = renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    const { user } = renderWithProviders(<AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />);
     await screen.findByText('Policy 20');
 
     observerCallbacks.at(-1)?.([{ isIntersecting: true }]);
@@ -183,7 +183,7 @@ describe('AvailablePoliciesPanel', () => {
             );
       }),
     );
-    const { user } = renderWithProviders(<AvailablePoliciesPanel onSelect={vi.fn()} />);
+    const { user } = renderWithProviders(<AvailablePoliciesPanel artifactKind="rest-api" onSelect={vi.fn()} />);
 
     await user.click(await screen.findByRole('button', { name: 'Retry' }));
 

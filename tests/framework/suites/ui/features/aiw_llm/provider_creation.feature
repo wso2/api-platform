@@ -18,7 +18,7 @@
 
 @AIW-LLM
 Feature: Creating an LLM provider in the AI Workspace
-  Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-feature "Create" (AIW-PRV-001..005), through the browser against the
+  Scenarios AIW-LLM (scenarios/on-prem/AIW-LLM.yaml), sub-feature "Create" (AIW-PRV-001..005), through the browser against the
   real control plane. The API-level scenarios for the same IDs are in
   suites/it/features/ai-workspace/llm-providers/create.feature.
 
