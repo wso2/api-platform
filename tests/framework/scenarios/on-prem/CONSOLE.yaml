@@ -63,11 +63,12 @@ scenarios:
     title: "With an API with the identifier reading-list-api in the project, create a REST API with a different name and that identifier, then change the identifier; the identifier field shows Identifier is already in use, and the API is not created until the identifier is changed."
     priority: P1
     ui:
-      status: known-issue
-      issue: https://github.com/wso2/api-platform/issues/4139
+      status: automated
       refs:
         - feature: suites/ui/features/management_portal/create_api.feature
           scenario: "Journey: an identifier already used in the project is flagged on its field, and nothing is created until it changes"
+        - feature: suites/ui/features/management_portal/create_api.feature
+          scenario: "Journey: an identifier another project uses is flagged on its field, and nothing is created until it changes"
     it:
       status: exempt
       reason: "Browser journey; the control-plane and gateway behaviour underneath is covered by the APIDEF, DEPLC, gateway and API Portal integration features (decided 2026-11-09)."

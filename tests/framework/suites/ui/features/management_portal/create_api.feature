@@ -70,9 +70,7 @@ Feature: The Management Portal's create wizard builds a REST API from scratch an
     And the Management Portal shows "Configure and create"
     And project "${CTX:project}" has exactly these REST APIs on the control plane: ""
 
-  # The REST wizard has no identifier check, and the control plane's refusal names no field, so
-  # it lands in a banner: https://github.com/wso2/api-platform/issues/4139
-  @CONSOLE-005 @known-issue
+  @CONSOLE-005
   Scenario: Journey: an identifier already used in the project is flagged on its field, and nothing is created until it changes
     Given I generate a unique handle from "console-taken-project" and store it as "project"
     And I generate a unique handle from "console-taken" and store it as "taken"
@@ -88,14 +86,38 @@ Feature: The Management Portal's create wizard builds a REST API from scratch an
     And the user enters "Another ${CTX:taken}" as the "Name" in the Management Portal
     And the user enters "${CTX:taken}" as the "Identifier" in the Management Portal
     Then the "Identifier" field in the Management Portal shows the error "This identifier is already in use."
-    When the user clicks "Create" in the Management Portal
-    Then the "Identifier" field in the Management Portal shows the error "This identifier is already in use."
+    And the Management Portal's "Create" button is disabled
     And project "${CTX:project}" has exactly these REST APIs on the control plane: "${CTX:taken}"
     When the user enters "${CTX:taken}-new" as the "Identifier" in the Management Portal
     And the REST API "${CTX:taken}-new" created in the Management Portal is deleted after the scenario
     And the user clicks "Create" in the Management Portal
     Then the API overview shows name "Another ${CTX:taken}"
     And project "${CTX:project}" has exactly these REST APIs on the control plane: "${CTX:taken},${CTX:taken}-new"
+
+  # An identifier is unique across the organization, not the project.
+  @CONSOLE-005
+  Scenario: Journey: an identifier another project uses is flagged on its field, and nothing is created until it changes
+    Given I generate a unique handle from "console-taken-elsewhere" and store it as "otherProject"
+    And I generate a unique handle from "console-taken-here" and store it as "project"
+    And I generate a unique handle from "console-taken" and store it as "taken"
+    And a project "${CTX:otherProject}" exists on the control plane
+    And a project "${CTX:project}" exists on the control plane
+    And a REST API "${CTX:taken}" exists in project "${CTX:otherProject}" on the control plane
+    When the user signs in to the Management Portal as the administrator
+    And the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/new"
+    And the user chooses "REST API" in the Management Portal
+    And the user clicks "Continue" in the Management Portal
+    And the user enters "http://testbench:3000" as the "Endpoint URL" in the Management Portal
+    And the user clicks "Continue" in the Management Portal
+    And the user enters "Another ${CTX:taken}" as the "Name" in the Management Portal
+    And the user enters "${CTX:taken}" as the "Identifier" in the Management Portal
+    Then the "Identifier" field in the Management Portal shows the error "This identifier is already in use."
+    And the Management Portal's "Create" button is disabled
+    When the user enters "${CTX:taken}-new" as the "Identifier" in the Management Portal
+    And the REST API "${CTX:taken}-new" created in the Management Portal is deleted after the scenario
+    And the user clicks "Create" in the Management Portal
+    Then the API overview shows name "Another ${CTX:taken}"
+    And project "${CTX:project}" has exactly these REST APIs on the control plane: "${CTX:taken}-new"
 
   @CONSOLE-006
   Scenario: Journey: going back in the wizard keeps the endpoint entered, and the API is created with the changed one

@@ -24,6 +24,7 @@ import {
   accepts,
   collection,
   failure,
+  knownIds,
   manyRestApis,
   noContent,
   recorder,
@@ -39,6 +40,7 @@ import {
   useDeleteRestApi,
   useRestApi,
   useRestApiCounts,
+  useRestApiIdAvailability,
   useRestApis,
   useUpdateRestApi,
 } from './restApis.hooks';
@@ -433,6 +435,48 @@ describe('useAllRestApis — windowing', () => {
     server.use(collection('/rest-apis', manyRestApis(5), { record: requests }));
 
     renderApiHook(() => useAllRestApis({}, {}, { enabled: false }));
+
+    await settle();
+    expect(requests.count()).toBe(0);
+  });
+});
+
+// A handle is unique across the organization, so the check must not be
+// confined to the active project: https://github.com/wso2/api-platform/issues/4139
+describe('useRestApiIdAvailability', () => {
+  it('reports a handle another project uses as taken, asking the organization rather than the project', async () => {
+    const requests = recorder();
+    server.use(knownIds('/rest-apis/:restApiId', ['orders'], { record: requests }));
+
+    const { result } = renderApiHook(() => useRestApiIdAvailability(' Orders '));
+
+    await waitFor(() => expect(result.current.data).toBe(false));
+    expect(requests.last()?.url.pathname).toMatch(/\/rest-apis\/orders$/);
+    expect(requests.last()?.params.has('projectId')).toBe(false);
+  });
+
+  it('reports a handle nobody uses as free', async () => {
+    server.use(knownIds('/rest-apis/:restApiId', ['orders']));
+
+    const { result } = renderApiHook(() => useRestApiIdAvailability('payments'));
+
+    await waitFor(() => expect(result.current.data).toBe(true));
+  });
+
+  it('gives no answer when the lookup fails, so the form neither flags nor clears the handle', async () => {
+    server.use(failure('get', '/rest-apis/:restApiId', 500, 'INTERNAL_SERVER_ERROR'));
+
+    const { result } = renderApiHook(() => useRestApiIdAvailability('orders'));
+
+    await settle();
+    expect(result.current.data).toBeUndefined();
+  });
+
+  it('sends nothing for a blank handle', async () => {
+    const requests = recorder();
+    server.use(knownIds('/rest-apis/:restApiId', [], { record: requests }));
+
+    renderApiHook(() => useRestApiIdAvailability('  '));
 
     await settle();
     expect(requests.count()).toBe(0);

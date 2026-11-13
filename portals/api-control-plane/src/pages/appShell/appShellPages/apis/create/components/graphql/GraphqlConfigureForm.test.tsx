@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
-import { collection } from '@/test/msw';
+import { knownIds } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { fireEvent, renderWithProviders, screen, waitFor } from '@/test/utils';
@@ -55,10 +55,10 @@ const submitted = {
   version: '1.0.0',
 };
 
-/** The identifier field probes availability as it settles. */
+/** The identifier field probes availability as it settles; by default nothing is taken. */
 beforeEach(() => {
   resetHttpClient();
-  server.use(collection('/graphql-apis', []));
+  server.use(knownIds('/graphql-apis/:graphqlApiId', []));
 });
 
 describe('GraphqlConfigureForm — initial values', () => {
@@ -257,11 +257,7 @@ describe('GraphqlConfigureForm — client-side validation', () => {
   // the server's own rejection after a full round trip. This is the
   // regression guard for showing and enforcing it beforehand instead.
   it('flags an identifier a live check finds already taken, and blocks Create for it', async () => {
-    server.use(
-      collection('/graphql-apis', [{ id: 'countries-api' }], {
-        matches: (item, term) => (item as { id?: string }).id?.toLowerCase() === term,
-      }),
-    );
+    server.use(knownIds('/graphql-apis/:graphqlApiId', ['countries-api']));
     const onSubmit = vi.fn();
     // The live check needs `ApiScopeProvider` (the API-layer, header-scoped
     // context `useGraphQLApiIdAvailability` reads) — `renderForm`'s bare
@@ -296,11 +292,7 @@ describe('GraphqlConfigureForm — client-side validation', () => {
   // click on a taken identifier went through to a submit that silently did
   // nothing. A blocked submit (Enter in a field) also moves focus to the field.
   it('reports a taken identifier as a blocked submit to a host with its own Create', async () => {
-    server.use(
-      collection('/graphql-apis', [{ id: 'countries-api' }], {
-        matches: (item, term) => (item as { id?: string }).id?.toLowerCase() === term,
-      }),
-    );
+    server.use(knownIds('/graphql-apis/:graphqlApiId', ['countries-api']));
     const onSubmitBlockedChange = vi.fn();
     const onSubmit = vi.fn();
     const { user } = renderWithProviders(
@@ -332,11 +324,7 @@ describe('GraphqlConfigureForm — client-side validation', () => {
   });
 
   it('clears the taken-identifier warning once it is edited to a free one', async () => {
-    server.use(
-      collection('/graphql-apis', [{ id: 'countries-api' }], {
-        matches: (item, term) => (item as { id?: string }).id?.toLowerCase() === term,
-      }),
-    );
+    server.use(knownIds('/graphql-apis/:graphqlApiId', ['countries-api']));
     const { user } = renderWithProviders(
       <ApiScopeProvider orgId="api-platform-demo" projectId="retail-apis">
         <GraphqlConfigureForm
