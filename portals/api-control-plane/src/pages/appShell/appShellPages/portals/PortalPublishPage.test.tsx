@@ -90,7 +90,7 @@ const api = aRestApi({
   upstream: { main: { url: 'https://backend.internal/loans' }, sandbox: { url: 'https://sandbox.backend.internal/loans' } },
   version: '1.0.0',
   // The plans attached in Develop › Usage Plans: the publish page offers these only.
-  subscriptionPlans: ['bronze', 'gold', 'silver', 'retired', 'deleted', 'plan-0', 'beyond'],
+  subscriptionPlans: [{ id: 'bronze' }, { id: 'gold' }, { id: 'silver' }, { id: 'retired' }, { id: 'deleted' }, { id: 'plan-0' }, { id: 'beyond' }],
 });
 
 let requests: Recorder;
@@ -550,7 +550,7 @@ describe('PortalPublishPage', () => {
       draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections() }),
       plans: [bronze, gold, platinum],
     });
-    server.use(resource('/rest-apis/:restApiId', { ...api, subscriptionPlans: ['gold'] }));
+    server.use(resource('/rest-apis/:restApiId', { ...api, subscriptionPlans: [{ id: 'gold' }] }));
 
     const { user } = renderPage();
 

@@ -75,7 +75,7 @@ const boxOf = async (name: string) => {
 
 describe('UsagePlansPanel', () => {
   it('lists the active plans with their descriptions, ticking those the API offers', async () => {
-    renderPanel({ subscriptionPlans: ['silver'] });
+    renderPanel({ subscriptionPlans: [{ id: 'silver' }] });
 
     expect(await boxOf('Silver')).toBeChecked();
     expect(await boxOf('Gold')).not.toBeChecked();
@@ -90,7 +90,7 @@ describe('UsagePlansPanel', () => {
   });
 
   it('lists only the required policies the API has not attached yet', async () => {
-    renderPanel({ subscriptionPlans: ['silver'] });
+    renderPanel({ subscriptionPlans: [{ id: 'silver' }] });
 
     const note = (await screen.findByText('You have not yet attached the following required policies:')).closest(
       '[role="alert"]',
@@ -103,7 +103,7 @@ describe('UsagePlansPanel', () => {
   it('shows no missing-policy note once the policies are attached', async () => {
     renderPanel({
       policies: [{ name: 'subscription-validation', params: {}, version: 'v1' }],
-      subscriptionPlans: ['silver'],
+      subscriptionPlans: [{ id: 'silver' }],
     });
 
     await screen.findByText('Silver');
@@ -141,7 +141,7 @@ describe('UsagePlansPanel', () => {
   it('offers removal, as a list, only once no ticked plan needs the policy', async () => {
     const { user } = renderPanel({
       policies: [{ name: 'subscription-validation', params: {}, version: 'v1' }],
-      subscriptionPlans: ['gold', 'silver'],
+      subscriptionPlans: [{ id: 'gold' }, { id: 'silver' }],
     });
 
     await user.click(await boxOf('Gold'));
@@ -189,7 +189,7 @@ describe('UsagePlansPanel', () => {
         { name: 'cors', version: 'v1' },
         { name: 'subscription-validation', params: { subscriptionKeyHeader: 'Subscription-Key' }, version: 'v1' },
       ],
-      subscriptionPlans: ['gold'],
+      subscriptionPlans: [{ id: 'gold' }],
     });
   });
 
@@ -253,7 +253,7 @@ describe('GraphqlUsagePlansPanel', () => {
       id: 'countries',
       policies: [{ name: 'subscription-validation', version: 'v1' }],
       schemaSource: 'introspection',
-      subscriptionPlans: ['gold'],
+      subscriptionPlans: [{ id: 'gold' }],
     });
     const inline = aGraphQLApiDetail({ id: 'countries', schemaSource: 'inline' });
     expect(graphqlUsagePlansMetadata(inline, [], [], 'type Query { a: String }')).toMatchObject({

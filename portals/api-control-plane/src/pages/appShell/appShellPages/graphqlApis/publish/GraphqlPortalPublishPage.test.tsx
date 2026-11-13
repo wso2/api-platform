@@ -77,7 +77,7 @@ const api = aGraphQLApiDetail({
   projectId: PROJECT,
   upstream: { main: { url: 'https://countries.example.com/graphql' } },
   // The plans attached in Develop › Usage Plans: the publish page offers these only.
-  subscriptionPlans: ['bronze', 'gold'],
+  subscriptionPlans: [{ id: 'bronze' }, { id: 'gold' }],
   version: '1.0',
 });
 

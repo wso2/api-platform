@@ -33,12 +33,22 @@ const tools = { conditions: [{ id: 'tool-calls', params: window10, type: 'tool-c
 const none = { attached: new Set<string>(), partial: new Set<string>() };
 
 describe('usage plans helpers', () => {
-  it('reads and writes the API’s plans as handles', () => {
+  it('reads the API’s plan references (or older bare handles) and writes { id } references', () => {
     expect(attachedPlanIdsOf({})).toEqual([]);
     expect(attachedPlanIdsOf({ subscriptionPlans: ['gold'] })).toEqual(['gold']);
+    expect(
+      attachedPlanIdsOf({
+        subscriptionPlans: [
+          { displayName: 'Gold', id: 'gold', sourceStatus: 'UNCHANGED' },
+          { displayName: 'Silver', id: 'silver', sourceStatus: 'UPDATED' },
+          { displayName: 'Old', id: 'old', sourceStatus: 'DELETED' },
+          'bronze',
+        ],
+      }),
+    ).toEqual(['gold', 'silver', 'bronze']);
     expect(withAttachedPlans({ id: 'a', subscriptionPlans: ['x'] }, ['gold', 'silver'])).toEqual({
       id: 'a',
-      subscriptionPlans: ['gold', 'silver'],
+      subscriptionPlans: [{ id: 'gold' }, { id: 'silver' }],
     });
   });
 

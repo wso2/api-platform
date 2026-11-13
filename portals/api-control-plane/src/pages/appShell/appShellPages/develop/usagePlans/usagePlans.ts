@@ -28,19 +28,33 @@ import {
 } from './planPolicies';
 
 /**
- * The one place that reads and writes the plans an API offers (its usage plans). The REST API
- * stores them as plan handles in `subscriptionPlans`. When the Platform API stores each plan with
- * its details (`{displayName, id, sourceStatus}`), only these two functions change.
+ * The one place that reads and writes the plans an API offers (its usage plans). The Platform API
+ * returns each as `{ id, displayName, sourceStatus }` in `subscriptionPlans` and takes `{ id }`
+ * references (or bare handles) when the API is saved.
  */
-export const attachedPlanIdsOf = (api: { subscriptionPlans?: readonly string[] }): string[] => [
-  ...(api.subscriptionPlans ?? []),
-];
+/**
+ * A plan as an API lists it: `{ id, displayName, sourceStatus }` (the Platform API's
+ * SubscriptionPlanRef), or a bare plan handle from a Platform API that predates it.
+ */
+export type AttachedPlanRef =
+  | string
+  | { readonly id?: string; readonly displayName?: string; readonly sourceStatus?: string };
 
-/** The update body with the API's usage plans replaced by `planIds`. */
+/** The ids of the plans attached to an API. A plan deleted since it was attached is left out. */
+export const attachedPlanIdsOf = (api: { subscriptionPlans?: readonly AttachedPlanRef[] }): string[] =>
+  (api.subscriptionPlans ?? []).flatMap((plan) => {
+    if (typeof plan === 'string') return plan ? [plan] : [];
+    return plan.id && plan.sourceStatus !== 'DELETED' ? [plan.id] : [];
+  });
+
+/** The update body with the API's usage plans replaced by `planIds`, as `{ id }` references. */
 export const withAttachedPlans = <T extends object>(
   body: T,
   planIds: readonly string[],
-): T & { subscriptionPlans: string[] } => ({ ...body, subscriptionPlans: [...planIds] });
+): T & { subscriptionPlans: { id: string }[] } => ({
+  ...body,
+  subscriptionPlans: planIds.map((id) => ({ id })),
+});
 
 /**
  * How a policy is attached when a plan asks for it: its version as the Policies page stores it,
