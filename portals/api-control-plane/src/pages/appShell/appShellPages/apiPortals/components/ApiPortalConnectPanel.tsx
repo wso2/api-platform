@@ -23,6 +23,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useUpdateApiPortal } from '@/api/resources/apiPortals';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { Can } from '@/permissions';
 import { CopyableCommand } from '../../gateways/components/CopyableCommand';
 import {
@@ -31,6 +32,7 @@ import {
   internalAuthConfig,
   sharedKeyHash,
 } from '../utils/apiPortalSetup';
+import { ApiPortalWebhookSecretStep } from './ApiPortalWebhookSecretStep';
 
 const messages = defineMessages({
   confirmBody: {
@@ -114,6 +116,8 @@ const stepTitleSx = { fontWeight: 600 } as const;
 
 export type ApiPortalConnectPanelProps = {
   apiPortalId: string;
+  /** The portal's display name, used to name its webhook secret. */
+  portalName: string;
   /** Hash of a key set earlier in this session, such as by the register page. */
   initialHash?: string;
 };
@@ -126,10 +130,15 @@ export type ApiPortalConnectPanelProps = {
  * the update, and dropped. The hash lives in component state only, so leaving
  * the page discards it.
  */
-export function ApiPortalConnectPanel({ apiPortalId, initialHash }: ApiPortalConnectPanelProps) {
+export function ApiPortalConnectPanel({
+  apiPortalId,
+  initialHash,
+  portalName,
+}: ApiPortalConnectPanelProps) {
   const intl = useIntl();
   const { notify } = useNotifications();
   const updatePortal = useUpdateApiPortal();
+  const trackFeature = useTrackFeature();
 
   const [hash, setHash] = useState(initialHash);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -138,6 +147,7 @@ export function ApiPortalConnectPanel({ apiPortalId, initialHash }: ApiPortalCon
 
   const rotate = async () => {
     setConfirmOpen(false);
+    trackFeature('apip.lifecycle.manage-api-portal-click', { operation: 'rotate-key' });
     const sharedKey = generateSharedKey();
     setPreparing(true);
     let next: string;
@@ -192,7 +202,14 @@ export function ApiPortalConnectPanel({ apiPortalId, initialHash }: ApiPortalCon
           <Typography color="text.secondary" variant="body2">
             <FormattedMessage {...messages.stepConfigureIntro} />
           </Typography>
-          <CopyableCommand code={internalAuthConfig(hash ?? HASH_PLACEHOLDER)} />
+          <CopyableCommand
+            code={internalAuthConfig(hash ?? HASH_PLACEHOLDER)}
+            onCopy={() =>
+              trackFeature('apip.lifecycle.api-portal-setup-copy', {
+                setup_step: 'shared-key-config',
+              })
+            }
+          />
           <Typography color="text.secondary" variant="body2">
             <FormattedMessage
               {...messages.quickstart}
@@ -209,6 +226,8 @@ export function ApiPortalConnectPanel({ apiPortalId, initialHash }: ApiPortalCon
             <FormattedMessage {...messages.restart} />
           </Typography>
         </Stack>
+
+        <ApiPortalWebhookSecretStep apiPortalId={apiPortalId} portalName={portalName} />
       </Stack>
 
       <ConfirmDialog

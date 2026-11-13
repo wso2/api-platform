@@ -24,6 +24,7 @@ import { resetHttpClient } from '@/api/core/http';
 import {
   accepts,
   anApiPortal,
+  failure,
   noContent,
   recorder,
   resource,
@@ -61,7 +62,11 @@ beforeEach(() => {
   updates = recorder();
   deletes = recorder();
   resetHttpClient();
-  server.use(resource(PORTAL_PATH, anApiPortal({ description: 'For partners' })));
+  server.use(
+    resource(PORTAL_PATH, anApiPortal({ description: 'For partners' })),
+    // No webhook secret yet: the panel's last step offers to generate one.
+    failure('get', `/webhook-secrets/${PORTAL_ID}`, 404, 'NOT_FOUND'),
+  );
 });
 
 describe('ApiPortalDetailPage', () => {

@@ -37,6 +37,7 @@ import { AppPage } from '@/components/AppPage';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
+import { useTrackFeature } from '@/featureUsage';
 import { Can } from '@/permissions';
 import { routes } from '@/routes/paths';
 import { ApiPortalConnectPanel } from './components/ApiPortalConnectPanel';
@@ -121,6 +122,7 @@ function ApiPortalDetailPageContent() {
 
   const portalQuery = useApiPortal(apiPortalId);
   const deletePortal = useDeleteApiPortal();
+  const trackFeature = useTrackFeature();
 
   const [bannerOpen, setBannerOpen] = useState(Boolean(handoff.justRegistered));
   const [editOpen, setEditOpen] = useState(false);
@@ -138,7 +140,8 @@ function ApiPortalDetailPageContent() {
 
   const portal = portalQuery.data;
 
-  const confirmDelete = () =>
+  const confirmDelete = () => {
+    trackFeature('apip.lifecycle.manage-api-portal-click', { operation: 'delete' });
     deletePortal.mutate(
       { apiPortalId },
       {
@@ -149,6 +152,7 @@ function ApiPortalDetailPageContent() {
         },
       },
     );
+  };
 
   return (
     <>
@@ -221,7 +225,11 @@ function ApiPortalDetailPageContent() {
           </Stack>
         </Card>
 
-        <ApiPortalConnectPanel apiPortalId={apiPortalId} initialHash={handoff.sharedKeyHash} />
+        <ApiPortalConnectPanel
+          apiPortalId={apiPortalId}
+          initialHash={handoff.sharedKeyHash}
+          portalName={portal.name}
+        />
       </Stack>
 
       {editOpen && <ApiPortalEditDialog onClose={() => setEditOpen(false)} portal={portal} />}

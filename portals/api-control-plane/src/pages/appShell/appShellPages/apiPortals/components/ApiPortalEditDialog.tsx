@@ -34,6 +34,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useUpdateApiPortal, type ApiPortal } from '@/api/resources/apiPortals';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { isHttpsUrl } from '../utils/apiPortalSetup';
 
 const messages = defineMessages({
@@ -98,6 +99,7 @@ export function ApiPortalEditDialog({ onClose, portal }: ApiPortalEditDialogProp
   const intl = useIntl();
   const { notify } = useNotifications();
   const updatePortal = useUpdateApiPortal();
+  const trackFeature = useTrackFeature();
 
   const [name, setName] = useState(portal.name);
   const [url, setUrl] = useState(portal.url);
@@ -109,6 +111,7 @@ export function ApiPortalEditDialog({ onClose, portal }: ApiPortalEditDialogProp
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (nameError || urlError) return;
+    trackFeature('apip.lifecycle.manage-api-portal-click', { operation: 'update' });
     updatePortal.mutate(
       {
         apiPortalId: portal.id,

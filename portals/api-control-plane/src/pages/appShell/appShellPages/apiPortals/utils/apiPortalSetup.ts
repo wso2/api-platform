@@ -73,3 +73,39 @@ export const sharedKeyHash = async (sharedKey: string): Promise<string> => {
 /** The portal's `config.toml` entry that carries the hash. */
 export const internalAuthConfig = (hash: string): string =>
   `[api_portal.internal_auth]\nhash = "${hash}"`;
+
+/**
+ * Where the control plane receives the events a portal signs with its webhook
+ * secret. The console cannot know the address the portal reaches Platform API
+ * on (its own API base may be a proxy path), so that part stays a placeholder.
+ */
+export const PLATFORM_API_PLACEHOLDER = '<platform-api-url>';
+export const WEBHOOK_SECRET_PLACEHOLDER = '<webhook-secret>';
+export const WEBHOOK_RECEIVER_PATH = '/api/internal/v0.9/webhook/events';
+export const webhookTargetUrl = (): string => `${PLATFORM_API_PLACEHOLDER}${WEBHOOK_RECEIVER_PATH}`;
+
+/** The event groups Platform API's webhook receiver handles. */
+export const WEBHOOK_EVENTS = [
+  'apikey.*',
+  'application.*',
+  'meter.*',
+  'subscription.*',
+  'subscription_plan.*',
+] as const;
+
+/**
+ * Body for the portal's `POST /webhook-subscribers` that sends the portal's
+ * events to the control plane, signed with `secret`.
+ */
+export const webhookSubscriberBody = (secret: string): string =>
+  JSON.stringify(
+    {
+      id: 'control-plane',
+      displayName: 'Control plane',
+      targetUrl: webhookTargetUrl(),
+      secret,
+      events: WEBHOOK_EVENTS,
+    },
+    null,
+    2,
+  );

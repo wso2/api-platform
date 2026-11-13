@@ -24,6 +24,8 @@ import {
   isHttpsUrl,
   sharedKeyHash,
   toHandle,
+  webhookSubscriberBody,
+  webhookTargetUrl,
 } from './apiPortalSetup';
 
 describe('toHandle', () => {
@@ -59,5 +61,21 @@ describe('shared key', () => {
 
   it('renders the portal config entry', () => {
     expect(internalAuthConfig('ff')).toBe('[api_portal.internal_auth]\nhash = "ff"');
+  });
+});
+
+describe('webhook subscriber', () => {
+  it('targets the control plane receiver behind a placeholder address', () => {
+    expect(webhookTargetUrl()).toBe('<platform-api-url>/api/internal/v0.9/webhook/events');
+  });
+
+  it('renders the subscriber body with the secret and the receiver events', () => {
+    expect(JSON.parse(webhookSubscriberBody('s3cret'))).toEqual({
+      id: 'control-plane',
+      displayName: 'Control plane',
+      targetUrl: '<platform-api-url>/api/internal/v0.9/webhook/events',
+      secret: 's3cret',
+      events: ['apikey.*', 'application.*', 'meter.*', 'subscription.*', 'subscription_plan.*'],
+    });
   });
 });

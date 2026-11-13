@@ -36,6 +36,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useCreateApiPortal, type CreateApiPortalBody } from '@/api/resources/apiPortals';
 import { AppPage } from '@/components/AppPage';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { routes } from '@/routes/paths';
 import type { ApiPortalDetailLocationState } from './ApiPortalDetailPage';
 import {
@@ -188,6 +189,7 @@ function ApiPortalCreatePageContent() {
   const intl = useIntl();
   const { notify } = useNotifications();
   const createPortal = useCreateApiPortal();
+  const trackFeature = useTrackFeature();
 
   const [formState, setFormState] = useState<FormState>(INITIAL_STATE);
   // The handle follows the name until the user edits it directly.
@@ -250,6 +252,7 @@ function ApiPortalCreatePageContent() {
       url: formState.url.trim(),
     };
 
+    trackFeature('apip.lifecycle.manage-api-portal-click', { operation: 'create' });
     createPortal.mutate(body, {
       onSuccess: (portal) => {
         notify(intl.formatMessage(messages.createdNotification, { name: portal.name }), 'success');
