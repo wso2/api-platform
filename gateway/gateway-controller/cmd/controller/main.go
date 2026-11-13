@@ -749,6 +749,7 @@ func main() {
 		apiKeyXDSManager,
 		lazyResourceXDSManager,
 		clientAuthorities,
+		budgets,
 		policyManager,
 		&cfg.Router,
 		log,

@@ -208,3 +208,25 @@ scenarios:
       refs:
         - feature: suites/it/features/gateway/core/budget_management.feature
           scenario: "Separate allowances are used up one by one and exempt traffic is never refused"
+  - id: BUDGET-019
+    title: "An LLM provider without llm-cost attached: the gateway prices its calls and its Block budget refuses once used up."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "A provider without llm-cost attached is still priced and its budget enforced"
+  - id: BUDGET-020
+    title: "Calls through an LLM proxy are charged once to the provider's budget: the second call is still served below the block point, and the budget refuses once used up."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "A call through an LLM proxy is charged once, on its provider's budget"

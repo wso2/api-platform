@@ -17,8 +17,10 @@
  */
 
 // Package budget is the gateway's budget system policy: it enforces spend limits on LLM
-// traffic. The gateway controller attaches it to every LLM provider and LLM proxy route and
-// publishes the active budgets to the policy engine as lazy resources of type Budget.
+// traffic. The gateway controller attaches it to every LLM provider route, with llm-cost,
+// and publishes the active budgets to the policy engine as lazy resources of type Budget.
+// An LLM proxy call reaches its provider's route over the internal loopback, so it is
+// counted there, once.
 //
 // A request is admitted in the request body phase, after every header-phase policy has run,
 // because system policies come first in the chain and authentication must have filled the
@@ -52,8 +54,6 @@ const (
 	// metadataAllowances carries the allowances a request was admitted against to the
 	// response phase.
 	metadataAllowances = "x-wso2-budget-allowances"
-	// internalLoopbackHeader marks the LLM proxy's internal call to its provider.
-	internalLoopbackHeader = "x-wso2-internal-loopback"
 )
 
 // BudgetSystemPolicy enforces budgets. Every attachment shares one instance, so spend is
@@ -109,10 +109,6 @@ func (p *BudgetSystemPolicy) OnRequestBody(_ context.Context, reqCtx *policy.Req
 	var headers map[string][]string
 	if reqCtx.Headers != nil {
 		headers = reqCtx.Headers.GetAll()
-		if values := reqCtx.Headers.Get(internalLoopbackHeader); len(values) > 0 && values[0] != "" {
-			// The proxy's call to its provider: the outer call already counted it.
-			return policy.UpstreamRequestModifications{}
-		}
 	}
 	provider, _ := reqCtx.Metadata[metadataProviderName].(string)
 	if provider == "" {

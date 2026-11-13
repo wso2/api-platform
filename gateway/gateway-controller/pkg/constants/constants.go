@@ -273,9 +273,16 @@ const (
 
 	// BUDGET_SYSTEM_POLICY_NAME is the in-repo policy that enforces budgets
 	// (gateway/system-policies/budget). It is a defaultSystemPolicies entry limited
-	// to LLM provider and LLM proxy chains.
+	// to LLM provider chains: an LLM proxy call reaches its provider's route over the
+	// internal loopback, so it is counted there, once.
 	BUDGET_SYSTEM_POLICY_NAME    = "wso2_apip_sys_budget"
 	BUDGET_SYSTEM_POLICY_VERSION = "v1"
+
+	// LLM_COST_POLICY_NAME prices LLM responses for budgets. Every LLM provider
+	// route gets it unless the route already has it or AZURE_LLM_COST_POLICY_NAME.
+	LLM_COST_POLICY_NAME       = "llm-cost"
+	LLM_COST_POLICY_VERSION    = "v1"
+	AZURE_LLM_COST_POLICY_NAME = "azure-llm-cost"
 
 	// A2A_POLICY_PARAM_* are the parameter names the policy above reads. Each
 	// gateway-answered A2A concern takes a nested block of its own rather than

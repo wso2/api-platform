@@ -23,8 +23,10 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -39,28 +41,36 @@ type Publisher interface {
 	Publish(correlationID string) error
 }
 
-// Service stores budgets in the gateway database and publishes them to the
-// policy engine.
+// Service stores budgets in the gateway database, publishes them to this
+// replica's policy engine and tells the other replicas through the event hub.
 type Service struct {
 	db          storage.Storage
 	publisher   Publisher
+	eventHub    eventhub.EventHub
+	gatewayID   string
 	logger      *slog.Logger
 	pushEnabled bool
 }
 
 // NewService returns a Service. pushEnabled is the gateway's deployment-sync
 // setting: when true, gateway-created budgets start as pending push-up.
-func NewService(db storage.Storage, publisher Publisher, logger *slog.Logger, pushEnabled bool) *Service {
+func NewService(db storage.Storage, publisher Publisher, eventHub eventhub.EventHub, gatewayID string, logger *slog.Logger, pushEnabled bool) *Service {
 	if db == nil {
 		panic("budget.Service requires non-nil storage")
 	}
 	if publisher == nil {
 		panic("budget.Service requires a non-nil publisher")
 	}
+	if eventHub == nil {
+		panic("budget.Service requires a non-nil event hub")
+	}
+	if strings.TrimSpace(gatewayID) == "" {
+		panic("budget.Service requires a gateway ID")
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{db: db, publisher: publisher, logger: logger, pushEnabled: pushEnabled}
+	return &Service{db: db, publisher: publisher, eventHub: eventHub, gatewayID: strings.TrimSpace(gatewayID), logger: logger, pushEnabled: pushEnabled}
 }
 
 // CreateParams holds the request for Create. Body is JSON or YAML.
@@ -119,7 +129,7 @@ func (s *Service) Create(params CreateParams) (*models.StoredConfig, error) {
 	}
 
 	log.Info("Budget created", slog.String("uuid", cfg.UUID), slog.String("handle", cfg.Handle))
-	return cfg, s.publish(params.CorrelationID)
+	return cfg, s.publish("CREATE", cfg.Handle, params.CorrelationID, log)
 }
 
 // Get returns the budget with the given name.
@@ -196,7 +206,7 @@ func (s *Service) Update(params UpdateParams) (*models.StoredConfig, error) {
 	}
 
 	log.Info("Budget updated", slog.String("uuid", updated.UUID), slog.String("handle", updated.Handle))
-	return &updated, s.publish(params.CorrelationID)
+	return &updated, s.publish("UPDATE", updated.Handle, params.CorrelationID, log)
 }
 
 // Delete removes a gateway-created budget.
@@ -219,12 +229,27 @@ func (s *Service) Delete(name, correlationID string, log *slog.Logger) error {
 	}
 
 	log.Info("Budget deleted", slog.String("uuid", existing.UUID), slog.String("handle", name))
-	return s.publish(correlationID)
+	return s.publish("DELETE", name, correlationID, log)
 }
 
-// publish sends the stored budgets to the policy engine after a committed
-// change. A failure wraps ErrPublish: the change is saved either way.
-func (s *Service) publish(correlationID string) error {
+// publish follows a committed change: it tells the other replicas, then sends
+// the stored budgets to this replica's policy engine. The event goes out even
+// when the local publish fails, since the change is saved either way; a local
+// failure wraps ErrPublish.
+func (s *Service) publish(action, name, correlationID string, log *slog.Logger) error {
+	event := eventhub.Event{
+		GatewayID:           s.gatewayID,
+		OriginatedTimestamp: time.Now(),
+		EventType:           eventhub.EventTypeBudget,
+		Action:              action,
+		EntityID:            name,
+		EventID:             correlationID,
+		EventData:           eventhub.EmptyEventData,
+	}
+	if err := s.eventHub.PublishEvent(s.gatewayID, event); err != nil {
+		log.Error("Failed to publish budget event to event hub",
+			slog.String("action", action), slog.String("handle", name), slog.Any("error", err))
+	}
 	if err := s.publisher.Publish(correlationID); err != nil {
 		return fmt.Errorf("%w: %v", ErrPublish, err)
 	}

@@ -48,6 +48,8 @@ const (
 	EventTypeAgent EventType = "AGENT"
 	// EventTypeWebhookSecret represents a webhook HMAC secret lifecycle event
 	EventTypeWebhookSecret EventType = "WEBHOOK_SECRET"
+	// EventTypeBudget represents a budget change event
+	EventTypeBudget EventType = "BUDGET"
 
 	// EmptyEventData is the canonical JSON payload for events that do not
 	// require additional data beyond the top-level event fields.

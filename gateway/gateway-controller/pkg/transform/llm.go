@@ -23,9 +23,12 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	policyv1alpha "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
+	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
 
 // LLMTransformer transforms LLM Provider or LLM Proxy StoredConfig into RuntimeDeployConfig.
@@ -137,4 +140,31 @@ func (t *LLMTransformer) extractLLMMetadata(cfg *models.StoredConfig) *models.LL
 		return nil
 	}
 	return meta
+}
+
+// withLLMCost appends llm-cost to an LLM provider route's chain when the route does not
+// price its responses already (llm-cost or azure-llm-cost), so budgets see the cost of
+// every call. Appended last, it runs first in the response phase. A gateway build without
+// llm-cost leaves the chain as it is.
+func withLLMCost(
+	kind string,
+	chain []policyenginev1.PolicyInstance,
+	definitions map[string]models.PolicyDefinition,
+	latestVersions map[string]string,
+) []policyenginev1.PolicyInstance {
+	if kind != models.KindLlmProvider {
+		return chain
+	}
+	for _, p := range chain {
+		if p.Name == constants.LLM_COST_POLICY_NAME || p.Name == constants.AZURE_LLM_COST_POLICY_NAME {
+			return chain
+		}
+	}
+	if _, ok := latestVersions[constants.LLM_COST_POLICY_NAME]; !ok {
+		return chain
+	}
+	cost := resolvePolicyInstances(definitions, latestVersions,
+		&[]api.Policy{{Name: constants.LLM_COST_POLICY_NAME, Version: constants.LLM_COST_POLICY_VERSION}},
+		policyv1alpha.LevelRoute)
+	return append(chain, cost...)
 }

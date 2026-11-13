@@ -2,7 +2,8 @@ name: wso2_apip_sys_budget
 version: v1.0.0
 description: |
   Enforces budgets: spend limits on LLM traffic. Attached by the gateway controller to
-  every LLM provider and LLM proxy route, never by an API author.
+  every LLM provider route, never by an API author; the controller also adds llm-cost
+  to provider routes that do not price their responses.
 
   The active budgets reach the policy engine as lazy resources of type Budget. For each
   request the policy finds the budgets that cover it (the LLM provider, every consumer
@@ -12,8 +13,8 @@ description: |
 
   When the response ends it charges the cost llm-cost published (x-llm-cost) to every
   allowance it matched, in the period the request was admitted in; a request without a
-  calculated cost is charged $0 and counted as unpriced. The internal loopback leg of an
-  LLM proxy call is skipped, so a proxy call is counted once.
+  calculated cost is charged $0 and counted as unpriced. An LLM proxy call reaches its
+  provider's route over the internal loopback and is counted there, once.
 
   Spend is kept in memory in this policy engine: it resets on restart and is not shared
   with other gateways.
@@ -26,7 +27,7 @@ parameters:
       type: string
       description: >
         Injected by the gateway controller (not set by users): the kind of API this
-        policy chain belongs to (LlmProvider or LlmProxy). Not read by the policy.
+        policy chain belongs to (LlmProvider). Not read by the policy.
 
 systemParameters:
   type: object

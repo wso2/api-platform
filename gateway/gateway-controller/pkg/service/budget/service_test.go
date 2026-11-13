@@ -33,6 +33,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/lazyresourcexds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
@@ -72,7 +73,25 @@ type testEnv struct {
 	db        storage.Storage
 	path      string
 	resources *lazyresourcexds.LazyResourceStateManager
+	events    *recordingEventHub
 }
+
+// recordingEventHub records the events the service publishes for other replicas.
+type recordingEventHub struct {
+	events []eventhub.Event
+}
+
+func (h *recordingEventHub) Initialize() error            { return nil }
+func (h *recordingEventHub) RegisterGateway(string) error { return nil }
+func (h *recordingEventHub) PublishEvent(_ string, event eventhub.Event) error {
+	h.events = append(h.events, event)
+	return nil
+}
+func (h *recordingEventHub) Subscribe(string) (<-chan eventhub.Event, error) { return nil, nil }
+func (h *recordingEventHub) Unsubscribe(string, <-chan eventhub.Event) error { return nil }
+func (h *recordingEventHub) UnsubscribeAll(string) error                     { return nil }
+func (h *recordingEventHub) CleanUpEvents() error                            { return nil }
+func (h *recordingEventHub) Close() error                                    { return nil }
 
 // newTestEnv builds a testEnv. A non-nil publisher replaces the real one.
 func newTestEnv(t *testing.T, pushEnabled bool, publisher Publisher) testEnv {
@@ -93,7 +112,8 @@ func newTestEnv(t *testing.T, pushEnabled bool, publisher Publisher) testEnv {
 	if publisher == nil {
 		publisher = utils.NewBudgetPublisher(db, resources)
 	}
-	return testEnv{svc: NewService(db, publisher, logger, pushEnabled), db: db, path: path, resources: resources}
+	events := &recordingEventHub{}
+	return testEnv{svc: NewService(db, publisher, events, "test-gateway", logger, pushEnabled), db: db, path: path, resources: resources, events: events}
 }
 
 // seedLLMProvider stores an LLM provider so budgets can name it.
@@ -662,4 +682,43 @@ func TestService_PublishFailureKeepsTheChange(t *testing.T) {
 	assert.ErrorIs(t, err, ErrPublish)
 	_, err = env.svc.Get("research-team-monthly")
 	assert.NoError(t, err, "the budget is saved even though publishing failed")
+}
+
+func TestService_TellsOtherReplicas(t *testing.T) {
+	env := newTestEnv(t, false, nil)
+
+	_, err := env.svc.Create(CreateParams{Body: []byte(validBudget), CorrelationID: "corr-1"})
+	require.NoError(t, err)
+	_, err = env.svc.Update(UpdateParams{Name: "research-team-monthly", Body: []byte(strings.Replace(validBudget, `"500.00"`, `"650.00"`, 1)), CorrelationID: "corr-2"})
+	require.NoError(t, err)
+	require.NoError(t, env.svc.Delete("research-team-monthly", "corr-3", nil))
+
+	require.Len(t, env.events.events, 3)
+	for i, action := range []string{"CREATE", "UPDATE", "DELETE"} {
+		event := env.events.events[i]
+		assert.Equal(t, eventhub.EventTypeBudget, event.EventType)
+		assert.Equal(t, action, event.Action)
+		assert.Equal(t, "research-team-monthly", event.EntityID)
+		assert.Equal(t, fmt.Sprintf("corr-%d", i+1), event.EventID)
+		assert.Equal(t, "test-gateway", event.GatewayID)
+	}
+}
+
+func TestService_RejectedChangesTellNoOne(t *testing.T) {
+	env := newTestEnv(t, false, nil)
+
+	_, err := env.svc.Create(CreateParams{Body: []byte(strings.Replace(validBudget, `"500.00"`, `"0"`, 1))})
+	require.Error(t, err)
+	require.Error(t, env.svc.Delete("missing", "", nil))
+
+	assert.Empty(t, env.events.events)
+}
+
+func TestService_PublishFailureStillTellsOtherReplicas(t *testing.T) {
+	env := newTestEnv(t, false, failingPublisher{})
+
+	_, err := env.svc.Create(CreateParams{Body: []byte(validBudget)})
+
+	assert.ErrorIs(t, err, ErrPublish)
+	assert.Len(t, env.events.events, 1, "the change is saved, so other replicas must still sync it")
 }
