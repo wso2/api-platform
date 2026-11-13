@@ -73,10 +73,38 @@ describe('featureMetadata', () => {
       action: 'Gateway Policies View',
       category: 'policies',
       event_category: 'discovery',
-      initiating_product: 'apip',
-      platform: 'web',
+      growth_action: 'apip.policies.gateway-policies-view',
+      platform: 'API Platform',
       portal: 'api-control-plane',
+      source: 'console',
       tier: 'core',
+    });
+  });
+
+  it('names the product and source as Platform API and Agent Manager do', () => {
+    const metadata = featureMetadata('apip.manage-apis.rest-api-create-click', {
+      creation_method: 'scratch',
+    });
+
+    expect(metadata).toMatchObject({
+      growth_action: 'apip.manage-apis.rest-api-create-click',
+      platform: 'API Platform',
+      source: 'console',
+    });
+    expect(metadata).not.toHaveProperty('initiating_product');
+  });
+
+  it('never lets a caller replace a field every action carries', () => {
+    const metadata = featureMetadata('apip.policies.gateway-policies-view', {
+      growth_action: 'apip.other',
+      platform: 'web',
+      source: 'api',
+    });
+
+    expect(metadata).toMatchObject({
+      growth_action: 'apip.policies.gateway-policies-view',
+      platform: 'API Platform',
+      source: 'console',
     });
   });
 

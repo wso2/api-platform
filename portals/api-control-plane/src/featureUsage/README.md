@@ -69,8 +69,9 @@ In `wso2cloud-deployment`, add a `RestApi` to
 `controlplane/common/init/layer-3/gateway-bff/api-management/proxy-api-management-restapi.yaml`,
 next to the billing, cloud and marketing-consent routes:
 
-- **Context:** `${apip_console_proxy_context:=/_api/api-management}/feature-usage`,
-  the same value as `featureUsageCollectorPath` below, so the two always match.
+- **Context:** `/_api/api-management/feature-usage`, a fixed path like the
+  billing, cloud and marketing-consent routes beside it. `featureUsageCollectorPath`
+  below resolves to the same path.
 - **Upstream:** `${internal_gateway_url}/moesif-collector`.
 - **Policy:** the same `oauth2-session-proxy` as the other api-management
   routes.
@@ -121,7 +122,7 @@ In Moesif:
 
 4. Open the environment's Moesif application, open the live event log, show
    **Actions**, and filter on an action name that starts with `apip.` (or
-   `metadata.initiating_product` = `apip`). The actions should arrive within a
+   `metadata.platform` = `API Platform` and `metadata.source` = `console`). The actions should arrive within a
    minute.
 
 If nothing is sent at all, check both keys in DevTools
@@ -137,8 +138,10 @@ Tracking never shows an error to the user, so these are the only signs.
 
 ### 5. Build the API Platform dashboards
 
-Every action carries the same metadata, so one filter selects API Platform:
-`metadata.initiating_product = apip`. For the first feature:
+Every record carries the same keys as Platform API's endpoint events and Agent
+Manager's records: `metadata.platform = API Platform` selects API Platform,
+and `metadata.source` (`console` or `api`) isolates the console or the API.
+`metadata.growth_action` is the feature code on both. For the first feature:
 
 | Moesif view              | Set-up                                                                                                                                                                                                                                 |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -185,16 +188,16 @@ don't set the `VITE_` values in a build that ships.
 `actions.ts` builds every action from an allowlist. Nothing a page or the browser
 adds is passed through; a field is sent only if it's in this table.
 
-| Field                       | Value                                                                                                                                                                         |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `action_name`               | A code from `taxonomy.ts`. A code missing from the registry doesn't compile.                                                                                                  |
-| `request.uri`               | The page URL reduced to its route template: org, project and API handles become `:orgHandle`, `:projectHandler` and `:apiHandler`. The query string and fragment are removed. |
-| `request.time`              | When the step happened                                                                                                                                                        |
-| `request.user_agent_string` | The browser's user agent, which Moesif uses for browser and OS breakdowns                                                                                                     |
-| `user_id`                   | The IdP user ID (`sub`), only if it is a UUID                                                                                                                                 |
-| `company_id`                | The organization ID, only if it is a UUID                                                                                                                                     |
-| `session_token`             | A UUID per browser tab session, kept in `sessionStorage`                                                                                                                      |
-| `metadata`                  | The feature's declared dimensions, plus `action`, `category`, `tier`, `event_category`, `initiating_product: apip`, `platform: web` and `portal: api-control-plane`           |
+| Field                       | Value                                                                                                                                                                                           |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `action_name`               | A code from `taxonomy.ts`. A code missing from the registry doesn't compile.                                                                                                                    |
+| `request.uri`               | The page URL reduced to its route template: org, project and API handles become `:orgHandle`, `:projectHandler` and `:apiHandler`. The query string and fragment are removed.                   |
+| `request.time`              | When the step happened                                                                                                                                                                          |
+| `request.user_agent_string` | The browser's user agent, which Moesif uses for browser and OS breakdowns                                                                                                                       |
+| `user_id`                   | The IdP user ID (`sub`), only if it is a UUID                                                                                                                                                   |
+| `company_id`                | The organization ID, only if it is a UUID                                                                                                                                                       |
+| `session_token`             | A UUID per browser tab session, kept in `sessionStorage`                                                                                                                                        |
+| `metadata`                  | The feature's declared dimensions, plus `growth_action` (the code), `platform: API Platform`, `source: console`, `portal: api-control-plane`, `action`, `category`, `tier` and `event_category` |
 
 The browser **never sends** names, emails, org, project or API handles, anything
 the user typed, query strings, fragments, the referrer, or UTM or `gclid`

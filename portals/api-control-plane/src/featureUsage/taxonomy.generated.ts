@@ -85,7 +85,7 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
   schema: { version: '1.0.0', id: 'https://wso2.com/schemas/feature-taxonomy/v1' },
   product: {
     id: 'apip',
-    name: 'WSO2 API Platform',
+    name: 'API Platform',
     version: '0.9.0',
     description:
       'AI-ready, GitOps-driven API platform for full lifecycle management across cloud, hybrid, and on-premises deployments.',
@@ -5091,6 +5091,9 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
     },
   ],
 };
+
+/** The taxonomy's product: its `id` prefixes every code, its `name` is sent as `platform`. */
+export const API_PLATFORM_PRODUCT = { id: 'apip', name: 'API Platform' } as const;
 
 /** This console's `portal` value, sent with every event it emits. */
 export const CONSOLE_PORTAL = 'api-control-plane';

@@ -94,9 +94,10 @@ describe('buildAction', () => {
         category: 'manage-apis',
         creation_method: 'scratch',
         event_category: 'engagement',
-        initiating_product: 'apip',
-        platform: 'web',
+        growth_action: 'apip.manage-apis.rest-api-create-click',
+        platform: 'API Platform',
         portal: 'api-control-plane',
+        source: 'console',
         tier: 'core',
       },
       request: {

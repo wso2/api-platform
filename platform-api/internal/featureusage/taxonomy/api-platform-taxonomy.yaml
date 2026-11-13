@@ -16,7 +16,7 @@ schema:
 
 product:
   id: "apip"
-  name: "WSO2 API Platform"
+  name: "API Platform"
   version: "0.9.0"
   description: "AI-ready, GitOps-driven API platform for full lifecycle management across cloud, hybrid, and on-premises deployments."
   category: "api-management"
