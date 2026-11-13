@@ -74,5 +74,5 @@ type GraphQLAPIConfig struct {
 	// GraphQL endpoint.
 	Upstream          UpstreamConfig `json:"upstream,omitempty"`
 	Policies          []Policy       `json:"policies,omitempty"`
-	SubscriptionPlans []string       `json:"subscriptionPlans,omitempty"`
+	SubscriptionPlans AttachedPlans  `json:"subscriptionPlans,omitempty"`
 }

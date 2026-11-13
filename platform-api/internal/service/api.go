@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -168,6 +169,9 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 	apiModel.ProjectID = project.ID
 	// On creation the creator is also the last updater.
 	apiModel.UpdatedBy = createdBy
+	if apiModel.Configuration.SubscriptionPlans, err = stampAttachedPlans(s.subscriptionPlanRepo, apiModel.Configuration.SubscriptionPlans, orgUUID, time.Now()); err != nil {
+		return nil, "", fmt.Errorf("failed to look up the subscription plans: %w", err)
+	}
 	// Create API in repository (UUID is generated internally by CreateAPI)
 	if err := s.apiRepo.CreateAPI(apiModel); err != nil {
 		s.slogger.Error("Failed to create API in repository", "apiName", req.DisplayName, "error", err)
@@ -203,7 +207,14 @@ func (s *APIService) modelToRESTAPIUnresolved(apiModel *model.API) (*api.RESTAPI
 	if project != nil {
 		projectHandle = project.Handle
 	}
-	return s.apiUtil.ModelToRESTAPI(apiModel, projectHandle)
+	restAPI, err := s.apiUtil.ModelToRESTAPI(apiModel, projectHandle)
+	if err != nil || restAPI == nil {
+		return restAPI, err
+	}
+	if err := annotatePlanRefs(s.subscriptionPlanRepo, restAPI.SubscriptionPlans, apiModel.Configuration.SubscriptionPlans, apiModel.OrganizationID); err != nil {
+		return nil, err
+	}
+	return restAPI, nil
 }
 
 // modelToRESTAPI converts an internal API model to the API representation,
@@ -456,6 +467,9 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 	// artifact the stored vs updated model produces.
 	if err := s.ensureRESTRuntimeArtifactUnchanged(existingAPIModel, updatedAPIModel); err != nil {
 		return nil, err
+	}
+	if updatedAPIModel.Configuration.SubscriptionPlans, err = stampAttachedPlans(s.subscriptionPlanRepo, updatedAPIModel.Configuration.SubscriptionPlans, orgUUID, time.Now()); err != nil {
+		return nil, fmt.Errorf("failed to look up the subscription plans: %w", err)
 	}
 
 	if err := s.apiRepo.UpdateAPI(updatedAPIModel); err != nil {
@@ -908,9 +922,18 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 	return nil
 }
 
-// validateSubscriptionPlans ensures each plan handle exists in the organization and is ACTIVE.
-func (s *APIService) validateSubscriptionPlans(planHandles *[]string, orgUUID string) error {
-	return validateSubscriptionPlanHandles(s.subscriptionPlanRepo, planHandles, orgUUID)
+// validateSubscriptionPlans ensures each plan a request attaches exists in the organization and is
+// ACTIVE, and keeps only the plans' (trimmed) handles: displayName and sourceStatus are read-only.
+func (s *APIService) validateSubscriptionPlans(refs *[]api.SubscriptionPlanRef, orgUUID string) error {
+	if refs == nil {
+		return nil
+	}
+	handles := utils.PlanRefHandles(refs)
+	if err := validateSubscriptionPlanHandles(s.subscriptionPlanRepo, &handles, orgUUID); err != nil {
+		return err
+	}
+	*refs = planRefsWithHandles(handles)
+	return nil
 }
 
 // validateSubscriptionPlanHandles ensures each plan handle exists in the organization and is

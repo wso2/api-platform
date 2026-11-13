@@ -4360,14 +4360,19 @@ export interface components {
             /** @description List of channels exposed by this API */
             channels?: components["schemas"]["Channel"][];
             /**
-             * @description List of subscription plan names enabled for this API (e.g. Gold, Silver).
-             *     When set, only these plans can be used when subscribing to the API.
+             * @description The subscription plans attached to this API, with the name each had when attached and how it
+             *     compares now. When set, only these plans can be used when subscribing to the API.
+             *     On create and update, send each plan as `{"id": "<plan handle>"}`; a plain handle string is
+             *     also accepted. `displayName` and `sourceStatus` are read-only.
              * @example [
-             *       "Gold",
-             *       "Silver"
+             *       {
+             *         "id": "gold",
+             *         "displayName": "Gold",
+             *         "sourceStatus": "UNCHANGED"
+             *       }
              *     ]
              */
-            subscriptionPlans?: string[];
+            subscriptionPlans?: components["schemas"]["SubscriptionPlanRef"][];
         };
         /**
          * Security Configuration
@@ -5381,13 +5386,17 @@ export interface components {
              */
             policies?: components["schemas"]["Policy"][];
             /**
-             * @description List of subscription plan names enabled for this API.
+             * @description The subscription plans attached to this API (see RESTAPI.subscriptionPlans). On create and
+             *     update, send each plan as `{"id": "<plan handle>"}`; a plain handle string is also accepted.
              * @example [
-             *       "Gold",
-             *       "Silver"
+             *       {
+             *         "id": "gold",
+             *         "displayName": "Gold",
+             *         "sourceStatus": "UNCHANGED"
+             *       }
              *     ]
              */
-            subscriptionPlans?: string[];
+            subscriptionPlans?: components["schemas"]["SubscriptionPlanRef"][];
         };
         /** GraphQL API detail (without sdl) */
         GraphQLAPIDetail: {
@@ -5482,13 +5491,17 @@ export interface components {
              */
             policies?: components["schemas"]["Policy"][];
             /**
-             * @description List of subscription plan names enabled for this API.
+             * @description The subscription plans attached to this API (see RESTAPI.subscriptionPlans). On create and
+             *     update, send each plan as `{"id": "<plan handle>"}`; a plain handle string is also accepted.
              * @example [
-             *       "Gold",
-             *       "Silver"
+             *       {
+             *         "id": "gold",
+             *         "displayName": "Gold",
+             *         "sourceStatus": "UNCHANGED"
+             *       }
              *     ]
              */
-            subscriptionPlans?: string[];
+            subscriptionPlans?: components["schemas"]["SubscriptionPlanRef"][];
         };
         /** GraphQL API SDL */
         GraphQLAPISDLResponse: {
@@ -8242,6 +8255,31 @@ export interface components {
              * @enum {string}
              */
             sourceStatus: "UNCHANGED" | "UPDATED" | "DELETED";
+        };
+        /**
+         * @description A subscription plan attached to an API, as a publication selection reports it: the plan's
+         *     handle, the name stored when it was attached, and how the plan compares with that.
+         */
+        SubscriptionPlanRef: {
+            /**
+             * @description The plan's handle (GET /subscription-plans), not the database UUID.
+             * @example gold
+             */
+            id: string;
+            /**
+             * @description The plan's current name, or the name stored when it was attached if the plan no longer
+             *     exists.
+             * @example Gold
+             */
+            readonly displayName?: string;
+            /**
+             * @description How the plan compares with the copy stored when it was attached (the API was last saved):
+             *     - UNCHANGED: It has not changed since.
+             *     - UPDATED: It was changed since. Saving the API again makes it UNCHANGED.
+             *     - DELETED: It no longer exists.
+             * @enum {string}
+             */
+            readonly sourceStatus?: "UNCHANGED" | "UPDATED" | "DELETED";
         };
         PublicationDraftDetailsInput: components["schemas"]["PublicationDetailsCore"] & {
             subscriptionPlanIds?: components["schemas"]["SubscriptionPlanIdList"];

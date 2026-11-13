@@ -714,13 +714,15 @@ func restAPIPlanHandles(configuration []byte) ([]string, error) {
 	if len(bytes.TrimSpace(configuration)) == 0 {
 		return nil, nil
 	}
+	// Entries are handle strings or {"id": ...} objects (an API's attached plans, see
+	// model.AttachedPlans); MCP proxies store strings.
 	var config struct {
-		SubscriptionPlans []string `json:"subscriptionPlans"`
+		SubscriptionPlans model.AttachedPlans `json:"subscriptionPlans"`
 	}
 	if err := json.Unmarshal(configuration, &config); err != nil {
 		return nil, err
 	}
-	return config.SubscriptionPlans, nil
+	return config.SubscriptionPlans.Handles(), nil
 }
 
 // GetUsage counts what offers or uses the plan (see model.SubscriptionPlanUsage): the REST APIs
@@ -902,7 +904,19 @@ func withoutPlanHandle(configuration []byte, handle string) ([]byte, error) {
 	if err := json.Unmarshal(configuration, &config); err != nil {
 		return nil, err
 	}
-	kept := slices.DeleteFunc(plans, func(h string) bool { return h == handle })
+	// Remove the plan's entries and keep the others as stored: a handle string stays a string and
+	// an attached plan's details stay with it.
+	var entries []json.RawMessage
+	if err := json.Unmarshal(config["subscriptionPlans"], &entries); err != nil {
+		return nil, err
+	}
+	kept := slices.DeleteFunc(entries, func(entry json.RawMessage) bool {
+		var one model.AttachedPlans
+		if err := one.UnmarshalJSON(append(append([]byte{'['}, entry...), ']')); err != nil || len(one) != 1 {
+			return false
+		}
+		return one[0].Handle == handle
+	})
 	if len(kept) == 0 {
 		delete(config, "subscriptionPlans")
 	} else {

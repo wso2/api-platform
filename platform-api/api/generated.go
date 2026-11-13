@@ -1627,6 +1627,27 @@ func (e SubscriptionPlanPricingRequestPricingType) Valid() bool {
 	}
 }
 
+// Defines values for SubscriptionPlanRefSourceStatus.
+const (
+	SubscriptionPlanRefDeleted   SubscriptionPlanRefSourceStatus = "DELETED"
+	SubscriptionPlanRefUnchanged SubscriptionPlanRefSourceStatus = "UNCHANGED"
+	SubscriptionPlanRefUpdated   SubscriptionPlanRefSourceStatus = "UPDATED"
+)
+
+// Valid indicates whether the value is a known member of the SubscriptionPlanRefSourceStatus enum.
+func (e SubscriptionPlanRefSourceStatus) Valid() bool {
+	switch e {
+	case SubscriptionPlanRefDeleted:
+		return true
+	case SubscriptionPlanRefUnchanged:
+		return true
+	case SubscriptionPlanRefUpdated:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TimeUnit.
 const (
 	Days    TimeUnit = "days"
@@ -3276,9 +3297,10 @@ type CreateGraphQLAPIRequest struct {
 	// or echoed back; only the fetched `sdl` text is persisted and returned.
 	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
 
-	// SubscriptionPlans List of subscription plan names enabled for this API.
-	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	// SubscriptionPlans The subscription plans attached to this API (see RESTAPI.subscriptionPlans). On create and
+	// update, send each plan as `{"id": "<plan handle>"}`; a plain handle string is also accepted.
+	SubscriptionPlans *[]SubscriptionPlanRef `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	UpdatedAt         *time.Time             `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
 	// UpdatedBy Only present in the detail response (GET /graphql-apis/{graphqlApiId}), omitted from list responses.
 	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
@@ -3455,9 +3477,11 @@ type CreateRESTAPIRequest struct {
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 
-	// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
-	// When set, only these plans can be used when subscribing to the API.
-	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	// SubscriptionPlans The subscription plans attached to this API, with the name each had when attached and how it
+	// compares now. When set, only these plans can be used when subscribing to the API.
+	// On create and update, send each plan as `{"id": "<plan handle>"}`; a plain handle string is
+	// also accepted. `displayName` and `sourceStatus` are read-only.
+	SubscriptionPlans *[]SubscriptionPlanRef `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 
 	// Transport Supported transports for the API (http and/or https)
 	Transport *[]string `json:"transport,omitempty" yaml:"transport,omitempty"`
@@ -3946,9 +3970,10 @@ type GraphQLAPI struct {
 	// or echoed back; only the fetched `sdl` text is persisted and returned.
 	SdlUrl *string `json:"sdlUrl,omitempty" yaml:"sdlUrl,omitempty"`
 
-	// SubscriptionPlans List of subscription plan names enabled for this API.
-	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	// SubscriptionPlans The subscription plans attached to this API (see RESTAPI.subscriptionPlans). On create and
+	// update, send each plan as `{"id": "<plan handle>"}`; a plain handle string is also accepted.
+	SubscriptionPlans *[]SubscriptionPlanRef `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	UpdatedAt         *time.Time             `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
 	// UpdatedBy Only present in the detail response (GET /graphql-apis/{graphqlApiId}), omitted from list responses.
 	UpdatedBy *string `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
@@ -4028,10 +4053,11 @@ type GraphQLAPIDetail struct {
 	// a source without its required field, is a structural `400`, not a no-op.
 	SchemaSource *GraphQLAPIDetailSchemaSource `json:"schemaSource,omitempty" yaml:"schemaSource,omitempty"`
 
-	// SubscriptionPlans List of subscription plan names enabled for this API.
-	SubscriptionPlans *[]string  `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
-	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
-	UpdatedBy         *string    `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
+	// SubscriptionPlans The subscription plans attached to this API (see RESTAPI.subscriptionPlans). On create and
+	// update, send each plan as `{"id": "<plan handle>"}`; a plain handle string is also accepted.
+	SubscriptionPlans *[]SubscriptionPlanRef `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	UpdatedAt         *time.Time             `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
+	UpdatedBy         *string                `json:"updatedBy,omitempty" yaml:"updatedBy,omitempty"`
 
 	// Upstream Reused unmodified from REST APIs. A GraphQL API has exactly one logical
 	// endpoint (no per-operation paths), so `upstream.main.url` is the single
@@ -5548,9 +5574,11 @@ type RESTAPI struct {
 	// ReadOnly True if the artifact originated from a data-plane gateway (origin gateway_api) and is read-only in the control plane; false for control-plane created artifacts.
 	ReadOnly *bool `json:"readOnly,omitempty" yaml:"readOnly,omitempty"`
 
-	// SubscriptionPlans List of subscription plan names enabled for this API (e.g. Gold, Silver).
-	// When set, only these plans can be used when subscribing to the API.
-	SubscriptionPlans *[]string `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
+	// SubscriptionPlans The subscription plans attached to this API, with the name each had when attached and how it
+	// compares now. When set, only these plans can be used when subscribing to the API.
+	// On create and update, send each plan as `{"id": "<plan handle>"}`; a plain handle string is
+	// also accepted. `displayName` and `sourceStatus` are read-only.
+	SubscriptionPlans *[]SubscriptionPlanRef `json:"subscriptionPlans,omitempty" yaml:"subscriptionPlans,omitempty"`
 
 	// Transport Supported transports for the API (http and/or https)
 	Transport *[]string `json:"transport,omitempty" yaml:"transport,omitempty"`
@@ -6304,6 +6332,29 @@ type SubscriptionPlanPricingRequestBillingPeriod string
 
 // SubscriptionPlanPricingRequestPricingType defines model for SubscriptionPlanPricingRequest.PricingType.
 type SubscriptionPlanPricingRequestPricingType string
+
+// SubscriptionPlanRef A subscription plan attached to an API, as a publication selection reports it: the plan's
+// handle, the name stored when it was attached, and how the plan compares with that.
+type SubscriptionPlanRef struct {
+	// DisplayName The plan's current name, or the name stored when it was attached if the plan no longer
+	// exists.
+	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
+	// Id The plan's handle (GET /subscription-plans), not the database UUID.
+	Id string `json:"id" yaml:"id"`
+
+	// SourceStatus How the plan compares with the copy stored when it was attached (the API was last saved):
+	// - UNCHANGED: It has not changed since.
+	// - UPDATED: It was changed since. Saving the API again makes it UNCHANGED.
+	// - DELETED: It no longer exists.
+	SourceStatus *SubscriptionPlanRefSourceStatus `json:"sourceStatus,omitempty" yaml:"sourceStatus,omitempty"`
+}
+
+// SubscriptionPlanRefSourceStatus How the plan compares with the copy stored when it was attached (the API was last saved):
+// - UNCHANGED: It has not changed since.
+// - UPDATED: It was changed since. Saving the API again makes it UNCHANGED.
+// - DELETED: It no longer exists.
+type SubscriptionPlanRefSourceStatus string
 
 // SubscriptionPlanUsage Counts of what offers or uses a plan. Only counts are given: a plan may be offered by more APIs than a response or message can list.
 type SubscriptionPlanUsage struct {

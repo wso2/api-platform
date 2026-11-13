@@ -520,6 +520,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// placeholders already resolved; the internal fetch path needs the store for that.
 	internalGatewayService.SetSecretService(secretService)
 	graphqlAPIService.SetSecretService(secretService)
+	graphqlAPIService.SetSubscriptionPlanRepo(subscriptionPlanRepo)
 	graphqlAPIService.SetMaxSDLFetchBytes(cfg.OpenAPISpecMaxFetchBytes)
 	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
 	webhookSecretHandler := handler.NewWebhookSecretHandler(webhookSecretService, identityService, slogger)

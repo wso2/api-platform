@@ -361,6 +361,24 @@ func TestWithoutPlanHandle_KeepsTheOtherFields(t *testing.T) {
 	}
 }
 
+// An API's attached plans are stored as objects with their details, an MCP proxy's as handle
+// strings; usage reads both, and removing a plan keeps every other entry exactly as stored.
+func TestPlanListers_ReadAndRemoveObjectEntries(t *testing.T) {
+	configuration := []byte(`{"name":"Shop","subscriptionPlans":["gold",{"id":"silver","displayName":"Silver","attachedAt":"2026-11-01T00:00:00Z"},{"id":"bronze"}]}`)
+	plans, err := restAPIPlanHandles(configuration)
+	if err != nil || len(plans) != 3 || plans[0] != "gold" || plans[1] != "silver" || plans[2] != "bronze" {
+		t.Fatalf("handles = %v, %v", plans, err)
+	}
+	got, err := withoutPlanHandle(configuration, "bronze")
+	if err != nil || string(got) != `{"name":"Shop","subscriptionPlans":["gold",{"id":"silver","displayName":"Silver","attachedAt":"2026-11-01T00:00:00Z"}]}` {
+		t.Fatalf("got %s, %v", got, err)
+	}
+	got, err = withoutPlanHandle(configuration, "silver")
+	if err != nil || string(got) != `{"name":"Shop","subscriptionPlans":["gold",{"id":"bronze"}]}` {
+		t.Fatalf("got %s, %v", got, err)
+	}
+}
+
 // A CreatedAt the caller set (a copy of an API Portal plan) is kept; without one the plan is dated
 // now. UpdatedAt is always now.
 func TestSubscriptionPlanRepo_CreateKeepsTheCallersCreatedAt(t *testing.T) {
