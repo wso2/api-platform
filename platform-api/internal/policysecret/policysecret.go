@@ -32,7 +32,35 @@
 // failure of the two: the value is not merely hidden, it is gone. Keeping
 // Blank and Preserve next to each other, driven by the same resolved paths,
 // is what keeps them symmetric.
+//
+// A value may hold a credential or a reference to one. Only the credential is
+// withheld: a `{{ secret "handle" }}` reference names a secret without
+// disclosing it, and withholding it would hide from the reader which secret an
+// attachment uses while protecting nothing. Storing a credential inline is
+// still allowed, and is what Blank and Preserve are for.
 package policysecret
+
+import "github.com/wso2/api-platform/platform-api/internal/constants"
+
+// isSecretReference reports whether v is wholly a {{ secret "handle" }}
+// placeholder — a pointer to a stored secret rather than the secret itself.
+//
+// The whole value must be the placeholder. A value that merely contains one —
+// a placeholder concatenated with a literal, say — is not treated as a
+// reference: the rest of it may be credential material, and blanking the whole
+// thing withholds that at the cost of a reference the update path carries
+// forward anyway.
+//
+// The spelling comes from constants.SecretPlaceholderRe, the one definition
+// shared with ref-extraction and ref-validation, so what counts as a reference
+// here is what counts as one everywhere else.
+func isSecretReference(v any) bool {
+	text, ok := v.(string)
+	if !ok || text == "" {
+		return false
+	}
+	return constants.SecretPlaceholderRe.FindString(text) == text
+}
 
 // Path locates one parameter inside a policy's parameter map.
 //
@@ -157,6 +185,11 @@ func extend(prefix Path, element string) Path {
 // caller had actually removed. Every write-only parameter in the catalog is a
 // string, so in practice this is the empty string.
 //
+// A value that is wholly a {{ secret "handle" }} reference is returned as it is
+// — see isSecretReference. The reference is not the credential, and a reader
+// who cannot see it cannot tell an attachment that uses a secret from one that
+// is not configured at all.
+//
 // params is never modified. The copy is deep along every branch it shares with
 // a path, so a blanked response cannot reach into the stored configuration it
 // was mapped from.
@@ -191,7 +224,9 @@ func blankAt(container any, path Path) {
 	if elements, ok := container.([]any); ok && head == ArrayMarker {
 		for i, element := range elements {
 			if len(rest) == 0 {
-				elements[i] = zeroOf(element)
+				if !isSecretReference(element) {
+					elements[i] = zeroOf(element)
+				}
 				continue
 			}
 			blankAt(element, rest)
@@ -208,7 +243,9 @@ func blankAt(container any, path Path) {
 		return
 	}
 	if len(rest) == 0 {
-		obj[head] = zeroOf(value)
+		if !isSecretReference(value) {
+			obj[head] = zeroOf(value)
+		}
 		return
 	}
 	blankAt(value, rest)

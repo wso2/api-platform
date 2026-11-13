@@ -600,3 +600,92 @@ func TestStoreRebuildsAnExpiredIndex(t *testing.T) {
 		t.Errorf("manifests loaded %d times after expiry, want a reload", loads)
 	}
 }
+
+// A {{ secret "handle" }} reference names a secret without disclosing it.
+// Withholding it would hide which secret an attachment uses and protect
+// nothing — a reader could not tell it from an attachment left unconfigured.
+func TestBlankKeepsASecretReference(t *testing.T) {
+	params := map[string]any{
+		"awsSecretAccessKey": `{{ secret "aws-key" }}`,
+		"awsAccessKeyID":     "AKIAEXAMPLE",
+	}
+	paths := []Path{{"awsSecretAccessKey"}, {"awsAccessKeyID"}}
+
+	blanked := Blank(params, paths)
+
+	if blanked["awsSecretAccessKey"] != `{{ secret "aws-key" }}` {
+		t.Errorf("reference = %v, want it returned as it is", blanked["awsSecretAccessKey"])
+	}
+	if blanked["awsAccessKeyID"] != "" {
+		t.Errorf("inline value = %v, want the empty string", blanked["awsAccessKeyID"])
+	}
+}
+
+// The escaped-quote spelling is the same reference; the manifest and the
+// renderer both accept it, so this must too.
+func TestBlankKeepsAnEscapedQuoteSecretReference(t *testing.T) {
+	params := map[string]any{"password": `{{ secret \"db-password\" }}`}
+
+	blanked := Blank(params, []Path{{"password"}})
+
+	if blanked["password"] != `{{ secret \"db-password\" }}` {
+		t.Errorf("reference = %v, want it returned as it is", blanked["password"])
+	}
+}
+
+// A value that merely contains a placeholder is not a reference: the rest of it
+// may be credential material.
+func TestBlankEmptiesAValueThatOnlyContainsAReference(t *testing.T) {
+	params := map[string]any{"password": `literal-prefix-{{ secret "db-password" }}`}
+
+	blanked := Blank(params, []Path{{"password"}})
+
+	if blanked["password"] != "" {
+		t.Errorf("mixed value = %v, want the empty string", blanked["password"])
+	}
+}
+
+func TestBlankKeepsAReferenceInsideAnArrayElement(t *testing.T) {
+	params := map[string]any{"backends": []any{
+		map[string]any{"apiKey": `{{ secret "one" }}`},
+		map[string]any{"apiKey": "two-inline-secret"},
+	}}
+
+	blanked := Blank(params, []Path{{"backends", ArrayMarker, "apiKey"}})
+
+	elements := blanked["backends"].([]any)
+	if got := elements[0].(map[string]any)["apiKey"]; got != `{{ secret "one" }}` {
+		t.Errorf("backends[0].apiKey = %v, want the reference kept", got)
+	}
+	if got := elements[1].(map[string]any)["apiKey"]; got != "" {
+		t.Errorf("backends[1].apiKey = %v, want the inline value emptied", got)
+	}
+}
+
+// A reference the reader was shown comes back as a real value, so it is taken
+// as supplied rather than preserved — which is what lets a caller move an
+// attachment from one secret to another, or off a secret entirely.
+func TestPreserveTakesASuppliedReferenceOverTheStoredValue(t *testing.T) {
+	stored := map[string]any{"awsSecretAccessKey": "an-inline-secret"}
+	updated := map[string]any{"awsSecretAccessKey": `{{ secret "aws-key" }}`}
+
+	Preserve(stored, updated, []Path{{"awsSecretAccessKey"}})
+
+	if updated["awsSecretAccessKey"] != `{{ secret "aws-key" }}` {
+		t.Errorf("value = %v, want the supplied reference", updated["awsSecretAccessKey"])
+	}
+}
+
+// Round trip: a reference is shown, echoed back unchanged, and stored as it was.
+func TestBlankThenPreserveRoundTripsAReference(t *testing.T) {
+	paths := []Path{{"awsSecretAccessKey"}}
+	stored := map[string]any{"awsSecretAccessKey": `{{ secret "aws-key" }}`, "region": "us-east-1"}
+
+	asRead := Blank(stored, paths)
+	asRead["region"] = "eu-west-1"
+	Preserve(stored, asRead, paths)
+
+	if asRead["awsSecretAccessKey"] != `{{ secret "aws-key" }}` {
+		t.Errorf("reference = %v, want it unchanged across a round trip", asRead["awsSecretAccessKey"])
+	}
+}
