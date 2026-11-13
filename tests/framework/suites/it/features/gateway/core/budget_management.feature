@@ -458,3 +458,111 @@ Feature: Budget management
       {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
       """
     Then the response status code should be 200
+
+  @BUDGET-019
+  Scenario: A provider without llm-cost attached is still priced and its budget enforced
+    Given I generate a unique resource name from "bgt-priced-provider" and store it as "providerName"
+    And I generate a unique API version from "bgt-priced" and store it as "providerVersion"
+    And I generate a unique API context from "/bgt-priced" and store it as "providerContext"
+    And I generate a unique resource name from "bgt-priced" and store it as "budgetName"
+    # No llm-cost attached: the gateway adds it to every LLM provider route.
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}  |
+      | name               | ${CTX:providerName}        |
+      | displayName        | ${CTX:providerName}        |
+      | version            | ${CTX:providerVersion}     |
+      | template           | openai                     |
+      | spec.context       | ${CTX:providerContext}     |
+      | spec.upstream.url  | http://testbench:3008      |
+      | accessControl.mode | allow_all                  |
+    Then the response status code should be 201
+    When I create Budget from "resources/templates/budget.yaml" with values:
+      | apiVersion          | ${CTX:gatewaySpecVersion} |
+      | name                | ${CTX:budgetName}         |
+      | amount              | "0.01"                    |
+      | period              | day                       |
+      | action              | block                     |
+      | resource.allocation | shared                    |
+      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.limit.blockAt  | 1                         |
+    Then the response status code should be 201
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
+    Then the response status code should be 200
+    # A request without a model is not priced, so it shows the route is live without spending.
+    And I send a "POST" request to "${CTX:providerContext}/unknown-llm/v1/no-model-field" until status 200 with body:
+      """
+      {"messages":[{"role":"user","content":"Hello"}]}
+      """
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the response status code should be 200
+    When I send a "POST" request to "${CTX:providerContext}/openai/v1/chat-cached" until status 429 with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the JSON response field "budgets[0].budget" should be "${CTX:budgetName}"
+
+  # $0.01 blocking at 10% refuses from $0.001: one $0.00065 call stays under it, a call
+  # counted twice ($0.0013) would not.
+  @BUDGET-020
+  Scenario: A call through an LLM proxy is charged once, on its provider's budget
+    Given I generate a unique resource name from "bgt-proxy-provider" and store it as "providerName"
+    And I generate a unique API version from "bgt-proxy" and store it as "providerVersion"
+    And I generate a unique API context from "/bgt-proxy" and store it as "providerContext"
+    And I generate a unique resource name from "bgt-proxy" and store it as "budgetName"
+    And I generate a unique resource name from "bgt-proxy-proxy" and store it as "proxyName"
+    And I generate a unique API version from "bgt-proxy-proxy" and store it as "proxyVersion"
+    And I generate a unique API context from "/bgt-proxy-proxy" and store it as "proxyContext"
+    # No llm-cost attached: the gateway adds it to every LLM provider route.
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}  |
+      | name               | ${CTX:providerName}        |
+      | displayName        | ${CTX:providerName}        |
+      | version            | ${CTX:providerVersion}     |
+      | template           | openai                     |
+      | spec.context       | ${CTX:providerContext}     |
+      | spec.upstream.url  | http://testbench:3008      |
+      | accessControl.mode | allow_all                  |
+    Then the response status code should be 201
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion  | ${CTX:gatewaySpecVersion} |
+      | name        | ${CTX:proxyName}          |
+      | displayName | ${CTX:proxyName}          |
+      | version     | ${CTX:proxyVersion}       |
+      | context     | ${CTX:proxyContext}       |
+      | provider.id | ${CTX:providerName}       |
+    Then the response status code should be 201
+    When I create Budget from "resources/templates/budget.yaml" with values:
+      | apiVersion          | ${CTX:gatewaySpecVersion} |
+      | name                | ${CTX:budgetName}         |
+      | amount              | "0.01"                    |
+      | period              | day                       |
+      | action              | block                     |
+      | resource.allocation | shared                    |
+      | spec.resource.id    | ${CTX:providerName}       |
+      | spec.limit.blockAt  | 10                        |
+    Then the response status code should be 201
+    When I send a "GET" request to the "policy-engine" service at "/config_dump" until lazy resource "${CTX:budgetName}" of type "Budget" is present
+    Then the response status code should be 200
+    # A request without a model is not priced, so it shows the route is live without spending.
+    And I send a "POST" request to "${CTX:proxyContext}/unknown-llm/v1/no-model-field" until status 200 with body:
+      """
+      {"messages":[{"role":"user","content":"Hello"}]}
+      """
+    When I send a "POST" request to "${CTX:proxyContext}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the response status code should be 200
+    When I send a "POST" request to "${CTX:proxyContext}/openai/v1/chat-cached" with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the response status code should be 200
+    When I send a "POST" request to "${CTX:proxyContext}/openai/v1/chat-cached" until status 429 with body:
+      """
+      {"model":"gpt-4o","messages":[{"role":"user","content":"Hello"}]}
+      """
+    Then the JSON response field "budgets[0].budget" should be "${CTX:budgetName}"

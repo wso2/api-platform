@@ -193,7 +193,7 @@ func NewAPIServer(
 	server.llmDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
 
 	server.agentService = agentService
-	server.budgetService = budget.NewService(db, budgets, logger, systemConfig.Controller.ControlPlane.DeploymentSyncEnabled)
+	server.budgetService = budget.NewService(db, budgets, eventHub, gatewayID, logger, systemConfig.Controller.ControlPlane.DeploymentSyncEnabled)
 	server.AgentHandler = NewAgentHandler(agentService, logger)
 
 	server.restAPIService = restAPIService

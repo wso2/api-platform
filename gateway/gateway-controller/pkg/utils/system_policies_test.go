@@ -292,7 +292,7 @@ func TestInjectSystemPolicies_PreservesExistingPolicies(t *testing.T) {
 	assert.Equal(t, "policy2", result[2].Name)
 }
 
-func TestInjectSystemPolicies_BudgetPolicyOnLLMChainsOnly(t *testing.T) {
+func TestInjectSystemPolicies_BudgetPolicyOnLLMProviderChainsOnly(t *testing.T) {
 	cfg := &config.Config{Analytics: config.AnalyticsConfig{Enabled: true}}
 	existing := []policyenginev1.PolicyInstance{{Name: "llm-cost", Version: "v1"}}
 	chainFor := func(kind string) []string {
@@ -308,9 +308,8 @@ func TestInjectSystemPolicies_BudgetPolicyOnLLMChainsOnly(t *testing.T) {
 	// response phase runs after llm-cost has published the cost.
 	want := []string{constants.ANALYTICS_SYSTEM_POLICY_NAME, constants.BUDGET_SYSTEM_POLICY_NAME, "llm-cost"}
 	assert.Equal(t, want, chainFor("LlmProvider"))
-	assert.Equal(t, want, chainFor("LlmProxy"))
 
-	for _, kind := range []string{"RestApi", "Mcp", "GraphQLApi", ""} {
+	for _, kind := range []string{"LlmProxy", "RestApi", "Mcp", "GraphQLApi", ""} {
 		assert.NotContains(t, chainFor(kind), constants.BUDGET_SYSTEM_POLICY_NAME, kind)
 	}
 }

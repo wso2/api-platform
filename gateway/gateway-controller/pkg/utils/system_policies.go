@@ -114,12 +114,13 @@ var defaultSystemPolicies = []systemPolicyConfig{
 		FaultPath: true,
 	},
 	{
-		// Budget system policy: always on for LLM traffic. With no budgets published it
-		// admits every request.
+		// Budget system policy: always on for LLM provider traffic. With no budgets
+		// published it admits every request. Not on LLM proxies: a proxy call reaches
+		// its provider's route over the internal loopback and is counted there, once.
 		Name:     constants.BUDGET_SYSTEM_POLICY_NAME,
 		Version:  constants.BUDGET_SYSTEM_POLICY_VERSION,
 		Enabled:  func(cfg *config.Config) bool { return cfg != nil },
-		APIKinds: []string{models.KindLlmProvider, models.KindLlmProxy},
+		APIKinds: []string{models.KindLlmProvider},
 	},
 }
 

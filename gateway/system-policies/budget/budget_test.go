@@ -304,14 +304,15 @@ func TestAllowanceUUIDs(t *testing.T) {
 	}
 }
 
-func TestLoopbackLegAndNonLLMRoutesAreSkipped(t *testing.T) {
+func TestProxyLoopbackCallsAreCountedAndOtherRoutesSkipped(t *testing.T) {
 	p, _, _ := testPolicy(t, budgetBody("all", testBudgetUUID, "1", "day", "block", allProviders, nil))
-	send(t, p, call{provider: "openai", headers: map[string][]string{internalLoopbackHeader: {"1"}}}, "5")
-	if send(t, p, call{provider: "openai"}, "") != nil {
-		t.Fatal("the loopback leg was charged")
-	}
-	if send(t, p, call{}, "") != nil {
+	if send(t, p, call{}, "5") != nil {
 		t.Fatal("a route without a provider was matched")
+	}
+	// An LLM proxy's call reaches the provider route over the loopback; that is where it counts.
+	send(t, p, call{provider: "openai", headers: map[string][]string{"x-wso2-internal-loopback": {"1"}}}, "1")
+	if send(t, p, call{provider: "openai"}, "") == nil {
+		t.Fatal("the proxy's call was not charged")
 	}
 }
 
