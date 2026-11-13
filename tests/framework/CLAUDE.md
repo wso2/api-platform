@@ -1,40 +1,76 @@
 # Test Framework Engineering Rules
 
-## Architecture
+## Suites: Where a Test Goes
 
-Integration-test steps should use this structure:
+| Suite | Tests | Runs against | Suite file |
+|---|---|---|---|
+| `suites/it` | On-premises products at the API level: REST calls, the `ap` CLI and gateway traffic, no browser | Containers the framework starts (`testbench` mocks the backends) | `it-suite.yaml` + `blocks/*.yaml` |
+| `suites/ui` | On-premises portals through the browser (Playwright journeys) | Containers the framework starts, plus a browser container | `ui-suite.yaml` |
+| `suites/cloud` | The hosted APIP cloud: behaviour only the cloud has, such as the cloud console, managed gateways, environments and promotion | An external cloud environment; nothing is started locally | `cloud-suite.yaml` |
+
+- Test on-premises product behaviour in `suites/it`, and its portal journeys in `suites/ui`.
+  Test behaviour that exists only in the hosted cloud in `suites/cloud`.
+- Every product test starts from an entry in a scenario list: `scenarios/on-prem/` for
+  `suites/it` and `suites/ui`, `scenarios/cloud/` for `suites/cloud`. See "Scenario Lists".
+  A framework-support feature takes an exclusion annotation instead ("Scenario Annotations").
+- `.agents/skills/write-framework-tests/SKILL.md` (at the repository root) walks through
+  writing a test from its scenario-list entry to a passing scenario, step by step.
+- The cloud suite runs from the apim-saas e2e image against a shared organisation. On a pull
+  request it is only compiled and its step unit tests run, so its scenarios must be safe to
+  run repeatedly against shared, long-lived resources.
+
+### Feature files
+
+| Suite | Layout | Example |
+|---|---|---|
+| `suites/it` | `features/<product>/<area>/`, kebab-case folders | `features/gateway/mtls/`, `features/management-portal/deployments/lifecycle/` |
+| `suites/ui` | `features/<portal>/`, snake_case folders | `features/apiportal/`, `features/management_portal/` |
+| `suites/cloud` | `features/apip_<area>.feature`, one file per cloud area | `features/apip_gateway.feature` |
+
+`suites/it` product folders:
+
+- `gateway/`: the gateway on its own (deploy, policies, routes, security, mTLS, GraphQL,
+  observability, control-plane connection).
+- `management-portal/`: the control plane (Platform API) that backs the Management Portal.
+- `apiportal/`: the API Portal server.
+- `ai-workspace/`: AI Workspace resources through the control plane.
+- `ai-workspace-gateway/`: AI Workspace proxies (LLM, MCP, agent) deployed straight to the
+  gateway.
+- `cli/`: the `ap` CLI.
+
+`suites/ui` portal folders: `ai_workspace/` and `aiw_llm/` (AI Workspace; `aiw_llm/` holds
+the journeys of the `AIW-LLM` scenario list), `apiportal/` and `management_portal/`.
+
+### Step packages
 
 ```text
 suites/it/steps/
-├── base.go
-├── request.go
-├── assertions.go
-├── health.go
-│
-├── common/
-│   ├── request.go
-│   ├── json.go
-│   └── polling.go
-│
-└── platformgateway/
-    ├── gateway.go
-    ├── endpoint.go
-    ├── health.go
-    ├── resource.go
-    ├── policy.go
-    └── template.go
+├── base.go            suite construction and common step registration
+├── common/            product-independent step mechanics (naming, polling, templates)
+├── platformgateway/   gateway endpoints, resources, health, policies, mTLS
+├── platformapi/       control plane (Platform API) resources and deployments
+├── apiportal/         API Portal server
+├── apcli/             the ap CLI session shared by CLI step packages
+└── aiworkspacecli/    the ap CLI's ai-workspace commands
+
+suites/ui/steps/
+├── base.go, browser.go  suite construction and browser mechanics
+├── uivalue/           placeholder resolution for UI steps
+├── aiworkspace/       AI Workspace pages
+├── apiportal/         API Portal pages
+└── managementportal/  Management Portal (API Control Plane) pages
+
+suites/cloud/steps/cloudconsole/   cloud control-plane and data-plane steps
+suites/cloud/setup/                run-level starter and finalizer for the shared organisation
 ```
 
 `base.go` is the entry point for suite construction and step registration.
 
 The root `steps` package contains suite-wide behavior. The `common` package
-contains reusable step mechanics that are independent of a product. The
-`platformgateway` package contains platform-gateway-specific endpoints,
-resources, health checks, policies, and template behavior.
-
-When steps for another product are introduced, place them in a product-specific
-package using the same structure. Do not reference product step packages that do
-not yet exist, and do not add product-specific behavior to `common`.
+contains reusable step mechanics that are independent of a product. Each product
+package contains that product's endpoints, resources, health checks and
+assertions. Put a new product's steps in a package of its own, and do not add
+product-specific behavior to `common`.
 
 Before adding a helper, step, or dependency:
 
@@ -48,8 +84,8 @@ Before adding a helper, step, or dependency:
 
 ## Product and Framework Test Boundaries
 
-- `suites/it` and `suites/ui` contain product user journeys and product
-  integration behavior defined by suite YAML.
+- `suites/it`, `suites/ui` and `suites/cloud` contain product user journeys and
+  product integration behavior defined by suite YAML.
 - Do not use product feature files to test framework scheduling, runner or
   block isolation, cleanup ownership, concurrency orchestration, or topology
   mechanics.
@@ -59,9 +95,11 @@ Before adding a helper, step, or dependency:
 - A product scenario may test concurrent product requests only when that
   concurrency is part of user-visible product behavior. Use deterministic
   synchronization; runner parallelism alone is not a concurrency guarantee.
-- Keep framework-only tests out of `it-suite.yaml` and `ui-suite.yaml`.
-- Put each feature file in a product folder under `features/`, such as
-  `features/gateway/mtls/`, never at the root of `features/`.
+- Keep framework-only tests out of `it-suite.yaml` (and its `blocks/` files), `ui-suite.yaml`
+  and `cloud-suite.yaml`.
+- In `suites/it` and `suites/ui`, put each feature file in a product folder under
+  `features/`, such as `features/gateway/mtls/`, never at the root of `features/`. See
+  "Feature files" above for each suite's layout.
 
 ## Step Definitions
 
@@ -410,16 +448,65 @@ boot instead of reporting a test failure.
   concurrency requires comparison of resource state, partitions, browser
   diagnostics, and product logs before declaring a framework limitation.
 
+## Integration Suite Blocks
+
+`suites/it/it-suite.yaml` holds only the suite-wide settings (`defaults`, timeouts) and lists,
+under `blockFiles`, the files that hold its blocks. Each file under `suites/it/blocks/` covers
+one combination of the products its tests check. Helper services (`testbench`, `tls-backend`,
+`a2a-trip-planner`) do not count towards the combination, and neither does a product a block
+starts only because another needs it (the Platform API an API Portal depends on).
+
+| File | Products the tests check | Generic block |
+|---|---|---|
+| `blocks/gateway.yaml` | gateway | `gateway-core` |
+| `blocks/platform-api.yaml` | Platform API | (its only block) |
+| `blocks/platform-api-gateway.yaml` | Platform API + gateway | `platform-api-core` |
+| `blocks/api-portal.yaml` | API Portal | `api-portal-core` |
+| `blocks/platform-api-gateway-api-portal.yaml` | Platform API + API Portal + gateway | `platform-api-gateway-api-portal` |
+
+To add a feature to the suite:
+
+1. Pick the file by the products the feature's scenarios check.
+2. Add the feature to an existing runner in that file whose setup, dependencies and tags fit
+   it. Otherwise add a runner to an existing block that fits: one whose product settings
+   (overlay) and isolation the feature can run with. Most features fit the file's generic
+   block in the table above; a feature that needs a special setting or isolation may fit an
+   existing block that already has it.
+3. Add a new block only as the last resort, when no existing block fits: the feature needs a
+   product setting (an overlay) other runners must not see, or must run alone because it
+   restarts or stops a product, reads gateway-wide counters or logs, or expects a product with
+   no other state. Write the reason as a comment above the new block.
+4. A new combination of products is an even worse last resort: check that the feature cannot
+   be tested with an existing combination first. If it really needs one, add
+   `blocks/<products>.yaml` with the same header as the other files, list it in
+   `blockFiles`, and add it to the table above.
+
+- Keep a general-purpose block first in each block file. When a step package changes, CI runs
+  the first block of every file as a sample (`cmd/affectedblocks`), to catch a step hook that
+  fails in blocks without that package's product.
+- Do not put blocks back in `it-suite.yaml`.
+- Block names are unique across all the files; the loader rejects a duplicate.
+- Feature paths in a block file are relative to `suites/it`, the same as in `it-suite.yaml`.
+- Find the block that runs a feature with `grep -rn "<feature>.feature" suites/it/blocks/`.
+
 ## Scenario Lists
 
-A product feature with a scenario list has `scenarios/<CODE>.yaml` (for example
-`scenarios/AIW-LLM.yaml`): one entry per scenario ID, kept by hand. Scenarios without an ID
-are fine; the rules below apply to those that carry one.
+Every product test starts from a scenario list: one file per product feature, one entry per
+scenario ID, kept by hand. A framework-support feature has no list entry; it carries an
+exclusion annotation instead ("Scenario Annotations").
 
-- Each entry records both layers: `ui` (browser journeys under `suites/ui`) and `it`
-  (API-level scenarios under `suites/it`). A layer's status is `automated`, `known-issue`
-  (with `issue`), `exempt` (with `reason`, approved by the feature owner) or `planned`, and
-  `refs` names the feature file and scenario that automate it.
+| Lists | For | Layers each entry records |
+|---|---|---|
+| `scenarios/on-prem/<CODE>.yaml` (for example `scenarios/on-prem/AIW-LLM.yaml`) | `suites/it` and `suites/ui` | `it` (API-level scenarios under `suites/it`) and `ui` (browser journeys under `suites/ui`) |
+| `scenarios/cloud/<CODE>.yaml` | `suites/cloud` | `cloud` (scenarios under `suites/cloud`) |
+
+Before writing a scenario, find the entry it automates in its feature's list. If the entry
+does not exist, add it in the same change as the scenario; if the feature has no list, start
+one. The lists in the repository are where IDs are created and kept.
+
+- A layer's status is `automated`, `known-issue` (with `issue`), `exempt` (with `reason`,
+  approved by the feature owner) or `planned`, and `refs` names the feature file and
+  scenario that automate it.
 - Tag each scenario with every ID it covers (`@AIW-PRV-001`), on the scenario only, and the
   feature with the list's code (`@AIW-LLM`). Update the entry's `refs` and status with the
   scenario.
@@ -440,7 +527,14 @@ are fine; the rules below apply to those that carry one.
   negative cannot pass because the request or page is broken.
 - A scenario that covers an ID is done when it has passed three consecutive local runs and an
   assertion check: temporarily break the condition it asserts and confirm that it fails.
-- Do not invent IDs. Maintainers assign them; an ID is added to its list before it is tagged.
+- A new entry takes the next free number for its ID prefix (after `APIDEF-014` comes
+  `APIDEF-015`; a list may use one prefix per sub-feature, as `AIW-LLM` does with `AIW-PRV`
+  and `AIW-PRX`), with a title that states the action and the expected result, and a
+  priority. A new list takes a short code of its own. The pull request review approves new
+  entries and codes, and the feature owner reviews them.
+- Never reuse, renumber or delete an ID that has been merged; retire an entry by marking its
+  layers `exempt` with the reason. An ID is added to its list before a scenario is tagged
+  with it.
 
 ## Scenario Annotations
 
@@ -470,8 +564,8 @@ duplicating it.
 
 ### Feature level
 
-- Search the feature's scenario list under `scenarios/` and the existing `.feature` files
-  for the behaviour under test.
+- Search the feature's scenario list under `scenarios/on-prem/` or `scenarios/cloud/` and the
+  existing `.feature` files for the behaviour under test.
 - Add scenarios to the existing feature file when it already owns the behavior.
 - Extend a `Scenario Outline` with another example when only the inputs differ.
 - Create a new feature file only when no existing feature represents the

@@ -516,6 +516,19 @@ skip_verify = false
 # POLICY ENGINE CONFIGURATION
 # =============================================================================
 
+# Environment variables that {{ env "NAME" }} in API / LLM / MCP / agent artifact
+# specs (e.g. policy params, upstream URLs) may read. Rendering happens in the
+# gateway-controller, so this is read by the controller, not the policy engine.
+# When allow_list is not set, artifacts may read any environment variable (the
+# behaviour of earlier releases). When it is set, only the listed variables are
+# readable, and an artifact that references any other one fails to deploy with
+# a 400. Entries are exact names ("BACKEND_URL") or a prefix ending in "*"
+# ("BACKEND_*"); an empty list permits none. May also be given as one
+# comma-separated string, e.g. allow_list = '{{ env "ARTIFACT_ENV_ALLOW_LIST" "" }}'
+# (a blank value leaves access unrestricted).
+[policy_engine.env_access]
+# allow_list = ["BACKEND_URL", "BACKEND_*"]
+
 # handle_upstream_faults routes a failure the UPSTREAM or the ROUTER produced through
 # the fault flow instead of the ordinary response policies.
 #

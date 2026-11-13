@@ -38,6 +38,7 @@ export function makeAuthState(overrides: Partial<AuthState> = {}): AuthState {
       : undefined,
     login: vi.fn(),
     loginWithCredentials: vi.fn().mockResolvedValue(true),
+    canSwitchOrganization: false,
     exchangeOrgToken: vi.fn().mockResolvedValue(true),
     logout: vi.fn(),
     ...overrides,

@@ -42,6 +42,7 @@ import {
 } from '@/api/resources/subscriptionPlans';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { SubscriptionPlanIllustration } from '@/components/illustrations/SubscriptionPlanIllustration';
 import { EmptyResults } from '@/components/common/EmptyResults';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
@@ -231,6 +232,7 @@ export function SubscriptionPlansPage() {
   );
   const updateMutation = useUpdateSubscriptionPlan();
   const deleteMutation = useDeleteSubscriptionPlan();
+  const trackFeature = useTrackFeature();
 
   const [dialogTarget, setDialogTarget] = useState<'create' | SubscriptionPlan | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SubscriptionPlan | null>(null);
@@ -253,6 +255,9 @@ export function SubscriptionPlansPage() {
   const toggleStatus = (plan: SubscriptionPlan) => {
     if (!plan.id) return;
     const nextStatus = plan.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    trackFeature('apip.monetization.subscription-plan-status-change-click', {
+      status: nextStatus === 'ACTIVE' ? 'active' : 'inactive',
+    });
     updateMutation.mutate(
       {
         // Sends a partial update so a stale plan can't overwrite its conditions.
@@ -284,6 +289,7 @@ export function SubscriptionPlansPage() {
   const confirmDelete = () => {
     if (!deleteTarget?.id) return;
     const { displayName, id } = deleteTarget;
+    trackFeature('apip.monetization.subscription-plan-delete-click', {});
     deleteMutation.mutate(
       { subscriptionPlanId: id },
       {

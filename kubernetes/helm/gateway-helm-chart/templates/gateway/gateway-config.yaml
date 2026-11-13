@@ -353,6 +353,13 @@ data:
     [policy_engine.fault_policies]
     handle_upstream_faults = {{ dig "fault_policies" "handle_upstream_faults" false $pe }}
 
+    {{- $envAccess := default (dict) $pe.env_access }}
+    {{- if hasKey $envAccess "allow_list" }}
+
+    [policy_engine.env_access]
+    allow_list = [{{- range $i, $name := $envAccess.allow_list }}{{- if gt $i 0 }}, {{ end }}{{ $name | quote }}{{- end }}]
+    {{- end }}
+
     [policy_engine.request_body]
     max_decompressed_bytes = {{ $pe.request_body.max_decompressed_bytes | int64 }}
 

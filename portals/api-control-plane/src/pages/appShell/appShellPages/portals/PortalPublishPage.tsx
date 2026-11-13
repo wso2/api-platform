@@ -34,6 +34,7 @@ import {
 import { isApiError, isErrorCode } from '@/api/core/errors';
 import { AppPage } from '@/components/AppPage';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useTrackFeature } from '@/featureUsage';
 import { useFillScrollArea } from '@/hooks/useFillScrollArea';
 import { useFrozenWhile } from '@/hooks/useFrozenWhile';
 import { useObjectUrl } from '@/api/core/objectUrl';
@@ -51,7 +52,10 @@ import { ApiDetailsTab } from './components/ApiDetailsTab';
 import { DocumentsTab } from './components/DocumentsTab';
 import { LandingPageTab } from './components/LandingPageTab';
 import { PublicationLoadError } from './components/PublicationLoadError';
-import { PublicationVersionCard, type PublicationVersionTone } from './components/PublicationVersionCard';
+import {
+  PublicationVersionCard,
+  type PublicationVersionTone,
+} from './components/PublicationVersionCard';
 import { PublicationVersionToggle } from './components/PublicationVersionToggle';
 import { PublishActionsBar, PublishedActionsBar } from './components/PublishActionsBar';
 import { PublishedSpecificationTab } from './components/PublishedSpecificationTab';
@@ -164,7 +168,8 @@ const messages = defineMessages({
   deprecatedBannerMeta: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecatedBannerMeta',
     defaultMessage: 'Deprecated {time}',
-    description: 'Banner byline when the live listing is flagged as deprecated. {time} is a relative time such as "2 days ago".',
+    description:
+      'Banner byline when the live listing is flagged as deprecated. {time} is a relative time such as "2 days ago".',
   },
   draftMissing: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.draftMissing',
@@ -203,7 +208,8 @@ const messages = defineMessages({
   confirmInputLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.confirmInputLabel',
     defaultMessage: 'Type "{name}" to confirm',
-    description: 'Label for the type-to-confirm field. {name} is the API name; do not translate it.',
+    description:
+      'Label for the type-to-confirm field. {name} is the API name; do not translate it.',
   },
   deprecated: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.PortalPublishPage.deprecated',
@@ -268,15 +274,25 @@ const rethrowUnreported = (error: unknown): void => {
 /** Takes out of one selection the ids the draft cannot offer: ones the server no longer knows, or plans that are not active. */
 const withoutUnusableIds =
   (field: 'docIds' | 'subscriptionPlanIds', isUsable: (id: string) => boolean) =>
-  (current: DraftFormValues): DraftFormValues => ({ ...current, [field]: current[field].filter(isUsable) });
+  (current: DraftFormValues): DraftFormValues => ({
+    ...current,
+    [field]: current[field].filter(isUsable),
+  });
 
 /** The fields that show a validation message. */
 const FORM_FIELDS: DraftFormField[] = ['displayName', 'version', 'productionUrl', 'sandboxUrl'];
 
-type PublishTab = 'details' | 'specification' | 'subscriptionPlans' | 'documentations' | 'landingPage';
+type PublishTab =
+  'details' | 'specification' | 'subscriptionPlans' | 'documentations' | 'landingPage';
 
 /** Which action is currently in flight, so the right button (and only that one) shows busy. */
 type PendingAction = 'idle' | 'saving' | 'publishing' | 'unpublishing' | 'deprecating';
+
+/** A part of the publication draft, saved by its own request. */
+type DraftPart = 'metadata' | 'definition' | 'thumbnail' | 'landing-page';
+
+/** Told about each part of the draft just before it is sent. */
+type ReportDraftPart = (part: DraftPart) => void;
 
 /**
  * The publish/unpublish/deprecate flow for one API on one API Portal. Publish takes no body and
@@ -319,6 +335,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   // or opening the editor never moves the header or the action buttons.
   const fill = useFillScrollArea<HTMLDivElement>(MIN_PAGE_HEIGHT);
   const { notify } = useNotifications();
+  const trackFeature = useTrackFeature();
   const { apiHandle: apiHandler, apiType } = target;
   const isGraphQL = target.definitionKind === 'graphql';
   const defaultFormat: DefinitionFormat = isGraphQL ? 'graphql' : 'json';
@@ -338,7 +355,11 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const [tab, setTab] = useState<PublishTab>('details');
   // Which version the user picked; until they pick, the live version if there is one, else the draft.
   const [chosenView, setChosenView] = useState<PublicationVersionTone>();
-  const data = usePublishPageData(apiPortalId, target, chosenView !== 'draft' && tab === 'specification');
+  const data = usePublishPageData(
+    apiPortalId,
+    target,
+    chosenView !== 'draft' && tab === 'specification',
+  );
 
   const plansQuery = useAllSubscriptionPlans();
 
@@ -410,11 +431,14 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   }, [initialized, data.seed, defaultFormat]);
 
   // Not an edit to save: the draft never shows a dropped id, and the next save or publish leaves it out.
-  const dropFromSelection = useCallback((field: 'docIds' | 'subscriptionPlanIds', isUsable: (id: string) => boolean) => {
-    const without = withoutUnusableIds(field, isUsable);
-    setValues(without);
-    setSaved((current) => ({ ...current, values: without(current.values) }));
-  }, []);
+  const dropFromSelection = useCallback(
+    (field: 'docIds' | 'subscriptionPlanIds', isUsable: (id: string) => boolean) => {
+      const without = withoutUnusableIds(field, isUsable);
+      setValues(without);
+      setSaved((current) => ({ ...current, values: without(current.values) }));
+    },
+    [],
+  );
 
   // The draft offers active plans only, so a plan deleted or deactivated elsewhere is dropped quietly
   // rather than submitted (the server refuses an inactive one).
@@ -507,12 +531,16 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const markTouched = (field: DraftFormField) =>
     setTouched((current) => ({ ...current, [field]: true }));
 
-  const touchAllFields = () => setTouched(Object.fromEntries(FORM_FIELDS.map((field) => [field, true])));
+  const touchAllFields = () =>
+    setTouched(Object.fromEntries(FORM_FIELDS.map((field) => [field, true])));
 
   /** An edited field's message waits for its next blur, so it never flashes while the user is still typing. */
   const handleChange = (next: DraftFormValues) => {
     const edited = FORM_FIELDS.filter((field) => next[field] !== values[field]);
-    setTouched((current) => ({ ...current, ...Object.fromEntries(edited.map((field) => [field, false])) }));
+    setTouched((current) => ({
+      ...current,
+      ...Object.fromEntries(edited.map((field) => [field, false])),
+    }));
     setValues(next);
   };
 
@@ -533,7 +561,9 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     const result = parseSpecText(definitionText, definitionFormat);
     if (result.status !== 'parsed') {
       setDefinitionParseError(
-        result.status === 'malformed' ? result.reason : intl.formatMessage(messages.definitionNotAnObject),
+        result.status === 'malformed'
+          ? result.reason
+          : intl.formatMessage(messages.definitionNotAnObject),
       );
       setChosenView('draft');
       setTab('specification');
@@ -556,14 +586,18 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     }
   };
 
-  /** Saves the API Details fields alone. False, untouched, when the form itself is invalid. */
-  const saveDetails = async (): Promise<boolean> => {
-    if (formInvalid) {
-      touchAllFields();
-      setChosenView('draft');
-      setTab('details');
-      return false;
-    }
+  /** Whether the API Details fields can be saved. If not, shows every message and takes the user to them. */
+  const detailsValid = (): boolean => {
+    if (!formInvalid) return true;
+    touchAllFields();
+    setChosenView('draft');
+    setTab('details');
+    return false;
+  };
+
+  /** Saves the API Details fields alone; `detailsValid()` is checked first. */
+  const saveDetails = async (report?: ReportDraftPart) => {
+    report?.('metadata');
     await saveDraftMutation.mutateAsync({
       apiPortalId,
       apiType,
@@ -571,13 +605,13 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       body: draftFormValuesToInput(values),
     });
     setSaved((current) => ({ ...current, values }));
-    return true;
   };
 
   /** Saves the Specification definition alone. False, untouched, when the buffer doesn't parse. */
-  const saveDefinition = async (): Promise<boolean> => {
+  const saveDefinition = async (report?: ReportDraftPart): Promise<boolean> => {
     const definitionDocument = parseDefinition();
     if (!definitionDocument) return false;
+    report?.('definition');
     await reportingMissingDraft(
       saveDefinitionMutation.mutateAsync({
         apiPortalId,
@@ -592,14 +626,21 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   };
 
   /** Saves the thumbnail unless the draft already stores it. A refused image reverts to the last saved one so it can't fail every later save; any other failure keeps it for retry. */
-  const saveThumbnail = async () => {
+  const saveThumbnail = async (report?: ReportDraftPart) => {
     if (!thumbnail || thumbnail === storedThumbnail) return;
+    report?.('thumbnail');
     try {
       await reportingMissingDraft(
-        saveThumbnailMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler, file: thumbnail }),
+        saveThumbnailMutation.mutateAsync({
+          apiPortalId,
+          apiType,
+          apiId: apiHandler,
+          file: thumbnail,
+        }),
       );
     } catch (error) {
-      if (isApiError(error) && (error.isValidation || error.status === 413)) setThumbnail(saved.thumbnail);
+      if (isApiError(error) && (error.isValidation || error.status === 413))
+        setThumbnail(saved.thumbnail);
       throw error;
     }
     setStoredThumbnail(thumbnail);
@@ -607,10 +648,16 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   };
 
   /** Saves the landing page unless the draft already stores it. */
-  const saveLandingPage = async () => {
+  const saveLandingPage = async (report?: ReportDraftPart) => {
     if (landingPage === undefined || landingPage === storedLandingPage) return;
+    report?.('landing-page');
     await reportingMissingDraft(
-      saveLandingPageMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler, markdown: landingPage }),
+      saveLandingPageMutation.mutateAsync({
+        apiPortalId,
+        apiType,
+        apiId: apiHandler,
+        markdown: landingPage,
+      }),
     );
     setStoredLandingPage(landingPage);
     setSaved((current) => ({ ...current, landingPage }));
@@ -620,9 +667,11 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
    * Saves the thumbnail and the landing page, each on its own: one failing must not leave the other unsaved.
    * The first failure is rethrown once both have been tried, so the caller still stops.
    */
-  const saveAssets = async () => {
-    const results = await Promise.allSettled([saveThumbnail(), saveLandingPage()]);
-    const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+  const saveAssets = async (report?: ReportDraftPart) => {
+    const results = await Promise.allSettled([saveThumbnail(report), saveLandingPage(report)]);
+    const failed = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
     if (failed) throw failed.reason;
   };
 
@@ -676,15 +725,34 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
     }
   };
 
+  // One Save Draft click is one action, reported once with the parts it sent
+  // (the details are always sent). Reported when the save ends, even on a
+  // failure, since which parts go out is only known as each one is decided.
+  // Publish's own saves on the way to publishing report nothing.
   const handleSaveDraft = () =>
     runAction('saving', async () => {
-      if (!(await saveDetails())) return;
-      const definitionSaved = await saveDefinition();
-      await saveAssets();
-      notify(
-        intl.formatMessage(definitionSaved ? messages.draftSaved : messages.draftSavedDetailsOnly),
-        definitionSaved ? 'success' : 'warning',
-      );
+      if (!detailsValid()) return;
+      const sent = new Set<DraftPart>();
+      const recordPart: ReportDraftPart = (part) => sent.add(part);
+      const flag = (part: DraftPart) => (sent.has(part) ? 'yes' : 'no');
+      try {
+        await saveDetails(recordPart);
+        const definitionSaved = await saveDefinition(recordPart);
+        await saveAssets(recordPart);
+        notify(
+          intl.formatMessage(
+            definitionSaved ? messages.draftSaved : messages.draftSavedDetailsOnly,
+          ),
+          definitionSaved ? 'success' : 'warning',
+        );
+      } finally {
+        trackFeature('apip.lifecycle.publication-draft-save-click', {
+          api_type: apiType,
+          definition_saved: flag('definition'),
+          landing_page_changed: flag('landing-page'),
+          thumbnail_changed: flag('thumbnail'),
+        });
+      }
     });
 
   // Each terminal action leaves this one portal's page behind for the listing,
@@ -694,7 +762,9 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   const handlePublish = () =>
     runAction('publishing', async () => {
-      if (!(await saveDetails())) return;
+      if (!detailsValid()) return;
+      trackFeature('apip.lifecycle.api-publish-click', { api_type: apiType });
+      await saveDetails();
       // Publish requires a saved, parseable definition — never proceed on a
       // partial save, which would publish whatever definition was already
       // there rather than what the user is looking at.
@@ -717,6 +787,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   const confirmUnpublish = () => {
     setConfirmingUnpublish(false);
+    trackFeature('apip.lifecycle.api-unpublish-click', { api_type: apiType });
     return runAction('unpublishing', async () => {
       await unpublishMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler });
       notify(intl.formatMessage(messages.unpublished, { portalName }), 'success');
@@ -726,6 +797,7 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   const confirmDeprecate = () => {
     setConfirmingDeprecate(false);
+    trackFeature('apip.lifecycle.api-deprecate-click', { api_type: apiType });
     return runAction('deprecating', async () => {
       await deprecateMutation.mutateAsync({ apiPortalId, apiType, apiId: apiHandler });
       notify(intl.formatMessage(messages.deprecated, { portalName }), 'success');
@@ -736,9 +808,16 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const publishedValues = resolveDraftFormValues(undefined, publication, undefined);
   // Only when it last changed: the switch already says which version this is, and the form shows its number.
   const draftBannerMeta = (() => {
-    if (!hasUnsavedChanges) return draft && intl.formatMessage(messages.draftBannerMeta, { time: relativeTime(draft.updatedAt) });
+    if (!hasUnsavedChanges)
+      return (
+        draft &&
+        intl.formatMessage(messages.draftBannerMeta, { time: relativeTime(draft.updatedAt) })
+      );
     return draft
-      ? intl.formatMessage(messages.draftBannerMetaUnsaved, { time: relativeTime(draft.updatedAt), unsaved })
+      ? intl.formatMessage(messages.draftBannerMetaUnsaved, {
+          time: relativeTime(draft.updatedAt),
+          unsaved,
+        })
       : intl.formatMessage(messages.unsavedBannerMeta, { unsaved });
   })();
   const savedPlanIds = resolveDraftFormValues(draft, publication, undefined).subscriptionPlanIds;
@@ -748,9 +827,12 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const publishedEditedDocIds = editedDocIdsOf(publication);
   const banner = showingPublished
     ? {
-        meta: intl.formatMessage(canDeprecate ? messages.publishedBannerMeta : messages.deprecatedBannerMeta, {
-          time: relativeTime(publication?.updatedAt),
-        }),
+        meta: intl.formatMessage(
+          canDeprecate ? messages.publishedBannerMeta : messages.deprecatedBannerMeta,
+          {
+            time: relativeTime(publication?.updatedAt),
+          },
+        ),
       }
     : draftBannerMeta
       ? { meta: draftBannerMeta }
@@ -760,7 +842,9 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
   const renderPublishedContent = () => {
     switch (tab) {
       case 'details':
-        return <ApiDetailsTab readOnly thumbnailUrl={publishedThumbnailUrl} values={publishedValues} />;
+        return (
+          <ApiDetailsTab readOnly thumbnailUrl={publishedThumbnailUrl} values={publishedValues} />
+        );
       case 'subscriptionPlans':
         return (
           <SubscriptionPlansTab
@@ -879,13 +963,19 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
   return (
     <>
-      <Box ref={fill.ref} sx={{ display: 'flex', flexDirection: 'column', height: fill.height, minHeight: 0 }}>
+      <Box
+        ref={fill.ref}
+        sx={{ display: 'flex', flexDirection: 'column', height: fill.height, minHeight: 0 }}
+      >
         <PageTitle sx={{ mb: 3 }}>
           <PageTitle.BackButton component={<Link to={target.portalsPath} />}>
             <FormattedMessage {...messages.back} />
           </PageTitle.BackButton>
           <PageTitle.Header>
-            <FormattedMessage {...messages.title} values={{ apiName: api.displayName, name: bold }} />
+            <FormattedMessage
+              {...messages.title}
+              values={{ apiName: api.displayName, name: bold }}
+            />
           </PageTitle.Header>
           <PageTitle.SubHeader>
             <FormattedMessage {...messages.subtitle} values={{ name: bold, portalName }} />
@@ -910,7 +1000,10 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
             >
               <Tab label={intl.formatMessage(messages.tabDetails)} value="details" />
               <Tab label={intl.formatMessage(messages.tabSpecification)} value="specification" />
-              <Tab label={intl.formatMessage(messages.tabSubscriptionPlans)} value="subscriptionPlans" />
+              <Tab
+                label={intl.formatMessage(messages.tabSubscriptionPlans)}
+                value="subscriptionPlans"
+              />
               <Tab label={intl.formatMessage(messages.tabDocumentations)} value="documentations" />
               <Tab label={intl.formatMessage(messages.tabLandingPage)} value="landingPage" />
             </Tabs>
@@ -957,12 +1050,17 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       </Box>
 
       <ConfirmDialog
-        confirmInputLabel={intl.formatMessage(messages.confirmInputLabel, { name: api.displayName })}
+        confirmInputLabel={intl.formatMessage(messages.confirmInputLabel, {
+          name: api.displayName,
+        })}
         confirmLabel={intl.formatMessage(messages.confirmAction)}
         confirmPhrase={api.displayName}
         destructive
         loading={pendingAction === 'unpublishing'}
-        message={intl.formatMessage(messages.unpublishConfirmMessage, { name: api.displayName, portalName })}
+        message={intl.formatMessage(messages.unpublishConfirmMessage, {
+          name: api.displayName,
+          portalName,
+        })}
         onCancel={() => setConfirmingUnpublish(false)}
         onConfirm={confirmUnpublish}
         open={confirmingUnpublish}
@@ -971,11 +1069,16 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
 
       <ConfirmDialog
         confirmColor="warning"
-        confirmInputLabel={intl.formatMessage(messages.confirmInputLabel, { name: api.displayName })}
+        confirmInputLabel={intl.formatMessage(messages.confirmInputLabel, {
+          name: api.displayName,
+        })}
         confirmLabel={intl.formatMessage(messages.confirmAction)}
         confirmPhrase={api.displayName}
         loading={pendingAction === 'deprecating'}
-        message={intl.formatMessage(messages.deprecateConfirmMessage, { name: api.displayName, portalName })}
+        message={intl.formatMessage(messages.deprecateConfirmMessage, {
+          name: api.displayName,
+          portalName,
+        })}
         onCancel={() => setConfirmingDeprecate(false)}
         onConfirm={confirmDeprecate}
         open={confirmingDeprecate}

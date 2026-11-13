@@ -18,10 +18,11 @@
 
 import { Box, Button, LinearProgress, Stack, Typography } from '@wso2/oxygen-ui';
 import { ArrowRight } from '@wso2/oxygen-ui-icons-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { defineMessages, useIntl } from 'react-intl';
-import { useNavigate } from 'react-router-dom';
-import { DefineApiPanel } from './components/DefineApiPanel';
+import { useLocation, useNavigate } from 'react-router-dom';
+import type { ContractSourceKey } from './components/ContractSourceForm';
+import { DefineApiPanel, type RestApproachKey } from './components/DefineApiPanel';
 import { GeneralCreateApiForm } from './components/GeneralCreateApiForm';
 import { GraphqlConfigureForm } from './components/graphql/GraphqlConfigureForm';
 import { GraphqlDefinePanel } from './components/graphql/GraphqlDefinePanel';
@@ -31,6 +32,7 @@ import {
   GeneralApiCreationFormState,
   GraphqlApiCreationFormState,
   GraphqlCreationWizardDraftState,
+  type GraphqlSchemaSource,
 } from './types';
 import { ApiTypeSelector } from './components/ApiTypeSelector';
 import type { ApiCreationStepKey } from './components/ApiCreationSteps';
@@ -48,8 +50,39 @@ import {
 import { API_TYPES } from './uiConfig';
 // import { ApiDesignerBanner } from './components/ApiDesignerBanner';
 import type { ApiError } from '@/api/core/errors';
+import { useTrackFeature, type FeatureDimensions } from '@/featureUsage';
+import { readApiCreationEntryPoint, withoutApiCreationEntry } from './entryPoint';
 
 const CONFIGURE_FORM_ID = 'api-creation-configure-form';
+
+type TaxonomyApiType =
+  FeatureDimensions<'apip.manage-apis.api-creation-wizard-api-type-select'>['api_type'];
+
+/** The taxonomy's `api_type` for a wizard type; a type without one is not reported. */
+const TAXONOMY_API_TYPES: Readonly<Record<string, TaxonomyApiType>> = {
+  graphql: 'graphql-api',
+  rest: 'rest-api',
+};
+
+type CreationDimensions = FeatureDimensions<'apip.manage-apis.graphql-api-create-click'>;
+
+/** The taxonomy's contract source; one the console doesn't offer is left out. */
+const taxonomyContractSource = (
+  source: string | null | undefined,
+): CreationDimensions['contract_source'] =>
+  source === 'url' || source === 'file' ? source : undefined;
+
+/**
+ * How a GraphQL API is being created, in the same terms as REST: "Start from
+ * scratch" introspects the backend, "Start with a schema" imports a contract.
+ */
+const graphqlCreationDimensions = (
+  schemaSource: GraphqlSchemaSource | undefined,
+): CreationDimensions | null => {
+  if (schemaSource === undefined) return null;
+  if (schemaSource === 'introspection') return { creation_method: 'scratch' };
+  return { contract_source: taxonomyContractSource(schemaSource), creation_method: 'contract' };
+};
 
 const messages = defineMessages({
   back: {
@@ -139,6 +172,44 @@ const ApiCreationWizardContent = () => {
   /** Tracks whether the user has taken over the backend URL across form remounts. */
   const [upstreamEdited, setUpstreamEdited] = useState(false);
 
+  /*
+   * Feature usage: one Moesif action per screen the user moves past, so a
+   * funnel can order them and show where users stop.
+   *   1. apip.manage-apis.api-creation-wizard-open                      (opened)
+   *   2. apip.manage-apis.api-creation-wizard-api-type-select           (type chosen)
+   *   3. apip.manage-apis.api-creation-wizard-creation-method-select    (scratch or contract)
+   *   4. apip.manage-apis.rest-api-create / graphql-api-create          (Create clicked)
+   * Form fields are not reported: edits are noise, and their values are
+   * customer text that must not reach analytics.
+   */
+  const trackFeature = useTrackFeature();
+  const location = useLocation();
+  const navigate = useNavigate();
+  /**
+   * Mirrors DefineApiPanel's approach, reported on mount as well as on change:
+   * "Start from scratch" is the default tab, so a user who never clicks it
+   * still has to be counted as having chosen it.
+   */
+  const [restApproach, setRestApproach] = useState<RestApproachKey | null>(null);
+  const [restContractSource, setRestContractSource] = useState<ContractSourceKey | null>(null);
+  const openReported = useRef(false);
+  useEffect(() => {
+    // Once per visit, however often identity or route state re-render this.
+    if (openReported.current) return;
+    openReported.current = true;
+    trackFeature('apip.manage-apis.api-creation-wizard-open', {
+      entry_point: readApiCreationEntryPoint(location.state),
+    });
+    // Consumed: drop it from history so a reload reports `direct`.
+    const remaining = withoutApiCreationEntry(location.state);
+    if (remaining !== location.state) {
+      navigate(`${location.pathname}${location.search}${location.hash}`, {
+        replace: true,
+        state: remaining,
+      });
+    }
+  }, [location, navigate, trackFeature]);
+
   /**
    * The chosen type's own name, translated. `apiType` is already the entry from
    * the catalog, so its descriptor is read directly rather than looked up again.
@@ -185,10 +256,23 @@ const ApiCreationWizardContent = () => {
   const continueFromSource = () => {
     if (isGraphql) {
       if (graphqlSourceDraft === null) return;
+      const creation = graphqlCreationDimensions(graphqlSourceDraft.schemaSource);
+      if (creation) {
+        trackFeature('apip.manage-apis.api-creation-wizard-creation-method-select', {
+          api_type: 'graphql-api',
+          creation_method: creation.creation_method,
+        });
+      }
       setGraphqlPrefilledData(graphqlSourceDraft);
       setGraphqlSubmittedValues(null);
     } else {
       if (sourceDraft === null) return;
+      if (restApproach) {
+        trackFeature('apip.manage-apis.api-creation-wizard-creation-method-select', {
+          api_type: 'rest-api',
+          creation_method: restApproach,
+        });
+      }
       setPrefilledData(sourceDraft);
       setSubmittedValues(null);
       setServerErrors(null);
@@ -199,7 +283,6 @@ const ApiCreationWizardContent = () => {
     setStep('configure');
   };
 
-  const navigate = useNavigate();
   // `handlesErrors`: a rejection this screen puts back on the form must not
   // also arrive as a snackbar that has faded by the time the user looks up.
   const importOpenApiMutation = useImportOpenApi({ handlesErrors: true });
@@ -277,6 +360,16 @@ const ApiCreationWizardContent = () => {
   const onGeneralFormSumit = async (finalData: GeneralApiCreationFormState) => {
     if (!activeScope.projectHandler) return;
     if (step !== 'configure') return;
+    // On the Create click (a submission that passed form validation), not on
+    // the server's answer: the product decision for this feature. Retry on the
+    // progress screen is not a new use.
+    if (restApproach) {
+      trackFeature('apip.manage-apis.rest-api-create-click', {
+        contract_source:
+          restApproach === 'contract' ? taxonomyContractSource(restContractSource) : undefined,
+        creation_method: restApproach,
+      });
+    }
     setSubmittedValues(finalData);
     setCreationStarted(true);
     createApi(finalData);
@@ -339,6 +432,9 @@ const ApiCreationWizardContent = () => {
 
   const onGraphqlFormSubmit = (finalData: GraphqlApiCreationFormState) => {
     if (!activeScope.projectHandler) return;
+    // On the Create click, as for REST; Retry on the progress screen is not a new use.
+    const creation = graphqlCreationDimensions(finalData.schemaSource);
+    if (creation) trackFeature('apip.manage-apis.graphql-api-create-click', creation);
 
     setGraphqlSubmittedValues(finalData);
     setGraphqlCreationStarted(true);
@@ -457,7 +553,12 @@ const ApiCreationWizardContent = () => {
                   {isGraphql ? (
                     <GraphqlDefinePanel onDraftChange={setGraphqlSourceDraft} />
                   ) : (
-                    <DefineApiPanel initialApiTypeKey={apiType?.key} onDraftChange={setSourceDraft} />
+                    <DefineApiPanel
+                      initialApiTypeKey={apiType?.key}
+                      onApproachChange={setRestApproach}
+                      onContractSourceChange={setRestContractSource}
+                      onDraftChange={setSourceDraft}
+                    />
                   )}
                 </Box>
               )}
@@ -544,7 +645,10 @@ const ApiCreationWizardContent = () => {
                   type="submit"
                   variant="contained"
                 >
-                  {intl.formatMessage({ id: 'api.create.generalForm.action.create', defaultMessage: 'Create' })}
+                  {intl.formatMessage({
+                    id: 'api.create.generalForm.action.create',
+                    defaultMessage: 'Create',
+                  })}
                 </Button>
               ) : (
                 <Button
@@ -558,8 +662,15 @@ const ApiCreationWizardContent = () => {
                   endIcon={<ArrowRight size={16} />}
                   key="continue-wizard"
                   onClick={() => {
-                    if (step === 'apiType') setStep('source');
-                    else continueFromSource();
+                    if (step === 'apiType') {
+                      const taxonomyApiType = apiType ? TAXONOMY_API_TYPES[apiType.key] : undefined;
+                      if (taxonomyApiType) {
+                        trackFeature('apip.manage-apis.api-creation-wizard-api-type-select', {
+                          api_type: taxonomyApiType,
+                        });
+                      }
+                      setStep('source');
+                    } else continueFromSource();
                   }}
                   type="button"
                   variant="contained"

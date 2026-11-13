@@ -18,15 +18,27 @@
 
 import { ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
-import { buildLoginUrl, withAppBasePath, type SessionFormat } from '../../config/authContract';
+import {
+  buildLoginUrl,
+  supportsOrganizationSwitch,
+  withAppBasePath,
+  type SessionFormat,
+} from '../../config/authContract';
 import { runtimeConfig } from '../../config/runtime';
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from './authConstants';
 import { AuthStateContext } from './AuthStateContext';
-import type { AuthState, AuthStatus, AuthUser } from './authTypes';
+import {
+  OrganizationSwitchError,
+  type AuthOrg,
+  type AuthState,
+  type AuthStatus,
+  type AuthUser,
+} from './authTypes';
 import { hasScopeClaim, userFromClaims } from './userFromClaims';
 import { onUnauthorized } from '../../api/core/sessionEvents';
 
 const contract = runtimeConfig.authContract;
+const canSwitchOrganization = supportsOrganizationSwitch(contract);
 
 type SessionResponse = {
   authenticated: boolean;
@@ -57,6 +69,8 @@ const UNAVAILABLE: SessionCheck = { status: 'unavailable' };
  * so its 504 normally arrives first; this covers a connection that hangs.
  */
 const SESSION_CHECK_TIMEOUT_MS = 15_000;
+/** How long a switch that gave no answer in time is waited on before it is moved back. */
+const SWITCH_SETTLE_TIMEOUT_MS = 60_000;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -140,19 +154,78 @@ async function askSession(url: string): Promise<SessionCheck> {
  * `unavailable`, not signed out: the session may well be alive.
  */
 async function checkSession(url: string): Promise<SessionCheck> {
+  return within(askSession(url), SESSION_CHECK_TIMEOUT_MS, UNAVAILABLE);
+}
+
+/** Settles `request` with `onTimeout` if it takes longer than `ms`. */
+async function within<T>(request: Promise<T>, ms: number, onTimeout: T): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timedOut = new Promise<SessionCheck>((resolve) => {
-    timer = setTimeout(() => resolve(UNAVAILABLE), SESSION_CHECK_TIMEOUT_MS);
+  const timedOut = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(onTimeout), ms);
   });
   try {
-    return await Promise.race([askSession(url), timedOut]);
+    return await Promise.race([request, timedOut]);
   } finally {
     clearTimeout(timer);
   }
 }
 
+const isOrganization = (value: unknown): value is AuthOrg =>
+  isObject(value) &&
+  typeof value.id === 'string' &&
+  value.id !== '' &&
+  typeof value.handle === 'string' &&
+  value.handle !== '';
+
+/**
+ * The organizations the user can switch to, as ThunderID's `/users/me/ous`
+ * answers them: `{organizationUnits: [{id, handle, name}]}`.
+ */
+async function fetchOrganizations(url: string): Promise<AuthOrg[]> {
+  const list = await within(readOrganizations(url).catch(() => undefined), SESSION_CHECK_TIMEOUT_MS, undefined);
+  if (!list) throw new OrganizationSwitchError('unavailable');
+  return list;
+}
+
+async function readOrganizations(url: string): Promise<AuthOrg[]> {
+  const response = await fetch(url, { credentials: 'same-origin' });
+  if (!response.ok) throw new OrganizationSwitchError('unavailable');
+  const body: unknown = await response.json();
+  const units = isObject(body) && Array.isArray(body.organizationUnits) ? body.organizationUnits : [];
+  return units.filter(isOrganization).map(({ id, handle, name }) => ({
+    id,
+    handle,
+    name: typeof name === 'string' && name !== '' ? name : handle,
+  }));
+}
+
+/**
+ * Moves one session into the organization `organizationId`, as the ThunderID
+ * SDK's backend-mode `ouSwitch` asks: the unit in the query and the JSON body.
+ * Resolves once it has.
+ */
+async function requestOrganizationSwitch(url: string, organizationId: string): Promise<void> {
+  const response = await within(sendOrganizationSwitch(url, organizationId), SESSION_CHECK_TIMEOUT_MS, undefined);
+  if (response?.status === 403) throw new OrganizationSwitchError('forbidden');
+  if (!response?.ok) throw new OrganizationSwitchError('unavailable');
+}
+
+/** The switch request itself, settling with its response or undefined, however long it takes. */
+function sendOrganizationSwitch(url: string, organizationId: string): Promise<Response | undefined> {
+  const separator = url.includes('?') ? '&' : '?';
+  return fetch(`${url}${separator}ouId=${encodeURIComponent(organizationId)}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: mutatingHeaders,
+    body: JSON.stringify({ ouId: organizationId }),
+  }).catch(() => undefined);
+}
+
 /** Field for field, so a check that changes nothing doesn't re-render the app. */
 const sameUser = (a?: AuthUser, b?: AuthUser) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Which account a session is, as far as its claims tell. */
+const accountOf = (user?: AuthUser) => (user ? user.email || user.name : undefined);
 
 /**
  * Something in front of the console owns authentication — this portal's BFF,
@@ -186,23 +259,118 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // undo it.
   const latestCheck = useRef(0);
 
+  // The organization the session is in, as the newest check reported it. A ref
+  // so a switch can read it the moment the check answers, before a re-render.
+  const sessionOrgHandle = useRef<string | undefined>(undefined);
+  const signedInAccount = useRef<string | undefined>(undefined);
+
   /**
    * Takes `url`'s answer and resolves whether the session is alive. Each caller
    * gets its own check's answer, even when a newer check set the state.
    */
   const hydrate = useCallback(async (url: string = contract.sessionUrl) => {
     const id = ++latestCheck.current;
-    const session = await checkSession(url);
+    let session = await checkSession(url);
+    // A check can't renew an ended session; the session read can (Native SSO), so ask it first.
+    if (url !== contract.sessionUrl && (session.status === 'unauthenticated' || session.status === 'expired')) {
+      session = await checkSession(contract.sessionUrl);
+    }
     if (leaving.current) return false;
     if (id !== latestCheck.current) return session.status === 'authenticated';
     if (session.status === 'unavailable') {
       setStatus((current) => (current === 'authenticated' ? current : 'unavailable'));
       return false;
     }
+    const account = session.status === 'authenticated' ? accountOf(session.user) : undefined;
+    if (account && signedInAccount.current && account !== signedInAccount.current) {
+      // Another account's session: nothing of the previous one may stay on the page.
+      leaving.current = true;
+      window.location.reload();
+      return false;
+    }
+    signedInAccount.current = account;
+    sessionOrgHandle.current = session.user?.org?.handle;
     setUser((current) => (sameUser(current, session.user) ? current : session.user));
     setStatus(session.status);
     return session.status === 'authenticated';
   }, []);
+
+  const [organizations, setOrganizations] = useState<AuthOrg[]>();
+  const organizationsRequest = useRef<Promise<AuthOrg[]> | undefined>(undefined);
+
+  /** Loads the organization list once per sign-in; a failed load is retried on next use. */
+  const loadOrganizations = useCallback(() => {
+    organizationsRequest.current ??= fetchOrganizations(contract.organizationsUrl).then(
+      (list) => {
+        setOrganizations(list);
+        return list;
+      },
+      (error: unknown) => {
+        organizationsRequest.current = undefined;
+        throw error;
+      },
+    );
+    return organizationsRequest.current;
+  }, []);
+
+  useEffect(() => {
+    if (!canSwitchOrganization) return;
+    if (status === 'authenticated') {
+      loadOrganizations().catch(() => undefined);
+    } else if (status === 'unauthenticated' || status === 'expired') {
+      organizationsRequest.current = undefined;
+      setOrganizations(undefined);
+    }
+  }, [loadOrganizations, status]);
+
+  // Switches run one after another, so the last one asked for is the one the
+  // session ends up in.
+  const switchQueue = useRef<Promise<unknown>>(Promise.resolve());
+
+  const exchangeOrgToken = useCallback(
+    (orgHandle: string) => {
+      if (!canSwitchOrganization) return Promise.resolve(true);
+      const switchTo = async () => {
+        if (sessionOrgHandle.current === orgHandle) return true;
+        const organizations = await loadOrganizations();
+        const target = organizations.find((org) => org.handle === orgHandle);
+        if (!target) throw new OrganizationSwitchError('forbidden');
+        // Sessions that moved go back after a failure, so none is left in the other organization.
+        const previous = organizations.find((org) => org.handle === sessionOrgHandle.current);
+        const moveBack = (urls: string[]) =>
+          previous !== undefined &&
+          Promise.all(urls.map((url) => requestOrganizationSwitch(url, previous.id))).then(
+            () => true,
+            () => false,
+          );
+        const switched: string[] = [];
+        for (const url of contract.switchOrganizationUrls) {
+          const sent = sendOrganizationSwitch(url, target.id);
+          const response = await within(sent, SESSION_CHECK_TIMEOUT_MS, undefined);
+          if (response?.ok) {
+            switched.push(url);
+            continue;
+          }
+          if (response?.status === 403) {
+            if (switched.length > 0 && !(await moveBack(switched))) throw new OrganizationSwitchError('unavailable');
+            throw new OrganizationSwitchError('forbidden');
+          }
+          // Without a refusal this session may still move: let its request finish, then move it back too.
+          await within(sent, SWITCH_SETTLE_TIMEOUT_MS, undefined);
+          await moveBack([...switched, url]);
+          throw new OrganizationSwitchError('unavailable');
+        }
+        // The switched session's claims name its new organization.
+        await hydrate();
+        if (sessionOrgHandle.current !== orgHandle) throw new OrganizationSwitchError('unavailable');
+        return true;
+      };
+      const result = switchQueue.current.then(switchTo);
+      switchQueue.current = result.catch(() => undefined);
+      return result;
+    },
+    [hydrate, loadOrganizations],
+  );
 
   useEffect(() => {
     void hydrate();
@@ -268,6 +436,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return false;
         }
         const body = (await response.json()) as { user?: AuthUser };
+        sessionOrgHandle.current = body.user?.org?.handle;
         setUser(body.user);
         setStatus('authenticated');
         return true;
@@ -332,11 +501,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  // Platform API calls are always routed through the same-origin proxy,
-  // which forwards the session's bearer token itself — there is no
-  // console-side org-token exchange to perform.
-  const exchangeOrgToken = useCallback(async () => true, []);
-
   const value = useMemo<AuthState>(
     () => ({
       mode: runtimeConfig.authMode,
@@ -347,10 +511,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       login,
       loginWithCredentials,
+      canSwitchOrganization,
+      organizations,
       exchangeOrgToken,
       logout,
     }),
-    [error, exchangeOrgToken, login, loginWithCredentials, logout, status, user]
+    [error, exchangeOrgToken, login, loginWithCredentials, logout, organizations, status, user]
   );
 
   return (

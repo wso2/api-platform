@@ -47,8 +47,8 @@ const useUndeployForCard: UseDeploymentMutationHook = () => {
   const mutation = useUndeployDeployment();
   return {
     isPending: mutation.isPending,
-    mutate: ({ apiId, deploymentId }, options) =>
-      mutation.mutate({ restApiId: apiId, deploymentId }, options),
+    mutate: ({ apiId, deploymentId, gatewayId }, options) =>
+      mutation.mutate({ restApiId: apiId, deploymentId, gatewayId }, options),
   };
 };
 
@@ -56,8 +56,8 @@ const useRestoreForCard: UseDeploymentMutationHook = () => {
   const mutation = useRestoreDeployment();
   return {
     isPending: mutation.isPending,
-    mutate: ({ apiId, deploymentId }, options) =>
-      mutation.mutate({ restApiId: apiId, deploymentId }, options),
+    mutate: ({ apiId, deploymentId, gatewayId }, options) =>
+      mutation.mutate({ restApiId: apiId, deploymentId, gatewayId }, options),
   };
 };
 
@@ -106,6 +106,7 @@ function Deploy() {
       api={apiQuery.data}
       apiId={apiQuery.data?.id ?? params.apiHandler ?? ''}
       apiPending={apiQuery.isPending}
+      artifactKind="rest-api"
       deployments={deploymentsQuery.data?.list ?? []}
       deploymentsFetching={deploymentsQuery.isFetching}
       mutations={REST_DEPLOY_MUTATIONS}

@@ -156,6 +156,13 @@ func main() {
 		slog.Bool("skip_invalid_deployments_on_startup", cfg.Controller.Server.SkipInvalidDeploymentsOnStartup),
 	)
 
+	// Install the {{ env }} access policy for artifact specs before anything
+	// renders an artifact (startup bootstrap, REST handlers, control-plane events).
+	if err := cfg.InstallArtifactEnvAccessPolicy(log); err != nil {
+		log.Error("Invalid artifact env access configuration", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	if !cfg.Controller.Auth.Basic.Enabled && !cfg.Controller.Auth.IDP.Enabled {
 		log.Warn("No authentication configured: both basic auth and IDP are disabled. Gateway Controller API will allow all requests without authentication")
 	}
@@ -547,6 +554,8 @@ func main() {
 	// the single UpdateSnapshot call below covers all of them.
 	log.Info("Loading runtime configs from existing API configurations")
 	loadedAPIs := configStore.GetAll()
+	persistEnvRefusedUndeploy := utils.NewEnvRefusedUndeployer(db, eventHubInstance, gatewayID, log)
+	envRefusedUndeployed := 0
 	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
 		loadedAPIs,
 		runtimeStore,
@@ -554,10 +563,26 @@ func main() {
 		transformerRegistry,
 		log,
 		cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
+		func(c *models.StoredConfig) error {
+			envRefusedUndeployed++
+			return persistEnvRefusedUndeploy(c)
+		},
 	)
 	if err != nil {
 		log.Error("Failed to load runtime configs from API configurations", slog.Any("error", err))
 		os.Exit(1)
+	}
+	// The initial router snapshot above was built before the loader undeployed
+	// artifacts that read a refused environment variable; rebuild it so their
+	// routes are dropped along with their policy chains.
+	if envRefusedUndeployed > 0 {
+		log.Info("Refreshing xDS snapshot after undeploying artifacts that read refused environment variables",
+			slog.Int("undeployed", envRefusedUndeployed))
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := snapshotManager.UpdateSnapshot(ctx, ""); err != nil {
+			log.Warn("Failed to refresh xDS snapshot after startup undeploys", slog.Any("error", err))
+		}
+		cancel()
 	}
 	log.Info("Loaded runtime configs from API configurations",
 		slog.Int("total_apis", len(loadedAPIs)),

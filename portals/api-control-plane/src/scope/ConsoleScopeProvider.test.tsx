@@ -16,15 +16,18 @@
  * under the License.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
-import { Outlet, Route, Routes } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Outlet, Route, Routes, useNavigate } from 'react-router-dom';
 
 import { resetHttpClient } from '../api/core/http';
 import { routes } from '../routes/paths';
 import { anOrganization, collection } from '../test/msw';
-import { authStatePresets } from '../test/mockAuthState';
+import { AuthStateContext } from '../contexts/auth/AuthStateContext';
+import { OrganizationSwitchError, type AuthState } from '../contexts/auth/authTypes';
+import { authStatePresets, makeAuthState } from '../test/mockAuthState';
 import { server } from '../test/server';
-import { renderWithProviders, screen } from '../test/utils';
+import { act, renderWithProviders, screen, waitFor } from '../test/utils';
+import { OrganizationRedirectPage } from '../pages/appShell/appShellPages/system/SystemPages';
 import { ConsoleScopeProvider, useConsoleScope } from './ConsoleScopeProvider';
 
 function OrganizationProbe() {
@@ -32,7 +35,7 @@ function OrganizationProbe() {
   return <p>{`${params.orgHandle}:${organization?.displayName ?? 'none'}`}</p>;
 }
 
-function renderScope(route: string) {
+function renderScope(route: string, authState: AuthState = authStatePresets.authenticated()) {
   return renderWithProviders(
     <Routes>
       <Route
@@ -46,7 +49,7 @@ function renderScope(route: string) {
         <Route path={routes.organizationHome()} element={<OrganizationProbe />} />
       </Route>
     </Routes>,
-    { route, authState: authStatePresets.authenticated() }
+    { route, authState }
   );
 }
 
@@ -71,5 +74,253 @@ describe('ConsoleScopeProvider organization membership', () => {
 
     expect(await screen.findByText('organization picker')).toBeInTheDocument();
     expect(screen.queryByText(/^org-a:/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ConsoleScopeProvider organization switching', () => {
+  const orgA = { id: 'ou-a', handle: 'org-a', name: 'Org A' };
+  const orgB = { id: 'ou-b', handle: 'org-b', name: 'Org B' };
+
+  /** A session in `org` that can move between organizations. */
+  const switchingSession = (org: typeof orgA, exchangeOrgToken: AuthState['exchangeOrgToken']) =>
+    makeAuthState({
+      canSwitchOrganization: true,
+      exchangeOrgToken,
+      organizations: [orgA, orgB],
+      user: { name: 'Test User', email: 'test.user@example.com', org },
+    });
+
+  beforeEach(() => {
+    resetHttpClient();
+    // The Platform API has not listed org-b for this user yet.
+    server.use(
+      collection('/organizations', [anOrganization({ id: 'org-a', displayName: 'Org A' })]),
+      collection('/projects', []),
+    );
+  });
+
+  it('renders the organization the session is in, without switching', async () => {
+    const exchangeOrgToken = vi.fn().mockResolvedValue(true);
+    renderScope(routes.organizationHome('org-a'), switchingSession(orgA, exchangeOrgToken));
+
+    expect(await screen.findByText('org-a:Org A')).toBeInTheDocument();
+    expect(exchangeOrgToken).not.toHaveBeenCalled();
+  });
+
+  it('moves the session into the URL organization before rendering it', async () => {
+    const exchangeOrgToken = vi.fn(() => new Promise<boolean>(() => {}));
+    renderScope(routes.organizationHome('org-b'), switchingSession(orgA, exchangeOrgToken));
+
+    expect(await screen.findByText('Switching organization')).toBeInTheDocument();
+    expect(exchangeOrgToken).toHaveBeenCalledWith('org-b');
+    expect(screen.queryByText(/^org-b:/)).not.toBeInTheDocument();
+  });
+
+  // Membership comes from the identity provider: the Platform API's list
+  // lacking org-b must not bounce a session that is already in it.
+  it('keeps an organization the Platform API has not listed yet', async () => {
+    renderScope(routes.organizationHome('org-b'), switchingSession(orgB, vi.fn()));
+
+    expect(await screen.findByText(/^org-b:/)).toBeInTheDocument();
+  });
+
+  it('sends the user to the organization picker when the session may not move there', async () => {
+    const exchangeOrgToken = vi.fn().mockRejectedValue(new OrganizationSwitchError('forbidden'));
+    renderScope(routes.organizationHome('org-c'), switchingSession(orgA, exchangeOrgToken));
+
+    expect(await screen.findByText('organization picker')).toBeInTheDocument();
+  });
+
+  it('reports a switch that did not complete', async () => {
+    const exchangeOrgToken = vi.fn().mockRejectedValue(new OrganizationSwitchError('unavailable'));
+    renderScope(routes.organizationHome('org-b'), switchingSession(orgA, exchangeOrgToken));
+
+    expect(await screen.findByText('Unable to switch organization')).toBeInTheDocument();
+    expect(screen.queryByText(/^org-b:/)).not.toBeInTheDocument();
+  });
+
+  describe('when the session moves out of the open organization', () => {
+    function OpenOrganization({ handle }: { handle: string }) {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate(routes.organizationHome(handle))}>{`open ${handle}`}</button>;
+    }
+
+    function GoBack() {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate(-1)}>back</button>;
+    }
+
+    /** A tab whose session the test can move, as another tab's switch does. */
+    function renderTab(route: string, authState: AuthState) {
+      const tree = (state: AuthState) => (
+        <AuthStateContext.Provider value={state}>
+          <GoBack />
+          <Routes>
+            <Route
+              element={
+                <ConsoleScopeProvider>
+                  <Outlet />
+                </ConsoleScopeProvider>
+              }
+            >
+              <Route
+                path={routes.organizationHome()}
+                element={
+                  <>
+                    <OrganizationProbe />
+                    <OpenOrganization handle="org-b" />
+                  </>
+                }
+              />
+            </Route>
+          </Routes>
+        </AuthStateContext.Provider>
+      );
+      const view = renderWithProviders(tree(authState), { route, authState });
+      return { ...view, moveSession: (state: AuthState) => view.rerender(tree(state)) };
+    }
+
+    const replace = vi.fn();
+
+    beforeEach(() => {
+      replace.mockReset();
+      vi.stubGlobal('location', { ...window.location, replace });
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('follows the session to its organization instead of moving it back', async () => {
+      const exchangeOrgToken = vi.fn().mockResolvedValue(true);
+      const { moveSession } = renderTab(routes.organizationHome('org-a'), switchingSession(orgA, exchangeOrgToken));
+      expect(await screen.findByText('org-a:Org A')).toBeInTheDocument();
+
+      moveSession(switchingSession(orgB, exchangeOrgToken));
+
+      await waitFor(() => expect(replace).toHaveBeenCalledWith(routes.organizationHome('org-b')));
+      expect(exchangeOrgToken).not.toHaveBeenCalled();
+    });
+
+    it('drops a failed switch once the session reaches the organization anyway', async () => {
+      const exchangeOrgToken = vi.fn().mockRejectedValue(new OrganizationSwitchError('unavailable'));
+      const { moveSession } = renderTab(routes.organizationHome('org-b'), switchingSession(orgA, exchangeOrgToken));
+      expect(await screen.findByText('Unable to switch organization')).toBeInTheDocument();
+
+      moveSession(switchingSession(orgB, exchangeOrgToken));
+
+      expect(await screen.findByText(/^org-b:/)).toBeInTheDocument();
+      expect(screen.queryByText('Unable to switch organization')).not.toBeInTheDocument();
+    });
+
+    it('waits for its own switch when the user goes back, then moves to where they went', async () => {
+      const pending: Array<(value: boolean) => void> = [];
+      const exchangeOrgToken = vi.fn(() => new Promise<boolean>((resolve) => pending.push(resolve)));
+      const { user, moveSession } = renderTab(routes.organizationHome('org-a'), switchingSession(orgA, exchangeOrgToken));
+
+      await user.click(await screen.findByRole('button', { name: 'open org-b' }));
+      expect(await screen.findByText('Switching organization')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'back' }));
+
+      expect(screen.getByText('Switching organization')).toBeInTheDocument();
+      expect(screen.queryByText(/^org-a:/)).not.toBeInTheDocument();
+
+      moveSession(switchingSession(orgB, exchangeOrgToken));
+      await act(async () => pending[0](true));
+
+      await waitFor(() => expect(exchangeOrgToken).toHaveBeenLastCalledWith('org-a'));
+      expect(replace).not.toHaveBeenCalled();
+    });
+
+    it('still moves the session when this tab opens another organization', async () => {
+      const exchangeOrgToken = vi.fn(() => new Promise<boolean>(() => {}));
+      const { user } = renderTab(routes.organizationHome('org-a'), switchingSession(orgA, exchangeOrgToken));
+
+      await user.click(await screen.findByRole('button', { name: 'open org-b' }));
+
+      expect(await screen.findByText('Switching organization')).toBeInTheDocument();
+      expect(exchangeOrgToken).toHaveBeenCalledWith('org-b');
+      expect(replace).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('ConsoleScopeProvider and the organization picker after a refused switch', () => {
+  const STALE = { id: 'ou-stale', handle: 'org-stale', name: 'Stale' };
+  const OTHER = { id: 'ou-b', handle: 'org-b', name: 'Org B' };
+
+  function renderWithPicker(authState: AuthState) {
+    return renderWithProviders(
+      <Routes>
+        <Route
+          element={
+            <ConsoleScopeProvider>
+              <Outlet />
+            </ConsoleScopeProvider>
+          }
+        >
+          <Route path={routes.organizations} element={<OrganizationRedirectPage />} />
+          <Route path={routes.organizationHome()} element={<OrganizationProbe />} />
+        </Route>
+      </Routes>,
+      { route: routes.organizations, authState },
+    );
+  }
+
+  beforeEach(() => {
+    resetHttpClient();
+    server.use(collection('/projects', []));
+  });
+
+  // The Platform API still lists an organization the user can no longer use and
+  // not yet the session's own: the picker must not keep choosing the stale one.
+  it("lands on the session's own organization, which needs no switch", async () => {
+    server.use(collection('/organizations', [anOrganization({ id: 'org-stale', displayName: 'Stale' })]));
+    const exchangeOrgToken = vi.fn().mockRejectedValue(new OrganizationSwitchError('forbidden'));
+    renderWithPicker(
+      makeAuthState({
+        canSwitchOrganization: true,
+        exchangeOrgToken,
+        organizations: [STALE, OTHER],
+        user: { name: 'Test User', email: 'test.user@example.com', org: { id: 'ou-a', handle: 'org-a', name: 'Org A' } },
+      }),
+    );
+
+    expect(await screen.findByText(/^org-a:/)).toBeInTheDocument();
+    expect(exchangeOrgToken).not.toHaveBeenCalled();
+  });
+
+  it('never picks an organization the session was refused again', async () => {
+    server.use(
+      collection('/organizations', [
+        anOrganization({ id: 'org-stale', displayName: 'Stale' }),
+        anOrganization({ id: 'org-b', displayName: 'Org B' }),
+      ]),
+    );
+    const exchangeOrgToken = vi.fn((handle: string) =>
+      handle === 'org-stale'
+        ? Promise.reject(new OrganizationSwitchError('forbidden'))
+        : new Promise<boolean>(() => {}),
+    );
+    // No organization claim, so there is no session organization to fall back on.
+    renderWithPicker(makeAuthState({ canSwitchOrganization: true, exchangeOrgToken, organizations: [STALE, OTHER] }));
+
+    await waitFor(() => expect(exchangeOrgToken).toHaveBeenCalledWith('org-b'));
+    expect(exchangeOrgToken.mock.calls.filter(([handle]) => handle === 'org-stale')).toHaveLength(1);
+    expect(screen.getByText('Switching organization')).toBeInTheDocument();
+  });
+
+  it('stops at the empty state once every listed organization refused the switch', async () => {
+    server.use(
+      collection('/organizations', [
+        anOrganization({ id: 'org-stale', displayName: 'Stale' }),
+        anOrganization({ id: 'org-b', displayName: 'Org B' }),
+      ]),
+    );
+    const exchangeOrgToken = vi.fn().mockRejectedValue(new OrganizationSwitchError('forbidden'));
+    renderWithPicker(makeAuthState({ canSwitchOrganization: true, exchangeOrgToken, organizations: [STALE, OTHER] }));
+
+    expect(await screen.findByText('No organizations found')).toBeInTheDocument();
+    expect(exchangeOrgToken.mock.calls.map(([handle]) => handle).sort()).toEqual(['org-b', 'org-stale']);
   });
 });

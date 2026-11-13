@@ -29,9 +29,9 @@ Feature: MCP spec versions from the control plane to the gateway
   # gateway and a fetch returns nothing. Measured, not assumed - the runner was added, run, and
   # removed after all three scenarios failed for exactly those reasons.
   #
-  # Wiring it is one runner block in it-suite.yaml once the platform-api change lands, and the
-  # last scenario additionally needs server/discover support, which is why it carries its own
-  # tag.
+  # Wiring it is one runner in a block under suites/it/blocks/ once the platform-api change
+  # lands, and the last scenario additionally needs server/discover support, which is why it
+  # carries its own tag.
   #
   # The two halves of the platform hold this value in different shapes, and the hand-off between
   # them is the only place it can be lost. It has been lost before: a gateway that did not know
@@ -42,7 +42,7 @@ Feature: MCP spec versions from the control plane to the gateway
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "mcp-cp-versions-project" and store it as "projectHandle"
+    And I generate a unique resource name from "mcp-cp-versions-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   Scenario: Spec versions declared in the control plane reach the gateway
@@ -98,7 +98,7 @@ Feature: MCP spec versions from the control plane to the gateway
 
   # A modern server answers server/discover with every revision it serves, which no handshake
   # can report. Needs the control-plane discovery change, so it is held back by its own tag
-  # until that merges - see the runner in it-suite.yaml.
+  # until that merges: the feature's runner must exclude it with ~@pending-platform-api-discovery.
   @pending-platform-api-discovery
   Scenario: Discovery reports every revision a modern server serves
     When I fetch MCP server info via the control plane for "http://testbench:3009/mcp"

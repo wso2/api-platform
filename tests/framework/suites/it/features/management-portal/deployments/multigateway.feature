@@ -28,7 +28,7 @@ Feature: An API deployed through platform-api reaches every gateway it is deploy
     Given the first gateway is running
     And the second gateway is running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "multigw-project" and store it as "projectHandle"
+    And I generate a unique resource name from "multigw-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   Scenario: An API deployed to two gateways is served by both, and undeploy is isolated
