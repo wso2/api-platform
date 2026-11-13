@@ -255,3 +255,11 @@ test('a database not upgraded yet keeps request and total token limits, nothing 
     assert.equal(storedLimitsFromConditions([limitCondition('request-count', [w(1, 1, 'DAY')], 'allow')]), null);
     assert.equal(storedLimitsFromConditions([{ id: 'tool-calls', type: 'tool-call-count', params: { limits: [w(1, 1, 'DAY')] } }]), null);
 });
+
+test('a custom condition may name the policy that enforces it, under the reserved key policy', () => {
+    // The Management Portal stores it the same way, so a plan edited in either portal keeps it.
+    const [c] = normalizeConditions([{ id: 'region-limit', type: 'custom',
+        params: { region: 'eu', policy: { name: 'region-guard', version: 'v1' } } }]);
+    assert.deepEqual(c.params, { policy: { name: 'region-guard', version: 'v1' }, region: 'eu' });
+    assert.deepEqual(conditionChips([c])[0].details, ['policy = region-guard v1', 'region = eu']);
+});

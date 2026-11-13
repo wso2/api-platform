@@ -321,7 +321,10 @@ const SHORT_UNITS = { MINUTE: 'min', HOUR: 'hr', DAY: 'day', MONTH: 'mo' };
 const conditionChips = (conditions) => (conditions || []).flatMap((c) => {
     const params = c.params || {};
     if (c.type === TYPE.CUSTOM) {
-        const values = Object.entries(params).map(([k, v]) => `${k} = ${typeof v === 'string' ? v : JSON.stringify(v)}`);
+        // The reserved "policy" key names the policy that enforces the condition: shown as "policy = name version".
+        const values = Object.entries(params).map(([k, v]) => (k === 'policy' && v && typeof v === 'object' && typeof v.name === 'string'
+            ? `policy = ${v.name} ${v.version || 'v1'}`
+            : `${k} = ${typeof v === 'string' ? v : JSON.stringify(v)}`));
         return [{ label: 'Custom', first: c.id, details: values.length ? values : ['No values'], custom: true }];
     }
     const name = c.type === TYPE.TOKEN_COUNT ? TOKEN_NAMES[params.tokenType] || 'Tokens' : CHIP_NAMES[c.type] || c.type;

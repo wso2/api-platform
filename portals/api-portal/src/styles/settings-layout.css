@@ -3235,3 +3235,9 @@
 .pln-cond-empty[hidden], .pln-cond-chip[hidden], .pln-preview-price[hidden] { display: none !important; }
 /* The plans table's last rows open their condition cards upward, so they stay in the scroll area. */
 .cfg-table tbody tr:nth-last-child(-n+2) .cfg-cond-tip { top: auto; bottom: calc(100% + 6px); }
+
+/* Custom condition: its optional enforcing policy, name and version side by side. */
+.pln-policy-row { display: flex; gap: 8px; }
+.pln-policy-row .pln-policy-name { flex: 2; }
+.pln-policy-row .pln-policy-version { flex: 1; max-width: 120px; }
+.pln-policy-info { color: var(--text-muted); cursor: help; font-size: .8rem; }

@@ -119,6 +119,16 @@
     return row;
   }
 
+  /* A custom condition's own policy, kept in its params under a reserved key (as the Management Portal does). */
+  var POLICY_KEY = 'policy';
+  var POLICY_NAME = /^[a-z0-9][a-z0-9._-]*$/i;
+  var POLICY_VERSION = /^v?\d+(\.\d+){0,2}$/;
+  function customPolicyOf(params) {
+    var p = params && params[POLICY_KEY];
+    if (!p || typeof p !== 'object' || Array.isArray(p) || typeof p.name !== 'string' || !p.name) return null;
+    return { name: p.name, version: typeof p.version === 'string' && p.version ? p.version : 'v1' };
+  }
+
   /* A typed value: a number, true or false, a JSON object or list, or else the text as it is. */
   function parseValue(text) {
     if (/^-?\d+(\.\d+)?$/.test(text)) return Number(text);
@@ -151,6 +161,8 @@
         var k = row.querySelector('.pln-pair-key').value.trim();
         if (k) pairs.push(k + ' = ' + row.querySelector('.pln-pair-value').value.trim());
       });
+      var pn = el.querySelector('.pln-policy-name') && el.querySelector('.pln-policy-name').value.trim();
+      if (pn) pairs.unshift('enforced by ' + pn + ' ' + (el.querySelector('.pln-policy-version').value.trim() || 'v1'));
       return pairs.length ? pairs.join(' · ') : 'No values yet';
     }
     var what = whatOf(el);
@@ -195,15 +207,34 @@
 
     if (type === 'custom') {
       var idGroup = document.createElement('div'); idGroup.className = 'cfg-form-group';
-      var idLabel = document.createElement('label'); idLabel.textContent = 'ID'; idLabel.htmlFor = bodyId + '-id';
+      var idLabel = document.createElement('label'); idLabel.textContent = 'Condition name'; idLabel.htmlFor = bodyId + '-id';
       var idInput = document.createElement('input');
       idInput.type = 'text'; idInput.id = bodyId + '-id'; idInput.className = 'cfg-form-input cfg-form-input--mono pln-custom-id';
-      idInput.placeholder = 'e.g. business-hours'; idInput.maxLength = 63; idInput.value = (c && c.id) || '';
+      idInput.placeholder = 'e.g. region-limit'; idInput.maxLength = 63; idInput.value = (c && c.id) || '';
       var idHint = document.createElement('p'); idHint.className = 'cfg-field-hint';
-      idHint.textContent = 'Lowercase letters, digits and hyphens, starting with a letter. The policy finds the condition by this ID.';
+      idHint.textContent = 'Lowercase letters, digits and hyphens, for example region-limit.';
       idGroup.appendChild(idLabel); idGroup.appendChild(idInput); idGroup.appendChild(idHint);
+      // Optional: the policy that enforces the condition, kept in params under the reserved key
+      // "policy" ({ name, version }), as the Management Portal stores it.
+      var named = customPolicyOf(params);
+      var policyGroup = document.createElement('div'); policyGroup.className = 'cfg-form-group pln-policy-group';
+      var policyLabel = document.createElement('label'); policyLabel.htmlFor = bodyId + '-policy';
+      policyLabel.appendChild(document.createTextNode('Custom policy (optional) '));
+      var policyInfo = icon('bi-info-circle'); policyInfo.classList.add('pln-policy-info');
+      policyInfo.title = 'The policy that enforces this condition, for example region-guard v1. It must be attached to the API to take effect.';
+      policyInfo.setAttribute('aria-label', policyInfo.title); policyInfo.setAttribute('role', 'img');
+      policyLabel.appendChild(policyInfo);
+      var policyRow = document.createElement('div'); policyRow.className = 'pln-policy-row';
+      var policyName = document.createElement('input');
+      policyName.type = 'text'; policyName.id = bodyId + '-policy'; policyName.className = 'cfg-form-input cfg-form-input--mono pln-policy-name';
+      policyName.placeholder = 'region-guard'; policyName.setAttribute('aria-label', 'Policy name'); policyName.value = named ? named.name : '';
+      var policyVersion = document.createElement('input');
+      policyVersion.type = 'text'; policyVersion.className = 'cfg-form-input cfg-form-input--mono pln-policy-version';
+      policyVersion.placeholder = 'v1'; policyVersion.setAttribute('aria-label', 'Policy version'); policyVersion.value = named ? named.version : '';
+      policyRow.appendChild(policyName); policyRow.appendChild(policyVersion);
+      policyGroup.appendChild(policyLabel); policyGroup.appendChild(policyRow);
       var pairs = document.createElement('div'); pairs.className = 'pln-pairs';
-      var keys = Object.keys(params);
+      var keys = Object.keys(params).filter(function (k) { return !(named && k === POLICY_KEY); });
       (keys.length ? keys : ['']).forEach(function (k) { pairs.appendChild(makePairRow(k, k ? params[k] : undefined)); });
       var addPair = document.createElement('button');
       addPair.type = 'button'; addPair.className = 'cfg-btn-secondary cfg-btn-sm';
@@ -211,7 +242,7 @@
       addPair.addEventListener('click', function () {
         var row = makePairRow('', undefined); pairs.appendChild(row); row.querySelector('input').focus(); refresh();
       });
-      body.appendChild(idGroup); body.appendChild(pairs); body.appendChild(addPair);
+      body.appendChild(idGroup); body.appendChild(policyGroup); body.appendChild(pairs); body.appendChild(addPair);
     } else {
       var controls = document.createElement('div'); controls.className = 'pln-cond-controls';
       if (type === 'token-count') {
@@ -356,9 +387,9 @@
       var t = TYPE_OF[el.dataset.type];
       if (el.dataset.type === 'custom') {
         var id = el.querySelector('.pln-custom-id').value.trim();
-        if (!CUSTOM_ID.test(id)) throw new Error('A custom condition needs an ID of lowercase letters, digits and hyphens, starting with a letter.');
-        if (Object.values(BUILT_IN_IDS).indexOf(id) !== -1) throw new Error(id + ' is the ID of a built-in condition; choose another.');
-        if (seen[id]) throw new Error('Two custom conditions have the ID ' + id + '.');
+        if (!CUSTOM_ID.test(id)) throw new Error('A custom condition needs a name of lowercase letters, digits and hyphens, starting with a letter.');
+        if (Object.values(BUILT_IN_IDS).indexOf(id) !== -1) throw new Error(id + ' is the name of a built-in condition; choose another.');
+        if (seen[id]) throw new Error('Two custom conditions have the name ' + id + '.');
         seen[id] = true;
         var params = {};
         el.querySelectorAll('.pln-pair').forEach(function (row) {
@@ -366,9 +397,17 @@
           var val = row.querySelector('.pln-pair-value').value.trim();
           if (!k && !val) return;
           if (!k) throw new Error('Each value of the condition ' + id + ' needs a key.');
+          if (k === POLICY_KEY) throw new Error('The key ' + POLICY_KEY + ' is reserved for the custom policy; use another key in ' + id + '.');
           if (Object.prototype.hasOwnProperty.call(params, k)) throw new Error('The condition ' + id + ' has the key ' + k + ' twice.');
           params[k] = row.dataset.savedText === val ? JSON.parse(row.dataset.savedValue) : parseValue(val);
         });
+        var pName = el.querySelector('.pln-policy-name').value.trim();
+        var pVersion = el.querySelector('.pln-policy-version').value.trim();
+        if (pName || pVersion) {
+          if (!POLICY_NAME.test(pName)) throw new Error('Enter the policy name, for example region-guard.');
+          if (pVersion && !POLICY_VERSION.test(pVersion)) throw new Error('Enter a version such as v1.');
+          params[POLICY_KEY] = { name: pName, version: pVersion || 'v1' };
+        }
         return { id: id, type: 'custom', params: params };
       }
       var limits = [];
@@ -377,8 +416,8 @@
         var rawAmount = row.querySelector('.cfg-limit-amount').value.trim();
         var count = /^\d+$/.test(rawCount) ? parseInt(rawCount, 10) : NaN;
         var amount = rawAmount === '' ? 1 : (/^\d+$/.test(rawAmount) ? parseInt(rawAmount, 10) : NaN);
-        if (!(count >= 1)) throw new Error(t.name + ': each limit needs a count of at least 1.');
-        if (!(amount >= 1)) throw new Error(t.name + ': each limit needs a time window of at least 1.');
+        if (!(count >= 1)) throw new Error('Enter a whole number of at least 1.');
+        if (!(amount >= 1)) throw new Error('Enter a whole number of at least 1.');
         limits.push({ count: count, timeAmount: amount, timeUnit: row.querySelector('.cfg-limit-unit').value });
       });
       if (limits.length === 0) throw new Error(t.name + ' needs at least one limit, or remove it.');
