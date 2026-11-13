@@ -42,6 +42,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/middleware"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/plugin"
+	"github.com/wso2/api-platform/platform-api/internal/policysecret"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/router"
 	"github.com/wso2/api-platform/platform-api/internal/service"
@@ -342,6 +343,34 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	agentProxyService := service.NewAgentProxyService(agentProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	graphqlAPIService := service.NewGraphQLAPIService(graphqlAPIRepo, projectRepo, auditRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, identityService, slogger)
+
+	// Which policy parameters are credentials is declared by the policy
+	// definitions, which reach the control plane in the manifests the gateways
+	// report. One store resolves them for every service that has to withhold a
+	// credential on read or carry one forward on update, and the gateway service
+	// drops an organization's resolved index when a new manifest replaces the one
+	// it was built from.
+	policySecretStore := policysecret.NewStore(func(orgID string) ([][]byte, error) {
+		gateways, err := gatewayRepo.GetByOrganizationID(orgID)
+		if err != nil {
+			return nil, err
+		}
+		manifests := make([][]byte, 0, len(gateways))
+		for _, gateway := range gateways {
+			raw, err := gatewayRepo.GetGatewayManifest(gateway.ID)
+			if err != nil {
+				return nil, err
+			}
+			if len(raw) > 0 {
+				manifests = append(manifests, raw)
+			}
+		}
+		return manifests, nil
+	})
+	gatewayService.SetPolicySecrets(policySecretStore)
+	apiService.SetPolicySecrets(policySecretStore)
+	llmProviderService.SetPolicySecrets(policySecretStore)
+	llmProxyService.SetPolicySecrets(policySecretStore)
 
 	// The single configured encryption key (APIP_CP_ENCRYPTION_KEY) is used for all encrypted DB
 	// columns (secrets, subscription tokens, WebSub HMAC secrets)
