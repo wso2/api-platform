@@ -18,7 +18,7 @@ document.querySelectorAll('[data-tag]').forEach(checkbox => {
         document.querySelectorAll('.form-check-input:checked').forEach(checkedCheckbox => {
             selectedTags.push(checkedCheckbox.getAttribute('data-tag'));
         });
-        const tagsParam = selectedTags.join(',');
+        const tagsParam = selectedTags.map(encodeURIComponent).join(',');
         window.location.href = `${window.location.pathname}?tags=${tagsParam}`;
     });
 });
