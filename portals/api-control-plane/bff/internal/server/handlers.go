@@ -202,7 +202,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if errCode := q.Get("error"); errCode != "" {
 		slog.Warn("oidc callback error", "error", errCode, "desc", q.Get("error_description"))
-		http.Redirect(w, r, "/login?error="+errCode, http.StatusFound)
+		http.Redirect(w, r, "/login?error="+url.QueryEscape(errCode), http.StatusFound)
 		return
 	}
 

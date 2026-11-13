@@ -165,8 +165,6 @@ const registerAllPartialsFromFile = async (baseURL, req, filePrefix) => {
   // values of filePrefix work correctly.
   const base = (...parts) => path.resolve(process.cwd(), filePrefix, ...parts);
 
-  const filePath = req.originalUrl.split(baseURL).pop();
-
   await registerPartialsFromFile(baseURL, base("partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "home", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "api-landing", "partials"), req);
@@ -176,10 +174,6 @@ const registerAllPartialsFromFile = async (baseURL, req, filePrefix) => {
   await registerPartialsFromFile(baseURL, base("pages", "mcp-landing", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "api-workflows", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "api-workflows", "detail", "partials"), req);
-
-  if (fs.existsSync(base("pages", filePath, "partials"))) {
-    await registerPartialsFromFile(baseURL, base("pages", filePath, "partials"), req);
-  }
 }
 
 const registerPartialsFromAPI = async (req, orgId) => {

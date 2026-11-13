@@ -18,17 +18,29 @@
 
 package funcs
 
-import "os"
+import (
+	"log/slog"
+	"os"
+)
 
 func init() {
 	Register(Func{
 		Name: "env",
-		Fn: func(_ *Deps) any {
-			return func(key string) string {
-				if v, ok := os.LookupEnv(key); ok {
-					return v
+		Fn: func(deps *Deps) any {
+			return func(key string) (string, error) {
+				// The policy is consulted before the environment, so the outcome for a
+				// refused name is identical whether or not the variable exists.
+				if !currentEnvAccessPolicy().Allows(key) {
+					if deps != nil && deps.Logger != nil {
+						deps.Logger.Warn("Refused environment variable read in artifact template",
+							slog.String("env_var", key))
+					}
+					return "", &EnvAccessError{}
 				}
-				return ""
+				if v, ok := os.LookupEnv(key); ok {
+					return v, nil
+				}
+				return "", nil
 			}
 		},
 	})

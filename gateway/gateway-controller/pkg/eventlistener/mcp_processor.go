@@ -25,6 +25,7 @@ import (
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
@@ -71,6 +72,10 @@ func (l *EventListener) handleMCPProxyCreateOrUpdate(event eventhub.Event) {
 
 	// Render template expressions in the spec (e.g. {{ secret "..." }}, {{ env "..." }}).
 	if err := templateengine.RenderSpec(storedConfig, l.secretResolver, l.logger); err != nil {
+		if funcs.IsEnvAccessError(err) {
+			l.undeployAfterEnvRefusal(storedConfig, event.EventID)
+			return
+		}
 		l.logger.Error("Failed to render config templates for MCP proxy",
 			slog.String("proxy_id", entityID),
 			slog.String("event_id", event.EventID),
