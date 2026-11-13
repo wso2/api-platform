@@ -437,7 +437,7 @@ export function SubscriptionPlanFormDialog({
   return (
     <Dialog
       fullWidth
-      maxWidth="md"
+      maxWidth="sm"
       onClose={busy ? undefined : onClose}
       open={open}
       slotProps={{ paper: { sx: { maxHeight: 'calc(100% - 64px)' } } }}

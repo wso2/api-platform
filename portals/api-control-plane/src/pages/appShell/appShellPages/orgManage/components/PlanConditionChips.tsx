@@ -17,12 +17,13 @@
  */
 
 import { Box, Chip, Stack, Tooltip, Typography } from '@wso2/oxygen-ui';
+import { Fragment } from 'react';
 import { defineMessages, useIntl, type IntlShape } from 'react-intl';
 
 import { isBuiltInType, type ConditionLimits, type PlanCondition } from './planConditions';
 
 /** The plans table shows a plan's first five conditions as chips; a "+N" chip lists the rest. */
-export const MAX_CONDITION_CHIPS = 5;
+export const MAX_CONDITION_CHIPS = 3;
 
 const messages = defineMessages({
   allowed: {
@@ -39,10 +40,6 @@ const messages = defineMessages({
   moreAria: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.moreAria',
     defaultMessage: '{count, plural, one {# more condition} other {# more conditions}}',
-  },
-  moreTitle: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.moreTitle',
-    defaultMessage: 'More conditions',
   },
   moreWindows: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionChips.moreWindows',
@@ -89,10 +86,9 @@ const LABEL_KEYS: Record<string, string> = {
   'tool-call-count': 'toolCalls',
 };
 
-/** One chip per condition: its first limit and how many more it has, with every limit (or a custom
- * condition's values) for the tooltip. As the API Portal's plans table builds them. */
+/** One chip per condition window (a custom condition: one chip, its values for the tooltip). */
 export const conditionChips = (intl: IntlShape, conditions: PlanCondition[]): ConditionChip[] =>
-  conditions.map((condition) => {
+  conditions.flatMap((condition): ConditionChip[] => {
     const params = (condition.params ?? {}) as Record<string, unknown>;
     if (!isBuiltInType(condition.type)) {
       const values = Object.entries(params).map(([name, value]) =>
@@ -101,13 +97,15 @@ export const conditionChips = (intl: IntlShape, conditions: PlanCondition[]): Co
           value: typeof value === 'string' ? value : JSON.stringify(value),
         }),
       );
-      return {
-        custom: true,
-        details: values.length > 0 ? values : [intl.formatMessage(messages.noValues)],
-        first: condition.id ?? '',
-        label: intl.formatMessage(messages.label, { type: 'custom' }),
-        more: 0,
-      };
+      return [
+        {
+          custom: true,
+          details: values.length > 0 ? values : [intl.formatMessage(messages.noValues)],
+          first: condition.id ?? '',
+          label: intl.formatMessage(messages.label, { type: 'custom' }),
+          more: 0,
+        },
+      ];
     }
     const limits = params as Partial<ConditionLimits>;
     const labelKey =
@@ -119,16 +117,20 @@ export const conditionChips = (intl: IntlShape, conditions: PlanCondition[]): Co
         unit: window.timeUnit,
       }),
     );
-    return {
+    const label = intl.formatMessage(messages.label, { type: labelKey });
+    const allowed = limits.onExceed === 'allow' ? [intl.formatMessage(messages.allowed)] : [];
+    if (windows.length === 0) {
+      const none = intl.formatMessage(messages.noLimit);
+      return [{ custom: false, details: [none], first: none, label, more: 0 }];
+    }
+    // Each window is its own chip: two request windows read as two Requests chips.
+    return windows.map((window) => ({
       custom: false,
-      details: [
-        ...windows,
-        ...(limits.onExceed === 'allow' ? [intl.formatMessage(messages.allowed)] : []),
-      ],
-      first: windows[0] ?? intl.formatMessage(messages.noLimit),
-      label: intl.formatMessage(messages.label, { type: labelKey }),
-      more: Math.max(windows.length - 1, 0),
-    };
+      details: [window, ...allowed],
+      first: window,
+      label,
+      more: 0,
+    }));
   });
 
 const chipSx = {
@@ -137,22 +139,67 @@ const chipSx = {
   typography: 'caption',
 } as const;
 
-const TipLines = ({ lines }: { lines: string[] }) => (
-  <>
-    {lines.map((line, index) => (
-      <Typography component="div" key={index} sx={{ fontFamily: 'monospace' }} variant="caption">
-        {line}
-      </Typography>
-    ))}
-  </>
-);
-
 const chipTitle = (chip: ConditionChip) =>
   chip.custom ? `${chip.label} · ${chip.first}` : chip.label;
 
-/** The Conditions cell of the plans table: one chip per condition, at most five, and a "+N" chip
- * for the rest; a plan with none is Unlimited. Hovering or focusing a chip lists every limit. */
-export function PlanConditionChips({ conditions }: { conditions: PlanCondition[] | undefined }) {
+/** The tooltip surface: the app's paper, not the default grey, so it reads like a small card. */
+export const tipSlotProps = {
+  tooltip: {
+    sx: {
+      bgcolor: 'background.paper',
+      border: 1,
+      borderColor: 'divider',
+      boxShadow: 3,
+      color: 'text.primary',
+      maxWidth: 360,
+      px: 1.5,
+      py: 1,
+    },
+  },
+} as const;
+
+/** Conditions as a compact two-column list: the condition, then its limits (or values). */
+const ConditionTip = ({ chips }: { chips: ConditionChip[] }) => (
+  <Box
+    sx={{
+      alignItems: 'baseline',
+      columnGap: 1.5,
+      display: 'grid',
+      gridTemplateColumns: 'auto 1fr',
+      rowGap: 0.5,
+    }}
+  >
+    {chips.map((chip, index) => (
+      <Fragment key={index}>
+        <Typography component="div" noWrap sx={{ fontWeight: 600 }} variant="caption">
+          {chipTitle(chip)}
+        </Typography>
+        <Typography
+          color="text.secondary"
+          component="div"
+          sx={{ fontFamily: 'monospace' }}
+          variant="caption"
+        >
+          {chip.details.join(', ')}
+        </Typography>
+      </Fragment>
+    ))}
+  </Box>
+);
+
+/** The Conditions cell of a plans table: one chip per condition window (a condition with two
+ * windows shows two chips), at most `max` (three by default), and a "+N" chip whose tooltip lists the
+ * rest; a plan with none is Unlimited. */
+export function PlanConditionChips({
+  conditions,
+  max = MAX_CONDITION_CHIPS,
+  singleLine = false,
+}: {
+  conditions: PlanCondition[] | undefined;
+  max?: number;
+  /** Keep the chips on one line (a fixed-height table row), never wrapping. */
+  singleLine?: boolean;
+}) {
   const intl = useIntl();
   const chips = conditionChips(intl, conditions ?? []);
   if (chips.length === 0) {
@@ -162,63 +209,31 @@ export function PlanConditionChips({ conditions }: { conditions: PlanCondition[]
       </Typography>
     );
   }
-  const shown = chips.slice(0, MAX_CONDITION_CHIPS);
-  const rest = chips.slice(MAX_CONDITION_CHIPS);
+  const shown = chips.slice(0, max);
+  const rest = chips.slice(max);
   return (
-    <Stack direction="row" flexWrap="wrap" gap={0.75}>
+    <Stack direction="row" flexWrap={singleLine ? 'nowrap' : 'wrap'} gap={0.75} sx={singleLine ? { minWidth: 0, overflow: 'hidden' } : undefined}>
       {shown.map((chip, index) => (
-        <Tooltip
+        // The chip says it all; only "+N" has a tooltip, for what it hides.
+        <Chip
           key={index}
-          title={
-            <Box>
-              <Typography component="div" sx={{ fontWeight: 600 }} variant="caption">
-                {chipTitle(chip)}
-              </Typography>
-              <TipLines lines={chip.details} />
-            </Box>
+          label={
+            <>
+              <Box component="span" sx={{ fontWeight: 600 }}>
+                {chip.label}
+              </Box>
+              <Box component="span" sx={{ fontFamily: 'monospace' }}>
+                {chip.first}
+              </Box>
+            </>
           }
-        >
-          <Chip
-            label={
-              <>
-                <Box component="span" sx={{ fontWeight: 600 }}>
-                  {chip.label}
-                </Box>
-                <Box component="span" sx={{ fontFamily: 'monospace' }}>
-                  {chip.first}
-                </Box>
-                {chip.more > 0 && (
-                  <Box component="span" sx={{ color: 'text.secondary' }}>
-                    {intl.formatMessage(messages.moreWindows, { count: chip.more })}
-                  </Box>
-                )}
-              </>
-            }
-            size="small"
-            sx={chipSx}
-            tabIndex={0}
-            variant="outlined"
-          />
-        </Tooltip>
+          size="small"
+          sx={chipSx}
+          variant="outlined"
+        />
       ))}
       {rest.length > 0 && (
-        <Tooltip
-          title={
-            <Stack spacing={0.75}>
-              <Typography component="div" sx={{ fontWeight: 600 }} variant="caption">
-                {intl.formatMessage(messages.moreTitle)}
-              </Typography>
-              {rest.map((chip, index) => (
-                <Box key={index}>
-                  <Typography component="div" sx={{ fontWeight: 600 }} variant="caption">
-                    {chipTitle(chip)}
-                  </Typography>
-                  <TipLines lines={chip.details} />
-                </Box>
-              ))}
-            </Stack>
-          }
-        >
+        <Tooltip slotProps={tipSlotProps} title={<ConditionTip chips={rest} />}>
           <Chip
             aria-label={intl.formatMessage(messages.moreAria, { count: rest.length })}
             label={intl.formatMessage(messages.moreWindows, { count: rest.length })}

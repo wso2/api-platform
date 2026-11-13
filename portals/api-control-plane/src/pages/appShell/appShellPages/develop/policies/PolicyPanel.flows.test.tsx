@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import type { Policy } from '@/api/resources/restApis';
-import { accepts, aRestApi, collection, recorder } from '@/test/msw';
+import { accepts, aRestApi, recorder } from '@/test/msw';
 import { policyHubHandlers, stubHubFetch, type HubPolicy } from '@/test/policyHub';
 import { server } from '@/test/server';
 import { fireEvent, renderWithProviders, screen, waitFor, within } from '@/test/utils';
@@ -78,8 +78,6 @@ beforeEach(() => {
   resetHttpClient();
   stubHubFetch();
   server.use(...policyHubHandlers(catalog));
-  // The plan notes under the panels: an API published nowhere offers no plans.
-  server.use(collection('/api-publications', []), collection('/subscription-plans', []));
 });
 
 afterEach(() => {

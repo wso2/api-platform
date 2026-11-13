@@ -1071,16 +1071,16 @@ const customCondition = {
 };
 
 describe('SubscriptionPlanFormDialog conditions', () => {
-  it('offers the built-in condition types not yet used, and Custom', async () => {
+  it('lists every condition type, a built-in one already added disabled and marked Added', async () => {
     const { user } = setup();
 
     expect(screen.getByText('No conditions: this plan is unlimited.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Add condition' }));
     expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
-      'Request countREST APIs only. Counts every request.',
-      'Tool-call countMCP proxies only. Counts tools/call.',
-      'Token countLLM proxies only. Counts model tokens.',
-      'CustomAn ID and key-value pairs, read by a policy your team writes.',
+      'Request countLimits how many requests a subscriber makes.',
+      'Tool-call countLimits how many MCP tools a subscriber calls.',
+      'Token countLimits how many LLM tokens a subscriber uses.',
+      'CustomYour own condition, read by a policy you write.',
     ]);
     await user.click(screen.getByRole('menuitem', { name: /^Request count/ }));
     await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
@@ -1088,9 +1088,13 @@ describe('SubscriptionPlanFormDialog conditions', () => {
     expect(screen.queryByText('No conditions: this plan is unlimited.')).not.toBeInTheDocument();
     expect(card('Request count')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Add condition' }));
-    const names = (await screen.findAllByRole('menuitem')).map((item) => item.textContent ?? '');
-    expect(names).toHaveLength(3);
-    expect(names.some((name) => name.startsWith('Request count'))).toBe(false);
+    const items = await screen.findAllByRole('menuitem');
+    expect(items).toHaveLength(4);
+    const requestCount = screen.getByRole('menuitem', { name: /^Request count/ });
+    expect(requestCount).toHaveAttribute('aria-disabled', 'true');
+    expect(requestCount).toHaveTextContent('Added');
+    expect(screen.getByRole('menuitem', { name: /^Tool-call count/ })).not.toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('menuitem', { name: /^Custom/ })).not.toHaveAttribute('aria-disabled', 'true');
   });
 
   it('creates a plan with its conditions and description, never the legacy limits', async () => {
@@ -1110,11 +1114,14 @@ describe('SubscriptionPlanFormDialog conditions', () => {
       within(requestCount).getAllByRole('combobox', { name: 'Window unit' })[1],
       'Day',
     );
-    await choose(
-      user,
-      within(requestCount).getByRole('combobox', { name: 'When a limit is reached' }),
-      'Allow when reached',
-    );
+    // After the limits, as on main: a bordered row with a switch, on (block) by default.
+    const reject = within(requestCount).getByRole('switch', {
+      name: 'Block requests when quota is reached',
+    });
+    expect(reject).toBeChecked();
+    expect(within(requestCount).getByText('Reject requests that exceed the limit.')).toBeInTheDocument();
+    await user.click(reject);
+    expect(reject).not.toBeChecked();
     expect(
       within(requestCount).getByText(
         '100 requests per minute · 10,000 requests per day · overage allowed',
@@ -1135,12 +1142,20 @@ describe('SubscriptionPlanFormDialog conditions', () => {
 
     await addCondition(user, 'Custom');
     const custom = card('Custom');
-    await user.type(within(custom).getByLabelText(/^ID/), 'business-hours');
+    await user.type(within(custom).getByLabelText(/^Condition name/), 'business-hours');
     await user.type(within(custom).getByLabelText('Key'), 'start');
     await user.type(within(custom).getByLabelText('Value'), '9');
     await user.click(within(custom).getByRole('button', { name: 'Add value' }));
     await user.type(within(custom).getAllByLabelText('Key')[1], 'zone');
     await user.type(within(custom).getAllByLabelText('Value')[1], 'UTC');
+    // The optional policy that enforces it: sent under the reserved params key `policy`.
+    expect(
+      within(custom).getByLabelText(
+        'The policy that enforces this condition, for example region-guard v1. It must be attached to the API to take effect.',
+      ),
+    ).toBeInTheDocument();
+    await user.type(within(custom).getByLabelText('Policy name'), 'region-guard');
+    await user.type(within(custom).getByLabelText('Policy version'), 'v2');
 
     await user.click(screen.getByRole('button', { name: 'Add plan' }));
 
@@ -1169,7 +1184,11 @@ describe('SubscriptionPlanFormDialog conditions', () => {
         },
         type: 'token-count',
       },
-      { id: 'business-hours', params: { start: 9, zone: 'UTC' }, type: 'custom' },
+      {
+        id: 'business-hours',
+        params: { policy: { name: 'region-guard', version: 'v2' }, start: 9, zone: 'UTC' },
+        type: 'custom',
+      },
     ]);
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
@@ -1258,7 +1277,7 @@ describe('SubscriptionPlanFormDialog conditions', () => {
     await user.type(screen.getByLabelText(/Plan name/), 'Gold');
     await addCondition(user, 'Custom');
     const custom = card('Custom');
-    await user.type(within(custom).getByLabelText(/^ID/), 'tier');
+    await user.type(within(custom).getByLabelText(/^Condition name/), 'tier');
     await user.type(within(custom).getByLabelText('Key'), '__proto__');
     await user.type(within(custom).getByLabelText('Value'), 'gold');
     await user.click(screen.getByRole('button', { name: 'Add plan' }));
@@ -1276,7 +1295,7 @@ describe('SubscriptionPlanFormDialog conditions', () => {
     await user.type(screen.getByLabelText(/Plan name/), 'Gold');
     await addCondition(user, 'Custom');
     const custom = card('Custom');
-    const id = within(custom).getByLabelText(/^ID/);
+    const id = within(custom).getByLabelText(/^Condition name/);
 
     await user.type(id, 'Business Hours');
     await user.tab();
@@ -1289,7 +1308,7 @@ describe('SubscriptionPlanFormDialog conditions', () => {
     await user.clear(id);
     await user.type(id, 'requests');
     expect(
-      within(custom).getByText('requests is the ID of a built-in condition; choose another.'),
+      within(custom).getByText('requests is the name of a built-in condition; choose another.'),
     ).toBeInTheDocument();
 
     await user.clear(id);

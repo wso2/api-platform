@@ -20,15 +20,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
-import {
-  aPublication,
-  aPublicationSummary,
-  aRestApi,
-  aSubscriptionPlan,
-  collection,
-  resource,
-} from '@/test/msw';
-import { server } from '@/test/server';
+import { aRestApi } from '@/test/msw';
 import { renderWithProviders, screen } from '@/test/utils';
 import { PolicyPanel } from './PolicyPanel';
 
@@ -36,8 +28,6 @@ const ORG = 'api-platform-demo';
 
 beforeEach(() => {
   resetHttpClient();
-  // The plan notes under the panels: an API published nowhere offers no plans.
-  server.use(collection('/api-publications', []), collection('/subscription-plans', []));
 });
 
 const renderPanel = (readOnly: boolean) => {
@@ -100,51 +90,5 @@ describe('PolicyPanel', () => {
     expect(screen.getByText('1')).toBeInTheDocument();
     expect(screen.getAllByLabelText('Edit policy').length).toBeGreaterThan(0);
     expect(screen.getAllByLabelText('Remove policy').length).toBeGreaterThan(0);
-  });
-
-  it('notes request-count as not enforced while subscription-validation is on some resources only', async () => {
-    const sv = { name: 'subscription-validation', params: {}, version: 'v1' };
-    const api = aRestApi({
-      operations: [
-        { name: 'List', request: { method: 'GET', path: '/orders', policies: [sv] } },
-        { name: 'Create', request: { method: 'POST', path: '/orders' } },
-      ] as never,
-      policies: [],
-    });
-    server.use(
-      collection('/api-publications', [
-        aPublicationSummary({ apiPortalId: 'portal-a', status: 'PUBLISHED' }),
-      ]),
-      resource(
-        `/api-portals/portal-a/apis/rest-api/${api.id}/publication`,
-        aPublication({ subscriptionPlans: [{ displayName: 'Gold', id: 'gold', sourceStatus: 'UNCHANGED' }] }),
-      ),
-      collection('/subscription-plans', [
-        aSubscriptionPlan({
-          conditions: [
-            {
-              id: 'requests',
-              params: { limits: [{ count: 10, timeAmount: 1, timeUnit: 'MINUTE' }], onExceed: 'reject' },
-              type: 'request-count',
-            },
-          ],
-          id: 'gold',
-        }),
-      ]),
-    );
-
-    renderWithProviders(
-      <ApiScopeProvider orgId={ORG}>
-        <PolicyPanel api={api} />
-      </ApiScopeProvider>,
-    );
-
-    const row = (await screen.findByText('requests')).closest('li') as HTMLElement;
-    expect(row).toHaveTextContent(
-      'Not enforced. subscription-validation is attached to some resources only. Attach it to the API or to every resource and redeploy.',
-    );
-    expect(
-      screen.getByText(/This reflects the policies on this page; changes apply once you save and deploy the API\./),
-    ).toBeInTheDocument();
   });
 });

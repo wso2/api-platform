@@ -21,9 +21,32 @@ import type { SubscriptionPlan } from '@/api/resources/subscriptionPlans';
 import {
   BUILT_IN_IDS,
   BUILT_IN_TYPES,
+  customPolicyOf,
   isBuiltInType,
   type BuiltInType,
 } from '../../orgManage/components/planConditions';
+
+/**
+ * How a policy is named where its version matters: `name@v<major>`, as a custom condition names
+ * the policy that enforces it (`region-guard@v1`). Built-in conditions name a policy by name alone.
+ */
+export const policyKey = (name: string, version?: string): string => {
+  if (!version) return name;
+  const major = version.trim().match(/^v?(\d+)/)?.[1];
+  return `${name}@${major ? `v${major}` : version.trim()}`;
+};
+
+/** The name and (when the key carries one) version of a policy key. */
+export const parsePolicyKey = (key: string): { name: string; version?: string } => {
+  const at = key.lastIndexOf('@');
+  return at > 0 ? { name: key.slice(0, at), version: key.slice(at + 1) } : { name: key };
+};
+
+/** A policy key as people read it: `region-guard v1`. */
+export const policyLabel = (key: string): string => {
+  const { name, version } = parsePolicyKey(key);
+  return version ? `${name} ${version}` : name;
+};
 
 /**
  * The gateway policy that checks subscriptions. Without it on an API, no plan, condition or
@@ -80,18 +103,32 @@ export const apiKindOf = (apiType: string): ApiKind => {
  * on its prototype. */
 const hasOwn = (record: object, key: string) => Object.prototype.hasOwnProperty.call(record, key);
 
-/** The policy that enforces a condition, or `null` when none does yet. */
-export const enforcerOf = (condition: { type: string; id?: string }): string | null => {
+/** The policy that enforces a condition, or `null` when none does yet. A custom condition that
+ * names its policy (`params.policy`) is enforced by that policy at that version. */
+export const enforcerOf = (condition: {
+  type: string;
+  id?: string;
+  params?: unknown;
+}): string | null => {
   if (isBuiltInType(condition.type)) return CONDITION_POLICIES.builtIn[condition.type];
+  const named = customPolicyOf(condition);
+  if (named) return policyKey(named.name, named.version);
   const id = condition.id ?? '';
   return hasOwn(CONDITION_POLICIES.customById, id) ? CONDITION_POLICIES.customById[id] : null;
 };
 
 /** What an API carries its policies in: its own list, and (a REST API) each operation's. */
 type PolicyHolder = {
-  policies?: Policy[];
-  operations?: { request?: { policies?: Policy[] }; policies?: Policy[] }[];
+  policies?: Pick<Policy, 'name' | 'version'>[];
+  operations?: {
+    request?: { policies?: Pick<Policy, 'name' | 'version'>[] };
+    policies?: Pick<Policy, 'name' | 'version'>[];
+  }[];
 };
+
+/** Each policy by name, and by name at its major version (`name@v1`), so either can be looked up. */
+const policyKeysOf = (policies: readonly Pick<Policy, 'name' | 'version'>[] = []) =>
+  policies.flatMap((policy) => [policy.name, policyKey(policy.name, policy.version || 'v1')]);
 
 /** Where an API's policies apply, as far as the plans are concerned. */
 export type PolicyAttachment = {
@@ -107,14 +144,10 @@ export type PolicyAttachment = {
  * only, a plan condition it enforces is not enforced on the rest, so it is `partial`.
  */
 export const policyAttachment = (api: PolicyHolder): PolicyAttachment => {
-  const global = new Set((api.policies ?? []).map((policy) => policy.name));
+  const global = new Set(policyKeysOf(api.policies));
   const perOperation = (api.operations ?? []).map(
     (operation) =>
-      new Set(
-        [...(operation.request?.policies ?? []), ...(operation.policies ?? [])].map(
-          (policy) => policy.name,
-        ),
-      ),
+      new Set(policyKeysOf([...(operation.request?.policies ?? []), ...(operation.policies ?? [])])),
   );
   const attached = new Set(global);
   const partial = new Set<string>();
@@ -159,7 +192,7 @@ export type EnforcementRow = {
   type: BuiltInType | 'custom';
   /** The condition's ID: fixed for a built-in type, chosen for a custom one. */
   id: string;
-  /** The policy that enforces it, if any does. */
+  /** The policy that enforces it, if any does: a name, or `name@v<major>` (see `policyKey`). */
   policy: string | null;
   status: EnforcementStatus;
   /** Not enforced because its policy, or subscription-validation, is on some resources only. */
@@ -211,15 +244,15 @@ export const planEnforcement = (
       ? rowOf(type, BUILT_IN_IDS[type], CONDITION_POLICIES.builtIn[type])
       : { id: BUILT_IN_IDS[type], partial: false, policy: null, status: 'notApplicable' as const, type },
   );
-  const customIds = [
-    ...new Set(
-      conditions
-        .filter((condition) => !isBuiltInType(condition.type) && condition.id)
-        .map((condition) => condition.id!),
-    ),
-  ];
-  const customRows = customIds.map((id) =>
-    rowOf('custom', id, enforcerOf({ id, type: 'custom' })),
+  // One row per custom ID, enforced by the policy the first condition with that ID names.
+  const customById = new Map<string, (typeof conditions)[number]>();
+  for (const condition of conditions) {
+    if (!isBuiltInType(condition.type) && condition.id && !customById.has(condition.id)) {
+      customById.set(condition.id, condition);
+    }
+  }
+  const customRows = [...customById].map(([id, condition]) =>
+    rowOf('custom', id, enforcerOf({ ...condition, id, type: 'custom' })),
   );
   const rows = [...builtInRows, ...customRows];
   return {

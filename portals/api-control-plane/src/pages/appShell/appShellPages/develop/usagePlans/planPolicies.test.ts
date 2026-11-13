@@ -27,6 +27,7 @@ import {
   enforcerOf,
   planEnforcement,
   policyAttachment,
+  policyLabel,
   requiredPolicies,
   SUBSCRIPTION_VALIDATION,
   unenforcedConditionTypes,
@@ -84,15 +85,21 @@ describe('policyAttachment', () => {
       ],
       policies: [{ name: 'jwt-auth', version: 'v1' }],
     });
-    expect([...attached].sort()).toEqual(['jwt-auth', SUBSCRIPTION_VALIDATION]);
-    expect([...partial]).toEqual(['cors']);
+    // Each by name, and by name at its major version, for a custom condition that names one.
+    expect([...attached].sort()).toEqual([
+      'jwt-auth',
+      'jwt-auth@v1',
+      SUBSCRIPTION_VALIDATION,
+      `${SUBSCRIPTION_VALIDATION}@v1`,
+    ]);
+    expect([...partial]).toEqual(['cors', 'cors@v1']);
   });
 
   it('counts a policy on some operations only as partial, not attached', () => {
     const api = { operations: [{ request: { policies: [sv] } }, {}] };
     expect(policyAttachment(api)).toEqual({
       attached: new Set(),
-      partial: new Set([SUBSCRIPTION_VALIDATION]),
+      partial: new Set([SUBSCRIPTION_VALIDATION, `${SUBSCRIPTION_VALIDATION}@v1`]),
     });
     expect(attachedPolicyNames(api).has(SUBSCRIPTION_VALIDATION)).toBe(false);
   });
@@ -100,7 +107,7 @@ describe('policyAttachment', () => {
   it('counts a global policy as attached whatever the operations hold', () => {
     const api = { operations: [{ policies: [sv] }, {}], policies: [sv] };
     expect(policyAttachment(api)).toEqual({
-      attached: new Set([SUBSCRIPTION_VALIDATION]),
+      attached: new Set([SUBSCRIPTION_VALIDATION, `${SUBSCRIPTION_VALIDATION}@v1`]),
       partial: new Set(),
     });
   });
@@ -260,5 +267,42 @@ describe('conditions by kind of API', () => {
     expect(unenforcedConditionTypes(plans, 'rest')).toEqual(['custom']);
     expect(unenforcedConditionTypes(plans, 'llm')).toEqual(['token-count', 'custom']);
     expect(unenforcedConditionTypes(plans)).toEqual(['tool-call-count', 'token-count', 'custom']);
+  });
+});
+
+describe('a custom condition that names its policy', () => {
+  const regionPlan = {
+    conditions: [
+      {
+        id: 'region-limit',
+        params: { policy: { name: 'region-guard', version: 'v1' }, region: 'eu' },
+        type: 'custom',
+      },
+    ],
+  } as never;
+
+  it('is enforced only while that policy, at that major version, is attached with subscription-validation', () => {
+    const attached = policyAttachment({
+      policies: [
+        { name: 'subscription-validation', version: 'v1' },
+        { name: 'region-guard', version: 'v1.2.0' },
+      ],
+    }).attached;
+    expect(planEnforcement([regionPlan], attached).rows[0]).toMatchObject({
+      policy: 'region-guard@v1',
+      status: 'enforced',
+    });
+    const wrongVersion = policyAttachment({
+      policies: [
+        { name: 'subscription-validation', version: 'v1' },
+        { name: 'region-guard', version: 'v2' },
+      ],
+    }).attached;
+    expect(planEnforcement([regionPlan], wrongVersion).rows[0].status).toBe('notEnforced');
+  });
+
+  it('asks for that policy among the required ones', () => {
+    expect(requiredPolicies([regionPlan], 'rest')).toEqual(['subscription-validation', 'region-guard@v1']);
+    expect(policyLabel('region-guard@v1')).toBe('region-guard v1');
   });
 });

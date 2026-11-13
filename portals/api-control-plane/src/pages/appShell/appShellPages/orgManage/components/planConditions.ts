@@ -66,6 +66,32 @@ export const MAX_DESCRIPTION_CHARS = 1023;
 export const MAX_WHOLE_NUMBER = Number.MAX_SAFE_INTEGER;
 const CUSTOM_ID = /^[a-z][a-z0-9-]{0,62}$/;
 
+/**
+ * The params key under which a custom condition names the policy that enforces it:
+ * `{"policy": {"name": "region-guard", "version": "v1"}}`. A reserved key until the Platform API
+ * gets a field of its own for it; the key-value editor never shows or accepts it.
+ */
+export const CUSTOM_POLICY_KEY = 'policy';
+const POLICY_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/;
+const POLICY_VERSION = /^v?\d+(\.\d+){0,2}$/;
+
+/** The policy a custom condition names, if it names one, with its version as `v<major>`. */
+export const customPolicyOf = (condition: {
+  type: string;
+  params?: unknown;
+}): { name: string; version: string } | null => {
+  if (isBuiltInType(condition.type)) return null;
+  const policy = (condition.params as Record<string, unknown> | undefined)?.[CUSTOM_POLICY_KEY] as
+    | { name?: unknown; version?: unknown }
+    | undefined;
+  if (!policy || typeof policy !== 'object' || typeof policy.name !== 'string' || !policy.name) {
+    return null;
+  }
+  const version = typeof policy.version === 'string' ? policy.version : 'v1';
+  const major = version.match(/^v?(\d+)/)?.[1];
+  return { name: policy.name, version: major ? `v${major}` : version };
+};
+
 /** Own keys only, so a custom type or ID such as `constructor` is not taken for a built-in one. */
 export const isBuiltInType = (type: string): type is BuiltInType =>
   Object.prototype.hasOwnProperty.call(BUILT_IN_IDS, type);
@@ -83,7 +109,7 @@ export type PairDraft = {
 };
 
 /** A condition being edited. A built-in one uses `windows`, `onExceed` and (token-count)
- * `tokenType`; a custom one uses `id` and `pairs`. */
+ * `tokenType`; a custom one uses `id`, `pairs` and, optionally, the policy that enforces it. */
 export type ConditionDraft = {
   key: number;
   type: ConditionType;
@@ -92,6 +118,9 @@ export type ConditionDraft = {
   onExceed: OnExceed;
   tokenType: TokenType;
   pairs: PairDraft[];
+  /** Custom only: the policy that enforces it, sent as `params.policy`; empty when none. */
+  policyName: string;
+  policyVersion: string;
 };
 
 let nextKey = 0;
@@ -120,6 +149,8 @@ export const newCondition = (type: ConditionType): ConditionDraft => ({
   key: newKey(),
   onExceed: 'reject',
   pairs: type === 'custom' ? [newPair()] : [],
+  policyName: '',
+  policyVersion: '',
   tokenType: 'total',
   type,
   windows: type === 'custom' ? [] : [newWindow()],
@@ -131,11 +162,16 @@ export const draftsFromConditions = (conditions: PlanCondition[] | undefined): C
   (conditions ?? []).map((condition) => {
     const params = (condition.params ?? {}) as Record<string, unknown>;
     if (!isBuiltInType(condition.type)) {
-      const pairs = Object.entries(params).map(([name, value]) => newPair(name, value));
+      const pairs = Object.entries(params)
+        .filter(([name]) => name !== CUSTOM_POLICY_KEY)
+        .map(([name, value]) => newPair(name, value));
+      const policy = params[CUSTOM_POLICY_KEY] as { name?: unknown; version?: unknown } | undefined;
       return {
         ...newCondition('custom'),
         id: condition.id ?? '',
         pairs: pairs.length > 0 ? pairs : [newPair()],
+        policyName: typeof policy?.name === 'string' ? policy.name : '',
+        policyVersion: typeof policy?.version === 'string' ? policy.version : '',
       };
     }
     const limits = (params as Partial<ConditionLimits>).limits ?? [];
@@ -166,7 +202,7 @@ export const parseValue = (text: string): unknown => {
 const messages = defineMessages({
   amountInvalid: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.amountInvalid',
-    defaultMessage: 'Enter a window of at least 1.',
+    defaultMessage: 'Enter a whole number of at least 1.',
   },
   countInvalid: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.countInvalid',
@@ -174,7 +210,7 @@ const messages = defineMessages({
   },
   customIdBuiltIn: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.customIdBuiltIn',
-    defaultMessage: '{id} is the ID of a built-in condition; choose another.',
+    defaultMessage: '{id} is the name of a built-in condition; choose another.',
   },
   customIdInvalid: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.customIdInvalid',
@@ -183,7 +219,7 @@ const messages = defineMessages({
   },
   customIdTaken: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.customIdTaken',
-    defaultMessage: 'Another condition already has the ID {id}.',
+    defaultMessage: 'Another condition already has the name {id}.',
   },
   numberTooLarge: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.numberTooLarge',
@@ -196,6 +232,18 @@ const messages = defineMessages({
   pairKeyMissing: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.pairKeyMissing',
     defaultMessage: 'Each value needs a key.',
+  },
+  pairKeyReserved: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.pairKeyReserved',
+    defaultMessage: 'The key {name} is reserved for the custom policy; use another key.',
+  },
+  policyNameInvalid: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.policyNameInvalid',
+    defaultMessage: 'Enter the policy name, for example region-guard.',
+  },
+  policyVersionInvalid: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.policyVersionInvalid',
+    defaultMessage: 'Enter a version such as v1.',
   },
   pairKeyTaken: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.pairKeyTaken',
@@ -229,6 +277,8 @@ export const fieldKeys = {
   count: (condition: number, window: number) => `${condition}.window.${window}.count`,
   customId: (condition: number) => `${condition}.id`,
   pairName: (condition: number, pair: number) => `${condition}.pair.${pair}.name`,
+  policyName: (condition: number) => `${condition}.policy.name`,
+  policyVersion: (condition: number) => `${condition}.policy.version`,
   params: (condition: number) => `${condition}.params`,
   /** A window whose length another window already has: reported on its unit. */
   unit: (condition: number, window: number) => `${condition}.window.${window}.unit`,
@@ -314,6 +364,13 @@ export const checkConditions = (drafts: ConditionDraft[]): ConditionsCheck => {
           });
           continue;
         }
+        if (name === CUSTOM_POLICY_KEY) {
+          fail(draft.key, fieldKeys.pairName(draft.key, pair.key), {
+            message: messages.pairKeyReserved,
+            values: { name },
+          });
+          continue;
+        }
         if (Object.prototype.hasOwnProperty.call(params, name)) {
           fail(draft.key, fieldKeys.pairName(draft.key, pair.key), {
             message: messages.pairKeyTaken,
@@ -324,6 +381,24 @@ export const checkConditions = (drafts: ConditionDraft[]): ConditionsCheck => {
         // The text as typed, spaces too: a saved " true " left untouched stays that string.
         params[name] =
           pair.saved && pair.saved.text === pair.value ? pair.saved.value : parseValue(text);
+      }
+      // The optional enforcing policy, under its reserved key; left out when not given.
+      const policyName = draft.policyName.trim();
+      const policyVersion = draft.policyVersion.trim();
+      if (policyName || policyVersion) {
+        if (!POLICY_NAME.test(policyName)) {
+          fail(draft.key, fieldKeys.policyName(draft.key), { message: messages.policyNameInvalid });
+        }
+        if (policyVersion && !POLICY_VERSION.test(policyVersion)) {
+          fail(draft.key, fieldKeys.policyVersion(draft.key), {
+            message: messages.policyVersionInvalid,
+          });
+        }
+        const version = policyVersion || 'v1';
+        params[CUSTOM_POLICY_KEY] = {
+          name: policyName,
+          version: version.startsWith('v') ? version : `v${version}`,
+        };
       }
       if (new TextEncoder().encode(JSON.stringify(params)).length > MAX_CUSTOM_PARAMS_BYTES) {
         fail(draft.key, fieldKeys.params(draft.key), {

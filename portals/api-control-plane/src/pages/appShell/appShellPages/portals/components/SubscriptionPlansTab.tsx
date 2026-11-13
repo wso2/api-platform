@@ -18,17 +18,12 @@
 
 import { Box, Button } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
+import { Link as RouterLink } from 'react-router-dom';
 
 import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/subscriptionPlans';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
-import {
-  type ApiKind,
-  requiredPolicies,
-  unenforcedConditionTypes,
-} from '../../develop/policies/planPolicies';
 import { toggleSelection, type DeletedSelection, type DraftFormValues } from '../utils/publicationForm';
 import { PlanCard } from './PlanCard';
-import { RequiredPoliciesNote } from './RequiredPoliciesNote';
 import { SelectionSummary } from './SelectionSummary';
 
 const messages = defineMessages({
@@ -47,6 +42,21 @@ const messages = defineMessages({
   emptyDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.emptyDescription',
     defaultMessage: 'Create subscription plans in Manage › Subscription Plans to choose from here.',
+  },
+  noUsagePlansTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.noUsagePlansTitle',
+    defaultMessage: 'No usage plans attached',
+    description: 'Empty publish tab: the API offers no plans yet.',
+  },
+  noUsagePlansDescription: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.noUsagePlansDescription',
+    defaultMessage:
+      'Attach plans to this API in Develop › Usage Plans, then choose here which ones this portal offers.',
+  },
+  attachUsagePlans: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.attachUsagePlans',
+    defaultMessage: 'Attach plans in Develop › Usage Plans',
+    description: 'Link to the Usage Plans page of the API.',
   },
   publishedEmptyTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.publishedEmptyTitle',
@@ -73,15 +83,14 @@ const messages = defineMessages({
 });
 
 export type SubscriptionPlansTabProps = {
-  /** Draft view: the API's display name, for the note on the policies the selected plans need. */
-  apiName?: string;
   /**
-   * Draft view: the names of the policies attached to the API. While a plan is selected, any
-   * policy those plans need that is not among them is listed in a note. Absent: no note.
+   * Draft view: the plans attached to the API in Develop › Usage Plans. When given, the draft offers
+   * only these (and any the selection still holds, so they can be unticked); absent, every active
+   * plan of the organization.
    */
-  attachedPolicies?: ReadonlySet<string>;
-  /** The kind of API, so conditions it never counts (tool calls on a REST API) ask for no policy. */
-  apiKind?: ApiKind;
+  attachedPlanIds?: readonly string[];
+  /** Draft view: the API's Usage Plans page, linked from the empty state. */
+  usagePlansPath?: string;
   /** Published view only: plans the listing holds whose subscription plan was deleted. They show struck through and count as published. */
   deletedPlans?: readonly DeletedSelection[];
   disabled?: boolean;
@@ -101,8 +110,9 @@ export type SubscriptionPlansTabProps = {
 type DisplayablePlan = SubscriptionPlan & { id: string };
 
 /**
- * "Subscription Plans": which of the organization's plans this API offers on the
- * portal. A plan's active/inactive status is set in Settings, not here.
+ * "Subscription Plans": which of the plans attached to the API (its usage plans) this portal
+ * offers. A plan's active/inactive status is set in Settings, not here. The policies the plans need
+ * are attached and checked on Develop › Usage Plans, so this tab carries no policy note.
  *
  * The draft offers the active plans only. An inactive or deleted plan never shows there, with no
  * chip or warning: the page drops it from the selection, so the next save or publish leaves it out.
@@ -110,9 +120,7 @@ type DisplayablePlan = SubscriptionPlan & { id: string };
  * last publish, with deleted plans struck through and inactive or edited ones tagged by an outlined chip.
  */
 export function SubscriptionPlansTab({
-  apiName = '',
-  apiKind = 'rest',
-  attachedPolicies,
+  attachedPlanIds,
   deletedPlans = [],
   disabled,
   editedPlanIds = [],
@@ -120,6 +128,7 @@ export function SubscriptionPlansTab({
   readOnly,
   savedPlanIds,
   storedNames,
+  usagePlansPath,
   values,
 }: SubscriptionPlansTabProps) {
   const intl = useIntl();
@@ -129,7 +138,14 @@ export function SubscriptionPlansTab({
   const editedSet = new Set(editedPlanIds);
   const savedSet = new Set(savedPlanIds ?? selectedIds);
   const allPlans = (plansQuery.data?.list ?? []).filter((plan): plan is DisplayablePlan => Boolean(plan.id));
-  const activePlans = allPlans.filter((plan) => plan.status === 'ACTIVE');
+  const attachedSet = attachedPlanIds ? new Set(attachedPlanIds) : undefined;
+  // The plans the draft offers: the API's usage plans when known, or a plan the selection still
+  // holds although it was detached since (shown ticked, so it can be unticked).
+  const activePlans = allPlans.filter(
+    (plan) =>
+      plan.status === 'ACTIVE' &&
+      (!attachedSet || attachedSet.has(plan.id) || selectedSet.has(plan.id)),
+  );
   const shownDeleted = readOnly ? deletedPlans : [];
   const rank = (plan: DisplayablePlan) => {
     if (!readOnly) return savedSet.has(plan.id) ? 0 : 1;
@@ -146,6 +162,23 @@ export function SubscriptionPlansTab({
   if (plansQuery.error) {
     return <ErrorState message={intl.formatMessage(messages.error)} />;
   }
+  if (shownPlans.length === 0 && shownDeleted.length === 0 && !readOnly && attachedSet) {
+    return (
+      <Box component="section" sx={{ p: 3 }}>
+        <EmptyState
+          description={intl.formatMessage(messages.noUsagePlansDescription)}
+          title={intl.formatMessage(messages.noUsagePlansTitle)}
+        />
+        {usagePlansPath && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
+            <Button component={RouterLink} size="small" to={usagePlansPath} variant="outlined">
+              <FormattedMessage {...messages.attachUsagePlans} />
+            </Button>
+          </Box>
+        )}
+      </Box>
+    );
+  }
   if (shownPlans.length === 0 && shownDeleted.length === 0) {
     return (
       <Box component="section" sx={{ p: 3 }}>
@@ -159,12 +192,6 @@ export function SubscriptionPlansTab({
 
   const selectedActiveCount = activePlans.filter((plan) => selectedSet.has(plan.id)).length;
   const allActiveSelected = activePlans.length > 0 && selectedActiveCount === activePlans.length;
-  // What the selected plans need from the API and it lacks. Shown only when something is missing.
-  const selectedPlans = activePlans.filter((plan) => selectedSet.has(plan.id));
-  const missingPolicies =
-    !readOnly && attachedPolicies && selectedPlans.length > 0
-      ? requiredPolicies(selectedPlans, apiKind).filter((name) => !attachedPolicies.has(name))
-      : [];
 
   const commitSelection = (nextIds: string[]) => {
     onChange?.({ ...values, subscriptionPlanIds: nextIds });
@@ -190,12 +217,6 @@ export function SubscriptionPlansTab({
           </Button>
         )}
       </Box>
-
-      <RequiredPoliciesNote
-        apiName={apiName}
-        missing={missingPolicies}
-        unenforced={unenforcedConditionTypes(selectedPlans, apiKind)}
-      />
 
       <Box
         sx={{

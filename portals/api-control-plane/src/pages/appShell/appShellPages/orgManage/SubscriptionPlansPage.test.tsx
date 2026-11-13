@@ -123,40 +123,37 @@ describe('SubscriptionPlansPage', () => {
       'Actions',
     ]);
     expect(
-      screen.getByText('Define the conditions and quota tiers applications can subscribe to.'),
+      screen.getByText('Define the plans your APIs offer, and the limits and pricing each one gives a subscriber.'),
     ).toBeInTheDocument();
     const bronze = screen.getByText('Bronze').closest('tr')!;
     // The description is for the plan's page, not the list.
     expect(within(bronze).queryByText('For partners')).not.toBeInTheDocument();
-    // Each chip: what it counts, its first limit, and how many more it has.
+    // One chip per window: the request condition's two windows read as two Requests chips.
     const chips = Array.from(bronze.querySelectorAll('.MuiChip-root')).map(
       (chip) => chip.textContent,
     );
-    expect(chips).toEqual(['Requests1,000 / hr+1', 'Prompt tokens5,000 / 2 min', 'Customtier']);
+    expect(chips).toEqual([
+      'Requests1,000 / hr',
+      'Requests20,000 / day',
+      'Prompt tokens5,000 / 2 min',
+      '+1',
+    ]);
     // Gold has no conditions — Unlimited, not an empty cell.
     const gold = screen.getByText('Gold').closest('tr')!;
     expect(within(gold).getByText('Unlimited')).toBeInTheDocument();
   });
 
-  it('lists every limit of a condition, or the values of a custom one, on hover', async () => {
+  it('has no tooltip on a chip itself: the chip already shows its limit', async () => {
     server.use(collection(PLANS, plans));
     const { user } = renderPage();
 
     await screen.findByText('Bronze');
-    const requestsChip = screen.getByText('Requests');
-    await user.hover(requestsChip);
-    const tip = await screen.findByRole('tooltip');
-    expect(tip).toHaveTextContent('Requests1,000 / hr20,000 / dayAllowed past the limit');
-    await user.unhover(requestsChip);
-    await waitFor(() => expect(screen.queryByRole('tooltip')).not.toBeInTheDocument());
-
-    await user.hover(screen.getByText('tier'));
-    await waitFor(() =>
-      expect(screen.getByRole('tooltip')).toHaveTextContent('Custom · tierlevel = gold'),
-    );
+    await user.hover(screen.getAllByText('Requests')[0]);
+    await user.hover(screen.getByText('Prompt tokens'));
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
-  it('shows five condition chips at most, and a "+N" chip listing the rest', async () => {
+  it('shows three condition chips at most, and a "+N" chip listing the rest', async () => {
     const conditions = Array.from({ length: 7 }, (_, index) => ({
       id: `custom-${index + 1}`,
       params: { position: index + 1 },
@@ -170,15 +167,15 @@ describe('SubscriptionPlansPage', () => {
     const { user } = renderPage();
 
     await screen.findByText('Platinum');
-    expect(screen.getByText('custom-5')).toBeInTheDocument();
-    expect(screen.queryByText('custom-6')).not.toBeInTheDocument();
-    const more = screen.getByLabelText('2 more conditions');
-    expect(more).toHaveTextContent('+2');
+    expect(screen.getByText('custom-3')).toBeInTheDocument();
+    expect(screen.queryByText('custom-4')).not.toBeInTheDocument();
+    const more = screen.getByLabelText('4 more conditions');
+    expect(more).toHaveTextContent('+4');
 
     await user.hover(more);
     const tip = await screen.findByRole('tooltip');
     expect(tip).toHaveTextContent(
-      'More conditionsCustom · custom-6position = 6Custom · custom-7position = 7',
+      'Custom · custom-4position = 4Custom · custom-5position = 5Custom · custom-6position = 6Custom · custom-7position = 7',
     );
   });
 

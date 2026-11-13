@@ -198,7 +198,7 @@ const messages = defineMessages({
   },
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.subtitle',
-    defaultMessage: 'Define the conditions and quota tiers applications can subscribe to.',
+    defaultMessage: 'Define the plans your APIs offer, and the limits and pricing each one gives a subscriber.',
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.settings.SubscriptionPlansPage.title',
@@ -377,17 +377,19 @@ export function SubscriptionPlansPage() {
                   <ListingTable.Body>
                     {plans.map((plan) => (
                       <ListingTable.Row key={plan.id ?? plan.displayName}>
-                        <ListingTable.Cell>
-                          <Typography sx={{ fontWeight: 600 }} variant="body2">
+                        <ListingTable.Cell sx={{ maxWidth: 240 }}>
+                          <Typography noWrap sx={{ fontWeight: 600 }} title={plan.displayName} variant="body2">
                             {plan.displayName}
                           </Typography>
                         </ListingTable.Cell>
                         <ListingTable.Cell>
-                          <PlanConditionChips conditions={plan.conditions} />
+                          {/* One line in every row: three chips at most, the rest in "+N". */}
+                          <PlanConditionChips conditions={plan.conditions} singleLine />
                         </ListingTable.Cell>
                         <ListingTable.Cell>
                           <Typography
                             color={plan.pricing ? 'text.primary' : 'text.secondary'}
+                            noWrap
                             variant="body2"
                           >
                             {pricingSummary(intl, plan.pricing, meters)}

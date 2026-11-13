@@ -164,122 +164,39 @@ describe('SubscriptionPlansTab', () => {
     expect(bronzeCard.querySelectorAll('.MuiChip-root')).toHaveLength(0);
   });
 
-  describe('the note on the policies the selected plans need', () => {
-    const note = () => screen.queryByRole('alert');
+  describe('a REST API: the plans attached in Develop › Usage Plans', () => {
+    it('offers only the attached plans, and no note on policies', async () => {
+      server.use(collection(PLANS_PATH, [bronze, gold, silver]));
 
-    it('asks for subscription-validation while a plan is selected and the API lacks it', async () => {
+      renderTab({ attachedPlanIds: ['bronze', 'silver'], values: values({ subscriptionPlanIds: ['bronze'] }) });
+
+      await screen.findByText('Bronze');
+      expect(cardOrder(['Bronze', 'Gold', 'Silver'])).toEqual(['Bronze', 'Silver']);
+      expect(summaryText('1 of 2 plans selected')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('keeps a selected plan detached since, ticked, so it can be unticked', async () => {
       server.use(collection(PLANS_PATH, [bronze, gold]));
 
-      renderTab({
-        apiName: 'Cat Facts API',
-        attachedPolicies: new Set(['jwt-auth']),
-        values: values({ subscriptionPlanIds: ['gold'] }),
-      });
+      renderTab({ attachedPlanIds: ['bronze'], values: values({ subscriptionPlanIds: ['gold'] }) });
 
       await screen.findByText('Gold');
-      expect(note()).toHaveTextContent(
-        'Attach this policy to Cat Facts API and redeploy it to the gateway, so the plans are enforced:',
+      expect(screen.getByRole('checkbox', { name: /Gold/ })).toHaveAttribute('aria-checked', 'true');
+      expect(screen.getByRole('checkbox', { name: /Bronze/ })).toHaveAttribute('aria-checked', 'false');
+    });
+
+    it('points to Usage Plans when no plan is attached', async () => {
+      server.use(collection(PLANS_PATH, [bronze, gold]));
+
+      renderTab({ attachedPlanIds: [], usagePlansPath: '/o/p/apis/a/develop/usage-plans' });
+
+      expect(await screen.findByText('No usage plans attached')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Attach plans in Develop › Usage Plans' })).toHaveAttribute(
+        'href',
+        '/o/p/apis/a/develop/usage-plans',
       );
-      expect(note()).toHaveTextContent('subscription-validation');
-      expect(note()).toHaveTextContent(
-        'You can publish now. Nothing breaks: subscribers can see the plans and subscribe, and their subscriptions and request limits are checked once the API is deployed with this policy.',
-      );
-      // Gold holds no condition no policy enforces, so the note promises nothing more.
-      expect(note()).not.toHaveTextContent('no policy that enforces them yet');
-    });
-
-    it('says which conditions of the selected plans no policy enforces yet', async () => {
-      const window1k = { limits: [{ count: 1000, timeAmount: 1, timeUnit: 'HOUR' }], onExceed: 'reject' };
-      const platinum = aSubscriptionPlan({
-        conditions: [
-          { id: 'requests', params: window1k, type: 'request-count' },
-          { id: 'tokens', params: { ...window1k, tokenType: 'total' }, type: 'token-count' },
-          { id: 'region', params: { zone: 'eu' }, type: 'custom' },
-        ],
-        displayName: 'Platinum',
-        id: 'platinum',
-      });
-      server.use(collection(PLANS_PATH, [bronze, platinum]));
-
-      renderTab({
-        apiName: 'Cat Facts API',
-        attachedPolicies: new Set(['jwt-auth']),
-        values: values({ subscriptionPlanIds: ['bronze', 'platinum'] }),
-      });
-
-      await screen.findByText('Platinum');
-      // A REST API never counts tokens, so only the custom condition is left unenforced.
-      expect(note()).toHaveTextContent('Custom conditions have no policy that enforces them yet.');
-      expect(note()).not.toHaveTextContent('Token count');
-    });
-
-    it('names the conditions the kind of API counts: token count on an LLM proxy', async () => {
-      const window1k = {
-        limits: [{ count: 1000, timeAmount: 1, timeUnit: 'HOUR' }],
-        onExceed: 'reject',
-      };
-      const platinum = aSubscriptionPlan({
-        conditions: [
-          { id: 'tokens', params: { ...window1k, tokenType: 'total' }, type: 'token-count' },
-        ],
-        displayName: 'Platinum',
-        id: 'platinum',
-      });
-      server.use(collection(PLANS_PATH, [platinum]));
-
-      renderTab({
-        apiKind: 'llm',
-        apiName: 'Cat Facts API',
-        attachedPolicies: new Set(['jwt-auth']),
-        values: values({ subscriptionPlanIds: ['platinum'] }),
-      });
-
-      await screen.findByText('Platinum');
-      expect(note()).toHaveTextContent('Token count conditions have no policy that enforces them yet.');
-    });
-
-    it('shows nothing when the API has subscription-validation', async () => {
-      server.use(collection(PLANS_PATH, [bronze, gold]));
-
-      renderTab({
-        apiName: 'Cat Facts API',
-        attachedPolicies: new Set(['subscription-validation']),
-        values: values({ subscriptionPlanIds: ['bronze', 'gold'] }),
-      });
-
-      await screen.findByText('Gold');
-      expect(note()).not.toBeInTheDocument();
-    });
-
-    it('shows nothing while no plan is selected, and appears once one is', async () => {
-      server.use(collection(PLANS_PATH, [bronze, gold]));
-      const props = { apiName: 'Cat Facts API', attachedPolicies: new Set<string>() };
-
-      const { rerender } = renderTab({ ...props, values: values() });
-
-      await screen.findByText('Gold');
-      expect(note()).not.toBeInTheDocument();
-
-      rerender(
-        <ApiScopeProvider orgId={ORG}>
-          <SubscriptionPlansTab {...props} values={values({ subscriptionPlanIds: ['bronze'] })} />
-        </ApiScopeProvider>,
-      );
-      expect(await screen.findByRole('alert')).toHaveTextContent('subscription-validation');
-    });
-
-    it('never shows in the published view', async () => {
-      server.use(collection(PLANS_PATH, [bronze, gold]));
-
-      renderTab({
-        apiName: 'Cat Facts API',
-        attachedPolicies: new Set<string>(),
-        readOnly: true,
-        values: values({ subscriptionPlanIds: ['gold'] }),
-      });
-
-      await screen.findByText('Gold');
-      expect(note()).not.toBeInTheDocument();
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     });
   });
 

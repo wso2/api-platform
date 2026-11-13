@@ -76,6 +76,8 @@ const api = aGraphQLApiDetail({
   context: '/countries',
   projectId: PROJECT,
   upstream: { main: { url: 'https://countries.example.com/graphql' } },
+  // The plans attached in Develop › Usage Plans: the publish page offers these only.
+  subscriptionPlans: ['bronze', 'gold'],
   version: '1.0',
 });
 
@@ -213,6 +215,25 @@ describe('GraphqlPortalPublishPage', () => {
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({
       subscriptionPlanIds: ['gold'],
     });
+  });
+
+  it('offers only the plans attached to the GraphQL API, with no policy note', async () => {
+    serveFreshApi();
+    server.use(
+      collection('/subscription-plans', [
+        aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' }),
+        aSubscriptionPlan({ displayName: 'Gold', id: 'gold' }),
+        aSubscriptionPlan({ displayName: 'Platinum', id: 'platinum' }),
+      ]),
+    );
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Countries GraphQL API');
+    await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
+    expect(await screen.findByRole('checkbox', { name: /Gold/ })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /Bronze/ })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Platinum/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/policies/i)).not.toBeInTheDocument();
   });
 
   it('selects no document of a fresh GraphQL API, and saves the one picked with the draft', async () => {

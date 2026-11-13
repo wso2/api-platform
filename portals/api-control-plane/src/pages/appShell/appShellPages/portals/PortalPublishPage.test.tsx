@@ -89,6 +89,8 @@ const api = aRestApi({
   context: '/loans',
   upstream: { main: { url: 'https://backend.internal/loans' }, sandbox: { url: 'https://sandbox.backend.internal/loans' } },
   version: '1.0.0',
+  // The plans attached in Develop › Usage Plans: the publish page offers these only.
+  subscriptionPlans: ['bronze', 'gold', 'silver', 'retired', 'deleted', 'plan-0', 'beyond'],
 });
 
 let requests: Recorder;
@@ -518,38 +520,17 @@ describe('PortalPublishPage', () => {
   });
 
   it.each([
-    ['has no subscription-validation', [{ name: 'jwt-auth', version: 'v1' }], [], true],
-    ['has subscription-validation', [{ name: 'subscription-validation', version: 'v1' }], [], false],
-    [
-      'has subscription-validation on a resource',
-      [],
-      [{ name: 'list', request: { method: 'GET', path: '/loans', policies: [{ name: 'subscription-validation', version: 'v1' }] } }],
-      false,
-    ],
-    [
-      'has subscription-validation on some resources only',
-      [],
-      [
-        { name: 'list', request: { method: 'GET', path: '/loans', policies: [{ name: 'subscription-validation', version: 'v1' }] } },
-        { name: 'create', request: { method: 'POST', path: '/loans', policies: [] } },
-      ],
-      true,
-    ],
+    ['has no subscription-validation', [{ name: 'jwt-auth', version: 'v1' }]],
+    ['has subscription-validation', [{ name: 'subscription-validation', version: 'v1' }]],
   ] as const)(
-    'Subscription Plans: the cards show name and description, and the policy note shows only when missing (API %s)',
-    async (_case, policies, operations, warns) => {
+    'Subscription Plans: the cards show name and description, with no policy note (API %s): policies are checked on Usage Plans',
+    async (_case, policies) => {
       const gold = aSubscriptionPlan({ description: 'For production traffic.', displayName: 'Gold', id: 'gold' });
       servePublicationState({
         draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections('gold') }),
         plans: [gold],
       });
-      server.use(
-        resource('/rest-apis/:restApiId', {
-          ...api,
-          operations: operations as unknown as typeof api.operations,
-          policies: [...policies],
-        }),
-      );
+      server.use(resource('/rest-apis/:restApiId', { ...api, policies: [...policies] }));
 
       const { user } = renderPage();
 
@@ -557,17 +538,27 @@ describe('PortalPublishPage', () => {
       await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
       const card = await screen.findByRole('checkbox', { name: /Gold/ });
       expect(card).toHaveTextContent('For production traffic.');
-      if (warns) {
-        const note = screen.getByRole('alert');
-        expect(note).toHaveTextContent(
-          'Attach this policy to Loan Management Service and redeploy it to the gateway, so the plans are enforced:',
-        );
-        expect(note).toHaveTextContent('subscription-validation');
-      } else {
-        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-      }
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     },
   );
+
+  it('Subscription Plans: offers only the plans attached to the API, and links to Usage Plans when there are none', async () => {
+    const bronze = aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' });
+    const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
+    const platinum = aSubscriptionPlan({ displayName: 'Platinum', id: 'platinum' });
+    servePublicationState({
+      draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections() }),
+      plans: [bronze, gold, platinum],
+    });
+    server.use(resource('/rest-apis/:restApiId', { ...api, subscriptionPlans: ['gold'] }));
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
+    expect(await screen.findByRole('checkbox', { name: /Gold/ })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Bronze|Platinum/ })).not.toBeInTheDocument();
+  });
 
   it('is back to no unsaved changes once the plan selection matches the saved draft again, whatever the order', async () => {
     const bronze = aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' });

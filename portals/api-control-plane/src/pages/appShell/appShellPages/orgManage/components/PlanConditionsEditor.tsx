@@ -35,12 +35,15 @@ import {
   OutlinedInput,
   Select,
   Stack,
+  Switch,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import {
   Activity,
   ChevronRight,
   Coins,
+  Info,
   Infinity as InfinityIcon,
   Plus,
   Puzzle,
@@ -73,6 +76,11 @@ import {
 } from './planConditions';
 
 const messages = defineMessages({
+  typeAdded: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.typeAdded',
+    defaultMessage: 'Added',
+    description: 'Label on a condition type in the Add condition menu that the plan already has.',
+  },
   addCondition: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.addCondition',
     defaultMessage: 'Add condition',
@@ -114,15 +122,36 @@ const messages = defineMessages({
   customIdHint: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.custom.idHint',
     defaultMessage:
-      'Lowercase letters, digits and hyphens, starting with a letter. The policy finds the condition by this ID.',
+      'Lowercase letters, digits and hyphens, for example region-limit',
   },
   customIdLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.custom.idLabel',
-    defaultMessage: 'ID',
+    defaultMessage: 'Condition name',
+  },
+  customPolicyLabel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.custom.policyLabel',
+    defaultMessage: 'Custom policy (optional)',
+  },
+  customPolicyInfo: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.custom.policyInfo',
+    defaultMessage:
+      'The policy that enforces this condition, for example region-guard v1. It must be attached to the API to take effect.',
+  },
+  customPolicyName: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.custom.policyName',
+    defaultMessage: 'Policy name',
+  },
+  customPolicyNamePlaceholder: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.custom.policyNamePlaceholder',
+    defaultMessage: 'e.g. region-guard',
+  },
+  customPolicyVersion: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.custom.policyVersion',
+    defaultMessage: 'Policy version',
   },
   customIdPlaceholder: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.custom.idPlaceholder',
-    defaultMessage: 'e.g. business-hours',
+    defaultMessage: 'e.g. region-limit',
   },
   empty: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.empty',
@@ -148,17 +177,13 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.summary.noValues',
     defaultMessage: 'No values yet',
   },
-  onExceedAllow: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.onExceed.allow',
-    defaultMessage: 'Allow when reached',
-  },
   onExceedLabel: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.onExceed.label',
-    defaultMessage: 'When a limit is reached',
+    defaultMessage: 'Block requests when quota is reached',
   },
   onExceedReject: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.onExceed.reject',
-    defaultMessage: 'Reject when reached',
+    defaultMessage: 'Reject requests that exceed the limit.',
   },
   overageAllowed: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.summary.overageAllowed',
@@ -201,8 +226,8 @@ const messages = defineMessages({
   typeDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.type.description',
     defaultMessage:
-      '{type, select, requestCount {REST APIs only. Counts every request.} toolCallCount {MCP proxies only. Counts tools/call.} tokenCount {LLM proxies only. Counts model tokens.} other {An ID and key-value pairs, read by a policy your team writes.}}',
-    description: 'What a condition type counts, and on which APIs, in the Add condition menu.',
+      '{type, select, requestCount {Limits how many requests a subscriber makes.} toolCallCount {Limits how many MCP tools a subscriber calls.} tokenCount {Limits how many LLM tokens a subscriber uses.} other {Your own condition, read by a policy you write.}}',
+    description: 'What a condition type limits, in one line, in the Add condition menu.',
   },
   typeName: {
     id: 'apiControlPlane.pages.appShell.appShellPages.orgManage.components.PlanConditionsEditor.type.name',
@@ -330,7 +355,8 @@ export function PlanConditionsEditor({
     showAllErrors || row.some((other) => touched.has(other)) ? check.errors.get(key) : undefined;
 
   const used = new Set(value.map((draft) => draft.type));
-  const addable: ConditionType[] = [...BUILT_IN_TYPES.filter((type) => !used.has(type)), 'custom'];
+  // Every type stays listed; a built-in type the plan already has is shown disabled, marked Added.
+  const menuTypes: ConditionType[] = [...BUILT_IN_TYPES, 'custom'];
   const atMax = value.length >= MAX_CONDITIONS;
   const fieldsDisabled = disabled || readOnly;
 
@@ -396,8 +422,11 @@ export function PlanConditionsEditor({
               }}
               transformOrigin={{ horizontal: 'right', vertical: 'top' }}
             >
-              {addable.map((type) => (
+              {menuTypes.map((type) => {
+                const added = type !== 'custom' && used.has(type);
+                return (
                 <MenuItem
+                  disabled={added}
                   key={type}
                   onClick={() => {
                     setPicked(type);
@@ -407,13 +436,25 @@ export function PlanConditionsEditor({
                 >
                   <ListItemIcon>{TYPE_ICONS[type]}</ListItemIcon>
                   <ListItemText
-                    primary={conditionTypeName(intl, type)}
+                    primary={
+                      <Stack alignItems="center" component="span" direction="row" spacing={1}>
+                        <span>{conditionTypeName(intl, type)}</span>
+                        {added && (
+                          <Chip
+                            component="span"
+                            label={intl.formatMessage(messages.typeAdded)}
+                            size="small"
+                          />
+                        )}
+                      </Stack>
+                    }
                     secondary={intl.formatMessage(messages.typeDescription, {
                       type: TYPE_KEYS[type],
                     })}
                   />
                 </MenuItem>
-              ))}
+                );
+              })}
             </Menu>
           </>
         )}
@@ -624,8 +665,8 @@ type FieldsProps = {
   onChange: (patch: Partial<ConditionDraft>) => void;
 };
 
-/** A built-in condition: what it counts (tokens), what happens once a limit is used up, and its
- * windows. */
+/** A built-in condition: what it counts (tokens), its windows, then what happens once a limit is
+ * used up. */
 function LimitFields({ draft, readOnly, disabled, errorOf, touch, onChange }: FieldsProps) {
   const intl = useIntl();
   const id = useId();
@@ -639,54 +680,26 @@ function LimitFields({ draft, readOnly, disabled, errorOf, touch, onChange }: Fi
 
   return (
     <Stack spacing={1.5}>
-      <Box
-        sx={{
-          display: 'grid',
-          gap: 1.5,
-          gridTemplateColumns:
-            draft.type === 'token-count' ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)',
-        }}
-      >
-        {draft.type === 'token-count' && (
-          <FormControl fullWidth>
-            <FormLabel id={`${id}-token-type`}>
-              <FormattedMessage {...messages.tokenTypeLabel} />
-            </FormLabel>
-            <Select
-              disabled={disabled}
-              labelId={`${id}-token-type`}
-              onChange={(event) => onChange({ tokenType: event.target.value as TokenType })}
-              size="small"
-              value={draft.tokenType}
-            >
-              {TOKEN_TYPES.map((tokenType) => (
-                <MenuItem key={tokenType} value={tokenType}>
-                  <FormattedMessage {...messages.tokenTypeOption} values={{ tokenType }} />
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        )}
+      {draft.type === 'token-count' && (
         <FormControl fullWidth>
-          <FormLabel id={`${id}-on-exceed`}>
-            <FormattedMessage {...messages.onExceedLabel} />
+          <FormLabel id={`${id}-token-type`}>
+            <FormattedMessage {...messages.tokenTypeLabel} />
           </FormLabel>
           <Select
             disabled={disabled}
-            labelId={`${id}-on-exceed`}
-            onChange={(event) => onChange({ onExceed: event.target.value as OnExceed })}
+            labelId={`${id}-token-type`}
+            onChange={(event) => onChange({ tokenType: event.target.value as TokenType })}
             size="small"
-            value={draft.onExceed}
+            value={draft.tokenType}
           >
-            <MenuItem value="reject">
-              <FormattedMessage {...messages.onExceedReject} />
-            </MenuItem>
-            <MenuItem value="allow">
-              <FormattedMessage {...messages.onExceedAllow} />
-            </MenuItem>
+            {TOKEN_TYPES.map((tokenType) => (
+              <MenuItem key={tokenType} value={tokenType}>
+                <FormattedMessage {...messages.tokenTypeOption} values={{ tokenType }} />
+              </MenuItem>
+            ))}
           </Select>
         </FormControl>
-      </Box>
+      )}
 
       <Stack spacing={1}>
         {draft.windows.map((window) => {
@@ -803,16 +816,46 @@ function LimitFields({ draft, readOnly, disabled, errorOf, touch, onChange }: Fi
           </Button>
         </Box>
       )}
+      {/* What happens once a limit is used up, after the limits: main's bordered switch row. */}
+      <Stack
+        alignItems="center"
+        direction="row"
+        justifyContent="space-between"
+        spacing={2}
+        sx={{ border: '1px solid', borderColor: 'divider', borderRadius: '10px', px: 2, py: 1.5 }}
+      >
+        <Box>
+          <Typography id={`${id}-on-exceed-label`} sx={{ fontWeight: 600 }} variant="body1">
+            <FormattedMessage {...messages.onExceedLabel} />
+          </Typography>
+          <Typography color="text.secondary" sx={{ opacity: 0.7 }} variant="body2">
+            <FormattedMessage {...messages.onExceedReject} />
+          </Typography>
+        </Box>
+        <Switch
+          checked={draft.onExceed === 'reject'}
+          disabled={disabled}
+          onChange={(event) =>
+            onChange({ onExceed: (event.target.checked ? 'reject' : 'allow') as OnExceed })
+          }
+          slotProps={{ input: { 'aria-labelledby': `${id}-on-exceed-label`, role: 'switch' } }}
+        />
+      </Stack>
     </Stack>
   );
 }
 
-/** A custom condition: its ID, and the key-value pairs a policy reads. */
+/** A custom condition: its name, the policy that enforces it (optional), and the key-value pairs
+ * that policy reads. */
 function CustomFields({ draft, readOnly, disabled, errorOf, touch, onChange }: FieldsProps) {
   const intl = useIntl();
   const id = useId();
   const idKey = fieldKeys.customId(draft.key);
   const idError = errorOf(idKey);
+  const policyNameKey = fieldKeys.policyName(draft.key);
+  const policyVersionKey = fieldKeys.policyVersion(draft.key);
+  const policyNameError = errorOf(policyNameKey);
+  const policyVersionError = errorOf(policyVersionKey);
   // Too many bytes in all: shown once any value has been left.
   const paramsError = errorOf(
     fieldKeys.params(draft.key),
@@ -844,6 +887,62 @@ function CustomFields({ draft, readOnly, disabled, errorOf, touch, onChange }: F
             <FormattedMessage {...messages.customIdHint} />
           )}
         </FormHelperText>
+      </FormControl>
+
+      <FormControl fullWidth>
+        <Stack alignItems="center" direction="row" spacing={0.5}>
+          <FormLabel id={`${id}-policy`}>
+            <FormattedMessage {...messages.customPolicyLabel} />
+          </FormLabel>
+          <Tooltip title={intl.formatMessage(messages.customPolicyInfo)}>
+            <Box
+              aria-label={intl.formatMessage(messages.customPolicyInfo)}
+              component="span"
+              role="img"
+              sx={{ color: 'text.secondary', display: 'inline-flex' }}
+            >
+              <Info size={14} />
+            </Box>
+          </Tooltip>
+        </Stack>
+        <Box
+          sx={{
+            display: 'grid',
+            gap: 1,
+            gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 0.6fr)',
+          }}
+        >
+          <OutlinedInput
+            disabled={disabled}
+            error={Boolean(policyNameError)}
+            inputProps={{ 'aria-label': intl.formatMessage(messages.customPolicyName) }}
+            onBlur={() => touch(policyNameKey)}
+            onChange={(event) => onChange({ policyName: event.target.value })}
+            placeholder={intl.formatMessage(messages.customPolicyNamePlaceholder)}
+            size="small"
+            sx={{ fontFamily: 'monospace' }}
+            value={draft.policyName}
+          />
+          <OutlinedInput
+            disabled={disabled}
+            error={Boolean(policyVersionError)}
+            inputProps={{ 'aria-label': intl.formatMessage(messages.customPolicyVersion) }}
+            onBlur={() => touch(policyVersionKey)}
+            onChange={(event) => onChange({ policyVersion: event.target.value })}
+            placeholder="v1"
+            size="small"
+            sx={{ fontFamily: 'monospace' }}
+            value={draft.policyVersion}
+          />
+        </Box>
+        {(policyNameError ?? policyVersionError) && (
+          <FormHelperText error>
+            <FormattedMessage
+              {...(policyNameError ?? policyVersionError)!.message}
+              values={(policyNameError ?? policyVersionError)!.values}
+            />
+          </FormHelperText>
+        )}
       </FormControl>
 
       <Stack spacing={1}>

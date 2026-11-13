@@ -20,6 +20,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   checkConditions,
+  customPolicyOf,
   draftsFromConditions,
   fieldKeys,
   isBuiltInType,
@@ -217,5 +218,59 @@ describe('draftsFromConditions', () => {
     expect(checkConditions([tier]).body).toEqual([
       { id: 'tier', params: { code: '007' }, type: 'custom' },
     ]);
+  });
+});
+
+describe('a custom condition’s policy (params.policy)', () => {
+  it('is sent under the reserved key, version v1 when left empty, and left out when not given', () => {
+    const withPolicy = { ...custom('region-limit', [['region', 'eu']]), policyName: 'region-guard' };
+    expect(checkConditions([withPolicy]).body).toEqual([
+      {
+        id: 'region-limit',
+        params: { policy: { name: 'region-guard', version: 'v1' }, region: 'eu' },
+        type: 'custom',
+      },
+    ]);
+    expect(checkConditions([custom('region-limit', [['region', 'eu']])]).body).toEqual([
+      { id: 'region-limit', params: { region: 'eu' }, type: 'custom' },
+    ]);
+  });
+
+  it('refuses `policy` as a key of the key-value pairs, and a bad policy name or version', () => {
+    expect(messageIds([custom('a', [['policy', 'x']])])).toEqual([
+      'apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.pairKeyReserved',
+    ]);
+    expect(messageIds([{ ...custom('a'), policyName: '', policyVersion: 'v1' }])).toEqual([
+      'apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.policyNameInvalid',
+    ]);
+    expect(messageIds([{ ...custom('a'), policyName: 'guard', policyVersion: 'latest' }])).toEqual([
+      'apiControlPlane.pages.appShell.appShellPages.orgManage.components.planConditions.error.policyVersionInvalid',
+    ]);
+  });
+
+  it('round-trips on edit: out of the pairs, into its own fields', () => {
+    const [draft] = draftsFromConditions([
+      {
+        id: 'region-limit',
+        params: { policy: { name: 'region-guard', version: 'v2' }, region: 'eu' },
+        type: 'custom',
+      },
+    ] as never);
+    expect(draft.policyName).toBe('region-guard');
+    expect(draft.policyVersion).toBe('v2');
+    expect(draft.pairs.map((pair) => pair.name)).toEqual(['region']);
+    expect(checkConditions([draft]).body?.[0]).toEqual({
+      id: 'region-limit',
+      params: { policy: { name: 'region-guard', version: 'v2' }, region: 'eu' },
+      type: 'custom',
+    });
+  });
+
+  it('is read as name and major version', () => {
+    expect(
+      customPolicyOf({ params: { policy: { name: 'g', version: 'v2.1.0' } }, type: 'custom' }),
+    ).toEqual({ name: 'g', version: 'v2' });
+    expect(customPolicyOf({ params: { region: 'eu' }, type: 'custom' })).toBeNull();
+    expect(customPolicyOf({ params: { policy: { name: 'g' } }, type: 'request-count' })).toBeNull();
   });
 });
