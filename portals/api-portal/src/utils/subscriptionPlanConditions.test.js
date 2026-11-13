@@ -112,8 +112,9 @@ test('request-count windows come from the REQUEST_COUNT limits; EVENT_COUNT limi
         { limitType: 'REQUEST_COUNT', limitCount: 9, timeUnit: 'WEEK' },
         { limitType: 'BANDWIDTH', limitCount: 9, timeUnit: 'MONTH' },
     ];
-    assert.deepEqual(windowsFromLimits(limits), [w(100, 1, 'MINUTE'), w(6000, 1, 'HOUR')]);
-    assert.deepEqual(windowsFromLimits(limits, 'request-count'), [w(100, 1, 'MINUTE'), w(6000, 1, 'HOUR')]);
+    // 50 per 60 minutes is the same length as 6000 per hour: the stricter count is kept.
+    assert.deepEqual(windowsFromLimits(limits), [w(100, 1, 'MINUTE'), w(50, 1, 'HOUR')]);
+    assert.deepEqual(windowsFromLimits(limits, 'request-count'), [w(100, 1, 'MINUTE'), w(50, 1, 'HOUR')]);
     assert.equal(limitCondition('request-count', []), null);
     // A stored limit with no unit came from the YAML shorthand: it is per minute, not dropped.
     assert.deepEqual(windowsFromLimits([{ limit_type: 'REQUEST_COUNT', limit_count: 10000, time_unit: null, time_amount: 1 }]),
@@ -213,6 +214,7 @@ test('plan cards list every limit as subscribers read it', () => {
         { text: '5,000 requests / 2 days', allow: false },
         { text: '500 tool calls / day', allow: true },
         { text: '1,000,000 completion tokens / month', allow: false },
+        { text: 'Additional conditions apply' },
     ]);
     assert.deepEqual(limitLines(undefined), []);
 });
@@ -262,4 +264,22 @@ test('a custom condition may name the policy that enforces it, under the reserve
         params: { region: 'eu', policy: { name: 'region-guard', version: 'v1' } } }]);
     assert.deepEqual(c.params, { policy: { name: 'region-guard', version: 'v1' }, region: 'eu' });
     assert.deepEqual(conditionChips([c])[0].details, ['policy = region-guard v1', 'region = eu']);
+});
+
+test('limits from an older client: more than ten lengths is refused, and equal lengths keep the strictest', () => {
+    const eleven = Array.from({ length: 10 }, (_, i) => ({ limitType: 'REQUEST_COUNT', limitCount: 100, timeUnit: 'MINUTE', timeAmount: i + 1 }))
+        .concat([{ limitType: 'REQUEST_COUNT', limitCount: 1, timeUnit: 'DAY', timeAmount: 1 }]);
+    assert.throws(() => conditionsFromLimits([], eleven, { strict: true }), /at most 10 request limits/);
+    // Stored rows are read as before: the first ten.
+    assert.equal(windowsFromLimits(eleven).length, 10);
+    assert.deepEqual(windowsFromLimits([
+        { limitType: 'REQUEST_COUNT', limitCount: 50, timeUnit: 'MINUTE' },
+        { limitType: 'REQUEST_COUNT', limitCount: 20, timeUnit: 'MINUTE' },
+    ]), [w(20, 1, 'MINUTE')]);
+});
+
+test('a plan with only custom conditions is not shown as unlimited', () => {
+    assert.deepEqual(limitLines([{ id: 'region', type: 'custom', params: { region: 'eu' } }]),
+        [{ text: 'Additional conditions apply' }]);
+    assert.deepEqual(limitLines([]), []);
 });

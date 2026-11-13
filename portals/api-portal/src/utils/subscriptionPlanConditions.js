@@ -205,9 +205,9 @@ function normalizeConditions(conditions) {
  * condition: its REQUEST_COUNT or TOTAL_TOKEN_COUNT limits. Unit-less limits are per minute. Unlimited,
  * unsupported and repeated-length limits are left out, and at most ten are kept.
  */
-function windowsFromLimits(limits, type = TYPE.REQUEST_COUNT) {
+function windowsFromLimits(limits, type = TYPE.REQUEST_COUNT, { strict = false } = {}) {
     const windows = [];
-    const seen = new Set();
+    const seen = new Map();
     for (const l of limits || []) {
         const limitType = String(l.limit_type ?? l.limitType ?? 'REQUEST_COUNT').toUpperCase();
         const count = Number(l.limit_count ?? l.limitCount);
@@ -217,9 +217,16 @@ function windowsFromLimits(limits, type = TYPE.REQUEST_COUNT) {
         if (!TIME_UNITS.includes(unit)) continue;
         const amount = Math.max(1, Number(l.time_amount ?? l.timeAmount) || 1);
         const key = windowKey(amount, unit);
-        if (seen.has(key) || windows.length === MAX_WINDOWS) continue;
-        seen.add(key);
-        windows.push({ count, timeAmount: amount, timeUnit: unit });
+        // Two limits over the same length: the stricter one is kept.
+        if (seen.has(key)) { const w = seen.get(key); w.count = Math.min(w.count, count); continue; }
+        if (windows.length === MAX_WINDOWS) {
+            // A client's update is refused rather than losing a quota; stored rows keep their first ten.
+            if (strict) throw new ValidationError(`limits: a plan can have at most ${MAX_WINDOWS} request limits of different lengths`);
+            continue;
+        }
+        const w = { count, timeAmount: amount, timeUnit: unit };
+        seen.set(key, w);
+        windows.push(w);
     }
     return windows;
 }
@@ -245,10 +252,10 @@ function withCondition(conditions, type, condition) {
  * request-count condition, keeping its onExceed, and keep the others. A new one goes first. Other
  * limit types (EVENT_COUNT, BANDWIDTH) have no condition.
  */
-function conditionsFromLimits(current, limits) {
+function conditionsFromLimits(current, limits, { strict = false } = {}) {
     const type = TYPE.REQUEST_COUNT;
     const onExceed = current.find((c) => c.type === type)?.params?.onExceed;
-    return withCondition(current, type, limitCondition(type, windowsFromLimits(limits, type), onExceed));
+    return withCondition(current, type, limitCondition(type, windowsFromLimits(limits, type, { strict }), onExceed));
 }
 
 /**
@@ -344,7 +351,14 @@ const TOKEN_WHAT = { total: 'tokens', prompt: 'prompt tokens', completion: 'comp
  * the plan lets calls through past it. Custom conditions are for policies, not subscribers, so they
  * have no line.
  */
-const limitLines = (conditions) => (conditions || []).flatMap((c) => {
+const limitLines = (conditions) => {
+    const lines = builtInLimitLines(conditions);
+    // A plan with only custom conditions still has rules a policy applies: not "Unlimited".
+    if ((conditions || []).some((c) => c.type === TYPE.CUSTOM)) lines.push({ text: 'Additional conditions apply' });
+    return lines;
+};
+
+const builtInLimitLines = (conditions) => (conditions || []).flatMap((c) => {
     if (c.type === TYPE.CUSTOM) return [];
     const params = c.params || {};
     const what = c.type === TYPE.TOKEN_COUNT ? TOKEN_WHAT[params.tokenType] || 'tokens' : LINE_WHAT[c.type] || c.type;

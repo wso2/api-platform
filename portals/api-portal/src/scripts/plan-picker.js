@@ -29,6 +29,7 @@
 (function () {
   var PAID_SWITCH_HINT = 'Paid plans can only be changed by unsubscribing first.';
   var overlay = null;
+  var returnFocus = null;
 
   function el(tag, className, text) {
     var node = document.createElement(tag);
@@ -59,10 +60,24 @@
     overlay.remove();
     overlay = null;
     document.removeEventListener('keydown', onKey);
+    // Back to the button that opened the picker.
+    if (returnFocus && document.contains(returnFocus)) returnFocus.focus();
+    returnFocus = null;
   }
 
+  /* The picker is modal: Tab and Shift+Tab move between its own controls only. */
   function onKey(e) {
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape') { close(); return; }
+    if (e.key !== 'Tab' || !overlay) return;
+    var focusable = Array.prototype.filter.call(
+      overlay.querySelectorAll('button, input, [href], [tabindex]:not([tabindex="-1"])'),
+      function (n) { return !n.disabled && n.offsetParent !== null; });
+    if (!focusable.length) { e.preventDefault(); return; }
+    var first = focusable[0];
+    var last = focusable[focusable.length - 1];
+    var inside = overlay.contains(document.activeElement);
+    if (e.shiftKey && (document.activeElement === first || !inside)) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && (document.activeElement === last || !inside)) { e.preventDefault(); first.focus(); }
   }
 
   function cardButton(planId) {
@@ -92,6 +107,7 @@
 
   function open(opener) {
     close();
+    returnFocus = opener;
     var plans = readPlans(opener);
     var current = opener.dataset.current || '';
     var currentPaid = plans.some(function (p) { return p.id === current && p.paid; });

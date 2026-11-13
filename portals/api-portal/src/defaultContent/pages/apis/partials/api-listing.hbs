@@ -133,12 +133,15 @@
 
           <!-- Footer -->
           {{!-- Counts the plans the server page shows: a paid plan not on sale for it is left out. --}}
-          {{#if subscriptionPlanDetails.length}}
+          {{!-- A subscriber keeps "View subscription" even when no plan of the API is on sale any more. --}}
+          {{#if (or subscriptionPlanDetails.length hasSubscription)}}
           <div class="api-card-footer">
             <div class="api-card-footer-left">
+              {{#if subscriptionPlanDetails.length}}
               <a href="{{../baseUrl}}/api/{{id}}#subscriptionPlans" class="api-plans-link">
                 <i class="bi bi-tag"></i> {{subscriptionPlanDetails.length}} {{conditionalIf (eq subscriptionPlanDetails.length 1) "plan" "plans"}}
               </a>
+              {{/if}}
             </div>
             {{#if hasSubscription}}
             <a href="{{../baseUrl}}/api/{{id}}#subscriptionPlans" class="api-card-view-sub-btn">

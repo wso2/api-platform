@@ -391,7 +391,8 @@
         if (Object.values(BUILT_IN_IDS).indexOf(id) !== -1) throw new Error(id + ' is the name of a built-in condition; choose another.');
         if (seen[id]) throw new Error('Two custom conditions have the name ' + id + '.');
         seen[id] = true;
-        var params = {};
+        // No prototype: a key such as __proto__ is kept as a value of its own.
+        var params = Object.create(null);
         el.querySelectorAll('.pln-pair').forEach(function (row) {
           var k = row.querySelector('.pln-pair-key').value.trim();
           var val = row.querySelector('.pln-pair-value').value.trim();

@@ -212,7 +212,7 @@ const savePlanDetails = async (planId, plan, isNew, t) => {
     const current = isNew ? [] : (await attachConditions([{ uuid: planId }], t))[0].conditions;
     // Checked again: adding the request-count condition can take a plan past its 20 conditions.
     conditions = planConditions.normalizeConditions(
-      planConditions.conditionsFromLimits(current, normalizeLimits(plan.limits)));
+      planConditions.conditionsFromLimits(current, normalizeLimits(plan.limits), { strict: true }));
   } else if (isNew) {
     conditions = [];
   } else {
