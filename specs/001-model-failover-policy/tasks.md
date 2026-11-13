@@ -250,6 +250,37 @@ because they now apply to every author-written upstream policy:
 
 - [x] T030u **DONE 2026-11-12 (committed 875c1c2; spec corrected on the docs branch).** Correct FR-044 and the `classify.go` comment that implements it. Both claimed a chain of transport-dead members goes unrecorded because Envoy never invokes ext_proc for its own replies. Measured 2026-10-28 and now asserted by `TestOnResponseHeaders_ExhaustedChainChargesEveryMember`: the terminal reply travels back through the downstream chain, the response phase runs, and all N members are charged — three dead members produced three suspensions. The claim was reasoned, never measured. Also pins the real asymmetry: attempts 1..N-1 are charged WITHOUT consulting the status, only the final attempt is judged on it, and Envoy's `retry_on` carries `5xx` unconditionally — so narrowing `statusCodes` below that leaves the last member of an exhausted chain recorded as having answered (`TestOnResponseHeaders_NarrowedStatusCodesSpareTheFinalTarget`). The limit that genuinely remains is a host that does not RESOLVE.
 
+- [ ] T030v **Remove `per_attempt_provider_policies` and derive placement from what is attached (FR-012h).**
+  Probed 2026-11-13: the flag never enabled per-attempt placement, it only DELETED the downstream
+  copy. The per-provider map and `buildUpstreamPolicyChains` run ungated, so with the shipped
+  default every multi-provider LlmProxy carries the transformer and credential in BOTH chains —
+  including proxies that attach no failover at all, which also pay an ext_proc round trip they
+  never needed. Delete the field, the TOML key in `gateway/it/test-config.toml`, and the
+  null-out block; decide placement from whether the API attaches `model-failover`. The upstream
+  filter is still required for any cluster carrying authored `providers[].policies`, which is a
+  separate condition and already correct in `attachUpstreamChainTo`.
+
+- [ ] T030w **Unwind the serving attempt's upstream chain at the head of the downstream response
+  chain (FR-037h).** The transformer is one bidirectional policy; per-attempt placement runs only
+  its request half, because the upstream filter is generated response-SKIP and the engine's
+  upstream switch bare-acks anything else. Without this, T030v would move the transformer off the
+  downstream chain and leave failover APIs with untranslated responses — so the two ship together.
+  Executes the serving cluster's upstream chain in reverse (`ExecuteResponseHeaderPolicies`
+  already iterates in reverse) before the route's own response policies.
+
+- [ ] T030x **Record the serving cluster per attempt in the engine (FR-037h).** T030w needs to know
+  which cluster actually served. The response carries `x-envoy-attempt-count`, a number, not a
+  cluster; indexing the published ranking by it is unsafe because Probe G showed Envoy substitutes
+  the configured group at a POSITION when a name does not resolve. The upstream dispatcher already
+  sees the cluster on every attempt — record requestID to cluster there, same pattern and TTL as
+  `attemptBaselineStore`.
+
+- [x] T030y **DONE 2026-11-13 — health scope recorded as a decision (FR-018i).** Per-attachment,
+  not global. Global per-provider health reads as the obvious choice and is wrong here: grading is
+  by status code, and `429` — the dominant trigger — is per-credential, so one API's throttled key
+  would suspend another's working path. Also unreconcilable suspension thresholds, and cross-tenant
+  steering in a shared gateway. Nothing in the spec said why; it now does.
+
 - [x] T024v3 [P] Integration-test the cross-policy case: attach `model-round-robin` and `model-failover` to one operation, with the routing policy ranking a target that failover does not list, and assert the request is served by the ranked target rather than the operator's first configured one (FR-054, FR-055)
 
 ### 2b-ter. Model-keyed fallback chains (schema rework, FR-045–FR-050)

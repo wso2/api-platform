@@ -1221,6 +1221,59 @@ platform capability; model failover is its first consumer, not its only one.
   filter. No gating mechanism is required, and no opt-in flag is needed to protect unrelated
   traffic. The cluster is the provider here, which makes this a closer fit than per-route would
   have been. See `agent-router-comparison.md` § A1.
+- **FR-012h** *(replaces the `per_attempt_provider_policies` flag, 2026-11-13)*: Where a provider's
+  transformer and credential execute MUST be derived from what the API attaches, never from an
+  operator flag. A flag cannot express this, because the correct answer differs per API and the
+  information needed to decide is already present at transform time.
+
+  - An API that attaches `model-failover` on any operation MUST place every provider's
+    transformer and credential in that provider's **per-attempt** chain, and MUST NOT also leave
+    them on the downstream chain. Attempts can reach different providers, so once-per-request
+    placement would send a later attempt the first provider's shape and key (FR-042).
+  - An API that attaches no failover MUST place them **downstream** only, and generates no
+    per-attempt chain and no upstream filter for them. Exactly one attempt occurs, so
+    once-per-attempt and once-per-request are the same thing, and the filter would be a gRPC
+    round trip for nothing.
+
+  **Load-bearing invariant:** "no failover implies one attempt" holds because the failover
+  specifier is the only generator of a route retry policy. A future feature that adds another
+  MUST revisit this rule, or per-provider work silently becomes once-per-request.
+
+  Independently of the above, an upstream filter IS still required for any cluster carrying
+  authored `providers[].policies` — those are per-attempt by definition (FR-012f) and their
+  placement is not a choice.
+- **FR-037h** *(supersedes FR-037a's reasoning, 2026-11-13)*: A provider's response work MUST be
+  performed by **unwinding the serving attempt's upstream chain at the head of the downstream
+  response chain**, in reverse order, before the route's own response policies run.
+
+  FR-037a left responses to the downstream chain on the grounds that a response at the upstream
+  position carries no cluster attribute. Probe T4 (2026-11-13) measured that the upstream position
+  DOES deliver responses, including for attempts that were retried away from, once
+  `message_timeout` exceeds the 200ms default — so that reasoning no longer holds. The decision
+  stands on different ground: the downstream response phase runs exactly once, on the committed
+  response, so "which response is final" is unambiguous there and inferable at best anywhere else.
+
+  Unwinding the whole chain rather than one policy is what makes per-provider response work
+  general: a transformer's reverse translation and any future authored per-provider response
+  policy are the same mechanism, with no further change.
+
+  The serving cluster MUST be **recorded** by the engine as each attempt runs, never inferred by
+  indexing the published ranking: Probe G showed Envoy substitutes the configured group at a
+  position when a name does not resolve, so an index can be right about position and wrong about
+  target, silently.
+- **FR-018i** *(decision recorded 2026-11-13)*: Target health MUST remain scoped to the
+  attachment — this API, this operation — and MUST NOT be shared across APIs.
+
+  Global per-provider health is attractive: a provider that is down is down for everyone, and
+  pooled observations would detect it sooner. It is wrong here because the policy grades on
+  STATUS CODES, and the dominant failover trigger — `429` — is almost always per-credential. Two
+  APIs on the same provider with different keys would have one key's throttling suspend the
+  other's working path. `401`/`403` behave the same way. Two further obstacles: a shared store
+  cannot honour two APIs' different suspension thresholds (the store captures its settings at
+  construction), and in a shared gateway one tenant's observations would steer another's routing.
+
+  A provider-level circuit fed ONLY by failures that cannot be credential-scoped (connection
+  refused, reset, `503`, `UPE`) is a coherent future addition, and is explicitly not this release.
 - **FR-044** *(premise corrected 2026-11-12 — measured, having been reasoned)*: Envoy makes no
   PER-ATTEMPT ext_proc call for a connection failure, reset, or per-attempt timeout: there is no
   response to process, and the upstream position is request-only. The original requirement
