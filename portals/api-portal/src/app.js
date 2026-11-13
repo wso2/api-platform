@@ -56,6 +56,10 @@ const { registerHealthRoutes } = require('./health/routes');
 const app = express();
 // Do not advertise Express in response headers.
 app.disable('x-powered-by');
+// TLS is often terminated in front of the portal (kgateway in the cloud, where
+// server.https.enabled is false). Trusting that one hop lets req.secure and req.protocol
+// follow its X-Forwarded-Proto, which the session and XSRF cookies' Secure flag rely on.
+app.set('trust proxy', sessionCookies.TRUSTED_PROXY_HOPS);
 const sessionSecret = config.security.sessionSecret;
 
 const SERVER_ID = crypto.randomUUID();
@@ -90,13 +94,9 @@ const sessionMiddleware = session({
     name: sessionCookies.SESSION_COOKIE_NAME,
     resave: false,
     saveUninitialized: true,
-    cookie: {
-        secure: config.server.https.enabled && !config.designMode?.enabled,
-        maxAge: 60 * 60 * 1000,
-        // Must match the paths the browser actually requests — a mismatched cookie path
-        // is a silent login loop. See the note above on why the mount matches it.
-        path: constants.ROUTE.BASE_PATH,
-    },
+    // Path must match the paths the browser actually requests — see the note above on
+    // why the mount matches it.
+    cookie: sessionCookies.sessionCookieOptions({ designMode: config.designMode?.enabled }),
 });
 
 // /health and /ready, registered at BOTH the true root and under the prefix, because the
@@ -200,13 +200,8 @@ app.use(constants.ROUTE.BASE_PATH, passport.session());
 const { getSessionCsrfToken } = require('./middlewares/csrfProtection');
 app.use(constants.ROUTE.BASE_PATH, (req, res, next) => {
     if (req.session) {
-        res.cookie(sessionCookies.CSRF_COOKIE_NAME, getSessionCsrfToken(req), {
-            sameSite: 'lax',
-            secure: config.server.https.enabled && !config.designMode?.enabled,
-            // Same scope as the session cookie above — the double-submit token is only
-            // ever echoed back from pages served under BASE_PATH.
-            path: constants.ROUTE.BASE_PATH,
-        });
+        res.cookie(sessionCookies.CSRF_COOKIE_NAME, getSessionCsrfToken(req),
+            sessionCookies.csrfCookieOptions(req, { designMode: config.designMode?.enabled }));
     }
     next();
 });
