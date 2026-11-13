@@ -25,10 +25,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cucumber/godog"
 
 	corecatalog "github.com/wso2/api-platform/tests/framework/core/catalog/cloudconsole"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
@@ -82,6 +85,10 @@ const defaultPortalName = "dap"
 // A run that selects no such runner leaves the organisation's portals alone.
 const portalRunner = "apip-portal"
 
+// portalFeature is the feature file of the portal runner. The scenarios in it are skipped when
+// the starter could not prepare a managed API Portal.
+const portalFeature = "apip_portal.feature"
+
 // gatewayOutcome says which gateway the starter settled on and whether it created it.
 type gatewayOutcome struct {
 	// ID is the gateway the scenarios will find.
@@ -119,6 +126,9 @@ type Starter struct {
 	mu            sync.Mutex
 	outcome       gatewayOutcome
 	portalOutcome portalOutcome
+	// portalErr is why the starter could not prepare the managed API Portal; the portal runner's
+	// scenarios are skipped while it is set.
+	portalErr error
 	// runners is the set of runners the run includes; nil means the whole suite.
 	runners map[string]bool
 }
@@ -167,6 +177,33 @@ func (s *Starter) Portal() (id string, created bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.portalOutcome.ID, s.portalOutcome.Created
+}
+
+// PortalUnavailable reports why the starter could not prepare the managed API Portal, or nil when
+// it did, or was not asked to.
+func (s *Starter) PortalUnavailable() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.portalErr
+}
+
+// Register skips every scenario of the portal runner when the starter could not prepare the
+// managed API Portal. The other runners do not rely on a portal and run as usual.
+func (s *Starter) Register(sc *godog.ScenarioContext) {
+	sc.Before(func(ctx context.Context, scenario *godog.Scenario) (context.Context, error) {
+		return ctx, s.skipScenario(scenario.Uri, scenario.Name)
+	})
+}
+
+// skipScenario returns godog.ErrSkip for a scenario of the portal feature while the managed API
+// Portal is unavailable, and nil for every other scenario.
+func (s *Starter) skipScenario(featureURI, scenario string) error {
+	reason := s.PortalUnavailable()
+	if reason == nil || path.Base(featureURI) != portalFeature {
+		return nil
+	}
+	s.log.Warn("skipping: the starter could not prepare a managed API Portal", "scenario", scenario, "reason", reason)
+	return godog.ErrSkip
 }
 
 // SelectRunners tells the starter which runners the run includes, so it prepares only what they
@@ -229,12 +266,18 @@ func (s *Starter) StartAt(ctx context.Context, base string) error {
 		prerequisites = append(prerequisites, starter.Prerequisite{
 			Name: "managed API Portal", Ensure: func(ctx context.Context) error {
 				outcome, err := ensureDefaultPortal(ctx, platform, s.portalName(), s.log)
-				if err == nil {
-					s.mu.Lock()
-					s.portalOutcome = outcome
-					s.mu.Unlock()
+				s.mu.Lock()
+				defer s.mu.Unlock()
+				if err != nil {
+					// Only the portal runner relies on the portal, so a portal that cannot be
+					// prepared skips that runner and leaves the rest of the run alone. What the
+					// starter did create is still swept by the finalizer.
+					s.portalErr = err
+					s.log.Warn("the managed API Portal could not be prepared; the portal runner is skipped", "runner", portalRunner, "error", err)
+					return nil
 				}
-				return err
+				s.portalOutcome = outcome
+				return nil
 			}})
 	} else {
 		s.log.Info("no selected runner needs a managed API Portal; leaving the organisation's portals alone", "runner", portalRunner)

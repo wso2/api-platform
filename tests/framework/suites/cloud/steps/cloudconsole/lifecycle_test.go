@@ -5594,3 +5594,46 @@ func TestRequestPortalUnderDeletedHandleRepeatsARefusalThatMayClear(t *testing.T
 		})
 	}
 }
+
+func startStarterAgainst(t *testing.T, platform *starterPlatform) (*Starter, error) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	topo := cloudAPIStub(t, platform.handler(t))
+	starter, err := NewStarter(nil)
+	require.NoError(t, err)
+	return starter, starter.Start(context.Background(), topo)
+}
+
+func activeGatewayList() []map[string]any {
+	return []map[string]any{{"id": "development-default", "environment": "development", "status": "ACTIVE", "isActive": true}}
+}
+
+func TestStarterSkipsThePortalRunnerWhenThePortalCannotBePrepared(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList(), noPortals: true, portalFails: true}
+	starter, err := startStarterAgainst(t, platform)
+	require.NoError(t, err, "a portal that cannot be built does not fail the run")
+	require.ErrorContains(t, starter.PortalUnavailable(), "failed to provision")
+
+	require.ErrorIs(t, starter.skipScenario("features/apip_portal.feature", "any portal scenario"), godog.ErrSkip)
+	require.ErrorIs(t, starter.skipScenario("/work/suites/cloud/features/apip_portal.feature", "any portal scenario"), godog.ErrSkip)
+	require.NoError(t, starter.skipScenario("features/apip_basic.feature", "a scenario of another runner"))
+
+	id, _ := starter.Gateway()
+	require.Equal(t, "development-default", id, "the gateway is still prepared for the other runners")
+}
+
+func TestStarterSkipsNothingWhenThePortalIsPrepared(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList()}
+	starter, err := startStarterAgainst(t, platform)
+	require.NoError(t, err)
+	require.NoError(t, starter.PortalUnavailable())
+	require.NoError(t, starter.skipScenario("features/apip_portal.feature", "a portal scenario"))
+}
+
+func TestStarterStillFailsTheRunWhenTheGatewayCannotBePrepared(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), failsWith: "no capacity"}
+	starter, err := startStarterAgainst(t, platform)
+	require.ErrorContains(t, err, "default gateway")
+	require.NoError(t, starter.PortalUnavailable(), "the portal was never attempted")
+}

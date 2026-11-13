@@ -191,6 +191,7 @@ func TestCloudSuite(t *testing.T) {
 			funnel := httpx.NewFunnel(client, 3, 2*time.Second)
 			return func(sc *godog.ScenarioContext) {
 				finalizer.Register(sc, topo, funnel)
+				starter.Register(sc)
 			}, nil
 		},
 		CleanupDeleters: func(reg *cleanup.Registry, topo *frameworkruntime.Topology) {
