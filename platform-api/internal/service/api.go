@@ -953,6 +953,12 @@ func (s *APIService) applyAPIUpdates(existingAPIModel *model.API, req *api.RESTA
 	if req.DisplayName != "" {
 		existingAPI.DisplayName = req.DisplayName
 	}
+	if req.Version != "" {
+		existingAPI.Version = req.Version
+	}
+	if req.Context != "" {
+		existingAPI.Context = req.Context
+	}
 	if req.Description != nil {
 		existingAPI.Description = req.Description
 	}
@@ -1021,9 +1027,25 @@ func preserveAPIUpstreamAuth(existing *model.UpstreamEndpoint, updated *api.Upst
 
 // validateUpdateAPIRequest checks the validity of the update API request
 func (s *APIService) validateUpdateAPIRequest(existingAPIModel *model.API, req *api.RESTAPI, orgUUID string) error {
-	if req.DisplayName != "" {
-		nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(req.DisplayName,
-			existingAPIModel.Version, orgUUID, existingAPIModel.Handle)
+	if req.Version != "" && !s.isValidVersion(req.Version) {
+		return apperror.ValidationFailed.New("Invalid API version format.")
+	}
+	if req.Context != "" && !s.isValidContext(req.Context) {
+		return apperror.ValidationFailed.New("Invalid API context format.")
+	}
+
+	// An omitted displayName or version keeps the stored one, so the pair checked is the one
+	// the update leaves.
+	if req.DisplayName != "" || req.Version != "" {
+		name, version := existingAPIModel.Name, existingAPIModel.Version
+		if req.DisplayName != "" {
+			name = req.DisplayName
+		}
+		if req.Version != "" {
+			version = req.Version
+		}
+		nameVersionExists, err := s.apiRepo.CheckAPIExistsByNameAndVersionInOrganization(name,
+			version, orgUUID, existingAPIModel.Handle)
 		if err != nil {
 			return err
 		}

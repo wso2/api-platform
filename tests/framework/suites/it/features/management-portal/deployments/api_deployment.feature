@@ -53,3 +53,30 @@ Feature: Platform-API-driven API deployment is served by the gateway data plane
 
     When I deploy the "RestApi" "${CTX:apiHandle}" to the gateway via the control plane
     Then I send a "GET" request to "${CTX:apiContext}/health" until status 200
+
+  # https://github.com/wso2/api-platform/issues/3899
+  Scenario: A version and context changed on update are kept, and a redeploy serves the API at the new context
+    Given I generate a unique resource name from "papi-move" and store it as "apiHandle"
+    And I generate a unique API context from "/papi-move" and store it as "apiContext"
+    And I generate a unique API context from "/papi-moved" and store it as "movedContext"
+    And I create a REST API "${CTX:apiHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:apiContext}"
+    And I deploy the "RestApi" "${CTX:apiHandle}" to the gateway via the control plane
+    And I send a "GET" request to "${CTX:apiContext}/health" until status 200
+
+    When I send a "PUT" request to the control plane at "/rest-apis/${CTX:apiHandle}" with body:
+      """
+      {"displayName": "${CTX:apiHandle}", "context": "${CTX:movedContext}", "version": "v2", "projectId": "${CTX:projectHandle}", "upstream": {"main": {"url": "http://testbench:3000"}}, "operations": [{"request": {"method": "GET", "path": "/health"}}]}
+      """
+    Then the response status code should be 200
+    And the JSON response field "version" should be "v2"
+    And the JSON response field "context" should be "${CTX:movedContext}"
+    When I send a "GET" request to the control plane at "/rest-apis/${CTX:apiHandle}"
+    Then the JSON response field "version" should be "v2"
+    And the JSON response field "context" should be "${CTX:movedContext}"
+    # The live deployment keeps the old context until the API is redeployed.
+    When I send a "GET" request to "${CTX:apiContext}/health"
+    Then the response status code should be 200
+
+    When I deploy the "RestApi" "${CTX:apiHandle}" to the gateway via the control plane
+    Then I send a "GET" request to "${CTX:movedContext}/health" until status 200
+    And I send a "GET" request to "${CTX:apiContext}/health" until status 404

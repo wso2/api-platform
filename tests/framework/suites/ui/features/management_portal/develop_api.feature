@@ -60,9 +60,7 @@ Feature: The Management Portal edits an API, attaches its policies and keeps its
     Then the Management Portal shows "4 resources"
     And the Management Portal shows "Pets and their photos."
 
-  # The edit page offers Version and Context, but the control plane answers 200 to the update and
-  # keeps the old values: https://github.com/wso2/api-platform/issues/3899
-  @CONSOLE-007 @known-issue
+  @CONSOLE-007
   Scenario: Journey: a publisher changes an API's version and context, and they stay saved after a reload
     Given I generate a unique handle from "console-edit-project" and store it as "project"
     And I generate a unique handle from "console-edit-version" and store it as "api"
