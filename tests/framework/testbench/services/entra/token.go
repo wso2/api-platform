@@ -108,7 +108,7 @@ func (s *Service) token(tenant string, w http.ResponseWriter, r *http.Request) {
 			s.abandon(tenant, a)
 			return
 		}
-		issue(w, tenant, a.n, req)
+		issue(w, tenant, a.n, a.eligible, req)
 	}
 }
 
@@ -172,8 +172,10 @@ func outcome(tenant string, n int) int {
 	}
 }
 
-// issue answers the tenant's n-th token request with a token for its scope and client.
-func issue(w http.ResponseWriter, tenant string, n int, req Request) {
+// issue answers the tenant's n-th token request, its eligible-th well-formed one, with a token for
+// its scope and client. The token carries N = n; a refresh-soon- tenant's first token, eligible 1,
+// also carries refresh_in.
+func issue(w http.ResponseWriter, tenant string, n, eligible int, req Request) {
 	claims, err := json.Marshal(Claims{Aud: strings.TrimSuffix(req.Scope, "/.default"), Tid: tenant, AppID: req.ClientID, N: n})
 	if err != nil {
 		http.Error(w, "entra: encoding the token claims", http.StatusInternalServerError)
@@ -185,7 +187,7 @@ func issue(w http.ResponseWriter, tenant string, n int, req Request) {
 		"ext_expires_in": ExpiresIn,
 		"access_token":   TokenPrefix + base64.RawURLEncoding.EncodeToString(claims),
 	}
-	if strings.HasPrefix(tenant, PrefixRefreshSoon) && n == 1 {
+	if strings.HasPrefix(tenant, PrefixRefreshSoon) && eligible == 1 {
 		body["refresh_in"] = refreshSoonSeconds
 	}
 	writeJSON(w, http.StatusOK, body)

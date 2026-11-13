@@ -186,10 +186,11 @@ func (s *Service) scoped(fn func(string, http.ResponseWriter, *http.Request)) ht
 	}
 }
 
-// admission is an admitted request: its 1-based position in the partition, its status, and its
-// index in the partition's retained requests, or -1 when the retention cap left it out.
+// admission is an admitted request: its 1-based position in the partition, its 1-based position
+// among the partition's well-formed requests (0 for a malformed one), its status, and its index in
+// the partition's retained requests, or -1 when the retention cap left it out.
 type admission struct {
-	n, status, index int
+	n, eligible, status, index int
 }
 
 // admit records a token request under key. A malformed request is answered 400; a well-formed one
@@ -208,13 +209,15 @@ func (s *Service) admit(key string, req Request, wellFormed bool, decide func(el
 		s.partitions[key] = p
 	}
 	p.count++
+	a := admission{n: p.count, index: -1}
 	if wellFormed {
 		p.eligible++
+		a.eligible = p.eligible
 		req.Status = decide(p.eligible)
 	} else {
 		req.Status = http.StatusBadRequest
 	}
-	a := admission{n: p.count, status: req.Status, index: -1}
+	a.status = req.Status
 	if len(p.requests) < maxRetainedRequests {
 		a.index = len(p.requests)
 		p.requests = append(p.requests, req)
