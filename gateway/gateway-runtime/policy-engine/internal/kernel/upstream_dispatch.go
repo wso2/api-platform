@@ -86,9 +86,10 @@ func (s *ExternalProcessorServer) handleUpstreamRequestHeaders(
 	//
 	// The baseline cannot be published by the downstream pass, because Envoy applies the
 	// route's own rewrite AFTER ext_proc: the engine never sees the exact bytes attempt 1
-	// sends. It is therefore captured ON attempt 1 and carried in dynamic metadata, which
-	// persists across attempts of the same request — the same mechanism the priority groups
-	// themselves rely on.
+	// sends. It is therefore captured ON attempt 1 and held SERVER-SIDE, in a store keyed by
+	// request id (attempt_baseline_store.go). Not dynamic metadata: that route would rest on an
+	// assumption never measured — that an UPSTREAM ext_proc's metadata write survives into the
+	// next attempt — where process memory simply does.
 	requestID := requestIDFrom(headers)
 	baseline, known := s.baselines.Lookup(requestID)
 	if !known {
@@ -108,6 +109,12 @@ func (s *ExternalProcessorServer) handleUpstreamRequestHeaders(
 				"attempt", attempt, "cluster", cluster, "has_request_id", requestID != "")
 		}
 	}
+	// This attempt is, for now, the one that will serve. Recorded on every attempt so that when
+	// the retries stop the stored value is whichever attempt answered — the downstream response
+	// phase unwinds that attempt's chain (FR-037h). Written after the baseline exists, since the
+	// store ignores a serving-cluster write for a request it has no entry for.
+	s.baselines.RememberServingCluster(requestID, cluster)
+
 	reqCtx := incoming
 	reqCtx.Path = baseline.Path
 	reqCtx.Method = baseline.Method

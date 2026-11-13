@@ -1559,6 +1559,14 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 			"code_details", ec.responseCodeDetails)
 	}
 
+	// Unwind the serving attempt's upstream chain FIRST, so a provider's reverse translation
+	// has run before the route's own response policies see the body (FR-037h). A response is
+	// unwrapped in the order opposite to the one that wrapped it, and the upstream chain
+	// wrapped it last.
+	if err := ec.unwindServingUpstreamChain(ctx); err != nil {
+		return ec.handlePolicyError(ctx, err, "response_headers_upstream_unwind"), nil
+	}
+
 	headerPols, headerSpecs := ec.responsePolicies()
 	execResult, err := ec.server.executor.ExecuteResponseHeaderPolicies(
 		ctx,
