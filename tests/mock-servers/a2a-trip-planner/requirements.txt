@@ -7,7 +7,7 @@
 
 # Official A2A Python SDK. The `http-server` extra pulls starlette and
 # sse-starlette, which the JSON-RPC and HTTP+JSON route factories require.
-a2a-sdk[http-server]==1.1.0
+a2a-sdk[http-server]==1.1.4
 
 # ASGI server.
 uvicorn==0.51.0
