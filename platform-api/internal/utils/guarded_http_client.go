@@ -135,6 +135,21 @@ func NewUpstreamFetchClient(timeout time.Duration) (*http.Client, error) {
 // to whatever transport httpkit builds. For a shared client set without its config, only a plain
 // *http.Transport can take the response-header timeout, and any other transport is refused.
 func NewUpstreamClientWithTimeout(timeout time.Duration) (*http.Client, error) {
+	return newClientWithTimeout(timeout, false)
+}
+
+// NewOperatorUpstreamClientWithTimeout is NewUpstreamClientWithTimeout for a destination the
+// operator configured rather than a tenant, such as the feature-usage collector and its token
+// endpoint. Those are often in-cluster services, so private, loopback and carrier-grade-NAT
+// addresses stay reachable even when platform_api.http_client.ssrf.preset is "public_only",
+// which is meant for tenant-supplied URLs. Every other part of the shared policy is kept:
+// link-local/metadata, unspecified and multicast addresses are still refused at dial time,
+// and the schemes, redirects, TLS and pooling settings are the shared client's.
+func NewOperatorUpstreamClientWithTimeout(timeout time.Duration) (*http.Client, error) {
+	return newClientWithTimeout(timeout, true)
+}
+
+func newClientWithTimeout(timeout time.Duration, permitPrivate bool) (*http.Client, error) {
 	sharedHTTPClientMu.RLock()
 	client, cfg := sharedHTTPClient, sharedHTTPClientConfig
 	sharedHTTPClientMu.RUnlock()
@@ -145,8 +160,15 @@ func NewUpstreamClientWithTimeout(timeout time.Duration) (*http.Client, error) {
 		own := *cfg
 		own.Timeouts.Overall = timeout
 		own.Timeouts.ResponseHeader = timeout
+		if permitPrivate && own.SSRF.Enabled {
+			own.SSRF.Policy.BlockPrivate = false
+			own.SSRF.Policy.BlockLoopback = false
+			own.SSRF.Policy.BlockCGNAT = false
+		}
 		return httpclient.New(own)
 	}
+	// Set without its config, the shared client's policy can't be rebuilt, so an operator
+	// client keeps exactly the shared client's policy.
 	copied := *client
 	copied.Timeout = timeout
 	switch transport := client.Transport.(type) {

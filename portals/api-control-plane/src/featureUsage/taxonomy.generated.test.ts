@@ -21,6 +21,7 @@ import { describe, expect, it } from 'vitest';
 
 import taxonomyYaml from './api-platform-taxonomy.yaml?raw';
 import {
+  API_PLATFORM_PRODUCT,
   API_PLATFORM_TAXONOMY,
   CONSOLE_FEATURES,
   CONSOLE_PORTAL,
@@ -105,6 +106,36 @@ describe('the portal dimension', () => {
   it('is never declared by an API-only feature', () => {
     for (const feature of features.filter((f) => !f.tracking.platforms?.includes('web'))) {
       expect(portalOf(feature), feature.code).toBeUndefined();
+    }
+  });
+});
+
+describe('the product', () => {
+  it('is the taxonomy product: its id prefixes every code, its name is sent as platform', () => {
+    expect(API_PLATFORM_PRODUCT).toEqual({
+      id: fromYaml.product.id,
+      name: fromYaml.product.name,
+    });
+  });
+});
+
+describe('console dimensions', () => {
+  // The fields every action carries (featureMetadata); a dimension may not shadow one.
+  const RESERVED = [
+    'growth_action',
+    'platform',
+    'source',
+    'environment',
+    'action',
+    'category',
+    'tier',
+    'event_category',
+    'initiating_product',
+  ];
+
+  it.each(Object.entries(CONSOLE_FEATURES))('%s uses no reserved metadata key', (_code, spec) => {
+    for (const name of Object.keys(spec.dimensions)) {
+      expect(RESERVED).not.toContain(name);
     }
   });
 });

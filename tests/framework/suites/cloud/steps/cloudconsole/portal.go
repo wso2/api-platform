@@ -20,14 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/cucumber/godog"
 
 	corecatalog "github.com/wso2/api-platform/tests/framework/core/catalog/cloudconsole"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
@@ -159,10 +156,15 @@ func portalPath(id string) string {
 	return managedPortalsCollection + "/" + url.PathEscape(id)
 }
 
-// portalRequestBody is the body of a portal create. The login environment and sign-up setting are
-// left to the platform's defaults.
+// portalLoginEnvironment is the environment the consumers of the portals created here sign in on.
+// Every organisation has it from the start.
+const portalLoginEnvironment = "development"
+
+// portalRequestBody is the body of a portal create. Consumers sign in on portalLoginEnvironment;
+// the sign-up setting is left to the platform's default.
 func portalRequestBody(handle, name string) map[string]any {
-	return map[string]any{"handle": handle, "name": name, "description": portalDescription}
+	return map[string]any{"handle": handle, "name": name, "description": portalDescription,
+		"loginEnvironment": portalLoginEnvironment}
 }
 
 // portalResource is the cleanup record of a managed API Portal.
@@ -483,33 +485,16 @@ func (s *Steps) listPortals(ctx context.Context) ([]map[string]any, error) {
 	return items, nil
 }
 
-// portalQuotaExceededCode is the error code a create is refused with when the organisation's plan
-// has no room for another portal. The plan is checked before the request is.
-const portalQuotaExceededCode = "quota_exceeded"
-
 // requestDuplicatePortal asks for a second portal under the runner portal's handle, with a name of
 // its own so only the handle can collide, and publishes the answer. The handle is already
-// registered for runner cleanup. On an organisation whose plan allows a single portal, any second
-// create is refused for the plan before the handle is checked, so the scenario is skipped there:
-// the duplicate handle can only be tested where the plan leaves room for another portal. The skip
-// is recorded on the scenario's steps; the scenario itself counts as passed.
+// registered for runner cleanup.
 func (s *Steps) requestDuplicatePortal(ctx context.Context) error {
 	handle, err := runnerPortal(ctx)
 	if err != nil {
 		return err
 	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, managedPortalsCollection, portalRequestBody(handle, "Synthetic duplicate of "+handle))
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode == http.StatusPaymentRequired {
-		if code, _ := stringField(resp, "code"); code == portalQuotaExceededCode {
-			slog.Warn("skipping: the organisation's plan has no room for a second managed API Portal, so the request is refused before the handle is checked",
-				"portal", handle, "response", resp.Describe())
-			return godog.ErrSkip
-		}
-	}
-	return nil
+	_, err = s.doAuthenticated(ctx, http.MethodPost, managedPortalsCollection, portalRequestBody(handle, "Synthetic duplicate of "+handle))
+	return err
 }
 
 // assertPortalStillActive reads the runner's portal once, publishes the answer and checks it is

@@ -48,6 +48,22 @@ const PORTAL_DIMENSION = 'portal';
 const CONSOLE_PORTAL = 'api-control-plane';
 /** Every `portal` value the taxonomy may use. */
 const PORTALS = ['api-control-plane', 'api-portal'];
+/**
+ * Metadata keys the console fills on every action, as Platform API's
+ * reservedMetadataKeys (platform-api/internal/featureusage/taxonomy.go). A
+ * dimension may not use one, or it would shadow the value every source sends.
+ */
+const RESERVED_METADATA_KEYS = [
+  'growth_action',
+  'platform',
+  'source',
+  'environment',
+  'action',
+  'category',
+  'tier',
+  'event_category',
+  'initiating_product',
+];
 
 type Dimension = {
   name: string;
@@ -70,7 +86,7 @@ type Feature = {
   sub_features?: Feature[];
 };
 
-type Taxonomy = { product: { id: string }; features: Feature[] };
+type Taxonomy = { product: { id: string; name: string }; features: Feature[] };
 
 const problems: string[] = [];
 
@@ -101,6 +117,10 @@ for (const feature of allFeatures(taxonomy.features)) {
   const consoleDimensions: Record<string, { required: boolean; values: string[] }> = {};
   for (const dimension of dimensions) {
     if (dimension.name === PORTAL_DIMENSION) continue;
+    if (RESERVED_METADATA_KEYS.includes(dimension.name)) {
+      problems.push(`${feature.code}: dimension "${dimension.name}" is a reserved metadata key`);
+      continue;
+    }
     // The console sends enums only, so a call site can't forward user input.
     if (dimension.type !== 'enum' || !dimension.values?.length) {
       problems.push(`${feature.code}: console dimension "${dimension.name}" is not an enum`);
@@ -196,6 +216,9 @@ export type FeatureTaxonomy = {
 
 /** The whole API Platform feature taxonomy: every feature, for every surface. */
 export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = ${JSON.stringify(taxonomy)};
+
+/** The taxonomy's product: its \`id\` prefixes every code, its \`name\` is sent as \`platform\`. */
+export const API_PLATFORM_PRODUCT = ${JSON.stringify({ id: taxonomy.product.id, name: taxonomy.product.name })} as const;
 
 /** This console's \`portal\` value, sent with every event it emits. */
 export const CONSOLE_PORTAL = ${JSON.stringify(CONSOLE_PORTAL)};

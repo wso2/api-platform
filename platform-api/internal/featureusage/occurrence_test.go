@@ -73,7 +73,7 @@ func TestValidateBuildsTaxonomyMetadata(t *testing.T) {
 	// feature has no dimensions, so the event is the endpoint invocation.
 	want := map[string]any{
 		"growth_action": featureRESTAPICreate,
-		"platform":      "WSO2 API Platform",
+		"platform":      "API Platform",
 		"source":        "api",
 		"outcome":       "success",
 	}
@@ -206,7 +206,7 @@ func TestValidateRejects(t *testing.T) {
 func TestValidateChecksDimensions(t *testing.T) {
 	tax, err := ParseTaxonomy([]byte(`product:
   id: "apip"
-  name: "WSO2 API Platform"
+  name: "API Platform"
 features:
   - code: "apip.manage-apis.deploy-api"
     name: "API Deployment"
@@ -264,7 +264,7 @@ features:
 func TestStringDimensionsAcceptOnlyCodes(t *testing.T) {
 	tax, err := ParseTaxonomy([]byte(`product:
   id: "apip"
-  name: "WSO2 API Platform"
+  name: "API Platform"
 features:
   - code: "apip.policies.rate-limiting"
     name: "Rate Limiting"
@@ -302,7 +302,7 @@ features:
 func TestValidateRejectsAWebOnlyFeature(t *testing.T) {
 	tax, err := ParseTaxonomy([]byte(`product:
   id: "apip"
-  name: "WSO2 API Platform"
+  name: "API Platform"
 features:
   - code: "apip.manage-apis.test-console"
     name: "Test Console"
