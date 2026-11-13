@@ -184,7 +184,9 @@ async function seedOrgDefaults(orgId, operation) {
     if (config.organization.autoCreateSubscriptionPlans) {
         for (const plan of constants.DEFAULT_SUBSCRIPTION_PLANS) {
             try {
-                await subscriptionPlanDao.createMany(orgId, [plan], constants.SYSTEM_ACTOR);
+                // One transaction per plan: its row and its conditions are written together, so a failure
+                // can't leave a default plan with only some of its conditions.
+                await db.withTransaction((t) => subscriptionPlanDao.createMany(orgId, [plan], constants.SYSTEM_ACTOR, t));
             } catch (error) {
                 if (!db.isDuplicateKeyError(error)) {
                     logger.error('Failed to seed subscription plan', {

@@ -979,8 +979,10 @@
     });
     if (price.pricingModel === 'PER_UNIT') {
       price.unitAmount = checkAmount(box.querySelector('.pol-price-unit-amount').value.trim(), 'Price ' + n);
-      var quantity = parseInt(box.querySelector('.pol-price-unit-quantity').value.trim() || '1', 10);
-      if (!Number.isFinite(quantity) || quantity < 1) throw new Error('Units of price ' + n + ' must be a whole number of at least 1.');
+      // Digits only: parseInt would read "1e3" or "1.5" as 1 and save a different price.
+      var quantityText = box.querySelector('.pol-price-unit-quantity').value.trim() || '1';
+      var quantity = /^\d+$/.test(quantityText) ? Number(quantityText) : NaN;
+      if (!Number.isSafeInteger(quantity) || quantity < 1) throw new Error('Units of price ' + n + ' must be a whole number of at least 1.');
       price.unitQuantity = quantity;
       return price;
     }
@@ -993,13 +995,15 @@
       var unit = row.querySelector('.cfg-tier-unit').value.trim();
       var flat = row.querySelector('.cfg-tier-flat').value.trim();
       if (!last && upTo === '') throw new Error('Each tier of price ' + n + ' except the last needs an upper bound.');
-      if (!last && !(parseInt(upTo, 10) > previous)) {
+      var upToValue = /^\d+$/.test(upTo) ? Number(upTo) : NaN;
+      if (!last && !Number.isSafeInteger(upToValue)) throw new Error('Each tier upper bound of price ' + n + ' must be a whole number.');
+      if (!last && !(upToValue > previous)) {
         throw new Error('Each tier of price ' + n + ' needs an upper bound greater than the tier before it.');
       }
       if (unit === '' && flat === '') throw new Error('Each tier of price ' + n + ' needs a per-unit price, a flat fee or both.');
-      if (!last) previous = parseInt(upTo, 10);
+      if (!last) previous = upToValue;
       price.tiers.push({
-        upTo: last ? null : parseInt(upTo, 10),
+        upTo: last ? null : upToValue,
         unitAmount: unit === '' ? null : checkAmount(unit, 'Per-unit price of price ' + n),
         flatAmount: flat === '' ? null : checkAmount(flat, 'Flat fee of price ' + n),
       });
