@@ -243,8 +243,8 @@ func TestToolRiskLevels(t *testing.T) {
 		"list_apis": read, "get_api": read, "get_api_schema": read, "list_api_deployments": read,
 		"list_projects": read, "list_gateways": read, "get_gateway": read,
 		"create_api": write, "create_project": write,
-		"update_api": writeRepeat, "deploy_api": writeRepeat,
-		"undeploy_api": destructiveRepeat, "delete_api": destructiveRepeat, "delete_project": destructiveRepeat,
+		"update_api": destructiveRepeat,
+		"deploy_api": destructiveRepeat, "undeploy_api": destructiveRepeat, "delete_api": destructiveRepeat, "delete_project": destructiveRepeat,
 	}
 	listed, err := connect(t, s, who(testOrg, scopes...)).ListTools(context.Background(), nil)
 	require.NoError(t, err)
@@ -298,14 +298,14 @@ func TestUpdateAPI_Merges(t *testing.T) {
 		"upstream": map[string]any{"main": map[string]any{"url": "http://orders"}}}
 	cs := connect(t, s, who(testOrg, "ap:rest_api:read", "ap:rest_api:update"))
 
-	res, text := call(t, cs, "update_api", map[string]any{"apiType": "rest-api", "apiId": "orders-v1",
+	res, text := call(t, cs, "update_api", map[string]any{"confirm": true, "apiType": "rest-api", "apiId": "orders-v1",
 		"payload": map[string]any{"description": "new"}})
 	require.False(t, res.IsError, text)
 	assert.Equal(t, "new", f.updated["description"])
 	assert.Equal(t, f.api["policies"], f.updated["policies"], "fields left out survive the PUT")
 
 	res, text = call(t, connect(t, s, who(testOrg, "ap:rest_api:update")), "update_api",
-		map[string]any{"apiType": "rest-api", "apiId": "orders-v1", "payload": map[string]any{"description": "x"}})
+		map[string]any{"confirm": true, "apiType": "rest-api", "apiId": "orders-v1", "payload": map[string]any{"description": "x"}})
 	assert.True(t, res.IsError, "update reads first, so it needs a read scope too")
 	assert.Contains(t, text, "missing permission")
 }
@@ -366,7 +366,7 @@ func TestDestructiveTools_TakeConfirm(t *testing.T) {
 			withConfirm = append(withConfirm, tool.Name)
 		}
 	}
-	assert.ElementsMatch(t, []string{"undeploy_api", "delete_api", "delete_project"}, withConfirm)
+	assert.ElementsMatch(t, []string{"update_api", "deploy_api", "undeploy_api", "delete_api", "delete_project"}, withConfirm)
 }
 
 func TestUndeployAPI_RefusedWithoutConfirm(t *testing.T) {
