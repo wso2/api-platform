@@ -156,6 +156,7 @@ package-event-gateway: ## Package event gateway as a self-contained zip (wso2api
 	 mkdir -p "$$DIST/scripts" && \
 	 cp event-gateway/scripts/setup.sh "$$DIST/scripts/setup.sh" && \
 	 chmod +x "$$DIST/scripts/setup.sh" && \
+	 rm -f "$(CURDIR)/wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION).zip" && \
 	 cd "$$STAGE" && zip -r "$(CURDIR)/wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION).zip" wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION)/ && \
 	 rm -rf "$$STAGE"
 	@echo "Created: wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION).zip"
