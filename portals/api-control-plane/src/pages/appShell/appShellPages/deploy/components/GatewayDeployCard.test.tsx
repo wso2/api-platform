@@ -60,8 +60,8 @@ const useUndeployForCard: UseDeploymentMutationHook = () => {
   const mutation = useUndeployDeployment();
   return {
     isPending: mutation.isPending,
-    mutate: ({ apiId, deploymentId }, options) =>
-      mutation.mutate({ graphqlApiId: apiId, deploymentId }, options),
+    mutate: ({ apiId, deploymentId, gatewayId }, options) =>
+      mutation.mutate({ graphqlApiId: apiId, deploymentId, gatewayId }, options),
   };
 };
 
@@ -69,8 +69,8 @@ const useRestoreForCard: UseDeploymentMutationHook = () => {
   const mutation = useRestoreDeployment();
   return {
     isPending: mutation.isPending,
-    mutate: ({ apiId, deploymentId }, options) =>
-      mutation.mutate({ graphqlApiId: apiId, deploymentId }, options),
+    mutate: ({ apiId, deploymentId, gatewayId }, options) =>
+      mutation.mutate({ graphqlApiId: apiId, deploymentId, gatewayId }, options),
   };
 };
 
@@ -101,6 +101,7 @@ const renderCard = (deployments: DeploymentFixture[], onToggleExpand = vi.fn()) 
     <ApiScopeProvider orgId={ORG}>
       <GatewayDeployCard
         apiId={API}
+        artifactKind="graphql-api"
         deployments={deployments}
         gateway={gateway}
         isExpanded
@@ -124,7 +125,7 @@ describe('GatewayDeployCard — a live deployment', () => {
     status: 'DEPLOYED',
   });
 
-  it('stops the current deployment at the graphql-apis-scoped undeploy endpoint', async () => {
+  it('stops the current deployment at the graphql-apis-scoped undeploy endpoint, on its own gateway', async () => {
     server.use(
       accepts(
         'post',
@@ -141,6 +142,7 @@ describe('GatewayDeployCard — a live deployment', () => {
     expect(requests.last()?.url.pathname).toContain(
       `/graphql-apis/${API}/deployments/deployment-live/undeploy`,
     );
+    expect(requests.last()?.url.searchParams.get('gatewayId')).toBe(GATEWAY_ID);
   });
 });
 
@@ -154,7 +156,7 @@ describe('GatewayDeployCard — a failed deployment', () => {
     statusReason: 'DEPLOYMENT_TIMEOUT',
   });
 
-  it('shows the failure reason and redeploys at the graphql-apis-scoped restore endpoint', async () => {
+  it('shows the failure reason and redeploys at the graphql-apis-scoped restore endpoint, on its own gateway', async () => {
     server.use(
       accepts(
         'post',
@@ -172,6 +174,7 @@ describe('GatewayDeployCard — a failed deployment', () => {
     expect(requests.last()?.url.pathname).toContain(
       `/graphql-apis/${API}/deployments/deployment-failed/restore`,
     );
+    expect(requests.last()?.url.searchParams.get('gatewayId')).toBe(GATEWAY_ID);
   });
 });
 
@@ -267,7 +270,7 @@ describe('GatewayDeployCard — restoring an older deployment', () => {
     }),
   ];
 
-  it('opens the selector, picks a different deployment and restores it', async () => {
+  it('opens the selector, picks a different deployment and restores it on its own gateway', async () => {
     server.use(
       accepts(
         'post',
@@ -286,6 +289,7 @@ describe('GatewayDeployCard — restoring an older deployment', () => {
 
     await waitFor(() => expect(requests.count()).toBe(1));
     expect(requests.last()?.url.pathname).toContain(`/graphql-apis/${API}/deployments/older/restore`);
+    expect(requests.last()?.url.searchParams.get('gatewayId')).toBe(GATEWAY_ID);
   });
 
   it('never lets the currently-deployed entry itself be re-selected for restore', async () => {

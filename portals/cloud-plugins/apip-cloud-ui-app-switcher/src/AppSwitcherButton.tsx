@@ -27,6 +27,9 @@ import {
   type CloudShellConfig,
 } from "./platforms";
 
+// Every card opens in the same tab; AppSwitcher defaults other apps to a new tab.
+const SAME_TAB = "_self";
+
 const MANAGE_ICONS: Record<string, ReactNode> = {
   home: <House size={18} />,
   settings: <Settings size={18} />,
@@ -60,18 +63,20 @@ export default function AppSwitcherButton({
             id={p.id}
             name={p.name}
             url={p.url}
+            target={SAME_TAB}
             disabled={p.disabled}
             tooltip={p.disabled ? "Coming soon" : undefined}
           />
         ))}
       </AppSwitcher.Section>
       {manage.length > 0 && (
-        <AppSwitcher.Footer label="Manage">
+        <AppSwitcher.Footer label="Manage" columns={manage.length}>
           {manage.map((l) => (
             <AppSwitcher.App
               key={l.key}
               name={l.name}
               url={l.url}
+              target={SAME_TAB}
               icon={MANAGE_ICONS[l.key]}
             />
           ))}

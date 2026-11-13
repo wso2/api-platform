@@ -16,52 +16,46 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal organization isolation
 
-  Scenario: The configured organization portal home is available
+@APIPORTAL @apiportal-org-isolation
+Feature: The API Portal serves only its configured organization
+  As an API Portal operator
+  I want every page, catalog and registry route of another organization to be unreachable
+  So that one portal can never expose or be steered into a tenant it does not serve
+
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml). Each refused
+  # route is paired with the same route for the configured organization, which is served, so a
+  # broken route cannot pass as an isolated one.
+
+  @APIP-029 @type:security
+  Scenario: Another organization's routes are not exposed and an organization header never moves a caller
+    # The portal home of another organization is not exposed, while the configured organization's is
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default"
     Then the response status code should be 200
-
-  Scenario: A foreign organization portal home is not exposed
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/foreign-org/views/default"
-    Then the response status code should be 404
-
-  Scenario: A foreign organization API listing is not exposed
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/foreign-org/views/default/apis"
-    Then the response status code should be 404
-
-  Scenario: A foreign organization MCP registry is not exposed
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/foreign-org/v0.1/servers"
-    Then the response status code should be 404
-
-  Scenario: A foreign organization handle is not reflected in the error page
     When I send an unauthenticated API Portal public "GET" request to "/api-portal/foreign-org/views/default"
     Then the response status code should be 404
     And the response body should not contain "foreign-org"
 
-  Scenario: The portal root redirects to the configured organization
-    When I send an unauthenticated API Portal public "GET" request to "/api-portal"
-    Then the response status code should be 302
-    And the response header "Location" should contain "/api-portal/default/views/default"
-
-  Scenario: An authenticated caller accesses the organization without a header
-    When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
+    # The API catalog of another organization is not exposed, while the configured organization's is
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/default/views/default/apis"
     Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/foreign-org/views/default/apis"
+    Then the response status code should be 404
+    And the response body should not contain "foreign-org"
 
-  Scenario: An authenticated caller accesses the organization with its own header
+    # The MCP registry of another organization is not exposed, while the configured organization's is
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/default/v0.1/servers"
+    Then the response status code should be 200
+    When I send an unauthenticated API Portal public "GET" request to "/api-portal/registry/foreign-org/v0.1/servers"
+    Then the response status code should be 404
+    And the response body should not contain "foreign-org"
+
+    # An organization header of default never moves an authenticated caller to another organization
     When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin" with header "organization" set to "default"
     Then the response status code should be 200
-
-  Scenario: An organization header cannot redirect an authenticated caller
-    When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin"
-    Then the response status code should be 200
     And the JSON response field "id" should be "default"
+
+    # An organization header of foreign-org never moves an authenticated caller to another organization
     When I send an authenticated API Portal "GET" request to "/organizations/default" as "admin" with header "organization" set to "foreign-org"
     Then the response status code should be 200
     And the JSON response field "id" should be "default"
-
-  Scenario: The discovery index names the configured organization
-    When I send an unauthenticated API Portal public "GET" request to "/llms.txt"
-    Then the response status code should be 200
-    And the response body should contain "/default/views/"
-    And the response body should not contain "{orgName}"

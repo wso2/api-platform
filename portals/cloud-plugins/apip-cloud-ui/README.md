@@ -9,8 +9,9 @@ portal's native extension contract.
 ## Layout
 
 - `src/hosts/api-control-plane.tsx` is the API Control Plane (console) registry.
-  It registers the trial-status header action, the settings header icon and
-  the entitlements gate, the
+  It registers the trial-status header action, the settings header icon, the
+  project overview's Manage project button (`project.header.actions`, a link to
+  the WSO2 Cloud console's project manage page) and the entitlements gate, the
   Gateways page override (`page.gateways`), the API and GraphQL API Deploy page
   overrides, Observability (an organization-level Logs/Metrics disclosure, a
   project-level notice, and the per-API Logs page), Portals (managed API
@@ -25,7 +26,8 @@ portal's native extension contract.
   `file:` dependency of this package: `apip-cloud-ui-deploy`,
   `apip-cloud-ui-entitlements`, `apip-cloud-ui-environments-new`,
   `apip-cloud-ui-gateways`, `apip-cloud-ui-insights`,
-  `apip-cloud-ui-managed-portals`, `apip-cloud-ui-pipelines`,
+  `apip-cloud-ui-managed-portals`, `apip-cloud-ui-marketing-consent`,
+  `apip-cloud-ui-pipelines`,
   `apip-cloud-ui-settings` and `apip-cloud-ui-trial-status`.
 
 Each portal has an injection seam at `src/cloud/index.ts` that exports an empty

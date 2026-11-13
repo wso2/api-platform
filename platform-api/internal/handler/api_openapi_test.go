@@ -263,12 +263,14 @@ func (a *oaAudit) Record(action, resourceUUID, resourceType, orgUUID, performedB
 
 type oaEnv struct {
 	mux          *http.ServeMux
+	handler      http.Handler // mux wrapped with the feature-usage middleware, when set
 	apiRepo      *oaAPIRepo
 	projectRepo  *oaProjectRepo
 	docRepo      *docHRepo
 	artifactRepo *docHArtifactRepo
 	audit        *oaAudit
 	docAudit     *docHAudit
+	usage        *recordingUsage
 }
 
 func newOAEnv(t *testing.T) *oaEnv {
@@ -281,6 +283,7 @@ func newOAEnv(t *testing.T) *oaEnv {
 		artifactRepo: &docHArtifactRepo{},
 		audit:        &oaAudit{},
 		docAudit:     &docHAudit{},
+		usage:        &recordingUsage{},
 	}
 	identitySvc := service.NewIdentityService(oaIdentityRepo{})
 	apiService := service.NewAPIService(env.apiRepo, env.projectRepo,
@@ -290,7 +293,8 @@ func newOAEnv(t *testing.T) *oaEnv {
 	apiDocumentService := service.NewAPIDocumentService(env.docRepo, env.artifactRepo, env.docAudit, logger)
 
 	env.mux = http.NewServeMux()
-	NewAPIHandler(apiService, identitySvc, apiDocumentService, logger, &config.Server{}).RegisterRoutes(env.mux)
+	apiHandler := NewAPIHandler(apiService, identitySvc, apiDocumentService, logger, &config.Server{})
+	apiHandler.RegisterRoutes(env.mux)
 	return env
 }
 
@@ -347,7 +351,11 @@ func (e *oaEnv) do(t *testing.T, method, target, org, user string, body io.Reade
 		req = middleware.WithUserID(req, user)
 	}
 	rec := httptest.NewRecorder()
-	e.mux.ServeHTTP(rec, req)
+	var h http.Handler = e.mux
+	if e.handler != nil {
+		h = e.handler
+	}
+	h.ServeHTTP(rec, req)
 	return rec
 }
 

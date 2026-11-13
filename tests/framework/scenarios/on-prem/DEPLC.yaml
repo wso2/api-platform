@@ -1,0 +1,106 @@
+# Scenario list: Deployment Lifecycle (DEPLC).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+#
+# Each ID runs once per kind: GraphQL API, LLM provider, LLM proxy and MCP proxy.
+# The IT layer covers every kind (GraphQL only on gateways newer than 1.2.0, which are the
+# first to accept GraphQL deployments). The Management Portal has deploy pages only for REST
+# and GraphQL APIs, so the UI layer covers those and LLM and MCP kinds are covered by IT only.
+code: DEPLC
+title: Deployment Lifecycle
+scenarios:
+  - id: DEPLC-001
+    title: Undeploy a deployed artifact; 200, the deployment becomes UNDEPLOYED and the gateway stops serving it.
+    priority: P0
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a REST API's deployment is stopped, redeployed and deleted from its deploy page"
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a GraphQL API's deployment is stopped, redeployed and deleted from its deploy page"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/deployments/lifecycle/undeploy.feature
+          scenario: Undeploying a deployed artifact stops the gateway serving it
+  - id: DEPLC-002
+    title: Restore an undeployed deployment; it becomes DEPLOYED again and the gateway serves the same build.
+    priority: P0
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a REST API's deployment is stopped, redeployed and deleted from its deploy page"
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a GraphQL API's deployment is stopped, redeployed and deleted from its deploy page"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/deployments/lifecycle/restore.feature
+          scenario: Restoring an undeployed deployment serves the same build again
+  - id: DEPLC-003
+    title: Restore a deployment that is currently deployed; 409 DEPLOYMENT_RESTORE_CONFLICT and nothing changes.
+    priority: P1
+    ui:
+      status: exempt
+      reason: The console never offers delete or restore for a live deployment, so it cannot send the request; the refusal is tested at the API level in IT (decided 2026-11-04).
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/deployments/lifecycle/restore.feature
+          scenario: Restoring a deployment that is already deployed is refused and changes nothing
+  - id: DEPLC-004
+    title: Delete a deployment that is currently deployed; 409 DEPLOYMENT_ACTIVE, and it remains listed and served.
+    priority: P1
+    ui:
+      status: exempt
+      reason: The console never offers delete or restore for a live deployment, so it cannot send the request; the refusal is tested at the API level in IT (decided 2026-11-04).
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/deployments/lifecycle/delete.feature
+          scenario: Deleting a deployed deployment is refused, and it stays listed and served
+  - id: DEPLC-005
+    title: Delete an undeployed deployment, then get and list; 204, get returns 404 and the list no longer has it. Includes REST APIs.
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a REST API's deployment is stopped, redeployed and deleted from its deploy page"
+        - feature: suites/ui/features/management_portal/deployment_lifecycle.feature
+          scenario: "Journey: a GraphQL API's deployment is stopped, redeployed and deleted from its deploy page"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/deployments/lifecycle/delete.feature
+          scenario: Deleting an undeployed deployment removes it from the artifact's history
+  - id: DEPLC-006
+    title: Undeploy with another gateway's id, then undeploy twice from the right gateway; 400 DEPLOYMENT_GATEWAY_MISMATCH, then 200 and 409 DEPLOYMENT_NOT_ACTIVE.
+    priority: P1
+    ui:
+      status: exempt
+      reason: The console undeploys only from the gateway a deployment runs on and never sends an undeploy twice, so neither request can be made from the UI.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/deployments/lifecycle/undeploy.feature
+          scenario: Undeploying from another gateway is refused, and undeploying twice is refused the second time
+  - id: DEPLC-007
+    title: With one deployed and one undeployed deployment on two gateways, list unfiltered and filtered by gateway and by status; an invalid status returns 400 DEPLOYMENT_INVALID_STATUS.
+    priority: P2
+    ui:
+      status: exempt
+      reason: The console's deployment history has no gateway or status filter, so the filtered list API has no UI surface.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/deployments/lifecycle/list.feature
+          scenario: Listing deployments on two gateways, unfiltered and filtered by gateway and by status

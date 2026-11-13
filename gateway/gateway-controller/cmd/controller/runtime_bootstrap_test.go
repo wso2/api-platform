@@ -4,11 +4,17 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
 type fakeSecretResolver struct {
@@ -69,6 +75,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_LoadsFromDatabase(t *te
 		transformer,
 		newDiscardLogger(),
 		false,
+		nil,
 	)
 
 	assert.NoError(t, err)
@@ -105,6 +112,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_SkipsWebSubAPI(t *testi
 		transformer,
 		newDiscardLogger(),
 		false,
+		nil,
 	)
 
 	assert.NoError(t, err)
@@ -141,6 +149,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_ContinuesAfterRenderFai
 		transformer,
 		newDiscardLogger(),
 		true,
+		nil,
 	)
 
 	assert.NoError(t, err)
@@ -177,6 +186,7 @@ func TestLoadRuntimeConfigsFromExistingAPIConfigurations_FailsFastOnRenderFailur
 		transformer,
 		newDiscardLogger(),
 		false,
+		nil,
 	)
 
 	assert.Equal(t, 0, loadedCount)
@@ -237,4 +247,179 @@ func TestHydrateStoredConfigsFromDatabaseOnStartup_SkipsInvalidConfigsWhenEnable
 	)
 
 	assert.NoError(t, err)
+}
+
+// restrictTemplateEnv installs an env access allow list for the test and
+// restores the previous policy afterwards.
+func restrictTemplateEnv(t *testing.T, names ...string) {
+	t.Helper()
+	policy, err := funcs.NewEnvAccessPolicy(names)
+	require.NoError(t, err)
+	prev := funcs.SetEnvAccessPolicy(policy)
+	t.Cleanup(func() { funcs.SetEnvAccessPolicy(prev) })
+}
+
+func refusedEnvRestAPI(uuid, handle string, state models.DesiredState) *models.StoredConfig {
+	return &models.StoredConfig{
+		UUID: uuid, Kind: models.KindRestApi, Handle: handle, DisplayName: handle, Version: "v1",
+		DesiredState:  state,
+		Configuration: configWithTemplateSpec{Spec: map[string]any{"header": `{{ env "STARTUP_REFUSED_SECRET" }}`}},
+	}
+}
+
+// An artifact that reads a refused variable is undeployed and its undeploy is
+// handed to the callback, whether or not invalid deployments are skipped; the
+// other artifacts still load.
+func TestLoadRuntimeConfigsFromExistingAPIConfigurations_UndeploysEnvRefusedArtifact(t *testing.T) {
+	restrictTemplateEnv(t, "BACKEND_URL")
+	t.Setenv("STARTUP_REFUSED_SECRET", "s3cr3t")
+
+	for _, skipInvalid := range []bool{false, true} {
+		t.Run(fmt.Sprintf("skipInvalid=%v", skipInvalid), func(t *testing.T) {
+			runtimeStore := storage.NewRuntimeConfigStore()
+			transformer := &fakeRuntimeTransformer{}
+			refused := refusedEnvRestAPI("rest-refused", "refused-api", models.StateDeployed)
+			valid := &models.StoredConfig{UUID: "rest-ok", Kind: models.KindRestApi, Handle: "ok-api", DisplayName: "OK", Version: "v1", DesiredState: models.StateDeployed}
+
+			var undeployed []string
+			loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
+				[]*models.StoredConfig{refused, valid},
+				runtimeStore,
+				&fakeSecretResolver{},
+				transformer,
+				newDiscardLogger(),
+				skipInvalid,
+				func(cfg *models.StoredConfig) error {
+					undeployed = append(undeployed, cfg.UUID)
+					return nil
+				},
+			)
+
+			require.NoError(t, err)
+			assert.Equal(t, 1, loadedCount)
+			assert.Equal(t, []string{"rest-refused"}, undeployed)
+			assert.Equal(t, models.StateUndeployed, refused.DesiredState)
+			assert.Equal(t, models.StateDeployed, valid.DesiredState)
+			_, ok := runtimeStore.Get(storage.Key(models.KindRestApi, "refused-api"))
+			assert.False(t, ok, "a refused artifact must not get a policy chain")
+			_, ok = runtimeStore.Get(storage.Key(models.KindRestApi, "ok-api"))
+			assert.True(t, ok)
+		})
+	}
+}
+
+func TestLoadRuntimeConfigsFromExistingAPIConfigurations_AlreadyUndeployedEnvRefusedArtifactIsLeftAlone(t *testing.T) {
+	restrictTemplateEnv(t, "BACKEND_URL")
+	refused := refusedEnvRestAPI("rest-refused", "refused-api", models.StateUndeployed)
+
+	called := false
+	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
+		[]*models.StoredConfig{refused},
+		storage.NewRuntimeConfigStore(),
+		&fakeSecretResolver{},
+		&fakeRuntimeTransformer{},
+		newDiscardLogger(),
+		false,
+		func(*models.StoredConfig) error { called = true; return nil },
+	)
+
+	require.NoError(t, err)
+	assert.Zero(t, loadedCount)
+	assert.False(t, called)
+	assert.Equal(t, models.StateUndeployed, refused.DesiredState)
+}
+
+// A failure to persist the undeploy is logged; the artifact stays undeployed for
+// this run and loading continues.
+func TestLoadRuntimeConfigsFromExistingAPIConfigurations_ContinuesWhenUndeployCannotBePersisted(t *testing.T) {
+	restrictTemplateEnv(t, "BACKEND_URL")
+	refused := refusedEnvRestAPI("rest-refused", "refused-api", models.StateDeployed)
+	valid := &models.StoredConfig{UUID: "rest-ok", Kind: models.KindRestApi, Handle: "ok-api", DisplayName: "OK", Version: "v1"}
+
+	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
+		[]*models.StoredConfig{refused, valid},
+		storage.NewRuntimeConfigStore(),
+		&fakeSecretResolver{},
+		&fakeRuntimeTransformer{},
+		newDiscardLogger(),
+		false,
+		func(*models.StoredConfig) error { return fmt.Errorf("database unavailable") },
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, loadedCount)
+	assert.Equal(t, models.StateUndeployed, refused.DesiredState)
+}
+
+// End to end against a real SQLite store: an API deployed before the allow list
+// was set, whose upstream reads a now-refused variable, is persisted as
+// undeployed (pending sync for a gateway-originated API) when the controller
+// next starts, while a valid API still loads. A later startup leaves it alone.
+func TestStartup_PersistsUndeployOfEnvRefusedAPI(t *testing.T) {
+	metrics.Init()
+	db, err := storage.NewStorage(storage.BackendConfig{
+		Type:       "sqlite",
+		SQLitePath: filepath.Join(t.TempDir(), "gateway.db"),
+		GatewayID:  "platform-gateway-id",
+	}, newDiscardLogger())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	refused := storedRestAPI("refused-api", "", nil)
+	refusedAPI := refused.Configuration.(api.RestAPI)
+	leakURL := `http://backend/{{ env "STARTUP_REFUSED_SECRET" }}`
+	refusedAPI.Spec.Upstream.Main.Url = &leakURL
+	refused.Configuration, refused.SourceConfiguration = refusedAPI, refusedAPI
+	refused.DisplayName, refused.Version = "refused-api", "v1.0.0"
+	refused.DesiredState, refused.Origin = models.StateDeployed, models.OriginGatewayAPI
+	require.NoError(t, db.SaveConfig(refused))
+
+	valid := storedRestAPI("valid-api", "", nil)
+	validAPI := valid.Configuration.(api.RestAPI)
+	okURL := "http://backend"
+	validAPI.Spec.Upstream.Main.Url = &okURL
+	valid.Configuration, valid.SourceConfiguration = validAPI, validAPI
+	valid.DisplayName, valid.Version = "valid-api", "v1.0.0"
+	valid.DesiredState, valid.Origin = models.StateDeployed, models.OriginGatewayAPI
+	require.NoError(t, db.SaveConfig(valid))
+
+	restrictTemplateEnv(t, "BACKEND_URL")
+	t.Setenv("STARTUP_REFUSED_SECRET", "s3cr3t")
+
+	startup := func() (int, *storage.RuntimeConfigStore) {
+		configs, err := db.GetAllConfigs()
+		require.NoError(t, err)
+		runtimeStore := storage.NewRuntimeConfigStore()
+		loaded, err := loadRuntimeConfigsFromExistingAPIConfigurations(
+			configs, runtimeStore, &fakeSecretResolver{}, &fakeRuntimeTransformer{}, newDiscardLogger(),
+			false, utils.NewEnvRefusedUndeployer(db, nil, "platform-gateway-id", newDiscardLogger()),
+		)
+		require.NoError(t, err)
+		return loaded, runtimeStore
+	}
+
+	loaded, runtimeStore := startup()
+	assert.Equal(t, 1, loaded)
+	_, ok := runtimeStore.Get(storage.Key(models.KindRestApi, "valid-api"))
+	assert.True(t, ok)
+	_, ok = runtimeStore.Get(storage.Key(models.KindRestApi, "refused-api"))
+	assert.False(t, ok)
+
+	persisted, err := db.GetConfig(refused.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StateUndeployed, persisted.DesiredState)
+	assert.Equal(t, models.CPSyncStatusPending, persisted.CPSyncStatus)
+	source := persisted.SourceConfiguration.(api.RestAPI)
+	assert.Equal(t, leakURL, *source.Spec.Upstream.Main.Url, "the stored definition stays unrendered")
+
+	stillValid, err := db.GetConfig(valid.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StateDeployed, stillValid.DesiredState)
+
+	// The next startup finds it already undeployed and leaves it as it is.
+	loaded, _ = startup()
+	assert.Equal(t, 1, loaded)
+	persisted, err = db.GetConfig(refused.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StateUndeployed, persisted.DesiredState)
 }

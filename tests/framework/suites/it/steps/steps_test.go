@@ -42,6 +42,24 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
 
+func TestPadToLength(t *testing.T) {
+	padded, err := padToLength("name", 6)
+	require.NoError(t, err)
+	require.Equal(t, "nameaa", padded)
+	padded, err = padToLength("name", 4)
+	require.NoError(t, err)
+	require.Equal(t, "name", padded)
+	_, err = padToLength("name", 3)
+	require.ErrorContains(t, err, "longer than")
+	_, err = padToLength("", -1)
+	require.ErrorContains(t, err, "longer than")
+}
+
+func TestGenerateUniqueResourceNameOfLengthNeedsRunnerContext(t *testing.T) {
+	err := (&Base{}).generateUniqueResourceNameOfLength(context.Background(), 40, "name", "key")
+	require.Error(t, err)
+}
+
 func TestSetRequestHostExpandsContextValues(t *testing.T) {
 	local := tcontext.NewLocal("runner")
 	local.Set("host", "main-unique.local")
@@ -267,26 +285,30 @@ func TestPrometheusAssertions(t *testing.T) {
 	}
 }
 
+// TestCanonicalResourceTemplates keeps every referenced template within the supported catalogue.
 func TestCanonicalResourceTemplates(t *testing.T) {
 	_, source, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 
 	root := filepath.Join(filepath.Dir(source), "..", "resources", "templates")
-	// Platform Gateway templates own the gateway resource envelope.
+	// Platform Gateway templates and the API Portal organization manifest own the
+	// apiVersion, kind, metadata and spec resource envelope.
 	gatewayKinds := map[string]string{
-		"agent.yaml":                 "Agent",
-		"graphql-api.yaml":           "GraphQLApi",
-		"llm-provider-template.yaml": "LlmProviderTemplate",
-		"llm-provider.yaml":          "LlmProvider",
-		"llm-proxy.yaml":             "LlmProxy",
-		"mcp.yaml":                   "Mcp",
-		"rest-api.yaml":              "RestApi",
-		"subscription.yaml":          "Subscription",
+		"agent.yaml":                   "Agent",
+		"api-portal-organization.yaml": "Organization",
+		"graphql-api.yaml":             "GraphQLApi",
+		"llm-provider-template.yaml":   "LlmProviderTemplate",
+		"llm-provider.yaml":            "LlmProvider",
+		"llm-proxy.yaml":               "LlmProxy",
+		"mcp.yaml":                     "Mcp",
+		"rest-api.yaml":                "RestApi",
+		"subscription.yaml":            "Subscription",
 	}
-	// Control-plane templates are publisher-API payloads, which carry no gateway envelope.
-	// Each names the payload block that identifies the resource.
+	// Control-plane and API Portal templates are publisher-API payloads, which carry no gateway
+	// envelope. Each names the payload block that identifies the resource.
 	controlPlaneBlocks := map[string]string{
 		"agent-proxy.yaml":     "a2a",
+		"api-portal-api.yaml":  "endPoints",
 		"llm-provider-cp.yaml": "upstream",
 	}
 	// Control-plane payloads without a protocol block name the fields every request carries.

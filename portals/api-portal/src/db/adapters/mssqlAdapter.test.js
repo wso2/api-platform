@@ -97,3 +97,47 @@ test('non-string values are untouched, and an ASCII JSON object binds as VARCHAR
         ['p6', { type: 'VarBinary', len: 'MAX' }, null],
     ]);
 });
+
+test('pool errors reach the hook, and poolStats reports the pool counters', () => {
+    const listeners = {};
+    const fakeMssql = {
+        ConnectionPool: class {
+            constructor() {
+                this.config = { pool: { max: 12 } };
+                this.borrowed = 4;
+                this.pending = 2;
+            }
+            connect() { return Promise.resolve(); }
+            on(event, fn) { listeners[event] = fn; }
+        },
+    };
+    require.cache[MSSQL_PATH] = { id: MSSQL_PATH, filename: MSSQL_PATH, loaded: true, exports: fakeMssql };
+    delete require.cache[ADAPTER_PATH];
+    let adapter;
+    const seen = [];
+    try {
+        adapter = require(ADAPTER_PATH).createMssqlAdapter({ database: {} }, { onPoolError: (err) => seen.push(err) });
+    } finally {
+        delete require.cache[MSSQL_PATH];
+        delete require.cache[ADAPTER_PATH];
+    }
+    const err = new Error('socket hang up');
+    listeners.error(err);
+    assert.deepStrictEqual(seen, [err]);
+    assert.deepStrictEqual(adapter.poolStats(), { max: 12, borrowed: 4, pending: 2 });
+});
+
+test('the pool waits longer than a connect attempt, so a hung connect fails as a connection error', () => {
+    const { buildConnectionConfig } = require(ADAPTER_PATH);
+    const { pool, connectionTimeout } = buildConnectionConfig({ database: { poolConnectionTimeoutMs: 30000 } });
+    assert.strictEqual(connectionTimeout, 30000);
+    assert.strictEqual(pool.acquireTimeoutMillis, 35000);
+    assert.strictEqual(pool.createTimeoutMillis, 35000);
+});
+
+test('without a configured connect timeout, the pool waits longer than the driver default', () => {
+    const { buildConnectionConfig } = require(ADAPTER_PATH);
+    const { pool } = buildConnectionConfig({ database: {} });
+    assert.strictEqual(pool.acquireTimeoutMillis, 20000);
+    assert.strictEqual(pool.createTimeoutMillis, 20000);
+});

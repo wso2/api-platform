@@ -31,6 +31,7 @@ import (
 
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
+	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
 
 // gatewayStatuses are the statuses a managed gateway reports.
@@ -38,6 +39,11 @@ var gatewayStatuses = map[string]bool{"PROVISIONING": true, "FAILED": true, "ACT
 
 // gatewayKinds are the functionality types a managed gateway can have.
 var gatewayKinds = []string{regularGatewayKind, "ai", "event"}
+
+// scenarioGatewayDescription is the description a suite run gives the gateways it creates for its
+// scenarios when the scenario names none. It tells a run that is pointed at a gateway whether the
+// gateway belongs to a suite run, whatever its name looks like.
+const scenarioGatewayDescription = "Created by the APIP cloud integration suite for one of its runs and removed when the run ends."
 
 // managedGatewayRequestKeys lists the values a managed gateway request table may carry.
 var managedGatewayRequestKeys = map[string]bool{
@@ -137,6 +143,9 @@ func buildManagedGatewayRequest(ctx context.Context, values map[string]string) (
 	if environment, _ := body["environment"].(string); strings.TrimSpace(environment) == "" {
 		return nil, errors.New("a managed gateway request needs an environment")
 	}
+	if _, present := body["description"]; !present {
+		body["description"] = scenarioGatewayDescription
+	}
 	return body, nil
 }
 
@@ -159,9 +168,14 @@ func typedGatewayValue(key, value string) (any, error) {
 	return value, nil
 }
 
+// syntheticGatewayBase is the base of the names a suite run gives its managed gateways. The unique
+// generator adds 11 characters to it, and the platform limits a handle to 37 minus twice the
+// environment name's length, which leaves 15 characters in "development".
+const syntheticGatewayBase = "sg"
+
 // chooseGatewayName picks the unique name a managed gateway request is made under.
 func (s *Steps) chooseGatewayName(ctx context.Context) error {
-	return generateResourceAndStore(ctx, "syn-gw", keyManagedGatewayName)
+	return generateResourceAndStore(ctx, syntheticGatewayBase, keyManagedGatewayName)
 }
 
 // requestManagedGateway sends a managed gateway request built from a table and publishes the
@@ -176,8 +190,41 @@ func (s *Steps) requestManagedGateway(ctx context.Context, table *godog.Table) e
 	return s.requestManagedGatewayWith(ctx, values)
 }
 
-// requestManagedGatewayWith is requestManagedGateway for values already read from a table.
+// requestManagedGatewayWith is requestManagedGateway for values already read from a table. The
+// gateway is cleaned up when the scenario ends.
 func (s *Steps) requestManagedGatewayWith(ctx context.Context, values map[string]string) error {
+	return s.requestManagedGatewayScoped(ctx, values, cleanup.ScenarioScope)
+}
+
+// requestRunnerManagedGateway requests a gateway that later scenarios of the runner keep using, so
+// it is cleaned up when the runner ends. A gateway takes minutes to build, which is why the
+// scenarios that do not test its creation share one.
+func (s *Steps) requestRunnerManagedGateway(ctx context.Context, table *godog.Table) error {
+	values, err := tableValues(table)
+	if err != nil {
+		return err
+	}
+	return s.requestManagedGatewayScoped(ctx, values, cleanup.RunnerScope)
+}
+
+// registerGateway records a gateway for cleanup in the given scope.
+func registerGateway(ctx context.Context, scope cleanup.Scope, id string) error {
+	resource := cleanup.Resource{
+		Kind: cleanup.KindGateway, ID: id, Actor: resourceActor, Description: "managed gateway " + id,
+	}
+	if scope == cleanup.RunnerScope {
+		return cleanup.RegisterRunner(ctx, resource)
+	}
+	return cleanup.Register(ctx, resource)
+}
+
+// gatewayRequestAccepted reports whether the platform took a gateway request: it answers 201 when
+// the gateway is registered at once and 202 when its build was started.
+func gatewayRequestAccepted(status int) bool {
+	return status == http.StatusCreated || status == http.StatusAccepted
+}
+
+func (s *Steps) requestManagedGatewayScoped(ctx context.Context, values map[string]string, scope cleanup.Scope) error {
 	body, err := buildManagedGatewayRequest(ctx, values)
 	if err != nil {
 		return err
@@ -188,9 +235,7 @@ func (s *Steps) requestManagedGatewayWith(ctx context.Context, values map[string
 	fallback := expectedGatewayID(environment, displayName, handle)
 	known := registeredForCleanup(ctx, fallback)
 	if !known {
-		if err := cleanup.Register(ctx, cleanup.Resource{
-			Kind: cleanup.KindGateway, ID: fallback, Actor: resourceActor, Description: "managed gateway " + fallback,
-		}); err != nil {
+		if err := registerGateway(ctx, scope, fallback); err != nil {
 			return fmt.Errorf("registering managed gateway %q for cleanup: %w", fallback, err)
 		}
 	}
@@ -198,8 +243,8 @@ func (s *Steps) requestManagedGatewayWith(ctx context.Context, values map[string
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusCreated {
-		if !known && resp.StatusCode >= 400 && resp.StatusCode < 500 {
+	if !gatewayRequestAccepted(resp.StatusCode) {
+		if !known && refusedCreate(resp) {
 			deregister(ctx, cleanup.KindGateway, fallback)
 		}
 		return nil
@@ -214,13 +259,17 @@ func (s *Steps) requestManagedGatewayWith(ctx context.Context, values map[string
 	// The platform may register the gateway under another id than the one expected, for example
 	// when the name is taken, so the id it answered with is the one that must be cleaned up.
 	if !registeredForCleanup(ctx, id) {
-		if err := cleanup.Register(ctx, cleanup.Resource{
-			Kind: cleanup.KindGateway, ID: id, Actor: resourceActor, Description: "managed gateway " + id,
-		}); err != nil {
+		if err := registerGateway(ctx, scope, id); err != nil {
 			return fmt.Errorf("registering managed gateway %q for cleanup: %w", id, err)
 		}
 	}
-	return nil
+	if err := recordSyntheticGateway(ctx, id, environment); err != nil {
+		return err
+	}
+	if err := tcontext.Set(ctx, keyManagedGatewayEnv, environment); err != nil {
+		return err
+	}
+	return tcontext.Set(ctx, keyManagedGatewayID, id)
 }
 
 // registeredForCleanup reports whether a gateway is waiting to be cleaned up.

@@ -10,12 +10,59 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { usePortalFeature } from './portContext';
+import { isBeingChanged } from './utils/change';
 import type {
   CreateManagedPortalInput,
   ManagedPortal,
   OrgEnvironment,
+  PortalPort,
   UpdateManagedPortalInput,
 } from './types';
+
+type Notifier = { notify: (message: string, severity: 'success' | 'info' | 'error') => void };
+
+/**
+ * Portals whose background change was started from this console and whose
+ * outcome is not reported yet, per port. Kept outside any component so the
+ * outcome is still reported when the user saves on the edit page and the list
+ * mounts after the change already settled.
+ */
+const awaitingOutcome = new WeakMap<PortalPort, Set<string>>();
+
+/** The set of portals awaiting their change outcome for this port. */
+function awaiting(port: PortalPort): Set<string> {
+  let ids = awaitingOutcome.get(port);
+  if (!ids) {
+    ids = new Set();
+    awaitingOutcome.set(port, ids);
+  }
+  return ids;
+}
+
+/**
+ * A change that runs in the background answers with the portal pending: it has
+ * started, not finished, so the user is told that much, and the list reports
+ * how it ended (see useManagedPortalList). An update that leaves the portal
+ * failed reports that failure, not success.
+ */
+function notifyUpdated(host: Notifier, port: PortalPort, portal: ManagedPortal) {
+  if (portal.status === 'pending') {
+    awaiting(port).add(portal.id);
+    host.notify(`Updating portal "${portal.name}". This can take a minute.`, 'info');
+    return;
+  }
+  if (portal.status === 'failed') {
+    const reason = portal.lastChangeError?.message ?? 'the portal is in a failed state';
+    host.notify(`Portal "${portal.name}" was saved, but ${lowerFirst(reason)}`, 'error');
+    return;
+  }
+  host.notify(`Portal "${portal.name}" updated`, 'success');
+}
+
+/** `s` with its first character lowercased, to continue a sentence. */
+function lowerFirst(s: string): string {
+  return s.charAt(0).toLowerCase() + s.slice(1);
+}
 
 function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
@@ -49,7 +96,7 @@ export function useManagedPortal(id: string) {
     async (input: UpdateManagedPortalInput) => {
       try {
         const updated = await port.update(id, input);
-        host.notify(`Portal "${updated.name}" updated`, 'success');
+        notifyUpdated(host, port, updated);
         setPortal(updated);
         return updated;
       } catch (err) {
@@ -157,6 +204,51 @@ export function useManagedPortalList() {
     return () => window.clearInterval(id);
   }, [hasPending, silentRefetch]);
 
+  // Portals whose background change was running when last listed, plus those
+  // whose change was started from this console (awaitingOutcome) and may have
+  // settled before this list first loaded. When one settles, the portal is read
+  // for how the change ended, since saving it only said it had started; a
+  // failed change leaves its message there. A portal being deleted reports
+  // nothing: its delete has its own notification.
+  const changing = useRef(new Set<string>());
+  useEffect(() => {
+    if (isLoading) return;
+    const started = awaiting(port);
+    const settled: ManagedPortal[] = [];
+    for (const p of portals) {
+      if (isBeingChanged(p)) {
+        changing.current.add(p.id);
+        started.delete(p.id);
+        continue;
+      }
+      if (p.status === 'pending') continue;
+      const wasChanging = changing.current.delete(p.id);
+      const wasStarted = started.delete(p.id);
+      if ((wasChanging || wasStarted) && p.status !== 'deleting') settled.push(p);
+    }
+    for (const id of [...changing.current]) {
+      if (!portals.some((p) => p.id === id)) changing.current.delete(id);
+    }
+    for (const id of [...started]) {
+      if (!portals.some((p) => p.id === id)) started.delete(id);
+    }
+    for (const p of settled) {
+      port
+        .get(p.id)
+        .then((full) => {
+          if (full.status === 'deleting') return;
+          if (full.lastChangeError) {
+            host.notify(`Portal "${full.name}": ${full.lastChangeError.message}`, 'error');
+          } else {
+            host.notify(`Portal "${full.name}" updated`, 'success');
+          }
+        })
+        .catch(() => {
+          // The list still shows the portal's state; the next read reports it.
+        });
+    }
+  }, [portals, isLoading, port, host]);
+
   const create = useCallback(
     async (input: CreateManagedPortalInput) => {
       try {
@@ -182,7 +274,7 @@ export function useManagedPortalList() {
     async (id: string, input: UpdateManagedPortalInput) => {
       try {
         const portal = await port.update(id, input);
-        host.notify(`Portal "${portal.name}" updated`, 'success');
+        notifyUpdated(host, port, portal);
         await refetch();
         return portal;
       } catch (err) {

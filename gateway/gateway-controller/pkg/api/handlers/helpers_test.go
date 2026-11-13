@@ -1,7 +1,15 @@
 package handlers
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 )
 
 func TestUuidToOpenAPIUUID(t *testing.T) {
@@ -163,4 +171,19 @@ func TestIntPtr(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMapRenderError_EnvAccessIsGeneric400(t *testing.T) {
+	cause := fmt.Errorf("failed to render config %q (kind=RestApi): %w", "exfil-api",
+		fmt.Errorf(`executing <env "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN">: %w`, &funcs.EnvAccessError{}))
+	w := httptest.NewRecorder()
+
+	handled := mapRenderError(w, "create", &templateengine.RenderError{Cause: cause})
+
+	require.True(t, handled)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	body := w.Body.String()
+	assert.Contains(t, body, (&funcs.EnvAccessError{}).Error())
+	assert.NotContains(t, body, "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN")
+	assert.NotContains(t, body, "exfil-api")
 }
