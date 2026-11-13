@@ -54,6 +54,11 @@ From the `event-gateway/` directory:
 cp .env.example .env
 # edit .env and set GATEWAY_REGISTRATION_TOKEN
 
+# Generates the HTTPS listener certificate/key at ../gateway/gateway-controller/listener-certs,
+# which this stack's gateway-controller and event-gateway services both mount. Safe to rerun;
+# only regenerates with --force.
+../gateway/scripts/setup.sh --certs-only
+
 docker compose up
 ```
 
@@ -607,10 +612,13 @@ The integration tests exercise the full stack (controller → event gateway → 
 
 ### Prerequisites
 
-Make sure all services are running:
+Generate the listener certificate (see Quick Start above) and make sure all services are
+running:
 
 ```bash
-cd event-gateway && docker compose up -d
+cd event-gateway
+../gateway/scripts/setup.sh --certs-only
+docker compose up -d
 ```
 
 ### Run the Tests

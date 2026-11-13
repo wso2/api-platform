@@ -72,6 +72,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
+      # gateway-controller and event-gateway both mount gateway/gateway-controller/listener-certs
+      # for their HTTPS listener. The file is no longer committed (it's generated per install),
+      # so every compose file used below needs it generated before the first `docker compose up`.
+      - name: Generate gateway listener TLS certificate
+        run: ./gateway/scripts/setup.sh --certs-only
+
       - name: Read version
         id: version
         run: echo "version=$(cat event-gateway/VERSION)" >> $GITHUB_OUTPUT
