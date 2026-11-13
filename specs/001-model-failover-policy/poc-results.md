@@ -1104,6 +1104,59 @@ still attributes attempt 1 as a failure.
   load, so earlier timing-sensitive numbers taken with concurrent or back-to-back requests should
   be treated with the same suspicion.
 
+## Probe T4 — does the UPSTREAM position deliver responses? (2026-11-13)
+
+FR-037a made the upstream filter request-only, reasoning that a response there carries no cluster
+attribute and would need per-stream state carried from the request phase. That reason had already
+expired — `upstreamAttemptState` carries exactly that, for the body phase — so the question was
+whether the position can process responses at all.
+
+`t4d-long-timeout.yaml` sets `response_header_mode: SEND` on the upstream ext_proc filter. The
+probe server gained a catch-all that names every message type before any handling, so a message it
+fails to answer is distinguishable from one it never received.
+
+### Measured
+
+| `response_header_mode` | `message_timeout` | Result |
+|---|---|---|
+| `SEND` | default 200ms | **504** `ext_proc_error_per-message_timeout_exceeded` |
+| `SEND`, body `NONE` | default 200ms | **504** — same, so not the body mode |
+| `SKIP` (control) | default | `200` |
+| **`SEND`** | **5s** | **`200`**, and 5 further requests at 24–46ms |
+
+With the longer timeout, both directions arrive on every request:
+
+```
+PROBE >>> message received: *ext_procv3.ProcessingRequest_RequestHeaders
+PROBE >>> message received: *ext_procv3.ProcessingRequest_ResponseHeaders
+```
+
+And on a failover, the DISCARDED attempt's response is delivered too:
+
+```
+attempt 1:  RequestHeaders -> ResponseHeaders  status=500   <- retried away from
+attempt 2:  RequestHeaders -> ResponseHeaders  status=200
+```
+
+### Answer: yes, it works
+
+The 504 was the **200ms default message timeout**, exceeded only while the gRPC stream was cold.
+Not a filter-position limitation. Read once, the first run looked like proof that upstream
+response processing is impossible; it was proof that a cold stream is slower than 200ms.
+
+### Consequence
+
+FR-037a's stated reason is void. Its conclusion is kept on different ground (FR-037h): the
+downstream response phase runs exactly once, on the committed response, so "which response is
+final" is unambiguous there. At the upstream position it is not — when the filter sees a
+response, the router has not yet decided whether to retry it, and a policy there cannot tell a
+response that will be delivered from one that will be discarded.
+
+Two locks would need removing to use the position for responses: the generated
+`ResponseHeaderMode: SKIP`, and the engine's upstream switch, whose `default:` branch bare-acks
+anything that is not a request message without running a chain. Neither is hard; both are
+deliberate and documented as such.
+
 ## Post-header failures: what Envoy can and cannot do (2026-10-28)
 
 Searched upstream rather than assuming. Two separate problems, with different answers.

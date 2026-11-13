@@ -44,6 +44,49 @@ func (s *server) Process(stream extproc.ExternalProcessor_ProcessServer) error {
 		}
 
 		started := time.Now()
+
+		// Catch-all: name every message type that arrives, before any handling, so a message
+		// the probe fails to answer is distinguishable from one it never received.
+		log.Printf("PROBE >>> message received: %T", req.GetRequest())
+
+		// PROBE T4: does the UPSTREAM position deliver RESPONSES at all? The filter is
+		// generated response-SKIP today, on the stated grounds that a response here carries
+		// no cluster attribute. Answer these before anything else so an unexpected message
+		// type is reported rather than falling through the request handling below and
+		// replying with the wrong response type, which kills the stream.
+		if rh := req.GetResponseHeaders(); rh != nil {
+			status := ""
+			for _, h := range rh.GetHeaders().GetHeaders() {
+				if h.GetKey() == ":status" {
+					status = h.GetValue()
+					if status == "" {
+						status = string(h.GetRawValue())
+					}
+				}
+			}
+			log.Printf("PROBE *** RECEIVED RESPONSE HEADERS at upstream position: status=%s ***", status)
+			if err := stream.Send(&extproc.ProcessingResponse{
+				Response: &extproc.ProcessingResponse_ResponseHeaders{
+					ResponseHeaders: &extproc.HeadersResponse{Response: &extproc.CommonResponse{}},
+				},
+			}); err != nil {
+				return err
+			}
+			continue
+		}
+		if rb := req.GetResponseBody(); rb != nil {
+			log.Printf("PROBE *** RECEIVED RESPONSE BODY at upstream position: %d bytes eos=%v ***",
+				len(rb.GetBody()), rb.GetEndOfStream())
+			if err := stream.Send(&extproc.ProcessingResponse{
+				Response: &extproc.ProcessingResponse_ResponseBody{
+					ResponseBody: &extproc.BodyResponse{Response: &extproc.CommonResponse{}},
+				},
+			}); err != nil {
+				return err
+			}
+			continue
+		}
+
 		// PROBE I: does the UPSTREAM position deliver a request BODY at all?
 		if body := req.GetRequestBody(); body != nil {
 			log.Printf("PROBE *** RECEIVED REQUEST BODY at upstream position: %d bytes ***", len(body.GetBody()))
