@@ -346,14 +346,16 @@ func (a BuilderAccess) GoEnvValue(key string) string {
 	return ""
 }
 
-// prepare returns the extra `docker run` arguments, the environment for the docker
-// process (nil to inherit), and a cleanup func that is always safe to call.
+// prepare returns the extra builder run arguments, the environment for the
+// container engine process (nil to inherit), and a cleanup func that is always
+// safe to call. mount returns the run arguments that mount the credentials
+// file, in the form the container engine accepts.
 //
-// Settings are passed as name-only -e flags with their values in the docker
+// Settings are passed as name-only -e flags with their values in the engine
 // process's environment, so values never appear on the command line or in the
 // build log. --git-credential tokens are written to a netrc in a new private
 // directory under scratchParent, which must not be the build workspace.
-func (a BuilderAccess) prepare(scratchParent string, baseEnv []string) (args []string, env []string, cleanup func(), err error) {
+func (a BuilderAccess) prepare(scratchParent string, baseEnv []string, mount credentialMount) (args []string, env []string, cleanup func(), err error) {
 	cleanup = func() {}
 
 	if len(a.GoEnv) > 0 {
@@ -381,12 +383,12 @@ func (a BuilderAccess) prepare(scratchParent string, baseEnv []string) (args []s
 		}
 	}
 	if netrc != "" {
-		mount, err := bindMountSpec(netrc, netrcMountTarget)
+		mountArgs, err := mount(netrc, netrcMountTarget)
 		if err != nil {
 			cleanup()
 			return nil, nil, func() {}, err
 		}
-		args = append(args, "--mount", mount)
+		args = append(args, mountArgs...)
 	}
 	return args, env, cleanup, nil
 }
@@ -447,16 +449,60 @@ func writeNetrc(dir string, creds []GitCredential) (string, error) {
 	return f.Name(), nil
 }
 
+// credentialMount returns the run arguments that mount the file src read-only at dst.
+type credentialMount func(src, dst string) ([]string, error)
+
+// bindMount mounts the credentials file with --mount, for docker and podman.
+// With relabel, podman gives it a shared SELinux label so the builder can read
+// it on SELinux-enforcing hosts.
+func bindMount(relabel bool) credentialMount {
+	return func(src, dst string) ([]string, error) {
+		spec, err := bindMountSpec(src, dst, relabel)
+		if err != nil {
+			return nil, err
+		}
+		return []string{"--mount", spec}, nil
+	}
+}
+
+// volumeMount mounts the credentials file with --volume, for buildah: buildah
+// splits a --mount value on commas instead of reading it as CSV, so a quoted
+// path with a comma would not work. --volume splits on colons instead, so a path
+// with a colon is refused. relabel adds z, the shared SELinux label.
+func volumeMount(relabel bool) credentialMount {
+	return func(src, dst string) ([]string, error) {
+		if strings.ContainsAny(src, "\r\n") {
+			return nil, fmt.Errorf("the credentials file path must not contain a line break")
+		}
+		if strings.Contains(src, ":") {
+			return nil, fmt.Errorf("buildah cannot mount the credentials file %s because its path contains a colon; use a path without one", src)
+		}
+		opts := "ro"
+		if relabel {
+			opts += ",z"
+		}
+		return []string{"--volume", src + ":" + dst + ":" + opts}, nil
+	}
+}
+
 // bindMountSpec builds a read-only --mount value. --mount (unlike -v) fails when
 // the source is missing instead of creating an empty directory there, and its
 // value is CSV, so the source path is quoted when it contains a comma or quote.
-func bindMountSpec(src, dst string) (string, error) {
+//
+// relabel adds relabel=shared, the --mount form of the :z volume option, which
+// podman accepts and docker does not. shared rather than private, so the label
+// of a user's own --netrc file does not lock it to one container.
+func bindMountSpec(src, dst string, relabel bool) (string, error) {
 	if strings.ContainsAny(src, "\r\n") {
 		return "", fmt.Errorf("the credentials file path must not contain a line break")
 	}
+	fields := []string{"type=bind", "src=" + src, "dst=" + dst, "readonly"}
+	if relabel {
+		fields = append(fields, "relabel=shared")
+	}
 	var b strings.Builder
 	w := csv.NewWriter(&b)
-	if err := w.Write([]string{"type=bind", "src=" + src, "dst=" + dst, "readonly"}); err != nil {
+	if err := w.Write(fields); err != nil {
 		return "", err
 	}
 	w.Flush()

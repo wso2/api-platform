@@ -294,7 +294,7 @@ func TestValidateNetrcFile_RefusesFilesOthersCanRead(t *testing.T) {
 }
 
 func TestPrepare_NothingConfigured(t *testing.T) {
-	args, env, cleanup, err := BuilderAccess{}.prepare(t.TempDir(), []string{"PATH=/bin"})
+	args, env, cleanup, err := BuilderAccess{}.prepare(t.TempDir(), []string{"PATH=/bin"}, bindMount(false))
 	defer cleanup()
 	if err != nil || len(args) != 0 || env != nil {
 		t.Fatalf("prepare() = %v, %v, %v; want no args and an inherited environment", args, env, err)
@@ -308,7 +308,7 @@ func TestPrepare_GoEnvTravelsByNameOnly(t *testing.T) {
 	}}
 	base := []string{"PATH=/bin", "GOPRIVATE=github.com/old/*"}
 
-	args, env, cleanup, err := access.prepare(t.TempDir(), base)
+	args, env, cleanup, err := access.prepare(t.TempDir(), base, bindMount(false))
 	defer cleanup()
 	if err != nil {
 		t.Fatalf("prepare() error = %v", err)
@@ -328,7 +328,7 @@ func TestPrepare_NetrcFileIsMountedReadOnly(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "with,comma")
 	netrc := filepath.Join(dir, "netrc")
 
-	args, _, cleanup, err := BuilderAccess{NetrcFile: netrc}.prepare(t.TempDir(), nil)
+	args, _, cleanup, err := BuilderAccess{NetrcFile: netrc}.prepare(t.TempDir(), nil, bindMount(false))
 	defer cleanup()
 	if err != nil {
 		t.Fatalf("prepare() error = %v", err)
@@ -348,6 +348,59 @@ func TestPrepare_NetrcFileIsMountedReadOnly(t *testing.T) {
 	}
 }
 
+func TestPrepare_NetrcMountRelabel(t *testing.T) {
+	netrc := filepath.Join(t.TempDir(), "netrc")
+
+	args, _, cleanup, err := BuilderAccess{NetrcFile: netrc}.prepare(t.TempDir(), nil, bindMount(true))
+	defer cleanup()
+	if err != nil {
+		t.Fatalf("prepare() error = %v", err)
+	}
+	want := []string{"--mount", "type=bind,src=" + netrc + ",dst=/root/.netrc,readonly,relabel=shared"}
+	if !slices.Equal(args, want) {
+		t.Fatalf("args = %v, want %v", args, want)
+	}
+}
+
+func TestVolumeMount(t *testing.T) {
+	// buildah: a comma in the path is fine with --volume, unlike a quoted --mount value.
+	got, err := volumeMount(true)("/home/u/with,comma/netrc", "/root/.netrc")
+	if err != nil {
+		t.Fatalf("volumeMount() error = %v", err)
+	}
+	if want := []string{"--volume", "/home/u/with,comma/netrc:/root/.netrc:ro,z"}; !slices.Equal(got, want) {
+		t.Fatalf("args = %v, want %v", got, want)
+	}
+	got, err = volumeMount(false)("/home/u/netrc", "/root/.netrc")
+	if err != nil {
+		t.Fatalf("volumeMount() error = %v", err)
+	}
+	if want := []string{"--volume", "/home/u/netrc:/root/.netrc:ro"}; !slices.Equal(got, want) {
+		t.Fatalf("args = %v, want %v", got, want)
+	}
+	if _, err := volumeMount(false)("/home/u/a:b/netrc", "/root/.netrc"); err == nil || !strings.Contains(err.Error(), "colon") {
+		t.Fatalf("expected a colon error, got %v", err)
+	}
+	if _, err := volumeMount(false)("/home/u/a\nb", "/root/.netrc"); err == nil {
+		t.Fatal("expected an error for a line break")
+	}
+}
+
+func TestPrepare_GeneratedNetrcUsesEngineMount(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("buildah does not run on Windows, and volumeMount rejects the drive colon in a Windows path")
+	}
+	access := BuilderAccess{GitCredentials: []GitCredential{{Host: "example.com", Username: "ci", token: "t"}}}
+	args, _, cleanup, err := access.prepare(t.TempDir(), nil, volumeMount(true))
+	defer cleanup()
+	if err != nil {
+		t.Fatalf("prepare() error = %v", err)
+	}
+	if len(args) != 2 || args[0] != "--volume" || !strings.HasSuffix(args[1], ":/root/.netrc:ro,z") {
+		t.Fatalf("args = %v, want a buildah --volume mount", args)
+	}
+}
+
 func TestPrepare_GitCredentialsBecomeAPrivateNetrc(t *testing.T) {
 	scratch := t.TempDir()
 	access := BuilderAccess{GitCredentials: []GitCredential{
@@ -355,7 +408,7 @@ func TestPrepare_GitCredentialsBecomeAPrivateNetrc(t *testing.T) {
 		{Host: "gitlab.acme.com", Username: "ci-bot", token: "glpat-xyz"},
 	}}
 
-	args, _, cleanup, err := access.prepare(scratch, nil)
+	args, _, cleanup, err := access.prepare(scratch, nil, bindMount(false))
 	if err != nil {
 		t.Fatalf("prepare() error = %v", err)
 	}
@@ -520,14 +573,14 @@ func TestBuilderRunArgs(t *testing.T) {
 	}
 
 	// Not set: no -fetch-timeout, so builder images that predate the flag keep working.
-	if got := builderRunArgs(config, []string{"-e", "GOPRIVATE"}); !slices.Equal(got, base) {
+	if got := builderRunArgs(config, false, []string{"-e", "GOPRIVATE"}); !slices.Equal(got, base) {
 		t.Fatalf("args = %v, want %v", got, base)
 	}
 
 	// Set: passed after the image, where the builder reads its own flags.
 	config.FetchTimeout = 10 * time.Minute
 	want := append(slices.Clone(base), "-fetch-timeout", "10m0s")
-	if got := builderRunArgs(config, []string{"-e", "GOPRIVATE"}); !slices.Equal(got, want) {
+	if got := builderRunArgs(config, false, []string{"-e", "GOPRIVATE"}); !slices.Equal(got, want) {
 		t.Fatalf("args = %v, want %v", got, want)
 	}
 }

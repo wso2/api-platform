@@ -682,7 +682,8 @@ ap gateway image build \
   [--output-dir <output_dir>] \
   [--netrc <file> | --git-credential <host>=<username>:<ENV_VAR> ...] \
   [--go-env <KEY>[=<VALUE>] ...] \
-  [--fetch-timeout <duration>]
+  [--fetch-timeout <duration>] \
+  [--container-engine <docker|podman|buildah>]
 ```
 
 Example:
