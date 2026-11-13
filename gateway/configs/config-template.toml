@@ -1080,11 +1080,6 @@ template = ""
 # '''
 # writes lines such as:
 # {"service":"orders","http":{"method":"GET","status":200},"durationMs":12.3}
-#
-# To keep the template in a file, read it with a {{ file }} token, as any
-# setting can. The file is read once at startup, so restart the gateway after
-# changing it:
-# template = '{{ file "/etc/gateway-runtime/traffic-log-template.json" }}'
 
 # Optional field projection over the emitted line: drop the named fields and
 # keep everything else. Names are top-level keys (e.g. "latencies",

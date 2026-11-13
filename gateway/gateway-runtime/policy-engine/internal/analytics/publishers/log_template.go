@@ -126,8 +126,8 @@ type logTemplate struct {
 // collectorCfg says which headers and bodies the collector captures.
 func newLogTemplate(logCfg *config.TrafficLoggingConfig, collectorCfg *config.CollectorConfig, maskedHeaders map[string]bool) (*logTemplate, error) {
 	source := templateSetting
-	// A template read with a {{ file }} token may start with the UTF-8 byte order mark some
-	// editors write, which is not part of the JSON.
+	// A template may start with the UTF-8 byte order mark some editors write, which is not part
+	// of the JSON.
 	root, err := parseTemplate(source, strings.TrimPrefix(logCfg.Template, "\uFEFF"))
 	if err != nil {
 		return nil, err

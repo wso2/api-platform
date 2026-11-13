@@ -423,8 +423,7 @@ type TrafficLoggingConfig struct {
 	// generically for any authenticated request; other values are emitted as
 	// literal strings.
 	Properties map[string]string `koanf:"properties"`
-	// Template is the template (JSON text). Non-empty selects template lines. A template kept
-	// in a file is read with a {{ file }} token.
+	// Template is the template (JSON text). Non-empty selects template lines.
 	Template string `koanf:"template"`
 }
 
