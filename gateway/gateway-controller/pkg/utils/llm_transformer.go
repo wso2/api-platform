@@ -490,16 +490,36 @@ func (t *LLMProviderTransformer) transformProxyWithUpstreamPolicies(proxy *api.L
 	}
 	ops = sortOperationsBySpecificity(ops)
 
-	// PLACEMENT. Downstream, a provider's transformer and credential run once per client
-	// request, gated on the provider selected at that moment — correct until failover, when a
-	// later attempt reaches a DIFFERENT provider carrying the first one's shape and key.
+	// PLACEMENT, derived from what the proxy attaches rather than from a flag (FR-012h).
 	//
-	// With per-attempt placement they move into that provider's own chain instead, so each
-	// attempt is formed and credentialed for the target it actually reaches. Off by default:
-	// this moves credential injection onto a path that has not served production traffic.
-	if t.routerConfig != nil && t.routerConfig.PolicyEngine.PerAttemptProviderPolicies {
+	// Downstream, a provider's transformer and credential run once per client request, gated on
+	// the provider selected at that moment — correct until failover, when a later attempt
+	// reaches a DIFFERENT provider carrying the first one's shape and key (FR-042).
+	//
+	// So: failover attached means they belong in each provider's PER-ATTEMPT chain and must not
+	// also remain downstream, or both copies run and the transformer is applied twice. No
+	// failover means exactly one attempt, where per-attempt and per-request are the same thing,
+	// so they stay downstream and the proxy generates no per-attempt chain for them at all.
+	//
+	// A flag could not express this: the right answer differs per API, and everything needed to
+	// decide it is already here. The flag that used to live here never enabled per-attempt
+	// placement either — the chains were built unconditionally, so it only deleted the
+	// downstream copy, and with it off the shipped default applied both.
+	if proxyAttachesFailover(proxy.Spec) {
 		transformerPolicies = nil
 		upstreamAuthPolicies = nil
+	} else {
+		// Nothing per-attempt to place. Clearing the map is what stops
+		// buildUpstreamPolicyChains generating a chain, and therefore what stops
+		// attachUpstreamChainTo putting an ext_proc filter on a cluster that has no
+		// per-attempt work — a gRPC round trip per request for nothing.
+		//
+		// Authored providers[].policies are unaffected: those are per-attempt by definition
+		// and reach the chain through the attachment, not through this map.
+		for name, entry := range perProvider {
+			entry.Transformer, entry.Auth = nil, nil
+			perProvider[name] = entry
+		}
 	}
 
 	// Translators must run before upstream auth so the request is rewritten into
@@ -556,6 +576,36 @@ func (t *LLMProviderTransformer) transformProxyWithUpstreamPolicies(proxy *api.L
 
 	output.Spec = spec
 	return output, perProvider, nil
+}
+
+// proxyAttachesFailover reports whether this proxy attaches model-failover anywhere, which is
+// what decides where a provider's transformer and credential execute (FR-012h).
+//
+// Scans the API level as well as every operation: attachment point decides which operations the
+// policy covers, never whether the per-attempt half is installed — the same rule
+// transform.ResolveFailoverAttachment applies, and the same omission that once left an API-level
+// attachment with no per-attempt instance (FR-030r).
+//
+// Duplicated from pkg/transform rather than imported: pkg/transform already imports this package,
+// so the dependency cannot run the other way. Pinned by TestProxyAttachesFailover_MatchesTransform.
+func proxyAttachesFailover(spec api.LLMProxyConfigData) bool {
+	if spec.GlobalPolicies != nil {
+		for _, p := range *spec.GlobalPolicies {
+			if p.Name == config.FailoverPolicyName {
+				return true
+			}
+		}
+	}
+	// An operationPolicies entry IS a policy, carrying the paths and methods it covers, so the
+	// name is read directly rather than from a nested list.
+	if spec.OperationPolicies != nil {
+		for _, p := range *spec.OperationPolicies {
+			if p.Name == config.FailoverPolicyName {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConfiguration,

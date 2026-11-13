@@ -849,19 +849,6 @@ type PolicyEngineConfig struct {
 	// per-attempt work, so an API that attaches no upstream policy carries no filter and pays
 	// nothing. The flag remains only as an operator kill-switch.
 	UpstreamProcessing bool `koanf:"upstream_processing"`
-
-	// PerAttemptProviderPolicies moves an LLM provider's transformer and credential OFF the
-	// downstream chain and into that provider's per-attempt chain.
-	//
-	// Downstream, they run once per client request, gated on the provider selected at that
-	// moment — which is correct until failover, when a later attempt reaches a DIFFERENT
-	// provider carrying the first provider's request shape and key. Per-attempt placement is
-	// what makes a cross-vendor fallback correctly formed and credentialed.
-	//
-	// Off by default. This moves credential injection onto a path that has never served
-	// production traffic, for every LLM proxy at once, so the two placements exist side by
-	// side until the per-attempt one has been exercised.
-	PerAttemptProviderPolicies bool `koanf:"per_attempt_provider_policies"`
 }
 
 // PolicyEngineTLS holds policy engine TLS configuration
