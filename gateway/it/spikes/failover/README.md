@@ -48,6 +48,7 @@ invoked", because the server never answers the body message and the attempt othe
 | `c-body-a.yaml` / `c-body-b.yaml` | C body-mutation preservation |
 | `t2-connect-refused.yaml` | T2 upstream filter vs a REFUSED attempt (provider_a on a closed port) |
 | `t3-all-refused.yaml` | T2 variant: every member refuses |
+| `t4d-long-timeout.yaml` | T4 upstream RESPONSE processing (`response_header_mode: SEND`, `message_timeout: 5s`) |
 
 Probe E needs a cross-compiled ext_proc server, which is **not committed** (it is a 19 MB
 build artifact). Build it before running that probe:
