@@ -3958,7 +3958,7 @@ func TestRequestRunnerPortalRegistersThePortalBeforeTheRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, handle, sent["handle"])
 	require.Equal(t, "Synthetic "+handle, sent["name"])
-	require.NotContains(t, sent, "loginEnvironment", "the login environment is left to the platform's default")
+	require.Equal(t, "development", sent["loginEnvironment"], "consumers sign in on the development environment")
 	require.LessOrEqual(t, len(handle), portalHandleMaxLength)
 	require.Equal(t, []string{handle}, registeredAtRequest, "the portal is registered before the request that creates it")
 	require.NoError(t, steps.assertPortalAccepted(ctx))
@@ -4117,20 +4117,21 @@ func TestRequestDuplicatePortalRepeatsTheHandleWithAnotherName(t *testing.T) {
 	require.Empty(t, registeredPortals(registry), "the handle is the runner's and already registered")
 }
 
-func TestRequestDuplicatePortalSkipsWhereThePlanHasNoRoomForAnotherPortal(t *testing.T) {
+func TestRequestDuplicatePortalLeavesAnyAnswerToTheStatusAssertion(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	code, body := http.StatusPaymentRequired, map[string]string{"code": portalQuotaExceededCode, "message": "Hard limit reached: 1 of 1 used"}
+	code, body := http.StatusPaymentRequired, map[string]string{"code": "quota_exceeded", "message": "Hard limit reached: 1 of 1 used"}
 	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, code, body)
 	})
 	local.Set(keyAPIPortalID, "syn-portal-1")
-	require.ErrorIs(t, steps.requestDuplicatePortal(ctx), godog.ErrSkip, "a full plan cannot show the duplicate handle")
+	require.NoError(t, steps.requestDuplicatePortal(ctx), "a 402 is not skipped; the status assertion fails it")
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusPaymentRequired, published.StatusCode)
 
-	body = map[string]string{"code": "payment_required"}
-	require.NoError(t, steps.requestDuplicatePortal(ctx), "another 402 is left to the status assertion")
 	code, body = http.StatusConflict, map[string]string{"code": "conflict"}
 	require.NoError(t, steps.requestDuplicatePortal(ctx))
-	published, err := httpx.Published(ctx)
+	published, err = httpx.Published(ctx)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusConflict, published.StatusCode)
 }
