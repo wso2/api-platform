@@ -88,6 +88,16 @@ func mapRenderError(w http.ResponseWriter, operation string, err error) bool {
 		})
 		return true
 	}
+	var envErr *funcs.EnvAccessError
+	if errors.As(renderErr, &envErr) {
+		// Fixed message only: renderErr.Cause carries the config handle and
+		// template text, and the requested variable name is not echoed back.
+		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{
+			Status:  "error",
+			Message: envErr.Error(),
+		})
+		return true
+	}
 	var tmplParseErr *templateengine.TemplateParseError
 	if errors.As(renderErr, &tmplParseErr) {
 		httputil.WriteJSON(w, http.StatusBadRequest, api.ErrorResponse{

@@ -20,12 +20,15 @@ import { lazy, Suspense, useDeferredValue, useMemo } from 'react';
 import {
   Alert,
   Box,
+  Button,
   Grid,
   Stack,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
+import { Info, RefreshCw } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { LoadingState } from '@/components/StateViews';
@@ -78,6 +81,18 @@ const messages = defineMessages({
     defaultMessage: 'Source format',
     description: 'Accessible name for the YAML / JSON toggle buttons.',
   },
+  loadApiDefinition: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.loadApiDefinition',
+    defaultMessage: 'Load the API\u2019s specification',
+    description:
+      'Button replacing the specification on this page with the API\u2019s own current one. Shown only when the two differ.',
+  },
+  apiDefinitionChanged: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SpecificationTab.apiDefinitionChanged',
+    defaultMessage: 'Differs from the API\u2019s specification.',
+    description:
+      'Tooltip of the info icon beside the button that loads the API\u2019s own specification.',
+  },
 });
 
 /** Format names are the same in every language. */
@@ -101,6 +116,8 @@ export type SpecificationTabProps = {
   onChange?: (text: string) => void;
   /** A JSON/YAML switch; never called for a GraphQL SDL, which has no other format. */
   onFormatChange?: (format: SpecFormat) => void;
+  /** Loads the API's own specification; the toolbar button and its info icon show only when this is set. */
+  onLoadApiDefinition?: () => void;
   /** The parser's own complaint, when the current buffer doesn't read in its format. */
   parseError?: string;
   /** Shows the definition without letting it be edited, for a version that can't be changed. */
@@ -122,6 +139,7 @@ export function SpecificationTab({
   format,
   onChange,
   onFormatChange,
+  onLoadApiDefinition,
   parseError,
   readOnly,
   text,
@@ -166,8 +184,7 @@ export function SpecificationTab({
             overflow: 'hidden',
           }}
         >
-          {/* A GraphQL SDL has a single serialization, so there is nothing to switch between. */}
-          {format !== 'graphql' && (
+          {(format !== 'graphql' || onLoadApiDefinition) && (
             <Stack
               alignItems="center"
               direction="row"
@@ -176,25 +193,47 @@ export function SpecificationTab({
                 borderBottom: 1,
                 borderColor: 'divider',
                 flexShrink: 0,
-                justifyContent: 'flex-end',
                 px: 2,
                 py: 1,
               }}
+              useFlexGap
             >
-              <ToggleButtonGroup
-                aria-label={intl.formatMessage(messages.formatLabel)}
-                color="primary"
-                disabled={disabled}
-                exclusive
-                onChange={(_event, next: SpecFormat | null) => {
-                  if (next !== null) switchFormat(next);
-                }}
-                size="small"
-                value={format}
-              >
-                <ToggleButton value="yaml">{FORMAT_LABELS.yaml}</ToggleButton>
-                <ToggleButton value="json">{FORMAT_LABELS.json}</ToggleButton>
-              </ToggleButtonGroup>
+              {onLoadApiDefinition && (
+                <>
+                  <Button
+                    disabled={disabled}
+                    onClick={onLoadApiDefinition}
+                    size="small"
+                    startIcon={<RefreshCw size={16} />}
+                    variant="outlined"
+                  >
+                    <FormattedMessage {...messages.loadApiDefinition} />
+                  </Button>
+                  <Tooltip title={intl.formatMessage(messages.apiDefinitionChanged)}>
+                    <Box sx={{ color: 'text.secondary', display: 'flex' }} tabIndex={0}>
+                      <Info size={16} />
+                    </Box>
+                  </Tooltip>
+                </>
+              )}
+              {/* A GraphQL SDL has a single serialization, so there is nothing to switch between. */}
+              {format !== 'graphql' && (
+                <ToggleButtonGroup
+                  aria-label={intl.formatMessage(messages.formatLabel)}
+                  color="primary"
+                  disabled={disabled}
+                  exclusive
+                  onChange={(_event, next: SpecFormat | null) => {
+                    if (next !== null) switchFormat(next);
+                  }}
+                  size="small"
+                  sx={{ ml: 'auto' }}
+                  value={format}
+                >
+                  <ToggleButton value="yaml">{FORMAT_LABELS.yaml}</ToggleButton>
+                  <ToggleButton value="json">{FORMAT_LABELS.json}</ToggleButton>
+                </ToggleButtonGroup>
+              )}
             </Stack>
           )}
           {parseError && (

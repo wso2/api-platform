@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { http, HttpResponse, type JsonBodyType } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
@@ -534,6 +534,7 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
         () => HttpResponse.json(alice),
         () => HttpResponse.json({ isSignedIn: false }),
       ]);
+      answer(SDK_CONFIG.authSessionUrl, { isSignedIn: false });
 
       vi.advanceTimersByTime(30_000);
       await eventually(() => expect(poll.checks()).toBe(1));
@@ -553,6 +554,7 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
 
     it('waits while the tab is hidden, and asks the moment it is shown again', async () => {
       const poll = await signInAndPoll(POLLING_CONFIG, [() => HttpResponse.json({ isSignedIn: false })]);
+      answer(SDK_CONFIG.authSessionUrl, { isSignedIn: false });
 
       setVisibility('hidden');
       vi.advanceTimersByTime(120_000);
@@ -561,6 +563,41 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
       setVisibility('visible');
       await eventuallyStatus('unauthenticated');
       expect(poll.checks()).toBe(1);
+    });
+
+    // Behind the gateway the session read signs the tab in again through Native SSO, so a
+    // session ended elsewhere (a parent console's switch, say) is renewed without a page load.
+    it('reads the session before signing out, so an ended session can be renewed in place', async () => {
+      const poll = await signInAndPoll(POLLING_CONFIG, [() => HttpResponse.json({ isSignedIn: false })]);
+      let reads = 0;
+      server.use(http.get(SDK_CONFIG.authSessionUrl, () => (reads++, HttpResponse.json(alice))));
+      const assign = vi.fn();
+      const reload = vi.fn();
+      vi.stubGlobal('location', { ...window.location, assign, reload });
+
+      vi.advanceTimersByTime(30_000);
+
+      await eventually(() => expect(reads).toBe(1));
+      expect(poll.checks()).toBe(1);
+      expect(screen.getByTestId('status').textContent).toBe('authenticated');
+      expect(screen.getByTestId('user').textContent).toBe('Alice');
+      expect(assign).not.toHaveBeenCalled();
+      expect(reload).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
+    });
+
+    it('reloads when the session comes back as another account', async () => {
+      const bob = { isSignedIn: true, user: { sub: '9d2e', name: 'Bob' }, scope: 'openid' };
+      await signInAndPoll(POLLING_CONFIG, [() => HttpResponse.json({ isSignedIn: false })]);
+      server.use(http.get(SDK_CONFIG.authSessionUrl, () => HttpResponse.json(bob)));
+      const reload = vi.fn();
+      vi.stubGlobal('location', { ...window.location, reload });
+
+      vi.advanceTimersByTime(30_000);
+
+      await eventually(() => expect(reload).toHaveBeenCalled());
+      expect(screen.getByTestId('user').textContent).toBe('Alice');
+      vi.unstubAllGlobals();
     });
 
     it('keeps the same user object when nothing changed, so the app does not re-render', async () => {
@@ -650,6 +687,246 @@ describe('AuthProvider in external mode', { timeout: 30_000 }, () => {
       const button = await renderGatedButton({ isSignedIn: true, user: { sub: 'u' } });
 
       expect(button).toBeEnabled();
+    });
+  });
+
+  describe('switching organizations', () => {
+    const SWITCH_CONFIG = {
+      ...SDK_CONFIG,
+      authOrganizationsUrl: '/api-platform/idp/users/me/ous',
+      authSwitchOrganizationUrls: '/auth/switch, /api-platform/auth/switch',
+    };
+    const ORG_A = { id: 'ou-a', handle: 'org-a', name: 'Org A' };
+    const ORG_B = { id: 'ou-b', handle: 'org-b', name: 'Org B' };
+    const sessionIn = (org: typeof ORG_A) => ({
+      isSignedIn: true,
+      user: { sub: 'u', ouId: org.id, ouName: org.name, ouHandle: org.handle },
+      scope: 'openid',
+    });
+
+    /** Shows the session's organization and list, and switches on request. */
+    async function renderSwitching(config: Record<string, string> = SWITCH_CONFIG) {
+      const { AuthProvider, useAuth } = await loadAuth(config);
+      function Probe() {
+        const auth = useAuth();
+        const [outcome, setOutcome] = useState('');
+        const switchTo = (handle: string) =>
+          auth.exchangeOrgToken(handle).then(
+            () => setOutcome('switched'),
+            (error: { reason?: string }) => setOutcome(`failed:${error.reason}`),
+          );
+        return (
+          <div>
+            <span data-testid="status">{auth.status}</span>
+            <span data-testid="org">{auth.user?.org?.handle ?? ''}</span>
+            <span data-testid="can-switch">{String(auth.canSwitchOrganization)}</span>
+            <span data-testid="orgs">{auth.organizations?.map((org) => org.name).join(',') ?? 'none'}</span>
+            <span data-testid="outcome">{outcome}</span>
+            {['org-a', 'org-b', 'org-c'].map((handle) => (
+              <button key={handle} onClick={() => void switchTo(handle)}>{`to ${handle}`}</button>
+            ))}
+          </div>
+        );
+      }
+      render(
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>,
+      );
+      await waitForStatus('authenticated');
+    }
+
+    const PARENT_SWITCH = '/auth/switch';
+    const OWN_SWITCH = '/api-platform/auth/switch';
+
+    /**
+     * Each switch is recorded as `<path> <organization id>`, and must name the
+     * unit as the ThunderID SDK's `ouSwitch` does: in the query and the body.
+     * The console's own session moves to org B on a switch that names ou-b.
+     */
+    function serveSwitchableSession(answerSwitch: number | ((path: string, ouId?: string) => number) = 200) {
+      let current = ORG_A;
+      const switches: string[] = [];
+      const switchAt = (path: string) =>
+        http.post(path, async ({ request }) => {
+          const fromQuery = new URL(request.url).searchParams.get('ouId');
+          const { ouId } = (await request.json()) as { ouId?: string };
+          switches.push(fromQuery === ouId ? `${path} ${ouId}` : `${path} mismatch`);
+          const switchStatus = typeof answerSwitch === 'number' ? answerSwitch : answerSwitch(path, ouId);
+          if (switchStatus === 200 && path === OWN_SWITCH && ouId === ORG_B.id) current = ORG_B;
+          return switchStatus === 200
+            ? new HttpResponse(null, { status: 200 })
+            : HttpResponse.json({ error: 'access_denied' }, { status: switchStatus });
+        });
+      server.use(
+        http.get(SWITCH_CONFIG.authSessionUrl, () => HttpResponse.json(sessionIn(current))),
+        http.get(SWITCH_CONFIG.authOrganizationsUrl, () =>
+          HttpResponse.json({ totalResults: 2, organizationUnits: [ORG_A, ORG_B] }),
+        ),
+        switchAt(PARENT_SWITCH),
+        switchAt(OWN_SWITCH),
+      );
+      return switches;
+    }
+
+    it('lists the organizations the session can move into', async () => {
+      serveSwitchableSession();
+      await renderSwitching();
+
+      expect(screen.getByTestId('can-switch')).toHaveTextContent('true');
+      await waitFor(() => expect(screen.getByTestId('orgs')).toHaveTextContent('Org A,Org B'));
+    });
+
+    it("moves each session in order by the organization's id, then reads the session again", async () => {
+      const switches = serveSwitchableSession();
+      await renderSwitching();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('switched'));
+      expect(switches).toEqual([`${PARENT_SWITCH} ou-b`, `${OWN_SWITCH} ou-b`]);
+      expect(screen.getByTestId('org')).toHaveTextContent('org-b');
+    });
+
+    it('does not switch when the session is already in the organization', async () => {
+      const switches = serveSwitchableSession();
+      await renderSwitching();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-a' }));
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('switched'));
+      expect(switches).toEqual([]);
+    });
+
+    it('refuses an organization the user is not a member of, without asking the gateway', async () => {
+      const switches = serveSwitchableSession();
+      await renderSwitching();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-c' }));
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('failed:forbidden'));
+      expect(switches).toEqual([]);
+    });
+
+    // A 403 is a refusal. Any other failure may still have moved the session (a 503 can follow a
+    // stored switch), so that session is moved back too.
+    it.each([
+      [403, 'forbidden', [`${PARENT_SWITCH} ou-b`]],
+      [503, 'unavailable', [`${PARENT_SWITCH} ou-b`, `${PARENT_SWITCH} ou-a`]],
+    ])('reports a %i from a switch as %s and keeps the session', async (status, reason, expected) => {
+      const switches = serveSwitchableSession(status);
+      await renderSwitching();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent(`failed:${reason}`));
+      expect(switches).toEqual(expected);
+      expect(screen.getByTestId('status')).toHaveTextContent('authenticated');
+      expect(screen.getByTestId('org')).toHaveTextContent('org-a');
+    });
+
+    // A later switch refused after an earlier one succeeded would leave the sessions in two
+    // organizations, so the earlier ones go back first.
+    it('moves the sessions it already switched back when a later switch is refused', async () => {
+      const switches = serveSwitchableSession((path) => (path === OWN_SWITCH ? 403 : 200));
+      await renderSwitching();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('failed:forbidden'));
+      expect(switches).toEqual([`${PARENT_SWITCH} ou-b`, `${OWN_SWITCH} ou-b`, `${PARENT_SWITCH} ou-a`]);
+      expect(screen.getByTestId('org')).toHaveTextContent('org-a');
+    });
+
+    it('reports a switch it could not undo as unavailable', async () => {
+      const switches = serveSwitchableSession((path, ouId) =>
+        path === OWN_SWITCH ? 403 : ouId === ORG_A.id ? 503 : 200,
+      );
+      await renderSwitching();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('failed:unavailable'));
+      expect(switches).toEqual([`${PARENT_SWITCH} ou-b`, `${OWN_SWITCH} ou-b`, `${PARENT_SWITCH} ou-a`]);
+    });
+
+    /** Holds back the 15 s answer timeouts, to fire them when the test says. */
+    function holdAnswerTimeouts() {
+      const held: Array<() => void> = [];
+      const realSetTimeout = globalThis.setTimeout;
+      vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+        callback: () => void,
+        ms?: number,
+        ...args: unknown[]
+      ) => (ms === 15_000 ? held.push(callback) : realSetTimeout(callback, ms, ...args))) as typeof setTimeout);
+      onTestFinished(() => {
+        vi.restoreAllMocks();
+      });
+      return {
+        held: () => held.length,
+        fire: () => held.splice(0).forEach((callback) => callback()),
+      };
+    }
+
+    it('is unavailable, without switching, when the organization list does not answer in time', async () => {
+      const switches = serveSwitchableSession();
+      server.use(http.get(SWITCH_CONFIG.authOrganizationsUrl, () => new Promise<never>(() => {})));
+      const timeout = holdAnswerTimeouts();
+      await renderSwitching();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
+      await vi.waitFor(() => expect(timeout.held()).toBeGreaterThan(1));
+      act(() => timeout.fire());
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('failed:unavailable'));
+      expect(switches).toEqual([]);
+    });
+
+    it('waits for a switch that gave no answer in time, then moves every session back', async () => {
+      const switches = serveSwitchableSession();
+      let answerLate!: () => void;
+      const late = new Promise<void>((resolve) => {
+        answerLate = resolve;
+      });
+      server.use(
+        http.post(OWN_SWITCH, async ({ request }) => {
+          const { ouId } = (await request.json()) as { ouId?: string };
+          switches.push(`${OWN_SWITCH} ${ouId}`);
+          if (ouId === ORG_B.id) await late;
+          return new HttpResponse(null, { status: 200 });
+        }),
+      );
+      await renderSwitching();
+      const timeout = holdAnswerTimeouts();
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
+      await vi.waitFor(() => expect(switches).toContain(`${OWN_SWITCH} ou-b`));
+      act(() => timeout.fire());
+      answerLate();
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('failed:unavailable'));
+      expect(switches.slice(0, 2)).toEqual([`${PARENT_SWITCH} ou-b`, `${OWN_SWITCH} ou-b`]);
+      expect(switches.slice(2).sort()).toEqual([`${OWN_SWITCH} ou-a`, `${PARENT_SWITCH} ou-a`]);
+    });
+
+    it('stays off, and never calls the switch endpoints, unless both URLs are set', async () => {
+      const switches = serveSwitchableSession();
+      const lists = vi.fn();
+      server.events.on('request:start', ({ request }) => {
+        if (request.url.includes(SWITCH_CONFIG.authOrganizationsUrl)) lists();
+      });
+      onTestFinished(() => {
+        server.events.removeAllListeners();
+      });
+      await renderSwitching({ ...SDK_CONFIG, authOrganizationsUrl: SWITCH_CONFIG.authOrganizationsUrl });
+
+      fireEvent.click(screen.getByRole('button', { name: 'to org-b' }));
+
+      await waitFor(() => expect(screen.getByTestId('outcome')).toHaveTextContent('switched'));
+      expect(screen.getByTestId('can-switch')).toHaveTextContent('false');
+      expect(screen.getByTestId('orgs')).toHaveTextContent('none');
+      expect(switches).toEqual([]);
+      expect(lists).not.toHaveBeenCalled();
     });
   });
 });

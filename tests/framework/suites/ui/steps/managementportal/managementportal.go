@@ -29,6 +29,7 @@ import (
 	"github.com/cucumber/godog"
 	playwright "github.com/mxschmitt/playwright-go"
 
+	"github.com/wso2/api-platform/tests/framework/core/actor"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
@@ -77,6 +78,7 @@ func (s *Steps) Register(sc *godog.ScenarioContext) {
 	sc.Step(`^a REST API "([^"]*)" exists in project "([^"]*)" on the control plane(?: for "([^"]*)")?$`, s.restAPIExists)
 	sc.Step(`^a gateway "([^"]*)" is registered on the control plane(?: for "([^"]*)")?$`, s.gatewayIsRegistered)
 	sc.Step(`^the user signs in to the Management Portal as the administrator$`, s.signInAsAdministrator)
+	sc.Step(`^the user signs in to the Management Portal as the read-only viewer$`, s.signInAsViewer)
 	sc.Step(`^the user signs in to the Management Portal as "([^"]*)"$`, s.signInAs)
 	sc.Step(`^the user opens the Management Portal page "([^"]*)"$`, s.openPage)
 	sc.Step(`^the Management Portal shows "([^"]*)"$`, s.shows)
@@ -84,6 +86,11 @@ func (s *Steps) Register(sc *godog.ScenarioContext) {
 	sc.Step(`^the Management Portal is not on a page under "([^"]*)"$`, s.notUnder)
 	s.registerDeploySteps(sc)
 	s.registerAPIDefinitionSteps(sc)
+	s.registerCreateSteps(sc)
+	s.registerDevelopSteps(sc)
+	s.registerTestSteps(sc)
+	s.registerPublishSteps(sc)
+	s.registerGatewaySteps(sc)
 }
 
 // generateHandle stores a unique name the control plane accepts as a handle: lowercase
@@ -231,8 +238,16 @@ func (s *Steps) gatewayIsRegistered(ctx context.Context, name, who string) error
 	}, kind)
 }
 
-// signInAsAdministrator drives the real sign-in form, starting from a signed-out browser.
 func (s *Steps) signInAsAdministrator(ctx context.Context) error {
+	return s.signIn(ctx, s.topo.Admin)
+}
+
+func (s *Steps) signInAsViewer(ctx context.Context) error {
+	return s.signIn(ctx, actor.Viewer())
+}
+
+// signIn drives the real sign-in form, starting from a signed-out browser.
+func (s *Steps) signIn(ctx context.Context, user actor.Credentials) error {
 	page, err := s.pageGetter(ctx)
 	if err != nil {
 		return err
@@ -243,10 +258,10 @@ func (s *Steps) signInAsAdministrator(ctx context.Context) error {
 	if err := s.openPage(ctx, "/login"); err != nil {
 		return err
 	}
-	if err := page.Locator("#login-username").Fill(s.topo.Admin.Username); err != nil {
+	if err := page.Locator("#login-username").Fill(user.Username); err != nil {
 		return fmt.Errorf("typing the username: %w", err)
 	}
-	if err := page.Locator("#login-password").Fill(s.topo.Admin.Password); err != nil {
+	if err := page.Locator("#login-password").Fill(user.Password); err != nil {
 		return fmt.Errorf("typing the password: %w", err)
 	}
 	if err := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: "Sign in"}).Click(); err != nil {

@@ -18,7 +18,7 @@
 
 @AIW-LLM
 Feature: Configuring an LLM provider's credential and models in the AI Workspace
-  Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-features "Connection" (AIW-PRV-010, AIW-PRV-011) and "Models"
+  Scenarios AIW-LLM (scenarios/on-prem/AIW-LLM.yaml), sub-features "Connection" (AIW-PRV-010, AIW-PRV-011) and "Models"
   (AIW-PRV-012, AIW-PRV-013), through the browser. The API-level scenarios are in
   suites/it/features/ai-workspace/llm-providers/configure.feature.
 

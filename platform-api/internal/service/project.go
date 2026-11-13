@@ -97,6 +97,9 @@ func (s *ProjectService) CreateProject(req *api.CreateProjectRequest, organizati
 	var handle string
 	if req.Id != nil && *req.Id != "" {
 		handle = *req.Id
+		if err := utils.ValidateHandle(handle); err != nil {
+			return nil, err
+		}
 		existing, err := s.projectRepo.GetProjectByHandleAndOrgID(handle, organizationID)
 		if err != nil {
 			return nil, err

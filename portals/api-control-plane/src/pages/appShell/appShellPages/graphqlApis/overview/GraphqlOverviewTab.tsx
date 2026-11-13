@@ -24,6 +24,7 @@ import { GRAPHQL_API_TYPE } from '@/api/resources/apiPublications';
 import type { Gateway } from '@/api/resources/gateways';
 import { useUpdateGraphQLApi, type GraphQLApiDetail } from '@/api/resources/graphqlApis';
 import type { Deployment } from '@/api/resources/graphqlApis/deployments';
+import { useTrackFeature } from '@/featureUsage';
 import { routes } from '@/routes/paths';
 import { GraphqlSchemaExplorer } from '../../apis/create/components/graphql/GraphqlSchemaExplorer';
 import { ApiKeysPanel } from '../../apis/overview/ApiKeysPanel';
@@ -54,6 +55,7 @@ const messages = defineMessages({
  */
 function EndpointPanel({ api, sdl }: { api: GraphQLApiDetail; sdl?: string }) {
   const updateApi = useUpdateGraphQLApi();
+  const trackFeature = useTrackFeature();
   const url = api.upstream?.main?.url;
   // Only a URL-based main upstream is ever editable here — a ref-based one
   // (`upstream.main.ref`) has no literal URL to edit, the same rule
@@ -75,6 +77,7 @@ function EndpointPanel({ api, sdl }: { api: GraphQLApiDetail; sdl?: string }) {
         if (!api.id || sdl === undefined) {
           return Promise.reject(new Error('The API or its schema has not loaded yet.'));
         }
+        trackFeature('apip.manage-apis.api-endpoint-update-click', { api_type: 'graphql-api' });
         return updateApi.mutateAsync({
           graphqlApiId: api.id,
           body: {

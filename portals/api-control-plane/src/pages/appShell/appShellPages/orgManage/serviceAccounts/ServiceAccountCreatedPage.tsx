@@ -50,6 +50,7 @@ import {
   type ServiceAccountTokenResponse,
 } from '@/api/resources/serviceAccounts';
 import { SecondaryText } from '@/components/common/SecondaryText';
+import { useTrackFeature } from '@/featureUsage';
 import { Can } from '@/permissions';
 import { routes } from '@/routes/paths';
 import { useCopy } from './components/useCopy';
@@ -325,6 +326,7 @@ function CreatedView() {
 
   const rolesQuery = useRoles();
   const mutation = useIssueServiceAccountToken();
+  const trackFeature = useTrackFeature();
   const [issued, setIssued] = useState<Issued | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [scopesOpen, setScopesOpen] = useState(false);
@@ -364,6 +366,7 @@ function CreatedView() {
     if (!scopesReady || mutation.isPending) return;
     // A failed retry must not leave the previous token on screen.
     setIssued(null);
+    trackFeature('apip.security.service-account-test-token-get-click', {});
     mutation.mutate(
       {
         client_id: clientId,

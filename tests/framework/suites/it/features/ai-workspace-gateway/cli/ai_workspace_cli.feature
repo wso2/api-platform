@@ -31,7 +31,7 @@ Feature: AI Workspace CLI publish and persistence
 
   Background:
     Given the "ap" CLI is available
-    And I generate a unique value from "awcli-project" and store it as "projectHandle"
+    And I generate a unique resource name from "awcli-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "awcli-gateway-a" and store it as "gatewayHandleA"
     And I register a gateway "${CTX:gatewayHandleA}" on the control plane

@@ -23,6 +23,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useAllGraphQLApis } from '../../api/resources/graphqlApis';
 import { useAllRestApis } from '../../api/resources/restApis';
+import { useAuth } from '../../contexts/auth/AuthProvider';
 import SearchableComplexSelect from '../../components/common/SearchableComplexSelect';
 import { findTargetAtScope } from '../../navigation/navigationRegistry';
 import { toGraphQLListableApi, toRestListableApi } from './appShellPages/apis/listing/apiListItem';
@@ -33,7 +34,22 @@ import ProjectQuickSelector from './ProjectQuickSelector';
 
 // Switcher options can carry long display names/handles; bound the trigger width
 // and let the option text ellipsize instead of overflowing the header.
-const SWITCHER_SELECT_SX = { minWidth: 220, maxWidth: 260 };
+const SWITCHER_SELECT_SX = {
+  minWidth: 220,
+  maxWidth: 260,
+  // Keep the trigger compact (~53px); the 0.23 default padding made it ~63px.
+  '& .MuiSelect-select.MuiSelect-outlined.MuiInputBase-input': {
+    paddingTop: '5px !important',
+    paddingBottom: '5px !important',
+  },
+};
+
+// Selectors with a clear (X) button: the X sits at the top-right corner and the
+// chevron drops to the bottom-right, both on the same right edge, so they never overlap.
+const SWITCHER_SELECT_WITH_CLEAR_SX = {
+  ...SWITCHER_SELECT_SX,
+  '& .MuiSelect-icon': { top: 'auto', bottom: -6, right: 10 },
+};
 
 const TRUNCATED_OPTION_TEXT_SLOT_PROPS = {
   primary: { noWrap: true },
@@ -59,6 +75,7 @@ export function HeaderScopeSwitchers() {
   const location = useLocation();
   const intl = useIntl();
   const scope = useConsoleScope();
+  const { organizations: sessionOrganizations } = useAuth();
   const {
     component,
     organization,
@@ -129,10 +146,14 @@ export function HeaderScopeSwitchers() {
     navigate(target ?? routes.projectHome(params.orgHandle, params.projectHandler));
   };
 
-  // organizations may not be loaded yet on first paint; keep the current org
-  // selectable so the switcher never renders an out-of-range value.
+  // Where the session switches organizations, the identity provider lists
+  // every organization the user belongs to; the Platform API only those
+  // already used. Either may not be loaded yet on first paint; keep the
+  // current org selectable so the switcher never renders an out-of-range value.
   const orgOptions: { handle: string; name: string }[] =
-    organizations.length > 0
+    sessionOrganizations && sessionOrganizations.length > 0
+      ? sessionOrganizations.map((org) => ({ handle: org.handle, name: org.name }))
+      : organizations.length > 0
       ? organizations.map((org) => ({ handle: org.id, name: org.displayName || org.id }))
       : params.orgHandle
         ? [{ handle: params.orgHandle, name: organization?.displayName || params.orgHandle }]
@@ -203,7 +224,11 @@ export function HeaderScopeSwitchers() {
 
   // A single loaded organization is read-only; use the loaded list so the
   // switcher is not locked while the real list is still loading.
-  const isSingleOrganization = organizations.length === 1;
+  const loadedOrganizationCount =
+    sessionOrganizations && sessionOrganizations.length > 0
+      ? sessionOrganizations.length
+      : organizations.length;
+  const isSingleOrganization = loadedOrganizationCount === 1;
 
   if (!params.orgHandle) return null;
 
@@ -271,7 +296,7 @@ export function HeaderScopeSwitchers() {
             searchPlaceholder={intl.formatMessage({ id: 'appShell.header.project.placeholder', defaultMessage: 'Search projects...' })}
             emptyMessage={intl.formatMessage({ id: 'appShell.header.project.empty', defaultMessage: 'No projects found' })}
             noResultsMessage={intl.formatMessage({ id: 'appShell.header.project.noResults', defaultMessage: 'No matching projects' })}
-            sx={SWITCHER_SELECT_SX}
+            sx={SWITCHER_SELECT_WITH_CLEAR_SX}
           />
 
           <IconButton
@@ -288,14 +313,16 @@ export function HeaderScopeSwitchers() {
             }}
             sx={{
               position: "absolute",
-              top: 6,
-              right: 2,
+              top: 5,
+              right: 10,
+              opacity: 0.6,
+              '&:hover': { opacity: 1 },
               zIndex: 1,
-              width: 20,
-              height: 10,
+              width: 24,
+              height: 20,
             }}
           >
-            <X size={14} />
+            <X size={12} />
           </IconButton>
         </Box>
       )}
@@ -347,7 +374,7 @@ export function HeaderScopeSwitchers() {
             searchPlaceholder={intl.formatMessage({ id: 'appShell.header.api.placeholder', defaultMessage: 'Search APIs...' })}
             emptyMessage={intl.formatMessage({ id: 'appShell.header.api.empty', defaultMessage: 'No APIs found' })}
             noResultsMessage={intl.formatMessage({ id: 'appShell.header.api.noResults', defaultMessage: 'No matching APIs' })}
-            sx={SWITCHER_SELECT_SX}
+            sx={SWITCHER_SELECT_WITH_CLEAR_SX}
           />
 
           <IconButton
@@ -364,14 +391,16 @@ export function HeaderScopeSwitchers() {
             }}
             sx={{
               position: "absolute",
-              top: 6,
-              right: 2,
+              top: 5,
+              right: 10,
+              opacity: 0.6,
+              '&:hover': { opacity: 1 },
               zIndex: 1,
-              width: 20,
-              height: 10,
+              width: 24,
+              height: 20,
             }}
           >
-            <X size={14} />
+            <X size={12} />
           </IconButton>
         </Box>
       )}
