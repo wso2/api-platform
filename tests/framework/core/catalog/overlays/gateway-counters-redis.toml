@@ -1,0 +1,6 @@
+# The gateway-controller keeps its shared counters (budget spend) in the block's Redis.
+# The password comes from the Redis component (APIP_GW_CONTROLLER_COUNTERS_REDIS_PASSWORD).
+[controller.counters.redis]
+enabled = true
+address = "redis:6379"
+password = '{{ env "APIP_GW_CONTROLLER_COUNTERS_REDIS_PASSWORD" "" }}'

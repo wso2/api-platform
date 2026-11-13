@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
@@ -97,9 +98,9 @@ func (s *Service) Create(params CreateParams) (*models.StoredConfig, error) {
 		return nil, err
 	}
 
-	id, err := utils.GenerateUUID()
+	id, err := budgetID(budget.Metadata)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate budget ID: %w", err)
+		return nil, err
 	}
 	now := time.Now()
 	cfg := &models.StoredConfig{
@@ -256,11 +257,42 @@ func (s *Service) publish(action, name, correlationID string, log *slog.Logger) 
 	return nil
 }
 
+// budgetID is the UUID of a budget created through the gateway: the artifact-id
+// annotation when given, as for the gateway's other kinds, and otherwise a new one. The
+// shared spend is keyed by the budget's name, not this UUID, so the same budget on every
+// gateway counts against one total whatever its UUID.
+func budgetID(metadata api.BudgetMetadata) (string, error) {
+	if given := artifactID(metadata); given != "" {
+		if err := utils.ValidateUUIDFormat(given); err != nil {
+			return "", &ValidationError{Errors: []FieldError{{
+				Field:   "metadata.annotations." + constants.AnnotationArtifactID,
+				Message: err.Error(),
+			}}}
+		}
+		return given, nil
+	}
+	id, err := utils.GenerateUUID()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate budget ID: %w", err)
+	}
+	return id, nil
+}
+
+func artifactID(metadata api.BudgetMetadata) string {
+	if metadata.Annotations == nil {
+		return ""
+	}
+	return (*metadata.Annotations)[constants.AnnotationArtifactID]
+}
+
 // fixedFieldChanges lists the fields that differ but cannot change after
-// creation: period, currency, resource and consumers.
+// creation: the artifact-id annotation, period, currency, resource and consumers.
 func fixedFieldChanges(stored, updated api.BudgetRequest) []FieldError {
 	const message = "cannot be changed after creation; create a new budget instead"
 	var errs []FieldError
+	if artifactID(stored.Metadata) != artifactID(updated.Metadata) {
+		errs = append(errs, FieldError{Field: "metadata.annotations." + constants.AnnotationArtifactID, Message: message})
+	}
 	if stored.Spec.Limit.Period != updated.Spec.Limit.Period {
 		errs = append(errs, FieldError{Field: "spec.limit.period", Message: message})
 	}

@@ -722,3 +722,46 @@ func TestService_PublishFailureStillTellsOtherReplicas(t *testing.T) {
 	assert.ErrorIs(t, err, ErrPublish)
 	assert.Len(t, env.events.events, 1, "the change is saved, so other replicas must still sync it")
 }
+
+func TestCreate_UUIDFromTheArtifactIDAnnotation(t *testing.T) {
+	env := newTestEnv(t, false, nil)
+	const given = "0193f1c2-1111-7000-8000-000000000001"
+	annotated := strings.Replace(validBudget, `"metadata": {"name": "research-team-monthly"}`,
+		`"metadata": {"name": "research-team-monthly", "annotations": {"gateway.api-platform.wso2.com/artifact-id": "`+given+`"}}`, 1)
+
+	cfg, err := env.svc.Create(CreateParams{Body: []byte(annotated)})
+
+	require.NoError(t, err)
+	assert.Equal(t, given, cfg.UUID)
+
+	// The annotation is the budget's identity: it cannot change.
+	changed := strings.Replace(annotated, given, "0193f1c2-2222-7000-8000-000000000002", 1)
+	_, err = env.svc.Update(UpdateParams{Name: "research-team-monthly", Body: []byte(changed)})
+	var invalid *ValidationError
+	require.True(t, errors.As(err, &invalid), "got %v", err)
+	assert.Equal(t, "metadata.annotations.gateway.api-platform.wso2.com/artifact-id", invalid.Errors[0].Field)
+}
+
+func TestCreate_GeneratesAUUIDWithoutTheAnnotation(t *testing.T) {
+	first := newTestEnv(t, false, nil)
+	second := newTestEnv(t, false, nil) // another gateway
+
+	a, err := first.svc.Create(CreateParams{Body: []byte(validBudget)})
+	require.NoError(t, err)
+	b, err := second.svc.Create(CreateParams{Body: []byte(validBudget)})
+	require.NoError(t, err)
+
+	assert.NotEmpty(t, a.UUID)
+	assert.NotEqual(t, a.UUID, b.UUID, "each gateway assigns its own; spend is shared by name")
+}
+
+func TestCreate_RejectsAnInvalidArtifactID(t *testing.T) {
+	env := newTestEnv(t, false, nil)
+	annotated := strings.Replace(validBudget, `"metadata": {"name": "research-team-monthly"}`,
+		`"metadata": {"name": "research-team-monthly", "annotations": {"gateway.api-platform.wso2.com/artifact-id": "not-a-uuid"}}`, 1)
+
+	_, err := env.svc.Create(CreateParams{Body: []byte(annotated)})
+
+	var invalid *ValidationError
+	require.True(t, errors.As(err, &invalid), "got %v", err)
+}

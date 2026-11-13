@@ -50,6 +50,10 @@ const (
 	valueTypeLLMProvider = "llmProvider"
 )
 
+// spendNamespace roots the IDs spend is counted under. Never change it: every gateway
+// must derive the same IDs for the same budget.
+var spendNamespace = uuid.MustParse("8d740d5b-3b73-4e13-84a6-5336674f813f")
+
 // maxAllowancesPerBudget caps the allowances one request can charge for one budget. List
 // claims allocated separately multiply; a request beyond the cap is not covered.
 const maxAllowancesPerBudget = 64
@@ -62,8 +66,12 @@ type resourceSource interface {
 
 // budget is one active budget, ready to match requests.
 type budget struct {
-	uuid     uuid.UUID
-	name     string
+	uuid uuid.UUID
+	name string
+	// spendID roots the budget's allowance IDs: a UUIDv5 of its name, so the same budget on
+	// every gateway counts against one total whatever UUID each gateway gave it, and the
+	// shared store's keys hold no names.
+	spendID  uuid.UUID
 	amount   float64
 	limit    string // the amount as written, for refusals
 	currency string
@@ -149,7 +157,7 @@ func (b *budget) matches(provider string, activation map[string]any) ([]string, 
 	return names, true
 }
 
-// allowanceUUID is the UUIDv5, in the budget's UUID namespace, of the allocated values sorted
+// allowanceUUID is the UUIDv5, under the budget's spendID, of the allocated values sorted
 // by type (stable, so consumers keep their order) and written type=value, percent-encoded,
 // joined by "|". A shared budget has the UUID of the empty name.
 func (b *budget) allowanceUUID(values []allocated) string {
@@ -159,7 +167,7 @@ func (b *budget) allowanceUUID(values []allocated) string {
 	for i, v := range sorted {
 		parts[i] = v.valueType + "=" + url.QueryEscape(v.value)
 	}
-	return uuid.NewSHA1(b.uuid, []byte(strings.Join(parts, "|"))).String()
+	return uuid.NewSHA1(b.spendID, []byte(strings.Join(parts, "|"))).String()
 }
 
 // evalBool runs a condition. An error, such as a missing claim, or a non-bool is false.
@@ -287,6 +295,7 @@ func (c *catalog) compile(body map[string]any) (*budget, error) {
 	if b.name == "" {
 		return nil, fmt.Errorf("name is required")
 	}
+	b.spendID = uuid.NewSHA1(spendNamespace, []byte(b.name))
 	switch b.period {
 	case periodDay, periodWeek, periodMonth:
 	default:

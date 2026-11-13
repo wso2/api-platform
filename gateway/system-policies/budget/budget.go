@@ -28,8 +28,9 @@
 // reverse chain order, so when the response ends llm-cost has published x-llm-cost and the
 // policy charges it. It never reads a body.
 //
-// Spend is kept in memory in this policy engine. It resets on restart and is not shared with
-// other gateways; the shared spend tracker replaces it.
+// Spend is counted in the gateway's shared counters (sdk/core/counters): the policy engine
+// reports it to its gateway-controller about once a second and reads back the totals, which
+// every gateway sharing the controller's Redis sees. Admission never waits on the network.
 package budget
 
 import (
@@ -88,7 +89,7 @@ func newPolicy(source resourceSource) *BudgetSystemPolicy {
 		// The environment declares one variable; it cannot fail at run time.
 		panic("budget: creating the CEL environment: " + err.Error())
 	}
-	return &BudgetSystemPolicy{catalog: c, tracker: newTracker(), now: time.Now}
+	return &BudgetSystemPolicy{catalog: c, tracker: newTracker(installedCounters{}), now: time.Now}
 }
 
 // GetPolicy returns the shared instance. The policy takes no parameters.
@@ -210,15 +211,14 @@ func (p *BudgetSystemPolicy) charge(shared *policy.SharedContext) map[string]any
 	}
 	delete(shared.Metadata, metadataAllowances)
 
-	now := p.now().UTC()
 	status, _ := shared.Metadata[metadataLLMCostStatus].(string)
 	costText, _ := shared.Metadata[metadataLLMCost].(string)
 	cost, err := strconv.ParseFloat(costText, 64)
 	if status != costStatusCalculated || err != nil || cost < 0 || math.IsNaN(cost) || math.IsInf(cost, 0) {
-		p.tracker.countUnpriced(keys, now)
+		p.tracker.countUnpriced(keys)
 		return map[string]any{analyticsBudgetCostStatus: unpricedReason(shared)}
 	}
-	p.tracker.charge(keys, cost, now)
+	p.tracker.charge(keys, cost)
 	return map[string]any{analyticsBudgetCostStatus: costStatusPriced}
 }
 
