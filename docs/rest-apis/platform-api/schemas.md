@@ -2651,7 +2651,7 @@ Standard error response
 |status|string|true|none|Always the literal "error".|
 |code|string|true|none|Stable, machine-readable error code from the error catalog, in the form `<DOMAIN>_<REASON>` (e.g. `REST_API_NOT_FOUND`). Clients and agents should branch on this, not on the HTTP status.|
 |message|string|true|none|Human-readable description of the error.|
-|errors|[[FieldError](#schemafielderror)]|false|none|Per-field validation failures. Present when the error is a validation failure.|
+|errors|[[FieldError](#schemafielderror)]|false|none|Per-field failures. Present when the error is a validation failure, or a conflict one field caused, such as an id already in use.|
 |details|object|false|none|Optional structured metadata specific to this error condition (e.g. the resources referencing a secret that blocked its deletion). Shape varies by `code`; absent when not applicable.|
 |trackingId|string(uuid)|false|none|Correlation ID for server-side failures. Present only on 5xx responses; quote it when reporting the error so operators can find the corresponding server log entry.|
 

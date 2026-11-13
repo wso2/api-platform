@@ -38,6 +38,7 @@ import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
+import { useRestApiIdAvailability } from '@/api/resources/restApis';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { versionLabel as toVersionSegment } from '@/utils/versionLabel';
@@ -78,8 +79,7 @@ export type GeneralCreateApiFormProps = {
   /**
    * Reports whether submitting is currently blocked by a taken identifier, for
    * a host that renders its own Create button (`hideActions`) and should
-   * disable it exactly as this form's own button is disabled. Only a profile
-   * with a live identifier check ever blocks.
+   * disable it exactly as this form's own button is disabled.
    */
   onSubmitBlockedChange?: (blocked: boolean) => void;
   /**
@@ -158,10 +158,6 @@ const messages = defineMessages({
   identifierErrorRequired: {
     id: 'api.create.generalForm.identifier.error.required',
     defaultMessage: 'Enter an identifier.',
-  },
-  identifierErrorTaken: {
-    id: 'api.create.generalForm.identifier.error.taken',
-    defaultMessage: 'This project already has an API with that identifier.',
   },
   identifierErrorTooLong: {
     id: 'api.create.generalForm.identifier.error.tooLong',
@@ -298,7 +294,8 @@ export type CreateApiFormProfile = {
   /**
    * A live identifier check, called on every render with the debounced
    * candidate (`''` while there is none). Must be a hook and stable for the
-   * form's lifetime. Omitted, a taken identifier is caught by the server.
+   * form's lifetime. Omitted, a taken identifier is caught by the server. The
+   * handle is unique across the organization, so the check must be too.
    */
   useIdentifierAvailability?: (candidate: string) => IdentifierAvailability;
 };
@@ -312,6 +309,7 @@ export const REST_FORM_PROFILE: CreateApiFormProfile = {
   endpointErrorRequired: messages.targetUrlErrorRequired,
   endpointLabel: messages.targetUrlLabel,
   endpointSection: messages.endpointSection,
+  useIdentifierAvailability: useRestApiIdAvailability,
 };
 
 /** Stands in for a profile without a live identifier check, so the hook call count never changes. */

@@ -817,6 +817,14 @@ var reservedAPIHandles = map[string]bool{
 // Validation methods
 
 // validateCreateAPIRequest checks the validity of the create API request
+const restAPIIDExistsMessage = "An API with this id already exists."
+
+// idTaken pins a conflict over an id already in use to the request's id field, so a client
+// shows it on the input that caused it rather than as a message about the whole request.
+func idTaken(err *apperror.Error, message string) *apperror.Error {
+	return err.WithFieldErrors([]apperror.FieldError{{Field: "id", Message: message}})
+}
+
 func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, orgUUID string) error {
 	if req.Id != nil && *req.Id != "" {
 		// Validate user-provided handle
@@ -834,7 +842,7 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 			return err
 		}
 		if handleExists {
-			return apperror.RESTAPIExists.New("An API with this id already exists.")
+			return idTaken(apperror.RESTAPIExists.New(restAPIIDExistsMessage), restAPIIDExistsMessage)
 		}
 	}
 	if req.DisplayName == "" {

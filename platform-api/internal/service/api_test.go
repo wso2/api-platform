@@ -18,6 +18,7 @@
 package service
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -946,6 +947,35 @@ func TestAPIService_GetAPIVersions(t *testing.T) {
 }
 
 // Guards route shadowing: an API with the handle "versions" would be unreachable on GET.
+// A form shows a conflict on the input that caused it, so an id already in use names the id
+// field, and a name and version already in use does not:
+// https://github.com/wso2/api-platform/issues/4139
+func TestValidateCreateAPIRequest_PinsATakenIDToTheIDField(t *testing.T) {
+	handle := "orders"
+	req := &api.CreateRESTAPIRequest{
+		Id:          &handle,
+		DisplayName: "Orders",
+		Context:     "/orders",
+		Version:     "v1",
+		ProjectId:   "test-project",
+	}
+
+	service := &APIService{apiRepo: &mockAPIRepository{handleExistsResult: true}, identity: newTestIdentityService()}
+	var appErr *apperror.Error
+	if err := service.validateCreateAPIRequest(req, "org-1"); !errors.As(err, &appErr) || !apperror.RESTAPIExists.Is(err) {
+		t.Fatalf("validateCreateAPIRequest() error = %v, want %s", err, apperror.CodeRESTAPIExists)
+	}
+	want := []apperror.FieldError{{Field: "id", Message: restAPIIDExistsMessage}}
+	if !reflect.DeepEqual(appErr.FieldErrors, want) {
+		t.Errorf("field errors = %+v, want %+v", appErr.FieldErrors, want)
+	}
+
+	service = &APIService{apiRepo: &mockAPIRepository{nameVersionExistsResult: true}, identity: newTestIdentityService()}
+	if err := service.validateCreateAPIRequest(req, "org-1"); !errors.As(err, &appErr) || len(appErr.FieldErrors) != 0 {
+		t.Errorf("a name and version conflict = %v with field errors %+v, want none", err, appErr.FieldErrors)
+	}
+}
+
 func TestValidateCreateAPIRequest_RejectsReservedHandle(t *testing.T) {
 	service := &APIService{
 		apiRepo:     &mockAPIRepository{},

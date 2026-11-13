@@ -423,9 +423,6 @@
   "api.create.generalForm.identifier.error.required": {
     "defaultMessage": "Enter an identifier."
   },
-  "api.create.generalForm.identifier.error.taken": {
-    "defaultMessage": "This project already has an API with that identifier."
-  },
   "api.create.generalForm.identifier.error.tooLong": {
     "defaultMessage": "Use {max} characters or fewer."
   },

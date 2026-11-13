@@ -18,6 +18,7 @@
 
 import { queryOptions } from '@tanstack/react-query';
 
+import { isApiError } from '../../core/errors';
 import { shouldRetry, staleTimes } from '../../core/queryClient';
 import { createResourceKeys, type OrgScope } from '../../core/queryKeys';
 import {
@@ -54,6 +55,26 @@ export const restApiQueries = {
     queryOptions({
       queryKey: restApiKeys.detail(org, restApiId),
       queryFn: ({ signal }) => getRestApi(restApiId, { orgId: org, signal }),
+      staleTime: staleTimes.standard,
+    }),
+
+  /**
+   * Whether `restApiId` is free as a handle in the organization: `true` free,
+   * `false` taken. A 404 is the free answer, so it is not an error. Kept under
+   * the candidate's own detail key, so creating that API evicts it.
+   */
+  availability: (org: OrgScope, restApiId: string) =>
+    queryOptions({
+      queryKey: restApiKeys.child(org, restApiId, 'availability'),
+      queryFn: async ({ signal }) => {
+        try {
+          await getRestApi(restApiId, { orgId: org, signal });
+          return false;
+        } catch (error) {
+          if (isApiError(error) && error.isNotFound) return true;
+          throw error;
+        }
+      },
       staleTime: staleTimes.standard,
     }),
 

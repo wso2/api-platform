@@ -163,6 +163,25 @@ export const resource = <T>(
     return HttpResponse.json(body as never, { status: options.status ?? 200 });
   });
 
+/**
+ * A detail route that knows only `ids`: each answers 200 with `{ id }`, any
+ * other id the spec's 404. `path` ends in one `:param` segment, the id.
+ */
+export const knownIds = (
+  path: string,
+  ids: string[],
+  options: WithRecorder = {}
+): HttpHandler =>
+  mswHttp.get(apiUrl(path), async ({ params, request }) => {
+    await options.record?.capture(request);
+    const id = String(Object.values(params).at(-1));
+    if (ids.includes(id)) return HttpResponse.json({ id } as never);
+    return HttpResponse.json(
+      { status: 'error', code: 'NOT_FOUND', message: 'The resource was not found.' } as never,
+      { status: 404 }
+    );
+  });
+
 /** A write that echoes back the created or updated resource. */
 export const accepts = <T>(
   method: Exclude<Method, 'get'>,
