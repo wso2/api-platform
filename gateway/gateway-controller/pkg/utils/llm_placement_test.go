@@ -51,6 +51,7 @@ func placementFixture(t *testing.T, withFailover bool) (api.RestAPI, map[string]
 			Id:          "anthropic-provider",
 			Transformer: &api.LLMProxyTransformer{Type: "openai-to-anthropic", Version: "v1"},
 			Auth:        &api.LLMUpstreamAuth{Type: api.LLMUpstreamAuthTypeApiKey, Value: &key, Header: &hdr},
+			Policies:    &[]api.Policy{{Name: "add-header", Version: "v1"}},
 		}},
 	}
 	if withFailover {
@@ -128,4 +129,73 @@ func TestProxyAttachesFailover_SeesBothAttachmentLevels(t *testing.T) {
 	require.False(t, proxyAttachesFailover(api.LLMProxyConfigData{
 		GlobalPolicies: &[]api.Policy{{Name: "model-round-robin"}},
 	}), "an unrelated policy must not count")
+}
+
+// FR-012h. With no failover the publisher's OWN per-provider policies move downstream too, and
+// the proxy generates no per-attempt chain at all — so no cluster carries an ext_proc filter.
+//
+// "Once per upstream attempt" still holds: there is one attempt, so it is the same statement as
+// once per request. "Only on attempts routed to this provider" holds through the execution
+// condition, the same gate the transformer and credential already use downstream.
+func TestPlacement_NoFailoverMovesAuthoredProviderPoliciesDownstreamToo(t *testing.T) {
+	out, _ := placementFixture(t, false)
+
+	require.NotZero(t, countDownstream(out, "add-header"),
+		"an authored per-provider policy must run downstream when there is no failover")
+
+	// Gated, not global: it must not run for requests routed to a different provider.
+	var found *api.Policy
+	for i := range out.Spec.Operations {
+		if out.Spec.Operations[i].Policies == nil {
+			continue
+		}
+		for j, p := range *out.Spec.Operations[i].Policies {
+			if p.Name == "add-header" {
+				found = &(*out.Spec.Operations[i].Policies)[j]
+			}
+		}
+	}
+	require.NotNil(t, found, "authored policy not found on any operation")
+	require.NotNil(t, found.ExecutionCondition, "it must carry a provider gate")
+	require.Contains(t, *found.ExecutionCondition, "selected_provider",
+		"the gate must scope it to the provider it was authored under")
+}
+
+// FR-039 in the downstream placement: the credential is appended LAST, so an authored policy
+// cannot be positioned after it and read the key out of the request headers.
+func TestPlacement_NoFailoverKeepsAuthoredPoliciesBeforeTheCredential(t *testing.T) {
+	out, _ := placementFixture(t, false)
+
+	indexOf := func(ops []api.Operation, name string) int {
+		for _, op := range ops {
+			if op.Policies == nil {
+				continue
+			}
+			for i, p := range *op.Policies {
+				if p.Name == name {
+					return i
+				}
+			}
+		}
+		return -1
+	}
+
+	authored := indexOf(out.Spec.Operations, "add-header")
+	require.NotEqual(t, -1, authored, "authored policy must be present")
+
+	// The credential policy's name comes from the api-key auth builder; locate whatever was
+	// appended last for the provider and assert the authored one precedes it.
+	transformer := indexOf(out.Spec.Operations, "openai-to-anthropic")
+	require.NotEqual(t, -1, transformer, "transformer must be present downstream")
+	require.Less(t, authored, transformer,
+		"authored per-provider policies must run BEFORE the transformer and the credential")
+}
+
+// With failover attached the authored policy belongs to the per-attempt chain instead, and must
+// NOT also be left downstream — two copies would run it twice for the serving attempt.
+func TestPlacement_FailoverKeepsAuthoredProviderPoliciesOffTheDownstreamChain(t *testing.T) {
+	out, _ := placementFixture(t, true)
+
+	require.Zero(t, countDownstream(out, "add-header"),
+		"with failover attached the authored policy runs per attempt, not downstream")
 }

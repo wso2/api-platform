@@ -6813,6 +6813,14 @@ components:
             The gateway appends this provider's transformer and then its authentication
             after these policies, so a policy listed here never observes the credential.
 
+            WHERE these run follows what the API attaches, and the distinction is only
+            observable to a policy that inspects it. When `model-failover` is attached the
+            gateway runs them in this provider's per-attempt chain, where the reserved
+            `wso2.attempt` namespace names the attempt and its target. With no failover the
+            request makes exactly one attempt, so they run on the ordinary request chain,
+            still only for requests routed to this provider, and `wso2.attempt` is absent —
+            that namespace marks the per-attempt position, and the position is not in use.
+
             `model-failover` must NOT be listed here. It is attached once — in
             operationPolicies, or at the API level — and the gateway adds whatever per-attempt
             work it needs. A policy in this list runs after the attempt's target has already
@@ -6864,6 +6872,14 @@ components:
 
             The gateway appends this provider's transformer and then its authentication
             after these policies, so a policy listed here never observes the credential.
+
+            WHERE these run follows what the API attaches, and the distinction is only
+            observable to a policy that inspects it. When `model-failover` is attached the
+            gateway runs them in this provider's per-attempt chain, where the reserved
+            `wso2.attempt` namespace names the attempt and its target. With no failover the
+            request makes exactly one attempt, so they run on the ordinary request chain,
+            still only for requests routed to this provider, and `wso2.attempt` is absent —
+            that namespace marks the per-attempt position, and the position is not in use.
 
             `model-failover` must NOT be listed here. It is attached once — in
             operationPolicies, or at the API level — and the gateway adds whatever per-attempt

@@ -505,21 +505,40 @@ func (t *LLMProviderTransformer) transformProxyWithUpstreamPolicies(proxy *api.L
 	// decide it is already here. The flag that used to live here never enabled per-attempt
 	// placement either — the chains were built unconditionally, so it only deleted the
 	// downstream copy, and with it off the shipped default applied both.
-	if proxyAttachesFailover(proxy.Spec) {
-		transformerPolicies = nil
-		upstreamAuthPolicies = nil
-	} else {
-		// Nothing per-attempt to place. Clearing the map is what stops
-		// buildUpstreamPolicyChains generating a chain, and therefore what stops
-		// attachUpstreamChainTo putting an ext_proc filter on a cluster that has no
-		// per-attempt work — a gRPC round trip per request for nothing.
-		//
-		// Authored providers[].policies are unaffected: those are per-attempt by definition
-		// and reach the chain through the attachment, not through this map.
+	// A proxy with no failover makes exactly one attempt, so EVERY per-provider policy —
+	// the publisher's own included — can run downstream and the upstream filter is not needed
+	// at all. "Once per upstream attempt" and "once per request" are the same statement when
+	// there is one attempt, and "only on attempts routed to this provider" is the execution
+	// condition these already carry. Probe E3 measured the filter at ~0.6ms warm and 17ms on a
+	// cold stream, per request, which is what that equivalence buys back.
+	//
+	// Nothing synthesises a wso2.attempt namespace for the downstream chain. Its PRESENCE is
+	// how a policy detects that it is at the per-attempt position, so writing it where that is
+	// untrue would make every policy branching on it take the wrong branch — the failover
+	// policy does exactly that. Its absence downstream is accurate.
+	if !proxyAttachesFailover(proxy.Spec) {
+		authored, err := t.providerPoliciesDownstream(proxy.Spec)
+		if err != nil {
+			return nil, nil, err
+		}
+		// BEFORE the transformers and the credential, which are appended below. Order is the
+		// security property: a policy placed after the credential could read it out of the
+		// request headers (FR-039), and that must hold in this placement too.
+		for i := range ops {
+			for _, p := range authored {
+				appendOperationPolicy(&ops[i], p)
+			}
+		}
+		// Nothing left for the per-attempt position. Clearing the map is what stops
+		// buildUpstreamPolicyChains generating a chain, and so what stops
+		// attachUpstreamChainTo putting an ext_proc filter on a cluster with no work.
 		for name, entry := range perProvider {
 			entry.Transformer, entry.Auth = nil, nil
 			perProvider[name] = entry
 		}
+	} else {
+		transformerPolicies = nil
+		upstreamAuthPolicies = nil
 	}
 
 	// Translators must run before upstream auth so the request is rewritten into
@@ -576,6 +595,35 @@ func (t *LLMProviderTransformer) transformProxyWithUpstreamPolicies(proxy *api.L
 
 	output.Spec = spec
 	return output, perProvider, nil
+}
+
+// providerPoliciesDownstream renders each provider's authored policies for the DOWNSTREAM chain,
+// gated so they still run only for requests routed to that provider (FR-012h).
+//
+// Used only when the proxy attaches no failover. The gate is the same expression the transformer
+// and credential already carry downstream, so "only on attempts routed to this provider" holds by
+// the same mechanism rather than a new one.
+//
+// Read from the NORMALISED attachments so both provider shapes reach this identically — reading
+// a raw shape is what once left canonically-authored proxies with no per-attempt chain at all.
+func (t *LLMProviderTransformer) providerPoliciesDownstream(spec api.LLMProxyConfigData) ([]api.Policy, error) {
+	attachments, err := models.NormaliseLLMProxyAttachments(spec)
+	if err != nil {
+		return nil, err
+	}
+	var out []api.Policy
+	for _, ap := range attachments {
+		if ap.Policies == nil {
+			continue
+		}
+		for _, authored := range *ap.Policies {
+			condition := selectedProviderExecutionCondition(ap.EffectiveName(), ap.IsPrimary)
+			p := authored
+			p.ExecutionCondition = &condition
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 // proxyAttachesFailover reports whether this proxy attaches model-failover anywhere, which is

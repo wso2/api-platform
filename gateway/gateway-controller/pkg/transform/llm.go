@@ -164,10 +164,16 @@ func (t *LLMTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeDep
 			}
 		}
 
-		rdc.UpstreamPolicyChains = buildUpstreamPolicyChains(&proxy.Spec, rdc.ProviderClusters,
-			transformerFor(upstreamProviderPolicies),
-			authFor(upstreamProviderPolicies),
-			perAttemptPolicies(restAPI.Spec.Policies, &restAPI.Spec.Operations))
+		// Only when something actually runs per attempt (FR-012h). A proxy with no failover
+		// makes one attempt, so every per-provider policy was placed downstream instead and
+		// there is nothing here to build — generating an empty-but-present chain would put an
+		// ext_proc filter on the cluster and charge a gRPC round trip per request for it.
+		if perAttempt := perAttemptPolicies(restAPI.Spec.Policies, &restAPI.Spec.Operations); len(perAttempt) > 0 {
+			rdc.UpstreamPolicyChains = buildUpstreamPolicyChains(&proxy.Spec, rdc.ProviderClusters,
+				transformerFor(upstreamProviderPolicies),
+				authFor(upstreamProviderPolicies),
+				perAttempt)
+		}
 	}
 
 	return rdc, nil
