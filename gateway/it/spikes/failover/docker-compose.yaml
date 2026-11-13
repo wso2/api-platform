@@ -27,6 +27,7 @@ services:
     # Probe E only. Statically linked, cross-compiled on the host:
     #   cd extproc && GOWORK=off GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o extproc-server .
     image: alpine:3.20
+    environment: { PROBE_BODY_MODE: "${PROBE_BODY_MODE:-on}" }
     volumes: [ "./extproc/extproc-server:/extproc-server:ro" ]
     command: /extproc-server
     networks: { probe: { ipv4_address: 172.28.0.20 } }

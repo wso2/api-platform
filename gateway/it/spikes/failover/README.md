@@ -33,6 +33,11 @@ docker compose down
 Discover the address strings Envoy matches against by running with `ENVOY_LOG=trace`
 and grepping for `Looking up`.
 
+`PROBE_BODY_MODE=off` stops the probe server asking Envoy for a buffered request body. Leave it
+on for the body probes (I1-I4); turn it off for anything that only asks "was this position
+invoked", because the server never answers the body message and the attempt otherwise hangs to
+`per_try_timeout` and returns 504 — which looks like a broken harness rather than a result.
+
 | File | Probes |
 |---|---|
 | `a1-ordering.yaml` | A1 ordering, A2 traversal, A3 overrun |
@@ -41,6 +46,8 @@ and grepping for `Looking up`.
 | `b1-refresh-on.yaml` | B1 walking, B2 override, B4 overrun |
 | `b3-refresh-off.yaml` | B3 missing `refresh_cluster_on_retry` |
 | `c-body-a.yaml` / `c-body-b.yaml` | C body-mutation preservation |
+| `t2-connect-refused.yaml` | T2 upstream filter vs a REFUSED attempt (provider_a on a closed port) |
+| `t3-all-refused.yaml` | T2 variant: every member refuses |
 
 Probe E needs a cross-compiled ext_proc server, which is **not committed** (it is a 19 MB
 build artifact). Build it before running that probe:
