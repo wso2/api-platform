@@ -69,7 +69,7 @@ func TestBlankPolicySecretsEmptiesDeclaredParameters(t *testing.T) {
 	params := map[string]interface{}{"awsSecretAccessKey": "a-stored-secret", "region": "us-east-1"}
 	policies := []api.Policy{{Name: "aws-authentication", Version: "v0", Params: &params}}
 
-	blankPolicySecrets(awsResolver(), &policies)
+	BlankPolicySecrets(awsResolver(), &policies)
 
 	got := paramsOf(t, policies[0])
 	if got["awsSecretAccessKey"] != "" {
@@ -87,7 +87,7 @@ func TestBlankPolicySecretsLeavesUndeclaredPoliciesAlone(t *testing.T) {
 	params := map[string]interface{}{"allowOrigins": "*"}
 	policies := []api.Policy{{Name: "cors", Version: "v1", Params: &params}}
 
-	blankPolicySecrets(awsResolver(), &policies)
+	BlankPolicySecrets(awsResolver(), &policies)
 
 	if paramsOf(t, policies[0])["allowOrigins"] != "*" {
 		t.Error("a policy with no write-only declarations was altered")
@@ -119,7 +119,7 @@ func TestPreservePolicySecretsCarriesStoredValueForward(t *testing.T) {
 	stored := []model.Policy{{Name: "aws-authentication", Version: "v0", Params: &storedParams}}
 	updated := []model.Policy{{Name: "aws-authentication", Version: "v0", Params: &updatedParams}}
 
-	preservePolicySecrets(awsResolver(), stored, updated)
+	PreservePolicySecrets(awsResolver(), stored, updated)
 
 	if updatedParams["awsSecretAccessKey"] != "a-stored-secret" {
 		t.Errorf("awsSecretAccessKey = %v, want the stored value", updatedParams["awsSecretAccessKey"])
@@ -137,7 +137,7 @@ func TestPreservePolicySecretsSkipsAVersionChange(t *testing.T) {
 	stored := []model.Policy{{Name: "aws-authentication", Version: "v0", Params: &storedParams}}
 	updated := []model.Policy{{Name: "aws-authentication", Version: "v1", Params: &updatedParams}}
 
-	preservePolicySecrets(awsResolver(), stored, updated)
+	PreservePolicySecrets(awsResolver(), stored, updated)
 
 	if updatedParams["awsSecretAccessKey"] != "" {
 		t.Errorf("awsSecretAccessKey = %v, want it left empty across a version change",
@@ -152,7 +152,7 @@ func TestPreservePolicySecretsRebuildsAnAbsentParameterMap(t *testing.T) {
 	stored := []model.Policy{{Name: "aws-authentication", Version: "v0", Params: &storedParams}}
 	updated := []model.Policy{{Name: "aws-authentication", Version: "v0"}}
 
-	preservePolicySecrets(awsResolver(), stored, updated)
+	PreservePolicySecrets(awsResolver(), stored, updated)
 
 	if updated[0].Params == nil {
 		t.Fatal("params were left nil; the stored secret had nowhere to go")
@@ -264,9 +264,9 @@ func TestPreserveAPIPolicySecretsMatchesOperationsOnMethodAndPath(t *testing.T) 
 // A service constructed without a store resolves nothing rather than failing.
 // Server startup always wires one; this is the path tests take.
 func TestPolicySecretResolverWithoutAStoreResolvesNothing(t *testing.T) {
-	resolver, err := policySecretResolver(nil, "org-a")
+	resolver, err := PolicySecretResolver(nil, "org-a")
 	if err != nil {
-		t.Fatalf("policySecretResolver returned %v", err)
+		t.Fatalf("PolicySecretResolver returned %v", err)
 	}
 	if paths := resolver.WriteOnlyPaths("aws-authentication", "v0"); paths != nil {
 		t.Errorf("paths = %v, want none", paths)
@@ -334,5 +334,78 @@ func TestSameMethodSetIgnoresOrderAndRepetition(t *testing.T) {
 	}
 	if sameMethodSet([]string{"GET"}, nil) {
 		t.Error("an attachment naming no method matched one naming GET")
+	}
+}
+
+// An Agent proxy attaches policies in three places. A traversal that reached
+// only the protocol-wide list would return the other two in full.
+func TestBlankAgentProxyPolicySecretsCoversAllThreeAttachmentPoints(t *testing.T) {
+	secret := func() *map[string]interface{} {
+		return &map[string]interface{}{"awsSecretAccessKey": "a-stored-secret"}
+	}
+	policy := func() *[]api.Policy {
+		return &[]api.Policy{{Name: "aws-authentication", Version: "v0", Params: secret()}}
+	}
+	operations := []api.A2AOperation{{Name: "message/send", Policies: policy()}}
+	resp := &api.A2AAgentProxy{A2a: api.A2AProtocolConfig{
+		OperationConfigs: api.A2AOperationConfigs{
+			Policies:   policy(),
+			Operations: &operations,
+		},
+		AgentCard: &api.AgentCardConfig{Public: &api.PublicAgentCard{Policies: policy()}},
+	}}
+
+	svc := &AgentProxyService{}
+	svc.SetPolicySecrets(awsManifestStore())
+	if err := svc.blankAgentProxyPolicySecrets("org-a", resp); err != nil {
+		t.Fatalf("blankAgentProxyPolicySecrets returned %v", err)
+	}
+
+	checks := map[string]*[]api.Policy{
+		"protocol-wide": resp.A2a.OperationConfigs.Policies,
+		"operation":     (*resp.A2a.OperationConfigs.Operations)[0].Policies,
+		"agent card":    resp.A2a.AgentCard.Public.Policies,
+	}
+	for where, policies := range checks {
+		if got := (*(*policies)[0].Params)["awsSecretAccessKey"]; got != "" {
+			t.Errorf("%s secret = %v, want the empty string", where, got)
+		}
+	}
+}
+
+// Operations are matched by name, so reordering them does not move a
+// credential from one operation to another.
+func TestPreserveAgentProxyPolicySecretsMatchesOperationsByName(t *testing.T) {
+	stored := func(value string) []model.Policy {
+		params := map[string]interface{}{"awsSecretAccessKey": value}
+		return []model.Policy{{Name: "aws-authentication", Version: "v0", Params: &params}}
+	}
+	existing := &model.A2AProtocolConfig{OperationConfigs: model.A2AOperationConfigs{
+		Operations: []model.A2AOperation{
+			{Name: "message/send", Policies: stored("send-secret")},
+			{Name: "message/stream", Policies: stored("stream-secret")},
+		},
+	}}
+	updated := &model.A2AProtocolConfig{OperationConfigs: model.A2AOperationConfigs{
+		Operations: []model.A2AOperation{
+			{Name: "message/stream", Policies: stored("")},
+			{Name: "message/send", Policies: stored("")},
+		},
+	}}
+
+	svc := &AgentProxyService{}
+	svc.SetPolicySecrets(awsManifestStore())
+	if err := svc.preserveAgentProxyPolicySecrets("org-a", existing, updated); err != nil {
+		t.Fatalf("preserveAgentProxyPolicySecrets returned %v", err)
+	}
+
+	got := func(i int) interface{} {
+		return (*updated.OperationConfigs.Operations[i].Policies[0].Params)["awsSecretAccessKey"]
+	}
+	if got(0) != "stream-secret" {
+		t.Errorf("message/stream = %v, want the value stored against it", got(0))
+	}
+	if got(1) != "send-secret" {
+		t.Errorf("message/send = %v, want the value stored against it", got(1))
 	}
 }

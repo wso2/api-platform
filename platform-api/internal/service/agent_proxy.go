@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/policysecret"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
@@ -76,7 +77,14 @@ type AgentProxyService struct {
 	// cardCache holds display-fetch results for the stored-handle form only.
 	// It is never consulted by the builder, the importer or the deployment
 	// path — those read stored configuration.
-	cardCache *agentCardCache
+	cardCache     *agentCardCache
+	policySecrets *policysecret.Store
+}
+
+// SetPolicySecrets injects the store that resolves which policy parameters a
+// policy definition declares write-only. Wired at startup.
+func (s *AgentProxyService) SetPolicySecrets(store *policysecret.Store) {
+	s.policySecrets = store
 }
 
 // NewAgentProxyService creates a new AgentProxyService instance.
@@ -294,6 +302,12 @@ func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A
 	if existing.Origin != constants.OriginDP {
 		configuration = dto.AgentProxyConfigurationFromRequest(req)
 		configuration.Upstream = *dto.PreserveAgentProxyUpstreamAuth(&existingUpstream, &configuration.Upstream)
+		// Policy credentials are withheld by GET just as the upstream one is,
+		// so they are carried forward here rather than stored back empty.
+		if err := s.preserveAgentProxyPolicySecrets(orgUUID,
+			existing.Configuration.A2A, configuration.A2A); err != nil {
+			return nil, err
+		}
 		if err := validateEffectiveUpstreamAuth(&configuration.Upstream); err != nil {
 			return nil, err
 		}
@@ -651,6 +665,9 @@ func (s *AgentProxyService) toAPI(orgUUID string, m *model.AgentProxy) (*api.A2A
 	resp := dto.AgentProxyToResponse(m, projectHandle, mapAssociatedGatewaysModelToAPI(m.AssociatedGateways))
 	if resp == nil {
 		return nil, nil
+	}
+	if err := s.blankAgentProxyPolicySecrets(orgUUID, resp); err != nil {
+		return nil, err
 	}
 	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
 		return nil, err

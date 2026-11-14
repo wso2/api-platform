@@ -43,13 +43,13 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/policysecret"
 )
 
-// policySecretResolver returns the write-only resolver for an organization.
+// PolicySecretResolver returns the write-only resolver for an organization.
 //
 // A store that was never wired resolves nothing. That is for tests constructing
 // a service directly; server startup always wires one, and a read that reaches
 // a real store whose manifests cannot be read fails rather than answering with
 // an empty set — see policysecret.Store.For.
-func policySecretResolver(store *policysecret.Store, orgUUID string) (policysecret.Resolver, error) {
+func PolicySecretResolver(store *policysecret.Store, orgUUID string) (policysecret.Resolver, error) {
 	if store == nil {
 		return policysecret.Nop(), nil
 	}
@@ -58,9 +58,9 @@ func policySecretResolver(store *policysecret.Store, orgUUID string) (policysecr
 
 // Response side: empty every declared write-only parameter in a mapped payload.
 
-// blankPolicySecrets empties the declared write-only parameters of a policy
+// BlankPolicySecrets empties the declared write-only parameters of a policy
 // list on its way out.
-func blankPolicySecrets(resolver policysecret.Resolver, policies *[]api.Policy) {
+func BlankPolicySecrets(resolver policysecret.Resolver, policies *[]api.Policy) {
 	if policies == nil {
 		return
 	}
@@ -126,9 +126,9 @@ func blankLLMPolicySecrets(resolver policysecret.Resolver, policies *[]api.LLMPo
 // This mirrors the guard preserveAPIUpstreamAuth applies to an upstream
 // credential when the auth type changes.
 
-// preservePolicySecrets carries stored write-only parameters onto an updated
+// PreservePolicySecrets carries stored write-only parameters onto an updated
 // policy list.
-func preservePolicySecrets(resolver policysecret.Resolver, stored, updated []model.Policy) {
+func PreservePolicySecrets(resolver policysecret.Resolver, stored, updated []model.Policy) {
 	for i := range updated {
 		paths := resolver.WriteOnlyPaths(updated[i].Name, updated[i].Version)
 		if len(paths) == 0 {
@@ -306,11 +306,11 @@ func (s *LLMProviderService) blankProviderPolicySecrets(orgUUID string, resp *ap
 	if resp == nil {
 		return nil
 	}
-	resolver, err := policySecretResolver(s.policySecrets, orgUUID)
+	resolver, err := PolicySecretResolver(s.policySecrets, orgUUID)
 	if err != nil {
 		return err
 	}
-	blankPolicySecrets(resolver, resp.GlobalPolicies)
+	BlankPolicySecrets(resolver, resp.GlobalPolicies)
 	blankOperationPolicySecrets(resolver, resp.OperationPolicies)
 	blankLLMPolicySecrets(resolver, resp.Policies)
 	return nil
@@ -321,11 +321,11 @@ func (s *LLMProxyService) blankProxyPolicySecrets(orgUUID string, resp *api.LLMP
 	if resp == nil {
 		return nil
 	}
-	resolver, err := policySecretResolver(s.policySecrets, orgUUID)
+	resolver, err := PolicySecretResolver(s.policySecrets, orgUUID)
 	if err != nil {
 		return err
 	}
-	blankPolicySecrets(resolver, resp.GlobalPolicies)
+	BlankPolicySecrets(resolver, resp.GlobalPolicies)
 	blankOperationPolicySecrets(resolver, resp.OperationPolicies)
 	return nil
 }
@@ -355,7 +355,7 @@ func (s *LLMProviderService) preserveProviderPolicySecrets(orgUUID string,
 	if existing == nil || updated == nil {
 		return nil
 	}
-	resolver, err := policySecretResolver(s.policySecrets, orgUUID)
+	resolver, err := PolicySecretResolver(s.policySecrets, orgUUID)
 	if err != nil {
 		return err
 	}
@@ -373,7 +373,7 @@ func (s *LLMProxyService) preserveProxyPolicySecrets(orgUUID string,
 	if existing == nil || updated == nil {
 		return nil
 	}
-	resolver, err := policySecretResolver(s.policySecrets, orgUUID)
+	resolver, err := PolicySecretResolver(s.policySecrets, orgUUID)
 	if err != nil {
 		return err
 	}
@@ -395,21 +395,21 @@ func (s *APIService) blankAPIPolicySecrets(orgUUID string, resp *api.RESTAPI) er
 	if resp == nil {
 		return nil
 	}
-	resolver, err := policySecretResolver(s.policySecrets, orgUUID)
+	resolver, err := PolicySecretResolver(s.policySecrets, orgUUID)
 	if err != nil {
 		return err
 	}
-	blankPolicySecrets(resolver, resp.Policies)
+	BlankPolicySecrets(resolver, resp.Policies)
 	if resp.Operations != nil {
 		operations := *resp.Operations
 		for i := range operations {
-			blankPolicySecrets(resolver, operations[i].Request.Policies)
+			BlankPolicySecrets(resolver, operations[i].Request.Policies)
 		}
 	}
 	if resp.Channels != nil {
 		channels := *resp.Channels
 		for i := range channels {
-			blankPolicySecrets(resolver, channels[i].Request.Policies)
+			BlankPolicySecrets(resolver, channels[i].Request.Policies)
 		}
 	}
 	return nil
@@ -425,11 +425,11 @@ func (s *APIService) preserveAPIPolicySecrets(orgUUID string, existing, updated 
 	if existing == nil || updated == nil {
 		return nil
 	}
-	resolver, err := policySecretResolver(s.policySecrets, orgUUID)
+	resolver, err := PolicySecretResolver(s.policySecrets, orgUUID)
 	if err != nil {
 		return err
 	}
-	preservePolicySecrets(resolver, existing.Configuration.Policies, updated.Configuration.Policies)
+	PreservePolicySecrets(resolver, existing.Configuration.Policies, updated.Configuration.Policies)
 	for i := range updated.Configuration.Operations {
 		if updated.Configuration.Operations[i].Request == nil {
 			continue
@@ -439,7 +439,7 @@ func (s *APIService) preserveAPIPolicySecrets(orgUUID string, existing, updated 
 		if storedRequest == nil {
 			continue
 		}
-		preservePolicySecrets(resolver,
+		PreservePolicySecrets(resolver,
 			storedRequest.Policies, updated.Configuration.Operations[i].Request.Policies)
 	}
 	for i := range updated.Channels {
@@ -450,7 +450,7 @@ func (s *APIService) preserveAPIPolicySecrets(orgUUID string, existing, updated 
 		if storedRequest == nil {
 			continue
 		}
-		preservePolicySecrets(resolver, storedRequest.Policies, updated.Channels[i].Request.Policies)
+		PreservePolicySecrets(resolver, storedRequest.Policies, updated.Channels[i].Request.Policies)
 	}
 	return nil
 }
@@ -482,6 +482,121 @@ func findStoredChannelRequest(stored []model.Channel,
 		}
 		if request.Method == updated.Method && request.Name == updated.Name {
 			return request
+		}
+	}
+	return nil
+}
+
+// blankMCPProxyPolicySecrets empties the declared write-only parameters in a
+// mapped MCP proxy response.
+func (s *MCPProxyService) blankMCPProxyPolicySecrets(orgUUID string, resp *api.MCPProxy) error {
+	if resp == nil {
+		return nil
+	}
+	resolver, err := PolicySecretResolver(s.policySecrets, orgUUID)
+	if err != nil {
+		return err
+	}
+	BlankPolicySecrets(resolver, resp.Policies)
+	return nil
+}
+
+// preserveMCPProxyPolicySecrets is the MCP proxy update counterpart.
+func (s *MCPProxyService) preserveMCPProxyPolicySecrets(orgUUID string, stored, updated []model.Policy) error {
+	resolver, err := PolicySecretResolver(s.policySecrets, orgUUID)
+	if err != nil {
+		return err
+	}
+	PreservePolicySecrets(resolver, stored, updated)
+	return nil
+}
+
+// blankGraphQLPolicySecrets empties the declared write-only parameters in a
+// mapped GraphQL API response. Both response shapes — the full one and the
+// sdl-less detail — carry the same policy list, so both come through here.
+func (s *GraphQLAPIService) blankGraphQLPolicySecrets(orgUUID string, policies *[]api.Policy) error {
+	resolver, err := PolicySecretResolver(s.policySecrets, orgUUID)
+	if err != nil {
+		return err
+	}
+	BlankPolicySecrets(resolver, policies)
+	return nil
+}
+
+// preserveGraphQLPolicySecrets is the GraphQL API update counterpart.
+func (s *GraphQLAPIService) preserveGraphQLPolicySecrets(orgUUID string, stored, updated []model.Policy) error {
+	resolver, err := PolicySecretResolver(s.policySecrets, orgUUID)
+	if err != nil {
+		return err
+	}
+	PreservePolicySecrets(resolver, stored, updated)
+	return nil
+}
+
+// blankAgentProxyPolicySecrets empties the declared write-only parameters in a
+// mapped Agent proxy response.
+//
+// An Agent proxy attaches policies in three places — the protocol-wide list,
+// one per operation, and the public Agent Card's own list — and a credential
+// set on any of them is still a credential.
+func (s *AgentProxyService) blankAgentProxyPolicySecrets(orgUUID string, resp *api.A2AAgentProxy) error {
+	if resp == nil {
+		return nil
+	}
+	resolver, err := PolicySecretResolver(s.policySecrets, orgUUID)
+	if err != nil {
+		return err
+	}
+	BlankPolicySecrets(resolver, resp.A2a.OperationConfigs.Policies)
+	if resp.A2a.OperationConfigs.Operations != nil {
+		operations := *resp.A2a.OperationConfigs.Operations
+		for i := range operations {
+			BlankPolicySecrets(resolver, operations[i].Policies)
+		}
+	}
+	if resp.A2a.AgentCard != nil && resp.A2a.AgentCard.Public != nil {
+		BlankPolicySecrets(resolver, resp.A2a.AgentCard.Public.Policies)
+	}
+	return nil
+}
+
+// preserveAgentProxyPolicySecrets is the Agent proxy update counterpart.
+//
+// Operations are matched by name, the identity the gateway dispatches on, so
+// reordering them does not move a credential between operations.
+func (s *AgentProxyService) preserveAgentProxyPolicySecrets(orgUUID string,
+	existing, updated *model.A2AProtocolConfig) error {
+	if existing == nil || updated == nil {
+		return nil
+	}
+	resolver, err := PolicySecretResolver(s.policySecrets, orgUUID)
+	if err != nil {
+		return err
+	}
+	PreservePolicySecrets(resolver,
+		existing.OperationConfigs.Policies, updated.OperationConfigs.Policies)
+	for i := range updated.OperationConfigs.Operations {
+		storedOperation := findStoredAgentOperation(
+			existing.OperationConfigs.Operations, updated.OperationConfigs.Operations[i].Name)
+		if storedOperation == nil {
+			continue
+		}
+		PreservePolicySecrets(resolver,
+			storedOperation.Policies, updated.OperationConfigs.Operations[i].Policies)
+	}
+	if existing.AgentCard != nil && existing.AgentCard.Public != nil &&
+		updated.AgentCard != nil && updated.AgentCard.Public != nil {
+		PreservePolicySecrets(resolver,
+			existing.AgentCard.Public.Policies, updated.AgentCard.Public.Policies)
+	}
+	return nil
+}
+
+// findStoredAgentOperation returns the stored operation of the same name.
+func findStoredAgentOperation(stored []model.A2AOperation, name string) *model.A2AOperation {
+	for i := range stored {
+		if stored[i].Name == name {
+			return &stored[i]
 		}
 	}
 	return nil

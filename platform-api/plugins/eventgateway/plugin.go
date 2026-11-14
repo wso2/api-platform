@@ -36,6 +36,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/plugin"
+	"github.com/wso2/api-platform/platform-api/internal/policysecret"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 	eghandler "github.com/wso2/api-platform/platform-api/plugins/eventgateway/handler"
@@ -133,6 +134,13 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 	p.webbrokerAPIRepo = webbrokerRepo
 	p.hmacSecretRepo = hmacSecretRepo
 
+	// Which policy parameters are credentials is declared by the policy
+	// definitions the gateways report. This plugin's artifact kinds withhold
+	// them on read and carry them forward on update like every other kind; the
+	// store is its own because it validates on manifest content rather than on
+	// an invalidation signal, so a second cache costs nothing in correctness.
+	policySecretStore := policysecret.NewStore(deps.GatewayRepo.GetManifestsByOrganizationID)
+
 	// Services.
 	websubAPISvc := egservice.NewWebSubAPIService(
 		websubRepo,
@@ -170,6 +178,9 @@ func (p *EventGatewayPlugin) Init(deps *plugin.Deps) error {
 		cfg,
 		deps.IdentityService,
 	)
+
+	websubAPISvc.SetPolicySecrets(policySecretStore)
+	webbrokerAPISvc.SetPolicySecrets(policySecretStore)
 
 	webbrokerDeploymentSvc := egservice.NewWebBrokerAPIDeploymentService(
 		webbrokerRepo,
