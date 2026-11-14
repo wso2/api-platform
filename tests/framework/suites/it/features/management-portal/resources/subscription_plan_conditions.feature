@@ -164,6 +164,15 @@ Feature: A subscription plan's conditions are kept, replaced and checked by the 
     And the JSON response field "message" should be "<message>"
     When I send a "GET" request to the control plane at "/subscription-plans/${CTX:plan}"
     Then the response status code should be 404
+    # The same handle with a valid condition is stored and found
+    When I send a "POST" request to the control plane at "/subscription-plans" with body:
+      """
+      {"id": "${CTX:plan}", "displayName": "Accepted ${CTX:plan}", "status": "ACTIVE", "conditions": [{"type": "request-count", "params": {"limits": [{"count": 10, "timeUnit": "MINUTE"}]}}]}
+      """
+    Then the response status code should be 201
+    And the control plane subscription_plan "${CTX:plan}" is registered for cleanup
+    When I send a "GET" request to the control plane at "/subscription-plans/${CTX:plan}"
+    Then the response status code should be 200
 
     Examples:
       | case                    | conditions                                                                                                                                                  | message                                                                                                                                 |

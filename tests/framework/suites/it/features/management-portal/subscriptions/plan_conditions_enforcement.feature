@@ -60,4 +60,6 @@ Feature: A plan defined by its conditions is enforced on the gateway
     And I set header "Subscription-Key" to "${CTX:subscriptionToken}"
     And I send a "GET" request to "${CTX:apiContext}/" until status 200
     When I send 2 "GET" requests to "${CTX:apiContext}/"
-    And I send a "GET" request to "${CTX:apiContext}/" until status 429
+    Then the response status code should be 200
+    When I send a "GET" request to "${CTX:apiContext}/"
+    Then the response status code should be 429
