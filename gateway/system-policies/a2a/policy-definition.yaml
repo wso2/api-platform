@@ -55,12 +55,12 @@ description: |
   the block, no response is buffered and a proxied card is forwarded byte for
   byte.
 
-  Only the bindings this gateway serves are rewritten. An interface whose
-  protocol binding no configured transport exposes keeps the URL the upstream
-  wrote, since there is no gateway endpoint to name for it — and a client that
-  selects that binding therefore reaches the agent directly, outside the
-  gateway's policies. A card whose interfaces are all on such bindings is
-  forwarded unchanged, signatures included.
+  Every interface is rewritten. An interface whose protocol binding no
+  configured transport exposes has no gateway endpoint of its own, so it is
+  given the endpoint of the first configured transport rather than keeping the
+  URL the upstream wrote — the agent's own address is never published, and a
+  client that selects that binding reaches the gateway, which does not serve it,
+  instead of reaching the agent directly.
 
   A successful response the gateway cannot safely rewrite fails with a sterile
   gateway error rather than being forwarded or partially rewritten: a body that

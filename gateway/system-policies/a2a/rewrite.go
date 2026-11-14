@@ -46,14 +46,15 @@ import (
 // the binding is one the operator exposed, so half-rewriting it would publish a
 // URL for a protocol the endpoint does not speak.
 //
-// A binding no configured transport serves is the other case, and it is left
-// exactly as the upstream wrote it: the gateway has no endpoint to point it at, and the
-// operator's transport list is the statement of which bindings this gateway
-// carries — an interface outside it was never asked to come through here. The
-// consequence is worth being explicit about: that URL still names the agent
-// directly, so a client that selects that binding reaches the agent without
-// traversing the gateway or any of its policies. Exposing a transport through
-// the gateway is what brings its interface under those policies.
+// A binding no configured transport serves is the other case. The gateway has
+// no endpoint of its own for it, but leaving the upstream's URL in place would
+// publish the agent's backend address in a document whose whole purpose under
+// rewriting is to name the gateway — and would hand every client a way around
+// the gateway and its policies. So that interface is pointed at the gateway too,
+// at the endpoint of the first configured transport. The entry's binding and
+// version are left as the upstream wrote them: the gateway does not speak that
+// binding there, and a client selecting it gets the gateway's own refusal rather
+// than a direct line to the agent.
 //
 // What is deliberately *not* attempted: validating anything else about the card.
 // Only the interface URLs are touched and only the `signatures` block is
@@ -147,10 +148,16 @@ var errRewriteFailed = errors.New("agent card response cannot be rewritten")
 type rewriteConfig struct {
 	// endpoints maps a protocolBinding to the absolute gateway path serving it.
 	// It holds exactly the configured transports, so a binding missing from it is
-	// one this gateway does not front, and that interface is left untouched.
+	// one this gateway does not front, and that interface gets fallbackPath.
 	// Lookup is by binding rather than by position: a card lists its interfaces
 	// in whatever order its author wrote them.
 	endpoints map[string]string
+
+	// fallbackPath is the gateway path advertised for an interface whose binding
+	// no configured transport serves: the first configured transport's. The first
+	// rather than any, so the same card is rewritten the same way on every
+	// request — endpoints is a map and has no order to take one from.
+	fallbackPath string
 
 	// protocolVersion is the A2A version the endpoints above serve, and half of
 	// what an advertised interface has to match to be rewritten.
@@ -221,6 +228,9 @@ func parseRewriteConfig(card map[string]any, protected bool) (*rewriteConfig, er
 				ParamRewriteUrls, ParamInterfaces, ParamProtocolBinding, ParamPath)
 		}
 		cfg.endpoints[binding] = path
+		if cfg.fallbackPath == "" {
+			cfg.fallbackPath = path
+		}
 	}
 	return cfg, nil
 }
@@ -320,12 +330,10 @@ func validAuthority(authority string) bool {
 // rewritten card.
 //
 // A nil return with a nil error means "leave this response exactly as it is".
-// Two responses get that: a JSON-RPC error, which holds no card to rewrite and
-// which inventing one for would turn an upstream failure into a success; and a
-// card whose interfaces are all on bindings this gateway does not front, which
-// has nothing to point anywhere and is forwarded whole, signatures included.
-// A card the gateway cannot read as a card at all is neither of those, and
-// fails rather than being forwarded.
+// One response gets that: a JSON-RPC error, which holds no card to rewrite and
+// which inventing one for would turn an upstream failure into a success. A card
+// the gateway cannot read as a card at all is not that, and fails rather than
+// being forwarded.
 func (c *rewriteConfig) rewriteResponse(body []byte, transport, scheme, authority string) ([]byte, error) {
 	if len(body) > c.maxResponseBytes() {
 		return nil, fmt.Errorf("%w: response is %d bytes, over the %d byte ceiling",
@@ -386,13 +394,6 @@ func (c *rewriteConfig) rewriteJSONRPCResponse(body []byte, scheme, authority st
 	if err != nil {
 		return nil, err
 	}
-	if rewritten == nil {
-		// The card held nothing this gateway serves, so it was not changed. The
-		// envelope is left alone with it, rather than re-encoded around identical
-		// bytes — re-encoding would reorder the members of a document the gateway
-		// has decided not to touch.
-		return nil, nil
-	}
 	envelope[jsonRPCFieldResult] = rewritten
 
 	out, err := json.Marshal(envelope)
@@ -412,10 +413,10 @@ func (c *rewriteConfig) rewriteJSONRPCResponse(body []byte, scheme, authority st
 // it does not implement, and the failure surfaces as malformed calls rather
 // than as anything a client could attribute to the card.
 //
-// Refusing the whole response rather than skipping the entry is deliberate: the
-// binding *is* one this gateway fronts, so skipping would leave the agent's own
-// URL on an interface the operator did expose — a partial rewrite of exactly the
-// kind that makes a card look as though the gateway were in the path.
+// Refusing the whole response rather than rewriting the entry anyway is
+// deliberate: the binding *is* one this gateway fronts, so the rewritten entry
+// would read as a working interface — binding, version and gateway URL all
+// plausible — for a protocol the endpoint does not implement.
 //
 // An interface that states no version is rewritten. It contradicts nothing, and
 // a card that carries the version only at the top level is a normal shape.
@@ -445,18 +446,16 @@ func (c *rewriteConfig) assertInterfaceVersion(iface map[string]json.RawMessage,
 // decode/encode round trip that would reformat it. (Member *order* is not
 // preserved; the bytes of each member are.)
 //
-// Only the interfaces this gateway fronts are rewritten; one whose binding no
-// configured transport serves keeps the URL the upstream wrote, because there is
-// no gateway endpoint that would serve it.
+// Every interface is rewritten. One whose binding a configured transport serves
+// gets that transport's endpoint; one whose binding none serves gets the first
+// configured transport's, so the upstream's own address never survives into the
+// returned document. The version check applies only to the first kind — an
+// unserved binding is not served at any version, so there is nothing for its
+// version to disagree with.
 //
-// A card whose every advertised interface is on a binding this gateway does not
-// front is therefore returned unchanged, signalled by a nil result, meaning
-// "forward this response as it stands". That
-// keeps the signatures intact: they are removed because they no longer cover the
-// document being returned, so a document that was not changed keeps them.
-// Signatures are never replaced, only dropped: the gateway does not sign a
-// passthrough card, and a card with no signature is honestly unsigned rather
-// than falsely signed.
+// Signatures are never replaced, only dropped: they no longer cover the document
+// being returned, the gateway does not sign a passthrough card, and a card with
+// no signature is honestly unsigned rather than falsely signed.
 func (c *rewriteConfig) rewriteCard(card json.RawMessage, scheme, authority string) ([]byte, error) {
 	var document map[string]json.RawMessage
 	if err := json.Unmarshal(card, &document); err != nil {
@@ -481,7 +480,6 @@ func (c *rewriteConfig) rewriteCard(card json.RawMessage, scheme, authority stri
 		return nil, fmt.Errorf("%w: card %s is empty", errRewriteFailed, cardFieldSupportedInterfaces)
 	}
 
-	rewrote := false
 	for _, iface := range interfaces {
 		var binding string
 		if err := json.Unmarshal(iface[cardFieldProtocolBinding], &binding); err != nil {
@@ -492,11 +490,12 @@ func (c *rewriteConfig) rewriteCard(card json.RawMessage, scheme, authority stri
 				errRewriteFailed, cardFieldProtocolBinding)
 		}
 		path, served := c.endpoints[binding]
-		if !served {
-			continue
-		}
-		if err := c.assertInterfaceVersion(iface, binding); err != nil {
-			return nil, err
+		if served {
+			if err := c.assertInterfaceVersion(iface, binding); err != nil {
+				return nil, err
+			}
+		} else {
+			path = c.fallbackPath
 		}
 		gateway, err := c.gatewayURL(path, scheme, authority)
 		if err != nil {
@@ -507,10 +506,6 @@ func (c *rewriteConfig) rewriteCard(card json.RawMessage, scheme, authority stri
 			return nil, fmt.Errorf("%w: rewritten url cannot be encoded: %v", errRewriteFailed, err)
 		}
 		iface[cardFieldURL] = encoded
-		rewrote = true
-	}
-	if !rewrote {
-		return nil, nil
 	}
 
 	encodedInterfaces, err := json.Marshal(interfaces)

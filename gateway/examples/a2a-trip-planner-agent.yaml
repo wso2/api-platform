@@ -199,10 +199,11 @@ spec:
       #   # agent directly — past this gateway and its policies. Rewriting is
       #   # therefore on by default: each advertised interface URL is replaced
       #   # by the gateway endpoint for that binding, on the scheme and
-      #   # authority the client reached the gateway on. Only the bindings the
-      #   # transports above expose are rewritten; an interface this gateway
-      #   # does not serve keeps the agent's own URL. The card's `signatures`
-      #   # block is dropped, because it no longer covers what is returned.
+      #   # authority the client reached the gateway on. An interface on a
+      #   # binding the transports above do not expose is given the first
+      #   # transport's gateway URL, so the agent's own address is never
+      #   # published. The card's `signatures` block is dropped, because it
+      #   # no longer covers what is returned.
       #   #
       #   # Set it to false to forward the proxied response — signatures
       #   # included — byte for byte, accepting that clients configured from

@@ -694,10 +694,9 @@ func TestAgentCard_PreSignedContentIsRejected(t *testing.T) {
 		"a signature": []interface{}{
 			map[string]interface{}{"protected": "eyJhbGciOiJFUzI1NiJ9", "signature": "c2ln"},
 		},
-		// Rejected on presence, not on content: the field belongs to the
-		// gateway either way, and an empty list would leave it ambiguous
-		// whether the gateway is expected to append to it.
-		"an empty signature list": []interface{}{},
+		// Anything that is not an empty list is treated as a signature: the
+		// field is not the author's to fill, whatever shape it takes.
+		"a value that is not a list": "c2ln",
 	}
 
 	for name, value := range signatures {
@@ -708,6 +707,26 @@ func TestAgentCard_PreSignedContentIsRejected(t *testing.T) {
 			errs := NewAgentValidator().Validate(&cfg)
 			require.NotEmpty(t, errs)
 			assert.Contains(t, fieldsOf(errs), "spec.a2a.agentCard.public.content.signatures", messagesOf(errs))
+		})
+	}
+}
+
+// TestAgentCard_EmptySignaturesAreAccepted is the positive control for the
+// pre-signed check: a card serialized from a typed A2A model carries an empty
+// or null signatures field when it was never signed, and that is not a
+// signature to reject.
+func TestAgentCard_EmptySignaturesAreAccepted(t *testing.T) {
+	unsigned := map[string]interface{}{
+		"an empty signature list": []interface{}{},
+		"a null signatures field": nil,
+	}
+
+	for name, value := range unsigned {
+		t.Run(name, func(t *testing.T) {
+			cfg := cardWith(agentInterface(api.JSONRPC, cardHost+"/weather/rpc"))
+			(*cfg.Spec.A2a.AgentCard.Public.Content)["signatures"] = value
+
+			assert.Empty(t, NewAgentValidator().Validate(&cfg))
 		})
 	}
 }
@@ -1058,8 +1077,14 @@ func TestProtectedCard_SizeBudgetsAreIndependent(t *testing.T) {
 // only then calls GetExtendedAgentCard, so a card that does not declare it
 // produces an operation the gateway serves and no conformant client ever asks
 // for.
+//
+// The check is switched off by default (enforceExtendedCardCapability); this
+// test turns it on so the check stays exercised while it is.
 func TestProtectedCard_ManagedPublicCardMustDeclareTheCapability(t *testing.T) {
 	const field = "spec.a2a.agentCard.public.content.capabilities.extendedAgentCard"
+
+	enforceExtendedCardCapability = true
+	t.Cleanup(func() { enforceExtendedCardCapability = false })
 
 	tests := map[string]struct {
 		capabilities interface{}
@@ -1118,6 +1143,35 @@ func TestProtectedCard_ManagedPublicCardMustDeclareTheCapability(t *testing.T) {
 		cfg := validAgent()
 		assert.Empty(t, NewAgentValidator().Validate(&cfg))
 	})
+}
+
+// With the capability check switched off, which is the default, a protected card
+// deploys whatever the managed public card says about the capability.
+func TestProtectedCard_CapabilityCheckIsOffByDefault(t *testing.T) {
+	require.False(t, enforceExtendedCardCapability)
+
+	capabilities := map[string]struct {
+		value   interface{}
+		present bool
+	}{
+		"capabilities absent": {},
+		"flag absent":         {value: map[string]interface{}{"streaming": true}, present: true},
+		"flag is false":       {value: map[string]interface{}{"extendedAgentCard": false}, present: true},
+	}
+
+	for name, tt := range capabilities {
+		t.Run(name, func(t *testing.T) {
+			cfg := validAgent()
+			if tt.present {
+				(*cfg.Spec.A2a.AgentCard.Public.Content)["capabilities"] = tt.value
+			}
+			cfg.Spec.A2a.AgentCard.Protected = &api.A2AProtectedAgentCard{
+				Mode: api.A2AProtectedAgentCardModePassthrough,
+			}
+
+			assert.Empty(t, NewAgentValidator().Validate(&cfg))
+		})
+	}
 }
 
 // The card document is carried as a free-form map whose nested mappings come

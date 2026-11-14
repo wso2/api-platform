@@ -705,10 +705,10 @@ func (a *A2ASystemPolicy) OnResponseBody(
 		return unavailableResponse()
 	}
 	if rewritten == nil {
-		// Nothing was rewritten: a JSON-RPC error response, or a card advertising
-		// only bindings this gateway does not front. Either way the upstream's
-		// bytes are unchanged, so they are forwarded as they stand — including the
-		// caching headers, which still describe the response being returned.
+		// Nothing was rewritten: a JSON-RPC error response, which holds no card.
+		// The upstream's bytes are unchanged, so they are forwarded as they stand
+		// — including the caching headers, which still describe the response
+		// being returned.
 		return policy.DownstreamResponseModifications{}
 	}
 
