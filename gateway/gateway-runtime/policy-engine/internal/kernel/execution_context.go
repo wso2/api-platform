@@ -1692,6 +1692,15 @@ func (ec *PolicyExecutionContext) processResponseBody(
 			Present:     true,
 		}
 
+		// Unwind the serving attempt's chain FIRST, so the provider's reverse translation has
+		// put the payload back in the API's shape before the route's own body policies read it
+		// (FR-037h). The header half of this runs in processResponseHeaders; this is the half
+		// that actually converts a cross-vendor response.
+		unwindBody, err := ec.unwindServingUpstreamChainBody(ctx)
+		if err != nil {
+			return ec.handlePolicyError(ctx, err, "response_body_upstream_unwind"), nil
+		}
+
 		bodyPols, bodySpecs := ec.responsePolicies()
 		execResult, err := ec.server.executor.ExecuteResponsePolicies(
 			ctx,
@@ -1704,6 +1713,12 @@ func (ec *PolicyExecutionContext) processResponseBody(
 		)
 		if err != nil {
 			return ec.handlePolicyError(ctx, err, "response_body"), nil
+		}
+		// The unwound chain's results lead, same ordering rule as the header half.
+		if unwindBody != nil && len(unwindBody.Results) > 0 {
+			execResult.Results = append(append(
+				make([]executor.ResponsePolicyResult, 0, len(unwindBody.Results)+len(execResult.Results)),
+				unwindBody.Results...), execResult.Results...)
 		}
 		rejected := responseRejectedByPolicy(execResult.Results)
 		if responseStatusOverriddenByPolicy(execResult.Results) {

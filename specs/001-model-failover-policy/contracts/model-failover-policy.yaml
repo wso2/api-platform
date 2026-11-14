@@ -111,7 +111,10 @@ parameters:
             type: integer
             minimum: 400
             maximum: 599
-          default: [429, 500, 502, 503, 504]
+          # No enumerated default: the default is the RANGE described above (any 5xx plus 429),
+          # which a fixed list cannot express without excluding 501, 505 and 52x. A consumer that
+          # applies a schema default here would contradict the runtime.
+
 
     suspension:
       type: object

@@ -1,3 +1,19 @@
+/*
+ *  Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package utils
 
 import (
@@ -211,3 +227,50 @@ func TestPlacement_FailoverKeepsAuthoredProviderPoliciesOffTheDownstreamChain(t 
 	require.Zero(t, countDownstream(out, "add-header"),
 		"with failover attached the authored policy runs per attempt, not downstream")
 }
+
+// A publisher's own executionCondition must survive the provider gate.
+//
+// The gate narrows WHICH requests a provider policy applies to. It was never meant to decide
+// whether the publisher wanted the policy at all -- but replacing the authored condition did
+// exactly that: an explicit "false" became the gate, which is true on a default-primary request,
+// so a policy the publisher had disabled ran.
+func TestProviderPoliciesDownstream_KeepsTheAuthoredExecutionCondition(t *testing.T) {
+	disabled := "false"
+	tr := &LLMProviderTransformer{}
+	spec := api.LLMProxyConfigData{
+		Provider: &api.LLMProxyProvider{Id: "primary-provider"},
+		AdditionalProviders: &[]api.LLMProxyAdditionalProvider{{
+			Id: "anthropic-provider",
+			As: strPtrPlacement("anthropic"),
+			Policies: &[]api.Policy{
+				{Name: "set-headers", ExecutionCondition: &disabled},
+				{Name: "pii-masking-regex"},
+			},
+		}},
+	}
+
+	out, err := tr.providerPoliciesDownstream(spec)
+	require.NoError(t, err)
+	require.Len(t, out, 2)
+
+	var withAuthored, withoutAuthored *api.Policy
+	for i := range out {
+		switch out[i].Name {
+		case "set-headers":
+			withAuthored = &out[i]
+		case "pii-masking-regex":
+			withoutAuthored = &out[i]
+		}
+	}
+	require.NotNil(t, withAuthored)
+	require.NotNil(t, withoutAuthored)
+
+	require.Contains(t, *withAuthored.ExecutionCondition, "false",
+		"the authored condition was dropped, so a disabled policy would run")
+	require.Contains(t, *withAuthored.ExecutionCondition, "selected_provider",
+		"the provider gate must still narrow which requests it applies to")
+	require.NotContains(t, *withoutAuthored.ExecutionCondition, "&& ()",
+		"a policy with no authored condition gets the bare gate")
+}
+
+func strPtrPlacement(s string) *string { return &s }

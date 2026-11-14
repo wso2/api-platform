@@ -671,16 +671,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 			applied = true
 		}
 	}
-	// Publish the attempt key for the upstream position. Written AFTER the policies' own
-	// metadata is merged into this map, so a policy cannot displace it.
-	if execCtx.attemptKey != "" {
-		ns, ok := dynamicMetadata[constants.ExtProcFilterName]
-		if !ok || ns == nil {
-			ns = map[string]interface{}{}
-			dynamicMetadata[constants.ExtProcFilterName] = ns
-		}
-		ns[AttemptKeyMetadataField] = execCtx.attemptKey
-	}
+	publishAttemptKey(execCtx, dynamicMetadata)
 
 	if !applied && execCtx.defaultUpstreamCluster != "" {
 		applyDefaultUpstream(execCtx, headerOps, dynamicMetadata)
@@ -738,6 +729,11 @@ func TranslateRequestHeaderActionsWithBodyMerge(
 	if merged.ImmediateResp != nil {
 		return merged.ImmediateResp, nil
 	}
+
+	// Same key the other serializer publishes. A request reaching the upstream position through
+	// THIS path must carry it too, or its attempt stores key on the request id while the unwind
+	// looks up the attempt key.
+	publishAttemptKey(execCtx, merged.DynamicMetadata)
 
 	response := &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_RequestHeaders{
@@ -2079,4 +2075,27 @@ func sanitizeUpstreamDefinitionName(name string) string {
 	sanitized := strings.ReplaceAll(name, ".", "_")
 	sanitized = strings.ReplaceAll(sanitized, ":", "_")
 	return sanitized
+}
+
+// publishAttemptKey puts the engine-minted attempt key in its own dynamic-metadata namespace, so
+// the upstream position can key its attempt stores on it rather than on a client-controlled
+// x-request-id.
+//
+// Called from EVERY request-headers serializer. Injecting it in only one left a hole: a
+// headers-only request that a body policy permits is serialized by
+// TranslateRequestHeaderActionsWithBodyMerge instead, which published no key — so the upstream
+// stored under the request id while the unwind looked up the key, found nothing, and silently
+// skipped the serving chain.
+//
+// Written after the policies' own metadata is merged, so a policy cannot displace it.
+func publishAttemptKey(execCtx *PolicyExecutionContext, dynamicMetadata map[string]map[string]interface{}) {
+	if execCtx == nil || execCtx.attemptKey == "" || dynamicMetadata == nil {
+		return
+	}
+	ns, ok := dynamicMetadata[constants.ExtProcFilterName]
+	if !ok || ns == nil {
+		ns = map[string]interface{}{}
+		dynamicMetadata[constants.ExtProcFilterName] = ns
+	}
+	ns[AttemptKeyMetadataField] = execCtx.attemptKey
 }

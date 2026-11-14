@@ -41,29 +41,20 @@ if missing:
 
 spec["policies"] = [p for p in spec["policies"] if p["name"] in keep]
 
-# Rebase relative filePath entries onto the OUTPUT directory.
+# Relative filePath entries are left EXACTLY as they are, deliberately.
 #
-# The builder resolves a relative filePath against the directory holding the build file it was
-# given. The trimmed copy is written somewhere else — gateway-runtime/target/ in the documented
-# usage — so a local entry like ./dev-policies/model-failover would resolve under that directory
-# instead, where nothing exists, and discovery fails for exactly the policy the developer trimmed
-# the file in order to iterate on. Absolute paths are left alone.
-out_dir = os.path.dirname(os.path.realpath(out)) or "."
-src_dir = os.path.dirname(os.path.realpath(SOURCE)) or "."
-rebased = []
-for policy in spec["policies"]:
-    path = policy.get("filePath")
-    if not path or os.path.isabs(path):
-        continue
-    resolved = os.path.realpath(os.path.join(src_dir, path))
-    policy["filePath"] = os.path.relpath(resolved, out_dir)
-    rebased.append(f"{policy['name']} -> {policy['filePath']}")
+# It is tempting to rebase them onto the output directory, reasoning that the builder resolves a
+# relative path against the directory holding the build file it is given. That is right about the
+# builder and wrong about this file's consumer. The trimmed copy is not read from
+# gateway-runtime/target/: the image build copies it to /api-platform/gateway/build.yaml -- the
+# same relative position the untrimmed file occupies in the repository -- and copies the
+# dev-policies tree to /api-platform/gateway/dev-policies/. So ./dev-policies/model-failover
+# resolves correctly there, while a rebased ../../dev-policies/model-failover resolves to
+# /dev-policies/model-failover, which the image does not contain. Rebasing breaks the only flow
+# that reads this file.
 
 with open(out, "w") as fh:
     yaml.safe_dump(spec, fh, default_flow_style=False, sort_keys=False)
-
-if rebased:
-    print(f"rebased {len(rebased)} local filePath entries onto {out_dir}: {', '.join(rebased)}")
 
 print(f"{out}: {len(spec['policies'])} of {len(all_names)} policies "
       f"({', '.join(sorted(keep))})")

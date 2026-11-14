@@ -1067,6 +1067,15 @@ review. Supersedes the flat single-chain shape this spec previously described.
   valid for a request whose body named none (FR-021a), so a published ranking MUST still be
   honoured; only the absence of both a named model and a published ranking makes the policy inert.
 
+  "Inert" here carries FR-050's verified limit and means the same thing it means there: the POLICY
+  publishes no ordering and records nothing. It does not mean the request bypasses failover. The
+  generated route carries its `cluster_specifier_plugin` unconditionally, so a request on a
+  failover-enabled operation still walks the route's CONFIGURED group order whatever the policy
+  does — a route-level specifier cannot select between a failover and a non-failover action per
+  request. What this requirement removes is the policy treating a request with no model as
+  unmatched traffic: publishing a ranking for it, raising its attempt budget, and recording health
+  against targets it never chose.
+
 
 - **FR-061**: Where a ROUTING POLICY published a ranking for a request and not one of its targets
   resolves to a cluster, the system MUST refuse the request rather than go inert. This is a scoped

@@ -110,8 +110,11 @@ func TestUnwindServingUpstreamChain_ReturnsTheExecutedResults(t *testing.T) {
 	server := newTestServerWithStore(t, nil)
 	server.executor = executor.NewChainExecutor(nil, nil, noop.NewTracerProvider().Tracer("test"))
 	server.kernel.RegisterRoute(UpstreamChainKey(cluster), &registry.PolicyChain{
-		Policies:    []policy.Policy{unwoundHeaderPolicy{}},
-		PolicySpecs: []policy.PolicySpec{{Name: "set-headers", Version: "v1"}},
+		Policies: []policy.Policy{unwoundHeaderPolicy{}},
+		// Enabled MUST be set. It defaults to false, and the executor emits a result with
+		// Skipped=true for a disabled policy without ever calling OnResponseHeaders — so a
+		// test that only counts results passes on a chain that executed nothing.
+		PolicySpecs: []policy.PolicySpec{{Name: "set-headers", Version: "v1", Enabled: true}},
 	})
 	server.baselines.Remember("req-1", requestBaseline{Path: "/v1/chat"})
 	server.baselines.RememberServingCluster("req-1", cluster)
@@ -134,5 +137,69 @@ func TestUnwindServingUpstreamChain_ReturnsTheExecutedResults(t *testing.T) {
 	}
 	if len(result.Results) != 1 {
 		t.Fatalf("unwind returned %d results, want 1 — the chain's single policy ran", len(result.Results))
+	}
+	// Counting results is not enough: a skipped policy produces one too.
+	if result.Results[0].Skipped {
+		t.Fatal("the policy was skipped, so the chain executed nothing and the result is empty")
+	}
+	mods, ok := result.Results[0].Action.(policy.DownstreamResponseHeaderModifications)
+	if !ok {
+		t.Fatalf("action is %T, want the policy's header modifications", result.Results[0].Action)
+	}
+	if got := mods.HeadersToSet["x-unwound-by"]; got != "live-vendor" {
+		t.Fatalf("unwound header = %q, want %q — the mutation the client must receive",
+			got, "live-vendor")
+	}
+}
+
+// bodyUnwindPolicy rewrites the response body, which is what a provider transformer does.
+type bodyUnwindPolicy struct{}
+
+func (bodyUnwindPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{ResponseBodyMode: policy.BodyModeBuffer}
+}
+
+func (bodyUnwindPolicy) OnResponseBody(_ context.Context, _ *policy.ResponseContext,
+	_ map[string]interface{}) policy.ResponseAction {
+	return policy.DownstreamResponseModifications{Body: []byte(`{"choices":[]}`)}
+}
+
+// The BODY half of the unwind is the half that matters for a cross-vendor failover.
+//
+// A provider transformer converts the vendor's JSON payload; headers cannot turn `content_block`
+// into `choices[]`. The upstream filter is request-only and the downstream body phase runs the
+// ROUTE chain, so without this the serving provider's reverse translation never runs and the
+// client receives the fallback vendor's shape.
+func TestUnwindServingUpstreamChainBody_RunsTheServingChainsBodyHooks(t *testing.T) {
+	const cluster = "upstream_LlmProxy_abc_live-vendor"
+
+	server := newTestServerWithStore(t, nil)
+	server.executor = executor.NewChainExecutor(nil, nil, noop.NewTracerProvider().Tracer("test"))
+	server.kernel.RegisterRoute(UpstreamChainKey(cluster), &registry.PolicyChain{
+		Policies:    []policy.Policy{bodyUnwindPolicy{}},
+		PolicySpecs: []policy.PolicySpec{{Name: "openai-to-anthropic-transformer", Version: "v0", Enabled: true}},
+	})
+	server.baselines.Remember("req-1", requestBaseline{Path: "/v1/chat"})
+	server.baselines.RememberServingCluster("req-1", cluster)
+
+	ec := newPolicyExecutionContext(server, "test-route", nil)
+	ec.requestID = "req-1"
+	ec.attemptKey = "req-1"
+	ec.responseBodyCtx = &policy.ResponseContext{
+		SharedContext:  ec.sharedCtx,
+		ResponseStatus: 200,
+		ResponseBody:   &policy.Body{Content: []byte(`{"content_block":{}}`), Present: true},
+	}
+
+	result, err := ec.unwindServingUpstreamChainBody(context.Background())
+	if err != nil {
+		t.Fatalf("body unwind returned %v", err)
+	}
+	if result == nil || len(result.Results) != 1 {
+		t.Fatal("the serving chain's body hooks did not run; a cross-vendor response would " +
+			"reach the client in the fallback vendor's shape")
+	}
+	if result.Results[0].Skipped {
+		t.Fatal("the transformer was skipped, so no conversion happened")
 	}
 }

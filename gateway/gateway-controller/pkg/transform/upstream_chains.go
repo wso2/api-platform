@@ -78,12 +78,23 @@ func buildUpstreamPolicyChains(spec *api.LLMProxyConfigData, clusters map[string
 		// The primary provider is reached by a target that names no provider, which is the
 		// empty alias — matching BuildProviderClusterMap's keying so the runtime can look
 		// up either by the same string.
-		alias := ""
+		// TWO keys, deliberately, because the two maps are keyed differently and conflating
+		// them silently emptied the primary's chain.
+		//
+		// The CLUSTER map keys the primary under the empty alias, matching
+		// BuildProviderClusterMap, because a target that names no provider means the primary.
+		// The per-provider POLICY map keys every attachment under its EffectiveName, the
+		// primary included — transformProxyWithUpstreamPolicies stores them in one loop with
+		// no special case. Looking the policies up under the empty alias therefore found
+		// nothing, and with failover attached the downstream copies are cleared, so a working
+		// primary reached its provider with neither its transformer nor its credential.
+		clusterAlias := ""
 		if !attachment.IsPrimary {
-			alias = attachment.EffectiveName()
+			clusterAlias = attachment.EffectiveName()
 		}
-		addChain(chains, clusterFor(alias), attachment.Policies,
-			transformerFor(alias), authFor(alias), perAttempt)
+		policyAlias := attachment.EffectiveName()
+		addChain(chains, clusterFor(clusterAlias), attachment.Policies,
+			transformerFor(policyAlias), authFor(policyAlias), perAttempt)
 	}
 
 	if len(chains) == 0 {
