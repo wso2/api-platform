@@ -121,9 +121,12 @@ func TestBuildUpstreamPolicyChains_PrimaryUsesTheEmptyAlias(t *testing.T) {
 	// A proxy always declares a provider; an empty spec was never valid config and is now
 	// rejected at normalisation rather than silently producing a primary-only chain.
 	spec := &api.LLMProxyConfigData{Provider: &api.LLMProxyProvider{Id: "primary-provider"}}
+	// The empty alias is the primary's CLUSTER key. Its POLICIES are keyed by EffectiveName
+	// like every other attachment, so this stub answers to the provider name -- the two maps
+	// are keyed differently and this test pins the cluster half.
 	chains := buildUpstreamPolicyChains(spec, testClusters,
 		func(alias string) *models.Policy {
-			if alias == "" {
+			if alias == "primary-provider" {
 				return namedPolicy("primary-transformer")
 			}
 			return nil
@@ -462,5 +465,47 @@ func TestLLMTransformer_LegacyAliasedPrimaryResolvesToItsOwnCluster(t *testing.T
 	}
 	if got := primary.EffectiveName(); got != "openai" {
 		t.Fatalf("EffectiveName = %q, want the alias — the loopback definition is named by it", got)
+	}
+}
+
+// The PRIMARY's transformer and credential must reach its own per-attempt chain.
+//
+// They are stored under the primary's EffectiveName, like every other attachment, but the chain
+// builder looked them up under the empty alias -- the key the CLUSTER map uses for the primary.
+// Two keyings for one provider, so the lookup returned nothing and the primary's chain was built
+// with neither. With failover attached the downstream copies are cleared, so a working primary
+// would reach its provider unauthenticated and untransformed.
+//
+// UsesTheRealBuilders covers only the non-primary, which is why this survived: every other test
+// stubs the lookup by alias and so cannot see a key mismatch.
+func TestBuildUpstreamPolicyChains_PrimaryKeepsItsTransformerAndCredential(t *testing.T) {
+	perProvider := map[string]utils.ProviderPolicies{
+		"primary-provider": {
+			Transformer: &api.Policy{Name: "openai-to-azure-transformer"},
+			Auth:        &api.Policy{Name: "provider-credential"},
+		},
+	}
+	spec := proxyWithProviders()
+
+	chains := buildUpstreamPolicyChains(spec, testClusters,
+		transformerFor(perProvider), authFor(perProvider), nil)
+
+	chain, ok := chains["upstream_main"]
+	if !ok {
+		t.Fatalf("no chain for the primary; got %v", chains)
+	}
+	var names []string
+	for _, p := range chain.Policies {
+		names = append(names, p.Name)
+	}
+	want := []string{"openai-to-azure-transformer", "provider-credential"}
+	if len(names) != len(want) {
+		t.Fatalf("primary chain = %v, want %v -- the primary reaches its provider with neither "+
+			"its transformer nor its credential", names, want)
+	}
+	for i, n := range want {
+		if names[i] != n {
+			t.Fatalf("position %d = %q, want %q", i, names[i], n)
+		}
 	}
 }

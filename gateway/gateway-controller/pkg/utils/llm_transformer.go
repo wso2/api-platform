@@ -617,9 +617,19 @@ func (t *LLMProviderTransformer) providerPoliciesDownstream(spec api.LLMProxyCon
 			continue
 		}
 		for _, authored := range *ap.Policies {
-			condition := selectedProviderExecutionCondition(ap.EffectiveName(), ap.IsPrimary)
+			gate := selectedProviderExecutionCondition(ap.EffectiveName(), ap.IsPrimary)
 			p := authored
-			p.ExecutionCondition = &condition
+			// COMBINE with the authored condition, never replace it. Replacing turned a
+			// publisher's explicit `executionCondition: "false"` into the provider gate, which
+			// is true on a default-primary request — so a policy the publisher had disabled
+			// ran. The gate narrows which requests the policy applies to; it was never meant
+			// to decide whether the publisher wanted it at all.
+			if authored.ExecutionCondition != nil && *authored.ExecutionCondition != "" {
+				combined := "(" + gate + ") && (" + *authored.ExecutionCondition + ")"
+				p.ExecutionCondition = &combined
+			} else {
+				p.ExecutionCondition = &gate
+			}
 			out = append(out, p)
 		}
 	}
