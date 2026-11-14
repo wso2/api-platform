@@ -71,6 +71,9 @@ type Server struct {
 // authenticator — discovering the IDP endpoints up front when discovery is
 // configured.
 func New(ctx context.Context, cfg *config.Config) (*Server, error) {
+	if err := validateSessionCookieName(cfg.Session.Cookie.Name); err != nil {
+		return nil, err
+	}
 	primaryTransport, err := proxy.NewTransport(proxy.TLSClientOptions{
 		CAFile:     cfg.ControlPlane.CAFile,
 		SkipVerify: cfg.ControlPlane.TLSSkipVerify,
