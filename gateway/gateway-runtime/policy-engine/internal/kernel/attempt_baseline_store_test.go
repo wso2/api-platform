@@ -229,3 +229,40 @@ func TestAttemptKey_IsUniquePerRequestEvenWithARepeatedRequestID(t *testing.T) {
 		t.Fatalf("serving clusters crossed over: %q / %q", gotFirst, gotSecond)
 	}
 }
+
+// A request still in flight must not lose its entry.
+//
+// The expiry was set once, at the first attempt, and never extended — so a failover whose
+// attempts spanned the TTL lost its serving cluster mid-request. The response unwind then found
+// nothing and ran nothing, which for a cross-vendor failover means the client receives the
+// fallback vendor's shape. The TTL is there to reclaim entries for requests that never finish,
+// not to bound one that is still going.
+func TestAttemptBaselineStore_EachAttemptRenewsTheLease(t *testing.T) {
+	now := time.Now()
+	store := newAttemptBaselineStore()
+	store.now = func() time.Time { return now }
+
+	store.Remember("req-1", requestBaseline{Path: "/v1/chat"})
+	store.RememberServingCluster("req-1", "cluster_openai")
+
+	// Just before the original lease would end, a later attempt lands.
+	now = now.Add(baselineTTL - time.Second)
+	store.RememberServingCluster("req-1", "cluster_anthropic")
+
+	// Past the ORIGINAL expiry, but within the renewed one.
+	now = now.Add(2 * time.Second)
+	cluster, ok := store.ServingCluster("req-1")
+	if !ok {
+		t.Fatal("the entry expired while the request was still in flight; the unwind would " +
+			"silently run nothing and deliver an untranslated body")
+	}
+	if cluster != "cluster_anthropic" {
+		t.Fatalf("serving cluster = %q, want the latest attempt's", cluster)
+	}
+
+	// With no further attempts it still expires, so an abandoned request is reclaimed.
+	now = now.Add(baselineTTL + time.Second)
+	if _, ok := store.ServingCluster("req-1"); ok {
+		t.Fatal("entry outlived its renewed lease; abandoned requests would accumulate")
+	}
+}
