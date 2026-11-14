@@ -23,8 +23,14 @@ description: |
 
   When a routing policy that publishes an ordered target preference list is attached to the
   same operation, that ranking is traversed first and these targets follow as a last-resort
-  tail; the routing policy's own suspension setting becomes inert and this policy's health
-  view governs. See contracts/target-preference-list.md.
+  tail. The routing policy keeps its OWN suspension setting unchanged and its own health view:
+  the two are independent and both correct, because the downstream chain is entered once per
+  client request, so a routing policy observes only the final status — a rescued request reports
+  success and suspends nothing, and a 5xx arrives only on a fully exhausted chain, where the
+  target it selected did fail. See contracts/target-preference-list.md.
+
+  (FR-026/FR-026a/FR-026b were implemented and then reverted; neither half survived. This
+  paragraph previously said the routing policy's suspension became inert, which no code does.)
 
   Failover is never attempted after response headers or streamed content have reached the
   client. Every attempt carries the request-body mutations applied by preceding policies.
@@ -47,7 +53,9 @@ parameters:
         properties:
           model:
             type: string
-            description: AI model name.
+            description: |
+              The CLIENT-REQUESTED model this chain is selected by. A `"*"` entry is the
+              catch-all for a model no other entry names.
             minLength: 1
           provider:
             type: string
@@ -57,6 +65,24 @@ parameters:
               When omitted, the primary provider is used. The pair (model, provider) is
               the target's identity and the unit of health tracking.
             minLength: 1
+          fallbacks:
+            type: array
+            description: |
+              Ordered replacements for THIS entry's target, highest priority first. Spent
+              before the remainder of a routing policy's ranking (FR-024), which is what makes
+              `targets` a list of chains rather than one flat preference order. The flat shape
+              — every entry a peer of every other — was superseded; see design-doc-reconciliation.md C2.
+            items:
+              type: object
+              additionalProperties: false
+              properties:
+                model:
+                  type: string
+                  minLength: 1
+                provider:
+                  type: string
+                  minLength: 1
+              required: [model]
         required:
           - model
       minItems: 1
@@ -70,20 +96,22 @@ parameters:
         statusCodes:
           type: array
           description: |
-            Response status codes treated as failover-worthy. Rate-limit and server-error
-            codes are the defaults; client-input and authorization failures are deliberately
+            Response status codes treated as failover-worthy. The DEFAULT is any 5xx plus 429:
+            the generated retry policy already retries every 5xx (retry_on carries the `5xx`
+            token), so grading only an enumerated subset would retry a 501 on every request and
+            never suspend the provider returning it. Setting this REPLACES the default entirely,
+            5xx range included. Client-input and authorization failures are deliberately
             excluded, since retrying them elsewhere fails the same way or masks a client bug.
+
+            Connection failure, connection reset and per-attempt timeout are retried
+            unconditionally and are not configurable — the generated retry_on carries
+            `connect-failure` and `reset` and reads no field. (`onTransportFailure` was removed;
+            see design-doc-reconciliation.md.)
           items:
             type: integer
             minimum: 400
             maximum: 599
           default: [429, 500, 502, 503, 504]
-        onTransportFailure:
-          type: boolean
-          description: |
-            Fail over on connection failure, connection reset, unavailable upstream, or
-            per-attempt timeout. These are independent of statusCodes.
-          default: true
 
     suspension:
       type: object
@@ -178,8 +206,9 @@ systemParameters:
 # V4b p95LatencyMs >= 0; when non-zero it should exceed typical model latency so
 #     normal traffic does not suspend the target.                                  (FR-018e)
 # V4c maxDurationSeconds >= durationSeconds; backoffResetSeconds >= 1.             (FR-019b/c)
-# V5  When a routing policy declares its own suspension setting, report that this  (FR-026b)
-#     policy's health view supersedes it. Report, never silently apply.
+# V5  (WITHDRAWN with FR-026b.) A routing policy's own suspension setting is NOT
+#     superseded and nothing is reported about it: both policies keep their own
+#     verdict. No validation applies.
 # V6  Applicability is decided by target resolution, not by a kind allowlist:      (FR-030a/b)
 #     attachable to any kind whose operations resolve model targets (RestApi,
 #     LlmProxy today). Where nothing resolves, the policy is silently inert and

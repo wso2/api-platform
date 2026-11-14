@@ -681,14 +681,25 @@ Both sides of the trade, measured per REQUEST rather than per round trip.
 Benchmark: `gateway/it/spikes/failover/extproc/residentcost_test.go`. Two attempts per request
 (primary fails, fallback answers), body carried in both directions, 1000 iterations.
 
+> **CORRECTED 2026-11-14 — the original numbers below were produced by a benchmark that measured
+> nothing for the memory arm.** `benchMemory` called `roundTrip(b, client, nil)` against the shared
+> echo server. Handed an empty request body, that server returns an empty mutation, so the stored
+> payload was never transferred in EITHER direction — while the wire arm carried it in both. The
+> "flat in body size" property was the whole artifact: of course a transfer that does not happen
+> does not scale with size. Re-measured against a server that re-injects the stored payload, which
+> is what the memory design actually has to do per attempt.
+
 | Prompt | wire | memory | saved | wire alloc/req | memory alloc/req |
 |---|---|---|---|---|---|
-| 10 KB | 234 µs | 186 µs | 48 µs (20%) | 67 KB | 21 KB |
-| 100 KB | 573 µs | 179 µs | **394 µs (69%)** | 482 KB | 21 KB |
-| 1 MB | 2.72 ms | 167 µs | **2.55 ms (94%)** | 4.5 MB | 21 KB |
+| 10 KB | 221 µs | 194 µs | 27 µs (12%) | 67 KB | 43 KB |
+| 100 KB | 533 µs | 394 µs | 139 µs (26%) | 523 KB | 274 KB |
+| 1 MB | 3.06 ms | 2.20 ms | 0.85 ms (28%) | 4.76 MB | 2.29 MB |
 
-The memory approach is flat in body size — nothing crosses the wire, so a 1 MB prompt costs the
-same as a 10 KB one.
+The memory approach is **not** flat in body size. It costs roughly one transfer where the wire
+costs two, so it tracks size at about half the slope — which is the honest shape of the saving.
+
+Superseded figures, for the record: 48 µs / 394 µs / 2.55 ms saved (20% / 69% / 94%), with memory
+alloc reported as a constant 21 KB at every size.
 
 What it costs instead, measured by holding N bodies and reading heap:
 
@@ -704,17 +715,19 @@ The previous section measured a single round trip and reported ~15 µs for a 10 
 the optimisation unnecessary. A real request is ~4x that: two attempts, each carrying the body in
 both directions. The per-request figure is 48 µs at 10 KB, and the gap widens sharply with size.
 
-The allocation difference is the larger finding: **23x less at 100 KB** (482 KB -> 21 KB per
-request). That is the GC-pressure concern from the earlier section, now quantified rather than
-speculated about.
+The allocation difference is the larger finding, but it is **1.9x at 100 KB** (523 KB -> 274 KB
+per request), not the 23x originally recorded. The GC-pressure concern is real and quantified; it
+is a halving, not an order of magnitude.
 
 ### Decision
 
 Still not building it now, but on a stated threshold rather than a hunch:
 
-- **Prompts <= 10 KB**: 48 µs and 46 KB per failover. Not worth the resident memory or the code.
-- **Prompts >= 100 KB with a material failover rate**: 394 µs and 461 KB saved per request, for
-  ~100 MB resident per 1000 concurrent in-flight. Worth taking.
+- **Prompts <= 10 KB**: 27 µs and 24 KB per failover. Not worth the resident memory or the code.
+- **Prompts >= 100 KB with a material failover rate**: 139 µs and 249 KB saved per request, for
+  ~100 MB resident per 1000 concurrent in-flight. Still arguably worth taking, but the case is
+  about half as strong as it was recorded, and the decision not to build it now is unchanged —
+  the correction only ever weakened the argument for building it.
 
 If built, it needs a **size ceiling**: hold bodies below a threshold, fall back to the wire above
 it. That bounds resident memory while capturing most of the benefit, since small bodies are

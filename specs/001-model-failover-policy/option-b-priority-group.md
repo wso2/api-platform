@@ -179,7 +179,7 @@ typed_config:
 retry_policy:
   retry_on: "5xx,connect-failure,reset,retriable-status-codes"
   retriable_status_codes: [429, 500, 502, 503, 504]
-  num_retries: 2
+  num_retries: 1   # groups minus one: two groups, one retry
   per_try_timeout: 30s
   per_try_idle_timeout: 10s
   refresh_cluster_on_retry: true        # MANDATORY — without it nothing fails over

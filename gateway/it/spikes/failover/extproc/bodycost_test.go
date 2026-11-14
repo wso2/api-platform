@@ -59,14 +59,58 @@ func (e *echoServer) Process(stream extproc.ExternalProcessor_ProcessServer) err
 	}
 }
 
+// residentServer stands in for the MEMORY design: the payload is NOT on the request, because the
+// engine already holds it, and the response carries it because the engine has to re-inject it for
+// the attempt. Returning an empty mutation instead — which is what an echoServer handed an empty
+// request body does — measures no transfer in either direction and so measures nothing the MEMORY
+// option actually costs.
+type residentServer struct {
+	extproc.UnimplementedExternalProcessorServer
+	body []byte
+}
+
+func (r *residentServer) Process(stream extproc.ExternalProcessor_ProcessServer) error {
+	for {
+		_, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		resp := &extproc.ProcessingResponse{
+			Response: &extproc.ProcessingResponse_RequestBody{
+				RequestBody: &extproc.BodyResponse{
+					Response: &extproc.CommonResponse{
+						Status:       extproc.CommonResponse_CONTINUE_AND_REPLACE,
+						BodyMutation: &extproc.BodyMutation{Mutation: &extproc.BodyMutation_Body{Body: r.body}},
+					},
+				},
+			},
+		}
+		if err := stream.Send(resp); err != nil {
+			return err
+		}
+	}
+}
+
 func startServer(tb testing.TB) *grpc.ClientConn {
+	return startServerWith(tb, &echoServer{})
+}
+
+// startResidentServer serves the stored payload back on every attempt, whatever arrives.
+func startResidentServer(tb testing.TB, body []byte) *grpc.ClientConn {
+	return startServerWith(tb, &residentServer{body: body})
+}
+
+func startServerWith(tb testing.TB, impl extproc.ExternalProcessorServer) *grpc.ClientConn {
 	tb.Helper()
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		tb.Fatal(err)
 	}
 	srv := grpc.NewServer()
-	extproc.RegisterExternalProcessorServer(srv, &echoServer{})
+	extproc.RegisterExternalProcessorServer(srv, impl)
 	go func() { _ = srv.Serve(lis) }()
 	tb.Cleanup(srv.Stop)
 

@@ -94,9 +94,12 @@ func benchWire(b *testing.B, conn *grpc.ClientConn, size int) {
 }
 
 // MEMORY: the body is stored once, each attempt is a headers-only round trip plus a lookup.
-func benchMemory(b *testing.B, conn *grpc.ClientConn, size int) {
-	client := extproc.NewExternalProcessorClient(conn)
+func benchMemory(b *testing.B, _ *grpc.ClientConn, size int) {
 	body := realisticPrompt(size)
+	// A server that re-injects the stored payload, which is what MEMORY costs per attempt. The
+	// shared echo connection cannot measure this: handed an empty request body it returns an
+	// empty mutation, so nothing is transferred in either direction.
+	client := extproc.NewExternalProcessorClient(startResidentServer(b, body))
 	store := newBodyStore()
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -107,7 +110,9 @@ func benchMemory(b *testing.B, conn *grpc.ClientConn, size int) {
 			if _, ok := store.Lookup(id); !ok {
 				b.Fatal("body missing")
 			}
-			roundTrip(b, client, nil) // headers-only: no body on the wire
+			// Nothing on the REQUEST — that is the saving. The response still carries the
+			// payload, because the attempt has to be formed with it.
+			roundTrip(b, client, nil)
 		}
 		store.Forget(id)
 	}

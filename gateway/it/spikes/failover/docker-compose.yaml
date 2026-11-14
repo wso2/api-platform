@@ -35,6 +35,11 @@ services:
     image: envoyproxy/envoy:${ENVOY_TAG:-v1.39.0}
     volumes: [ "./${ENVOY_CONFIG:-a1-ordering.yaml}:/etc/envoy/envoy.yaml:ro" ]
     command: ["-c", "/etc/envoy/envoy.yaml", "-l", "${ENVOY_LOG:-info}"]
-    ports: [ "10000:10000", "19901:9901" ]   # admin on 19901: 9901 is usually taken by a dev gateway-runtime
+    # Both bound to loopback. The admin listener is unauthenticated and can dump the full
+    # config or shut Envoy down, and go-control-plane-xds-security.md directive 4 says never to
+    # publish it — "true whether or not the interface is currently enabled". A probe harness is
+    # not an exception: it runs on a developer laptop that is often on a shared network.
+    # Admin on 19901 because 9901 is usually taken by a dev gateway-runtime.
+    ports: [ "127.0.0.1:10000:10000", "127.0.0.1:19901:9901" ]
     networks: { probe: { ipv4_address: 172.28.0.2 } }
     depends_on: [ provider-a, provider-b, provider-c, extproc ]

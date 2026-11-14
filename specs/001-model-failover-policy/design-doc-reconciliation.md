@@ -97,6 +97,12 @@ are now invalid and are tracked as T024l–T024r. Two deliberate departures: `re
 is NOT reinstated (probe recovery was superseded by escalating backoff in the 2026-10-22
 clarification), and `backoffResetSeconds` is kept because escalating backoff needs it.
 
+> **SUPERSEDED 2026-10-28 — the first departure only.** The probe phase WAS restored; see the
+> recovery row in the table above. Backoff sets how long a target stays out, probing sets how it
+> comes back, and treating them as alternatives was the error. `recoverAfterSuccesses` is live and
+> implemented. `backoffResetSeconds` is unaffected and still kept. Read this paragraph as history:
+> an implementer following it as written would omit the probe phase the health store has.
+
 The original divergence, for the record:
 
 | | Document | This spec / `policy-definition.yaml` |
@@ -133,8 +139,15 @@ What was done:
 
 Why the limit is acceptable: the attempt-count inference already records a transport-dead member
 as failed whenever a later member returns a real response, so the common case still drives
-suspension. Only an all-transport-dead chain goes unrecorded, and suspension there has nowhere
-healthier to route. Probe F separately ruled out closing even that with outlier detection.
+suspension.
+
+The limit is wider than "all transport-dead", though, and the correction matters for anyone
+reasoning about when health stops learning: a chain goes unrecorded whenever its LAST attempt
+produces a local reply, whatever the earlier attempts did. A retryable 5xx followed by a connection
+failure is the ordinary example — Envoy answers with its own local reply, which never reaches
+ext_proc, so neither the 5xx nor the connection failure is graded even though one member was very
+much alive. Suspension there still has nowhere healthier to route, which is why the limit stands,
+but it is not confined to chains whose every member is dead. Probe F separately ruled out closing even that with outlier detection.
 
 The earlier recommendation, superseded by this decision:
 

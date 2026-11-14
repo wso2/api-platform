@@ -5,6 +5,17 @@ model-failover mechanisms, with no gateway code involved.
 
 Results: [`specs/001-model-failover-policy/poc-results.md`](../../../../specs/001-model-failover-policy/poc-results.md)
 
+## Build first
+
+`docker-compose.yaml` lists `extproc` among Envoy's `depends_on`, so EVERY probe starts it —
+including the ones that never use it. On a clean checkout the binary does not exist yet, the
+service cannot start, and Compose may create a directory at the bind-mount path which then has to
+be removed before the build will work. Build it before the first `docker compose up`:
+
+```sh
+cd extproc && GOWORK=off GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o extproc-server . && cd ..
+```
+
 ## Running
 
 ```bash
@@ -35,8 +46,13 @@ and grepping for `Looking up`.
 
 `PROBE_BODY_MODE=off` stops the probe server asking Envoy for a buffered request body. Leave it
 on for the body probes (I1-I4); turn it off for anything that only asks "was this position
-invoked", because the server never answers the body message and the attempt otherwise hangs to
-`per_try_timeout` and returns 504 — which looks like a broken harness rather than a result.
+invoked".
+
+The server DOES answer the body message (`main.go`, the `GetRequestBody()` branch). The hang this
+avoids is the request-mode override itself: asking for a buffered body on a position that is not
+going to receive one leaves the attempt waiting until `per_try_timeout` and returning 504, which
+reads as a broken harness rather than a result. If you see that 504, check this flag before
+concluding anything about the position.
 
 | File | Probes |
 |---|---|
