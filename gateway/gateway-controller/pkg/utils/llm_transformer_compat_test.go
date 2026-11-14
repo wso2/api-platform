@@ -124,7 +124,7 @@ func newCompatEnvironment(t *testing.T) (*LLMProviderTransformer, storage.Storag
 					Context:       stringPtr("/" + name),
 					Template:      template,
 					Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
-					AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+					AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 				},
 			},
 			DesiredState: models.StateDeployed,

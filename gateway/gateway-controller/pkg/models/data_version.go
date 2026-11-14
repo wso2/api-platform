@@ -38,14 +38,16 @@ const defaultDataVersion = "1.0"
 // Keep this map exhaustive over the ArtifactKind constants — a missing entry
 // silently falls back to minor 0 (see TestDataMinorVersionsExhaustive).
 var dataMinorVersions = map[ArtifactKind]int{
-	KindRestApi:      0,
-	KindWebSubApi:    0,
-	KindWebBrokerApi: 0,
-	KindMcp:          0,
-	KindGraphQLApi:   0,
-	KindLlmProxy:     0,
-	KindLlmProvider:  0,
-	KindAgent:        0,
+	KindRestApi:       0,
+	KindWebSubApi:     0,
+	KindWebBrokerApi:  0,
+	KindMcp:           0,
+	KindGraphQLApi:    0,
+	KindLlmProxy:      0,
+	KindLlmProvider:   1, // 1.1: spec.exposure and spec.upstream.apiVersion
+	KindAgent:         0,
+	KindModel:         0,
+	KindModelEndpoint: 0,
 }
 
 // majorFromApiVersion parses "<group>/v<N>..." and returns "N" (the leading

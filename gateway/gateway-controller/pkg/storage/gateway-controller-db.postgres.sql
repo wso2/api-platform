@@ -1,5 +1,5 @@
 -- PostgreSQL Schema for Gateway-Controller API Configurations
--- Version: 6
+-- Version: 7
 
 -- Base table for all artifact types
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -92,6 +92,27 @@ CREATE TABLE IF NOT EXISTS agents (
 -- one-column-identical clone of rest_apis, instead of being owned by a separate
 -- supplemental-DDL module.
 CREATE TABLE IF NOT EXISTS graphql_apis (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    configuration TEXT NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
+-- Models (added in schema version 7). A Model is served on the model endpoints it
+-- names and compiled into each one's config; the row holds the authored Model as
+-- JSON, like every other per-kind table.
+CREATE TABLE IF NOT EXISTS models (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    configuration TEXT NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
+-- Model endpoints (added in schema version 7): the client-facing endpoints that
+-- serve Models, kind 'ModelEndpoint'. The row holds the authored endpoint as JSON.
+CREATE TABLE IF NOT EXISTS model_endpoints (
     uuid TEXT NOT NULL,
     gateway_id TEXT NOT NULL,
     configuration TEXT NOT NULL,

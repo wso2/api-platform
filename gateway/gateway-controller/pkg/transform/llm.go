@@ -53,8 +53,25 @@ func NewLLMTransformer(
 	}
 }
 
+// ProviderTransformer returns the LLM provider transformer, whose credential and
+// transformer builders the model endpoint compiler shares.
+func (t *LLMTransformer) ProviderTransformer() *utils.LLMProviderTransformer {
+	return t.llmTransformer
+}
+
 // Transform converts a StoredConfig (LLM Provider or LLM Proxy) into RuntimeDeployConfig.
 func (t *LLMTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeDeployConfig, error) {
+	// A provider with `exposure: none` publishes no route of its own: it is reached
+	// only through the Models that target it, which call its upstream directly.
+	// Its runtime config is therefore empty — no routes, no chains, no clusters —
+	// and is returned as such rather than as an error, so nothing falls back to
+	// building one from the stored form.
+	if src, ok := cfg.SourceConfiguration.(api.LLMProviderConfiguration); ok && !models.IsLLMProviderExposed(src.Spec) {
+		rdc := emptyRuntimeConfig(cfg)
+		rdc.Metadata.LLM = &models.LLMMetadata{TemplateHandle: src.Spec.Template, ProviderName: src.Metadata.Name}
+		return rdc, nil
+	}
+
 	// Step 1: Obtain the RestAPI representation.
 	// If cfg.Configuration is already a RestAPI (e.g. after hydration + policy resolution),
 	// use it directly so that resolved policy state is preserved.
@@ -137,4 +154,22 @@ func (t *LLMTransformer) extractLLMMetadata(cfg *models.StoredConfig) *models.LL
 		return nil
 	}
 	return meta
+}
+
+// emptyRuntimeConfig is a runtime config that serves nothing: the identity of the
+// artifact and no routes, chains or clusters.
+func emptyRuntimeConfig(cfg *models.StoredConfig) *models.RuntimeDeployConfig {
+	return &models.RuntimeDeployConfig{
+		Metadata: models.Metadata{
+			UUID:        cfg.UUID,
+			Kind:        cfg.Kind,
+			Handle:      cfg.Handle,
+			Version:     cfg.Version,
+			DisplayName: cfg.DisplayName,
+		},
+		PolicyChainResolver: models.RouteKeyResolverName,
+		Routes:              make(map[string]*models.Route),
+		PolicyChains:        make(map[string]*models.PolicyChain),
+		UpstreamClusters:    make(map[string]*models.UpstreamCluster),
+	}
 }

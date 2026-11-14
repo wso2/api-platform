@@ -46,7 +46,7 @@ func TestLabelValidationForAllTypes(t *testing.T) {
 				Upstream: api.LLMProviderConfigData_Upstream{
 					Url: stringPtr("https://api.openai.com"),
 				},
-				AccessControl: api.LLMAccessControl{
+				AccessControl: &api.LLMAccessControl{
 					Mode: api.AllowAll,
 				},
 			},
@@ -88,7 +88,7 @@ func TestLabelValidationForAllTypes(t *testing.T) {
 				Upstream: api.LLMProviderConfigData_Upstream{
 					Url: stringPtr("https://api.openai.com"),
 				},
-				AccessControl: api.LLMAccessControl{
+				AccessControl: &api.LLMAccessControl{
 					Mode: api.AllowAll,
 				},
 			},

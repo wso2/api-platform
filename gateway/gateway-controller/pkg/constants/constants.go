@@ -343,6 +343,65 @@ const (
 	A2A_POLICY_PARAM_PROTOCOL_BINDING = "protocolBinding"
 	A2A_POLICY_PARAM_PATH             = "path"
 
+	// MODEL_SYSTEM_POLICY_NAME is the in-repo policy that decides and answers the
+	// parts of a model endpoint the gateway owns (gateway/system-policies/model):
+	// resolving a Model's routing choice to one target and scoping provider
+	// metadata around it, answering a request that names no deployed model, and
+	// serving the model catalog. Attached by the model endpoint compiler
+	// (pkg/transform/model_gateway.go), never by an author; the "wso2_apip_sys_"
+	// prefix keeps it out of the control-plane manifest, as for the A2A policy.
+	MODEL_SYSTEM_POLICY_NAME = "wso2_apip_sys_model"
+
+	// MODEL_POLICY_PARAM_* are the parameter names the policy above reads, spelled
+	// once on each side and asserted by a test on each side, as for the A2A policy.
+	// Each job is a block of its own; an instance carries exactly one.
+	MODEL_POLICY_PARAM_ROUTE          = "route"
+	MODEL_POLICY_PARAM_PROVIDER_SCOPE = "providerScope"
+	MODEL_POLICY_PARAM_DISPATCH_ERROR = "dispatchError"
+	MODEL_POLICY_PARAM_CATALOG        = "catalog"
+
+	MODEL_POLICY_PARAM_MODEL_HANDLE    = "modelHandle"
+	MODEL_POLICY_PARAM_MODEL_NAME      = "modelName"
+	MODEL_POLICY_PARAM_SCOPE           = "scope"
+	MODEL_POLICY_PARAM_TEMPLATE_HANDLE = "templateHandle"
+	MODEL_POLICY_PARAM_PROVIDER_NAME   = "providerName"
+	MODEL_POLICY_PARAM_TARGETS         = "targets"
+	MODEL_POLICY_PARAM_MODEL_LOCATION  = "modelLocation"
+
+	// MODEL_POLICY_PARAM_FORMAT names the endpoint's inbound format (openai,
+	// anthropic, gemini), which decides the shape of every body the policy writes:
+	// its errors and the catalog.
+	MODEL_POLICY_PARAM_FORMAT = "format"
+
+	// The catalog block lists the Models the endpoint serves; the policy renders
+	// them in the endpoint's format and filters them by the caller's key scope.
+	MODEL_POLICY_PARAM_CATALOG_MODELS       = "models"
+	MODEL_POLICY_PARAM_CATALOG_HANDLE       = "handle"
+	MODEL_POLICY_PARAM_CATALOG_NAME         = "name"
+	MODEL_POLICY_PARAM_CATALOG_DISPLAY_NAME = "displayName"
+	MODEL_POLICY_PARAM_CATALOG_CREATED      = "created"
+
+	MODEL_POLICY_PARAM_TARGET_NAME           = "name"
+	MODEL_POLICY_PARAM_TARGET_PROVIDER       = "provider"
+	MODEL_POLICY_PARAM_TARGET_UPSTREAM_MODEL = "upstreamModel"
+	MODEL_POLICY_PARAM_TARGET_TEMPLATE       = "template"
+	MODEL_POLICY_PARAM_TARGET_DISPLAY_NAME   = "providerDisplayName"
+	MODEL_POLICY_PARAM_TARGET_ROUTED         = "routed"
+
+	// LLM_MODEL_DISPATCH_RESOLVER_NAME is the policy engine resolver that binds a
+	// request on a model endpoint's dispatch routes to its Model's chain, reading
+	// the model where the endpoint's inbound template says (policy-engine
+	// internal/resolver/llm_model.go). LLM_MODEL_DISPATCH_ERROR_OPERATION is the
+	// reserved chain a request binds to when it names no deployed model; it cannot
+	// collide with a Model, whose handle is a metadata name and cannot contain "_".
+	//
+	// A model endpoint's routes also carry a per-route error format, its inbound
+	// format's name (pkg/modelgateway/inbound), so every gateway error on them is
+	// answered in the shape its clients parse. Set per route rather than per kind,
+	// so no LLM proxy's error bodies change.
+	LLM_MODEL_DISPATCH_RESOLVER_NAME   = "llm-model-dispatch"
+	LLM_MODEL_DISPATCH_ERROR_OPERATION = "__dispatch__"
+
 	// ResilienceDurationPattern is the single source of truth for the format of resilience
 	// timeout strings.
 	//   - accepted:  "30s", "500ms", "1m", "2h", "1.5s", and "0s" (zero disables the timeout)

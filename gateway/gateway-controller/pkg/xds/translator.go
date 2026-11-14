@@ -308,6 +308,9 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 	// Build clusters from UpstreamClusters
 	for clusterName, uc := range rdc.UpstreamClusters {
 		if len(uc.Endpoints) == 0 {
+			if uc.FailClosed {
+				clusters = append(clusters, t.createFailClosedCluster(clusterName))
+			}
 			continue
 		}
 		// Per-upstream connect timeout resolved by the transformer from
@@ -335,6 +338,7 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 			if err != nil {
 				return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
 			}
+			setClusterEndpointHostname(c, ep.Hostname)
 			clusters = append(clusters, c)
 			continue
 		}
@@ -461,6 +465,11 @@ func (t *Translator) createRouteFromRDC(routeKey string, rdcRoute *models.Route,
 	r.Match.Headers = buildMatchHeaders(method, rdcRoute)
 	t.setMatchPathSpecifier(r.Match, fullPath, operationPath, rdcRoute)
 	setRouteHTTPRoute(r, fullPath)
+
+	// The policy engine sets the path of everything this route forwards.
+	if rdcRoute.NoPathRewrite {
+		return r
+	}
 
 	// Compute regex rewrite to strip context and prepend upstream path
 	upstreamPath := ""
@@ -676,6 +685,11 @@ func (t *Translator) createWeightedCluster(
 		if ep.Weight != nil && *ep.Weight > 0 {
 			lb.LoadBalancingWeight = &wrapperspb.UInt32Value{Value: uint32(*ep.Weight)}
 		}
+		if ep.Hostname != "" {
+			lb.GetEndpoint().Hostname = ep.Hostname
+		} else {
+			lb.GetEndpoint().Hostname = endpointAuthority(ep.Host, uint32(ep.Port), tlsEnabled)
+		}
 
 		// Each endpoint in a weighted upstream can have a different hostname (round-robin/
 		// failover across distinct backends), so peer.service metadata is stamped per-endpoint
@@ -785,6 +799,41 @@ func buildGatewayInternalSinkCluster() *cluster.Cluster {
 	}
 }
 
+// endpointAuthority is the host name auto host rewrite writes into the Host header
+// of a request to an upstream endpoint: host:port when the port is not the scheme's
+// default, or "" when it is, which leaves Envoy's own default, the bare address, in
+// place. That default drops a non-default port, so the upstream would get a Host no
+// direct client sends it (RFC 9110 §7.2), and a request signed for the upstream URL
+// (aws-authentication's SigV4) would fail verification there.
+func endpointAuthority(host string, port uint32, tlsEnabled bool) string {
+	defaultPort := constants.HTTPDefaultPort
+	if tlsEnabled {
+		defaultPort = constants.HTTPSDefaultPort
+	}
+	if host == "" || port == defaultPort {
+		return ""
+	}
+	return net.JoinHostPort(host, strconv.FormatUint(uint64(port), 10))
+}
+
+// setClusterEndpointHostname sets the host name of a single-endpoint cluster's
+// endpoint, which auto host rewrite then writes into the Host header, in place of
+// the endpointAuthority processEndpoint gave it. A no-op for an empty name, which
+// is every endpoint but a model endpoint's loopback to a provider route served on
+// a vhost of its own.
+func setClusterEndpointHostname(c *cluster.Cluster, hostname string) {
+	if hostname == "" || c == nil || c.LoadAssignment == nil {
+		return
+	}
+	for _, locality := range c.LoadAssignment.Endpoints {
+		for _, lb := range locality.LbEndpoints {
+			if ep := lb.GetEndpoint(); ep != nil {
+				ep.Hostname = hostname
+			}
+		}
+	}
+}
+
 // TranslateConfigs translates all API configurations to Envoy resources
 // The correlationID parameter is optional and used for request tracing in logs
 // buildGatewayHealthRoutes builds the gateway's own readiness/liveness
@@ -888,10 +937,26 @@ func (t *Translator) TranslateConfigs(
 		// Undeployed configs are excluded so only active/pending APIs appear in xDS,
 		// while ensuring existing deployed APIs are not overridden when deploying new ones.
 
+		// A kind that contributes to another artifact's config (a Model, which its
+		// model endpoints compile) has nothing of its own to translate. Skipped here
+		// rather than left to the lookup below, which would warn about a missing
+		// transformer and send it down the legacy path.
+		if models.IsContributingKind(cfg.Kind) {
+			continue
+		}
+
 		// Create routes and clusters for this API
 		var routesList []*route.Route
 		var clusterList []*cluster.Cluster
 		var err error
+
+		// translated records that the RDC path produced this config's output, even
+		// when that output is empty. An LlmProvider with `exposure: none`, or a
+		// model endpoint with the feature switched off, legitimately compiles to
+		// no routes at all — and keying the legacy fallback on an empty route list
+		// would rebuild such a config from its stored form, which for an LLM kind
+		// means a route at "/".
+		translated := false
 
 		// Try RuntimeDeployConfig transformer path first (produces minimal metadata routes)
 		transformer, ok := t.transformers[cfg.Kind]
@@ -921,11 +986,12 @@ func (t *Translator) TranslateConfigs(
 					continue
 				}
 				t.collectUpstreamTLSSecretRefs(rdc)
+				translated = true
 			}
 		}
 
 		// Legacy path: direct translation from StoredConfig (WebSubApi, or fallback)
-		if routesList == nil {
+		if !translated {
 			if cfg.Kind == "WebSubApi" {
 				if t.eventGatewayHooks == nil {
 					err = fmt.Errorf("WebSubApi configured but event-gateway support is not compiled into this binary")
@@ -2154,6 +2220,18 @@ func (t *Translator) createRoutePerTopic(apiId, apiName, apiVersion, context, me
 	return r
 }
 
+// createFailClosedCluster builds a cluster with no endpoints. The router answers a
+// request routed to it with 503 (no healthy upstream), so a route default that
+// names it reaches nothing.
+func (t *Translator) createFailClosedCluster(name string) *cluster.Cluster {
+	return &cluster.Cluster{
+		Name:                 name,
+		ConnectTimeout:       durationpb.New(5 * time.Second),
+		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_STATIC},
+		LoadAssignment:       &endpoint.ClusterLoadAssignment{ClusterName: name},
+	}
+}
+
 // createCluster creates an Envoy cluster. tlsOpts/validationSecretName carry a definition's mTLS
 // wiring; pass nil/"" for a cluster that does not honour tls blocks, in which case the error is
 // always nil and no client certificate is presented.
@@ -3086,6 +3164,8 @@ func (t *Translator) processEndpoint(
 			},
 		}},
 	}
+	localityLbEndpoints.LbEndpoints[0].GetEndpoint().Hostname =
+		endpointAuthority(upstreamURL.Hostname(), port, upstreamURL.Scheme == constants.SchemeHTTPS)
 
 	setEndpointPeerHostname(localityLbEndpoints.LbEndpoints[0], upstreamURL.Hostname())
 

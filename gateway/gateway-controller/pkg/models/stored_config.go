@@ -41,6 +41,8 @@ const (
 	KindLlmProviderTemplate ArtifactKind = "LlmProviderTemplate"
 	KindAgent               ArtifactKind = "Agent"
 	KindGraphQLApi          ArtifactKind = "GraphQLApi"
+	KindModel               ArtifactKind = "Model"
+	KindModelEndpoint       ArtifactKind = "ModelEndpoint"
 )
 
 // DesiredState represents the intended deployment state of an API configuration.
@@ -197,6 +199,10 @@ func apiVersionOf(cfg any) string {
 		return string(sc.ApiVersion)
 	case api.GraphQLAPI:
 		return string(sc.ApiVersion)
+	case api.ModelConfiguration:
+		return string(sc.ApiVersion)
+	case api.ModelEndpointConfiguration:
+		return string(sc.ApiVersion)
 	}
 	return ""
 }
@@ -228,6 +234,15 @@ func (c *StoredConfig) GetContext() (string, error) {
 		return "", nil
 	case api.GraphQLAPI:
 		return strings.ReplaceAll(sc.Spec.Context, "$version", c.Version), nil
+	case api.ModelConfiguration:
+		// A Model is served on its endpoints' contexts, not one of its own, so it
+		// claims no path and can never conflict with one.
+		return "", nil
+	case api.ModelEndpointConfiguration:
+		if sc.Spec.Context != nil {
+			return strings.TrimSpace(*sc.Spec.Context), nil
+		}
+		return "", nil
 	}
 	return "", fmt.Errorf("unsupported source configuration type: %T", c.SourceConfiguration)
 }

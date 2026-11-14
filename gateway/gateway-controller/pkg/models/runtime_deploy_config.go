@@ -103,6 +103,14 @@ type Route struct {
 	// the policy engine over policy-xDS.
 	UpstreamPathOverride string
 
+	// NoPathRewrite leaves the request path as the policy engine sets it: the route
+	// applies no rewrite of its own. It is for a route whose every forwarded request
+	// has its path set by the engine, a model endpoint's. Envoy applies a route's
+	// rewrite after the engine's path is in place, so a rewrite of the context would
+	// run again on any engine path that happens to start with that context (a
+	// provider whose base path is the endpoint's context) and send it elsewhere.
+	NoPathRewrite bool
+
 	// ─── Policy chain resolution ─────────────────────────────────────────────
 
 	// CanonicalChainKey is the key of the policy chain this route's requests use
@@ -142,6 +150,13 @@ type Route struct {
 	// on that route, not the memory a caller can make the gateway hold. That is bounded
 	// listener-wide by per_connection_buffer_limit_bytes.
 	MaxRequestBodyBytes int64
+
+	// ErrorFormat names the wire format every gateway error on this route is
+	// answered in, regardless of the API kind's own. Empty — every route but a
+	// model endpoint's — leaves error bodies exactly as the kind produces them.
+	// The defined values are a model endpoint's inbound formats: "openai",
+	// "anthropic" and "gemini" (pkg/modelgateway/inbound).
+	ErrorFormat string
 }
 
 // RouteTimeout holds parsed timeout values for a route.
@@ -187,11 +202,19 @@ type Policy struct {
 
 // UpstreamCluster represents an Envoy cluster with its endpoints.
 type UpstreamCluster struct {
-	Name           string // upstream definition name; "" for the main/sandbox slot clusters
-	BasePath       string
+	Name     string // upstream definition name; "" for the main/sandbox slot clusters
+	BasePath string
+	// URL is the upstream's scheme://authority, for a definition the policy engine shows
+	// to policies after one redirects a request to it (a SigV4 signer signs for it). Only
+	// a model endpoint's provider clusters set it; "" everywhere else.
+	URL            string
 	Endpoints      []Endpoint
 	TLS            *UpstreamTLS
 	ConnectTimeout *time.Duration // ConnectTimeout is the per-upstream TCP connect timeout
+	// FailClosed marks a cluster with no endpoints on purpose: the router answers a
+	// request sent to it with 503, so it reaches nothing. Without it a cluster with
+	// no endpoints is not built at all.
+	FailClosed bool
 }
 
 // Endpoint is a single upstream host:port target.
@@ -199,6 +222,14 @@ type Endpoint struct {
 	Host   string
 	Port   int
 	Weight *int
+
+	// Hostname, when set, is the host name the router associates with this
+	// endpoint, which auto host rewrite writes into the Host header. It exists for
+	// an endpoint whose address is not the name it must be addressed by: the model
+	// endpoint reaches a provider's route over the gateway's own loopback address,
+	// and the provider's route is matched by its vhost, not by 127.0.0.1. Unset,
+	// the router uses Host, with Port when it is not the scheme's default.
+	Hostname string
 }
 
 // UpstreamTLS holds TLS configuration for an upstream cluster.

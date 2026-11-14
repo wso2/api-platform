@@ -829,6 +829,44 @@ func TestGenerateAuthConfig(t *testing.T) {
 			assert.Equal(t, authConfig.ResourceRoles[prefixed], authConfig.ResourceRoles[route])
 		}
 	})
+
+	t.Run("Only admins write Models and model endpoints; developers read them", func(t *testing.T) {
+		authConfig, err := generateAuthConfig(&config.Config{})
+		require.NoError(t, err)
+
+		modelRoutes := map[string][]string{
+			"POST /models":        {"admin"},
+			"GET /models":         {"admin", "developer"},
+			"GET /models/{id}":    {"admin", "developer"},
+			"PUT /models/{id}":    {"admin"},
+			"DELETE /models/{id}": {"admin"},
+
+			// Model endpoints carry the policies every Model runs behind.
+			"POST /model-endpoints":        {"admin"},
+			"GET /model-endpoints":         {"admin", "developer"},
+			"GET /model-endpoints/{id}":    {"admin", "developer"},
+			"PUT /model-endpoints/{id}":    {"admin"},
+			"DELETE /model-endpoints/{id}": {"admin"},
+
+			// Keys on both kinds, like every other kind's keys.
+			"POST /model-endpoints/{id}/api-keys":                         {"admin", "consumer"},
+			"GET /model-endpoints/{id}/api-keys":                          {"admin", "consumer"},
+			"PUT /model-endpoints/{id}/api-keys/{apiKeyName}":             {"admin", "consumer"},
+			"POST /model-endpoints/{id}/api-keys/{apiKeyName}/regenerate": {"admin", "consumer"},
+			"DELETE /model-endpoints/{id}/api-keys/{apiKeyName}":          {"admin", "consumer"},
+			"POST /models/{id}/api-keys":                                  {"admin", "consumer"},
+			"GET /models/{id}/api-keys":                                   {"admin", "consumer"},
+			"PUT /models/{id}/api-keys/{apiKeyName}":                      {"admin", "consumer"},
+			"POST /models/{id}/api-keys/{apiKeyName}/regenerate":          {"admin", "consumer"},
+			"DELETE /models/{id}/api-keys/{apiKeyName}":                   {"admin", "consumer"},
+		}
+		for route, wantRoles := range modelRoutes {
+			prefixed := route[:strings.Index(route, " ")+1] + managementAPIBasePath + route[strings.Index(route, " ")+1:]
+			require.Contains(t, authConfig.ResourceRoles, prefixed, "no role entry for %q", prefixed)
+			assert.ElementsMatch(t, wantRoles, authConfig.ResourceRoles[prefixed], "unexpected roles for %q", prefixed)
+			assert.Equal(t, authConfig.ResourceRoles[prefixed], authConfig.ResourceRoles[route])
+		}
+	})
 }
 
 // Additional edge case tests for policybuilder.DerivePolicyFromAPIConfig

@@ -40,6 +40,7 @@ import (
 	"fmt"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
@@ -280,6 +281,35 @@ func inheritLLMUpstreamAuth(incoming **api.LLMUpstreamAuth, stored *api.LLMUpstr
 		return
 	}
 	inheritSameTypeCredential(&(*incoming).Value, &(*incoming).PolicyParams, stored.Value, stored.PolicyParams)
+}
+
+// inheritModelTargetCredentials carries persisted target credentials forward when a
+// Model update omits them.
+//
+// A credential belongs to the target it was stored against, and a target is the
+// pair of its alias (its name, when it sets none) and its provider: an update that
+// changes a target's model but keeps its alias inherits its credential, while one
+// that re-aliases a target, or points it at another provider, inherits nothing for
+// it and must supply its own — the stored key was issued for a different
+// provider's route.
+func inheritModelTargetCredentials(incoming *api.ModelConfiguration, storedSource any) {
+	if incoming == nil {
+		return
+	}
+	stored, ok := reinterpret[api.ModelConfiguration](storedSource)
+	if !ok {
+		return
+	}
+	storedAuth := make(map[string]*api.LLMUpstreamAuth, len(stored.Spec.Targets))
+	for _, t := range stored.Spec.Targets {
+		storedAuth[models.ModelTargetAlias(t)+"\x00"+t.Provider] = t.Auth
+	}
+	for i := range incoming.Spec.Targets {
+		t := &incoming.Spec.Targets[i]
+		if auth, found := storedAuth[models.ModelTargetAlias(*t)+"\x00"+t.Provider]; found {
+			inheritLLMUpstreamAuth(&t.Auth, auth)
+		}
+	}
 }
 
 // inheritMCPProxyCredential carries a persisted upstream credential forward when

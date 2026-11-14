@@ -306,6 +306,23 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 		return nil, fmt.Errorf("failed to retrieve API configuration for handle '%s': %w", params.Handle, err)
 	}
 
+	// A provider with `exposure: none` serves no route, so a key issued for it
+	// would authenticate nothing. Callers reach such a provider through the model
+	// endpoint, with a key issued for that.
+	if provider, ok := config.SourceConfiguration.(api.LLMProviderConfiguration); ok && !models.IsLLMProviderExposed(provider.Spec) {
+		return nil, conflictf("LLM provider '%s' has exposure 'none' and serves no route, so it issues no API keys",
+			params.Handle)
+	}
+
+	// A Model key is checked by api-key-auth on the endpoints serving the Model.
+	// Issuing one where no endpoint would check it is refused: the key would read
+	// as working and authenticate nothing.
+	if config.Kind == models.KindModel {
+		if err := s.ensureModelKeyCheckable(config); err != nil {
+			return nil, err
+		}
+	}
+
 	// Check API key limit enforcement
 	if err := s.enforceAPIKeyLimit(config.UUID, user.UserID, logger); err != nil {
 		logger.Warn("API key generation limit exceeded",
@@ -379,6 +396,34 @@ func (s *APIKeyService) CreateAPIKey(params APIKeyCreationParams) (*APIKeyCreati
 	return result, nil
 }
 
+// ensureModelKeyCheckable refuses a key for a Model none of whose existing
+// endpoints authenticates with api-key-auth.
+func (s *APIKeyService) ensureModelKeyCheckable(cfg *models.StoredConfig) error {
+	model, ok := cfg.SourceConfiguration.(api.ModelConfiguration)
+	if !ok {
+		return nil
+	}
+	handles := models.ModelEndpointHandles(model.Spec)
+	for _, handle := range handles {
+		endpoint, err := s.db.GetConfigByKindAndHandle(models.KindModelEndpoint, handle)
+		if err != nil || endpoint == nil {
+			continue
+		}
+		ep, ok := endpoint.SourceConfiguration.(api.ModelEndpointConfiguration)
+		if !ok || ep.Spec.Policies == nil {
+			continue
+		}
+		for _, p := range *ep.Spec.Policies {
+			if p.Name == constants.API_KEY_AUTH_POLICY_NAME {
+				return nil
+			}
+		}
+	}
+	return conflictf("Model '%s' is served on no model endpoint that authenticates with %s (spec.endpoints: %s), "+
+		"so a key issued for it would authenticate nothing", cfg.Handle, constants.API_KEY_AUTH_POLICY_NAME,
+		strings.Join(handles, ", "))
+}
+
 // extractConfigDisplayNameVersion extracts DisplayName and Version from the stored configuration
 // based on the artifact kind. Supports RestApi, LlmProxy, and LlmProvider.
 func extractConfigDisplayNameVersion(kind string, configuration any) (string, string, error) {
@@ -401,6 +446,18 @@ func extractConfigDisplayNameVersion(kind string, configuration any) (string, st
 			return "", "", fmt.Errorf("configuration is not a LLMProviderConfiguration (kind: %s)", kind)
 		}
 		return providerCfg.Spec.DisplayName, providerCfg.Spec.Version, nil
+	case models.KindModelEndpoint:
+		endpointCfg, ok := configuration.(api.ModelEndpointConfiguration)
+		if !ok {
+			return "", "", fmt.Errorf("configuration is not a ModelEndpointConfiguration (kind: %s)", kind)
+		}
+		return endpointCfg.Spec.DisplayName, endpointCfg.Spec.Version, nil
+	case models.KindModel:
+		modelCfg, ok := configuration.(api.ModelConfiguration)
+		if !ok {
+			return "", "", fmt.Errorf("configuration is not a ModelConfiguration (kind: %s)", kind)
+		}
+		return modelCfg.Spec.DisplayName, modelCfg.Spec.Version, nil
 	default:
 		if fn, ok := kindDisplayNameVersionExtractors[kind]; ok {
 			return fn(configuration)

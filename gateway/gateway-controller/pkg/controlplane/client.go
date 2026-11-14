@@ -286,6 +286,9 @@ func NewClient(
 		policyVersionResolver,
 		policyValidator,
 	)
+	if systemConfig != nil {
+		client.llmDeploymentService.SetModelsConfig(systemConfig.Controller.Models)
+	}
 	client.mcpDeploymentService = utils.NewMCPDeploymentService(
 		store,
 		db,

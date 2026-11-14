@@ -50,6 +50,15 @@ type APIKeySnapshotManager struct {
 	translator *APIKeyTranslator
 }
 
+// SetScopeResolver sets how keys owned by an artifact that serves on other
+// artifacts' routes — a Model, whose chains live in its endpoints' configs — are
+// sent to the policy engine. Unset, every key is sent under its own artifact.
+func (sm *APIKeySnapshotManager) SetScopeResolver(resolver ScopeResolver) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.translator.scopeResolver = resolver
+}
+
 // NewAPIKeySnapshotManager creates a new API key snapshot manager
 func NewAPIKeySnapshotManager(store *storage.APIKeyStore, log *slog.Logger) *APIKeySnapshotManager {
 	// Create a LinearCache for APIKeyState type URL
@@ -169,8 +178,32 @@ func (sm *APIKeySnapshotManager) RemoveAPIKeysByAPI(apiId string) error {
 
 // APIKeyTranslator converts API key configurations to xDS resources
 type APIKeyTranslator struct {
-	logger *slog.Logger
+	logger        *slog.Logger
+	scopeResolver ScopeResolver
 }
+
+// AllOperations is the scope of a key that reaches every operation of the API it
+// is sent under.
+const AllOperations = "*"
+
+// KeyScope is one place a key is sent: the API id it authenticates under, and the
+// operations it reaches there.
+type KeyScope struct {
+	APIId string
+	// Operations are the operations the key reaches, each an operation name (a
+	// Model handle) or "METHOD path" (a catalog route).
+	Operations []string
+	// Owner names the owning artifact. It prefixes the key's name on the wire, so a
+	// key sent under another artifact's id never takes the name of one of that
+	// artifact's own keys.
+	Owner string
+}
+
+// ScopeResolver expands the artifact owning a key into the scopes the key is sent
+// under. ok is false for an ordinary artifact, whose keys are sent under its own
+// id and reach every operation. An owner resolved to no scopes sends its keys
+// nowhere.
+type ScopeResolver func(artifactUUID string) (scopes []KeyScope, ok bool)
 
 // NewAPIKeyTranslator creates a new API key translator
 func NewAPIKeyTranslator(logger *slog.Logger) *APIKeyTranslator {
@@ -194,7 +227,8 @@ type APIKeyData struct {
 	APIId           string `json:"apiId"`
 	ApplicationID   string `json:"applicationId,omitempty"`
 	ApplicationName string `json:"applicationName,omitempty"`
-	// Operations is set to "*" for backward compatibility; per-operation scoping is not used.
+	// Operations is "*" for a key that reaches every operation of its API, or a
+	// JSON array of the operations it reaches (a Model key sent under an endpoint).
 	Operations string     `json:"operations"`
 	Status     string     `json:"status"`
 	CreatedAt  time.Time  `json:"createdAt"`
@@ -209,8 +243,13 @@ type APIKeyData struct {
 func (t *APIKeyTranslator) TranslateAPIKeys(apiKeys []*models.APIKey) (map[string][]types.Resource, error) {
 	resources := make(map[string][]types.Resource)
 
-	// Convert all API keys to a single state resource
+	// Convert all API keys to a single state resource. Keys sent under their own
+	// artifact go first, so a scoped key that would collide with one of them — the
+	// same value registered on a Model and on its endpoint — is the one left out:
+	// the policy engine refuses a state with two equal keys under one API id.
 	apiKeyData := make([]APIKeyData, 0, len(apiKeys))
+	seen := make(map[string]bool, len(apiKeys))
+	var scoped []APIKeyData
 	for _, apiKey := range apiKeys {
 		data := APIKeyData{
 			ID:              apiKey.UUID,
@@ -219,7 +258,7 @@ func (t *APIKeyTranslator) TranslateAPIKeys(apiKeys []*models.APIKey) (map[strin
 			APIId:           apiKey.ArtifactUUID,
 			ApplicationID:   apiKey.ApplicationID,
 			ApplicationName: apiKey.ApplicationName,
-			Operations:      "*", // All operations allowed; per-operation scoping is not supported.
+			Operations:      AllOperations,
 			Status:          string(apiKey.Status),
 			CreatedAt:       apiKey.CreatedAt,
 			CreatedBy:       apiKey.CreatedBy,
@@ -228,7 +267,34 @@ func (t *APIKeyTranslator) TranslateAPIKeys(apiKeys []*models.APIKey) (map[strin
 			Source:          apiKey.Source,
 			Issuer:          apiKey.Issuer,
 		}
+		if t.scopeResolver != nil {
+			if scopes, ok := t.scopeResolver(apiKey.ArtifactUUID); ok {
+				for _, scope := range scopes {
+					operations, err := json.Marshal(scope.Operations)
+					if err != nil || len(scope.Operations) == 0 {
+						continue
+					}
+					entry := data
+					entry.APIId = scope.APIId
+					entry.Name = scope.Owner + "/" + apiKey.Name
+					entry.Operations = string(operations)
+					scoped = append(scoped, entry)
+				}
+				continue
+			}
+		}
+		seen[data.APIId+"\x00"+data.APIKey] = true
 		apiKeyData = append(apiKeyData, data)
+	}
+	for _, entry := range scoped {
+		key := entry.APIId + "\x00" + entry.APIKey
+		if seen[key] {
+			t.logger.Warn("API key is also registered on the endpoint it is sent under; the endpoint's key is kept",
+				slog.String("api_key_id", entry.ID), slog.String("api_id", entry.APIId))
+			continue
+		}
+		seen[key] = true
+		apiKeyData = append(apiKeyData, entry)
 	}
 
 	// Create the state resource

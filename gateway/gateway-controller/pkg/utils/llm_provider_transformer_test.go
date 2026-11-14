@@ -172,7 +172,7 @@ func TestTransform_MinimalProvider(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -215,7 +215,7 @@ func TestTransform_FullProvider(t *testing.T) {
 				Url: stringPtr("https://api.openai.com"),
 				Auth: apiKeyUpstreamAuth("Authorization", "Bearer sk-test123"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -279,7 +279,7 @@ func TestTransform_NonExistentTemplate(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -312,7 +312,7 @@ func TestTransform_DefaultContext(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -355,7 +355,7 @@ func TestTransform_CustomContext(t *testing.T) {
 					Upstream: api.LLMProviderConfigData_Upstream{
 						Url: stringPtr("https://api.example.com"),
 					},
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode: api.AllowAll,
 					},
 				},
@@ -392,7 +392,7 @@ func TestTransform_NoVhost(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -423,7 +423,7 @@ func TestTransform_WithVhost(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -460,7 +460,7 @@ func TestTransform_NoAuth(t *testing.T) {
 				Url:  stringPtr("https://api.example.com"),
 				Auth: nil,
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -494,7 +494,7 @@ func TestTransform_ApiKeyAuth(t *testing.T) {
 				Url: stringPtr("https://api.example.com"),
 				Auth: apiKeyUpstreamAuth("X-API-Key", "secret-key-123"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -573,7 +573,7 @@ func TestTransform_OtherAndNoneAuth(t *testing.T) {
 							PolicyParams: tc.policyParams,
 						},
 					},
-					AccessControl: api.LLMAccessControl{
+					AccessControl: &api.LLMAccessControl{
 						Mode: api.AllowAll,
 					},
 				},
@@ -624,7 +624,7 @@ func TestTransform_UnsupportedAuthType(t *testing.T) {
 					Value:  stringPtr("Bearer token"),
 				},
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 		},
@@ -655,7 +655,7 @@ func TestTransform_AllowAll_NoExceptions(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: nil,
 			},
@@ -700,7 +700,7 @@ func TestTransform_AllowAll_WithSingleException(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -780,7 +780,7 @@ func TestTransform_AllowAll_WithSingleExceptionWithWildCardMethod(t *testing.T) 
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -844,7 +844,7 @@ func TestTransform_AllowAll_WithSingleExceptionWithWildCardResource(t *testing.T
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -912,7 +912,7 @@ func TestTransform_AllowAll_WithMultipleExceptions(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -972,7 +972,7 @@ func TestTransform_DenyAll_NoExceptions(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: nil,
 			},
@@ -1011,7 +1011,7 @@ func TestTransform_DenyAll_WithSingleException(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -1057,7 +1057,7 @@ func TestTransform_DenyAll_WithSingleExceptionWithWildCardMethod(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -1122,7 +1122,7 @@ func TestTransform_DenyAll_WithSingleExceptionWithWildCardResource(t *testing.T)
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -1193,7 +1193,7 @@ func TestTransform_DenyAll_WithMultipleExceptions(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -1238,7 +1238,7 @@ func TestTransform_InvalidAccessControlMode(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: "invalid_mode",
 			},
 		},
@@ -1292,7 +1292,7 @@ func TestTransform_WithSinglePolicy(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -1377,7 +1377,7 @@ func TestTransform_WithMultiplePoliciesSameRoute(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -1462,7 +1462,7 @@ func TestTransform_PolicyOnDifferentRoutes(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -1535,7 +1535,7 @@ func TestTransform_PolicyOnWildcardMethod_1(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -1611,7 +1611,7 @@ func TestTransform_PolicyOnWildcardMethod_2(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -1690,7 +1690,7 @@ func TestTransform_PolicyOnNonExistentRoute(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -1741,7 +1741,7 @@ func TestTransform_AuthWithAllowAll(t *testing.T) {
 				Url: stringPtr("https://api.example.com"),
 				Auth: apiKeyUpstreamAuth("Authorization", "Bearer sk-test"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -1859,7 +1859,7 @@ func TestTransform_EmptyExceptionsArray(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &emptyExceptions,
 			},
@@ -1906,7 +1906,7 @@ func TestTransform_DuplicateExceptionPaths(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -1977,7 +1977,7 @@ func TestTransform_AllowAllWithPolicies(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -2049,7 +2049,7 @@ func TestTransform_APILevelPolicy_AllowAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 			Policies: &policies,
@@ -2119,7 +2119,7 @@ func TestTransform_APILevelPolicy_DenyAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -2209,7 +2209,7 @@ func TestTransform_MultipleAPILevelPolicies_AllowAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 			Policies: &policies,
@@ -2277,7 +2277,7 @@ func TestTransform_UpstreamAuth_Plus_APILevelPolicy_AllowAll(t *testing.T) {
 				Url: stringPtr("https://api.example.com"),
 				Auth: apiKeyUpstreamAuth("Authorization", "Bearer sk-test"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 			Policies: &policies,
@@ -2358,7 +2358,7 @@ func TestTransform_UpstreamAuth_Plus_APILevelPolicy_DenyAll(t *testing.T) {
 				Url: stringPtr("https://api.example.com"),
 				Auth: apiKeyUpstreamAuth("X-API-Key", "secret123"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -2464,7 +2464,7 @@ func TestTransform_APILevel_Plus_OperationLevel_Policies_AllowAll(t *testing.T) 
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 			Policies: &policies,
@@ -2574,7 +2574,7 @@ func TestTransform_APILevel_Plus_OperationLevel_Policies_DenyAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -2646,7 +2646,7 @@ func TestTransform_APILevelPolicy_WildcardMethods_AllowAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 			Policies: &policies,
@@ -2710,7 +2710,7 @@ func TestTransform_NoAPILevelPolicy_OperationLevelOnly_AllowAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 			Policies: &policies,
@@ -2781,7 +2781,7 @@ func TestTransform_ExceptionPrecedence_ExactMatch(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -2856,7 +2856,7 @@ func TestTransform_ExceptionPrecedence_WildcardCoverage_InternalPath(t *testing.
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -2948,7 +2948,7 @@ func TestTransform_ExceptionPrecedence_NestedWildcards(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -3033,7 +3033,7 @@ func TestTransform_ExceptionPrecedence_PolicyAllowedWhenNotCovered(t *testing.T)
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -3145,7 +3145,7 @@ func TestTransform_ExceptionPrecedence_MultipleOverlappingExceptions(t *testing.
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -3236,7 +3236,7 @@ func TestTransform_ExceptionPrecedence_WildcardMethodExpansion(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -3312,7 +3312,7 @@ func TestTransform_ExceptionPrecedence_PartialMethodCoverage(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -3408,7 +3408,7 @@ func TestTransform_ExceptionPrecedence_DeepNestedPath(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -3508,7 +3508,7 @@ func TestTransform_Auth_Plus_APILevel_Plus_OperationLevel_AllowAll(t *testing.T)
 				Url: stringPtr("https://api.example.com"),
 				Auth: apiKeyUpstreamAuth("Authorization", "Bearer secret-token"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -3630,7 +3630,7 @@ func TestTransform_Auth_Plus_APILevel_Plus_OperationLevel_DenyAll(t *testing.T) 
 				Url: stringPtr("https://api.example.com"),
 				Auth: apiKeyUpstreamAuth("X-API-Key", "secret-key"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -3757,7 +3757,7 @@ func TestTransform_MultipleAPILevelPolicies_Plus_Exceptions_Plus_OperationPolici
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.example.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -3959,7 +3959,7 @@ func TestTransform_AllPolicyTypes_WildcardExceptions_WildcardOperations_AllowAll
 				Url: stringPtr("https://api.example.com"),
 				Auth: apiKeyUpstreamAuth("Authorization", "Bearer token"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -4181,7 +4181,7 @@ func TestTransform_AllPolicyTypes_WildcardExceptions_WildcardOperations_DenyAll(
 				Url: stringPtr("https://api.example.com"),
 				Auth: apiKeyUpstreamAuth("X-API-Key", "secret"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -4311,7 +4311,7 @@ func TestTransform_PolicyMoreGeneral_AccessControlSpecific_DenyAll(t *testing.T)
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -4389,7 +4389,7 @@ func TestTransform_MultipleOverlappingExceptions_MultipleWildcardPolicies_DenyAl
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -4472,7 +4472,7 @@ func TestTransform_PolicyMoreSpecific_AccessControlWildcard_DenyAll(t *testing.T
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -4556,7 +4556,7 @@ func TestTransform_MultipleOverlappingWildcards_DenyAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -4661,7 +4661,7 @@ func TestTransform_TripleNestedWildcards_DenyAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -4762,7 +4762,7 @@ func TestTransform_SiblingWildcards_DenyAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -4842,7 +4842,7 @@ func TestTransform_PathMatchingEdgeCases_AllowAll_PolicyMoreGeneral(t *testing.T
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -4916,7 +4916,7 @@ func TestTransform_PathMatchingEdgeCases_AllowAll_NestedWildcardPolicies(t *test
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode: api.AllowAll,
 			},
 			Policies: &policies,
@@ -5023,7 +5023,7 @@ func TestTransform_ComplexCombined_MultipleAPILevelPolicies_NestedWildcards_Allo
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -5212,7 +5212,7 @@ func TestTransform_ComplexCombined_MultipleAPILevelPolicies_NestedWildcards_Deny
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -5395,7 +5395,7 @@ func TestTransform_ComplexCombined_MaximumComplexity_AllowAll(t *testing.T) {
 				Url: stringPtr("https://api.openai.com"),
 				Auth: apiKeyUpstreamAuth("Authorization", "Bearer sk-test123"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -5696,7 +5696,7 @@ func TestTransform_ComplexCombined_MaximumComplexity_DenyAll(t *testing.T) {
 				Url: stringPtr("https://api.openai.com"),
 				Auth: apiKeyUpstreamAuth("Authorization", "Bearer sk-test123"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -5848,7 +5848,7 @@ func TestTransform_PolicyWildcard_AllowAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -5920,7 +5920,7 @@ func TestTransform_PolicyWildcard_DenyAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -6001,7 +6001,7 @@ func TestTransform_PolicyWildcard_MatchingMultipleSpecificOperations_DenyAll(t *
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -6072,7 +6072,7 @@ func TestTransform_PolicyWildcard_MatchingWildcardOperations_DenyAll(t *testing.
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -6159,7 +6159,7 @@ func TestTransform_NestedPolicyWildcards_DenyAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -6258,7 +6258,7 @@ func TestTransform_PolicyWildcard_OverlappingAccessControlWildcards_DenyAll(t *t
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -6385,7 +6385,7 @@ func TestTransform_PolicyWildcard_AllowAll_WithExceptionPrecedence(t *testing.T)
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -6475,7 +6475,7 @@ func TestTransform_DynamicOperationCreation_PolicyOnSpecific_AccessControlWildca
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -6546,7 +6546,7 @@ func TestTransform_DynamicOperationCreation_MultiplePolicies_SameOperation_DenyA
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -6614,7 +6614,7 @@ func TestTransform_DynamicOperationCreation_AllowAll_PolicyCreatesOperation(t *t
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -6689,7 +6689,7 @@ func TestTransform_DynamicOperationCreation_OperationRegistry_PreventsDuplicates
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -6772,7 +6772,7 @@ func TestTransform_DynamicOperationCreation_NestedSpecificPaths_DenyAll(t *testi
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -6858,7 +6858,7 @@ func TestTransform_DynamicOperationCreation_AllowAll_MultipleSpecificPolicies(t 
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -6937,7 +6937,7 @@ func TestTransform_OperationSorting_NonWildcardBeforeWildcard_DenyAll(t *testing
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -6989,7 +6989,7 @@ func TestTransform_OperationSorting_LongerPathsFirst_DenyAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -7049,7 +7049,7 @@ func TestTransform_OperationSorting_CatchAllLast_AllowAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -7119,7 +7119,7 @@ func TestTransform_OperationSorting_CatchAllLast_AllowAll(t *testing.T) {
 //			Upstream: api.LLMProviderConfigData_Upstream{
 //				Url: stringPtr("https://api.openai.com"),
 //			},
-//			AccessControl: api.LLMAccessControl{
+//			AccessControl: &api.LLMAccessControl{
 //				Mode:       api.DenyAll,
 //				Exceptions: &exceptions,
 //			},
@@ -7173,7 +7173,7 @@ func TestTransform_OperationSorting_ComplexMultipleWildcardLevels_DenyAll(t *tes
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -7248,7 +7248,7 @@ func TestTransform_OperationSorting_MixedMethodsSamePath_DenyAll(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -7321,7 +7321,7 @@ func TestTransform_OperationSorting_AllowAll_ComplexMixedOperations(t *testing.T
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -7410,7 +7410,7 @@ func TestTransform_OperationSorting_SpecificityPreservation_DenyAll(t *testing.T
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -7485,7 +7485,7 @@ func TestTransform_AllowAll_UserPolicyOnCatchAll_NotDenied(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -7556,7 +7556,7 @@ func TestTransform_AllowAll_UserPolicyOnSpecificOperation_NotDenied(t *testing.T
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -7640,7 +7640,7 @@ func TestTransform_AllowAll_DenyPolicyPreventsUserPolicy(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -7749,7 +7749,7 @@ func TestTransform_AllowAll_PolicyOnAllowedPath_MixedExceptions(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -7882,7 +7882,7 @@ func TestTransform_AllowAll_WildcardPolicyWithExceptions(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -8045,7 +8045,7 @@ func TestTransform_AllowAll_MultiplePolicies_PartiallyDenied(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -8153,7 +8153,7 @@ func TestTransform_AllowAll_NestedPolicyWithPartialExceptions(t *testing.T) {
 			Upstream: api.LLMProviderConfigData_Upstream{
 				Url: stringPtr("https://api.openai.com"),
 			},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -8250,7 +8250,7 @@ func TestTransformProvider_AllowAll_ResilienceSkipsDenyRoutes(t *testing.T) {
 			Version:     "v1.0",
 			Template:    "openai",
 			Upstream:    api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.example.com")},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.AllowAll,
 				Exceptions: &exceptions,
 			},
@@ -8299,7 +8299,7 @@ func TestTransformProvider_DenyAll_ResilienceOnAllRoutes(t *testing.T) {
 			Version:     "v1.0",
 			Template:    "openai",
 			Upstream:    api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.example.com")},
-			AccessControl: api.LLMAccessControl{
+			AccessControl: &api.LLMAccessControl{
 				Mode:       api.DenyAll,
 				Exceptions: &exceptions,
 			},
@@ -8334,7 +8334,7 @@ func TestTransformProvider_NoResilience_NotAttached(t *testing.T) {
 			Version:       "v1.0",
 			Template:      "openai",
 			Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.example.com")},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 
@@ -8396,7 +8396,7 @@ func TestTransformProxy_ResilienceOnAllRoutes(t *testing.T) {
 				Context:       stringPtr("/db-provider"),
 				Template:      "openai",
 				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.openai.com")},
-				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+				AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 			},
 		},
 		DesiredState: models.StateDeployed,
@@ -8456,7 +8456,7 @@ func TestTransform_Provider_UpstreamRef_ThreadsDefinitions(t *testing.T) {
 			Template:            "openai",
 			UpstreamDefinitions: defs,
 			Upstream:            api.LLMProviderConfigData_Upstream{Ref: stringPtr("openai-backend")},
-			AccessControl:       api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl:       &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 
@@ -8485,7 +8485,7 @@ func TestTransform_Provider_UpstreamUrl_Unchanged(t *testing.T) {
 			Version:       "v1.0",
 			Template:      "openai",
 			Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://api.openai.com")},
-			AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			AccessControl: &api.LLMAccessControl{Mode: api.AllowAll},
 		},
 	}
 

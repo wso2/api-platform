@@ -584,6 +584,19 @@ func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConf
 		}
 	}
 
+	// A provider with `exposure: none` publishes no route. Its derived RestAPI keeps
+	// the identity and upstream above, so everything that reads the derived form
+	// still finds the provider, and has no operations, so nothing is served from it.
+	// The runtime config built from it is empty for the same reason (see
+	// pkg/transform/llm.go).
+	if !models.IsLLMProviderExposed(provider.Spec) {
+		output.Spec = spec
+		return output, nil
+	}
+	if provider.Spec.AccessControl == nil {
+		return nil, fmt.Errorf("provider '%s' publishes a route but declares no accessControl", provider.Metadata.Name)
+	}
+
 	// Step 4) Apply access control
 	mode := provider.Spec.AccessControl.Mode
 	var exceptions []api.RouteException
@@ -1079,6 +1092,13 @@ func (t *LLMProviderTransformer) proxyTransformerPolicy(transformer *api.LLMProx
 		Params:             &params,
 		ExecutionCondition: &condition,
 	}, nil
+}
+
+// SelectedProviderExecutionCondition is the execution condition that gates a
+// policy on one provider having been selected — never on a request with no
+// selection.
+func SelectedProviderExecutionCondition(providerName string) string {
+	return selectedProviderExecutionCondition(providerName, false)
 }
 
 func selectedProviderExecutionCondition(providerName string, includeDefault bool) string {

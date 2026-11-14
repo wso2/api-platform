@@ -33,6 +33,7 @@ import (
 	accesslog "github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3"
 	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	listener "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	tracev3 "github.com/envoyproxy/go-control-plane/envoy/config/trace/v3"
@@ -3815,6 +3816,109 @@ func TestCreateWeightedCluster_PeerHostnameMetadata(t *testing.T) {
 	})
 }
 
+// TestEndpointAuthority: the host name auto host rewrite writes into the Host header
+// keeps a port that is not the scheme's default, and is left unset on the default
+// port, where Envoy's own default (the bare address) is already right.
+func TestEndpointAuthority(t *testing.T) {
+	cases := []struct {
+		name string
+		host string
+		port uint32
+		tls  bool
+		want string
+	}{
+		{"http on its default port", "backend", 80, false, ""},
+		{"https on its default port", "bedrock-runtime.us-east-1.amazonaws.com", 443, true, ""},
+		{"http on another port", "testbench", 3006, false, "testbench:3006"},
+		{"https on another port", "api.example.com", 8443, true, "api.example.com:8443"},
+		{"http on the https port", "backend", 443, false, "backend:443"},
+		{"https on the http port", "backend", 80, true, "backend:80"},
+		{"IPv4 literal", "10.0.0.5", 8080, false, "10.0.0.5:8080"},
+		{"IPv6 literal", "::1", 8080, false, "[::1]:8080"},
+		{"no host", "", 8080, false, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, endpointAuthority(tc.host, tc.port, tc.tls))
+		})
+	}
+}
+
+// TestUpstreamEndpointHostnameKeepsNonDefaultPort: every upstream endpoint path sets
+// the endpoint host name, so an upstream on a non-default port receives Host
+// host:port, the Host aws-authentication signs for. Envoy's default for a DNS
+// cluster drops the port, and the upstream's signature check then fails.
+func TestUpstreamEndpointHostnameKeepsNonDefaultPort(t *testing.T) {
+	translator := createTestTranslator()
+	hostnameOf := func(lb *endpoint.LbEndpoint) string { return lb.GetEndpoint().GetHostname() }
+
+	t.Run("a single endpoint keeps its non-default port", func(t *testing.T) {
+		for raw, want := range map[string]string{
+			"http://testbench:3006":                           "testbench:3006",
+			"https://api.example.com:8443/v1":                 "api.example.com:8443",
+			"http://backend:80/v1":                            "",
+			"https://bedrock-runtime.us-east-1.amazonaws.com": "",
+		} {
+			u, err := url.Parse(raw)
+			require.NoError(t, err)
+			endpoints, _, err := translator.processEndpoint(u, nil, nil, "")
+			require.NoError(t, err)
+			assert.Equal(t, want, hostnameOf(endpoints[0].GetLbEndpoints()[0]), raw)
+		}
+	})
+
+	t.Run("each weighted endpoint keeps its non-default port, an explicit host name wins", func(t *testing.T) {
+		endpoints := []models.Endpoint{
+			{Host: "a.internal", Port: 8080},
+			{Host: "b.internal", Port: 80},
+			{Host: "c.internal", Port: 8080, Hostname: "provider.example.com"},
+		}
+		c, err := translator.createWeightedCluster("upstream_plain", endpoints, nil, nil, "")
+		require.NoError(t, err)
+		lbs := c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints()
+		require.Len(t, lbs, 3)
+		assert.Equal(t, "a.internal:8080", hostnameOf(lbs[0]))
+		assert.Empty(t, hostnameOf(lbs[1]), "the default port leaves Envoy's default in place")
+		assert.Equal(t, "provider.example.com", hostnameOf(lbs[2]))
+
+		c, err = translator.createWeightedCluster("upstream_secure", []models.Endpoint{
+			{Host: "a.example.com", Port: 443},
+			{Host: "b.example.com", Port: 8443},
+		}, &models.UpstreamTLS{Enabled: true}, nil, "")
+		require.NoError(t, err)
+		lbs = c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints()
+		assert.Empty(t, hostnameOf(lbs[0]))
+		assert.Equal(t, "b.example.com:8443", hostnameOf(lbs[1]))
+	})
+
+	t.Run("a model endpoint's loopback keeps its vhost, or else the listener port", func(t *testing.T) {
+		rdc := &models.RuntimeDeployConfig{
+			Metadata: models.Metadata{UUID: "u", Kind: "ModelEndpoint"},
+			Routes:   map[string]*models.Route{},
+			UpstreamClusters: map[string]*models.UpstreamCluster{
+				"on_vhost": {
+					BasePath:  "/provider",
+					Endpoints: []models.Endpoint{{Host: "127.0.0.1", Port: 8080, Hostname: "provider.example.com"}},
+				},
+				"on_default_vhost": {
+					BasePath:  "/provider",
+					Endpoints: []models.Endpoint{{Host: "127.0.0.1", Port: 8080}},
+				},
+			},
+		}
+		_, clusters, err := translator.translateRuntimeConfig(rdc)
+		require.NoError(t, err)
+		got := map[string]string{}
+		for _, c := range clusters {
+			got[c.GetName()] = hostnameOf(c.GetLoadAssignment().GetEndpoints()[0].GetLbEndpoints()[0])
+		}
+		assert.Equal(t, map[string]string{
+			"on_vhost":         "provider.example.com",
+			"on_default_vhost": "127.0.0.1:8080",
+		}, got)
+	})
+}
+
 // parseDurationAllowZero must accept exactly what the CRD admission controller accepts
 // (constants.ResilienceDurationPattern): single-unit durations including "0s" to disable, while
 // rejecting compound, negative, and unitless values.
@@ -4329,4 +4433,63 @@ func TestTranslator_RoutesWithoutPolicyChain_StripClientCertificateHeaders(t *te
 		assert.Contains(t, r.RequestHeadersToRemove, xfccHeaderName, "%s must strip the forwarded-certificate header", name)
 		assert.Contains(t, r.RequestHeadersToRemove, "x-wso2-client-certificate", "%s must strip the relayed-certificate header", name)
 	}
+}
+
+// A model endpoint's routes forward the path the policy engine sets. Envoy applies
+// a route's rewrite after that path is in place, so such a route must carry none:
+// with one, an engine path that starts with the route's context (a provider whose
+// base path is the endpoint's context) would be rewritten a second time. Its
+// default cluster has no endpoints and must still be built, so a request no policy
+// placed fails closed instead of naming a cluster Envoy does not know.
+func TestTranslateRuntimeConfig_EnginePathedRouteAndFailClosedDefault(t *testing.T) {
+	logger := createTestLogger()
+	translator, err := NewTranslator(logger, testRouterConfig(), nil, testConfig())
+	require.NoError(t, err)
+
+	const (
+		enginePathed = "POST|/anthropic/v1/messages|"
+		rewritten    = "POST|/anthropic/v1/other|"
+	)
+	rdc := &models.RuntimeDeployConfig{
+		Context: "/anthropic",
+		Routes: map[string]*models.Route{
+			enginePathed: {
+				Method: "POST", Path: "/anthropic/v1/messages", OperationPath: "/v1/messages",
+				PathMatchType: "Exact", NoPathRewrite: true,
+				Upstream: models.RouteUpstream{ClusterKey: "unrouted", UseClusterHeader: true, DefaultCluster: "unrouted"},
+			},
+			rewritten: {
+				Method: "POST", Path: "/anthropic/v1/other", OperationPath: "/v1/other",
+				Upstream: models.RouteUpstream{ClusterKey: "main"},
+			},
+		},
+		UpstreamClusters: map[string]*models.UpstreamCluster{
+			"unrouted": {FailClosed: true},
+			"main":     {BasePath: "/base", Endpoints: []models.Endpoint{{Host: "echo", Port: 80}}},
+			"empty":    {},
+		},
+	}
+
+	routes, clusters, err := translator.translateRuntimeConfig(rdc)
+	require.NoError(t, err)
+
+	byName := map[string]*route.Route{}
+	for _, r := range routes {
+		byName[r.GetName()] = r
+	}
+	require.NotNil(t, byName[enginePathed])
+	assert.Nil(t, byName[enginePathed].GetRoute().GetRegexRewrite(), "an engine-pathed route rewrites nothing")
+	assert.Empty(t, byName[enginePathed].GetRoute().GetPrefixRewrite())
+	assert.Equal(t, "/base/v1/other", applyEnvoyRewrite(t, byName[rewritten], "/anthropic/v1/other"),
+		"every other route keeps its rewrite")
+
+	byCluster := map[string]*cluster.Cluster{}
+	for _, c := range clusters {
+		byCluster[c.GetName()] = c
+	}
+	failClosed := byCluster["unrouted"]
+	require.NotNil(t, failClosed, "a fail-closed cluster is built although it has no endpoints")
+	assert.Equal(t, cluster.Cluster_STATIC, failClosed.GetType())
+	assert.Empty(t, failClosed.GetLoadAssignment().GetEndpoints())
+	assert.NotContains(t, byCluster, "empty", "a cluster with no endpoints and no intent is still skipped")
 }

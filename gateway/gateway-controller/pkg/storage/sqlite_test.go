@@ -781,11 +781,11 @@ func TestSQLiteStorage_DefaultIdentityRoleSurvivesRotation(t *testing.T) {
 	assert.Assert(t, !got.IsDefaultIdentity())
 }
 
-// A database at the previous schema version is migrated in place: its row
+// A version 5 database is migrated in place, through every later step: its row
 // reads back with the column defaults and a new row saves with explicit usage
 // and role.
 func TestSQLite_UpgradeAddsCertificateUsageColumns(t *testing.T) {
-	const preMigrationSchemaVersion = previousSchemaVersion
+	const preMigrationSchemaVersion = 5
 
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "upgrade-test.db")
@@ -970,7 +970,7 @@ func TestSQLite_RepairsVersion6DatabaseWithoutGraphQLAPIs(t *testing.T) {
 		`ALTER TABLE certificates ADD COLUMN match_json TEXT`,
 		`ALTER TABLE certificates ADD COLUMN private_key_ciphertext TEXT`,
 		`ALTER TABLE certificates ADD COLUMN key_algorithm TEXT`,
-		fmt.Sprintf("PRAGMA user_version = %d", currentSchemaVersion),
+		"PRAGMA user_version = 6",
 	} {
 		_, err = rawDB.Exec(statement)
 		assert.NilError(t, err)
@@ -990,6 +990,9 @@ func TestSQLite_RepairsVersion6DatabaseWithoutGraphQLAPIs(t *testing.T) {
 //	git show ae2a5add:gateway/gateway-controller/pkg/storage/gateway-controller-db.sql
 const releasedV5SchemaSHA256 = "297a28a9ae358f933978b4ea117fa6aef7ee3b85fd7b052f4ceb62f4b7088153"
 
+// releasedV5SchemaVersion is the user_version that schema stamps.
+const releasedV5SchemaVersion = 5
+
 // createReleasedV5Database creates a database at path from the version 5 schema
 // that gateway 2026.09.24 shipped.
 func createReleasedV5Database(t *testing.T, path string) {
@@ -1005,7 +1008,7 @@ func createReleasedV5Database(t *testing.T, path string) {
 	assert.NilError(t, err)
 	var version int
 	assert.NilError(t, rawDB.QueryRow("PRAGMA user_version").Scan(&version))
-	assert.Equal(t, version, previousSchemaVersion)
+	assert.Equal(t, version, releasedV5SchemaVersion)
 	assert.NilError(t, rawDB.Close())
 }
 

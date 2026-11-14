@@ -137,6 +137,8 @@ func (l *EventListener) handleLLMProviderCreateOrUpdate(event eventhub.Event) {
 
 	l.updateSnapshot(entityID, event.EventID, "Failed to update xDS snapshot after LLM provider replica sync")
 	l.updatePoliciesForAPI(storedConfig, event.EventID)
+	// Models that target the provider are compiled into their endpoints.
+	l.refreshEndpointsForProvider(storedConfig.Handle, event.EventID)
 
 	l.logger.Info("Successfully processed LLM provider create/update event",
 		slog.String("provider_id", entityID),
@@ -276,6 +278,9 @@ func (l *EventListener) handleLLMProviderDelete(event eventhub.Event) {
 				slog.String("provider_id", entityID),
 				slog.Any("error", err))
 		}
+	}
+	if existingConfig != nil {
+		l.refreshEndpointsForProvider(existingConfig.Handle, event.EventID)
 	}
 
 	l.logger.Info("Successfully processed LLM provider delete event",

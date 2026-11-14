@@ -385,10 +385,12 @@ blocks:
 
   # Config dump asserts the gateway's total API count starts at zero, which no other runner
   # may be free to disturb - it needs a gateway to itself rather than gateway-core's shared one.
+  # Its overlay turns off the default model endpoint, which would otherwise be that one API.
   - name: config-dump
     parallel: 1
     components:
       - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/model-endpoint-provision-disabled.toml
         db:
           matrix: [sqlite, postgres, sqlserver]
       - name: testbench

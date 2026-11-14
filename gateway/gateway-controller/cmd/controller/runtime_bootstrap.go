@@ -174,9 +174,14 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 	return loadedCount, nil
 }
 
+// supportsRuntimeBootstrapKind reports whether a stored kind compiles into a
+// runtime config of its own at startup. A model endpoint does, from the Models
+// naming it, which the store has loaded by then; a Model contributes to its
+// endpoints' configs and has none of its own.
 func supportsRuntimeBootstrapKind(kind string) bool {
 	switch kind {
-	case models.KindRestApi, models.KindMcp, models.KindLlmProvider, models.KindLlmProxy, models.KindAgent, models.KindGraphQLApi:
+	case models.KindRestApi, models.KindMcp, models.KindLlmProvider, models.KindLlmProxy, models.KindAgent, models.KindGraphQLApi,
+		models.KindModelEndpoint:
 		return true
 	default:
 		return false
