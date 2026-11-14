@@ -9,6 +9,12 @@
 {{- fail "gateway.config.controller.storage.sqlserver has been removed — move these settings to gateway.config.controller.storage.database (encrypt/trust_server_certificate now live under storage.database.options)." -}}
 {{- end -}}
 {{- $controllerHost := printf "%s-controller" (include "gateway-operator.fullname" .) -}}
+{{- /* How each controller secret reaches config.toml: an env token (default) or a
+       file token for a mounted Secret. See gateway-operator.controllerSecret. */ -}}
+{{- $cpTokenSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "token") | fromYaml -}}
+{{- $pgSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "postgres") | fromYaml -}}
+{{- $sqlSecret := include "gateway-operator.controllerSecret" (dict "root" . "which" "sqlserver") | fromYaml -}}
+{{- $secretMounts := (include "gateway-operator.controllerSecretMounts" . | fromYaml).mounts -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -96,18 +102,27 @@ data:
       combine a DSN with the secret is to embed the token in the DSN. Match the full
       `{{ env "VAR" }}` interpolation token (tolerating the {{- trim marker, spacing,
       and the "" default arg), not just the bare variable name, so a DSN that merely
-      mentions the name elsewhere (e.g. in the dbname) still fails the guard.
+      mentions the name elsewhere (e.g. in the dbname) still fails the guard. With
+      passwordSecretRef.source=file the DSN must instead reference the mounted file
+      with a {{ file "<mountPath>/<key>" }} token for exactly that path.
     */ -}}
-    {{- if and $controller.postgres.passwordSecretRef.name (not (regexMatch `\{\{-? *env +"APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD"` $pg.dsn)) }}
+    {{- if and $controller.postgres.passwordSecretRef.name (eq $pgSecret.source "file") (not (regexMatch (printf `\{\{-? *file +"%s"` (regexQuoteMeta $pgSecret.path)) $pg.dsn)) }}
+    {{- fail (printf "gateway.config.controller.storage.postgres.dsn is set together with gateway.controller.postgres.passwordSecretRef (source: file), but the DSN does not reference the mounted password file. A full DSN is used verbatim; the mounted password is ignored. Either embed the file token in the DSN, e.g. dsn: 'postgres://user:{{ file \"%s\" }}@host:5432/db?sslmode=require', or unset gateway.controller.postgres.passwordSecretRef and put the password directly in the DSN." $pgSecret.path) }}
+    {{- end }}
+    {{- if and $controller.postgres.passwordSecretRef.name (eq $pgSecret.source "env") (not (regexMatch `\{\{-? *env +"APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD"` $pg.dsn)) }}
     {{- fail "gateway.config.controller.storage.postgres.dsn is set together with gateway.controller.postgres.passwordSecretRef, but the DSN does not reference the injected password. A full DSN is used verbatim; the separately-injected password is ignored. Either embed the token in the DSN, e.g. dsn: 'postgres://user:{{ env \"APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD\" }}@host:5432/db?sslmode=require', or unset gateway.controller.postgres.passwordSecretRef and put the password directly in the DSN." }}
     {{- end }}
+    {{- if eq $pgSecret.source "env" }}
     dsn = {{ $pg.dsn | quote }}
+    {{- end }}
     {{- else }}
     host = {{ required "gateway.config.controller.storage.postgres.host is required when storage.type is \"postgres\" and dsn is unset" $pg.host | quote }}
     port = {{ $pg.port | int }}
     database = {{ required "gateway.config.controller.storage.postgres.database is required when storage.type is \"postgres\" and dsn is unset" $pg.database | quote }}
     user = {{ required "gateway.config.controller.storage.postgres.user is required when storage.type is \"postgres\" and dsn is unset" $pg.user | quote }}
-    password = {{ `'{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD" "" }}'` }}
+    {{- if eq $pgSecret.source "env" }}
+    password = {{ $pgSecret.token }}
+    {{- end }}
     sslmode = {{ $pg.sslmode | default "require" | quote }}
     connect_timeout = {{ $pg.connect_timeout | default "5s" | quote }}
     max_open_conns = {{ $pg.max_open_conns | default 25 | int }}
@@ -131,17 +146,26 @@ data:
       full `{{ env "VAR" }}` interpolation token (tolerating the {{- trim marker,
       spacing, and the "" default arg), not just the bare variable name, so a DSN that
       merely mentions the name elsewhere (e.g. in the dbname) still fails the guard.
+      With passwordSecretRef.source=file the DSN must instead reference the mounted
+      file with a {{ file "<mountPath>/<key>" }} token for exactly that path.
     */ -}}
-    {{- if and $controller.sqlserver.passwordSecretRef.name (not (regexMatch `\{\{-? *env +"APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD"` $db.dsn)) }}
+    {{- if and $controller.sqlserver.passwordSecretRef.name (eq $sqlSecret.source "file") (not (regexMatch (printf `\{\{-? *file +"%s"` (regexQuoteMeta $sqlSecret.path)) $db.dsn)) }}
+    {{- fail (printf "gateway.config.controller.storage.database.dsn is set together with gateway.controller.sqlserver.passwordSecretRef (source: file), but the DSN does not reference the mounted password file. A full DSN is used verbatim; the mounted password is ignored. Either embed the file token in the DSN, e.g. dsn: 'sqlserver://user:{{ file \"%s\" }}@host:1433?database=gateway', or unset gateway.controller.sqlserver.passwordSecretRef and put the password directly in the DSN." $sqlSecret.path) }}
+    {{- end }}
+    {{- if and $controller.sqlserver.passwordSecretRef.name (eq $sqlSecret.source "env") (not (regexMatch `\{\{-? *env +"APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD"` $db.dsn)) }}
     {{- fail "gateway.config.controller.storage.database.dsn is set together with gateway.controller.sqlserver.passwordSecretRef, but the DSN does not reference the injected password. A full DSN is used verbatim; the separately-injected password is ignored. Either embed the token in the DSN, e.g. dsn: 'sqlserver://user:{{ env \"APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD\" }}@host:1433?database=gateway', or unset gateway.controller.sqlserver.passwordSecretRef and put the password directly in the DSN." }}
     {{- end }}
+    {{- if eq $sqlSecret.source "env" }}
     dsn = {{ $db.dsn | quote }}
+    {{- end }}
     {{- else }}
     host = {{ required "gateway.config.controller.storage.database.host is required when storage.type is \"sqlserver\" and dsn is unset" $db.host | quote }}
     port = {{ default 1433 $db.port | int }}
     database = {{ required "gateway.config.controller.storage.database.database is required when storage.type is \"sqlserver\" and dsn is unset" $db.database | quote }}
     user = {{ required "gateway.config.controller.storage.database.user is required when storage.type is \"sqlserver\" and dsn is unset" $db.user | quote }}
-    password = {{ `'{{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD" "" }}'` }}
+    {{- if eq $sqlSecret.source "env" }}
+    password = {{ $sqlSecret.token }}
+    {{- end }}
     connect_timeout = {{ default "5s" $db.connect_timeout | quote }}
     max_open_conns = {{ default 25 $db.max_open_conns | int }}
     max_idle_conns = {{ default 5 $db.max_idle_conns | int }}
@@ -176,7 +200,9 @@ data:
 
     [controller.controlplane]
     host = {{ .Values.gateway.controller.controlPlane.host | default "" | quote }}
-    token = {{ `'{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN" "" }}'` }}
+    {{- if eq $cpTokenSecret.source "env" }}
+    token = {{ $cpTokenSecret.token }}
+    {{- end }}
     insecure_skip_verify = {{ $gc.controlplane.insecure_skip_verify }}
     reconnect_initial = {{ $gc.controlplane.reconnect_initial | quote }}
     reconnect_max = {{ $gc.controlplane.reconnect_max | quote }}
@@ -821,3 +847,38 @@ data:
     jwks_endpoint_enabled = {{ .jwks_endpoint_enabled }}
     {{- end }}
     {{- end }}
+  {{- if $secretMounts }}
+  {{- /*
+    Controller-only overlay for secrets delivered as mounted files (source: file).
+    Their {{ file }} tokens must not be in config.toml: the policy engine loads that
+    file too and interpolates every string in it, and the controller's secret files
+    are not mounted in the gateway-runtime pod, so it would refuse to start. Only the
+    controller mounts this key and loads it with a second -config, merged over
+    config.toml before interpolation.
+  */}}
+  controller-secrets.toml: |
+    # Controller-only overlay, merged over config.toml. Rendered by the Helm chart.
+    {{- if eq $cpTokenSecret.source "file" }}
+
+    [controller.controlplane]
+    token = {{ $cpTokenSecret.token }}
+    {{- end }}
+    {{- if and $pgSecret.inUse (eq $pgSecret.source "file") }}
+
+    [controller.storage.postgres]
+    {{- if $pg.dsn }}
+    dsn = {{ $pg.dsn | quote }}
+    {{- else }}
+    password = {{ $pgSecret.token }}
+    {{- end }}
+    {{- end }}
+    {{- if and $sqlSecret.inUse (eq $sqlSecret.source "file") }}
+
+    [controller.storage.database]
+    {{- if $db.dsn }}
+    dsn = {{ $db.dsn | quote }}
+    {{- else }}
+    password = {{ $sqlSecret.token }}
+    {{- end }}
+    {{- end }}
+  {{- end }}

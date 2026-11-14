@@ -168,7 +168,7 @@ All configurable values are documented in `values.yaml`. Component blocks are fu
 - The sensitive `/config_dump` route on the controller and policy-engine admin servers is **off by default** (returns 404), independent of the `expose.*` Service toggles above — set `gateway.config.controller.admin_server.config_dump.enabled=true` / `gateway.config.policy_engine.admin.config_dump.enabled=true` to turn it on. `/health` and other admin routes are unaffected, so liveness/readiness probes keep working either way. Envoy's admin interface (port 9901) is likewise off by default at the process level — nothing is even listening on it unless `gateway.gatewayRuntime.deployment.env.routerAdminEnabled=true`, and even then it binds loopback-only inside the pod. Enabling it also restores the graceful-drain-on-SIGTERM behavior; `gateway-runtime`'s health probe falls back to a plain TCP check on the HTTP listener when it's off.
 - `gateway.controller.persistence` / `gateway.configMap` – PVC sizing/claims (plus PVC `labels`/`annotations`, e.g. `helm.sh/resource-policy: keep`) and component configuration payloads.
 - `commonLabels` / `commonAnnotations` – applied to every resource the chart renders; per-resource labels/annotations win on key conflicts.
-- `gateway.controller.controlPlane` – control-plane connectivity. The host is non-secret and rendered directly into `config.toml`; the token is injected from a Secret. The controller log level is `gateway.config.controller.logging.level`.
+- `gateway.controller.controlPlane` – control-plane connectivity. The host is non-secret and rendered directly into `config.toml`; the token comes from a Secret, as an env var (default) or a mounted file (`token.source`, see below). The controller log level is `gateway.config.controller.logging.level`.
 - `gateway.controller.tls.*` – TLS certificate configuration for HTTPS listener using cert-manager or existing secrets.
 - `gateway.controller.upstreamCerts.*` – Custom CA certificates for upstream backend TLS verification.
 - `gateway.config.policy_engine.*` – policy engine configuration including xDS client settings and admin API.
@@ -202,6 +202,45 @@ ConfigMap:
   `config.toml`.
 
 A plain `APIP_GW_*` env var with no matching token in `config.toml` is ignored.
+
+#### Reading these secrets from mounted files instead of env vars
+
+Each of the three secrets above has a `source` setting. `env` (the default) delivers it as the env
+var described above. `file` mounts the Secret key read-only at `<mountPath>/<key>` and the
+controller reads it through a `{{ file "<mountPath>/<key>" }}` token, so the value never enters the
+pod environment (where, for example, an API definition's `{{ env "NAME" }}` template could read it).
+
+The `{{ file }}` tokens are not written into `config.toml`, because the policy engine loads that
+file too and would fail on a path that only the controller mounts. They go into a second key of the
+same ConfigMap, `controller-secrets.toml`. Only the controller mounts it and loads it with a second
+`-config` flag, merged over `config.toml`. With a full `dsn` in `file` mode, the `dsn` line moves
+there as well.
+
+| Secret | Settings | Default `mountPath` |
+|---|---|---|
+| Control-plane token | `gateway.controller.controlPlane.token.{source,secretName,key,mountPath}` | `/secrets/gateway-controller/controlplane` |
+| PostgreSQL password | `gateway.controller.postgres.passwordSecretRef.{source,name,key,mountPath}` | `/secrets/gateway-controller/postgres` |
+| SQL Server password | `gateway.controller.sqlserver.passwordSecretRef.{source,name,key,mountPath}` | `/secrets/gateway-controller/sqlserver` |
+
+```bash
+helm install gateway . \
+  --set gateway.controller.controlPlane.token.source=file \
+  --set gateway.controller.controlPlane.token.secretName=gateway-cp-token \
+  --set gateway.controller.postgres.passwordSecretRef.source=file \
+  --set gateway.controller.postgres.passwordSecretRef.name=gateway-db
+```
+
+- `file` requires the Secret name (`token.secretName` / `passwordSecretRef.name`); a literal
+  `token.value` cannot be mounted, so it is rejected with `source=file`.
+- `mountPath` must be inside a directory the controller's `{{ file }}` token may read:
+  `/secrets/gateway-controller` or `/etc/gateway-controller`, or a directory listed in
+  `APIP_CONFIG_FILE_SOURCE_ALLOWLIST` (set it through `gateway.controller.deployment.extraEnv`).
+  Anywhere else, the controller refuses to start. Each mounted secret needs its own `mountPath`.
+- With a full `dsn`, reference the mounted file in it, e.g.
+  `postgres://user:{{ file "/secrets/gateway-controller/postgres/password" }}@host:5432/db`.
+  The chart fails to render if the DSN does not reference that exact path.
+- Like the env var, the file is read once at startup: restart the controller after rotating the
+  Secret.
 
 ### Raw config passthrough (`gateway.config_toml`)
 
