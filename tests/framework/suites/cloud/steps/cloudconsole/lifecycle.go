@@ -19,6 +19,7 @@ package cloudconsole
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -249,7 +250,10 @@ func (s *Steps) chooseActiveGateway(ctx context.Context, items []map[string]any,
 			skipped = append(skipped, id+": no endpoints")
 			continue
 		}
-		endpoint, ok := firstApprovedDataPlaneEndpoint(ctx, s, endpoints)
+		endpoint, ok, err := firstApprovedDataPlaneEndpoint(ctx, s, endpoints)
+		if err != nil {
+			return gatewayChoice{}, err
+		}
 		if !ok {
 			skipped = append(skipped, id+": no endpoint passed the data-plane host check")
 			continue
@@ -331,22 +335,27 @@ func (s *Steps) assertAPIResponse(ctx context.Context, post int) error {
 	return nil
 }
 
-// cloudDataPlaneDomainsEnv lists the comma-separated domains gateway hosts may sit under, in
-// place of wso2.com.
+// cloudDataPlaneDomainsEnv lists comma-separated gateway domains; a gateway host is then
+// <label>.<domain>. Unset, it must be <label>.gateway[.<label>...].wso2.com.
 const cloudDataPlaneDomainsEnv = "CLOUD_IT_DATA_PLANE_DOMAINS"
 
-const defaultCloudDataPlaneDomain = "wso2.com"
+// errCloudDataPlaneDomains marks an invalid CLOUD_IT_DATA_PLANE_DOMAINS value.
+var errCloudDataPlaneDomains = errors.New("invalid " + cloudDataPlaneDomainsEnv)
 
 const dnsLabelPattern = `[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?`
+
+var defaultCloudDataPlaneHost = regexp.MustCompile(
+	`^` + dnsLabelPattern + `\.gateway(?:\.` + dnsLabelPattern + `)*\.wso2\.com$`,
+)
 
 // validCloudDataPlaneDomain needs two labels or more, so a bare TLD is refused.
 var validCloudDataPlaneDomain = regexp.MustCompile(`^` + dnsLabelPattern + `(?:\.` + dnsLabelPattern + `)+$`)
 
-// approvedCloudDataPlaneHost matches <label>.gateway[.<label>...].<approved domain>.
+// approvedCloudDataPlaneHost returns the pattern a gateway host must match.
 func approvedCloudDataPlaneHost() (*regexp.Regexp, error) {
 	raw := strings.TrimSpace(os.Getenv(cloudDataPlaneDomainsEnv))
 	if raw == "" {
-		raw = defaultCloudDataPlaneDomain
+		return defaultCloudDataPlaneHost, nil
 	}
 	var domains []string
 	for _, domain := range strings.Split(raw, ",") {
@@ -355,14 +364,14 @@ func approvedCloudDataPlaneHost() (*regexp.Regexp, error) {
 			continue
 		}
 		if !validCloudDataPlaneDomain.MatchString(domain) {
-			return nil, fmt.Errorf("%s holds %q, which is not a domain of two labels or more", cloudDataPlaneDomainsEnv, domain)
+			return nil, fmt.Errorf("%w: %q is not a domain of two labels or more", errCloudDataPlaneDomains, domain)
 		}
 		domains = append(domains, regexp.QuoteMeta(domain))
 	}
 	if len(domains) == 0 {
-		return nil, fmt.Errorf("%s holds no domain", cloudDataPlaneDomainsEnv)
+		return nil, fmt.Errorf("%w: no domain", errCloudDataPlaneDomains)
 	}
-	return regexp.Compile(`^` + dnsLabelPattern + `\.gateway(?:\.` + dnsLabelPattern + `)*\.(?:` + strings.Join(domains, "|") + `)$`)
+	return regexp.Compile(`^` + dnsLabelPattern + `\.(?:` + strings.Join(domains, "|") + `)$`)
 }
 
 // cloudLocalDataPlaneEnv, when set to a true value, also approves gateway URLs on a .localhost
@@ -416,19 +425,23 @@ func (s *Steps) resolveDataPlaneURL(ctx context.Context, target string) (string,
 	return resolveCloudDataPlaneURL(ctx, target)
 }
 
-func firstApprovedDataPlaneEndpoint(ctx context.Context, s *Steps, endpoints []any) (string, bool) {
+// firstApprovedDataPlaneEndpoint skips rejected endpoints; an invalid domains setting is returned.
+func firstApprovedDataPlaneEndpoint(ctx context.Context, s *Steps, endpoints []any) (string, bool, error) {
 	for _, rawEndpoint := range endpoints {
 		endpoint, ok := rawEndpoint.(string)
 		if !ok || strings.TrimSpace(endpoint) == "" {
 			continue
 		}
 		endpoint, err := s.resolveDataPlaneURL(ctx, strings.TrimSpace(endpoint))
+		if errors.Is(err, errCloudDataPlaneDomains) {
+			return "", false, err
+		}
 		if err != nil {
 			continue
 		}
-		return strings.TrimRight(endpoint, "/"), true
+		return strings.TrimRight(endpoint, "/"), true, nil
 	}
-	return "", false
+	return "", false, nil
 }
 
 func resolveCloudDataPlaneURL(_ context.Context, target string) (string, error) {
