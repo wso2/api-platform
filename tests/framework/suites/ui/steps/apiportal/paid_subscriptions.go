@@ -257,9 +257,28 @@ func (u *Steps) openPaidPage(ctx context.Context, query string) (playwright.Page
 	return u.page(ctx)
 }
 
-// paidSubscribeButton is the Subscribe button of the paid plan's card.
-func paidSubscribeButton(page playwright.Page, planID string) playwright.Locator {
-	return page.Locator(`.paid-subscribe-btn[data-plan-id="` + planID + `"]`)
+// headerPlanPicker is the page header's Subscribe (or Switch plan) button, which opens the plan
+// picker. Plan cards show only the plan's name and description; their buttons are hidden.
+func headerPlanPicker(page playwright.Page) playwright.Locator {
+	return page.Locator(".aov-hero-actions [data-plan-picker]")
+}
+
+// viewSubscriptionButton is the page header's View subscription button for the plan.
+func viewSubscriptionButton(page playwright.Page, planID string) playwright.Locator {
+	return page.Locator(`.aov-hero-actions [data-view-subscription="` + planID + `"]`)
+}
+
+// choosePaidPlan opens the header's plan picker, picks the plan and confirms. A paid plan's
+// confirmation clicks its card's hidden button, which opens the checkout dialog.
+func choosePaidPlan(page playwright.Page, planID string) error {
+	if err := headerPlanPicker(page).Click(); err != nil {
+		return err
+	}
+	picker := page.Locator(".plan-picker")
+	if err := picker.Locator(`.plan-picker-option:has(input[value="` + planID + `"])`).Click(); err != nil {
+		return err
+	}
+	return picker.Locator(".plan-picker-confirm").Click()
 }
 
 // serveStripeJS answers the page's requests for Stripe.js with the stand-in, or fails them when
@@ -284,7 +303,7 @@ func (u *Steps) startCheckout(ctx context.Context, page playwright.Page) (string
 	if err != nil {
 		return "", err
 	}
-	if err := paidSubscribeButton(page, planID).Click(); err != nil {
+	if err := choosePaidPlan(page, planID); err != nil {
 		return "", fmt.Errorf("choosing the paid plan: %w", err)
 	}
 	response, err := page.ExpectResponse(regexp.MustCompile(`/checkout-sessions$`), func() error {
@@ -364,9 +383,8 @@ func (u *Steps) startPayingFlatRatePlan(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	subscribe := paidSubscribeButton(page, planID)
 	dialog := page.Locator("#paidSubscribeModal")
-	if err := subscribe.Click(); err != nil {
+	if err := choosePaidPlan(page, planID); err != nil {
 		return fmt.Errorf("choosing the paid plan: %w", err)
 	}
 	if err := u.expect.Locator(page.Locator("#paidSubscribeTitle")).ToHaveText("Subscribe to " + planName + " plan"); err != nil {
@@ -389,7 +407,7 @@ func (u *Steps) startPayingFlatRatePlan(ctx context.Context) error {
 	if err := u.failProviderCall(ctx, "stripe", map[string]any{"method": "POST", "path": "/v1/checkout/sessions", "status": 500}); err != nil {
 		return err
 	}
-	if err := subscribe.Click(); err != nil {
+	if err := choosePaidPlan(page, planID); err != nil {
 		return err
 	}
 	if err := continueButton.Click(); err != nil {
@@ -401,7 +419,7 @@ func (u *Steps) startPayingFlatRatePlan(ctx context.Context) error {
 	if err := serveStripeJS(page, false); err != nil {
 		return err
 	}
-	if err := subscribe.Click(); err != nil {
+	if err := choosePaidPlan(page, planID); err != nil {
 		return err
 	}
 	if err := continueButton.Click(); err != nil {
@@ -483,7 +501,7 @@ func (u *Steps) startPayingUsagePlan(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := paidSubscribeButton(page, planID).Click(); err != nil {
+	if err := choosePaidPlan(page, planID); err != nil {
 		return fmt.Errorf("choosing the paid plan: %w", err)
 	}
 	if err := u.expect.Locator(page.Locator("#paidSubscribePricing tr")).ToHaveCount(4); err != nil {
@@ -557,9 +575,8 @@ func (u *Steps) payForPlan(ctx context.Context) error {
 	if err := page.Locator("#" + prefix + "TokenModalDone").Click(); err != nil {
 		return err
 	}
-	view := page.Locator(`.` + prefix + `-view-sub-btn[data-policy-name="` + planID + `"]`)
-	if err := u.expect.Locator(view).ToBeVisible(); err != nil {
-		return fmt.Errorf("the paid plan's card should offer the subscription: %w", err)
+	if err := u.expect.Locator(viewSubscriptionButton(page, planID)).ToBeVisible(); err != nil {
+		return fmt.Errorf("the page header should offer the subscription: %w", err)
 	}
 	if prefix == "mcp" {
 		return nil
@@ -787,7 +804,7 @@ func (u *Steps) unsubscribeAndEndNow(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := u.openPaidSubscriptionDialog(page, page.Locator(`.api-view-sub-btn[data-policy-name="`+planID+`"]`)); err != nil {
+	if err := u.openPaidSubscriptionDialog(page, viewSubscriptionButton(page, planID)); err != nil {
 		return err
 	}
 	if err := u.expect.Locator(page.Locator("#apiManageSuspendBtn")).ToBeHidden(); err != nil {
@@ -977,7 +994,7 @@ func (u *Steps) unsubscribeFromUsagePlan(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := u.openPaidSubscriptionDialog(page, page.Locator(`.mcp-view-sub-btn[data-policy-name="`+planID+`"]`)); err != nil {
+	if err := u.openPaidSubscriptionDialog(page, viewSubscriptionButton(page, planID)); err != nil {
 		return err
 	}
 	if err := u.expect.Locator(page.Locator("#mcpManageSuspendBtn")).ToBeHidden(); err != nil {
@@ -999,7 +1016,10 @@ func (u *Steps) unsubscribeFromUsagePlan(ctx context.Context) error {
 	if err := page.Locator("#mcpUnsubConfirmBtn").Click(); err != nil {
 		return err
 	}
-	if err := u.expect.Locator(paidSubscribeButton(page, planID)).ToBeVisible(); err != nil {
+	if err := u.expect.Locator(headerPlanPicker(page)).ToContainText("Subscribe"); err != nil {
+		return fmt.Errorf("the plans should be offered again: %w", err)
+	}
+	if err := u.expect.Locator(page.Locator(`.paid-subscribe-btn[data-plan-id="` + planID + `"]`)).ToBeAttached(); err != nil {
 		return fmt.Errorf("the plan should be offered again: %w", err)
 	}
 	return deregisterPaidSubscription(ctx, subscription)

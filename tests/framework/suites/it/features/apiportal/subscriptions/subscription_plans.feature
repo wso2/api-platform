@@ -44,12 +44,17 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
       | limits      | [{"limitType":"REQUEST_COUNT","limitCount":1000,"timeUnit":"HOUR"},{"limitType":"BANDWIDTH","limitCount":-1,"timeUnit":"MONTH"}] |
     Then the response status code should be 201
     And the JSON response field "paid" should be false
-    And the JSON response array field "limits" should have 2 items
+    # The REQUEST_COUNT limit becomes the request-count condition, and "limits" mirrors it. A
+    # BANDWIDTH limit has no condition, so it is accepted but not returned.
+    And the JSON response array field "limits" should have 1 item
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the response status code should be 200
     And the JSON response field "refId" should be "team-plan-${CTX:planId}"
-    And the JSON response array "limits" item with "limitType" equal to "BANDWIDTH" should have "limitCount" equal to "-1"
     And the JSON response array "limits" item with "limitType" equal to "REQUEST_COUNT" should have "timeUnit" equal to "HOUR"
+    And the JSON response array field "conditions" should have 1 item
+    And the JSON response field "conditions[0].type" should be "request-count"
+    And the JSON response field "conditions[0].params.limits[0].count" should be 1000
+    And the JSON response field "conditions[0].params.limits[0].timeUnit" should be "HOUR"
 
     When I send an authenticated API Portal "PUT" request to "/subscription-plans" as "admin" with JSON values:
       | id          | ${CTX:planId}                                                          |
@@ -58,8 +63,10 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
     Then the response status code should be 200
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the JSON response field "displayName" should be "Team plus ${CTX:planId}"
-    And the JSON response array field "limits" should have 1 item
-    And the JSON response field "limits[0].limitType" should be "TOTAL_TOKEN_COUNT"
+    # Limits sent alone set the request-count condition from their REQUEST_COUNT limits; with none,
+    # it is removed. A TOTAL_TOKEN_COUNT limit sent this way makes no condition.
+    And the JSON response array field "limits" should have 0 items
+    And the JSON response array field "conditions" should have 0 items
 
     When I send an authenticated API Portal "DELETE" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the response status code should be 204
@@ -83,7 +90,7 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
     Then the response status code should be 200
     And the JSON response field "displayName" should be "Generated ${CTX:planId}"
 
-    # A plan limit of -1, meaning unlimited is accepted and stored as given
+    # A BANDWIDTH limit of -1 (unlimited) is accepted; it has no condition, so it is not returned
     Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
     Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
       | id          | ${CTX:planId}       |
@@ -92,11 +99,10 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
     Then the response status code should be 201
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the response status code should be 200
-    And the JSON response array field "limits" should have 1 item
-    And the JSON response array "limits" item with "limitType" equal to "BANDWIDTH" should have "limitCount" equal to "-1"
-    And the JSON response array "limits" item with "limitType" equal to "BANDWIDTH" should have "timeUnit" equal to "DAY"
+    And the JSON response array field "limits" should have 0 items
+    And the JSON response array field "conditions" should have 0 items
 
-    # A plan limit of no time window is accepted and stored as given
+    # An EVENT_COUNT limit with no time window is accepted; event-count is not a condition, so it is not returned
     Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
     Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
       | id          | ${CTX:planId}       |
@@ -105,9 +111,8 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
     Then the response status code should be 201
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the response status code should be 200
-    And the JSON response array field "limits" should have 1 item
-    And the JSON response array "limits" item with "limitType" equal to "EVENT_COUNT" should have "limitCount" equal to "250"
-    And the JSON response array "limits" item with "limitType" equal to "EVENT_COUNT" should have "timeUnit" equal to "null"
+    And the JSON response array field "limits" should have 0 items
+    And the JSON response array field "conditions" should have 0 items
 
     # A plan limit of 100 per minute is accepted and stored as given
     Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
@@ -122,7 +127,7 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
     And the JSON response array "limits" item with "limitType" equal to "REQUEST_COUNT" should have "limitCount" equal to "100"
     And the JSON response array "limits" item with "limitType" equal to "REQUEST_COUNT" should have "timeUnit" equal to "MINUTE"
 
-    # A plan limit of tokens per hour is accepted and stored as given
+    # A TOTAL_TOKEN_COUNT limit sent alone is accepted but makes no condition
     Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
     Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
       | id          | ${CTX:planId}       |
@@ -131,9 +136,8 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
     Then the response status code should be 201
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the response status code should be 200
-    And the JSON response array field "limits" should have 1 item
-    And the JSON response array "limits" item with "limitType" equal to "TOTAL_TOKEN_COUNT" should have "limitCount" equal to "9000"
-    And the JSON response array "limits" item with "limitType" equal to "TOTAL_TOKEN_COUNT" should have "timeUnit" equal to "HOUR"
+    And the JSON response array field "limits" should have 0 items
+    And the JSON response array field "conditions" should have 0 items
 
     # A plan limit of requests per day is accepted and stored as given
     Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
@@ -148,7 +152,7 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
     And the JSON response array "limits" item with "limitType" equal to "REQUEST_COUNT" should have "limitCount" equal to "5000"
     And the JSON response array "limits" item with "limitType" equal to "REQUEST_COUNT" should have "timeUnit" equal to "DAY"
 
-    # A plan limit of bandwidth per month is accepted and stored as given
+    # A BANDWIDTH limit per month is accepted; it has no condition, so it is not returned
     Given I generate a unique resource name from "portal-limit-plan" and store it as "planId"
     Given a unique API Portal resource is created at "/subscription-plans" as "admin" with values and stored as "planId":
       | id          | ${CTX:planId}       |
@@ -157,9 +161,8 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
     Then the response status code should be 201
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the response status code should be 200
-    And the JSON response array field "limits" should have 1 item
-    And the JSON response array "limits" item with "limitType" equal to "BANDWIDTH" should have "limitCount" equal to "2048"
-    And the JSON response array "limits" item with "limitType" equal to "BANDWIDTH" should have "timeUnit" equal to "MONTH"
+    And the JSON response array field "limits" should have 0 items
+    And the JSON response array field "conditions" should have 0 items
 
   @APIP-023 @type:negative @type:security
   Scenario: Invalid plans are refused, plans are read-only for other roles, and a plan in use cannot be deleted
@@ -176,7 +179,7 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
       | displayName | Refused ${CTX:planId} |
       | limits      | [{"limitType":"REQUEST_COUNT","limitCount":0,"timeUnit":"MINUTE"}]              |
     Then the response status code should be 400
-    And the JSON response field "errors[0].message" should be "limitCount must be -1 (unlimited) or a positive number for each limit"
+    And the JSON response field "errors[0].message" should be "limitCount must be -1 (unlimited) or a positive whole number for each limit"
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the response status code should be 404
 
@@ -193,7 +196,7 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
       | displayName | Refused ${CTX:planId} |
       | limits      | [{"limitType":"REQUEST_COUNT","limitCount":10,"timeUnit":"MINUTE","timeAmount":0}]              |
     Then the response status code should be 400
-    And the JSON response field "errors[0].message" should be "timeAmount must be a positive number when provided"
+    And the JSON response field "errors[0].message" should be "timeAmount must be a positive whole number when provided"
     When I send an authenticated API Portal "GET" request to "/subscription-plans/${CTX:planId}" as "admin"
     Then the response status code should be 404
 
