@@ -275,20 +275,36 @@ because they now apply to every author-written upstream policy:
   sees the cluster on every attempt — record requestID to cluster there, same pattern and TTL as
   `attemptBaselineStore`.
 
-- [ ] T030z **End-to-end proof that a cross-vendor failover response is translated back
-  (FR-037h).** T030w's unwind is covered by unit tests for its lookup and no-op paths, and by the
-  placement tests either side of it — but nothing yet asserts the thing that matters: a client
-  sending OpenAI shape to a proxy that fails over to Anthropic receives OpenAI shape back.
+- [x] T030z **DONE 2026-11-14. End-to-end proof that the serving attempt's upstream chain runs on
+  the response path (FR-037h) — and it found a real defect.** Scenario
+  `@model-failover-response-unwind` in `model_failover_per_provider.feature`: a proxy whose primary
+  is unresolvable fails over to a live provider carrying `set-headers` in RESPONSE mode on its own
+  `policies` list, and the client asserts `x-envoy-attempt-count: 2` and
+  `x-unwound-by: live-vendor`.
 
-  It cannot be written against the current fixtures. Every failover IT backend is an echo server,
-  so the assertions are request-path echoes and a response-shape failure is invisible by
-  construction — which is exactly how this gap survived with the flag enabled in the IT config.
-  Needs a testbench service returning a genuinely vendor-shaped body (the existing `openai`
-  service returns OpenAI shape; an Anthropic-shaped responder does not exist), then a scenario
-  asserting the client sees `choices[]` and not `content_block`.
+  THIS TASK PREVIOUSLY SAID THE TEST COULD NOT BE WRITTEN. That was wrong, and the reasoning is
+  worth keeping because it is the kind of mistake that hides coverage gaps: it fixed on the
+  TRANSFORMER as the thing to prove, which does need a vendor-shaped backend nobody has built. But
+  the property under test is "does the serving attempt's upstream chain run in the response
+  direction", and ANY response-mutating policy demonstrates that. `set-headers` has an
+  `OnResponseHeaders` and a `response:` param block, is already in the build, and makes the unwind
+  observable from the client with no new fixture at all.
 
-  Until it exists, the unwind is verified at the unit level only. Treat that as the open risk in
-  this feature, not as coverage.
+  What it caught: the unwind executed the chain and then DISCARDED the result
+  (`_, err := ExecuteResponseHeaderPolicies(...)`). A policy's header mutation only reaches the
+  client through `TranslateResponseHeaderActions`, which builds its mutation list from those
+  results alone and never re-reads `responseHeaderCtx` — so `set-headers` ran, produced its
+  mutation, and the mutation was thrown away. Every debug line said the chain had executed and the
+  header simply never appeared. Diagnosed by reproducing against a live `gateway/it` stack with
+  `LOG_LEVEL=debug`, confirming from the policy-engine config dump that the chain carried both
+  policies and from the logs that the unwind ran on the correct serving cluster. Fixed by returning
+  the result and merging it ahead of the route's own results before translation, so the provider's
+  response work applies first and a route-level policy setting the same header still wins.
+
+  The three pre-existing unwind unit tests passed against the broken code — they assert only the
+  error, never the result. `TestUnwindServingUpstreamChain_ReturnsTheExecutedResults` closes that,
+  mutation-verified against the discard. Scenario verified passing both in isolation and in a
+  14-runner model-failover regression (46/46 scenarios).
 
 - [x] T030y **DONE 2026-11-13 — health scope recorded as a decision (FR-018i).** Per-attachment,
   not global. Global per-provider health reads as the obvious choice and is wrong here: grading is
@@ -655,6 +671,12 @@ failure reason, the ranking source and the serving target.
   **Publisher documentation updated** (`gc:policies/model-failover/policy-definition.yaml`, T096): the description previously said "attach it once, in the operation's `operationPolicies`" — deliberately, because that was the only thing that worked. It now describes both scopes, says which to prefer and why, and states the override rule.
 
 - [x] T096 **DONE 2026-11-11. The automatic repositioning is now documented where a publisher reads it (FR-023c).** The behaviour has been correct since the feature landed and was announced only in a generation-time controller log — which fires after the fact, to whoever reads controller output, not to the person deciding where to write the policy. Undocumented, an automatic relocation reads as the platform ignoring what was authored. Added to the publisher-facing `description` in `gc:policies/model-failover/policy-definition.yaml`: attach it once in `operationPolicies`; its position within that list does not matter because the gateway always moves it to the END of the request chain and logs when it actually moved something; the reason, stated without requiring any knowledge of the engine's internals — it consumes what earlier policies decided, and the gateway runs every policy's request-header phase before any policy's request-body phase, so a routing policy publishing in the body phase would be silently ignored if written after this one, which is "identical-looking configuration, opposite outcomes, decided by something no policy's configuration declares"; and the two mirror placements that follow from the same rule — FIRST on the fault chain, where the exhaustion error is a default an operator's own entries can reshape, and first-on-response, since response phases run the chain in reverse, so grading reads the provider's own status and headers before another policy reshapes them. Deliberately NOT documented: that `globalPolicies` works, because it does not (T095). The description states `operationPolicies` positively instead, which is also the steer that keeps a publisher away from the silent no-op until T095 lands. Mirrored into `dev-policies` via `sync-dev-policies.sh` (reported `synced model-failover`) and the file re-parsed as YAML.
+
+- [x] T097 **DONE 2026-11-14. A request that names no model is no longer absorbed by the `"*"` catch-all (FR-060).** Found while tracing which conditions can leave the policy with no addressable target. `requestedModelFrom` collapses four different situations to the empty string — no body, a body that is not JSON, JSON with no `model` key, and a `model` that is not a string — and `selectChain` matches the catch-all on ANY requested model, the empty one included. So all four were treated as unmatched traffic. That is not what a catch-all is: FR-050 defines it for a model that WAS named and matched nothing, which is a publisher saying "send the rest here", not "apply failover to anything at all". The conflation was incidental rather than designed — the only catch-all test (`TestSelectChain_UnnamedModelFallsToWildcard`) passes `"some-model-nobody-named"`, a named-but-unmatched model, and the empty case was untested. Two consequences, which is why this is a guard and not a tidy-up: on a kind with no model concept — an A2A agent (`transform/agent.go`), a GraphQL API — attaching the policy alongside a catch-all made it publish a ranking and raise the attempt budget on every request, exactly what FR-030b forbids ("a kind with no model concept therefore deploys successfully and does nothing"); and on a kind that does have models, a malformed or model-less body was fanned across every member of the chain, turning one bad request into as many upstream calls as the chain is long. Fixed in `OnRequestBody` before chain selection rather than inside `selectChain`, so the lookup stays a pure function of its arguments. Guarded on BOTH halves — empty model AND no published ranking — because a routing policy's ranking names its own models and is valid for a request whose body named none (FR-021a); guarding on the model alone would have silently dropped every routing-policy ranking on a non-OpenAI-shaped body. Six tests in `modelless_request_test.go`: four for the empty-model shapes, and two positive controls that are the point of the exercise — a named-but-unmatched model must STILL reach the catch-all, and a published ranking must STILL be honoured. Mutation-verified: with the guard stubbed to `if false`, the four fail and both controls keep passing, so the guard is proven to fire where intended and nowhere else.
+
+
+- [x] T098 **DONE 2026-11-14. An unaddressable routing-policy ranking is refused instead of silently served from an unranked target (FR-061).** Raised in review: if every member drops for having no cluster, going inert leaves Envoy on the route's CONFIGURED group order, which is a target the ranking deliberately did not nominate. Implemented as a SCOPED exception rather than the blanket "total drop always errors" first proposed, because the blanket version contradicts three standing decisions — FR-030b ("attaching the policy to an operation whose targets cannot resolve MUST be accepted and the policy MUST be inert"), FR-030e ("'Inert' MUST NOT mean 'attached but emitting errors per request'") and FR-056a ("a drop MUST NOT fail the request") — and the asymmetry that justifies the exception is narrower than either. `buildFailoverSpecifierPlugin` emits NO cluster specifier when none of the publisher's targets resolved, and `translator.go` assigns `RetryPolicy` only inside `case failoverPlugin != nil`, so a publisher whose own chain is unresolvable gets an ordinary route to the main upstream: no groups, no retries, nothing to fall back to incorrectly — inert is genuinely harmless and FR-030b is right. The one case without that property is a ranking published by a ROUTING POLICY at request time against a route whose publisher targets DID resolve: the groups exist, so publishing nothing serves one of them with the whole attempt budget behind it. Only this policy can detect it, since the provider-to-cluster map (FR-058) is injected into model-failover alone and the routing policy cannot know its targets are unaddressable here. Condition is therefore `metadata == nil && len(dropped) > 0 && len(published) > 0`; everything else stays inert. New fault code 960101 `failover_unroutable_ranking` (503, sterile body) and telemetry outcome `unroutable`, kept distinct from both FR-014 outcomes because health withheld nothing and nothing was attempted. Four tests in `unroutable_ranking_test.go`, two of them positive controls that define the scope: a publisher-only chain resolving to nothing must STILL be inert, and a partially addressable ranking must STILL be served. Mutation-verified: with the branch stubbed to `if false` the two refusal tests fail and both controls keep passing. FR-056a amended in the same change rather than left contradicting the new rule.
+
 
 ---
 

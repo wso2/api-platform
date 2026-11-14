@@ -959,7 +959,8 @@ though the routing policy keeps nominating it, and that load spreads across the 
   distinct from the health-skipped targets of FR-033: a skip is health withholding a usable target
   for a while and resolves itself, a drop means the target cannot be named on this API and needs
   an operator. A drop MUST NOT fail the request — a shortened chain is still a usable chain, and
-  refusing would turn a naming mistake into an outage.
+  refusing would turn a naming mistake into an outage. FR-061 carves one scoped exception to
+  that, for the single case where going inert does not leave the request unaffected.
 
 #### Interaction with dynamic cluster selection
 
@@ -1043,6 +1044,55 @@ review. Supersedes the flat single-chain shape this spec previously described.
   Publishers who want a defined destination for unnamed models should configure a `"*"` catch-all;
   without one, the configured order applies. This MUST be stated in the policy's user-facing
   description rather than left as a surprise.
+
+- **FR-060**: A request that names NO model at all, and for which no routing policy published a
+  ranking, MUST leave the policy inert — it MUST NOT be matched against a `"*"` catch-all.
+
+  FR-050 governs a model that WAS named and matched no chain; this governs a request that named
+  none. The two are distinct and were previously conflated: the policy derives the model from the
+  request body, and that derivation yields the empty string for four different situations — no
+  body, a body that is not JSON, JSON carrying no `model` key, and a `model` that is not a string.
+  Catch-all selection matches on any requested model including the empty one, so all four were
+  absorbed by the catch-all and treated as unmatched traffic.
+
+  A catch-all is a publisher's "send the rest here" for models they did not enumerate. It is not a
+  statement that failover applies to requests with no model concept, and reading it as one has two
+  consequences. On an API kind with no model concept — an A2A agent, a GraphQL API — attaching the
+  policy alongside a catch-all makes it publish a ranking and raise the attempt budget on every
+  request, which FR-030b requires it not to do. On a kind that does have models, a malformed or
+  model-less body is fanned across every member of the chain, turning one bad request into as many
+  upstream calls as the chain is long.
+
+  The condition MUST require both halves. A routing policy's ranking names its own models and is
+  valid for a request whose body named none (FR-021a), so a published ranking MUST still be
+  honoured; only the absence of both a named model and a published ranking makes the policy inert.
+
+
+- **FR-061**: Where a ROUTING POLICY published a ranking for a request and not one of its targets
+  resolves to a cluster, the system MUST refuse the request rather than go inert. This is a scoped
+  exception to FR-030b and MUST NOT be widened.
+
+  It rests on an asymmetry in the generated route configuration. When none of the PUBLISHER's own
+  targets resolve, the control plane emits no cluster specifier plugin at all, and the retry policy
+  is only ever assigned in the branch where that plugin exists — so the route is an ordinary one to
+  the API's main upstream, and being inert genuinely leaves the request unaffected, exactly as
+  FR-030b intends. When the publisher's targets DO resolve, the route carries real priority groups
+  built from them. Publishing nothing there does not mean "no failover": it means the data plane
+  walks the configured groups and serves a provider this request's ranking never nominated, with
+  the full attempt budget behind it. That is the FR-014 defect in its other form — a ranking that
+  still routes traffic to an unranked target is not a ranking — and for model traffic it is not a
+  harmless substitution, because a routing policy nominates a provider for cost, data residency or
+  capability.
+
+  Only this policy can detect the condition: the provider-to-cluster mapping of FR-058 is supplied
+  to it alone, so the routing policy that published the ranking has no way to know its own targets
+  are unaddressable on this API.
+
+  The refusal MUST stop the request before any attempt, MUST carry a body disclosing no provider,
+  cluster or chain membership (FR-015), and MUST be reported under its own telemetry outcome,
+  distinct from both FR-014 outcomes: health withheld nothing here and no target was tried, so
+  counting it as either hides a configuration error inside a runtime one. A ranking that is only
+  PARTIALLY unaddressable MUST still be served against the targets that remain (FR-056a).
 
 #### Upstream and downstream policy attachment
 
