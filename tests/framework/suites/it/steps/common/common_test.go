@@ -411,6 +411,7 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 	gatewayKinds := map[string]string{
 		"agent.yaml":                   "Agent",
 		"api-portal-organization.yaml": "Organization",
+		"budget.yaml":                  "Budget",
 		"graphql-api.yaml":             "GraphQLApi",
 		"llm-provider-template.yaml":   "LlmProviderTemplate",
 		"llm-provider.yaml":            "LlmProvider",

@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strconv"
@@ -36,9 +37,11 @@ import (
 )
 
 func (g *Gateway) registerResourceTemplateSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^I create (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) from "([^"]*)" with values:$`,
+	sc.Step(`^I create (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API|Budget) from "([^"]*)" with values:$`,
 		g.createResourceFromTemplate)
-	sc.Step(`^I update (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)" from "([^"]*)" with values:$`,
+	sc.Step(`^I create (LLM provider|Budget) on the (first|second) gateway from "([^"]*)" with values:$`,
+		g.createResourceFromTemplateAt)
+	sc.Step(`^I update (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API|Budget) "([^"]*)" from "([^"]*)" with values:$`,
 		g.updateResourceFromTemplate)
 	sc.Step(`^the first attached LLM provider policy should be "([^"]*)" version "([^"]*)"$`,
 		g.firstLLMProviderPolicyIs)
@@ -82,6 +85,39 @@ func (g *Gateway) createResourceFromTemplate(
 		return fmt.Errorf("resource template %q: %w", templateName, err)
 	}
 	return g.createResource(ctx, kind, &godog.DocString{Content: definition})
+}
+
+// createResourceFromTemplateAt creates a resource on the gateway controller of one gateway
+// replica, for a block that runs more than one gateway.
+func (g *Gateway) createResourceFromTemplateAt(
+	ctx context.Context, kind, ordinalWord, templateName string, table *godog.Table,
+) error {
+	replica, err := gatewayOrdinal(ordinalWord)
+	if err != nil {
+		return err
+	}
+	spec, ok := resourceKinds[kind]
+	if !ok || spec.collection == "" {
+		return fmt.Errorf("resource kind %q cannot be created on a gateway replica", kind)
+	}
+	path, err := g.templatePath(templateName)
+	if err != nil {
+		return err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read resource template %q: %w", templateName, err)
+	}
+	definition, err := g.renderResourceTemplate(ctx, kind, templateName, content, table)
+	if err != nil {
+		return fmt.Errorf("resource template %q: %w", templateName, err)
+	}
+	if got := kindFromDefinition(definition); got != spec.declared {
+		return fmt.Errorf("step creates %s but the definition declares kind %q, want %q",
+			kind, got, spec.declared)
+	}
+	return g.mutateResourceAt(ctx, replica, http.MethodPost, spec.collection, "",
+		&godog.DocString{Content: definition})
 }
 
 func (g *Gateway) renderResourceTemplate(

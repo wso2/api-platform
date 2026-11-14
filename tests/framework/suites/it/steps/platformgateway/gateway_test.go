@@ -4237,3 +4237,22 @@ func TestWaitForAnalyticsEventWaitsForTheStatus(t *testing.T) {
 	defer cancel()
 	require.Error(t, gateway.waitForAnalyticsEvent(short, "/shop/v1.0/items/42", 500))
 }
+
+func TestLazyResourceBodyAndField(t *testing.T) {
+	body := []byte(`{"lazy_resources":{"resources_by_type":{"Budget":[{"id":"research","resource_type":"Budget","resource":{"name":"research","limit":{"amount":"500.00","blockAt":95,"share":0.5}}}]}}}`)
+
+	resource, ok := lazyResourceBody(body, "research", "Budget")
+	require.True(t, ok)
+	_, ok = lazyResourceBody(body, "research", "LlmProviderTemplate")
+	require.False(t, ok, "the type must match too")
+
+	for field, want := range map[string]string{"name": "research", "limit.amount": "500.00", "limit.blockAt": "95", "limit.share": "0.5"} {
+		got, ok := lazyResourceField(resource, field)
+		require.True(t, ok, field)
+		require.Equal(t, want, got, field)
+	}
+	_, ok = lazyResourceField(resource, "limit.missing")
+	require.False(t, ok)
+	_, ok = lazyResourceField(resource, "name.deeper")
+	require.False(t, ok)
+}

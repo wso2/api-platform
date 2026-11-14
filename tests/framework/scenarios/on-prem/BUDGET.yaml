@@ -1,0 +1,287 @@
+# Scenario list: Gateway budgets (BUDGET).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: BUDGET
+title: Gateway budgets
+scenarios:
+  - id: BUDGET-001
+    title: "Create a budget on one LLM provider; 201, the defaults are filled in (status active, currency USD, blockAt 100) and status.id is the name."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+          scenario: "A budget on one provider is created with defaults, read, listed, updated and deleted"
+  - id: BUDGET-002
+    title: "Read a budget by name; 200 with the stored spec."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+          scenario: "A budget on one provider is created with defaults, read, listed, updated and deleted"
+  - id: BUDGET-003
+    title: "List budgets; the list includes the budget."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+          scenario: "A budget on one provider is created with defaults, read, listed, updated and deleted"
+  - id: BUDGET-004
+    title: "Update the editable fields (amount, action, blockAt, status, exemptions); 200 and a read returns the new values."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+          scenario: "A budget on one provider is created with defaults, read, listed, updated and deleted"
+  - id: BUDGET-005
+    title: "Delete a budget; 200, then a read returns 404."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+          scenario: "A budget on one provider is created with defaults, read, listed, updated and deleted"
+  - id: BUDGET-006
+    title: "Change a fixed field (period) on update; 400 naming spec.limit.period and the budget is unchanged."
+    priority: P2
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+          scenario: "Changing a budget's period is refused and the budget keeps its period"
+  - id: BUDGET-007
+    title: "Create an invalid budget; 400 listing every failing field and nothing is stored."
+    priority: P2
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+          scenario: "An invalid budget is rejected with every failing field and nothing is stored"
+  - id: BUDGET-008
+    title: "Create a budget whose name is taken; 409."
+    priority: P2
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+          scenario: "A budget whose name is taken is refused"
+  - id: BUDGET-009
+    title: "Create a budget naming an LLM provider the gateway does not have; 400 on spec.resource.id."
+    priority: P2
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/suites/it/features/gateway/core/budget_management.feature
+          scenario: "A budget naming a provider the gateway does not have is rejected"
+  - id: BUDGET-010
+    title: "Create an active budget; it reaches the policy engine as a lazy resource of type Budget with its limit, resource and consumers."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "An active budget reaches the policy engine, follows its edits and is withdrawn when deactivated or deleted"
+  - id: BUDGET-011
+    title: "Update an active budget; the policy engine receives the new values."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "An active budget reaches the policy engine, follows its edits and is withdrawn when deactivated or deleted"
+  - id: BUDGET-012
+    title: "Deactivate a budget; it is withdrawn from the policy engine but kept and listed, and reactivating sends it again."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "An active budget reaches the policy engine, follows its edits and is withdrawn when deactivated or deleted"
+  - id: BUDGET-013
+    title: "Delete a budget; it is withdrawn from the policy engine."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "An active budget reaches the policy engine, follows its edits and is withdrawn when deactivated or deleted"
+  - id: BUDGET-014
+    title: "A Block budget on an LLM provider is used up; the next call is refused with 429 BUDGET_EXCEEDED listing the budget, its limit and period, and Retry-After."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "A Block budget refuses requests once its block point is spent"
+  - id: BUDGET-015
+    title: "An Allow budget is used up; calls are still served."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "An Allow budget never refuses"
+  - id: BUDGET-016
+    title: "An inactive budget is used up; calls are still served and the budget is not in the policy engine."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "An inactive budget neither refuses nor reaches the policy engine"
+  - id: BUDGET-017
+    title: "A budget allocated separately by a request attribute: one value is used up and refused, another value is still served."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "Separate allowances are used up one by one and exempt traffic is never refused"
+  - id: BUDGET-018
+    title: "Traffic matching an exemption is served even when its allowance is used up."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "Separate allowances are used up one by one and exempt traffic is never refused"
+  - id: BUDGET-019
+    title: "An LLM provider without llm-cost attached: the gateway prices its calls and its Block budget refuses once used up."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "A provider without llm-cost attached is still priced and its budget enforced"
+  - id: BUDGET-020
+    title: "Calls through an LLM proxy are charged once to the provider's budget: the second call is still served below the block point, and the budget refuses once used up."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_management.feature
+          scenario: "A call through an LLM proxy is charged once, on its provider's budget"
+  - id: BUDGET-021
+    title: "A call an Allow budget covers is published with metadata.budget.names naming the budget and metadata.budget.costStatus priced; a call to a provider without a budget carries no budget property."
+    priority: P2
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/observability/analytics_budget.feature
+          scenario: "A request a budget covers names the budget and its cost status; others carry no budget"
+  - id: BUDGET-022
+    title: "A call through an LLM proxy is published once, as the proxy's event, carrying metadata.budget.names and metadata.budget.costStatus from the provider hop where the budget counted it."
+    priority: P2
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/observability/analytics_budget.feature
+          scenario: "A call through an LLM proxy publishes the budget on the proxy's event"
+  - id: BUDGET-023
+    title: "With the gateway-controller's counters in Redis, a used-up Block budget still refuses after the gateway-controller and gateway-runtime restart, including a $0 request."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_redis.feature
+          scenario: "Spend survives a gateway restart when the counters are in Redis"
+  - id: BUDGET-024
+    title: "Two gateways with their own databases and one Redis count a budget's spend together: spend through the first gateway refuses the same budget on the second, including a $0 request."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_redis_multigateway.feature
+          scenario: "Spend through one gateway refuses the same budget on another gateway sharing Redis"
+  - id: BUDGET-025
+    title: "On an LLM provider secured with jwt-auth, a budget allocated separately by the token subject refuses one user's used-up allowance while another user is served, and a request without a token is refused by jwt-auth (401), not the budget."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_jwt.feature
+          scenario: "A per-user budget on a jwt-auth route charges each token subject and runs after authentication"

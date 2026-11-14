@@ -80,6 +80,8 @@ var (
 	// {{ secret "handle" }} placeholder, and platform-api refuses to delete a secret still
 	// referenced by one (409 SECRET_IN_USE). LLMProxy also deletes before LLMProvider, since
 	// a proxy references its own provider by id.
+	// A budget names an LLM provider by handle, so it deletes before LLM proxies and providers.
+	KindBudget      = Kind{Name: "budget", Order: 81}
 	KindLLMProxy    = Kind{Name: "llm-proxy", Order: 82}
 	KindLLMProvider = Kind{Name: "llm-provider", Order: 84}
 	KindSecret      = Kind{Name: "secret", Order: 85}
@@ -106,6 +108,12 @@ type Resource struct {
 
 	// Description is optional context for a leak warning — a name, a tenant.
 	Description string
+
+	// Replica is the zero-based ordinal of the component replica that holds the resource,
+	// used when ByOrdinal is set: a block running more than one replica addresses each by
+	// ordinal.
+	Replica   int
+	ByOrdinal bool
 
 	cleanupFailures int
 }

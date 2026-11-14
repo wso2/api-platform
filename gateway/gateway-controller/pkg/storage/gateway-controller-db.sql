@@ -103,6 +103,15 @@ CREATE TABLE IF NOT EXISTS graphql_apis (
     FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
+-- Budgets: the Budget kind as JSON (artifacts row of kind 'Budget').
+CREATE TABLE IF NOT EXISTS budgets (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    configuration TEXT NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
 -- Note: Policy definitions are no longer stored in the database.
 -- They are loaded from files at controller startup (see policies/ directory).
 -- The policy_definitions table has been removed as of schema version 3.

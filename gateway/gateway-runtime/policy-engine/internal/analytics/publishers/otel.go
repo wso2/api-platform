@@ -928,6 +928,13 @@ func (o *OTel) appendAIAttributes(event *dto.Event, attrs *otelAttrs, route stri
 	attrs.anyBool(ns("gen_ai.egress"), event.Properties["isEgress"])
 	attrs.anyBool(ns("guardrail.hit"), event.Properties[constants.GuardrailHitMetadataKey])
 	attrs.anyStr(ns("guardrail.name"), event.Properties[constants.GuardrailNameMetadataKey])
+
+	if budget, ok := event.Properties[constants.BudgetPropertyKey].(map[string]interface{}); ok {
+		if names, ok := budget["names"].([]string); ok {
+			attrs.strs(ns("budget.names"), names)
+		}
+		attrs.anyStr(ns("budget.cost_status"), budget["costStatus"])
+	}
 }
 
 // appendMCPAttributes flattens Properties["mcpAnalytics"] onto MCP conventions.

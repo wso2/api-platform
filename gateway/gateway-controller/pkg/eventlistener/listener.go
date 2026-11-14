@@ -65,6 +65,7 @@ type EventListener struct {
 	apiKeyXDSManager      APIKeyXDSManager
 	lazyResourceManager   *lazyresourcexds.LazyResourceStateManager
 	clientAuthorities     ClientAuthorityPublisher
+	budgets               BudgetPublisher
 	certificates          certificateSnapshot
 	policyManager         *policyxds.PolicyManager
 	routerConfig          *config.RouterConfig
@@ -91,6 +92,7 @@ func NewEventListener(
 	apiKeyXDSManager APIKeyXDSManager,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	clientAuthorities ClientAuthorityPublisher,
+	budgets BudgetPublisher,
 	policyManager *policyxds.PolicyManager,
 	routerConfig *config.RouterConfig,
 	logger *slog.Logger,
@@ -114,6 +116,9 @@ func NewEventListener(
 	if clientAuthorities == nil {
 		panic("event listener requires a non-nil client authority publisher")
 	}
+	if budgets == nil {
+		panic("event listener requires a non-nil budget publisher")
+	}
 	gatewayID := strings.TrimSpace(systemConfig.Controller.Server.GatewayID)
 	if gatewayID == "" {
 		panic("event listener requires non-empty gateway ID")
@@ -134,6 +139,7 @@ func NewEventListener(
 		apiKeyXDSManager:      apiKeyXDSManager,
 		lazyResourceManager:   lazyResourceManager,
 		clientAuthorities:     clientAuthorities,
+		budgets:               budgets,
 		certificates:          certificates,
 		policyManager:         policyManager,
 		routerConfig:          routerConfig,
@@ -252,6 +258,8 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 		l.processMCPProxyEvent(event)
 	case eventhub.EventTypeAgent:
 		l.processAgentEvent(event)
+	case eventhub.EventTypeBudget:
+		l.processBudgetEvent(event)
 	case eventhub.EventTypeWebhookSecret:
 		if l.webhookSecretHandler != nil {
 			l.webhookSecretHandler.HandleEvent(event)

@@ -18,6 +18,14 @@ Base URLs:
 - [Troubleshooting (What you’ll observe)](authentication.md#troubleshooting-what-youll-observe)
 - [Testing](authentication.md#testing)
 
+### [AI Cost Management](ai-cost-management.md)
+
+- [Create a budget](ai-cost-management.md#create-a-budget)
+- [List budgets](ai-cost-management.md#list-budgets)
+- [Get a budget](ai-cost-management.md#get-a-budget)
+- [Update a budget](ai-cost-management.md#update-a-budget)
+- [Delete a budget](ai-cost-management.md#delete-a-budget)
+
 ### [Rest API Management](rest-api-management.md)
 
 - [Create a new RestAPI](rest-api-management.md#create-a-new-restapi)
@@ -185,6 +193,14 @@ Base URLs:
 - [A2ACardSigning](schemas.md#a2acardsigning)
 - [ErrorResponse](schemas.md#errorresponse)
 - [ValidationError](schemas.md#validationerror)
+- [BudgetRequest](schemas.md#budgetrequest)
+- [Budget](schemas.md#budget)
+- [BudgetMetadata](schemas.md#budgetmetadata)
+- [BudgetSpec](schemas.md#budgetspec)
+- [BudgetLimit](schemas.md#budgetlimit)
+- [BudgetResource](schemas.md#budgetresource)
+- [BudgetConsumer](schemas.md#budgetconsumer)
+- [BudgetExemption](schemas.md#budgetexemption)
 - [LLMProviderTemplateRequest](schemas.md#llmprovidertemplaterequest)
 - [LLMProviderTemplate](schemas.md#llmprovidertemplate)
 - [LLMProviderTemplateData](schemas.md#llmprovidertemplatedata)

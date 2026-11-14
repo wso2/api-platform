@@ -3170,6 +3170,338 @@ Optional signing configuration for a managed Agent Card. Passthrough cards canno
 |field|string|false|none|Field that failed validation|
 |message|string|false|none|Human-readable error message|
 
+## BudgetRequest
+
+<a id="schemabudgetrequest"></a>
+<a id="schema_BudgetRequest"></a>
+<a id="tocSbudgetrequest"></a>
+<a id="tocsbudgetrequest"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "Budget",
+  "metadata": {
+    "name": "research-team-monthly"
+  },
+  "spec": {
+    "limit": {
+      "amount": "500.00",
+      "period": "month",
+      "action": "block",
+      "blockAt": 95
+    },
+    "resource": {
+      "type": "llmProvider",
+      "allocation": "shared",
+      "id": "openai"
+    },
+    "consumers": [
+      {
+        "type": "attribute",
+        "allocation": "shared",
+        "expression": "'research' in request.Auth.Claims[\"groups\"]"
+      }
+    ]
+  }
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|apiVersion|string|true|none|none|
+|kind|string|true|none|none|
+|metadata|[BudgetMetadata](#schemabudgetmetadata)|true|none|none|
+|spec|[BudgetSpec](#schemabudgetspec)|true|none|none|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|apiVersion|gateway.api-platform.wso2.com/v1|
+|kind|Budget|
+
+## Budget
+
+<a id="schemabudget"></a>
+<a id="schema_Budget"></a>
+<a id="tocSbudget"></a>
+<a id="tocsbudget"></a>
+
+```json
+{
+  "apiVersion": "gateway.api-platform.wso2.com/v1",
+  "kind": "Budget",
+  "metadata": {
+    "name": "research-team-monthly"
+  },
+  "spec": {
+    "limit": {
+      "amount": "500.00",
+      "period": "month",
+      "action": "block",
+      "blockAt": 95
+    },
+    "resource": {
+      "type": "llmProvider",
+      "allocation": "shared",
+      "id": "openai"
+    },
+    "consumers": [
+      {
+        "type": "attribute",
+        "allocation": "shared",
+        "expression": "'research' in request.Auth.Claims[\"groups\"]"
+      }
+    ]
+  },
+  "status": {
+    "id": "reading-list-api-v1.0",
+    "state": "deployed",
+    "createdAt": "2026-04-24T07:21:13Z",
+    "updatedAt": "2026-04-24T07:21:13Z",
+    "deployedAt": "2026-04-24T07:21:13Z",
+    "warnings": [
+      {
+        "code": "TLS_VERIFY_HOSTNAME_DISABLED",
+        "field": "spec.upstreamDefinitions[0].tls.verifyHostName",
+        "message": "hostname verification is disabled for this upstream; the backend certificate's name is not checked against the target host"
+      }
+    ]
+  }
+}
+
+```
+
+#### Properties
+
+allOf
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|[BudgetRequest](#schemabudgetrequest)|false|none|none|
+
+and
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|*anonymous*|object|false|none|none|
+|» status|[ResourceStatus](#schemaresourcestatus)|false|read-only|Server-managed lifecycle fields. Populated on responses.|
+
+## BudgetMetadata
+
+<a id="schemabudgetmetadata"></a>
+<a id="schema_BudgetMetadata"></a>
+<a id="tocSbudgetmetadata"></a>
+<a id="tocsbudgetmetadata"></a>
+
+```json
+{
+  "name": "research-team-monthly"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|name|string|true|none|The budget's handle, unique on the gateway. Lowercase letters, digits, '-' and '.'.|
+
+## BudgetSpec
+
+<a id="schemabudgetspec"></a>
+<a id="schema_BudgetSpec"></a>
+<a id="tocSbudgetspec"></a>
+<a id="tocsbudgetspec"></a>
+
+```json
+{
+  "status": "active",
+  "limit": {
+    "amount": "100.00",
+    "currency": "USD",
+    "period": "day",
+    "action": "block",
+    "blockAt": 100
+  },
+  "resource": {
+    "type": "llmProvider",
+    "allocation": "shared",
+    "id": "string"
+  },
+  "consumers": [
+    {
+      "type": "attribute",
+      "allocation": "shared",
+      "expression": "string"
+    }
+  ],
+  "exemptions": [
+    {
+      "type": "attribute",
+      "expression": "string"
+    }
+  ]
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|status|string|false|none|An inactive budget is kept but matches no traffic.|
+|limit|[BudgetLimit](#schemabudgetlimit)|true|none|none|
+|resource|[BudgetResource](#schemabudgetresource)|true|none|none|
+|consumers|[[BudgetConsumer](#schemabudgetconsumer)]|false|none|Every consumer must match (AND). Empty means all traffic.|
+|exemptions|[[BudgetExemption](#schemabudgetexemption)]|false|none|Matching traffic is left out of this budget.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|status|active|
+|status|inactive|
+
+## BudgetLimit
+
+<a id="schemabudgetlimit"></a>
+<a id="schema_BudgetLimit"></a>
+<a id="tocSbudgetlimit"></a>
+<a id="tocsbudgetlimit"></a>
+
+```json
+{
+  "amount": "100.00",
+  "currency": "USD",
+  "period": "day",
+  "action": "block",
+  "blockAt": 100
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|amount|string|true|none|A positive amount with up to 2 decimal places, such as "100.00".|
+|currency|string|false|none|none|
+|period|string|true|none|UTC calendar day, ISO week starting Monday, or calendar month.|
+|action|string|true|none|block refuses requests at the block point; allow only counts.|
+|blockAt|integer|false|none|Percentage of the amount at which a block budget refuses requests.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|currency|USD|
+|period|day|
+|period|week|
+|period|month|
+|action|block|
+|action|allow|
+
+## BudgetResource
+
+<a id="schemabudgetresource"></a>
+<a id="schema_BudgetResource"></a>
+<a id="tocSbudgetresource"></a>
+<a id="tocsbudgetresource"></a>
+
+```json
+{
+  "type": "llmProvider",
+  "allocation": "shared",
+  "id": "string"
+}
+
+```
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|type|string|true|none|none|
+|allocation|string|true|none|shared is one allowance; separate is one allowance per provider (id omitted).|
+|id|string|false|none|LLM provider handle. Omit for all providers.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|type|llmProvider|
+|allocation|shared|
+|allocation|separate|
+
+## BudgetConsumer
+
+<a id="schemabudgetconsumer"></a>
+<a id="schema_BudgetConsumer"></a>
+<a id="tocSbudgetconsumer"></a>
+<a id="tocsbudgetconsumer"></a>
+
+```json
+{
+  "type": "attribute",
+  "allocation": "shared",
+  "expression": "string"
+}
+
+```
+
+Who the budget applies to. Only token-claim attributes for now.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|type|string|true|none|none|
+|allocation|string|true|none|shared is one allowance; separate is one allowance per value of the expression.|
+|expression|string|true|none|CEL over the request. A condition when shared; the value to allocate by when separate.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|type|attribute|
+|allocation|shared|
+|allocation|separate|
+
+## BudgetExemption
+
+<a id="schemabudgetexemption"></a>
+<a id="schema_BudgetExemption"></a>
+<a id="tocSbudgetexemption"></a>
+<a id="tocsbudgetexemption"></a>
+
+```json
+{
+  "type": "attribute",
+  "expression": "string"
+}
+
+```
+
+Traffic left out of the budget. Only token-claim attributes for now.
+
+#### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|type|string|true|none|none|
+|expression|string|true|none|CEL condition over the request.|
+
+##### Enumerated Values
+
+|Property|Value|
+|---|---|
+|type|attribute|
+
 ## LLMProviderTemplateRequest
 
 <a id="schemallmprovidertemplaterequest"></a>

@@ -199,4 +199,11 @@ const (
 	LLMCostPropertyKey       = "llmCost"
 	RequestModelPropertyKey  = "requestModel" // Holds the model named in the request
 	RequestPathPropertyKey   = "requestPath"  // Holds the concrete request path, query string removed.
+
+	// BudgetNamesMetadataKey and BudgetCostStatusMetadataKey are written by the budget
+	// system policy (gateway/system-policies/budget, a separate Go module, hence the
+	// matching literals there); BudgetPropertyKey carries both on the event.
+	BudgetNamesMetadataKey      = "budgetNames"
+	BudgetCostStatusMetadataKey = "budgetCostStatus"
+	BudgetPropertyKey           = "budget"
 )

@@ -271,6 +271,21 @@ const (
 	// policy module asserts the same literal on its side.
 	JWKS_SYSTEM_POLICY_NAME = "wso2_apip_sys_jwks"
 
+	// BUDGET_SYSTEM_POLICY_NAME is the in-repo policy that enforces budgets
+	// (gateway/system-policies/budget). Like the A2A policy it is not a
+	// defaultSystemPolicies entry: the LLM transform places it on every LLM provider
+	// route, after authentication and just before the policy that prices the
+	// response, the way llm-cost-based-ratelimit sits. An LLM proxy call reaches its
+	// provider's route over the internal loopback, so it is counted there, once.
+	BUDGET_SYSTEM_POLICY_NAME    = "wso2_apip_sys_budget"
+	BUDGET_SYSTEM_POLICY_VERSION = "v1"
+
+	// LLM_COST_POLICY_NAME prices LLM responses for budgets. Every LLM provider
+	// route gets it unless the route already has it or AZURE_LLM_COST_POLICY_NAME.
+	LLM_COST_POLICY_NAME       = "llm-cost"
+	LLM_COST_POLICY_VERSION    = "v1"
+	AZURE_LLM_COST_POLICY_NAME = "azure-llm-cost"
+
 	// A2A_POLICY_PARAM_* are the parameter names the policy above reads. Each
 	// gateway-answered A2A concern takes a nested block of its own rather than
 	// top-level fields, so the two cannot be confused for one another: a chain

@@ -22,6 +22,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/google/uuid"
 	"io"
 	"log/slog"
 	"net"
@@ -42,6 +43,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/counters"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
@@ -52,6 +54,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/tracing"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/utils"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/xdsclient"
+	sdkcounters "github.com/wso2/api-platform/sdk/core/counters"
 	"github.com/wso2/api-platform/sdk/core/signing"
 	sdkutils "github.com/wso2/api-platform/sdk/core/utils"
 )
@@ -246,6 +249,12 @@ func main() {
 	case "xds":
 		if *xdsServerAddr == "" {
 			slog.ErrorContext(ctx, "Error: -xds-server flag is required when config mode is 'xds'")
+			os.Exit(1)
+		}
+		// The shared counter service policies use through sdk/core/counters, synced with
+		// the gateway-controller on the policy server connection.
+		if err := startCounterSync(ctx, cfg, *xdsServerAddr); err != nil {
+			slog.ErrorContext(ctx, "Failed to start the counter sync", "error", err)
 			os.Exit(1)
 		}
 		xdsClient, err = initializeXDSClient(ctx, cfg, *xdsServerAddr, k, reg, resolvers)
@@ -524,7 +533,46 @@ func initializeXDSClient(ctx context.Context, cfg *config.Config, serverAddr str
 	slog.InfoContext(ctx, "Initializing xDS client",
 		"server", serverAddr)
 
-	xdsConfig := &xdsclient.Config{
+	xdsConfig := xdsClientConfig(cfg, serverAddr)
+
+	client, err := xdsclient.NewClient(xdsConfig, k, reg, resolvers)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create xDS client: %w", err)
+	}
+
+	if err := client.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start xDS client: %w", err)
+	}
+
+	return client, nil
+}
+
+// startCounterSync installs the shared counter service and syncs it with the
+// gateway-controller in the background until ctx is done.
+func startCounterSync(ctx context.Context, cfg *config.Config, serverAddr string) error {
+	xdsConfig := xdsClientConfig(cfg, serverAddr)
+	creds, err := xdsclient.TransportCredentials(xdsConfig)
+	if err != nil {
+		return err
+	}
+	service := counters.NewService(uuid.NewString())
+	sdkcounters.Install(service)
+	syncer := &counters.Syncer{
+		Service:       service,
+		ServerAddress: serverAddr,
+		Credentials:   creds,
+		Interval:      time.Second,
+		Timeout:       xdsConfig.RequestTimeout,
+		MaxBackoff:    xdsConfig.MaxReconnectDelay,
+		Logger:        slog.Default(),
+	}
+	go syncer.Run(ctx)
+	return nil
+}
+
+// xdsClientConfig is the connection to the gateway-controller's policy server.
+func xdsClientConfig(cfg *config.Config, serverAddr string) *xdsclient.Config {
+	return &xdsclient.Config{
 		ServerAddress:         serverAddr,
 		ConnectTimeout:        cfg.PolicyEngine.XDS.ConnectTimeout,
 		RequestTimeout:        cfg.PolicyEngine.XDS.RequestTimeout,
@@ -537,17 +585,6 @@ func initializeXDSClient(ctx context.Context, cfg *config.Config, serverAddr str
 		TLSCiphers:            cfg.PolicyEngine.XDS.TLS.Ciphers,
 		TLSEcdhCurves:         cfg.PolicyEngine.XDS.TLS.EcdhCurves,
 	}
-
-	client, err := xdsclient.NewClient(xdsConfig, k, reg, resolvers)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create xDS client: %w", err)
-	}
-
-	if err := client.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start xDS client: %w", err)
-	}
-
-	return client, nil
 }
 
 // initializeFileConfig loads policy chains from a static YAML file

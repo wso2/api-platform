@@ -133,6 +133,16 @@ CREATE TABLE dbo.graphql_apis (
     FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
 );
 
+-- Budgets: the Budget kind as JSON (artifacts row of kind 'Budget').
+IF OBJECT_ID(N'dbo.budgets', N'U') IS NULL
+CREATE TABLE dbo.budgets (
+    uuid NVARCHAR(64) NOT NULL,
+    gateway_id NVARCHAR(64) NOT NULL,
+    configuration NVARCHAR(MAX) NOT NULL,
+    PRIMARY KEY (gateway_id, uuid),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
 -- Table for custom TLS certificates
 IF OBJECT_ID(N'dbo.certificates', N'U') IS NULL
 CREATE TABLE dbo.certificates (

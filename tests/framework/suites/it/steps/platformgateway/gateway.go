@@ -528,8 +528,52 @@ func providerTemplateMappingMatches(body []byte, provider, template string) bool
 func (g *Gateway) serviceRequestUntilLazyResourceAbsent(
 	ctx context.Context, method, service, path, resourceID, resourceType string,
 ) error {
+	return g.serviceRequestUntilLazyResource(ctx, method, service, path, resourceID, resourceType, "be removed",
+		func(body []byte, id, kind string) bool { return lazyResourceAbsent(body, id, kind) })
+}
+
+// serviceRequestUntilLazyResourcePresent polls a policy-engine config dump until the specified
+// resource type contains the requested resource ID.
+func (g *Gateway) serviceRequestUntilLazyResourcePresent(
+	ctx context.Context, method, service, path, resourceID, resourceType string,
+) error {
+	return g.serviceRequestUntilLazyResource(ctx, method, service, path, resourceID, resourceType, "be present",
+		func(body []byte, id, kind string) bool { _, ok := lazyResourceBody(body, id, kind); return ok })
+}
+
+// serviceRequestUntilLazyResourceField polls a policy-engine config dump until a field of the
+// specified resource, a dotted path inside its body, has the expected value.
+func (g *Gateway) serviceRequestUntilLazyResourceField(
+	ctx context.Context, method, service, path, resourceID, resourceType, field, want string,
+) error {
+	field, err := stepscommon.Expand(ctx, field)
+	if err != nil {
+		return err
+	}
+	want, err = stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	return g.serviceRequestUntilLazyResource(ctx, method, service, path, resourceID, resourceType,
+		fmt.Sprintf("have %s %q", field, want),
+		func(body []byte, id, kind string) bool {
+			resource, ok := lazyResourceBody(body, id, kind)
+			if !ok {
+				return false
+			}
+			got, ok := lazyResourceField(resource, field)
+			return ok && got == want
+		})
+}
+
+// serviceRequestUntilLazyResource polls a policy-engine config dump until accept holds for the
+// specified resource, then publishes the last response.
+func (g *Gateway) serviceRequestUntilLazyResource(
+	ctx context.Context, method, service, path, resourceID, resourceType, wantText string,
+	matches func(body []byte, resourceID, resourceType string) bool,
+) error {
 	if strings.ToUpper(method) != http.MethodGet || service != "policy-engine" {
-		return fmt.Errorf("lazy-resource deletion readiness requires a GET request to the policy-engine")
+		return fmt.Errorf("lazy-resource readiness requires a GET request to the policy-engine")
 	}
 	url, err := g.serviceURL(ctx, service, path)
 	if err != nil {
@@ -544,7 +588,7 @@ func (g *Gateway) serviceRequestUntilLazyResourceAbsent(
 		return err
 	}
 	accept := func(resp *httpx.Response) bool {
-		return resp != nil && resp.Succeeded() && lazyResourceAbsent(resp.Body, resourceID, resourceType)
+		return resp != nil && resp.Succeeded() && matches(resp.Body, resourceID, resourceType)
 	}
 	last, err := retry.Until(ctx, retry.Options{Interval: 200 * time.Millisecond},
 		func(ctx context.Context) (*httpx.Response, error) {
@@ -557,12 +601,49 @@ func (g *Gateway) serviceRequestUntilLazyResourceAbsent(
 			return resp, nil
 		}, accept)
 	if err != nil {
-		return fmt.Errorf("waiting for lazy resource %q of type %q to be removed: %w", resourceID, resourceType, err)
+		return fmt.Errorf("waiting for lazy resource %q of type %q to %s: %w", resourceID, resourceType, wantText, err)
 	}
 	if !accept(last) {
-		return fmt.Errorf("lazy resource %q of type %q was not removed", resourceID, resourceType)
+		return fmt.Errorf("lazy resource %q of type %q did not %s", resourceID, resourceType, wantText)
 	}
 	return g.funnel.Publish(ctx, last)
+}
+
+// lazyResourceBody returns the body of the specified resource in a policy-engine config dump.
+func lazyResourceBody(body []byte, resourceID, resourceType string) (map[string]any, bool) {
+	var dump configDump
+	if err := json.Unmarshal(body, &dump); err != nil {
+		return nil, false
+	}
+	for _, resource := range dump.Lazy.ResourcesByType[resourceType] {
+		if resource.ID == resourceID {
+			return resource.Resource, true
+		}
+	}
+	return nil, false
+}
+
+// lazyResourceField reads a dotted path from a resource body as text; numbers are written
+// without a fraction when they are whole.
+func lazyResourceField(resource map[string]any, field string) (string, bool) {
+	var value any = resource
+	for _, part := range strings.Split(field, ".") {
+		object, ok := value.(map[string]any)
+		if !ok {
+			return "", false
+		}
+		if value, ok = object[part]; !ok {
+			return "", false
+		}
+	}
+	switch v := value.(type) {
+	case string:
+		return v, true
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), true
+	default:
+		return fmt.Sprint(v), true
+	}
 }
 
 func lazyResourceAbsent(body []byte, resourceID, resourceType string) bool {
@@ -1078,6 +1159,26 @@ func (g *Gateway) adminURL(path string) (string, error) {
 	return base + gatewayAdminBasePath(g.topo) + path, nil
 }
 
+// controllerURLAt returns a management API URL on the gateway controller of one gateway
+// replica by zero-based ordinal, or of the only gateway with defaultReplica.
+func (g *Gateway) controllerURLAt(ctx context.Context, replica int, path string) (string, error) {
+	if replica == defaultReplica {
+		return g.serviceURL(ctx, "gateway-controller", path)
+	}
+	base, err := g.topo.URLAt("platform-gateway", replica, "rest")
+	if err != nil {
+		return "", err
+	}
+	resolved, err := stepscommon.Expand(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	if resolved != "" && !strings.HasPrefix(resolved, "/") {
+		resolved = "/" + resolved
+	}
+	return base + gatewayManagementBasePath(g.topo) + resolved, nil
+}
+
 func (g *Gateway) adminURLAt(ordinalWord, path string) (string, error) {
 	ordinal, err := gatewayOrdinal(ordinalWord)
 	if err != nil {
@@ -1154,8 +1255,8 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.getResource)
 	sc.Step(`^I list all (LLM providers|LLM provider templates|MCP proxies|LLM proxies)$`,
 		g.listResources)
-	sc.Step(`^I update the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) "([^"]*)" with configuration:$`, g.updateResource)
-	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`, g.deleteResource)
+	sc.Step(`^I update the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|Budget) "([^"]*)" with configuration:$`, g.updateResource)
+	sc.Step(`^I delete the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API|Budget) "([^"]*)"$`, g.deleteResource)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)"$`, g.serviceRequest)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" with body:$`, g.serviceRequestWithBody)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until status (\d+)$`,
@@ -1175,6 +1276,10 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.serviceRequestUntilProviderTemplateMapping)
 	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until lazy resource "([^"]*)" of type "([^"]*)" is absent$`,
 		g.serviceRequestUntilLazyResourceAbsent)
+	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until lazy resource "([^"]*)" of type "([^"]*)" is present$`,
+		g.serviceRequestUntilLazyResourcePresent)
+	sc.Step(`^I send a "([^"]*)" request to the "([^"]*)" service at "([^"]*)" until lazy resource "([^"]*)" of type "([^"]*)" has "([^"]*)" equal to "([^"]*)"$`,
+		g.serviceRequestUntilLazyResourceField)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should (contain|not contain) (request|response) header "([^"]*)"(?: with value "([^"]*)")?$`,
 		g.analyticsHeader)
 	sc.Step(`^I reset the analytics collector$`, g.resetAnalyticsCollector)
@@ -1495,6 +1600,7 @@ var resourceKinds = map[string]struct{ declared, collection string }{
 	"LLM proxy":             {"LlmProxy", collLLMProxies},
 	"Agent":                 {"Agent", collAgents},
 	"GraphQL API":           {"GraphQLApi", collGraphQLAPIs},
+	"Budget":                {"Budget", collBudgets},
 }
 
 // kindFromDefinition returns the top-level kind a definition declares.
@@ -2724,6 +2830,7 @@ const (
 	collLLMProxies   = "/llm-proxies"
 	collAgents       = "/agents"
 	collGraphQLAPIs  = "/graphql-apis"
+	collBudgets      = "/budgets"
 )
 
 // mutateResource creates, replaces or removes a controller resource and waits for the change
@@ -2740,7 +2847,21 @@ const (
 func (g *Gateway) mutateResource(
 	ctx context.Context, method, collection, id string, body *godog.DocString,
 ) error {
-	markGatewayChanged(ctx)
+	return g.mutateResourceAt(ctx, defaultReplica, method, collection, id, body)
+}
+
+// defaultReplica addresses the block's only gateway, as steps that name no replica do.
+const defaultReplica = -1
+
+// mutateResourceAt sends a mutation to the gateway controller of one gateway replica by
+// zero-based ordinal, or of the only gateway with defaultReplica. Settling and config dump
+// expectations follow the only gateway: a step that names a replica sets neither.
+func (g *Gateway) mutateResourceAt(
+	ctx context.Context, replica int, method, collection, id string, body *godog.DocString,
+) error {
+	if replica == defaultReplica {
+		markGatewayChanged(ctx)
+	}
 	resolvedID, err := stepscommon.Expand(ctx, id)
 	if err != nil {
 		return err
@@ -2758,14 +2879,18 @@ func (g *Gateway) mutateResource(
 	if resolvedID != "" {
 		path = collection + "/" + resolvedID
 	}
-	if method == http.MethodDelete {
+	if collection == collBudgets || replica != defaultReplica {
+		// Dump expectations are checked against whichever config dump a step reads, the
+		// policy engine's too, and an inactive budget never reaches the policy engine.
+		// Dump steps read the first gateway, so another replica's resources set none.
+	} else if method == http.MethodDelete {
 		expectInDump(ctx, resolvedID, false)
 	} else if expandedBody != "" {
 		if h := handleFromDefinition(expandedBody); h != "" {
 			expectInDump(ctx, h, true)
 		}
 	}
-	url, err := g.serviceURL(ctx, "gateway-controller", path)
+	url, err := g.controllerURLAt(ctx, replica, path)
 	if err != nil {
 		return err
 	}
@@ -2797,9 +2922,10 @@ func (g *Gateway) mutateResource(
 		if kind, ok := cleanupKindForCollection(collection); ok && resourceID != "" {
 			if err := cleanup.Register(ctx, cleanup.Resource{
 				Kind: kind, ID: resourceID, Actor: "admin",
-				Description: "created by " + scenarioLabel(ctx),
+				Description: "created by " + scenarioLabel(ctx), Replica: max(replica, 0),
+				ByOrdinal: replica != defaultReplica,
 			}); err != nil {
-				deleteURL, urlErr := g.serviceURL(ctx, "gateway-controller", collection+"/"+resourceID)
+				deleteURL, urlErr := g.controllerURLAt(ctx, replica, collection+"/"+resourceID)
 				if urlErr == nil {
 					if deleteErr := g.compensateDelete(ctx, deleteURL, g.scenarioHeaders(ctx)); deleteErr != nil {
 						return fmt.Errorf("registering %s %q for cleanup: %w; compensation failed: %v",
@@ -2819,7 +2945,7 @@ func (g *Gateway) mutateResource(
 		if resourceID == "" {
 			return nil // a create without a known id has nothing to poll for
 		}
-		pollURL, err := g.serviceURL(ctx, "gateway-controller", target)
+		pollURL, err := g.controllerURLAt(ctx, replica, target)
 		if err != nil {
 			return err
 		}
@@ -2891,6 +3017,8 @@ func cleanupKindForCollection(collection string) (cleanup.Kind, bool) {
 		return cleanup.KindAgent, true
 	case collGraphQLAPIs:
 		return cleanup.KindGraphQLAPI, true
+	case collBudgets:
+		return cleanup.KindBudget, true
 	default:
 		return cleanup.Kind{}, false
 	}

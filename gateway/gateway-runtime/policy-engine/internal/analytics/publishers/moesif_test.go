@@ -1092,3 +1092,22 @@ func TestPublish_NoCompanyWithoutBillingCustomer(t *testing.T) {
 		assert.Equal(t, "anonymous", *published.UserId)
 	}
 }
+
+func TestPublish_LlmProviderWithBudget(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+	event := createBaseEvent()
+	event.API.APIType = "LlmProvider"
+	event.Properties[constants.BudgetPropertyKey] = map[string]interface{}{
+		"names":      []string{"research-monthly"},
+		"costStatus": "priced",
+	}
+
+	moesif.Publish(event)
+
+	require.Len(t, moesif.events, 1)
+	metadata := getMetadata(moesif.events[0])
+	assert.Equal(t, map[string]interface{}{
+		"names":      []string{"research-monthly"},
+		"costStatus": "priced",
+	}, metadata["budget"])
+}

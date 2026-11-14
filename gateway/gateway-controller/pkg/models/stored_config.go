@@ -41,6 +41,7 @@ const (
 	KindLlmProviderTemplate ArtifactKind = "LlmProviderTemplate"
 	KindAgent               ArtifactKind = "Agent"
 	KindGraphQLApi          ArtifactKind = "GraphQLApi"
+	KindBudget              ArtifactKind = "Budget"
 )
 
 // DesiredState represents the intended deployment state of an API configuration.
@@ -196,6 +197,8 @@ func apiVersionOf(cfg any) string {
 	case api.AgentConfiguration:
 		return string(sc.ApiVersion)
 	case api.GraphQLAPI:
+		return string(sc.ApiVersion)
+	case api.BudgetRequest:
 		return string(sc.ApiVersion)
 	}
 	return ""

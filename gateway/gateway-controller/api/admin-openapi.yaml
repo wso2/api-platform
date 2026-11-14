@@ -224,6 +224,37 @@ components:
           type: string
           format: date-time
 
+    ConfigDumpBudgetItem:
+      type: object
+      description: Budget item in config dump response
+      properties:
+        id:
+          type: string
+          format: uuid
+        configuration:
+          type: object
+          additionalProperties: true
+          description: The stored Budget kind
+        metadata:
+          $ref: "#/components/schemas/ConfigDumpBudgetMetadata"
+
+    ConfigDumpBudgetMetadata:
+      type: object
+      description: Metadata for a budget in config dump
+      properties:
+        origin:
+          type: string
+          description: Where the budget was created (gateway_api or control_plane)
+        enforced:
+          type: boolean
+          description: Whether the budget is published to the policy engine (active budgets only)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
     ConfigDumpXDSSync:
       type: object
       description: xDS sync metadata included in config dump
@@ -253,6 +284,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CertificateResponse"
+        budgets:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigDumpBudgetItem"
         statistics:
           type: object
           properties:
@@ -263,6 +298,8 @@ components:
             totalCertificates:
               type: integer
             totalCertificateBytes:
+              type: integer
+            totalBudgets:
               type: integer
         xds_sync:
           $ref: "#/components/schemas/ConfigDumpXDSSync"

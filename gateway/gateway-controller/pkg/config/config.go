@@ -223,6 +223,29 @@ type Controller struct {
 	Metrics      MetricsConfig      `koanf:"metrics"`
 	Encryption   EncryptionConfig   `koanf:"encryption"`
 	EventHub     EventHubConfig     `koanf:"event_hub"`
+	Counters     CountersConfig     `koanf:"counters"`
+}
+
+// CountersConfig holds the shared counter store the policy engines report to
+// (sdk/core/counters): budgets count spend in it. Without Redis the counters live in
+// this controller's memory, shared by its policy engines only and lost on restart.
+type CountersConfig struct {
+	// Retention is how long a counter is kept after its last add; 0 means 40 days.
+	Retention time.Duration       `koanf:"retention"`
+	Redis     CountersRedisConfig `koanf:"redis"`
+}
+
+// CountersRedisConfig connects the counter store to Redis (or Valkey), shared by
+// every gateway-controller that should see the same totals.
+type CountersRedisConfig struct {
+	Enabled     bool          `koanf:"enabled"`
+	Address     string        `koanf:"address"` // host:port
+	Username    string        `koanf:"username"`
+	Password    string        `koanf:"password"`
+	DB          int           `koanf:"db"`
+	KeyPrefix   string        `koanf:"key_prefix"`
+	TLS         bool          `koanf:"tls"`
+	DialTimeout time.Duration `koanf:"dial_timeout"`
 }
 
 // MetricsConfig holds Prometheus metrics server configuration
@@ -1307,6 +1330,14 @@ func defaultConfig() *Config {
 					Enabled: false,
 				},
 			},
+			Counters: CountersConfig{
+				Retention: 40 * 24 * time.Hour,
+				Redis: CountersRedisConfig{
+					Address:     "localhost:6379",
+					KeyPrefix:   "apip:counters:",
+					DialTimeout: 5 * time.Second,
+				},
+			},
 			EventHub: EventHubConfig{
 				PollInterval:    3 * time.Second,
 				CleanupInterval: 10 * time.Minute,
@@ -1514,6 +1545,10 @@ func defaultConfig() *Config {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
+	if err := c.Controller.Counters.validate(); err != nil {
+		return err
+	}
+
 	// Immutable mode requires SQLite — it starts with a fresh in-container DB on every boot,
 	// which is incompatible with external shared databases like Postgres.
 	if c.ImmutableGateway.Enabled && !strings.EqualFold(c.Controller.Storage.Type, "sqlite") {
@@ -2741,5 +2776,16 @@ func (c *Config) validateHTTPListenerConfig() error {
 			httpListener.PathWithEscapedSlashesAction)
 	}
 
+	return nil
+}
+
+// validate checks the counter store settings.
+func (c CountersConfig) validate() error {
+	if c.Retention < 0 {
+		return fmt.Errorf("controller.counters.retention must not be negative")
+	}
+	if c.Redis.Enabled && strings.TrimSpace(c.Redis.Address) == "" {
+		return fmt.Errorf("controller.counters.redis.address is required when controller.counters.redis.enabled is true")
+	}
 	return nil
 }

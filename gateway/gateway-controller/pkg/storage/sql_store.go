@@ -291,6 +291,8 @@ func kindToResourceTable(kind string) (string, error) {
 		return agentsResourceTable, nil
 	case "GraphQLApi":
 		return "graphql_apis", nil
+	case "Budget":
+		return "budgets", nil
 	default:
 		if table, ok := extraResourceTables[kind]; ok {
 			return table, nil
@@ -398,6 +400,13 @@ func unmarshalSourceConfig(cfg *models.StoredConfig, jsonData string) error {
 		// stored payload is already the deployable shape (see graphql.go's Transform,
 		// which type-asserts cfg.Configuration.(api.GraphQLAPI) directly).
 		var config api.GraphQLAPI
+		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
+			return fmt.Errorf("failed to unmarshal configuration: %w", err)
+		}
+		cfg.SourceConfiguration = config
+		cfg.Configuration = config
+	case "Budget":
+		var config api.BudgetRequest
 		if err := json.Unmarshal([]byte(jsonData), &config); err != nil {
 			return fmt.Errorf("failed to unmarshal configuration: %w", err)
 		}

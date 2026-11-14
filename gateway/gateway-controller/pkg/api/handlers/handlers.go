@@ -46,6 +46,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/secrets"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/budget"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
@@ -60,6 +61,8 @@ type APIServer struct {
 
 	restAPIService              *restapi.RestAPIService
 	agentService                *agent.AgentService
+	budgetService               *budget.Service
+	budgetPublisher             *utils.BudgetPublisher
 	store                       *storage.ConfigStore
 	db                          storage.Storage
 	snapshotManager             *xds.SnapshotManager
@@ -111,6 +114,7 @@ func NewAPIServer(
 	policyManager *policyxds.PolicyManager,
 	lazyResourceManager *lazyresourcexds.LazyResourceStateManager,
 	clientAuthorities *utils.ClientAuthorityPublisher,
+	budgets *utils.BudgetPublisher,
 	logger *slog.Logger,
 	controlPlaneClient controlplane.ControlPlaneClient,
 	policyDefinitions map[string]models.PolicyDefinition,
@@ -136,6 +140,9 @@ func NewAPIServer(
 	}
 	if clientAuthorities == nil {
 		panic("APIServer requires a non-nil client authority publisher")
+	}
+	if budgets == nil {
+		panic("APIServer requires a non-nil budget publisher")
 	}
 	gatewayID := strings.TrimSpace(systemConfig.Controller.Server.GatewayID)
 	if gatewayID == "" {
@@ -187,6 +194,8 @@ func NewAPIServer(
 	server.llmDeploymentService.SetControlPlanePusher(controlPlaneClient, pushEnabled)
 
 	server.agentService = agentService
+	server.budgetPublisher = budgets
+	server.budgetService = budget.NewService(db, budgets, eventHub, gatewayID, logger, systemConfig.Controller.ControlPlane.DeploymentSyncEnabled)
 	server.AgentHandler = NewAgentHandler(agentService, logger)
 
 	server.restAPIService = restAPIService
@@ -565,6 +574,12 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 		})
 	}
 
+	budgets, err := s.configDumpBudgets()
+	if err != nil {
+		log.Error("Failed to list budgets for config dump", slog.Any("error", err))
+		return nil, err
+	}
+
 	// Calculate statistics
 	totalApis := len(apisSlice)
 	totalPolicies := len(policies)
@@ -581,13 +596,16 @@ func (s *APIServer) BuildConfigDumpResponse(log *slog.Logger) (*adminapi.ConfigD
 		Apis:         &apisSlice,
 		Policies:     &policies,
 		Certificates: &certificates,
+		Budgets:      &budgets,
 		Statistics: &struct {
 			TotalApis             *int `json:"totalApis,omitempty" yaml:"totalApis,omitempty"`
+			TotalBudgets          *int `json:"totalBudgets,omitempty" yaml:"totalBudgets,omitempty"`
 			TotalCertificateBytes *int `json:"totalCertificateBytes,omitempty" yaml:"totalCertificateBytes,omitempty"`
 			TotalCertificates     *int `json:"totalCertificates,omitempty" yaml:"totalCertificates,omitempty"`
 			TotalPolicies         *int `json:"totalPolicies,omitempty" yaml:"totalPolicies,omitempty"`
 		}{
 			TotalApis:             &totalApis,
+			TotalBudgets:          ptr(len(budgets)),
 			TotalPolicies:         &totalPolicies,
 			TotalCertificates:     &totalCertificates,
 			TotalCertificateBytes: &totalBytes,
