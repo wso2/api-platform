@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/entra"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/oidc"
 )
 
@@ -35,7 +36,7 @@ func TestTestbenchDefinition(t *testing.T) {
 	require.Equal(t, "testbench", definition.Name)
 	require.True(t, definition.Shared)
 	require.NotNil(t, definition.Health)
-	for _, endpoint := range []string{"backend", "jwks", "echo", "analytics", "jev", "jev-tls", "mcp-scripted"} {
+	for _, endpoint := range []string{"backend", "jwks", "echo", "analytics", "jev", "jev-tls", "mcp-scripted", "entra", "entra-tls"} {
 		_, ok := definition.Endpoint(endpoint)
 		require.True(t, ok, endpoint)
 	}
@@ -74,6 +75,33 @@ func TestTheIdentityProviderServesHTTPSWithTheSharedCertificate(t *testing.T) {
 
 	_, err = oidc.New(pair.CertPEM, pair.PrivateKeyPEM, OIDCIssuer)
 	require.NoError(t, err, "the identity provider must accept the certificate it is given")
+}
+
+// The gateway runtime trusts testbench-ca/jev.pem, so the Entra mock's HTTPS port must serve that
+// same certificate for the azure-authentication policy's https authority to be trusted.
+func TestTheEntraMockServesHTTPSWithTheCertificateTheRuntimeTrusts(t *testing.T) {
+	definition := Testbench()
+	plain, ok := definition.Endpoint("entra")
+	require.True(t, ok)
+	require.Equal(t, entra.Port, plain.Port)
+	require.Equal(t, "http", plain.Scheme)
+	secure, ok := definition.Endpoint("entra-tls")
+	require.True(t, ok)
+	require.Equal(t, entra.TLSPort, secure.Port)
+	require.Equal(t, "https", secure.Scheme)
+
+	pair := shared.JevTLS()
+	require.Equal(t, string(pair.CertPEM), definition.Env[entra.EnvTLSCert])
+	require.Equal(t, string(pair.PrivateKeyPEM), definition.Env[entra.EnvTLSKey])
+
+	block, _ := pem.Decode(pair.CertPEM)
+	require.NotNil(t, block)
+	certificate, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+	require.NoError(t, certificate.VerifyHostname("testbench"))
+
+	_, err = entra.New().OverTLS(pair.CertPEM, pair.PrivateKeyPEM)
+	require.NoError(t, err, "the Entra mock must accept the certificate it is given")
 }
 
 func TestImageForModuleFollowsTheFrameworkRelease(t *testing.T) {

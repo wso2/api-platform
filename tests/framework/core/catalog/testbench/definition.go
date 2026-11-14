@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/contentsafety"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/echo"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/embeddings"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/entra"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/faultinjection"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/graphqlbackend"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/guardian"
@@ -181,6 +182,14 @@ func Testbench() *components.Definition {
 			// faults, then forwards to another service on this testbench, addressed as
 			// http://testbench:3026/<block>/<id>. See testbench/services/faultinjection.
 			{Name: "fault-injection", Port: faultinjection.Port, Scheme: "http", AwaitListening: true},
+			// entra is STATEFUL: a Microsoft Entra ID token endpoint and two token-protected
+			// resources, addressed as http://testbench:3027/<tenant>/..., where the tenant a
+			// scenario names is its partition, and an IMDS token endpoint under the block's
+			// partition, /<block>/metadata/identity/oauth2/token. See testbench/services/entra.
+			{Name: "entra", Port: entra.Port, Scheme: "http", AwaitListening: true},
+			// The same entra service over HTTPS with shared.JevTLS, which the gateway runtime
+			// trusts: the authority host the runtime is given, https://testbench:3028/.
+			{Name: "entra-tls", Port: entra.TLSPort, Scheme: "https", AwaitListening: true},
 		},
 		Env: map[string]string{
 			oidc.EnvTLSCert:  string(shared.IdentityProviderTLS().CertPEM),
@@ -190,6 +199,10 @@ func Testbench() *components.Definition {
 			jev.EnvTLSKey:    string(shared.JevTLS().PrivateKeyPEM),
 			specs.EnvTLSCert: string(shared.SpecsTLS().CertPEM),
 			specs.EnvTLSKey:  string(shared.SpecsTLS().PrivateKeyPEM),
+			// The Entra mock serves the certificate the gateway runtime already trusts for the
+			// host testbench, so the azure-authentication policy's https authority is trusted.
+			entra.EnvTLSCert: string(shared.JevTLS().CertPEM),
+			entra.EnvTLSKey:  string(shared.JevTLS().PrivateKeyPEM),
 		},
 		// Every service answers the same health path on its own port, so gating on one is
 		// gating on the process. AwaitListening above already proves each port is bound.

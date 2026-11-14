@@ -40,6 +40,12 @@ const (
 	svcRuntime    = "gateway-runtime"
 )
 
+// The fixture federated service account tokens of the gateway runtime's Azure Workload Identity.
+const (
+	azureIdentityTokenFile      = "tests/framework/core/catalog/platformgateway/resources/azure/identity-token"
+	azureIdentityTokenEmptyFile = "tests/framework/core/catalog/platformgateway/resources/azure/identity-token-empty"
+)
+
 // PlatformGateway returns the Platform Gateway component definition.
 func PlatformGateway() *components.Definition {
 	env := map[string]string{
@@ -63,6 +69,10 @@ func PlatformGateway() *components.Definition {
 				// A block overrides this with resources/aws/workload-credentials to give the
 				// runtime AWS workload credentials.
 				"aws-credentials": "tests/framework/core/catalog/platformgateway/resources/aws/credentials",
+				// The federated service account token the azure-authentication policy reads through
+				// AZURE_FEDERATED_TOKEN_FILE. A block overrides this with
+				// resources/azure/identity-token-empty to give the runtime an empty token.
+				"azure-identity-token": azureIdentityTokenFile,
 			},
 			GeneratedFiles: gatewayGeneratedFiles(),
 			Env:            env,

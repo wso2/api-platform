@@ -70,7 +70,8 @@ func (t *Topology) LaunchComposeInstance(
 		generated["config.toml"] = content
 	}
 	spec := def.Compose.WithGenerated(generated)
-	opts := Options{Network: t.network, RepoRoot: t.repoRoot, Env: merged, LogWriter: t.logWriter, InstanceSuffix: suffix}
+	opts := Options{Network: t.network, RepoRoot: t.repoRoot, Env: merged, LogWriter: t.logWriter,
+		InstanceSuffix: suffix, Partition: t.Block.PartitionKey()}
 	stack, err := launchComposeWithRetry(ctx, component+suffix, spec.BootAttempts,
 		func(ctx context.Context) (*ComposeStack, error) { return LaunchCompose(ctx, def, spec, opts) })
 	if stack != nil {

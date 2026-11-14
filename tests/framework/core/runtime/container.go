@@ -74,6 +74,10 @@ type Options struct {
 	// gives, for an instance started beside the block's own.
 	InstanceSuffix string
 
+	// Partition is the block's testbench partition (its PartitionKey), substituted into a
+	// compose instance's staged files as ${BLOCK}, the name config overlays use for it.
+	Partition string
+
 	// Env is merged over the definition's static Env. This is where a resolved DSN
 	// and any wiring-derived values arrive.
 	Env map[string]string
