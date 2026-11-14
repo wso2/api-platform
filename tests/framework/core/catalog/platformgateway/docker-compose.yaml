@@ -72,9 +72,13 @@ services:
       - AZURE_CLIENT_ID=5d6e7f80-91a2-4b3c-8d4e-5f6a7b8c9d0e
       - AZURE_FEDERATED_TOKEN_FILE=/var/run/secrets/azure/tokens/azure-identity-token
       - AZURE_AUTHORITY_HOST=https://testbench:3028/
-      # The IMDS of the azure-authentication policy's managed-identity mode: the Entra mock over
-      # the trusted TLS, under this block's partition, so blocks sharing a testbench keep apart.
-      - AZURE_IMDS_TOKEN_ENDPOINT=https://testbench:3028/${BLOCK}/metadata/identity/oauth2/token
+      # A managed identity endpoint, as Azure Container Apps gives an app with a managed identity:
+      # the Entra mock over the trusted TLS, under this block's partition, so blocks sharing a
+      # testbench keep apart. The Azure Identity SDK sends every managed identity token request
+      # here, so the azure-authentication policy's container-apps and managed-identity types both
+      # use it. IDENTITY_HEADER is the secret the mock requires (entra.IdentityHeader).
+      - IDENTITY_ENDPOINT=https://testbench:3028/${BLOCK}/msi/token
+      - IDENTITY_HEADER=testbench-identity-header
       - GOCOVERDIR=${GOCOVERDIR:-}
     volumes:
       - ./config.toml:/etc/policy-engine/config.toml:ro

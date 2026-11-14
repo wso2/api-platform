@@ -82,7 +82,11 @@ func (s *Service) token(tenant string, w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	a, admitted := s.admit(tenant, req, rejection == nil, func(eligible int) int {
+	rejected := 0
+	if rejection != nil {
+		rejected = http.StatusBadRequest
+	}
+	a, admitted := s.admit(tenant, req, rejected, func(eligible int) int {
 		return outcome(tenant, eligible)
 	})
 	if !admitted {
@@ -146,11 +150,56 @@ func validate(req Request) *formRejection {
 		return &formRejection{"invalid_request", "AADSTS50027: A client assertion of type jwt-bearer is required.", 50027}
 	case req.ClientID == "":
 		return &formRejection{"invalid_request", "AADSTS900144: The request body must contain the parameter client_id.", 900144}
-	case !strings.HasSuffix(req.Scope, "/.default") || len(req.Scope) == len("/.default"):
-		return &formRejection{"invalid_scope", "AADSTS1002012: The scope of a client credentials request must end in /.default.", 1002012}
+	case !validScope(req.Scope):
+		return &formRejection{"invalid_scope",
+			"AADSTS1002012: The scope of a client credentials request must be one resource's /.default.", 1002012}
 	default:
 		return nil
 	}
+}
+
+// openIDScopes are the scopes MSAL adds to every token request it sends; the endpoint accepts them
+// beside the resource's /.default scope.
+var openIDScopes = []string{"openid", "offline_access", "profile"}
+
+// audience returns the resource a client credentials scope names: the scope's one
+// "<resource>/.default" entry, which openIDScopes may accompany. It reports false for any other
+// scope.
+func audience(scope string) (string, bool) {
+	resource, found := "", false
+	for _, entry := range strings.Fields(scope) {
+		switch r, isDefault := strings.CutSuffix(entry, "/.default"); {
+		case slices.Contains(openIDScopes, entry):
+		case isDefault && r != "" && !found:
+			resource, found = r, true
+		default:
+			return "", false
+		}
+	}
+	return resource, found
+}
+
+// validScope reports whether scope names exactly one resource's /.default scope.
+func validScope(scope string) bool {
+	_, ok := audience(scope)
+	return ok
+}
+
+// openIDConfiguration serves GET /<tenant>/v2.0/.well-known/openid-configuration, which MSAL reads
+// before a tenant's first token request: the issuer, on the scheme and host the request came in
+// on, as MSAL requires of the authority, and the tenant's token endpoint. It is not a token request
+// and is not logged.
+func (s *Service) openIDConfiguration(tenant string, w http.ResponseWriter, r *http.Request) {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	base := scheme + "://" + r.Host + "/" + tenant
+	writeJSON(w, http.StatusOK, map[string]string{
+		"issuer":                 base + "/v2.0",
+		"token_endpoint":         base + "/oauth2/v2.0/token",
+		"authorization_endpoint": base + "/oauth2/v2.0/authorize",
+	})
 }
 
 // outcome is the status the tenant's n-th well-formed token request is answered with; malformed
@@ -176,7 +225,8 @@ func outcome(tenant string, n int) int {
 // its scope and client. The token carries N = n; a refresh-soon- tenant's first token, eligible 1,
 // also carries refresh_in.
 func issue(w http.ResponseWriter, tenant string, n, eligible int, req Request) {
-	claims, err := json.Marshal(Claims{Aud: strings.TrimSuffix(req.Scope, "/.default"), Tid: tenant, AppID: req.ClientID, N: n})
+	aud, _ := audience(req.Scope)
+	claims, err := json.Marshal(Claims{Aud: aud, Tid: tenant, AppID: req.ClientID, N: n})
 	if err != nil {
 		http.Error(w, "entra: encoding the token claims", http.StatusInternalServerError)
 		return

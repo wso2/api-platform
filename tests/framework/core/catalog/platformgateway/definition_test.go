@@ -42,6 +42,7 @@ import (
 	frameworkbuilder "github.com/wso2/api-platform/tests/framework/core/builder"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/components"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/entra"
 )
 
 type policyRecordingRunner struct {
@@ -270,14 +271,17 @@ func TestRuntimeTrustsTheTestbenchOIDCCertificate(t *testing.T) {
 // TestComposeCarriesTheAzureWorkloadIdentity verifies the runtime gets what the AKS Workload
 // Identity webhook gives a pod: the identity, the authority (the testbench Entra mock over the TLS
 // the runtime trusts) and a readable federated token file, with an empty alternative a block can
-// stage instead.
+// stage instead. It also gets the managed identity endpoint Azure Container Apps gives an app: the
+// mock's identity endpoint under the block's partition, and the identity header the mock requires.
 func TestComposeCarriesTheAzureWorkloadIdentity(t *testing.T) {
 	env := composeServiceEnv(t, "gateway-runtime")
 	require.Equal(t, "7f3c2a10-4b5e-4c6d-8e9f-0a1b2c3d4e5f", env["AZURE_TENANT_ID"])
 	require.Equal(t, "5d6e7f80-91a2-4b3c-8d4e-5f6a7b8c9d0e", env["AZURE_CLIENT_ID"])
 	require.Equal(t, "/var/run/secrets/azure/tokens/azure-identity-token", env["AZURE_FEDERATED_TOKEN_FILE"])
 	require.Equal(t, "https://testbench:3028/", env["AZURE_AUTHORITY_HOST"])
-	require.Equal(t, "https://testbench:3028/${BLOCK}/metadata/identity/oauth2/token", env["AZURE_IMDS_TOKEN_ENDPOINT"])
+	require.Equal(t, "https://testbench:3028/${BLOCK}/msi/token", env["IDENTITY_ENDPOINT"])
+	require.Equal(t, entra.IdentityHeader, env["IDENTITY_HEADER"])
+	require.NotContains(t, env, "AZURE_IMDS_TOKEN_ENDPOINT")
 
 	services := composeFile(t)["services"].(map[string]any)
 	volumes, ok := services["gateway-runtime"].(map[string]any)["volumes"].([]any)
@@ -286,13 +290,15 @@ func TestComposeCarriesTheAzureWorkloadIdentity(t *testing.T) {
 
 	staged := PlatformGateway().Compose.StagedFiles
 	require.Equal(t, azureIdentityTokenFile, staged["azure-identity-token"])
+	// The Azure Identity SDK sends the file's bytes as the client assertion unchanged, so the token
+	// has no trailing newline, as Kubernetes writes a projected token.
 	for file, want := range map[string]string{
 		azureIdentityTokenFile:      "testbench-federated-identity-token",
 		azureIdentityTokenEmptyFile: "",
 	} {
 		raw, err := os.ReadFile(assets.Resolve("", file))
 		require.NoError(t, err, "%s must be embedded", file)
-		require.Equal(t, want, strings.TrimSpace(string(raw)), file)
+		require.Equal(t, want, string(raw), file)
 	}
 }
 

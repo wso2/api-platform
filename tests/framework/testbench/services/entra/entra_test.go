@@ -35,6 +35,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -173,6 +174,11 @@ func TestTokenRejectsABadForm(t *testing.T) {
 		{"wrong assertion type", func(f url.Values) { f.Set("client_assertion_type", "secret") }, "invalid_request", 50027, ""},
 		{"missing client_id", func(f url.Values) { f.Del("client_id") }, "invalid_request", 900144, ""},
 		{"scope without /.default", func(f url.Values) { f.Set("scope", "https://ai.azure.com") }, "invalid_scope", 1002012, ""},
+		{"scope of an empty resource", func(f url.Values) { f.Set("scope", "/.default") }, "invalid_scope", 1002012, ""},
+		{"scope of two resources", func(f url.Values) { f.Set("scope", foundryScope+" "+cogScope) }, "invalid_scope", 1002012, ""},
+		{"only OpenID scopes", func(f url.Values) { f.Set("scope", "openid offline_access profile") }, "invalid_scope", 1002012, ""},
+		{"another scope beside the resource", func(f url.Values) { f.Set("scope", foundryScope+" User.Read") }, "invalid_scope", 1002012, ""},
+		{"client_info repeated", func(f url.Values) { f.Add("client_info", "1"); f.Add("client_info", "1") }, "invalid_request", 9000411, "'client_info'"},
 		{"grant type repeated after a valid one", func(f url.Values) { f.Add("grant_type", "password") }, "invalid_request", 9000411, "'grant_type'"},
 		{"scope repeated with the same value", func(f url.Values) { f.Add("scope", foundryScope) }, "invalid_request", 9000411, "'scope'"},
 		{"empty parameter name repeated", func(f url.Values) { f.Add("", "a"); f.Add("", "b") }, "invalid_request", 9000411, "parameter '' is"},
@@ -207,6 +213,47 @@ func TestTokenRejectsABadForm(t *testing.T) {
 		form.Set("client_assertion", strings.Repeat("a", maxFormBytes))
 		require.Equal(t, http.StatusBadRequest, requestToken(t, New(), "t1", form).Code)
 	})
+}
+
+// MSAL adds openid, offline_access and profile to the scope of every token request, and
+// client_info=1 to its form. The token is still for the one resource the /.default scope names,
+// and the scope is recorded as sent.
+func TestTokenAcceptsWhatMSALAdds(t *testing.T) {
+	msalScope := foundryScope + " openid offline_access profile"
+	svc := New()
+	for _, scope := range []string{msalScope, "openid " + foundryScope, foundryScope + " profile"} {
+		form := validForm(scope)
+		form.Set("client_info", "1")
+		tok := issued(t, requestToken(t, svc, "t1", form))
+		require.Equal(t, FoundryAudience, claimsOf(t, tok.AccessToken).Aud, scope)
+	}
+	require.Equal(t, msalScope, recorded(t, svc, "t1").Requests[0].Scope)
+}
+
+// MSAL reads the tenant's OpenID configuration before its first token request, and requires its
+// issuer on the authority's scheme and host. Reading it is not a token request, so it is not
+// logged.
+func TestOpenIDConfigurationNamesTheTenantsEndpoints(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		tls    bool
+		scheme string
+	}{{"over HTTP", false, "http"}, {"over HTTPS", true, "https"}} {
+		t.Run(c.name, func(t *testing.T) {
+			svc := New()
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/t1/v2.0/.well-known/openid-configuration", nil)
+			req.Host = "testbench:3028"
+			if c.tls {
+				req.TLS = &tls.ConnectionState{}
+			}
+			rec := serve(t, svc.Handler(), req)
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			base := c.scheme + "://testbench:3028/t1"
+			require.JSONEq(t, `{"issuer":"`+base+`/v2.0","token_endpoint":"`+base+`/oauth2/v2.0/token",`+
+				`"authorization_endpoint":"`+base+`/oauth2/v2.0/authorize"}`, rec.Body.String())
+			require.Equal(t, requestLog{Requests: []Request{}}, recorded(t, svc, "t1"))
+		})
+	}
 }
 
 func TestRequestsAreLoggedPerTenant(t *testing.T) {
@@ -576,33 +623,33 @@ func selfSignedPEM(t *testing.T) ([]byte, []byte) {
 
 const (
 	testManagedClientID = "11111111-2222-3333-4444-555555555555"
-	// testBlock is the block partition a test's IMDS requests are sent under.
+	// testBlock is the block partition a test's managed identity requests are sent under.
 	testBlock = "block-a"
 )
 
-// imdsGet sends a managed identity token request to the IMDS route under a block's partition.
-func imdsGet(t *testing.T, svc *Service, block string, query url.Values, header http.Header) *httptest.ResponseRecorder {
+// withIdentityHeader carries the secret the managed identity endpoint requires.
+var withIdentityHeader = http.Header{IdentityHeaderName: {IdentityHeader}}
+
+// identityGet sends a token request to the managed identity endpoint under a block's partition.
+func identityGet(t *testing.T, svc *Service, block string, query url.Values, header http.Header) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/"+block+"/metadata/identity/oauth2/token?"+query.Encode(), nil)
+	return identityGetRaw(t, svc, block, query.Encode(), header)
+}
+
+// identityGetRaw sends a token request to the managed identity endpoint with the query string sent
+// exactly as given.
+func identityGetRaw(t *testing.T, svc *Service, block, rawQuery string, header http.Header) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/"+block+"/msi/token?"+rawQuery, nil)
 	for name, values := range header {
-		req.Header[name] = values
+		req.Header[http.CanonicalHeaderKey(name)] = values
 	}
 	return serve(t, svc.Handler(), req)
 }
 
-// imdsGetRaw sends a managed identity token request whose query string is sent exactly as given.
-func imdsGetRaw(t *testing.T, svc *Service, block, rawQuery string, header http.Header) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/"+block+"/metadata/identity/oauth2/token?"+rawQuery, nil)
-	for name, values := range header {
-		req.Header[name] = values
-	}
-	return serve(t, svc.Handler(), req)
-}
-
-// imdsRecorded returns the block's IMDS request log for an identity: a client ID, or
-// SystemAssigned.
-func imdsRecorded(t *testing.T, svc *Service, block, identity string) requestLog {
+// identityRecorded returns the block's managed identity request log for an identity: a client ID,
+// or SystemAssigned.
+func identityRecorded(t *testing.T, svc *Service, block, identity string) requestLog {
 	t.Helper()
 	path := "/" + block + "/test/managed-identity/" + identity
 	rec := serve(t, svc.Handler(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
@@ -612,93 +659,135 @@ func imdsRecorded(t *testing.T, svc *Service, block, identity string) requestLog
 	return l
 }
 
-// imdsQuery is a well-formed IMDS query; an empty clientID asks for the system-assigned identity.
-func imdsQuery(clientID, resource string) url.Values {
-	q := url.Values{"api-version": {IMDSAPIVersion}, "resource": {resource}}
+// identityQuery is a well-formed managed identity query; an empty clientID asks for the
+// system-assigned identity.
+func identityQuery(clientID, resource string) url.Values {
+	q := url.Values{"api-version": {IdentityAPIVersion}, "resource": {resource}}
 	if clientID != "" {
 		q.Set("client_id", clientID)
 	}
 	return q
 }
 
-var metadataTrue = http.Header{"Metadata": {"true"}}
+// identityError is an error the managed identity endpoint answers itself.
+type identityError struct {
+	StatusCode    int    `json:"statusCode"`
+	Message       string `json:"message"`
+	CorrelationID string `json:"correlationId"`
+}
 
-func TestIMDSIssuesATokenForTheResource(t *testing.T) {
+func decodeIdentityError(t *testing.T, rec *httptest.ResponseRecorder) identityError {
+	t.Helper()
+	require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+	var e identityError
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &e))
+	require.Equal(t, rec.Code, e.StatusCode)
+	require.Regexp(t, guidPattern, e.CorrelationID)
+	return e
+}
+
+func TestIdentityEndpointIssuesATokenForTheResource(t *testing.T) {
 	svc := New()
-	rec := imdsGet(t, svc, testBlock, imdsQuery(testManagedClientID, FoundryAudience), metadataTrue)
+	before := time.Now().Unix()
+	rec := identityGet(t, svc, testBlock, identityQuery(testManagedClientID, FoundryAudience), withIdentityHeader)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
-	var body map[string]any
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	require.Equal(t, "3599", body["expires_in"], "IMDS sends numbers as strings")
+	var body map[string]string
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body), "every field is a string, as Container Apps sends it")
+	require.ElementsMatch(t, []string{"access_token", "expires_on", "resource", "token_type", "client_id"}, keys(body))
 	require.Equal(t, "Bearer", body["token_type"])
 	require.Equal(t, FoundryAudience, body["resource"])
 	require.Equal(t, testManagedClientID, body["client_id"])
-	token, ok := body["access_token"].(string)
-	require.True(t, ok)
-	require.Equal(t, Claims{Aud: FoundryAudience, Tid: "managed-identity", AppID: testManagedClientID, N: 1}, claimsOf(t, token))
+	expiresOn, err := strconv.ParseInt(body["expires_on"], 10, 64)
+	require.NoError(t, err)
+	require.InDelta(t, before+ExpiresIn, expiresOn, 2)
+	require.Equal(t, Claims{Aud: FoundryAudience, Tid: ManagedIdentityTenant, AppID: testManagedClientID, N: 1}, claimsOf(t, body["access_token"]))
 
-	log := imdsRecorded(t, svc, testBlock, testManagedClientID)
+	log := identityRecorded(t, svc, testBlock, testManagedClientID)
 	require.Equal(t, 1, log.Count)
-	got := log.Requests[0]
-	require.Equal(t, testManagedClientID, got.ClientID)
-	require.Equal(t, FoundryAudience, got.Resource)
-	require.Equal(t, "2018-02-01", got.APIVersion)
-	require.Equal(t, "true", got.Metadata)
-	require.Equal(t, http.StatusOK, got.Status)
+	require.Equal(t, Request{
+		ClientID:       testManagedClientID,
+		Resource:       FoundryAudience,
+		APIVersion:     IdentityAPIVersion,
+		IdentityHeader: IdentityHeader,
+		Status:         http.StatusOK,
+	}, log.Requests[0])
 }
 
-func TestIMDSSystemAssignedIdentity(t *testing.T) {
-	svc := New()
-	rec := imdsGet(t, svc, testBlock, imdsQuery("", FoundryAudience), metadataTrue)
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	var body map[string]any
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	token, _ := body["access_token"].(string)
-	require.Equal(t, "system-assigned", claimsOf(t, token).AppID)
+func keys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
 
-	log := imdsRecorded(t, svc, testBlock, SystemAssigned)
+func TestIdentityEndpointSystemAssignedIdentity(t *testing.T) {
+	svc := New()
+	rec := identityGet(t, svc, testBlock, identityQuery("", FoundryAudience), withIdentityHeader)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body map[string]string
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, SystemAssigned, claimsOf(t, body["access_token"]).AppID)
+	require.Equal(t, SystemAssigned, body["client_id"])
+
+	log := identityRecorded(t, svc, testBlock, SystemAssigned)
 	require.Equal(t, 1, log.Count)
 	require.Empty(t, log.Requests[0].ClientID)
 }
 
-func TestIMDSRejectsAMalformedRequest(t *testing.T) {
-	// repeated is a well-formed query with one parameter given a second, acceptable value.
-	repeated := func(name, value string) url.Values {
-		q := imdsQuery(testManagedClientID, FoundryAudience)
-		q.Add(name, value)
-		return q
-	}
+// Container Apps answers a request without its identity header, or with the wrong one, with 403
+// and an empty body.
+func TestIdentityEndpointRefusesAMissingOrWrongIdentityHeader(t *testing.T) {
 	cases := []struct {
-		name      string
-		query     url.Values
-		header    http.Header
-		wantError string
-		wantInfo  string
+		name   string
+		header http.Header
 	}{
-		{"no Metadata header", imdsQuery(testManagedClientID, FoundryAudience), nil, "bad_request_102", ""},
-		{"Metadata false", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"false"}}, "bad_request_102", ""},
-		{"Metadata true and false", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"true", "false"}}, "bad_request_102", ""},
-		{"Metadata true twice", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"true", "true"}}, "bad_request_102", ""},
-		{"no api-version", url.Values{"resource": {FoundryAudience}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request", ""},
-		{"another api-version", url.Values{"api-version": {"2019-01-01"}, "resource": {FoundryAudience}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request", ""},
-		{"no resource", url.Values{"api-version": {IMDSAPIVersion}, "client_id": {testManagedClientID}}, metadataTrue, "invalid_request", ""},
-		{"X-Forwarded-For", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"true"}, "X-Forwarded-For": {"10.0.0.1"}}, "invalid_request", ""},
-		{"an empty X-Forwarded-For", imdsQuery(testManagedClientID, FoundryAudience), http.Header{"Metadata": {"true"}, "X-Forwarded-For": {""}}, "invalid_request", "X-Forwarded-For"},
-		{"resource given twice", repeated("resource", CognitiveAudience), metadataTrue, "invalid_request", "'resource'"},
-		{"client_id given twice", repeated("client_id", "99999999-8888-7777-6666-555555555555"), metadataTrue, "invalid_request", "'client_id'"},
-		{"api-version given twice", repeated("api-version", IMDSAPIVersion), metadataTrue, "invalid_request", "'api-version'"},
+		{"no identity header", nil},
+		{"a wrong identity header", http.Header{IdentityHeaderName: {"not-the-secret"}}},
+		{"an empty identity header", http.Header{IdentityHeaderName: {""}}},
+		{"the identity header twice", http.Header{IdentityHeaderName: {IdentityHeader, IdentityHeader}}},
+		{"the IMDS Metadata header instead", http.Header{"Metadata": {"true"}}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			svc := New()
-			rec := imdsGet(t, svc, testBlock, c.query, c.header)
+			rec := identityGet(t, svc, testBlock, identityQuery(testManagedClientID, FoundryAudience), c.header)
+			require.Equal(t, http.StatusForbidden, rec.Code)
+			require.Empty(t, rec.Body.String())
+			log := identityRecorded(t, svc, testBlock, testManagedClientID)
+			require.Equal(t, 1, log.Count, "a refused request is still recorded")
+			require.Equal(t, http.StatusForbidden, log.Requests[0].Status)
+		})
+	}
+}
+
+func TestIdentityEndpointRejectsAMalformedRequest(t *testing.T) {
+	// repeated is a well-formed query with one parameter given a second, acceptable value.
+	repeated := func(name, value string) url.Values {
+		q := identityQuery(testManagedClientID, FoundryAudience)
+		q.Add(name, value)
+		return q
+	}
+	cases := []struct {
+		name     string
+		query    url.Values
+		wantInfo string
+	}{
+		{"no api-version", url.Values{"resource": {FoundryAudience}, "client_id": {testManagedClientID}}, "api-version"},
+		{"IMDS's api-version", url.Values{"api-version": {"2018-02-01"}, "resource": {FoundryAudience}, "client_id": {testManagedClientID}}, "2018-02-01"},
+		{"no resource", url.Values{"api-version": {IdentityAPIVersion}, "client_id": {testManagedClientID}}, "resource"},
+		{"resource given twice", repeated("resource", CognitiveAudience), "'resource'"},
+		{"client_id given twice", repeated("client_id", "99999999-8888-7777-6666-555555555555"), "'client_id'"},
+		{"api-version given twice", repeated("api-version", IdentityAPIVersion), "'api-version'"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			svc := New()
+			rec := identityGet(t, svc, testBlock, c.query, withIdentityHeader)
 			require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-			var e oauthError
-			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &e))
-			require.Equal(t, c.wantError, e.Error)
-			require.Contains(t, e.Description, c.wantInfo)
-			log := imdsRecorded(t, svc, testBlock, testManagedClientID)
+			require.Contains(t, decodeIdentityError(t, rec).Message, c.wantInfo)
+			log := identityRecorded(t, svc, testBlock, testManagedClientID)
 			require.Equal(t, 1, log.Count, "a rejected request is still recorded")
 			require.Equal(t, http.StatusBadRequest, log.Requests[0].Status)
 		})
@@ -706,8 +795,8 @@ func TestIMDSRejectsAMalformedRequest(t *testing.T) {
 }
 
 // A query string that does not parse cleanly is rejected, not read with the bad pairs left out.
-func TestIMDSRejectsAMalformedQueryString(t *testing.T) {
-	base := "api-version=" + IMDSAPIVersion + "&client_id=" + testManagedClientID
+func TestIdentityEndpointRejectsAMalformedQueryString(t *testing.T) {
+	base := "api-version=" + IdentityAPIVersion + "&client_id=" + testManagedClientID
 	cases := []struct{ name, rawQuery string }{
 		{"a bad escape in a repeated parameter", base + "&resource=" + url.QueryEscape(FoundryAudience) + "&resource=%ZZ"},
 		{"a semicolon", base + "&resource=" + url.QueryEscape(FoundryAudience) + ";x=y"},
@@ -715,10 +804,10 @@ func TestIMDSRejectsAMalformedQueryString(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			svc := New()
-			rec := imdsGetRaw(t, svc, testBlock, c.rawQuery, metadataTrue)
+			rec := identityGetRaw(t, svc, testBlock, c.rawQuery, withIdentityHeader)
 			require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-			require.JSONEq(t, `{"error":"invalid_request","error_description":"The query string is malformed"}`, rec.Body.String())
-			log := imdsRecorded(t, svc, testBlock, testManagedClientID)
+			require.Equal(t, "The query string is malformed.", decodeIdentityError(t, rec).Message)
+			log := identityRecorded(t, svc, testBlock, testManagedClientID)
 			require.Equal(t, 1, log.Count, "a malformed query is still recorded")
 			require.Equal(t, http.StatusBadRequest, log.Requests[0].Status)
 		})
@@ -726,85 +815,105 @@ func TestIMDSRejectsAMalformedQueryString(t *testing.T) {
 
 	// A semicolon that hides client_id would otherwise get a token for the system-assigned identity.
 	svc := New()
-	hidden := "api-version=" + IMDSAPIVersion + "&resource=" + url.QueryEscape(FoundryAudience) + "&client_id=" + testManagedClientID + ";x=y"
-	require.Equal(t, http.StatusBadRequest, imdsGetRaw(t, svc, testBlock, hidden, metadataTrue).Code)
-	require.Equal(t, 1, imdsRecorded(t, svc, testBlock, SystemAssigned).Count,
+	hidden := "api-version=" + IdentityAPIVersion + "&resource=" + url.QueryEscape(FoundryAudience) + "&client_id=" + testManagedClientID + ";x=y"
+	require.Equal(t, http.StatusBadRequest, identityGetRaw(t, svc, testBlock, hidden, withIdentityHeader).Code)
+	require.Equal(t, 1, identityRecorded(t, svc, testBlock, SystemAssigned).Count,
 		"the rejection is logged under the identity the query's well-formed part names")
 }
 
-func TestIMDSModesAreChosenByResource(t *testing.T) {
+func TestIdentityEndpointModesAreChosenByResource(t *testing.T) {
 	cases := []struct {
 		resource string
 		want     [2]int
 	}{
 		{ResourceNotFoundOnce, [2]int{http.StatusNotFound, http.StatusOK}},
-		{ResourceGoneOnce, [2]int{http.StatusGone, http.StatusOK}},
 		{ResourceThrottleOnce, [2]int{http.StatusTooManyRequests, http.StatusOK}},
 		{ResourceErrorOnce, [2]int{http.StatusInternalServerError, http.StatusOK}},
 		{ResourceIdentityNotFound, [2]int{http.StatusBadRequest, http.StatusBadRequest}},
+		{ResourceUnknown, [2]int{http.StatusBadRequest, http.StatusBadRequest}},
 	}
 	for _, c := range cases {
 		t.Run(c.resource, func(t *testing.T) {
 			svc := New()
 			for i, want := range c.want {
-				rec := imdsGet(t, svc, testBlock, imdsQuery(testManagedClientID, c.resource), metadataTrue)
+				rec := identityGet(t, svc, testBlock, identityQuery(testManagedClientID, c.resource), withIdentityHeader)
 				require.Equal(t, want, rec.Code, "request %d: %s", i+1, rec.Body.String())
-				if c.resource == ResourceIdentityNotFound {
-					require.JSONEq(t, `{"error":"invalid_request","error_description":"Identity not found"}`, rec.Body.String())
-				}
 			}
 		})
 	}
 }
 
-// A malformed IMDS request is answered 400 and recorded, but does not use up the identity's
-// one-time failure.
-func TestIMDSMalformedRequestDoesNotUseUpAOneTimeFailure(t *testing.T) {
+// The identity-not-found and unknown-resource answers carry the bodies Container Apps sends: its
+// own message, which depends on whether the request named an identity, and Entra ID's refusal
+// passed on with errorCode.
+func TestIdentityEndpointRefusalsCarryContainerAppsBodies(t *testing.T) {
 	svc := New()
-	query := imdsQuery(testManagedClientID, ResourceNotFoundOnce)
+	named := identityGet(t, svc, testBlock, identityQuery(testManagedClientID, ResourceIdentityNotFound), withIdentityHeader)
+	require.Equal(t, "No User Assigned or Delegated Managed Identity found for specified ClientId/ResourceId/PrincipalId.",
+		decodeIdentityError(t, named).Message)
 
-	require.Equal(t, http.StatusBadRequest, imdsGet(t, svc, testBlock, query, nil).Code, "no Metadata header")
-	require.Equal(t, http.StatusNotFound, imdsGet(t, svc, testBlock, query, metadataTrue).Code)
-	require.Equal(t, http.StatusOK, imdsGet(t, svc, testBlock, query, metadataTrue).Code)
+	unnamed := identityGet(t, svc, testBlock, identityQuery("", ResourceIdentityNotFound), withIdentityHeader)
+	require.Equal(t, "Unable to load the proper Managed Identity.", decodeIdentityError(t, unnamed).Message)
 
-	log := imdsRecorded(t, svc, testBlock, testManagedClientID)
+	unknown := identityGet(t, svc, testBlock, identityQuery(testManagedClientID, ResourceUnknown), withIdentityHeader)
+	require.Equal(t, http.StatusBadRequest, unknown.Code)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(unknown.Body.Bytes(), &body))
+	require.Equal(t, "invalid_resource", body["errorCode"])
+	require.Equal(t, float64(http.StatusBadRequest), body["statusCode"])
+	require.Contains(t, body["exceptionMessage"], "AADSTS500011")
+	require.Contains(t, body["exceptionMessage"], ResourceUnknown)
+	require.Nil(t, body["message"])
+	require.Regexp(t, guidPattern, body["correlationId"])
+}
+
+// A malformed request is answered and recorded, but does not use up the identity's one-time
+// failure.
+func TestIdentityEndpointMalformedRequestDoesNotUseUpAOneTimeFailure(t *testing.T) {
+	svc := New()
+	query := identityQuery(testManagedClientID, ResourceNotFoundOnce)
+
+	require.Equal(t, http.StatusForbidden, identityGet(t, svc, testBlock, query, nil).Code, "no identity header")
+	require.Equal(t, http.StatusNotFound, identityGet(t, svc, testBlock, query, withIdentityHeader).Code)
+	require.Equal(t, http.StatusOK, identityGet(t, svc, testBlock, query, withIdentityHeader).Code)
+
+	log := identityRecorded(t, svc, testBlock, testManagedClientID)
 	require.Equal(t, 3, log.Count)
-	require.Equal(t, []int{http.StatusBadRequest, http.StatusNotFound, http.StatusOK}, statuses(log))
+	require.Equal(t, []int{http.StatusForbidden, http.StatusNotFound, http.StatusOK}, statuses(log))
 }
 
 func TestResourceReportsTheTokenAppID(t *testing.T) {
 	svc := New()
-	rec := imdsGet(t, svc, testBlock, imdsQuery(testManagedClientID, FoundryAudience), metadataTrue)
+	rec := identityGet(t, svc, testBlock, identityQuery(testManagedClientID, FoundryAudience), withIdentityHeader)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	var body map[string]any
+	var body map[string]string
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	token, _ := body["access_token"].(string)
 
-	ok := callResource(t, svc, "/p/foundry", "Bearer "+token)
+	ok := callResource(t, svc, "/p/foundry", "Bearer "+body["access_token"])
 	require.Equal(t, http.StatusOK, ok.Code, ok.Body.String())
 	require.Equal(t, testManagedClientID, ok.Header().Get(HeaderAppID))
-	require.Equal(t, "managed-identity", ok.Header().Get(HeaderTenant))
+	require.Equal(t, ManagedIdentityTenant, ok.Header().Get(HeaderTenant))
 
 	none := callResource(t, svc, "/p/foundry", "")
 	require.Equal(t, http.StatusUnauthorized, none.Code)
 	require.Empty(t, none.Header().Values(HeaderAppID))
 }
 
-// Two blocks share one testbench, and the gateway in each sends its IMDS requests under its own
-// block's partition: the same identity in two blocks keeps two counters and two logs, so each
-// block's first request gets the fail-once answer.
-func TestIMDSStateIsScopedToTheBlock(t *testing.T) {
+// Two blocks share one testbench, and the gateway in each sends its managed identity requests
+// under its own block's partition: the same identity in two blocks keeps two counters and two
+// logs, so each block's first request gets the fail-once answer.
+func TestIdentityEndpointStateIsScopedToTheBlock(t *testing.T) {
 	svc := New()
 	for _, block := range []string{"block-a", "block-b"} {
-		first := imdsGet(t, svc, block, imdsQuery(testManagedClientID, ResourceNotFoundOnce), metadataTrue)
+		first := identityGet(t, svc, block, identityQuery(testManagedClientID, ResourceNotFoundOnce), withIdentityHeader)
 		require.Equal(t, http.StatusNotFound, first.Code, "block %s: the identity's first request", block)
-		second := imdsGet(t, svc, block, imdsQuery(testManagedClientID, ResourceNotFoundOnce), metadataTrue)
+		second := identityGet(t, svc, block, identityQuery(testManagedClientID, ResourceNotFoundOnce), withIdentityHeader)
 		require.Equal(t, http.StatusOK, second.Code, "block %s: the identity's second request", block)
-		require.Equal(t, http.StatusOK, imdsGet(t, svc, block, imdsQuery("", FoundryAudience), metadataTrue).Code)
+		require.Equal(t, http.StatusOK, identityGet(t, svc, block, identityQuery("", FoundryAudience), withIdentityHeader).Code)
 	}
 	for _, block := range []string{"block-a", "block-b"} {
-		require.Equal(t, 2, imdsRecorded(t, svc, block, testManagedClientID).Count, "block %s", block)
-		require.Equal(t, 1, imdsRecorded(t, svc, block, SystemAssigned).Count, "block %s", block)
+		require.Equal(t, 2, identityRecorded(t, svc, block, testManagedClientID).Count, "block %s", block)
+		require.Equal(t, 1, identityRecorded(t, svc, block, SystemAssigned).Count, "block %s", block)
 	}
-	require.Equal(t, 0, imdsRecorded(t, svc, "block-c", testManagedClientID).Count, "a block that sent nothing has an empty log")
+	require.Equal(t, 0, identityRecorded(t, svc, "block-c", testManagedClientID).Count, "a block that sent nothing has an empty log")
 }

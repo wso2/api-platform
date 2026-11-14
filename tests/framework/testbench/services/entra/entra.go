@@ -32,7 +32,7 @@ import (
 )
 
 // Port is the container port the service answers every route on over plain HTTP: the token and
-// IMDS endpoints, their request logs and the protected resources.
+// managed identity endpoints, their request logs and the protected resources.
 const Port = 3027
 
 // TLSPort is the port the same service answers on over HTTPS, for a token client that requires an
@@ -81,18 +81,18 @@ const maxRetainedRequests = 256
 const maxFormBytes = 64 << 10
 
 // Request is one recorded token request: a client credentials request to the Entra ID token
-// endpoint, or a managed identity request to the IMDS endpoint.
+// endpoint, or a request to the managed identity endpoint.
 type Request struct {
 	ClientID            string `json:"clientId"`
 	Scope               string `json:"scope"`
 	GrantType           string `json:"grantType"`
 	ClientAssertionType string `json:"clientAssertionType"`
 	ClientAssertion     string `json:"clientAssertion"`
-	// Resource, APIVersion and Metadata are the IMDS request's resource and api-version query
-	// parameters and its Metadata header.
-	Resource   string `json:"resource,omitempty"`
-	APIVersion string `json:"apiVersion,omitempty"`
-	Metadata   string `json:"metadata,omitempty"`
+	// Resource, APIVersion and IdentityHeader are the managed identity request's resource and
+	// api-version query parameters and its identity header.
+	Resource       string `json:"resource,omitempty"`
+	APIVersion     string `json:"apiVersion,omitempty"`
+	IdentityHeader string `json:"identityHeader,omitempty"`
 	// Status is the HTTP status the service answered the request with, or 0 when the caller left
 	// before the answer was sent.
 	Status int `json:"status"`
@@ -108,7 +108,8 @@ type partition struct {
 
 // Service implements testbench.Service and testbench.Partitioned. The first path segment of every
 // route is its partition: the Entra tenant for the token endpoint, its log and the resources, and
-// the block for the IMDS endpoint and its log, whose state is kept per block and identity.
+// the block for the managed identity endpoint and its log, whose state is kept per block and
+// identity.
 type Service struct {
 	mu         sync.Mutex
 	partitions map[string]*partition
@@ -163,10 +164,11 @@ func (s *secure) TLSConfig() *tls.Config { return s.tlsConfig }
 // Handler serves the tenant-partitioned routes.
 func (s *Service) Handler() http.Handler {
 	routes := http.NewServeMux()
+	routes.HandleFunc("GET /v2.0/.well-known/openid-configuration", s.scoped(s.openIDConfiguration))
 	routes.HandleFunc("POST /oauth2/v2.0/token", s.scoped(s.token))
-	routes.HandleFunc("GET /metadata/identity/oauth2/token", s.scoped(s.imdsToken))
+	routes.HandleFunc("GET /msi/token", s.scoped(s.identityToken))
 	routes.HandleFunc("GET /test/requests", s.scoped(s.recorded))
-	routes.HandleFunc("GET /test/managed-identity/{identity}", s.scoped(s.imdsRecorded))
+	routes.HandleFunc("GET /test/managed-identity/{identity}", s.scoped(s.identityRecorded))
 	for path, audience := range map[string]string{"/foundry": FoundryAudience, "/cognitive": CognitiveAudience} {
 		routes.HandleFunc(path, s.scoped(resource(audience)))
 		routes.HandleFunc(path+"/", s.scoped(resource(audience)))
@@ -193,11 +195,11 @@ type admission struct {
 	n, eligible, status, index int
 }
 
-// admit records a token request under key. A malformed request is answered 400; a well-formed one
-// gets the status decide picks for its position among the partition's well-formed requests, so a
-// malformed request never uses up a one-time answer. It reports false when the partition budget
-// is exhausted.
-func (s *Service) admit(key string, req Request, wellFormed bool, decide func(eligible int) int) (admission, bool) {
+// admit records a token request under key. A malformed request is answered with rejected, its
+// status; a well-formed one, whose rejected is 0, gets the status decide picks for its position
+// among the partition's well-formed requests, so a malformed request never uses up a one-time
+// answer. It reports false when the partition budget is exhausted.
+func (s *Service) admit(key string, req Request, rejected int, decide func(eligible int) int) (admission, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p := s.partitions[key]
@@ -210,12 +212,12 @@ func (s *Service) admit(key string, req Request, wellFormed bool, decide func(el
 	}
 	p.count++
 	a := admission{n: p.count, index: -1}
-	if wellFormed {
+	if rejected == 0 {
 		p.eligible++
 		a.eligible = p.eligible
 		req.Status = decide(p.eligible)
 	} else {
-		req.Status = http.StatusBadRequest
+		req.Status = rejected
 	}
 	a.status = req.Status
 	if len(p.requests) < maxRetainedRequests {
