@@ -41,14 +41,14 @@ func initSharedClient(t *testing.T) {
 }
 
 // initSharedClientWithPolicy builds the process-wide outbound client under policy,
-// e.g. netguard.PublicOnly() for platform_api.http_client.ssrf.preset = "public_only".
+// e.g. netguard.PublicOnly() for platform_api.http_client.destination_guard.preset = "public_only".
 func initSharedClientWithPolicy(t *testing.T, policy netguard.Policy) {
 	t.Helper()
 	cfg := httpclient.DefaultConfig()
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = policy
-	cfg.SSRF.Policy.AllowedSchemes = []string{"http", "https"}
-	cfg.SSRF.MaxRedirects = 5
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = policy
+	cfg.DestinationGuard.Policy.AllowedSchemes = []string{"http", "https"}
+	cfg.DestinationGuard.MaxRedirects = 5
 	if err := utils.InitSharedHTTPClientFromConfig(cfg, 0); err != nil {
 		t.Fatal(err)
 	}

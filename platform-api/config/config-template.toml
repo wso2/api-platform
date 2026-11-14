@@ -564,7 +564,7 @@ overall_timeout         = "65s"   # deadline for all portal calls of one publish
 
 # ---------------------------------------------------------------------------
 # HTTP client — the single shared outbound *http.Client used by every
-# SSRF-guarded call this process makes whose destination is not fully trusted:
+# destination-guarded call this process makes whose destination is not fully trusted:
 # MCP reachability probes / JSON-RPC calls (an MCP proxy's own upstream URL),
 # and OpenAPI spec-by-URL fetches (an LLM provider template's spec URL). Built
 # once at startup; every field mirrors github.com/wso2/api-platform/httpkit/httpclient.Config.
@@ -630,7 +630,7 @@ url = ""
 username = ""
 password = ""
 no_proxy = []
-# Required ("delegated" or "manual_connect") only when mode != "none" AND ssrf.enabled below
+# Required ("delegated" or "manual_connect") only when mode != "none" AND destination_guard.enabled below
 # — see config.HTTPClientProxyConfig's doc comment.
 egress = ""
 
@@ -642,10 +642,11 @@ client_cert_file = ""
 client_key_file = ""
 insecure_skip_verify = false
 
-[platform_api.http_client.ssrf]
-# Enabled by default: every current caller of this client fetches a user/tenant-supplied
-# URL (an MCP proxy's upstream, an LLM provider template's OpenAPI spec URL) — exactly the
-# scenario ssrf-prevention.md targets.
+[platform_api.http_client.destination_guard]
+# Its previous name is still read, with a deprecation
+# warning. Enabled by default: callers of this client fetch user/tenant-supplied URLs (an
+# MCP proxy's upstream, an LLM provider template's OpenAPI spec URL), whose destinations
+# must be checked before they are dialed.
 enabled = true
 # "permit_private_block_metadata" (default — a backend that is normally private, e.g. a
 # ClusterIP/service-DNS name/localhost, stays reachable; only link-local/metadata/

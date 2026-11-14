@@ -22,11 +22,11 @@ import (
 // meaningful ("no client cert", "no proxy", "no SSRF guard") rather than
 // placeholders that must be filled in.
 type Config struct {
-	Pooling  PoolingConfig
-	Timeouts TimeoutsConfig
-	TLS      TLSConfig
-	Proxy    ProxyConfig
-	SSRF     SSRFConfig
+	Pooling          PoolingConfig
+	Timeouts         TimeoutsConfig
+	TLS              TLSConfig
+	Proxy            ProxyConfig
+	DestinationGuard DestinationGuardConfig
 }
 
 // PoolingConfig controls http.Transport's connection pooling behavior.
@@ -206,11 +206,11 @@ const (
 	ProxyEgressManualCONNECT
 )
 
-// SSRFConfig configures the dial-time SSRF guard (see the netguard
+// DestinationGuardConfig configures the dial-time destination guard (see the netguard
 // package). It is disabled by default: enabling it is always an explicit,
 // per-caller choice, since two legitimate use cases already in this
 // codebase disagree on which addresses should be reachable.
-type SSRFConfig struct {
+type DestinationGuardConfig struct {
 	// Enabled turns the guard on. When true, Policy must be a non-zero
 	// netguard.Policy — New returns an error otherwise, rather than
 	// silently falling back to one preset over another.
@@ -247,7 +247,7 @@ func WithRoundTripperWrapper(wrap func(http.RoundTripper) http.RoundTripper) Opt
 
 // WithDialContext overrides the dial function New would otherwise choose
 // (plain or netguard-guarded). Intended for tests; using it bypasses
-// whatever SSRF policy Config.SSRF would otherwise have applied.
+// whatever destination policy Config.DestinationGuard would otherwise have applied.
 func WithDialContext(dial func(ctx context.Context, network, addr string) (net.Conn, error)) Option {
 	return func(s *buildState) {
 		s.dialOverride = dial
@@ -291,10 +291,10 @@ func New(cfg Config, opts ...Option) (*http.Client, error) {
 		opt(state)
 	}
 
-	if cfg.SSRF.Enabled && isZeroPolicy(cfg.SSRF.Policy) {
+	if cfg.DestinationGuard.Enabled && isZeroPolicy(cfg.DestinationGuard.Policy) {
 		return nil, fmt.Errorf("httpclient: SSRF.Enabled requires a non-zero SSRF.Policy (see netguard.PermitPrivateBlockMetadata / netguard.PublicOnly)")
 	}
-	if cfg.Proxy.Mode != "" && cfg.Proxy.Mode != "none" && cfg.SSRF.Enabled && cfg.Proxy.Egress == ProxyEgressUnset {
+	if cfg.Proxy.Mode != "" && cfg.Proxy.Mode != "none" && cfg.DestinationGuard.Enabled && cfg.Proxy.Egress == ProxyEgressUnset {
 		return nil, fmt.Errorf("httpclient: Proxy and SSRF are both configured — Proxy.Egress must be set explicitly to ProxyEgressDelegated or ProxyEgressManualCONNECT (a dial-time guard cannot see the proxied origin, only the proxy's own address)")
 	}
 
@@ -321,10 +321,10 @@ func New(cfg Config, opts ...Option) (*http.Client, error) {
 	var routing *proxyRouting
 	dialFn := state.dialOverride
 	if dialFn == nil {
-		if cfg.SSRF.Enabled {
-			dialFn = netguard.DialContext(cfg.SSRF.Policy, cfg.Timeouts.Dial)
+		if cfg.DestinationGuard.Enabled {
+			dialFn = netguard.DialContext(cfg.DestinationGuard.Policy, cfg.Timeouts.Dial)
 			if proxyConfigured(cfg.Proxy) {
-				proxyDial := netguard.DialContext(cfg.SSRF.Policy.ProxyHop(), cfg.Timeouts.Dial)
+				proxyDial := netguard.DialContext(cfg.DestinationGuard.Policy.ProxyHop(), cfg.Timeouts.Dial)
 				if cfg.Proxy.Egress == ProxyEgressManualCONNECT {
 					dialFn = proxyDial
 				} else {
@@ -354,8 +354,8 @@ func New(cfg Config, opts ...Option) (*http.Client, error) {
 		}
 	}
 
-	if cfg.SSRF.Enabled {
-		rt = &destinationRoundTripper{next: rt, policy: cfg.SSRF.Policy, routing: routing}
+	if cfg.DestinationGuard.Enabled {
+		rt = &destinationRoundTripper{next: rt, policy: cfg.DestinationGuard.Policy, routing: routing}
 	}
 
 	maxBytes := cfg.Timeouts.MaxResponseBytes
@@ -374,15 +374,15 @@ func New(cfg Config, opts ...Option) (*http.Client, error) {
 		Transport: rt,
 		Timeout:   cfg.Timeouts.Overall,
 	}
-	if cfg.SSRF.Enabled {
-		redirectPolicy := cfg.SSRF.Policy
-		if len(cfg.SSRF.RedirectSchemes) > 0 {
-			redirectPolicy.AllowedSchemes = cfg.SSRF.RedirectSchemes
+	if cfg.DestinationGuard.Enabled {
+		redirectPolicy := cfg.DestinationGuard.Policy
+		if len(cfg.DestinationGuard.RedirectSchemes) > 0 {
+			redirectPolicy.AllowedSchemes = cfg.DestinationGuard.RedirectSchemes
 		}
 		if len(redirectPolicy.AllowedSchemes) == 0 {
 			redirectPolicy.AllowedSchemes = []string{"https"}
 		}
-		client.CheckRedirect = netguard.CheckRedirect(redirectPolicy, cfg.SSRF.MaxRedirects)
+		client.CheckRedirect = netguard.CheckRedirect(redirectPolicy, cfg.DestinationGuard.MaxRedirects)
 	}
 
 	return client, nil

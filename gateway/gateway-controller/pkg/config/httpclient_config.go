@@ -94,18 +94,18 @@ func BuildHTTPClientConfig(hc HTTPClientConfig, insecureSkipVerify bool) (httpcl
 		return httpclient.Config{}, fmt.Errorf("controller.http_client.proxy.mode: unrecognized value %q (want \"none\", \"environment\", or \"url\")", hc.Proxy.Mode)
 	}
 
-	if hc.SSRF.Enabled {
-		cfg.SSRF.Enabled = true
-		switch hc.SSRF.Preset {
+	if hc.DestinationGuard.Enabled {
+		cfg.DestinationGuard.Enabled = true
+		switch hc.DestinationGuard.Preset {
 		case "permit_private_block_metadata":
-			cfg.SSRF.Policy = netguard.PermitPrivateBlockMetadata()
+			cfg.DestinationGuard.Policy = netguard.PermitPrivateBlockMetadata()
 		case "public_only":
-			cfg.SSRF.Policy = netguard.PublicOnly()
+			cfg.DestinationGuard.Policy = netguard.PublicOnly()
 		default:
-			return httpclient.Config{}, fmt.Errorf("controller.http_client.ssrf.preset: unrecognized value %q (want \"permit_private_block_metadata\" or \"public_only\")", hc.SSRF.Preset)
+			return httpclient.Config{}, fmt.Errorf("controller.http_client.destination_guard.preset: unrecognized value %q (want \"permit_private_block_metadata\" or \"public_only\")", hc.DestinationGuard.Preset)
 		}
-		cfg.SSRF.Policy.AllowedSchemes = hc.SSRF.AllowedSchemes
-		cfg.SSRF.MaxRedirects = hc.SSRF.MaxRedirects
+		cfg.DestinationGuard.Policy.AllowedSchemes = hc.DestinationGuard.AllowedSchemes
+		cfg.DestinationGuard.MaxRedirects = hc.DestinationGuard.MaxRedirects
 
 		if cfg.Proxy.Mode != "" && cfg.Proxy.Mode != "none" {
 			switch hc.Proxy.Egress {
