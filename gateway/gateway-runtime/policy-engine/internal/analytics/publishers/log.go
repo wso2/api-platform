@@ -65,19 +65,29 @@ type Log struct {
 	// traffic_logging.outputs. Each sink owns its own synchronization, so no lock
 	// is held here across the fan-out.
 	sinks []Sink
+	// template writes each line in the layout of the operator's template. Nil when
+	// no template is set, in which case the default line is written.
+	template *logTemplate
 }
 
 // NewLog creates a new traffic-logging publisher and its configured sinks.
 //
-// It returns an error when a sink cannot be built. The caller must treat that as
-// fatal: continuing without the sink would leave traffic logging on stdout (or on
-// nothing at all), and the stdout path writes request and response bodies into the
-// container log, which is precisely what a file or http sink is configured to
-// avoid. config.Validate has already proven every configured sink is constructible,
-// so an error here means the environment changed during startup.
-func NewLog(logCfg *config.TrafficLoggingConfig) (*Log, error) {
+// It returns an error when a sink cannot be built or the template cannot be used,
+// and the caller must stop startup. Falling back is never safe: without the sink,
+// lines would go to stdout and could put bodies in the container log; without the
+// template, the default line would be written, with fields the template leaves out.
+//
+// config.Validate does not check the template's content, so a template error here is a
+// mistake in that content.
+//
+// collectorCfg holds the collector's capture settings. A nil value means nothing is
+// captured.
+func NewLog(logCfg *config.TrafficLoggingConfig, collectorCfg *config.CollectorConfig) (*Log, error) {
 	if logCfg == nil {
 		logCfg = &config.TrafficLoggingConfig{}
+	}
+	if collectorCfg == nil {
+		collectorCfg = &config.CollectorConfig{}
 	}
 
 	masked := make(map[string]bool, len(logCfg.MaskedHeaders))
@@ -88,12 +98,29 @@ func NewLog(logCfg *config.TrafficLoggingConfig) (*Log, error) {
 		}
 	}
 
+	var template *logTemplate
+	if logCfg.Enabled && logCfg.Template != "" {
+		var err error
+		template, err = newLogTemplate(logCfg, collectorCfg, masked)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Properties shape only the default line, so they are not compiled for a template.
+	properties := logCfg.Properties
+	if template != nil && len(properties) > 0 {
+		slog.Warn(fmt.Sprintf("traffic_logging.properties is set but %s is also set; properties are ignored while a template is used", template.source))
+		properties = nil
+	}
+
 	l := &Log{
 		maskedHeaders:    masked,
 		maxPayloadSize:   logCfg.MaxPayloadSize,
 		globalDir:        buildGlobalDirective(*logCfg),
-		globalProperties: newGlobalPropertyEvaluator(logCfg.Properties, masked),
+		globalProperties: newGlobalPropertyEvaluator(properties, masked, logCfg.MaxPayloadSize),
 		exclusions:       compileFieldExclusions(logCfg.ExcludeFields),
+		template:         template,
 	}
 
 	// Only build sinks when traffic logging is on: Publish is a no-op otherwise,
@@ -148,9 +175,14 @@ func (l *Log) resolveGlobalDirective(event *dto.Event) *dto.TrafficLogDirective 
 }
 
 // Publish writes the event to stdout as JSON, using the directive built from
-// [traffic_logging] config. If traffic logging is disabled, the event is skipped.
+// [traffic_logging] config, or in the template's layout when a template is set. If
+// traffic logging is disabled, the event is skipped.
 func (l *Log) Publish(event *dto.Event) {
 	if event == nil || l.globalDir == nil {
+		return
+	}
+	if l.template != nil {
+		l.write(l.template.render(event))
 		return
 	}
 
@@ -210,12 +242,12 @@ func (l *Log) Close(ctx context.Context) error {
 
 // truncatePayload returns up to maxPayloadSize bytes of the payload (0 = no
 // limit). Truncation is on a byte boundary, matching the previous capture-time
-// behavior.
-func (l *Log) truncatePayload(s string) string {
-	if l.maxPayloadSize <= 0 || len(s) <= l.maxPayloadSize {
+// behavior. The default line and the request.body/response.body variables share it.
+func truncatePayload(s string, maxPayloadSize int) string {
+	if maxPayloadSize <= 0 || len(s) <= maxPayloadSize {
 		return s
 	}
-	return s[:l.maxPayloadSize]
+	return s[:maxPayloadSize]
 }
 
 // applyFieldsProjection mutates m in place, dropping the configured fields and

@@ -104,6 +104,48 @@ func TestNewAnalytics_Disabled(t *testing.T) {
 	assert.Empty(t, analytics.publishers)
 }
 
+// config.Validate does not check the template's content. A mistake in the content, found by the
+// template parser when the publisher is built, reaches NewAnalytics, which refuses to start. A
+// "$ctx:" value that does not compile is not an error.
+func TestNewAnalytics_RefusesToStartWhenTheTemplateCannotBeUsed(t *testing.T) {
+	tests := []struct {
+		name string
+		tl   config.TrafficLoggingConfig
+		want string
+	}{
+		{
+			name: "a repeated key",
+			tl:   config.TrafficLoggingConfig{Enabled: true, Template: `{"a":1,"a":2}`},
+			want: `traffic logging configuration is unusable: traffic_logging.template: key "a" appears more than once at the top level`,
+		},
+		{
+			name: "invalid JSON",
+			tl:   config.TrafficLoggingConfig{Enabled: true, Template: "{\n  \"a\": x\n}"},
+			want: "traffic logging configuration is unusable: traffic_logging.template: invalid JSON at line 2, column 8: invalid character 'x' looking for beginning of value",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+			t.Cleanup(func() { slog.SetDefault(previous) })
+
+			assert.PanicsWithValue(t, tt.want, func() { NewAnalytics(&config.Config{TrafficLogging: tt.tl}) })
+			assert.Contains(t, logs.String(), `msg="Failed to initialize traffic logging; refusing to start"`)
+		})
+	}
+
+	t.Run("a value that does not compile", func(t *testing.T) {
+		cfg := &config.Config{TrafficLogging: config.TrafficLoggingConfig{
+			Enabled:  true,
+			Template: `{"method":"$ctx:request.methd"}`,
+		}}
+
+		assert.NotPanics(t, func() { NewAnalytics(cfg) })
+	})
+}
+
 func TestNewAnalytics_EnabledNoPublishers(t *testing.T) {
 	cfg := &config.Config{
 		Analytics: config.AnalyticsConfig{

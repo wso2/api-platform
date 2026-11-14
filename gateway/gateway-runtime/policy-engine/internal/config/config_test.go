@@ -19,15 +19,20 @@
 package config
 
 import (
+	"bytes"
 	"crypto/tls"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/common/configinterpolate"
 )
 
 // validConfig returns a valid configuration for testing
@@ -2368,4 +2373,134 @@ handle_upstream_faults = true
 
 	assert.True(t, cfg.PolicyEngine.FaultPolicies.HandleUpstreamFaults,
 		"policy_engine.fault_policies.handle_upstream_faults must reach the engine")
+}
+
+// The traffic log template keys and the collector header keys load empty or false when a
+// config file leaves them out, and load the values a config file sets.
+func TestLoad_TrafficLogTemplateAndCollectorHeaderKeys(t *testing.T) {
+	const base = `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+`
+	load := func(t *testing.T, extra string) *Config {
+		t.Helper()
+		configPath := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(configPath, []byte(base+extra), 0644))
+		cfg, err := Load(configPath)
+		require.NoError(t, err)
+		return cfg
+	}
+
+	t.Run("left out", func(t *testing.T) {
+		cfg := load(t, "")
+
+		assert.Empty(t, cfg.TrafficLogging.Template)
+		assert.False(t, cfg.Collector.RequestHeaders)
+		assert.False(t, cfg.Collector.ResponseHeaders)
+	})
+
+	t.Run("set", func(t *testing.T) {
+		cfg := load(t, `
+[collector]
+request_headers = true
+response_headers = true
+
+[traffic_logging]
+template = '''{"api": "$ctx:api.name"}'''
+`)
+
+		assert.Equal(t, `{"api": "$ctx:api.name"}`, cfg.TrafficLogging.Template)
+		assert.True(t, cfg.Collector.RequestHeaders)
+		assert.True(t, cfg.Collector.ResponseHeaders)
+	})
+}
+
+// captureLogs redirects the package-level slog default into a buffer for the duration of the
+// test, restoring the previous logger afterwards.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &buf
+}
+
+// A template set while traffic logging is disabled has no effect, which is reported once.
+func TestValidateTrafficLoggingConfig_TemplateWhileDisabled(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
+		logs := captureLogs(t)
+		cfg := &Config{TrafficLogging: TrafficLoggingConfig{Template: `{"a":1}`}}
+
+		require.NoError(t, cfg.validateTrafficLoggingConfig())
+
+		want := "traffic_logging.template is set but traffic_logging.enabled is false; the template has no effect"
+		assert.Equal(t, 1, strings.Count(logs.String(), "level=WARN"), logs.String())
+		assert.Contains(t, logs.String(), "level=WARN msg="+strconv.Quote(want))
+	})
+
+	t.Run("not set", func(t *testing.T) {
+		logs := captureLogs(t)
+		cfg := &Config{TrafficLogging: TrafficLoggingConfig{}}
+
+		require.NoError(t, cfg.validateTrafficLoggingConfig())
+
+		assert.Empty(t, logs.String())
+	})
+}
+
+// loadTrafficLogging loads a config file made of a minimal base and extra TOML, and returns what
+// Load returns.
+func loadTrafficLogging(t *testing.T, extra string) (*Config, error) {
+	t.Helper()
+	const base = `
+[policy_engine.config_mode]
+mode = "file"
+
+[policy_engine.file_config]
+path = "/tmp/policies.yaml"
+`
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte(base+extra), 0o644))
+	return Load(configPath)
+}
+
+// A template kept in a file is read with a {{ file }} token, like any other config string. The
+// file's content is used as it is: a {{ ... }} inside it is not interpolated.
+func TestLoad_TemplateFromAFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(configinterpolate.EnvFileSourceAllowlist, dir)
+	const content = `{"api":"$ctx:api.name","service":"{{ env \"SERVICE\" }}"}`
+	path := filepath.Join(dir, "traffic-log-template.json")
+	require.NoError(t, os.WriteFile(path, []byte(content+"\n"), 0o600))
+
+	cfg, err := loadTrafficLogging(t, "[traffic_logging]\nenabled = true\ntemplate = '{{ file \""+path+"\" }}'\n")
+
+	require.NoError(t, err)
+	assert.Equal(t, content, cfg.TrafficLogging.Template)
+}
+
+// Validate does not check the template's content: the template parser checks that when the
+// publisher is built.
+func TestLoad_TemplateContentIsNotCheckedHere(t *testing.T) {
+	deep := strings.Repeat(`{"a":`, 70) + "1" + strings.Repeat("}", 70)
+
+	tests := []struct{ name, extra string }{
+		{"a valid template", "template = '''{\"api\":\"$ctx:api.name\"}'''\n"},
+		{"invalid JSON", "template = '''{\"a\":'''\n"},
+		{"a top level that is not an object", "template = '''[\"a\"]'''\n"},
+		{"a repeated key", "template = '''{\"a\":1,\"a\":2}'''\n"},
+		{"nesting that is too deep", "template = '''" + deep + "'''\n"},
+		{"a value that does not compile", "template = '''{\"method\":\"$ctx:request.methd\"}'''\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := loadTrafficLogging(t, "[traffic_logging]\nenabled = true\n"+tt.extra)
+
+			require.NoError(t, err)
+		})
+	}
 }

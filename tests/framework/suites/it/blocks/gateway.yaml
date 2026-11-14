@@ -429,6 +429,22 @@ blocks:
         features:
           - features/gateway/observability/metrics.feature
 
+  # Traffic log lines are written from a JSON template (traffic-log-template.toml), a
+  # gateway-wide setting the other runners must not see.
+  - name: gateway-traffic-log-template
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/traffic-log-template.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      # Traffic log templates are served by Gateways newer than 1.2.0.
+      - name: traffic-log-template
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/traffic_log_template.feature
+
   # The gateway returns no request ID in responses and serves no JWKS endpoint
   # (request-id-response.toml), settings gateway-core's runners must not see.
   - name: gateway-request-id-disabled

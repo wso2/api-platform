@@ -611,6 +611,9 @@ data:
     {{- if .Values.gateway.config.traffic_logging.exclude_fields }}
     exclude_fields = [{{- range $i, $f := .Values.gateway.config.traffic_logging.exclude_fields }}{{- if gt $i 0 }}, {{ end }}{{ $f | quote }}{{- end }}]
     {{- end }}
+    {{- if .Values.gateway.config.traffic_logging.template }}
+    template = {{ .Values.gateway.config.traffic_logging.template | quote }}
+    {{- end }}
     {{- if .Values.gateway.config.traffic_logging.outputs }}
     outputs = [{{- range $i, $o := .Values.gateway.config.traffic_logging.outputs }}{{- if gt $i 0 }}, {{ end }}{{ $o | quote }}{{- end }}]
     {{- end }}

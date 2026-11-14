@@ -22,10 +22,13 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
 	"cel.dev/cel-go/cel"
+	"cel.dev/cel-go/common/ast"
+	"cel.dev/cel-go/common/types"
 	"cel.dev/cel-go/common/types/ref"
 	"cel.dev/cel-go/ext"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -76,6 +79,9 @@ type globalPropertyEvaluator struct {
 	// skipping the request.header/response.header parse+lowercase+mask entirely when no
 	// expression references either. Never nil (see newGlobalPropertyEvaluator).
 	referencedVars map[string]bool
+	// maxPayloadSize is traffic_logging.max_payload_size, the cut applied to
+	// request.body and response.body (0 = no limit).
+	maxPayloadSize int
 }
 
 // newGlobalPropertyEvaluator compiles every "$ctx:" expression once. A
@@ -86,12 +92,13 @@ type globalPropertyEvaluator struct {
 // here is permanent (logged once) since it can never succeed on a later
 // request the way a per-request nil AuthContext might resolve differently
 // request to request.
-func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[string]bool) *globalPropertyEvaluator {
+func newGlobalPropertyEvaluator(properties map[string]string, maskedHeaders map[string]bool, maxPayloadSize int) *globalPropertyEvaluator {
 	e := &globalPropertyEvaluator{
 		literals:       make(map[string]string),
 		compiled:       make(map[string]cel.Program),
 		maskedHeaders:  maskedHeaders,
 		referencedVars: make(map[string]bool),
+		maxPayloadSize: maxPayloadSize,
 	}
 	if len(properties) == 0 {
 		return e
@@ -154,10 +161,12 @@ func referencedGlobalPropertyVariables(compiledAst *cel.Ast) map[string]bool {
 }
 
 // globalPropertyVariable declares one "$ctx:" variable resolvable for global traffic-log
-// properties: its CEL type (for env construction) and its Go zero value (for
-// buildGlobalPropertyEvalCtx, when the corresponding event field is absent or the variable
-// is otherwise unreferenced-but-needed). Declaring name/type/zero together in one slice —
-// rather than inline cel.Variable(...) env options plus a separate map literal of zero
+// properties: its CEL type (for env construction) and its Go zero value, the starting value
+// traffic_logging.properties uses when the request has no value (see fillStartingValues). A
+// template never uses it: a variable the request has no value for is unbound, so the field is
+// written as null. A nil zero marks a variable with no starting value, because an empty value would
+// look like real data (a latency of 0); properties omit it. Declaring name/type/zero together in
+// one slice — rather than inline cel.Variable(...) env options plus a separate map literal of zero
 // values — is what lets referencedGlobalPropertyVariables and buildGlobalPropertyEvalCtx
 // stay in lock-step with the declared variable set with no risk of the lists drifting apart.
 type globalPropertyVariable struct {
@@ -185,9 +194,13 @@ var globalPropertyVariables = []globalPropertyVariable{
 	{"request.method", cel.StringType, ""},
 	{"request.id", cel.StringType, ""},
 	{"request.header", cel.MapType(cel.StringType, cel.StringType), map[string]string{}},
+	{"request.timestamp", cel.StringType, nil},
+	// Bodies are bound whenever the collector captured them, cut to maxPayloadSize.
+	{"request.body", cel.StringType, nil},
 
 	{"response.status", cel.IntType, 0},
 	{"response.header", cel.MapType(cel.StringType, cel.StringType), map[string]string{}},
+	{"response.body", cel.StringType, nil},
 
 	{"api.id", cel.StringType, ""},
 	{"api.name", cel.StringType, ""},
@@ -207,8 +220,7 @@ var globalPropertyVariables = []globalPropertyVariable{
 
 	// Backed by analytics metadata the collector system policy stamps generically
 	// for any authenticated request (see globalPropertyEvaluator doc comment).
-	// Always bound (to a zero value when the request wasn't authenticated), so
-	// referencing auth.* never errors.
+	// auth.authenticated is always bound; the others only when the request carries them.
 	{"auth.subject", cel.StringType, ""},
 	{"auth.type", cel.StringType, ""},
 	{"auth.issuer", cel.StringType, ""},
@@ -225,16 +237,110 @@ var globalPropertyVariables = []globalPropertyVariable{
 	// namespace above. There is no fixed schema, so values are cel.DynType rather
 	// than StringType; a policy author writing to SharedContext.Metadata should
 	// assume its value is visible here, since (unlike headers) there is no masking
-	// config for this path. Always bound to an empty map when absent, so
-	// referencing metadata never errors — same zero-value guarantee as auth.*.
+	// config for this path.
 	{"metadata", cel.MapType(cel.StringType, cel.DynType), map[string]interface{}{}},
+
+	// The same values as the traffic log line's client, errorType and error fields.
+	{"client.ip", cel.StringType, ""},
+	{"client.userAgent", cel.StringType, ""},
+	{"error.category", cel.StringType, ""},
+	{"error.errorCode", cel.IntType, 0},
+	{"error.errorMessage", cel.StringType, ""},
+	{"error.wso2ErrorCode", cel.IntType, 0},
+	{"error.type", cel.StringType, ""},
+	{"error.direction", cel.StringType, ""},
+	{"error.summary", cel.StringType, ""},
+	{"error.policy", cel.StringType, ""},
+	{"error.policyPhase", cel.StringType, ""},
+	{"error.source", cel.StringType, ""},
+	{"error.originalStatus", cel.IntType, 0},
+	{"error.jsonRpcCode", cel.IntType, 0},
+	{"error.guardrail.name", cel.StringType, ""},
+	{"error.guardrail.action", cel.StringType, ""},
+	{"error.guardrail.reason", cel.StringType, ""},
+
+	// Whole microseconds, as the traffic log line's latencies; convertUnit gives other units.
+	{"latencies.duration", cel.IntType, nil},
+	{"latencies.requestMediationLatency", cel.IntType, nil},
+	{"latencies.responseMediationLatency", cel.IntType, nil},
+	{"latencies.backendLatency", cel.IntType, nil},
 }
 
-// createGlobalPropertyEnv declares every variable in globalPropertyVariables in the CEL
-// environment used to compile "$ctx:" expressions.
+// globalPropertyZeroValues maps each variable name to its zero value, the starting value
+// fillStartingValues gives traffic_logging.properties for a variable the request has no value for.
+var globalPropertyZeroValues = func() map[string]interface{} {
+	zeros := make(map[string]interface{}, len(globalPropertyVariables))
+	for _, v := range globalPropertyVariables {
+		zeros[v.name] = v.zero
+	}
+	return zeros
+}()
+
+// convertUnitFunction converts a number of microseconds to another unit.
+const convertUnitFunction = "convertUnit"
+
+// convertUnits are the units convertUnit accepts.
+var convertUnits = []string{"ns", "us", "ms", "s"}
+
+// convertUnit returns value, read as microseconds, in unit as a decimal number. The unit was
+// checked at compile time by convertUnitValidator; value can still be a dynamic value of
+// another type at run time, which is an evaluation error.
+func convertUnit(value, unit ref.Val) ref.Val {
+	micros, ok := value.(types.Int)
+	if !ok {
+		return types.MaybeNoSuchOverloadErr(value)
+	}
+	switch name, _ := unit.(types.String); name {
+	case "ns":
+		return types.Double(float64(micros) * 1000)
+	case "us":
+		return types.Double(micros)
+	case "ms":
+		return types.Double(float64(micros) / 1000)
+	case "s":
+		return types.Double(float64(micros) / 1000000)
+	default:
+		return types.NewErr("%s: unsupported unit %q", convertUnitFunction, name)
+	}
+}
+
+// convertUnitValidator rejects at compile time a convertUnit call whose unit is not a
+// constant from convertUnits, so a wrong unit is reported once at startup rather than
+// failing on every request.
+type convertUnitValidator struct{}
+
+// Name returns the validator's unique name.
+func (convertUnitValidator) Name() string {
+	return "traffic_logging.validator.convertUnit"
+}
+
+// Validate reports every convertUnit call in a whose unit is not a supported constant.
+func (convertUnitValidator) Validate(_ *cel.Env, _ cel.ValidatorConfig, a *ast.AST, iss *cel.Issues) {
+	calls := ast.MatchDescendants(ast.NavigateAST(a), ast.FunctionMatcher(convertUnitFunction))
+	for _, call := range calls {
+		args := call.AsCall().Args()
+		if len(args) != 2 {
+			continue
+		}
+		unit := args[1]
+		if unit.Kind() != ast.LiteralKind {
+			iss.ReportErrorAtID(unit.ID(), "%s: the unit must be a constant: 'ns', 'us', 'ms' or 's'", convertUnitFunction)
+			continue
+		}
+		if name, _ := unit.AsLiteral().Value().(string); !slices.Contains(convertUnits, name) {
+			iss.ReportErrorAtID(unit.ID(), "%s: unsupported unit %q (supported: ns, us, ms, s)", convertUnitFunction, name)
+		}
+	}
+}
+
+// createGlobalPropertyEnv declares every variable in globalPropertyVariables, and the
+// convertUnit function, in the CEL environment used to compile "$ctx:" expressions.
 func createGlobalPropertyEnv() (*cel.Env, error) {
-	opts := make([]cel.EnvOption, 0, len(globalPropertyVariables)+1)
-	opts = append(opts, ext.Strings())
+	opts := make([]cel.EnvOption, 0, len(globalPropertyVariables)+3)
+	opts = append(opts, ext.Strings(),
+		cel.Function(convertUnitFunction, cel.Overload("convertUnit_int_string",
+			[]*cel.Type{cel.IntType, cel.StringType}, cel.DoubleType, cel.BinaryBinding(convertUnit))),
+		cel.ASTValidators(convertUnitValidator{}))
 	for _, v := range globalPropertyVariables {
 		opts = append(opts, cel.Variable(v.name, v.typ))
 	}
@@ -247,8 +353,9 @@ func createGlobalPropertyEnv() (*cel.Env, error) {
 // does). Literal values pass through unchanged; "$ctx:" expressions are
 // evaluated and converted to a plain Go value. An expression that fails to
 // evaluate at runtime is skipped for that line only, logged at debug level —
-// this should be rare, since every declared variable is always bound to a
-// zero value rather than left unbound.
+// in practice only when it reads a variable with no starting value (nil zero in
+// globalPropertyVariables) the request has no value for, since fillStartingValues
+// binds every other variable.
 func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface{} {
 	if len(e.literals) == 0 && len(e.compiled) == 0 {
 		return nil
@@ -262,7 +369,8 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 		return result
 	}
 
-	evalCtx := buildGlobalPropertyEvalCtx(event, e.referencedVars, e.maskedHeaders)
+	evalCtx := buildGlobalPropertyEvalCtx(event, e.referencedVars, e.maskedHeaders, e.maxPayloadSize)
+	fillStartingValues(evalCtx, e.referencedVars)
 	for name, program := range e.compiled {
 		out, _, err := program.Eval(evalCtx)
 		if err != nil {
@@ -282,32 +390,27 @@ func (e *globalPropertyEvaluator) resolve(event *dto.Event) map[string]interface
 // buildGlobalPropertyEvalCtx builds the CEL evaluation context from a dto.Event, populating
 // only the variables in referenced — the union, across every compiled expression, of the
 // variables actually used (see globalPropertyEvaluator.referencedVars) — rather than the
-// full declared set. Every populated variable is always bound (to its zero value when the
-// corresponding event field is absent) so evaluation never fails merely because a nested
-// pointer was nil. request.header/response.header are masked with the same maskedHeaders
+// full declared set. A variable is bound only when the event carries a value for it, so a
+// template writes null for the rest; traffic_logging.properties then calls fillStartingValues.
+// request.body/response.body are cut to maxPayloadSize.
+// request.header/response.header are masked with the same maskedHeaders
 // config applied to the emitted requestHeaders/responseHeaders maps (see maskHeaders in
 // log.go), so a property expression like "$ctx:request.header['authorization']" cannot
 // bypass masking and leak a credential the operator explicitly asked to redact — that
 // parse+lowercase+mask work (and the json.Unmarshal calls for auth.property/metadata) is
 // itself skipped whenever the corresponding variable isn't referenced by any configured
 // expression, which is the whole point of this function taking referenced at all.
-func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, maskedHeaders map[string]bool) map[string]interface{} {
+func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, maskedHeaders map[string]bool, maxPayloadSize int) map[string]interface{} {
 	ctx := make(map[string]interface{}, len(referenced))
-	for _, v := range globalPropertyVariables {
-		if referenced[v.name] {
-			ctx[v.name] = v.zero
-		}
-	}
-
 	if event == nil {
 		return ctx
 	}
 
 	if event.Operation != nil {
-		if referenced["request.path"] {
+		if referenced["request.path"] && event.Operation.APIResourceTemplate != "" {
 			ctx["request.path"] = event.Operation.APIResourceTemplate
 		}
-		if referenced["request.method"] {
+		if referenced["request.method"] && event.Operation.APIMethod != "" {
 			ctx["request.method"] = event.Operation.APIMethod
 		}
 	}
@@ -316,8 +419,16 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 			ctx["request.pathTemplate"] = tmpl
 		}
 	}
-	if referenced["request.id"] && event.MetaInfo != nil {
+	if referenced["request.id"] && event.MetaInfo != nil && event.MetaInfo.CorrelationID != "" {
 		ctx["request.id"] = event.MetaInfo.CorrelationID
+	}
+	if referenced["request.timestamp"] && !event.RequestTimestamp.IsZero() {
+		ctx["request.timestamp"] = event.RequestTimestamp.UTC().Format(trafficLogTimestampFormat)
+	}
+	if referenced["request.body"] {
+		if body, ok := event.Properties[dto.PropKeyRequestPayload].(string); ok && body != "" {
+			ctx["request.body"] = truncatePayload(body, maxPayloadSize)
+		}
 	}
 	if referenced["request.header"] {
 		if headers := hdrs.Flatten(event.Properties[dto.PropKeyRequestHeaders]); headers != nil {
@@ -333,48 +444,53 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 			ctx["response.header"] = maskHeaders(lowerCaseHeaderKeys(headers), maskedHeaders)
 		}
 	}
+	if referenced["response.body"] {
+		if body, ok := event.Properties[dto.PropKeyResponsePayload].(string); ok && body != "" {
+			ctx["response.body"] = truncatePayload(body, maxPayloadSize)
+		}
+	}
 
 	if event.API != nil {
-		if referenced["api.id"] {
+		if referenced["api.id"] && event.API.APIID != "" {
 			ctx["api.id"] = event.API.APIID
 		}
-		if referenced["api.name"] {
+		if referenced["api.name"] && event.API.APIName != "" {
 			ctx["api.name"] = event.API.APIName
 		}
-		if referenced["api.version"] {
+		if referenced["api.version"] && event.API.APIVersion != "" {
 			ctx["api.version"] = event.API.APIVersion
 		}
-		if referenced["api.context"] {
+		if referenced["api.context"] && event.API.APIContext != "" {
 			ctx["api.context"] = event.API.APIContext
 		}
-		if referenced["api.kind"] {
+		if referenced["api.kind"] && event.API.APIType != "" {
 			ctx["api.kind"] = event.API.APIType
 		}
-		if referenced["project.id"] {
+		if referenced["project.id"] && event.API.ProjectID != "" {
 			ctx["project.id"] = event.API.ProjectID
 		}
 	}
 
 	if event.Target != nil {
-		if referenced["target.statusCode"] {
+		if referenced["target.statusCode"] && event.Target.TargetResponseCode != 0 {
 			ctx["target.statusCode"] = event.Target.TargetResponseCode
 		}
-		if referenced["target.destination"] {
+		if referenced["target.destination"] && event.Target.Destination != "" {
 			ctx["target.destination"] = event.Target.Destination
 		}
 	}
 
 	if a := event.Application; a != nil {
-		if referenced["application.id"] {
+		if referenced["application.id"] && a.ApplicationID != "" {
 			ctx["application.id"] = a.ApplicationID
 		}
-		if referenced["application.name"] {
+		if referenced["application.name"] && a.ApplicationName != "" {
 			ctx["application.name"] = a.ApplicationName
 		}
-		if referenced["application.owner"] {
+		if referenced["application.owner"] && a.ApplicationOwner != "" {
 			ctx["application.owner"] = a.ApplicationOwner
 		}
-		if referenced["application.keyType"] {
+		if referenced["application.keyType"] && a.KeyType != "" {
 			ctx["application.keyType"] = a.KeyType
 		}
 	}
@@ -385,34 +501,34 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 	// than a separately stamped flag, since the collector only ever stamps these keys
 	// together, gated on Authenticated && Subject != "" (see populateAuthAnalyticsMetadata
 	// in gateway/system-policies/analytics/analytics.go). Both are derived from the same
-	// lookup, so it's guarded by either being referenced.
+	// lookup, so it's guarded by either being referenced. auth.authenticated is false when
+	// there is no subject.
 	if referenced["auth.subject"] || referenced["auth.authenticated"] {
-		if subject, ok := event.Properties[dto.PropKeyAuthUserID].(string); ok && subject != "" {
-			if referenced["auth.subject"] {
-				ctx["auth.subject"] = subject
-			}
-			if referenced["auth.authenticated"] {
-				ctx["auth.authenticated"] = true
-			}
+		subject, _ := event.Properties[dto.PropKeyAuthUserID].(string)
+		if referenced["auth.subject"] && subject != "" {
+			ctx["auth.subject"] = subject
+		}
+		if referenced["auth.authenticated"] {
+			ctx["auth.authenticated"] = subject != ""
 		}
 	}
 	if referenced["auth.type"] {
-		if authType, ok := event.Properties[dto.PropKeyAuthType].(string); ok {
+		if authType, ok := event.Properties[dto.PropKeyAuthType].(string); ok && authType != "" {
 			ctx["auth.type"] = authType
 		}
 	}
 	if referenced["auth.issuer"] {
-		if issuer, ok := event.Properties[dto.PropKeyAuthIssuer].(string); ok {
+		if issuer, ok := event.Properties[dto.PropKeyAuthIssuer].(string); ok && issuer != "" {
 			ctx["auth.issuer"] = issuer
 		}
 	}
 	if referenced["auth.credential_id"] {
-		if credentialID, ok := event.Properties[dto.PropKeyAuthCredentialID].(string); ok {
+		if credentialID, ok := event.Properties[dto.PropKeyAuthCredentialID].(string); ok && credentialID != "" {
 			ctx["auth.credential_id"] = credentialID
 		}
 	}
 	if referenced["auth.token_id"] {
-		if tokenID, ok := event.Properties[dto.PropKeyAuthTokenID].(string); ok {
+		if tokenID, ok := event.Properties[dto.PropKeyAuthTokenID].(string); ok && tokenID != "" {
 			ctx["auth.token_id"] = tokenID
 		}
 	}
@@ -458,7 +574,97 @@ func buildGlobalPropertyEvalCtx(event *dto.Event, referenced map[string]bool, ma
 		}
 	}
 
+	// The same event fields as the traffic log line's client, errorType and error. An empty
+	// value is left unbound.
+	if referenced["client.ip"] && event.UserIP != "" {
+		ctx["client.ip"] = event.UserIP
+	}
+	if referenced["client.userAgent"] && event.UserAgentHeader != "" {
+		ctx["client.userAgent"] = event.UserAgentHeader
+	}
+	if referenced["error.category"] && event.ErrorType != "" {
+		ctx["error.category"] = event.ErrorType
+	}
+	// Empty error fields are left unbound. errorCode, the status the client got, is always
+	// bound; it is 0 when the client got no response.
+	if e := event.Error; e != nil {
+		if referenced["error.errorCode"] {
+			ctx["error.errorCode"] = e.ErrorCode
+		}
+		if referenced["error.errorMessage"] && e.ErrorMessage != "" {
+			ctx["error.errorMessage"] = string(e.ErrorMessage)
+		}
+		if referenced["error.wso2ErrorCode"] && e.Wso2ErrorCode != 0 {
+			ctx["error.wso2ErrorCode"] = e.Wso2ErrorCode
+		}
+		if referenced["error.type"] && e.Type != "" {
+			ctx["error.type"] = e.Type
+		}
+		if referenced["error.direction"] && e.Direction != "" {
+			ctx["error.direction"] = e.Direction
+		}
+		if referenced["error.summary"] && e.Summary != "" {
+			ctx["error.summary"] = e.Summary
+		}
+		if referenced["error.policy"] && e.Policy != "" {
+			ctx["error.policy"] = e.Policy
+		}
+		if referenced["error.policyPhase"] && e.PolicyPhase != "" {
+			ctx["error.policyPhase"] = e.PolicyPhase
+		}
+		if referenced["error.source"] && e.Source != "" {
+			ctx["error.source"] = e.Source
+		}
+		if referenced["error.originalStatus"] && e.OriginalStatus != 0 {
+			ctx["error.originalStatus"] = e.OriginalStatus
+		}
+		if referenced["error.jsonRpcCode"] && e.JSONRPCCode != 0 {
+			ctx["error.jsonRpcCode"] = e.JSONRPCCode
+		}
+		if g := e.Guardrail; g != nil {
+			if referenced["error.guardrail.name"] && g.Name != "" {
+				ctx["error.guardrail.name"] = g.Name
+			}
+			if referenced["error.guardrail.action"] && g.Action != "" {
+				ctx["error.guardrail.action"] = g.Action
+			}
+			if referenced["error.guardrail.reason"] && g.Reason != "" {
+				ctx["error.guardrail.reason"] = g.Reason
+			}
+		}
+	}
+
+	// Left unbound when the request has no latencies (see globalPropertyVariable).
+	if l := event.TrafficLogLatencies; l != nil {
+		if referenced["latencies.duration"] {
+			ctx["latencies.duration"] = l.DurationUs
+		}
+		if referenced["latencies.requestMediationLatency"] {
+			ctx["latencies.requestMediationLatency"] = l.RequestMediationLatencyUs
+		}
+		if referenced["latencies.responseMediationLatency"] {
+			ctx["latencies.responseMediationLatency"] = l.ResponseMediationLatencyUs
+		}
+		if referenced["latencies.backendLatency"] {
+			ctx["latencies.backendLatency"] = l.BackendLatencyUs
+		}
+	}
+
 	return ctx
+}
+
+// fillStartingValues binds each referenced variable that ctx does not have to its starting value
+// from globalPropertyZeroValues, so traffic_logging.properties gets "", 0, false, [] or {} for it.
+// A variable with no starting value stays unbound.
+func fillStartingValues(ctx map[string]interface{}, referenced map[string]bool) {
+	for name := range referenced {
+		if _, bound := ctx[name]; bound {
+			continue
+		}
+		if zero := globalPropertyZeroValues[name]; zero != nil {
+			ctx[name] = zero
+		}
+	}
 }
 
 // lowerCaseHeaderKeys returns a copy of headers with all keys lower-cased.
