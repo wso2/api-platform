@@ -98,7 +98,7 @@ cross-instance implementation can be substituted without changing behavior (FR-0
 | From | Event | To | Side effect |
 |---|---|---|---|
 | `healthy` | failure, `consecutiveFailures + 1 < threshold` | `healthy` | increment |
-| `healthy` | failure, `consecutiveFailures > 0` **and** `consecutiveFailures + 1 >= threshold` | `suspended` | set `suspendedUntil`; emit suspension record naming the consecutive criterion |
+| `healthy` | failure, `threshold > 0` **and** `consecutiveFailures + 1 >= threshold` | `suspended` | set `suspendedUntil`; emit suspension record naming the consecutive criterion |
 | `healthy` | failure, `errorRatePercent > 0` **and** window rate >= `errorRatePercent` **and** window requests >= `minimumRequests` | `suspended` | set `suspendedUntil`; emit suspension record naming the rate criterion and observed rate (FR-018a/b/d) |
 | `healthy` | `p95LatencyMs > 0` **and** window p95 >= `p95LatencyMs` **and** window requests >= `minimumRequests` | `suspended` | set `suspendedUntil`; emit suspension record naming the latency criterion and observed percentile (FR-018e) |
 | `healthy` | success | `healthy` | reset counter |
