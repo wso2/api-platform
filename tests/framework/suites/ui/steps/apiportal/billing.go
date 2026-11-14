@@ -838,7 +838,7 @@ func (u *Steps) priceFlatRatePlanInSettings(ctx context.Context) error {
 	if err := limit.Locator(".cfg-limit-amount").Fill("0"); err != nil {
 		return err
 	}
-	if err := u.saveExpecting(page, "#pol-save", "Request count: each limit needs a time window of at least 1."); err != nil {
+	if err := u.saveExpecting(page, "#pol-save", "Enter a whole number of at least 1."); err != nil {
 		return err
 	}
 	if err := limit.Locator(".cfg-limit-amount").Fill("1"); err != nil {
