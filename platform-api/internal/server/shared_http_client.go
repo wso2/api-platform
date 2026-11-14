@@ -19,6 +19,7 @@ package server
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/wso2/api-platform/httpkit/httpclient"
 	"github.com/wso2/api-platform/httpkit/netguard"
@@ -65,12 +66,19 @@ func buildAccessControlClientConfig(shared httpclient.Config, hc config.HTTPClie
 	if err != nil {
 		return httpclient.Config{}, false, err
 	}
+	var redirectSchemes []string
 	if shared.SSRF.Enabled {
 		policy = netguard.Stricter(policy, shared.SSRF.Policy)
+		// The existing preset's scheme list governs redirect hops only (empty means
+		// https), so it narrows redirects here without restricting first requests.
+		redirectSchemes = intersectSchemes(policy.AllowedSchemes, effectiveRedirectSchemes(shared.SSRF.Policy.AllowedSchemes))
+		if len(redirectSchemes) == 0 {
+			return httpclient.Config{}, false, fmt.Errorf("allowed_schemes shares no scheme with the redirect schemes of [platform_api.http_client]; no redirect could be followed")
+		}
 	}
 
 	out := shared
-	out.SSRF = httpclient.SSRFConfig{Enabled: true, Policy: policy, MaxRedirects: ac.MaxRedirects}
+	out.SSRF = httpclient.SSRFConfig{Enabled: true, Policy: policy, MaxRedirects: ac.MaxRedirects, RedirectSchemes: redirectSchemes}
 	if out.Proxy.Mode != "" && out.Proxy.Mode != "none" && out.Proxy.Egress == httpclient.ProxyEgressUnset {
 		switch hc.Proxy.Egress {
 		case "manual_connect":
@@ -171,4 +179,28 @@ func buildSharedHTTPClientConfig(hc config.HTTPClientConfig) (httpclient.Config,
 	}
 
 	return cfg, nil
+}
+
+// effectiveRedirectSchemes is the redirect scheme list a destination preset
+// enforces: its own list, or https alone when it lists none.
+func effectiveRedirectSchemes(schemes []string) []string {
+	if len(schemes) == 0 {
+		return []string{"https"}
+	}
+	return schemes
+}
+
+// intersectSchemes returns the schemes of a also in b, case-insensitively, in
+// a's order.
+func intersectSchemes(a, b []string) []string {
+	var out []string
+	for _, x := range a {
+		for _, y := range b {
+			if strings.EqualFold(x, y) {
+				out = append(out, strings.ToLower(x))
+				break
+			}
+		}
+	}
+	return out
 }

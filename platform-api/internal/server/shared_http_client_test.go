@@ -17,6 +17,7 @@
 package server
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/wso2/api-platform/httpkit/httpclient"
@@ -106,6 +107,43 @@ func TestBuildAccessControlClientConfig(t *testing.T) {
 		}
 		if _, err := httpclient.New(out); err != nil {
 			t.Fatalf("the derived configuration must build: %v", err)
+		}
+	})
+
+	t.Run("the existing preset's redirect schemes narrow redirects only", func(t *testing.T) {
+		cases := []struct {
+			legacy []string
+			want   []string
+		}{
+			{nil, []string{"https"}}, // an empty list means https-only redirects
+			{[]string{"http", "https"}, []string{"http", "https"}},
+			{[]string{"https"}, []string{"https"}},
+		}
+		for _, tc := range cases {
+			shared := httpclient.DefaultConfig()
+			shared.SSRF = httpclient.SSRFConfig{Enabled: true, Policy: netguard.PermitPrivateBlockMetadata()}
+			shared.SSRF.Policy.AllowedSchemes = tc.legacy
+			out, _, err := buildAccessControlClientConfig(shared, config.HTTPClientConfig{}, enabled)
+			if err != nil {
+				t.Fatalf("legacy %v: %v", tc.legacy, err)
+			}
+			if !reflect.DeepEqual(out.SSRF.RedirectSchemes, tc.want) {
+				t.Fatalf("legacy %v: RedirectSchemes = %v, want %v", tc.legacy, out.SSRF.RedirectSchemes, tc.want)
+			}
+			if !reflect.DeepEqual(out.SSRF.Policy.AllowedSchemes, []string{"http", "https"}) {
+				t.Fatalf("legacy %v: first-request schemes = %v, want access control's http and https", tc.legacy, out.SSRF.Policy.AllowedSchemes)
+			}
+		}
+	})
+
+	t.Run("no common redirect scheme is a configuration error", func(t *testing.T) {
+		shared := httpclient.DefaultConfig()
+		shared.SSRF = httpclient.SSRFConfig{Enabled: true, Policy: netguard.PermitPrivateBlockMetadata()}
+		shared.SSRF.Policy.AllowedSchemes = []string{"https"}
+		httpOnly := enabled
+		httpOnly.AllowedSchemes = []string{"http"}
+		if _, _, err := buildAccessControlClientConfig(shared, config.HTTPClientConfig{}, httpOnly); err == nil {
+			t.Fatal("want an error when no redirect scheme survives")
 		}
 	})
 

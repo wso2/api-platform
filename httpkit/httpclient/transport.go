@@ -17,19 +17,16 @@ import (
 // dialFn is always wired as Transport.DialContext, regardless of whether a
 // proxy is configured: net/http's Transport always dials connectMethod.addr(),
 // which is the proxy's address whenever Proxy is set and the origin's address
-// otherwise. When proxies is non-nil, Transport.Proxy is wrapped to record
-// every proxy address it hands out, so dialFn (built by New with
-// proxyAddrSet.dialer) can dial a proxy hop under the policy's ProxyHop and a
-// direct origin under the full policy. In ProxyEgressDelegated mode the
+// otherwise. When a destination guard and a proxy are both configured, New
+// builds dialFn with proxyHopDialer, which dials the request's own proxy
+// (recorded in its context by proxyRouting) under the policy's ProxyHop and
+// anything else under the full policy. In ProxyEgressDelegated mode the
 // proxied origin's address is therefore never validated here — only its
 // hostname, by New's destination round tripper.
-func buildTransport(cfg Config, dialFn func(context.Context, string, string) (net.Conn, error), originTLS, proxyTLS *tls.Config, proxies *proxyAddrSet) (*http.Transport, error) {
+func buildTransport(cfg Config, dialFn func(context.Context, string, string) (net.Conn, error), originTLS, proxyTLS *tls.Config) (*http.Transport, error) {
 	proxyFunc, err := buildProxyFunc(cfg.Proxy)
 	if err != nil {
 		return nil, err
-	}
-	if proxyFunc != nil && proxies != nil {
-		proxyFunc = proxies.wrap(proxyFunc)
 	}
 
 	t := &http.Transport{

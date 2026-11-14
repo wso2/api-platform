@@ -172,3 +172,15 @@ func containsAny(s string, subs ...string) bool {
 	}
 	return false
 }
+
+// MCP discovery reports a refused destination as DESTINATION_NOT_ALLOWED, not as a
+// generic discovery failure, however deep in the initialize/JSON-RPC calls it fails.
+func TestFetchMCPServerInfo_RefusedDestination(t *testing.T) {
+	srv := loopbackBackend(t)
+	useAccessControl(t, netguard.GuardConfig{Enabled: true, DenyPrivateNetworks: true})
+
+	_, err := FetchMCPServerInfo(srv.URL, "", "")
+	if !apperror.DestinationNotAllowed.Is(err) {
+		t.Fatalf("FetchMCPServerInfo = %v, want DestinationNotAllowed", err)
+	}
+}
