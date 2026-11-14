@@ -23,6 +23,7 @@ import {
   attachedPlanIdsOf,
   policiesToAttach,
   policiesToRemove,
+  validationMove,
   validationToMove,
   withoutOperationValidation,
   withAttachedPlans,
@@ -121,6 +122,14 @@ describe('usage plans helpers', () => {
     ]);
   });
 
+  it('adds each major version of a policy, and a built-in key at its default version', () => {
+    const added = withPoliciesAdded([], ['region-guard@v1', 'region-guard@v2', 'region-guard', 'region-guard@v1']);
+    expect(added.map((policy) => `${policy.name}@${policy.version}`)).toEqual(['region-guard@v1', 'region-guard@v2']);
+    // Already on the API at v1: only v2 is added.
+    const onApi = [{ name: 'region-guard', params: {}, version: 'v1' }];
+    expect(withPoliciesAdded(onApi, ['region-guard@v1', 'region-guard@v2']).map((p) => p.version)).toEqual(['v1', 'v2']);
+  });
+
   it('puts subscription-validation before the attached policies that depend on it', () => {
     const cors = { name: 'cors', params: {}, version: 'v1' };
     const guard = { name: 'region-guard', params: {}, version: 'v1' };
@@ -153,5 +162,30 @@ describe('usage plans helpers', () => {
     expect(validationToMove(atApi, onOps, ['subscription-request-ratelimit'])).toBeNull();
     expect(validationToMove([], [{ policies: [] }], ['subscription-request-ratelimit'])).toBeNull();
     expect(validationToMove([], onOps, ['subscription-validation'])).toBeNull();
+    expect(validationMove([], onOps, ['region-guard@v1'])).toEqual({ kind: 'move', policy: onOps[0].policies[0] });
+  });
+
+  it('moves nothing when subscription-validation is on only some operations', () => {
+    const someOps = [
+      { policies: [{ name: 'subscription-validation', params: { subscriptionKeyHeader: 'X-Key' }, version: 'v1' }] },
+      { policies: [{ name: 'cors', params: {}, version: 'v1' }] },
+    ];
+    expect(validationMove([], someOps, ['region-guard@v1'])).toEqual({ kind: 'partial' });
+    expect(validationToMove([], someOps, ['region-guard@v1'])).toBeNull();
+  });
+
+  it('moves nothing when the operations configure subscription-validation differently', () => {
+    const sv = (params: Record<string, unknown>, version = 'v1') => ({
+      policies: [{ name: 'subscription-validation', params, version }],
+    });
+    expect(validationMove([], [sv({ subscriptionKeyHeader: 'X-Key' }), sv({ subscriptionKeyHeader: 'Y-Key' })], ['region-guard@v1'])).toEqual({ kind: 'differs' });
+    expect(validationMove([], [sv({}, 'v1'), sv({}, 'v2')], ['region-guard@v1'])).toEqual({ kind: 'differs' });
+    // The same parameters in another key order are the same configuration.
+    const a = sv({ a: 1, b: { c: 2, d: 3 } });
+    const b = sv({ b: { d: 3, c: 2 }, a: 1 });
+    expect(validationMove([], [a, b], ['region-guard@v1'])?.kind).toBe('move');
+    // Already at API level: nothing to decide.
+    const atApi: Policy[] = [{ name: 'subscription-validation', params: {}, version: 'v1' }];
+    expect(validationMove(atApi, [sv({ x: 1 }), { policies: [] }], ['region-guard@v1'])).toBeNull();
   });
 });

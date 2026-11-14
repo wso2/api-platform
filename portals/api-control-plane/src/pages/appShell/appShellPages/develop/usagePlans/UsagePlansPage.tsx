@@ -78,6 +78,7 @@ import {
   missingPolicies,
   policiesToAttach,
   policiesToRemove,
+  validationMove,
   validationToMove,
   withAttachedPlans,
   withoutOperationValidation,
@@ -94,7 +95,7 @@ const messages = defineMessages({
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.subtitle',
     defaultMessage:
-      'The subscription plans this API offers. Attaching a plan offers to attach the policies that enforce it. When you publish, you choose which of these plans each API Portal lists.',
+      'The subscription plans this API offers. Attaching a plan offers to attach the policies it needs. When you publish, you choose which of these plans each API Portal lists.',
   },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.loading',
@@ -223,6 +224,40 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachCancel',
     defaultMessage: 'Skip',
   },
+  attachMoved: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachMoved',
+    defaultMessage: 'Moved from the API’s resources to the API',
+    description: 'Under subscription-validation in the attach dialog: it moves rather than being added.',
+  },
+  blockedTitle: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedTitle',
+    defaultMessage: 'Attach the policies on the Policies page',
+  },
+  blockedPartial: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedPartial',
+    defaultMessage:
+      '{count, plural, one {{plan} needs} other {{plan} need}} these policies, which must run after Subscription Validation. Only some of this API’s resources have Subscription Validation, so they can’t be attached to the whole API here.',
+    description: '{plan} is a plan name (or "The selected plans"); the list of policies follows.',
+  },
+  blockedDiffers: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedDiffers',
+    defaultMessage:
+      '{count, plural, one {{plan} needs} other {{plan} need}} these policies, which must run after Subscription Validation. This API’s resources configure Subscription Validation differently, so they can’t be attached to the whole API here.',
+    description: '{plan} is a plan name (or "The selected plans"); the list of policies follows.',
+  },
+  blockedQuestion: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedQuestion',
+    defaultMessage:
+      'Attach them on the Policies page, to the resources that have Subscription Validation. The plans stay selected.',
+  },
+  blockedConfirm: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedConfirm',
+    defaultMessage: 'OK',
+  },
+  blockedCancel: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedCancel',
+    defaultMessage: 'Close',
+  },
   removeTitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.removeTitle',
     defaultMessage: 'Remove unused policies?',
@@ -263,7 +298,18 @@ const messages = defineMessages({
 type DisplayablePlan = SubscriptionPlan & { id: string };
 
 /** The dialog open after plans were ticked or unticked: the policies to attach or remove. */
-type PolicyPrompt = { action: 'attach' | 'remove'; count: number; names: string[]; plan: string } | null;
+type PolicyPrompt = {
+  /** `blocked`: the policies need an operation-level subscription-validation that can't move to API
+   * level (see validationMove); nothing is attached and they are attached on the Policies page. */
+  action: 'attach' | 'remove' | 'blocked';
+  count: number;
+  names: string[];
+  plan: string;
+  /** Why a `blocked` prompt is blocked. */
+  reason?: 'partial' | 'differs';
+  /** The label of the subscription-validation that moves from the resources to API level. */
+  moved?: string;
+} | null;
 
 /** One row of the plan list. */
 type PlanRow = {
@@ -310,20 +356,20 @@ const policyParts = (label: string) => {
 };
 
 /** Policies as the Policies page lists them: icon, display name from the Policy Hub, version. */
-function PolicyRows({ labels }: { labels: string[] }) {
+function PolicyRows({ labels, moved }: { labels: string[]; moved?: string }) {
   return (
     <Stack
       component="ul"
       sx={{ border: 1, borderColor: 'divider', borderRadius: 1, listStyle: 'none', m: 0, overflow: 'hidden', p: 0 }}
       divider={<Box aria-hidden sx={{ borderTop: 1, borderColor: 'divider' }} />}
     >
-      {labels.map(policyParts).map(({ name, version }) => (
+      {labels.map((label) => ({ label, ...policyParts(label) })).map(({ label, name, version }) => (
         <Stack
           alignItems="center"
           aria-label={[name, version].filter(Boolean).join(' ')}
           component="li"
           direction="row"
-          key={name}
+          key={label}
           spacing={1.25}
           sx={{ px: 1.5, py: 1 }}
         >
@@ -337,6 +383,11 @@ function PolicyRows({ labels }: { labels: string[] }) {
             <Typography color="text.secondary" noWrap sx={{ fontFamily: 'monospace' }} variant="caption">
               {name}
             </Typography>
+            {label === moved && (
+              <Typography color="text.secondary" display="block" variant="caption">
+                <FormattedMessage {...messages.attachMoved} />
+              </Typography>
+            )}
           </Box>
           {version && <Chip label={version} size="small" variant="outlined" />}
         </Stack>
@@ -481,13 +532,31 @@ function PlanAttachmentPanel({
       plans.length === 1 ? plans[0].displayName : intl.formatMessage(messages.selectedPlans);
     if (added.length > 0) {
       const needed = policiesToAttach(added, kind, attachment);
-      // subscription-validation that moves from the resources to API level is listed too.
+      const move = validationMove(policies, ops, needed);
+      if (move && move.kind !== 'move') {
+        // subscription-validation is on only some resources, or configured differently on them: the
+        // policies that rely on it can't go to API level, so nothing is attached here.
+        const dependents = needed.filter((key) => parsePolicyKey(key).name !== SUBSCRIPTION_VALIDATION);
+        setPrompt({
+          action: 'blocked',
+          count: added.length,
+          names: dependents,
+          plan: nameOf(added),
+          reason: move.kind,
+        });
+        return;
+      }
+      // subscription-validation that moves from the resources to API level is listed, marked moved.
       const names =
-        validationToMove(policies, ops, needed) && !needed.includes(SUBSCRIPTION_VALIDATION)
-          ? [SUBSCRIPTION_VALIDATION, ...needed]
-          : needed;
+        move && !needed.includes(SUBSCRIPTION_VALIDATION) ? [SUBSCRIPTION_VALIDATION, ...needed] : needed;
       if (names.length > 0) {
-        setPrompt({ action: 'attach', count: added.length, names, plan: nameOf(added) });
+        setPrompt({
+          action: 'attach',
+          count: added.length,
+          names,
+          plan: nameOf(added),
+          moved: move ? labelOf(SUBSCRIPTION_VALIDATION) : undefined,
+        });
       }
     } else if (removed.length > 0) {
       const remaining = next.flatMap((id) => plansById.get(id) ?? []);
@@ -510,6 +579,10 @@ function PlanAttachmentPanel({
 
   const confirmPrompt = () => {
     if (!prompt) return;
+    if (prompt.action === 'blocked') {
+      setPrompt(null);
+      return;
+    }
     if (prompt.action === 'attach') {
       // subscription-validation goes before the attached policies the ticked plans rely on.
       const ticked = planIds.flatMap((id) => plansById.get(id) ?? []);
@@ -524,6 +597,31 @@ function PlanAttachmentPanel({
     }
     setPrompt(null);
   };
+
+  const dialogText =
+    prompt?.action === 'remove'
+      ? {
+          cancel: messages.removeCancel,
+          confirm: messages.removeConfirm,
+          message: messages.removeMessage,
+          question: messages.removeQuestion,
+          title: messages.removeTitle,
+        }
+      : prompt?.action === 'blocked'
+        ? {
+            cancel: messages.blockedCancel,
+            confirm: messages.blockedConfirm,
+            message: prompt.reason === 'differs' ? messages.blockedDiffers : messages.blockedPartial,
+            question: messages.blockedQuestion,
+            title: messages.blockedTitle,
+          }
+        : {
+            cancel: messages.attachCancel,
+            confirm: messages.attachConfirm,
+            message: messages.attachMessage,
+            question: messages.attachQuestion,
+            title: messages.attachTitle,
+          };
 
   const cancel = () => {
     setPlanIds(attachedPlanIds);
@@ -691,35 +789,22 @@ function PlanAttachmentPanel({
       )}
 
       <ConfirmDialog
-        cancelLabel={intl.formatMessage(
-          prompt?.action === 'remove' ? messages.removeCancel : messages.attachCancel,
-        )}
-        confirmLabel={intl.formatMessage(
-          prompt?.action === 'remove' ? messages.removeConfirm : messages.attachConfirm,
-        )}
+        cancelLabel={intl.formatMessage(dialogText.cancel)}
+        confirmLabel={intl.formatMessage(dialogText.confirm)}
         maxWidth="sm"
         message={
-          prompt
-            ? intl.formatMessage(
-                prompt.action === 'remove' ? messages.removeMessage : messages.attachMessage,
-                { count: prompt.count, plan: prompt.plan },
-              )
-            : ''
+          prompt ? intl.formatMessage(dialogText.message, { count: prompt.count, plan: prompt.plan }) : ''
         }
         onCancel={() => setPrompt(null)}
         onConfirm={confirmPrompt}
         open={prompt !== null}
-        title={intl.formatMessage(
-          prompt?.action === 'remove' ? messages.removeTitle : messages.attachTitle,
-        )}
+        title={intl.formatMessage(dialogText.title)}
       >
         {prompt && (
           <>
-            <PolicyRows labels={prompt.names.map(labelOf)} />
+            <PolicyRows labels={prompt.names.map(labelOf)} moved={prompt.moved} />
             <Typography color="text.secondary" variant="caption">
-              <FormattedMessage
-                {...(prompt.action === 'remove' ? messages.removeQuestion : messages.attachQuestion)}
-              />
+              <FormattedMessage {...dialogText.question} />
             </Typography>
           </>
         )}

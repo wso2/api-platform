@@ -186,32 +186,60 @@ export const draftsFromConditions = (conditions: PlanCondition[] | undefined): C
     };
   });
 
-/** Whether `text`, a decimal number, is held exactly by a JavaScript number (at most 15 significant
- * digits, and an integer within the safe range): otherwise it is kept as text, not rounded. */
-const exactNumber = (text: string, value: number): boolean => {
+/**
+ * Whether `literal`, a number as written (decimal, optionally with an exponent), is held exactly by
+ * a JavaScript number: finite, not rounded to 0 (underflow), an integer within the safe range, and
+ * at most 15 significant digits. Otherwise it is kept as text, never silently changed.
+ */
+export const exactNumber = (literal: string): boolean => {
+  const value = Number(literal);
   if (!Number.isFinite(value)) return false;
+  const mantissa = literal.replace(/^-/, '').replace(/[eE].*$/, '');
+  if (value === 0 && /[1-9]/.test(mantissa)) return false;
   if (Number.isInteger(value) && !Number.isSafeInteger(value)) return false;
-  const digits = text.replace(/^-/, '').replace('.', '').replace(/^0+/, '');
+  const digits = mantissa.replace('.', '').replace(/^0+/, '');
   return digits.length <= 15;
+};
+
+/**
+ * Whether every number literal in `json` (outside strings) is exact (see exactNumber). Checked on
+ * the text before parsing, so no engine's rounded value is trusted.
+ */
+export const exactJsonNumbers = (json: string): boolean => {
+  let inString = false;
+  for (let i = 0; i < json.length; i += 1) {
+    const ch = json[i];
+    if (inString) {
+      if (ch === '\\') i += 1;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '-' || (ch >= '0' && ch <= '9')) {
+      const match = /^-?\d+(\.\d+)?([eE][+-]?\d+)?/.exec(json.slice(i));
+      if (!match) continue;
+      if (!exactNumber(match[0])) return false;
+      i += match[0].length - 1;
+    }
+  }
+  return true;
 };
 
 /** A typed value: a number (when exact), true or false, a JSON object or list, or else the text as
  * it is. A JSON value with a number it can't hold exactly is kept as text too. */
 export const parseValue = (text: string): unknown => {
   if (/^-?\d+(\.\d+)?$/.test(text)) {
-    const value = Number(text);
-    return exactNumber(text, value) ? value : text;
+    return exactNumber(text) ? Number(text) : text;
   }
   if (text === 'true' || text === 'false') return text === 'true';
   if (/^[[{]/.test(text)) {
+    // A number the JSON can't keep exactly keeps the whole value as text.
+    if (!exactJsonNumbers(text)) return text;
     try {
-      return JSON.parse(text, (_key, value: unknown, context?: { source?: string }) => {
-        if (typeof value !== 'number') return value;
-        // Where the browser gives the number's source text, check it digit for digit.
-        const source = context?.source ?? String(value);
-        if (!exactNumber(source.replace(/[eE].*$/, ''), value)) throw new Error('inexact number');
-        return value;
-      }) as unknown;
+      return JSON.parse(text) as unknown;
     } catch {
       // Not JSON, or a number it can't hold exactly: kept as text.
     }

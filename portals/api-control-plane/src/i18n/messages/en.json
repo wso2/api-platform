@@ -2642,6 +2642,10 @@
     "defaultMessage": "{count, plural, one {{plan} needs} other {{plan} need}} these policies, which this API does not have yet.",
     "description": "{plan} is a plan name (or \"The selected plans\"); the list of policies follows."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachMoved": {
+    "defaultMessage": "Moved from the API’s resources to the API",
+    "description": "Under subscription-validation in the attach dialog: it moves rather than being added."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachQuestion": {
     "defaultMessage": "They are added to the API’s global policies. Save and deploy the API for them to take effect."
   },
@@ -2651,6 +2655,26 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.attachedSummary": {
     "defaultMessage": "{count, plural, one {<n>#</n> plan attached} other {<n>#</n> plans attached}}",
     "description": "<n> wraps the number, which is styled."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedCancel": {
+    "defaultMessage": "Close"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedConfirm": {
+    "defaultMessage": "OK"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedDiffers": {
+    "defaultMessage": "{count, plural, one {{plan} needs} other {{plan} need}} these policies, which must run after Subscription Validation. This API’s resources configure Subscription Validation differently, so they can’t be attached to the whole API here.",
+    "description": "{plan} is a plan name (or \"The selected plans\"); the list of policies follows."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedPartial": {
+    "defaultMessage": "{count, plural, one {{plan} needs} other {{plan} need}} these policies, which must run after Subscription Validation. Only some of this API’s resources have Subscription Validation, so they can’t be attached to the whole API here.",
+    "description": "{plan} is a plan name (or \"The selected plans\"); the list of policies follows."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedQuestion": {
+    "defaultMessage": "Attach them on the Policies page, to the resources that have Subscription Validation. The plans stay selected."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.blockedTitle": {
+    "defaultMessage": "Attach the policies on the Policies page"
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.clearAll": {
     "defaultMessage": "Detach all plans"
@@ -2750,7 +2774,7 @@
     "description": "{count} is a styled number rendered as a React element, not plain text; {total} is a plain number."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.subtitle": {
-    "defaultMessage": "The subscription plans this API offers. Attaching a plan offers to attach the policies that enforce it. When you publish, you choose which of these plans each API Portal lists."
+    "defaultMessage": "The subscription plans this API offers. Attaching a plan offers to attach the policies it needs. When you publish, you choose which of these plans each API Portal lists."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.title": {
     "defaultMessage": "Usage Plans",

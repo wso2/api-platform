@@ -193,6 +193,108 @@ describe('UsagePlansPanel', () => {
     });
   });
 
+  describe('subscription-validation on the resources', () => {
+    const regional = aSubscriptionPlan({
+      conditions: [{ id: 'region', params: { policy: { name: 'region-guard', version: 'v1' } }, type: 'custom' }],
+      displayName: 'Regional',
+      id: 'regional',
+    });
+    const sv = (header: string) => ({
+      name: 'subscription-validation',
+      params: { subscriptionKeyHeader: header },
+      version: 'v1',
+    });
+    const op = (path: string, policies: { name: string; params: Record<string, unknown>; version: string }[]) => ({
+      name: path,
+      request: { method: 'GET' as const, path, policies },
+    });
+    beforeEach(() => server.use(collection('/subscription-plans', [regional])));
+
+    it('moves it to the API, listed as moved, and saves it once with its key header', async () => {
+      const updates = recorder();
+      const { api, user } = renderPanel({
+        operations: [op('/a', [sv('X-Key')]), op('/b', [{ name: 'cors', params: {}, version: 'v1' }, sv('X-Key')])],
+      });
+      server.use(accepts('put', '/rest-apis/:restApiId', api, { record: updates }));
+
+      await user.click(await boxOf('Regional'));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getAllByRole('listitem').map((item) => item.getAttribute('aria-label'))).toEqual([
+        'subscription-validation v1',
+        'region-guard v1',
+      ]);
+      expect(within(dialog).getAllByRole('listitem')[0]).toHaveTextContent('Moved from the API’s resources to the API');
+      expect(within(dialog).getAllByRole('listitem')[1]).not.toHaveTextContent('Moved');
+      await user.click(within(dialog).getByRole('button', { name: 'Attach policies' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      await user.click(await screen.findByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => expect(updates.count()).toBe(1));
+      const body = JSON.parse(updates.last()?.body ?? '{}') as {
+        operations: { request: { policies?: { name: string }[] } }[];
+        policies: { name: string; params?: unknown }[];
+      };
+      // Validation first, before the policy that reads it; the header the resources used is kept.
+      expect(body.policies.map((policy) => policy.name)).toEqual(['subscription-validation', 'cors', 'region-guard']);
+      expect(body.policies[0].params).toEqual({ subscriptionKeyHeader: 'X-Key' });
+      expect(body.operations.map((o) => (o.request.policies ?? []).map((policy) => policy.name))).toEqual([[], ['cors']]);
+    });
+
+    it('attaches nothing when only some resources have it, and points to the Policies page', async () => {
+      const { user } = renderPanel({ operations: [op('/a', [sv('X-Key')]), op('/b', [])] });
+
+      await user.click(await boxOf('Regional'));
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent('Attach the policies on the Policies page');
+      expect(dialog).toHaveTextContent('Only some of this API’s resources have Subscription Validation');
+      expect(within(dialog).getAllByRole('listitem').map((item) => item.getAttribute('aria-label'))).toEqual([
+        'region-guard v1',
+      ]);
+      await user.click(within(dialog).getByRole('button', { name: 'OK' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(await boxOf('Regional')).toBeChecked();
+      expect(await screen.findByText('You have not yet attached the following required policies:')).toBeInTheDocument();
+    });
+
+    it('attaches nothing when the resources configure it differently', async () => {
+      const updates = recorder();
+      const { api, user } = renderPanel({ operations: [op('/a', [sv('X-Key')]), op('/b', [sv('Y-Key')])] });
+      server.use(accepts('put', '/rest-apis/:restApiId', api, { record: updates }));
+
+      await user.click(await boxOf('Regional'));
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent('configure Subscription Validation differently');
+      await user.click(within(dialog).getByRole('button', { name: 'OK' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      await user.click(await screen.findByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => expect(updates.count()).toBe(1));
+      const body = JSON.parse(updates.last()?.body ?? '{}') as {
+        operations: { request: { policies?: { params?: unknown }[] } }[];
+        policies: { name: string }[];
+      };
+      expect(body.policies.map((policy) => policy.name)).toEqual(['cors']);
+      expect(body.operations.map((o) => o.request.policies?.[0]?.params)).toEqual([
+        { subscriptionKeyHeader: 'X-Key' },
+        { subscriptionKeyHeader: 'Y-Key' },
+      ]);
+    });
+
+    it('leaves the resources alone when the API already has it', async () => {
+      const { user } = renderPanel({
+        operations: [op('/a', [sv('X-Key')])],
+        policies: [sv('Subscription-Key')],
+      });
+
+      await user.click(await boxOf('Regional'));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getAllByRole('listitem').map((item) => item.getAttribute('aria-label'))).toEqual([
+        'region-guard v1',
+      ]);
+      expect(dialog).not.toHaveTextContent('Moved');
+    });
+  });
+
   it('cannot change a gateway-owned API', async () => {
     renderPanel({ readOnly: true });
     expect(await boxOf('Gold')).toBeDisabled();

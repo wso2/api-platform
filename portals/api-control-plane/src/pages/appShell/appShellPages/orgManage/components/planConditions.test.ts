@@ -28,6 +28,7 @@ import {
   newCondition,
   newPair,
   newWindow,
+  exactJsonNumbers,
   parseValue,
   type ConditionDraft,
 } from './planConditions';
@@ -215,6 +216,27 @@ describe('parseValue', () => {
     expect(parseValue('1.25')).toBe(1.25);
     expect(parseValue('{"id":12345678901234567890}')).toBe('{"id":12345678901234567890}');
     expect(parseValue('{"limit":50}')).toEqual({ limit: 50 });
+  });
+
+  it('keeps a number that underflows to 0 or overflows as text', () => {
+    const tiny = `0.${'0'.repeat(399)}1`;
+    expect(parseValue(tiny)).toBe(tiny);
+    expect(parseValue('{"limit":1e-400}')).toBe('{"limit":1e-400}');
+    expect(parseValue('{"limit":1e400}')).toBe('{"limit":1e400}');
+    expect(parseValue('[1.2345678901234567]')).toBe('[1.2345678901234567]');
+    // Zero and ordinary numbers still convert.
+    expect(parseValue('0')).toBe(0);
+    expect(parseValue('0.0')).toBe(0);
+    expect(parseValue('{"a":0,"b":-2.5,"c":1e3,"d":[0.25]}')).toEqual({ a: 0, b: -2.5, c: 1000, d: [0.25] });
+  });
+
+  it('checks every number in the JSON text itself, whatever the engine gives back', () => {
+    expect(exactJsonNumbers('{"a":1,"b":[2.5,-3e2]}')).toBe(true);
+    expect(exactJsonNumbers('{"a":1e-400}')).toBe(false);
+    expect(exactJsonNumbers('{"a":12345678901234567890}')).toBe(false);
+    // Digits inside strings, escaped quotes included, are not numbers.
+    expect(exactJsonNumbers('{"id":"12345678901234567890","q":"a\\"1e-400"}')).toBe(true);
+    expect(parseValue('{"id":"12345678901234567890"}')).toEqual({ id: '12345678901234567890' });
   });
 });
 

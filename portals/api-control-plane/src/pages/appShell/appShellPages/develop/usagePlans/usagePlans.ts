@@ -125,9 +125,10 @@ export const missingPolicies = (
   plans.length === 0 ? [] : requiredPolicies(plans, kind).filter((name) => !attachment.attached.has(name));
 
 /**
- * `policies` with the policies of `keys` added, each once: two keys for the same policy (a custom
- * condition naming `subscription-validation@v1` next to the built-in `subscription-validation`) add
- * it once, with the first key's defaults. subscription-validation goes before the first attached
+ * `policies` with the policies of `keys` added, each once: two keys for the same policy at the same
+ * major version (a custom condition naming `subscription-validation@v1` next to the built-in
+ * `subscription-validation`) add it once, with the first key's defaults; different major versions
+ * (`region-guard@v1` and `region-guard@v2`) are different policies and are both added. subscription-validation goes before the first attached
  * policy in `dependents` (the policies the plans need, which read what it records); the others are
  * added at the end, in order.
  */
@@ -137,13 +138,14 @@ export const withPoliciesAdded = (
   dependents: readonly string[] = [],
 ): Policy[] => {
   const present = keysOf(policies);
-  const addedNames = new Set<string>();
+  const addedIdentities = new Set<string>();
   const added: Policy[] = [];
   for (const key of keys) {
     if (present.has(key)) continue;
     const policy = defaultPolicy(key);
-    if (addedNames.has(policy.name)) continue;
-    addedNames.add(policy.name);
+    const identity = policyKey(policy.name, policy.version || 'v1');
+    if (addedIdentities.has(identity) || present.has(identity)) continue;
+    addedIdentities.add(identity);
     added.push(policy);
   }
   const validation = added.find((policy) => policy.name === SUBSCRIPTION_VALIDATION);
@@ -171,13 +173,56 @@ export const validationToMove = (
   operations: readonly OperationPolicies[],
   names: readonly string[],
 ): Policy | null => {
+  const move = validationMove(apiPolicies, operations, names);
+  return move?.kind === 'move' ? move.policy : null;
+};
+
+/** A policy's version and parameters, with object keys sorted, to compare two configurations. */
+const configOf = (policy: Policy): string => {
+  const sorted = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(sorted)
+      : value && typeof value === 'object'
+        ? Object.fromEntries(
+            Object.keys(value as object)
+              .sort()
+              .map((key) => [key, sorted((value as Record<string, unknown>)[key])]),
+          )
+        : value;
+  return JSON.stringify([policy.version || 'v1', sorted(policy.params ?? {})]);
+};
+
+/**
+ * What happens to an operation-level subscription-validation when plan policies (`names`) are
+ * attached at API level:
+ * - `move`: it is on every operation, configured the same way: it moves to API level as it was;
+ * - `partial`: it is on some operations only: moving it would check every request, so nothing moves
+ *   and the plan policies are attached on the Policies page instead;
+ * - `differs`: the operations configure it differently (key header, version): one API-level copy
+ *   would lose the others, so nothing moves either.
+ * Null when it is already at API level, on no operation, or nothing that depends on it is attached.
+ */
+export type ValidationMove =
+  | { kind: 'move'; policy: Policy }
+  | { kind: 'partial' }
+  | { kind: 'differs' }
+  | null;
+
+export const validationMove = (
+  apiPolicies: readonly Policy[],
+  operations: readonly OperationPolicies[],
+  names: readonly string[],
+): ValidationMove => {
   if (apiPolicies.some((policy) => policy.name === SUBSCRIPTION_VALIDATION)) return null;
   if (!names.some((key) => parsePolicyKey(key).name !== SUBSCRIPTION_VALIDATION)) return null;
-  for (const operation of operations) {
-    const found = operation.policies?.find((policy) => policy.name === SUBSCRIPTION_VALIDATION);
-    if (found) return found;
-  }
-  return null;
+  const found = operations.map((operation) =>
+    operation.policies?.find((policy) => policy.name === SUBSCRIPTION_VALIDATION),
+  );
+  const present = found.filter((policy): policy is Policy => Boolean(policy));
+  if (present.length === 0) return null;
+  if (present.length < operations.length) return { kind: 'partial' };
+  if (new Set(present.map(configOf)).size > 1) return { kind: 'differs' };
+  return { kind: 'move', policy: present[0] };
 };
 
 /** `operations` without subscription-validation, once it has moved to API level. */
