@@ -331,9 +331,39 @@ func (s *Steps) assertAPIResponse(ctx context.Context, post int) error {
 	return nil
 }
 
-var approvedCloudDataPlaneHost = regexp.MustCompile(
-	`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.gateway(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.wso2\.com$`,
-)
+// cloudDataPlaneDomainsEnv lists the comma-separated domains gateway hosts may sit under, in
+// place of wso2.com.
+const cloudDataPlaneDomainsEnv = "CLOUD_IT_DATA_PLANE_DOMAINS"
+
+const defaultCloudDataPlaneDomain = "wso2.com"
+
+const dnsLabelPattern = `[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?`
+
+// validCloudDataPlaneDomain needs two labels or more, so a bare TLD is refused.
+var validCloudDataPlaneDomain = regexp.MustCompile(`^` + dnsLabelPattern + `(?:\.` + dnsLabelPattern + `)+$`)
+
+// approvedCloudDataPlaneHost matches <label>.gateway[.<label>...].<approved domain>.
+func approvedCloudDataPlaneHost() (*regexp.Regexp, error) {
+	raw := strings.TrimSpace(os.Getenv(cloudDataPlaneDomainsEnv))
+	if raw == "" {
+		raw = defaultCloudDataPlaneDomain
+	}
+	var domains []string
+	for _, domain := range strings.Split(raw, ",") {
+		domain = strings.ToLower(strings.TrimSpace(domain))
+		if domain == "" {
+			continue
+		}
+		if !validCloudDataPlaneDomain.MatchString(domain) {
+			return nil, fmt.Errorf("%s holds %q, which is not a domain of two labels or more", cloudDataPlaneDomainsEnv, domain)
+		}
+		domains = append(domains, regexp.QuoteMeta(domain))
+	}
+	if len(domains) == 0 {
+		return nil, fmt.Errorf("%s holds no domain", cloudDataPlaneDomainsEnv)
+	}
+	return regexp.Compile(`^` + dnsLabelPattern + `\.gateway(?:\.` + dnsLabelPattern + `)*\.(?:` + strings.Join(domains, "|") + `)$`)
+}
 
 // cloudLocalDataPlaneEnv, when set to a true value, also approves gateway URLs on a .localhost
 // host over http or https and any port: the data plane of a cloud that runs on the developer's
@@ -419,7 +449,11 @@ func resolveCloudDataPlaneURL(_ context.Context, target string) (string, error) 
 	if parsed.Port() != "" && parsed.Port() != "443" {
 		return "", fmt.Errorf("cloud data-plane target has an unapproved port %q", target)
 	}
-	if !approvedCloudDataPlaneHost.MatchString(host) {
+	approvedHost, err := approvedCloudDataPlaneHost()
+	if err != nil {
+		return "", err
+	}
+	if !approvedHost.MatchString(host) {
 		return "", fmt.Errorf("cloud data-plane target has an unapproved destination %q", target)
 	}
 	return target, nil

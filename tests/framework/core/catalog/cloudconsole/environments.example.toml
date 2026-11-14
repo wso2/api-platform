@@ -4,6 +4,8 @@
 [environments.development]
 cloud_base_domain = "development.example"
 
+# Gateways outside wso2.com: set CLOUD_IT_DATA_PLANE_DOMAINS to their domains, comma-separated.
+
 # A cloud that runs on the developer's machine. platform_api_endpoint replaces the endpoint
 # derived from cloud_base_domain; plain http is accepted only on a .localhost host. Run the
 # suite with -cloud-env=local and CLOUD_IT_LOCAL_DATA_PLANE=true so the gateway URLs the

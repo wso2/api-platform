@@ -100,6 +100,61 @@ func TestResolveCloudDataPlaneURLRequiresHTTPSAndApproval(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestResolveCloudDataPlaneURLApprovesConfiguredDomains(t *testing.T) {
+	const wso2Gateway = "https://abc-gw-p1.gateway.dp.dev.cloud.wso2.com/api"
+	const stageGateway = "https://abc-gw-p1.gateway.dp.stage.example/api"
+	t.Run("unset approves wso2.com only", func(t *testing.T) {
+		_, err := resolveCloudDataPlaneURL(context.Background(), wso2Gateway)
+		require.NoError(t, err)
+		_, err = resolveCloudDataPlaneURL(context.Background(), stageGateway)
+		require.Error(t, err)
+	})
+	t.Run("blank keeps the default", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, "  ")
+		_, err := resolveCloudDataPlaneURL(context.Background(), wso2Gateway)
+		require.NoError(t, err)
+	})
+	t.Run("a configured domain replaces the default", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, "stage.example")
+		for _, target := range []string{stageGateway, "https://gw.gateway.stage.example/api"} {
+			got, err := resolveCloudDataPlaneURL(context.Background(), target)
+			require.NoError(t, err, target)
+			require.Equal(t, target, got)
+		}
+		_, err := resolveCloudDataPlaneURL(context.Background(), wso2Gateway)
+		require.Error(t, err)
+	})
+	t.Run("a configured domain still needs a gateway host on a label boundary", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, "stage.example")
+		for _, target := range []string{
+			"https://stage.example/api",
+			"https://abc.stage.example/api",
+			"https://abc.gateway.notstage.example/api",
+			"https://abc.gateway.stage.example.evil.test/api",
+			"https://abc.gateway.stage.example:8443/api",
+			"http://abc.gateway.stage.example/api",
+		} {
+			_, err := resolveCloudDataPlaneURL(context.Background(), target)
+			require.Error(t, err, target)
+		}
+	})
+	t.Run("several domains, case and spaces normalised", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, " WSO2.com , stage.example,")
+		for _, target := range []string{wso2Gateway, stageGateway} {
+			_, err := resolveCloudDataPlaneURL(context.Background(), target)
+			require.NoError(t, err, target)
+		}
+	})
+	t.Run("an invalid domain fails closed", func(t *testing.T) {
+		for _, value := range []string{"example", "*.stage.example", ".stage.example", "stage..example", "stage example", "https://stage.example", ","} {
+			t.Setenv(cloudDataPlaneDomainsEnv, value)
+			_, err := resolveCloudDataPlaneURL(context.Background(), stageGateway)
+			require.Error(t, err, value)
+			require.Contains(t, err.Error(), cloudDataPlaneDomainsEnv, value)
+		}
+	})
+}
+
 func TestFirstApprovedDataPlaneEndpointSkipsInvalidCandidates(t *testing.T) {
 	steps := &Steps{dataPlaneURLResolver: func(_ context.Context, target string) (string, error) {
 		if target == "https://unapproved.example.com" {
