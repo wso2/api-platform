@@ -1563,7 +1563,8 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	// has run before the route's own response policies see the body (FR-037h). A response is
 	// unwrapped in the order opposite to the one that wrapped it, and the upstream chain
 	// wrapped it last.
-	if err := ec.unwindServingUpstreamChain(ctx); err != nil {
+	unwindResult, err := ec.unwindServingUpstreamChain(ctx)
+	if err != nil {
 		return ec.handlePolicyError(ctx, err, "response_headers_upstream_unwind"), nil
 	}
 
@@ -1579,6 +1580,15 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	)
 	if err != nil {
 		return ec.handlePolicyError(ctx, err, "response_headers"), nil
+	}
+
+	// The unwound chain's results lead, so the provider's own response work is applied
+	// before the route's — the head position FR-037h asks for — and a route-level policy
+	// setting the same header still wins, because translation applies ops in order.
+	if unwindResult != nil && len(unwindResult.Results) > 0 {
+		execResult.Results = append(append(
+			make([]executor.ResponseHeaderPolicyResult, 0, len(unwindResult.Results)+len(execResult.Results)),
+			unwindResult.Results...), execResult.Results...)
 	}
 
 	// Propagate header mutations into the shared in-memory context so that body-phase

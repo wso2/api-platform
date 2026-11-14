@@ -19,6 +19,8 @@ package kernel
 import (
 	"context"
 	"log/slog"
+
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
 )
 
 // unwindServingUpstreamChain runs the serving attempt's upstream chain in REVERSE at the head of
@@ -45,18 +47,20 @@ import (
 //
 // Reverse order is what the executor already does; this only has to run it first, so the chain
 // unwraps in the order opposite to the one that wrapped it.
-func (ec *PolicyExecutionContext) unwindServingUpstreamChain(ctx context.Context) error {
+func (ec *PolicyExecutionContext) unwindServingUpstreamChain(
+	ctx context.Context,
+) (*executor.ResponseHeaderExecutionResult, error) {
 	cluster, ok := ec.server.baselines.ServingCluster(ec.requestID)
 	if !ok {
 		// No attempt reached the upstream position for this request: the API attaches no
 		// per-attempt work, or the entry expired. Nothing wrapped the request, so nothing
 		// needs unwrapping — the ordinary case for every API without failover.
-		return nil
+		return nil, nil
 	}
 
 	chain := ec.server.kernel.UpstreamChainForCluster(cluster)
 	if chain == nil || len(chain.Policies) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	slog.DebugContext(ctx, "unwinding the serving attempt's upstream chain",
@@ -65,7 +69,13 @@ func (ec *PolicyExecutionContext) unwindServingUpstreamChain(ctx context.Context
 	// Executed with the UPSTREAM chain's own key, not the route's. These instances were built
 	// for that chain and resolve their own per-chain state through it; handing them the route
 	// key would silently point them at a different one.
-	_, err := ec.server.executor.ExecuteResponseHeaderPolicies(
+	// The result is RETURNED, not discarded. A policy's header mutation only reaches the
+	// client through TranslateResponseHeaderActions, which builds its mutation list from
+	// these Results alone — it never re-reads responseHeaderCtx. Dropping the result here
+	// ran set-headers (and a transformer's reverse half) and then silently threw the
+	// outcome away, which is how an unwound header went missing from the response while
+	// every log line said the chain had executed.
+	return ec.server.executor.ExecuteResponseHeaderPolicies(
 		ctx,
 		chain.Policies,
 		ec.responseHeaderCtx,
@@ -74,5 +84,4 @@ func (ec *PolicyExecutionContext) unwindServingUpstreamChain(ctx context.Context
 		UpstreamChainKey(cluster),
 		false,
 	)
-	return err
 }
