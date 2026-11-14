@@ -1,5 +1,5 @@
 -- SQLite Schema for Gateway-Controller API Configurations
--- Version: 6
+-- Version: 7
 
 -- Base table for all artifact types (REST APIs, WebSub APIs, LLM Providers, LLM Proxies, MCP Proxies, Agents)
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -243,6 +243,8 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     stop_on_quota_reach INTEGER DEFAULT 1,
     throttle_limit_count INTEGER,
     throttle_limit_unit TEXT,
+    -- The plan's conditions as a JSON array; NULL for a plan synced before conditions.
+    conditions TEXT,
     expiry_time TIMESTAMP,
     status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'INACTIVE')) DEFAULT 'ACTIVE',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -336,4 +338,4 @@ CREATE TABLE IF NOT EXISTS secrets (
 -- Note: webhook_secrets (per-API HMAC secrets for the websub-hmac-auth policy)
 -- is also owned by event-gateway/gateway-controller/pkg/dbschema — see note above.
 
-PRAGMA user_version = 6;
+PRAGMA user_version = 7;

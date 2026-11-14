@@ -935,7 +935,7 @@ func (c *Client) syncSubscriptionPlans(gatewayID string) {
 }
 
 // syncSubscriptionsForExistingAPIs performs a one-time bulk sync of subscriptions
-// for all REST APIs persisted in the local DB after the WebSocket connection is
+// for all REST APIs and MCP proxies persisted in the local DB after the WebSocket connection is
 // established. Enumeration uses the DB (not the in-memory config store) so bulk
 // sync still runs when EventHub is enabled: deployment sync writes rows to the DB
 // before the EventListener updates the store.
@@ -958,16 +958,22 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 
 	resourceService := c.getSubscriptionResourceService()
 
-	restCfgs, err := c.db.GetAllConfigsByKind(models.KindRestApi)
-	if err != nil {
-		c.logger.Warn("Failed to list REST APIs from DB for subscription bulk sync",
-			slog.String("gateway_id", gatewayID),
-			slog.Any("error", err),
-		)
-		return
+	// A kind that can't be listed is skipped, so the other kind still syncs.
+	var subscribableCfgs []*models.StoredConfig
+	for _, kind := range []string{models.KindRestApi, models.KindMcp} {
+		cfgs, err := c.db.GetAllConfigsByKind(kind)
+		if err != nil {
+			c.logger.Warn("Failed to list APIs from DB for subscription bulk sync",
+				slog.String("gateway_id", gatewayID),
+				slog.String("kind", kind),
+				slog.Any("error", err),
+			)
+			continue
+		}
+		subscribableCfgs = append(subscribableCfgs, cfgs...)
 	}
 
-	for _, cfg := range restCfgs {
+	for _, cfg := range subscribableCfgs {
 		// Abort promptly if the client is shutting down.
 		select {
 		case <-c.ctx.Done():
@@ -4427,6 +4433,7 @@ func (c *Client) handleSubscriptionPlanCreatedEvent(event map[string]interface{}
 		ThrottleLimitUnit:  throttleLimitUnit,
 		ExpiryTime:         payload.ExpiryTime,
 		Status:             models.SubscriptionPlanStatus(payload.Status),
+		Conditions:         payload.Conditions,
 	}
 
 	if err := resourceService.UpsertSubscriptionPlan(plan, "CREATE", created.CorrelationID, logger); err != nil {
@@ -4488,6 +4495,9 @@ func (c *Client) handleSubscriptionPlanUpdatedEvent(event map[string]interface{}
 	if payload.Status != "" {
 		existing.Status = models.SubscriptionPlanStatus(payload.Status)
 	}
+	// A control plane that predates conditions sends none: the plan is then held by its throttle
+	// limit alone, as the event's other fields describe it.
+	existing.Conditions = payload.Conditions
 
 	if err := resourceService.UpdateSubscriptionPlan(existing, updated.CorrelationID, logger); err != nil {
 		logger.Error("Failed to update subscription plan from subscriptionPlan.updated event",

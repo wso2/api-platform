@@ -1,5 +1,5 @@
 -- PostgreSQL Schema for Gateway-Controller API Configurations
--- Version: 6
+-- Version: 7
 
 -- Base table for all artifact types
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -187,6 +187,8 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     stop_on_quota_reach BOOLEAN DEFAULT TRUE,
     throttle_limit_count INTEGER,
     throttle_limit_unit TEXT,
+    -- The plan's conditions as a JSON array; NULL for a plan synced before conditions.
+    conditions TEXT,
     expiry_time TIMESTAMPTZ,
     status TEXT NOT NULL CHECK(status IN ('ACTIVE', 'INACTIVE')) DEFAULT 'ACTIVE',
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -194,6 +196,8 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
     PRIMARY KEY (gateway_id, uuid),
     UNIQUE(gateway_id, plan_name)
 );
+-- Adds the column to databases created by earlier releases.
+ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS conditions TEXT;
 
 -- Subscriptions table (application-level subscriptions for REST APIs, even before deployment)
 -- subscription_token_hash: for xDS validation and request validation (Platform-API stores original token)

@@ -24,7 +24,7 @@ require (
 	github.com/wso2/api-platform/common v0.0.0
 	github.com/wso2/api-platform/gateway/common v0.0.0
 	github.com/wso2/api-platform/httpkit v0.0.0-local
-	github.com/wso2/api-platform/sdk/core v0.2.18
+	github.com/wso2/api-platform/sdk/core v0.5.2
 	github.com/xeipuuv/gojsonschema v1.2.0
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
