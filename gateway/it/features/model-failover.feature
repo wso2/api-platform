@@ -1,0 +1,2997 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+@model-failover
+Feature: Automatic fallback to a healthy model
+  The acceptance scenarios of User Story 1. `failover-core.feature` already covers
+  the single rescue and the untouched-success cases; this file carries the ones it
+  does not — a chain deeper than two, and the guarantee that a rescue is invisible
+  to the client.
+
+  A dead target is produced by pointing a provider's upstream at a host that does
+  not resolve. On an LlmProxy that works because each provider sits behind a
+  loopback cluster which is always healthy: the DNS failure happens on the
+  provider's own inner route and reaches the proxy as an ordinary upstream 503,
+  which is retriable. On a DIRECT upstream there is no second hop and the same
+  failure is terminal (poc-results.md).
+
+  Background:
+    Given the gateway services are running
+    And I authenticate using basic auth as "admin"
+
+  # ====================================================================
+  # US1 SCENARIO 3 — a chain deeper than two
+  # ====================================================================
+
+  Scenario: Two failing targets in a row are both passed over
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-dead-first-provider
+      spec:
+        displayName: MF Dead First
+        version: v1.0
+        template: openai
+        context: /mf-dead-first-ctx
+        upstream:
+          url: http://mf-nonexistent-first:9080/dead-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-dead-second-provider
+      spec:
+        displayName: MF Dead Second
+        version: v1.0
+        template: openai
+        context: /mf-dead-second-ctx
+        upstream:
+          url: http://mf-nonexistent-second:9080/dead-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-third-provider
+      spec:
+        displayName: MF Third
+        version: v1.0
+        template: openai
+        context: /mf-third-ctx
+        upstream:
+          url: http://sample-backend:9080/third-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # Three targets in declared order. The first two cannot answer, so only a chain
+    # that keeps walking past a SECOND failure reaches the third.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-deep-proxy
+      spec:
+        displayName: MF Deep Proxy
+        version: v1.0
+        context: /mf-deep-proxy
+        provider:
+          id: mf-dead-first-provider
+        additionalProviders:
+          - id: mf-dead-second-provider
+            as: second
+          - id: mf-third-provider
+            as: third
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: second
+                        - model: command-r
+                          provider: third
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # THREE attempts, and the third target's response. A count of 2 would mean the
+    # chain gave up after one failure; a 503 would mean it never reached the third.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-deep-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/third-upstream"
+    And the response header "x-envoy-attempt-count" should be "3"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-deep-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-dead-first-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-dead-second-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-third-provider"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # FR-012g — a rescue is invisible to the client
+  # ====================================================================
+
+  Scenario: A rescued request leaks nothing about the attempt that failed
+    # The client asked one question and got one answer. Everything the gateway did
+    # to produce it -- which provider it tried first, how it steered the retry --
+    # is internal, and a response that carries traces of it turns an implementation
+    # detail into something a client can come to depend on.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-quiet-dead-provider
+      spec:
+        displayName: MF Quiet Dead
+        version: v1.0
+        template: openai
+        context: /mf-quiet-dead-ctx
+        upstream:
+          url: http://mf-quiet-nonexistent:9080/dead-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-quiet-alive-provider
+      spec:
+        displayName: MF Quiet Alive
+        version: v1.0
+        template: openai
+        context: /mf-quiet-alive-ctx
+        upstream:
+          url: http://sample-backend:9080/quiet-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-quiet-proxy
+      spec:
+        displayName: MF Quiet Proxy
+        version: v1.0
+        context: /mf-quiet-proxy
+        provider:
+          id: mf-quiet-dead-provider
+        additionalProviders:
+          - id: mf-quiet-alive-provider
+            as: alive
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-quiet-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    # A rescue happened: two attempts, answered by the fallback.
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/quiet-upstream"
+
+    # The steering headers the gateway uses internally must not reach the client.
+    And the response header "x-target-upstream" should not exist
+    And the response header "x-wso2-internal-loopback" should not exist
+
+    # No trace of the target that failed, in a body the client is meant to read as
+    # an ordinary model response.
+    And the response body should not contain "mf-quiet-dead"
+    And the response body should not contain "dead-upstream"
+    # And no gateway-invented error text alongside the success it did return.
+    And the response body should not contain "no healthy upstream"
+    And the response body should not contain "upstream connect error"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-quiet-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-quiet-dead-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-quiet-alive-provider"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # US2 — the same model under two providers is two targets, not one
+  # ====================================================================
+
+  Scenario: The same model name under a second provider is reached with that provider's own endpoint
+    # A publisher running one model in two regions, or through two accounts, names
+    # the SAME model twice. If the gateway keyed a target on the model alone the
+    # second entry would be a duplicate of the first and the fallback would be a
+    # no-op -- the request would simply re-attempt the broken configuration.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-region-a-provider
+      spec:
+        displayName: MF Region A
+        version: v1.0
+        template: openai
+        context: /mf-region-a-ctx
+        upstream:
+          url: http://mf-region-a-nonexistent:9080/region-a
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-region-b-provider
+      spec:
+        displayName: MF Region B
+        version: v1.0
+        template: openai
+        context: /mf-region-b-ctx
+        upstream:
+          url: http://sample-backend:9080/region-b-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # Both targets name gpt-4o. Only the provider differs.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-same-model-proxy
+      spec:
+        displayName: MF Same Model Proxy
+        version: v1.0
+        context: /mf-same-model-proxy
+        provider:
+          id: mf-region-a-provider
+        additionalProviders:
+          - id: mf-region-b-provider
+            as: region-b
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: gpt-4o
+                          provider: region-b
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # Two attempts, and the response comes from region B's OWN endpoint. One attempt
+    # would mean the second entry was treated as a duplicate of the first and the
+    # chain had nowhere to go.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-same-model-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/region-b-upstream"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-same-model-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-region-a-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-region-b-provider"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # US4 — a target that keeps failing is taken out of rotation
+  # ====================================================================
+
+  Scenario: A suspended target stops being attempted on later requests
+    # Failing over rescues ONE request. Suspension is what stops every request
+    # after it paying the same failed attempt first: without it, a provider that
+    # is down for an hour costs a wasted attempt on every single request for that
+    # hour, and the latency of that attempt is charged to the client each time.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-susp-dead-provider
+      spec:
+        displayName: MF Suspend Dead
+        version: v1.0
+        template: openai
+        context: /mf-susp-dead-ctx
+        upstream:
+          url: http://mf-susp-nonexistent:9080/dead-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-susp-alive-provider
+      spec:
+        displayName: MF Suspend Alive
+        version: v1.0
+        template: openai
+        context: /mf-susp-alive-ctx
+        upstream:
+          url: http://sample-backend:9080/susp-alive-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # One failure suspends, for long enough that the window cannot expire during
+    # the scenario and make a pass look like a pass for the wrong reason.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-suspend-proxy
+      spec:
+        displayName: MF Suspend Proxy
+        version: v1.0
+        context: /mf-suspend-proxy
+        provider:
+          id: mf-susp-dead-provider
+        additionalProviders:
+          - id: mf-susp-alive-provider
+            as: alive
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 300
+                  suspendAfterFailures: 1
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # Request 1 pays the failed attempt and is rescued. That failure suspends the
+    # leading target.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-suspend-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/susp-alive-upstream"
+
+    # Request 2 does NOT pay it. The suspended target is skipped where the chain is
+    # resolved, so the request leads with the healthy one and takes ONE attempt.
+    #
+    # This single number is the whole scenario. A count of 2 would mean the
+    # suspension was recorded but ignored -- the client still gets a 200 either
+    # way, so the status code cannot tell the two apart. It also proves a skip
+    # costs no attempt: were skips to consume the budget, a chain of mostly
+    # suspended targets would exhaust itself stepping over dead entries.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-suspend-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+    And the response body should contain "/susp-alive-upstream"
+
+    # And it stays out: a third request is served the same way, not re-probed.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-suspend-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-suspend-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-susp-dead-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-susp-alive-provider"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # US4 — a suspension expires, and the target is tried again
+  # ====================================================================
+
+  Scenario: A suspension expires and the target is admitted as a probe
+    # Suspension has to be temporary. A target taken out permanently on one bad
+    # minute never comes back, and a publisher who configured three providers ends
+    # up running on one with no indication why.
+    #
+    # The probe here FAILS -- the target is still dead -- and that is deliberate.
+    # What this scenario pins is the re-admission, which is observable on its own:
+    # the attempt count going back up proves the target re-entered the chain. A
+    # scenario that also needed the probe to succeed would have to mutate a
+    # provider mid-run and would be testing two things at once.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-expire-dead-provider
+      spec:
+        displayName: MF Expire Dead
+        version: v1.0
+        template: openai
+        context: /mf-expire-dead-ctx
+        upstream:
+          url: http://mf-expire-nonexistent:9080/dead-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-expire-alive-provider
+      spec:
+        displayName: MF Expire Alive
+        version: v1.0
+        template: openai
+        context: /mf-expire-alive-ctx
+        upstream:
+          url: http://sample-backend:9080/expire-alive-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # A short window, so it can expire inside one scenario.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-expire-proxy
+      spec:
+        displayName: MF Expire Proxy
+        version: v1.0
+        context: /mf-expire-proxy
+        provider:
+          id: mf-expire-dead-provider
+        additionalProviders:
+          - id: mf-expire-alive-provider
+            as: alive
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 5
+                  suspendAfterFailures: 1
+                  maxSuspendMultiplier: 1
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # The failure that suspends it.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-expire-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+
+    # Immediately after: suspended, so it is skipped and one attempt suffices.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-expire-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+
+    # Past the window. maxSuspendMultiplier is 1, so the re-suspension that the
+    # failed probe causes lasts the same 5s rather than doubling -- without that
+    # the timing of this scenario would depend on the escalation ladder.
+    When I wait for 8 seconds
+    And I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-expire-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    # Two attempts again: the target was re-admitted and tried. Had the suspension
+    # been permanent this would still read 1, with the client none the wiser.
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/expire-alive-upstream"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-expire-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-expire-dead-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-expire-alive-provider"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # US3 — a fallback on another vendor is adapted to that vendor
+  # ====================================================================
+
+  Scenario: A cross-vendor fallback is sent that vendor's format and credential
+    # This is the scenario the per-attempt chain exists for. A fallback on another
+    # vendor needs a DIFFERENT request: different path, different body shape,
+    # different auth header. Adapting once downstream cannot work, because the
+    # downstream chain runs before any target is chosen -- it would have to guess,
+    # and either guess breaks one of the two attempts.
+    #
+    # The upstream here is an echo backend, so what it reports IS what the vendor
+    # would have received.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-vendor-x-provider
+      spec:
+        displayName: MF Vendor X
+        version: v1.0
+        template: openai
+        context: /mf-vendor-x-ctx
+        upstream:
+          url: http://mf-vendor-x-nonexistent:9080/vendor-x
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-vendor-y-provider
+      spec:
+        displayName: MF Vendor Y
+        version: v1.0
+        template: openai
+        context: /mf-vendor-y-ctx
+        upstream:
+          url: http://sample-backend:9080/vendor-y-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # Vendor Y carries its own transformer and its own credential. Both are
+    # appended by the controller to that provider's per-attempt chain, the
+    # credential always last so no author-written policy can observe it.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-xvendor-proxy
+      spec:
+        displayName: MF Cross Vendor Proxy
+        version: v1.0
+        context: /mf-xvendor-proxy
+        provider:
+          id: mf-vendor-x-provider
+        additionalProviders:
+          - id: mf-vendor-y-provider
+            as: vendor-y
+            auth:
+              type: api-key
+              header: x-api-key
+              value: mf-xvendor-credential
+            transformer:
+              type: openai-to-anthropic-transformer
+              version: v0
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: vendor-y
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # The client sends OpenAI's shape and gets a success.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-xvendor-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+
+    # The transformer rewrote the PATH for the second vendor. /chat/completions
+    # reaching vendor Y would mean no adaptation happened.
+    And the response body should contain "/vendor-y-upstream/v1/messages"
+
+    # And the BODY: max_tokens is required by the second vendor and has no
+    # equivalent in what the client sent, so its presence cannot come from the
+    # original request being forwarded unchanged.
+    And the response body should contain "max_tokens"
+    And the response body should contain "claude-sonnet-4-5-20250929"
+
+    # And the credential for THAT provider, applied on the attempt that reached it.
+    And the response body should contain "mf-xvendor-credential"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-xvendor-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-vendor-x-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-vendor-y-provider"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # FR-041/FR-042 — a per-attempt chain runs ONLY on its own target's attempt
+  # ====================================================================
+  #
+  # The scenario above proves the positive half: the attempt routed to vendor Y
+  # carried Y's transformer and Y's credential. That alone does not establish
+  # isolation -- a chain that ran on EVERY attempt would satisfy it just as well.
+  # This scenario asserts the negative half in both directions, which is where
+  # the security property actually lives:
+  #
+  #   1. a credential belonging to the attempt that FAILED must not travel to the
+  #      attempt that succeeds (FR-042), and
+  #   2. a provider configured on the proxy but not selected must not have its
+  #      chain run on somebody else's attempt (FR-041).
+  #
+  # Both failures are silent. The client gets its 200 either way, the transformer
+  # reports success either way, and the only trace is a credential sitting in a
+  # request body that a different vendor received -- which is to say, a key handed
+  # to a third party.
+  #
+  # Two chains on one proxy so both directions are reachable from one deployment:
+  # the first ends on vendor B after a dead first attempt, the second lands on the
+  # main provider and never touches B at all. The upstreams are echo backends, so
+  # what the response reports IS what that vendor received.
+
+  Scenario: A provider's credential and transformer reach only the attempt routed to it
+    # Dead on purpose, and credentialed on purpose: its chain RUNS (the credential
+    # is injected before the dial is attempted) and only then does the dial fail.
+    # That is exactly the state from which a leak into attempt 2 could happen.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-perattempt-dead-provider
+      spec:
+        displayName: MF Per-Attempt Dead
+        version: v1.0
+        template: openai
+        context: /mf-perattempt-dead-ctx
+        upstream:
+          url: http://mf-perattempt-nonexistent:9080/perattempt-dead
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-perattempt-b-provider
+      spec:
+        displayName: MF Per-Attempt Vendor B
+        version: v1.0
+        template: openai
+        context: /mf-perattempt-b-ctx
+        upstream:
+          url: http://sample-backend:9080/perattempt-b-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-perattempt-c-provider
+      spec:
+        displayName: MF Per-Attempt Vendor C
+        version: v1.0
+        template: openai
+        context: /mf-perattempt-c-ctx
+        upstream:
+          url: http://sample-backend:9080/perattempt-c-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # Vendor C is the proxy's main provider and carries NO transformer and no
+    # credential of its own, so anything vendor-specific appearing in what C
+    # received came from a chain that had no business running.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-perattempt-proxy
+      spec:
+        displayName: MF Per-Attempt Isolation Proxy
+        version: v1.0
+        context: /mf-perattempt-proxy
+        provider:
+          id: mf-perattempt-c-provider
+        additionalProviders:
+          - id: mf-perattempt-dead-provider
+            as: dead-vendor
+            auth:
+              type: api-key
+              header: x-dead-key
+              value: mf-perattempt-dead-credential
+          - id: mf-perattempt-b-provider
+            as: vendor-b
+            auth:
+              type: api-key
+              header: x-api-key
+              value: mf-perattempt-b-credential
+            transformer:
+              type: openai-to-anthropic-transformer
+              version: v0
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      provider: dead-vendor
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: vendor-b
+                    - model: gpt-4o-mini
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # --- Direction 1: the failed attempt's credential must not travel forward ---
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-perattempt-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    # Anchors: vendor B's own chain did run on the attempt routed to B. Without
+    # these the absence assertion below could pass on an empty or unreported body.
+    And the response body should contain "/perattempt-b-upstream/v1/messages"
+    And the response body should contain "mf-perattempt-b-credential"
+    # The claim. Attempt 1 had the dead vendor's key injected before its dial
+    # failed; attempt 2 must be built from the downstream request, not from what
+    # attempt 1 left behind. A failure here is one vendor's API key delivered to
+    # another vendor.
+    And the response body should not contain "mf-perattempt-dead-credential"
+
+    # --- Direction 2: an unselected provider's chain must not run at all ---
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-perattempt-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    # One attempt: this chain has no fallbacks, so the request ends on vendor C.
+    And the response should report one upstream attempt
+    # Anchor: C received the request, and in the client's original shape.
+    And the response body should contain "/perattempt-c-upstream/chat/completions"
+    # The claim. Vendor B is configured on this same proxy with a credential and a
+    # transformer, and neither may touch an attempt routed to C. The path assertion
+    # above already fails if B's transformer ran; these name the two artefacts
+    # directly so the reason is unambiguous.
+    And the response body should not contain "mf-perattempt-b-credential"
+    And the response body should not contain "/v1/messages"
+    And the response body should not contain "mf-perattempt-dead-credential"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-perattempt-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-perattempt-dead-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-perattempt-b-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-perattempt-c-provider"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # FR-030d — attaching failover to one API changes nothing for another
+  # ====================================================================
+
+  Scenario: An API without failover is untouched by one that has it, even sharing a provider
+    # Per-attempt chains are keyed by CLUSTER, and two APIs attaching the same
+    # provider reach it through API-scoped clusters. If that keying were wrong --
+    # if a chain were stored under a cluster name both APIs share -- one API's
+    # chain would run on the other's requests, and since a provider's credential
+    # is the last policy in that chain, API A's key would be applied to API B's
+    # request. This scenario is the check on that claim.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-iso-dead-provider
+      spec:
+        displayName: MF Isolation Dead
+        version: v1.0
+        template: openai
+        context: /mf-iso-dead-ctx
+        upstream:
+          url: http://mf-iso-nonexistent:9080/dead-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-iso-shared-provider
+      spec:
+        displayName: MF Isolation Shared
+        version: v1.0
+        template: openai
+        context: /mf-iso-shared-ctx
+        upstream:
+          url: http://sample-backend:9080/iso-shared-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # API A: failover attached, and it reaches the shared provider with ITS key.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-iso-a-proxy
+      spec:
+        displayName: MF Isolation A
+        version: v1.0
+        context: /mf-iso-a-proxy
+        provider:
+          id: mf-iso-dead-provider
+        additionalProviders:
+          - id: mf-iso-shared-provider
+            as: shared
+            auth:
+              type: api-key
+              header: x-api-key
+              value: mf-iso-a-credential
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: shared
+      """
+    Then the response status should be 201
+
+    # API B: the SAME provider, no failover at all, and a marker of its own set by
+    # an ordinary operation policy. A marker rather than a credential deliberately:
+    # primary-provider auth and additionalProviders auth do not reach the upstream
+    # by the same route, and this scenario is about chain isolation, not about
+    # characterising that difference.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-iso-b-proxy
+      spec:
+        displayName: MF Isolation B
+        version: v1.0
+        context: /mf-iso-b-proxy
+        provider:
+          id: mf-iso-shared-provider
+        operationPolicies:
+          - name: set-headers
+            version: v1
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  request:
+                    headers:
+                      - name: x-iso-b-marker
+                        value: mf-iso-b-marker
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # Drive API A first, so its per-attempt chain is live before B is observed.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-iso-a-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "mf-iso-a-credential"
+
+    # Now API B, through the same provider.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-iso-b-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/iso-shared-upstream"
+
+    # B's own configuration ran -- the marker its policy sets is on the request
+    # the backend received.
+    And the response body should contain "mf-iso-b-marker"
+
+    # And nothing of A's did. The echo backend reports what it actually received,
+    # so A's credential appearing on B's request would be a real leak between two
+    # APIs, applied by a chain that should never have run here.
+    And the response body should not contain "mf-iso-a-credential"
+
+    # B DOES carry x-envoy-attempt-count, and that is a known deviation rather
+    # than the intent. Envoy exposes include_attempt_count_in_response on a
+    # VirtualHost only -- there is no per-route equivalent -- so enabling it for
+    # A's routes enables it for every API sharing that vhost. B's responses gain
+    # an informational header it would not otherwise have.
+    #
+    # Asserted as it behaves, not as FR-030d words it, so the day someone scopes
+    # this properly this line fails and is updated deliberately. See
+    # poc-results.md, "The attempt-count header is virtual-host scoped".
+    And the response header "x-envoy-attempt-count" should be "1"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-iso-a-proxy"
+    Then the response should be successful
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-iso-b-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-iso-dead-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-iso-shared-provider"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # FR-012c — a body mutation survives into the attempt that serves
+  # ====================================================================
+
+  Scenario: PII redacted downstream stays redacted on the fallback attempt
+    # The downstream chain runs ONCE and the upstream chain runs per attempt. If
+    # the upstream position read a snapshot of the body taken before the
+    # downstream chain mutated it, the first attempt would carry redacted data and
+    # every retry would carry the ORIGINAL -- so a fallback provider receives the
+    # raw PII that was redacted precisely so it would not.
+    #
+    # That failure is silent. The client gets its 200 from the fallback either
+    # way, the redaction policy reports success either way, and the only place the
+    # difference exists is in the bytes the second provider received. So this
+    # asserts on those bytes, not on policy logs.
+    #
+    # Redaction rather than masking deliberately: masking restores the original
+    # value on the response, which would put the raw email back into what this
+    # scenario reads and hide the very thing it is looking for.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-pii-dead-provider
+      spec:
+        displayName: MF PII Dead
+        version: v1.0
+        template: openai
+        context: /mf-pii-dead-ctx
+        upstream:
+          url: http://mf-pii-nonexistent:9080/dead-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-pii-alive-provider
+      spec:
+        displayName: MF PII Alive
+        version: v1.0
+        template: openai
+        context: /mf-pii-alive-ctx
+        upstream:
+          url: http://sample-backend:9080/pii-alive-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # Redaction runs downstream, once. Failover walks the chain.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-pii-proxy
+      spec:
+        displayName: MF PII Proxy
+        version: v1.0
+        context: /mf-pii-proxy
+        provider:
+          id: mf-pii-dead-provider
+        additionalProviders:
+          - id: mf-pii-alive-provider
+            as: alive
+        operationPolicies:
+          - name: pii-masking-regex
+            version: v1
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  customPIIEntities:
+                    - piiEntity: "EMAIL"
+                      piiRegex: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+                  jsonPath: ""
+                  redactPII: true
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-pii-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "contact me at leak-probe@example.com please"}]}
+      """
+    # The first target failed and the SECOND served it.
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/pii-alive-upstream"
+
+    # THE assertion. This is the body the fallback provider received, echoed back.
+    # The raw address appearing here would mean the retry was built from a
+    # pre-redaction snapshot and the redaction was undone by the failover.
+    And the response body should not contain "leak-probe@example.com"
+
+    # And the body reached it INTACT, with only the address taken out. Without
+    # these two, the assertion above would pass just as well on an empty body or
+    # a dropped field -- proving the address was absent rather than that it was
+    # redacted from a body that otherwise arrived whole.
+    And the response body should contain "contact me at"
+    And the response body should contain "please"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-pii-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-pii-dead-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-pii-alive-provider"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # FR-030a — the same configuration works on a kind that is not an LlmProxy
+  # ====================================================================
+
+  Scenario: The same failover configuration behaves the same on a RestApi
+    # Applicability is decided by whether a target RESOLVES, not by a list of
+    # permitted kinds. On an LlmProxy a target's provider names an
+    # additionalProviders alias; on a RestApi it names an upstreamDefinition.
+    # Name them the same and the policy block is byte-for-byte identical. The
+    # `params` block below is literally the one the PII scenario above attaches
+    # to an LlmProxy; only the wrapper around it differs (`paths:` there,
+    # `operations[].policies` here), because that is each kind's own attachment
+    # schema and not part of the failover configuration.
+    #
+    # The dead upstream here REFUSES rather than failing DNS, and that difference
+    # is the point rather than an incidental choice. A RestApi has no loopback
+    # hop: Envoy answers an unresolvable host locally with no_healthy_upstream,
+    # which is terminal, and no failover occurs. On an LlmProxy the same name
+    # fails on the provider's inner route and returns a retriable 503. A refused
+    # connection is retriable on both, so it is the failure mode that lets one
+    # configuration be compared across the two kinds at all.
+    #
+    # The two definitions carry DIFFERENT basePaths deliberately. Selecting the
+    # fallback cluster and sending it the fallback's own base path are separate
+    # mechanisms: the first is Envoy's priority_group and was always kind-
+    # agnostic, the second runs in the per-attempt upstream filter chain. That
+    # chain used to be built for an LlmProxy only, so a RestApi fallback was
+    # reached but served on the PRIMARY's base path — a 200 from the wrong
+    # resource, with no error anywhere. Give both definitions the same basePath
+    # and this scenario passes either way, which is exactly why it must not.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-restapi-failover-v1.0
+      spec:
+        displayName: MF RestApi Failover
+        version: v1.0
+        context: /mf-restapi/$version
+        upstreamDefinitions:
+          - name: primary
+            basePath: /rest-dead-upstream
+            upstreams:
+              - url: http://sample-backend:9998
+          - name: alive
+            basePath: /rest-alive-upstream
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /chat/completions
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    # Identical outcome to the LlmProxy scenarios above: the first target refuses,
+    # the second answers, and the client sees one success after two attempts.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-restapi/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/rest-alive-upstream"
+
+    # Cleanup
+    When I delete the API "mf-restapi-failover-v1.0"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # FR-030b / FR-030e — a kind with no model concept
+  # ====================================================================
+
+  Scenario: Attached to a kind with no model concept, the policy deploys and does nothing
+    # An Mcp has no model concept at all, but it is transformed by the same
+    # RestAPITransformer as every other kind, so buildFailoverConfig genuinely
+    # runs here rather than being skipped by kind. Every member names a provider,
+    # and an Mcp has no upstreamDefinitions for one to resolve against, so every
+    # member is dropped and the whole config collapses to nil — no priority group,
+    # no retry policy, nothing on the virtual host.
+    #
+    # Naming a provider on the PRIMARY target is load-bearing. A bare `model:`
+    # with no provider resolves to the main upstream, which would leave a
+    # one-member chain — accepted and harmless, but not the inert case FR-030b
+    # describes. See TestBuildFailoverConfig_InertOnlyWhenNoMemberResolves.
+    When I deploy this MCP configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: Mcp
+      metadata:
+        name: mf-inert-mcp-v1.0
+      spec:
+        displayName: MF Inert MCP
+        version: v1.0
+        context: /mf-inert-mcp
+        specVersion: "2025-06-18"
+        upstream:
+          url: http://mcp-server-backend:3001/mcp
+        policies:
+          - name: model-failover
+            version: v0
+            params:
+              targets:
+                - model: gpt-4o
+                  provider: openai-primary
+                  fallbacks:
+                    - model: claude-sonnet-4-5-20250929
+                      provider: anthropic-secondary
+        tools: []
+        resources: []
+        prompts: []
+      """
+    # Accepted, not rejected: an unresolvable target must never block a deployment.
+    Then the response should be successful
+    And the response should be valid JSON
+    And the JSON response field "status" should be "success"
+    And I reset the analytics collector
+    And I wait for 2 seconds
+
+    # Behaves exactly as the same proxy does with NO policy attached. This is the
+    # identical call and identical expected answer as the policy-free MCP scenario
+    # in mcp_deploy.feature — that equivalence IS the requirement.
+    When I use the MCP Client to send an initialize request to "http://127.0.0.1:8080/mf-inert-mcp/mcp"
+    Then the response should be successful
+    When I use the MCP Client to send "add" tools/call request to "http://127.0.0.1:8080/mf-inert-mcp/mcp"
+    Then the response should be successful
+    And the JSON response field "result.content[0].text" should contain "The sum of 40 and 60 is 100."
+
+    # No failover configuration was generated. The header is added to a virtual
+    # host only when one of its routes actually fails over, so its absence is the
+    # direct observable for "no priority group exists" — and it is paired with the
+    # positive assertion above so the absence cannot pass vacuously on a request
+    # that never reached the gateway.
+    # A count, not an absence: the attempt-count header is virtual-host scoped, so
+    # requiring it to be missing asserts what else is deployed rather than that
+    # this policy stayed inert. See failover-core.feature and poc-results.md.
+    And the response should report one upstream attempt
+
+    # The request is recorded in analytics exactly as an unpolicied one is: an
+    # ordinary event, nothing added and nothing missing.
+    #
+    # Deliberately NOT asserted here: "the event carries no failover: keys". A
+    # probe established that failover telemetry does not reach the collector even
+    # when failover demonstrably happens (attempt-count 2, and the policy's own
+    # log line present), so that assertion cannot currently fail and would be
+    # pure false confidence. It belongs here once the analytics gap is closed —
+    # tracked as T091, which owns both the gap and this assertion.
+    When I wait 5 seconds for analytics to be published
+    Then the analytics collector should have received at least 1 event
+    When I send a GET request to the analytics collector events endpoint
+    Then the response should be successful
+    And the response body should contain "mf-inert-mcp"
+
+    # Cleanup
+    When I delete the MCP proxy "mf-inert-mcp-v1.0"
+    Then the response should be successful
+
+  # ====================================================================
+  # FR-013 — failover stops once the response has started
+  # ====================================================================
+
+  Scenario: A failure after the response has started is not failed over
+    # Both operations below carry byte-identical failover configuration, and
+    # that pairing is the whole point. /status/503 fails BEFORE any body, so it
+    # must fail over — it is the control proving failover is live on this API.
+    # /drip sends its headers in about 20ms and then streams for 10s, so the 2s
+    # route timeout cuts it mid-body: a failure AFTER the response started.
+    # Without the control, "no second attempt" on /drip would be indistinguishable
+    # from failover never having engaged here at all.
+    #
+    # Envoy cannot rescue the second case and should not try: a 200 that has
+    # already reached the client cannot be un-sent (envoyproxy/envoy#5876 — mid-
+    # stream retry is closed by design, not a gap). The client-visible result is
+    # a real 200 whose body stops early, which is what this asserts.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-stream-safety-v1.0
+      spec:
+        displayName: MF Stream Safety
+        version: v1.0
+        context: /mf-stream-safety/$version
+        upstreamDefinitions:
+          - name: primary
+            upstreams:
+              - url: http://echo-backend:80
+          - name: alive
+            basePath: /mf-stream-fallback
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: primary
+        resilience:
+          timeout: 2s
+        operations:
+          - method: GET
+            path: /status/503
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+          - method: GET
+            path: /drip
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response should be successful
+    And I wait for 6 seconds
+
+    # CONTROL — the 503 is in the headers, so nothing has been sent to the client
+    # yet and the attempt is retriable. Failover works on this API.
+    When I send a GET request to "http://localhost:8080/mf-stream-safety/v1.0/status/503"
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/mf-stream-fallback"
+    And the response body should not have been cut off
+
+    # SUBJECT — same configuration, same API, failure moved to after the headers.
+    When I send a GET request to "http://localhost:8080/mf-stream-safety/v1.0/drip?duration=10&numbytes=60" allowing a cut-off body
+    # The headers were real and already delivered — this is not an error response.
+    Then the response status code should be 200
+    # One attempt only: the fallback was never reached.
+    And the response header "x-envoy-attempt-count" should be "1"
+    # And the client saw the consequence rather than a silent rescue.
+    And the response body should have been cut off
+    And the response body should not contain "/mf-stream-fallback"
+
+    # Cleanup
+    When I delete the API "mf-stream-safety-v1.0"
+    Then the response status code should be 200
+
+
+  # ====================================================================
+  # FR-030n/o/p — an attempt that fails AFTER its response headers is graded
+  # ====================================================================
+
+  @truncation-grading
+  Scenario: A provider that truncates every response is suspended like any other failure
+    # The scenario above establishes that a post-commitment failure is NOT failed
+    # over, and must not be. This one establishes that it is still GRADED, which is
+    # the half that was missing. Before FR-030n/o/p a truncating provider was
+    # recorded as succeeding: the response phase sees an ordinary 200, so the false
+    # success reset the consecutive-failure counter and diluted the error-rate
+    # window. A provider truncating EVERYTHING was thereby immunised against the
+    # suspension its real failures would have triggered — worse than recording
+    # nothing at all.
+    #
+    # Envoy publishes this outcome only as a response flag on the access log, so
+    # what this scenario really exercises is the whole grading transport: Envoy's
+    # filtered access-log sink, the engine's verdict decoder, and the policy's
+    # correlation of a cluster back to the target that health is keyed by.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-trunc-provider
+      spec:
+        displayName: MF Truncating
+        version: v1.0
+        template: openai
+        context: /mf-trunc-ctx
+        upstream:
+          url: http://mock-truncating-provider:9080/truncate
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-trunc-alive-provider
+      spec:
+        displayName: MF Truncating Alive
+        version: v1.0
+        template: openai
+        context: /mf-trunc-alive-ctx
+        upstream:
+          url: http://sample-backend:9080/trunc-alive-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # One truncation suspends, for longer than the scenario runs, so a pass cannot
+    # come from the window expiring rather than from the grading working.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-truncate-proxy
+      spec:
+        displayName: MF Truncate Proxy
+        version: v1.0
+        context: /mf-truncate-proxy
+        provider:
+          id: mf-trunc-provider
+        additionalProviders:
+          - id: mf-trunc-alive-provider
+            as: alive
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 300
+                  suspendAfterFailures: 1
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # Request 1 reaches the truncating target and the client wears it: a real 200
+    # whose body stops early, one attempt, no rescue. That is FR-013 holding.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-truncate-proxy/chat/completions" allowing a cut-off body with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+    And the response body should have been cut off
+
+    # Request 2 is the assertion. Both requests take ONE attempt, so the attempt
+    # count cannot tell them apart here -- the body is the discriminator. A body
+    # from the alive upstream means the truncation was graded as a failure and the
+    # leading target withdrawn. A second cut-off body would mean the truncation was
+    # recorded as a success and the target is still leading the chain.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-truncate-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+    And the response body should contain "/trunc-alive-upstream"
+    And the response body should not have been cut off
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-truncate-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-trunc-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-trunc-alive-provider"
+    Then the response status code should be 200
+
+  @truncation-grading
+  Scenario: A complete streamed response of the same shape suspends nothing
+    # The control for the scenario above, and the reason it means anything. The
+    # grading signal is a response flag, and a streamed response is exactly the
+    # shape most likely to be flagged by accident -- chunked, no content-length,
+    # ending when the upstream closes. If an ordinary complete SSE response also
+    # suspended its target, the previous scenario would pass for a reason that has
+    # nothing to do with truncation, and every streaming provider on the gateway
+    # would be suspended after a single successful call.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-whole-provider
+      spec:
+        displayName: MF Whole Stream
+        version: v1.0
+        template: openai
+        context: /mf-whole-ctx
+        upstream:
+          url: http://mock-truncating-provider:9080/whole
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-whole-alive-provider
+      spec:
+        displayName: MF Whole Alive
+        version: v1.0
+        template: openai
+        context: /mf-whole-alive-ctx
+        upstream:
+          url: http://sample-backend:9080/whole-alive-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-whole-proxy
+      spec:
+        displayName: MF Whole Proxy
+        version: v1.0
+        context: /mf-whole-proxy
+        provider:
+          id: mf-whole-provider
+        additionalProviders:
+          - id: mf-whole-alive-provider
+            as: alive
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 300
+                  suspendAfterFailures: 1
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # Same streaming shape as the truncating mock, delivered whole.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-whole-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/whole/chat/completions"
+    And the response body should not have been cut off
+
+    # And the target is still leading the chain on the next request -- it was not
+    # graded as a failure for merely having streamed.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-whole-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/whole/chat/completions"
+    And the response body should not contain "/whole-alive-upstream"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-whole-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-whole-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-whole-alive-provider"
+    Then the response status code should be 200
+
+  @truncation-grading
+  Scenario: A truncation and an outright failure count on the same target, not against each other
+    # The immunity this feature removes was not only "a truncating provider is never
+    # suspended". It was also that a truncation CANCELLED real failures: the false
+    # success reset the consecutive-failure counter, so a target alternating between
+    # truncating and failing outright never reached a threshold above one.
+    #
+    # The two failures arrive by different routes -- the truncation through the
+    # access-log verdict, the 503 through the ordinary response phase -- and the
+    # point is that they land on one counter. With suspendAfterFailures at 2,
+    # neither alone suspends, so a pass means both were counted.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-mixed-provider
+      spec:
+        displayName: MF Mixed Failures
+        version: v1.0
+        template: openai
+        context: /mf-mixed-ctx
+        upstream:
+          url: http://mock-truncating-provider:9080/mixed
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-mixed-alive-provider
+      spec:
+        displayName: MF Mixed Alive
+        version: v1.0
+        template: openai
+        context: /mf-mixed-alive-ctx
+        upstream:
+          url: http://sample-backend:9080/mixed-alive-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-mixed-proxy
+      spec:
+        displayName: MF Mixed Proxy
+        version: v1.0
+        context: /mf-mixed-proxy
+        provider:
+          id: mf-mixed-provider
+        additionalProviders:
+          - id: mf-mixed-alive-provider
+            as: alive
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 300
+                  suspendAfterFailures: 2
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # The mock alternates, so clear its counter first -- otherwise a re-run starts
+    # on the 503 and the scenario silently tests something else.
+    When I send a GET request to "http://localhost:9083/reset"
+    Then the response status code should be 200
+
+    # Failure 1 of 2: a truncation. One attempt, no rescue, client wears it.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-mixed-proxy/chat/completions" allowing a cut-off body with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should have been cut off
+
+    # Failure 2 of 2: an outright 503, before any body, so this one DOES fail over.
+    # The target is still leading at this point -- two attempts prove it was tried.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-mixed-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/mixed-alive-upstream"
+
+    # Threshold reached across both causes: the target is out, so this request
+    # leads with the fallback and costs one attempt instead of two.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-mixed-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+    And the response body should contain "/mixed-alive-upstream"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-mixed-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-mixed-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-mixed-alive-provider"
+    Then the response status code should be 200
+
+
+  # ====================================================================
+  # FR-023a/b — a steering policy's decision reaches failover generically
+  # ====================================================================
+
+  @generic-steering
+  Scenario: A steering policy that publishes only a provider still leads the failover chain
+    # The consumer used to read "model_roundrobin.selected_provider" -- model-round-robin's own
+    # private key. Seven of the eight steering policies in gateway-controllers write bare
+    # "selected_provider" instead, so with failover attached their decision was read as ABSENT
+    # and silently discarded while failover published its configured order. Nothing failed and
+    # nothing was logged, because absent is a legitimate state (FR-023a).
+    #
+    # llm-header-router is the subject because it is the purest case: it writes ONLY bare
+    # selected_provider, and it selects from a request header, so the scenario controls the
+    # decision exactly rather than inferring it from cost or a rotation cursor.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-steer-primary
+      spec:
+        displayName: MF Steer Primary
+        version: v1.0
+        template: openai
+        context: /mf-steer-primary-ctx
+        upstream:
+          url: http://sample-backend:9080/steer-primary-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-steer-chosen
+      spec:
+        displayName: MF Steer Chosen
+        version: v1.0
+        template: openai
+        context: /mf-steer-chosen-ctx
+        upstream:
+          url: http://sample-backend:9080/steer-chosen-upstream
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    # Both providers are HEALTHY. That is deliberate: if the steering decision is honoured the
+    # request goes to the chosen one on attempt 1, and if it is discarded it goes to the
+    # configured primary on attempt 1. Both return 200, so the status code cannot tell them
+    # apart and the body is the discriminator -- which is exactly how the bug stayed invisible.
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-steer-proxy
+      spec:
+        displayName: MF Steer Proxy
+        version: v1.0
+        context: /mf-steer-proxy
+        provider:
+          id: mf-steer-primary
+        additionalProviders:
+          - id: mf-steer-chosen
+            as: chosen
+        operationPolicies:
+          - name: llm-header-router
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  headerName: x-provider
+                  mappings:
+                    - headerValue: chosen
+                      provider: chosen
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: chosen
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # The header names the non-primary provider, so the steering policy publishes
+    # selected_provider=chosen. Failover must lead with it.
+    When I set header "Content-Type" to "application/json"
+    And I set header "x-provider" to "chosen"
+    And I send a POST request to "http://localhost:8080/mf-steer-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    # ONE attempt: the steered target led and succeeded, so no failover occurred.
+    And the response header "x-envoy-attempt-count" should be "1"
+    # THE assertion. The steered provider's upstream, not the configured primary's.
+    And the response body should contain "/steer-chosen-upstream"
+    And the response body should not contain "/steer-primary-upstream"
+
+    # CONTROL -- a header value matching no mapping. With no defaultProvider configured, the
+    # policy DELETES selected_provider (llmheaderrouter.go:180, the same thing
+    # applyProviderRouting does when it picks the primary), so this proves the policy ran and
+    # selected nothing, which is stronger than the policy not running at all.
+    #
+    # Without a control, "the body says chosen" could not be told apart from "this proxy always
+    # routes to chosen", and the scenario would pass with the steering ignored entirely.
+    #
+    # Not done by clearing headers: that also drops the controller credential the cleanup
+    # DELETEs below need, which fails the scenario at teardown with a 401.
+    When I set header "x-provider" to "no-such-provider"
+    And I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-steer-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+    And the response body should contain "/steer-primary-upstream"
+    And the response body should not contain "/steer-chosen-upstream"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-steer-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-steer-primary"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-steer-chosen"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # Traversal stops when the caller goes away
+  # ====================================================================
+
+  Scenario: A caller that gives up mid-chain stops the traversal
+    # With the caller gone there is no response to assert on, so the fallback is
+    # pointed at a SECOND API on this gateway. If it is attempted, that API
+    # records its own analytics event under its own URI; if traversal stopped,
+    # no such event exists. Both halves are read from ONE payload, so the
+    # positive control sits beside the negative claim rather than in a previous
+    # run that a late flush could blur.
+    #
+    # The primary must FAIL, and slowly. /delay/7 and /delay/8 answer 200 after
+    # sleeping, so perTryTimeout of 3s is what turns them into failures worth
+    # failing over — without it a connected caller would simply get its 200 and
+    # the fallback would be untouched for an entirely different reason.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-disconnect-sink-v1.0
+      spec:
+        displayName: MF Disconnect Sink
+        version: v1.0
+        context: /mf-disconnect-sink/$version
+        upstream:
+          main:
+            url: http://sample-backend:9080/disconnect-sink-upstream
+        operations:
+          - method: GET
+            path: /delay/7
+          - method: GET
+            path: /delay/8
+      """
+    Then the response should be successful
+
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-disconnect-main-v1.0
+      spec:
+        displayName: MF Disconnect Main
+        version: v1.0
+        context: /mf-disconnect-main/$version
+        upstreamDefinitions:
+          - name: primary
+            upstreams:
+              - url: http://echo-backend:80
+          - name: sink
+            basePath: /mf-disconnect-sink/v1.0
+            upstreams:
+              - url: http://gateway-runtime:8080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: GET
+            path: /delay/7
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  perTryTimeout: 3
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: sink
+          - method: GET
+            path: /delay/8
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  perTryTimeout: 3
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: sink
+      """
+    Then the response should be successful
+    And I wait for 6 seconds
+
+    # CONTROL — identical configuration and timing, caller stays. The primary
+    # sleeps past its 3s per-attempt budget, so the chain advances to the sink.
+    When I send a GET request to "http://localhost:8080/mf-disconnect-main/v1.0/delay/7"
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/disconnect-sink-upstream"
+
+    # SUBJECT — same shape, caller gives up at 1.5s, well inside the first
+    # attempt's 3s budget, so it leaves while the chain is still being walked.
+    When I send a GET request to "http://localhost:8080/mf-disconnect-main/v1.0/delay/8" and give up after 1500ms
+    Then the request should have been abandoned
+
+    # Long enough that a fallback attempt, had one been made, would have run its
+    # course and been published — otherwise the absence below only means "early".
+    When I wait 12 seconds for analytics to be published
+    And I send a GET request to the analytics collector events endpoint
+    Then the response should be successful
+    # The control reached the sink, so the sink IS recorded this way...
+    And the response body should contain "/mf-disconnect-sink/v1.0/delay/7"
+    # ...and the abandoned request never did.
+    And the response body should not contain "/mf-disconnect-sink/v1.0/delay/8"
+
+    # Cleanup
+    When I delete the API "mf-disconnect-main-v1.0"
+    Then the response status code should be 200
+    When I delete the API "mf-disconnect-sink-v1.0"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # SC-011 — a failed-over request is still ONE request
+  # ====================================================================
+
+  Scenario: Three attempts consume one rate-limit unit and produce one analytics record
+    # The chain is three deep on purpose: SC-011 asks for this across at least
+    # three attempts, and a per-attempt miscount is only visibly wrong when the
+    # chain is longer than two.
+    #
+    # The rate limit is the sharp instrument here. With a limit of 2, a request
+    # counted once per ATTEMPT would exhaust the whole budget on its own and the
+    # second request would already be 429. Asserting that the second request
+    # still succeeds and only the third is refused pins the count at exactly one
+    # per client request — which no single-request assertion could do.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-accounting-v1.0
+      spec:
+        displayName: MF Accounting
+        version: v1.0
+        context: /mf-accounting/$version
+        upstreamDefinitions:
+          - name: primary
+            basePath: /accounting-dead-one
+            upstreams:
+              - url: http://sample-backend:9998
+          - name: mid
+            basePath: /accounting-dead-two
+            upstreams:
+              - url: http://sample-backend:9997
+          - name: alive
+            basePath: /accounting-alive
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /chat/completions
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: mid
+                        - model: claude-opus-4-1-20250805
+                          provider: alive
+              - name: basic-ratelimit
+                version: v1
+                params:
+                  limits:
+                    - requests: 2
+                      duration: "1h"
+      """
+    Then the response should be successful
+    And I wait for 6 seconds
+
+    # Reset LAST, immediately before the request. Analytics publish
+    # asynchronously, so resetting any earlier lets a previous scenario's event
+    # land afterwards and be counted as this one's.
+    When I reset the analytics collector
+    And I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-accounting/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    # Two dead targets passed over, the third served — three attempts, one response.
+    And the response header "x-envoy-attempt-count" should be "3"
+    And the response body should contain "/accounting-alive"
+
+    # ONE analytics record for the whole chain, not one per attempt.
+    When I wait 8 seconds for analytics to be published
+    Then the analytics collector should have received 1 event
+
+    # ONE rate-limit unit. Counted per attempt, the budget of 2 would already be
+    # gone and this would be 429.
+    When I send a POST request to "http://localhost:8080/mf-accounting/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "3"
+
+    # ...and the limit is real: the third request is refused.
+    When I send a POST request to "http://localhost:8080/mf-accounting/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    When I delete the API "mf-accounting-v1.0"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # SC-011 — the tokens billed are the serving attempt's
+  # ====================================================================
+
+  Scenario: A rescued request is billed for the attempt that actually served it
+    # The alive provider is the OpenAI mock, which answers deterministically:
+    # model gpt-4.1-2025-04-14, usage 19 prompt / 10 completion / 29 total. Fixed
+    # numbers are what make this assertable at all — an echo backend returns no
+    # usage block, so there would be nothing to attribute.
+    #
+    # Note what the client asked for and what answered differ: the request names
+    # gpt-4o, the dead primary never responds, and the attempt that serves reports
+    # a different model entirely. Billing has to follow the response, not the ask.
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-tokens-dead-provider
+      spec:
+        displayName: MF Tokens Dead
+        version: v1.0
+        template: openai
+        context: /mf-tokens-dead-ctx
+        upstream:
+          url: http://mf-tokens-nonexistent:9080/v1
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+    When I create this LLM provider:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProvider
+      metadata:
+        name: mf-tokens-alive-provider
+      spec:
+        displayName: MF Tokens Alive
+        version: v1.0
+        template: openai
+        context: /mf-tokens-alive-ctx
+        upstream:
+          url: http://mock-openapi:4010/openai/v1
+        accessControl:
+          mode: allow_all
+      """
+    Then the response status code should be 201
+
+    When I deploy this LLM proxy configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: LlmProxy
+      metadata:
+        name: mf-tokens-proxy
+      spec:
+        displayName: MF Tokens Proxy
+        version: v1.0
+        context: /mf-tokens-proxy
+        provider:
+          id: mf-tokens-dead-provider
+        additionalProviders:
+          - id: mf-tokens-alive-provider
+            as: alive
+        operationPolicies:
+          - name: model-failover
+            version: v0
+            paths:
+              - path: /chat/completions
+                methods: [POST]
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: gpt-4o
+                          provider: alive
+      """
+    Then the response status should be 201
+    And I wait for 5 seconds
+
+    # Reset LAST, immediately before the request, so a previous scenario's event
+    # cannot flush into this window and be read as this request's.
+    When I reset the analytics collector
+    And I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-tokens-proxy/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+
+    When I wait 8 seconds for analytics to be published
+    Then the analytics collector should have received 1 event
+    When I send a GET request to the analytics collector events endpoint
+    Then the response should be successful
+    # The serving attempt's own numbers, exactly — not zero, and not doubled.
+    And the latest analytics event should report 19 prompt tokens and 29 total tokens
+    # Attribution follows the attempt that answered: the model the dead primary
+    # was asked for is not the model recorded.
+    And the response body should contain "gpt-4.1-2025-04-14"
+
+    # Cleanup
+    When I send a DELETE request to the "gateway-controller" service at "/llm-proxies/mf-tokens-proxy"
+    Then the response should be successful
+    When I delete the LLM provider "mf-tokens-dead-provider"
+    Then the response status code should be 200
+    When I delete the LLM provider "mf-tokens-alive-provider"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # SC-011 — one unit of quota, however many attempts it took
+  # ====================================================================
+
+  Scenario: Three attempts consume one unit of subscription quota
+    # Same reasoning as the rate-limit scenario, through the quota path instead.
+    # A plan of 2 requests/minute against a three-deep chain is the sharp part:
+    # if a rescued request spent one unit PER ATTEMPT, the very first request
+    # would overrun the plan on its own and the second would already be refused.
+    When I create a subscription plan "MFQuotaPlan" with 2 requests per minute
+    Then the response status should be 201
+    And I store the last response field "id" as "planId"
+
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-quota-v1.0
+      spec:
+        displayName: MF Quota
+        version: v1.0
+        context: /mf-quota/$version
+        subscriptionPlans:
+          - MFQuotaPlan
+        upstreamDefinitions:
+          - name: primary
+            basePath: /quota-dead-one
+            upstreams:
+              - url: http://sample-backend:9998
+          - name: mid
+            basePath: /quota-dead-two
+            upstreams:
+              - url: http://sample-backend:9997
+          - name: alive
+            basePath: /quota-alive
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /chat/completions
+            policies:
+              - name: subscription-validation
+                version: v1
+                params:
+                  subscriptionKeyHeader: "Subscription-Key"
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: mid
+                        - model: claude-opus-4-1-20250805
+                          provider: alive
+      """
+    Then the response should be successful
+    And I wait for 6 seconds
+
+    When I create a subscription for API "mf-quota-v1.0" with plan and token "mf-quota-subscription-token"
+    Then the response status should be 201
+
+    When I set header "Content-Type" to "application/json"
+    And I set header "Subscription-Key" to "mf-quota-subscription-token"
+    And I send a POST request to "http://localhost:8080/mf-quota/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    # Two targets passed over, the third served.
+    And the response header "x-envoy-attempt-count" should be "3"
+    And the response body should contain "/quota-alive"
+
+    # The second unit. Counted per attempt, the plan would already be spent.
+    When I send a POST request to "http://localhost:8080/mf-quota/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "3"
+
+    # ...and the plan is real: the third request is refused.
+    When I send a POST request to "http://localhost:8080/mf-quota/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 429
+
+    # Cleanup
+    When I delete the API "mf-quota-v1.0"
+    Then the response should be successful
+    When I delete the subscription plan with stored id "planId"
+    Then the response should be successful
+
+  # ====================================================================
+  # FR-014 — what the client receives when the chain runs out
+  # ====================================================================
+
+  Scenario: An exhausted chain returns the gateway's own error, not the last provider's
+    # Both targets are the SAME live service on paths it does not serve, which is
+    # what makes this scenario possible at all: a chain of dead hosts fails at
+    # transport level, and Envoy answers those itself without ever calling the
+    # policy, so there is nothing for the policy to replace. A real 404 from a
+    # reachable upstream is a response the policy actually sees.
+    #
+    # statusCodes is set to [404] for the same reason — it is the only error
+    # status a plain httpbin can be made to return under a basePath, and the
+    # parameter exists precisely so a publisher can nominate what counts.
+    #
+    # The two basePaths differ so the attempts are distinguishable in the access
+    # log; neither is served, so both attempts fail and the chain is spent.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-exhaust-v1.0
+      spec:
+        displayName: MF Exhaustion
+        version: v1.0
+        context: /mf-exhaust/$version
+        upstreamDefinitions:
+          - name: primary
+            basePath: /mf-exhaust-primary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+          - name: secondary
+            basePath: /mf-exhaust-secondary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /chat/completions
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  statusCodes:
+                    - 404
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: secondary
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-exhaust/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+
+    # One consistent status for exhaustion, NOT the 404 the last target answered.
+    # A chain that ends on a 404 is not a missing resource — the resource exists,
+    # the gateway simply had nowhere left to send the request.
+    Then the response status code should be 503
+    And the response body should contain "failover_exhausted"
+
+    # THE assertion this scenario exists for. Anything the upstream wrote must be
+    # gone: here it is httpbin's own 404 text, standing in for the provider error
+    # that in production names the account, region or key that was refused.
+    And the response body should not contain "404 page not found"
+
+    # ...and the body says nothing about the chain either. Which models a
+    # publisher configured is not something the caller was ever shown.
+    And the response body should not contain "gpt-4o"
+    And the response body should not contain "claude"
+    And the response body should not contain "mf-exhaust-secondary"
+
+    # Cleanup
+    When I delete the API "mf-exhaust-v1.0"
+    Then the response status code should be 200
+
+  Scenario: Once every target is suspended the next request is refused without an attempt
+    # Suspension that still sends traffic to the suspended target is not
+    # suspension. With every member out of rotation the policy used to publish no
+    # ranking and go inert, which handed the request to the route's configured
+    # upstream — the primary, the very target health had just withdrawn.
+    #
+    # The discriminator is the body. Inert would dispatch and return the
+    # primary's own 404; refusing returns this gateway's 503.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-allsusp-v1.0
+      spec:
+        displayName: MF All Suspended
+        version: v1.0
+        context: /mf-allsusp/$version
+        upstreamDefinitions:
+          - name: primary
+            basePath: /mf-allsusp-primary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+          - name: secondary
+            basePath: /mf-allsusp-secondary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /chat/completions
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendAfterFailures: 1
+                  suspendDuration: 120
+                  statusCodes:
+                    - 404
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: secondary
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    # Request one walks the whole chain and fails it. Both members are graded —
+    # the first from the attempt count, the second from the response in hand — so
+    # one request is enough to put the entire chain out of rotation.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-allsusp/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 503
+    And the response body should contain "failover_exhausted"
+
+    # Request two never leaves the gateway. The suspension window is far longer
+    # than this scenario, so a pass here cannot be a window quietly expiring.
+    #
+    # The response ALONE cannot prove that: refusing before any attempt and
+    # exhausting a chain of attempts return byte-identical responses, which is
+    # the design — one consistent error, whatever the reason. So the client-side
+    # assertions below establish only that the request was refused, and the log
+    # assertions after them establish that it was refused WITHOUT being tried,
+    # which is the actual subject of this scenario.
+    When I note the current gateway runtime log position
+    And I send a POST request to "http://localhost:8080/mf-allsusp/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 503
+    And the response body should contain "failover_exhausted"
+
+    # Had the request been dispatched to the suspended primary, this is the body
+    # that would have come back.
+    And the response body should not contain "404 page not found"
+
+    # THE discriminator. This line is written only on the request-phase path,
+    # before anything is dispatched...
+    And the gateway runtime log since then should contain "every target is suspended; nothing was attempted"
+
+    # ...and this one only after a chain has actually been walked and spent. Its
+    # absence is what rules out the request having been attempted again.
+    And the gateway runtime log since then should not contain "every target in the chain failed"
+
+    # Cleanup
+    When I delete the API "mf-allsusp-v1.0"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # FR-018b / FR-018e — the two degradations a consecutive-failure rule
+  # never sees (SC-011a, SC-011b)
+  # ====================================================================
+
+  Scenario: A target failing roughly one request in three is suspended on its error rate
+    # The degradation a consecutive-failure rule is blind to: the target is badly
+    # degraded but rarely fails twice running, so a run never accumulates.
+    #
+    # go-httpbin's weighted form answers 200 twice as often as 503, at random.
+    # suspendAfterFailures is pushed to 100 so that rule CANNOT fire even if the
+    # random draw happens to produce a run — leaving the error-rate rule as the
+    # only thing that can suspend this target, which is what makes the reason
+    # assertion below meaningful rather than circumstantial.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-rate-v1.0
+      spec:
+        displayName: MF Error Rate
+        version: v1.0
+        context: /mf-rate/$version
+        upstreamDefinitions:
+          - name: flaky
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+          - name: alive
+            basePath: /mf-rate-alive
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: flaky
+        operations:
+          - method: POST
+            path: /status/200:2,503:1
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendAfterFailures: 100
+                  suspendDuration: 120
+                  errorRatePercent: 20
+                  minimumRequests: 20
+                  windowSeconds: 120
+                  statusCodes:
+                    - 503
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    When I set header "Content-Type" to "application/json"
+    And I note the current gateway runtime log position
+    And I drive 40 POST requests to "http://localhost:8080/mf-rate/v1.0/status/200:2,503:1" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+
+    # SC-011a: suspended, and the record names WHICH criterion did it. An operator
+    # triaging a suspension needs to tell a hard outage from this.
+    Then the gateway runtime log since then should contain "reason=error_rate"
+    And the gateway runtime log since then should not contain "reason=consecutive_failures"
+
+    # The effect, not just the record: traffic has moved off the flaky target, so
+    # the fallback's own base path now appears in the response.
+    When I send a POST request to "http://localhost:8080/mf-rate/v1.0/status/200:2,503:1" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/mf-rate-alive"
+
+    # Cleanup
+    When I delete the API "mf-rate-v1.0"
+    Then the response status code should be 200
+
+  Scenario: A target that is slow but never fails is suspended on its latency percentile
+    # SC-011b, and the case a timeout-only rule cannot see: every request
+    # completes, none errors, none comes close to a timeout — the target has
+    # simply got slow. Before this rule existed the only signal was a client
+    # complaint.
+    #
+    # Note what is NOT configured here: no perTryTimeout. Nothing is being cut
+    # off. The target is suspended on the aggregate alone.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-latency-v1.0
+      spec:
+        displayName: MF Latency
+        version: v1.0
+        context: /mf-latency/$version
+        upstreamDefinitions:
+          - name: slow
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+          - name: alive
+            basePath: /mf-latency-alive
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: slow
+        operations:
+          - method: POST
+            path: /delay/0.3
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 120
+                  errorRatePercent: 0
+                  p95LatencyMs: 200
+                  minimumRequests: 20
+                  windowSeconds: 120
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    When I set header "Content-Type" to "application/json"
+    And I note the current gateway runtime log position
+    And I drive 25 POST requests to "http://localhost:8080/mf-latency/v1.0/delay/0.3" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+
+    # Suspended on the percentile, with no failure anywhere in the run. This is
+    # the assertion that would not have been reachable before: the rule was only
+    # ever evaluated when something failed, and nothing here does.
+    Then the gateway runtime log since then should contain "reason=latency_p95"
+    And the gateway runtime log since then should not contain "reason=consecutive_failures"
+    And the gateway runtime log since then should not contain "reason=error_rate"
+
+    # Traffic has moved to the fast target.
+    When I send a POST request to "http://localhost:8080/mf-latency/v1.0/delay/0.3" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/mf-latency-alive"
+
+    # Cleanup
+    When I delete the API "mf-latency-v1.0"
+    Then the response status code should be 200
+
+  Scenario: A status outside the failure conditions is returned unchanged and fails over to nothing
+    # US1 acceptance 5. Retrying a validation error on another provider fails the
+    # same way, or worse, bills a second inference call to mask a client bug —
+    # so the status has to come back as-is and the target must not be penalised
+    # for it.
+    #
+    # Two operations, ONE policy configuration, differing only in what the
+    # upstream answers. The 503 operation is a positive control and is the point:
+    # "no failover occurred" is satisfied just as well by a policy that never
+    # fails over at all, so without a sibling operation proving the same config
+    # DOES fail over, this scenario would pass against a completely broken
+    # policy.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-passthru-v1.0
+      spec:
+        displayName: MF Passthrough
+        version: v1.0
+        context: /mf-passthru/$version
+        upstreamDefinitions:
+          - name: primary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+          - name: alive
+            basePath: /mf-passthru-alive
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /status/422
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendAfterFailures: 1
+                  suspendDuration: 120
+                  statusCodes:
+                    - 503
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+          - method: POST
+            path: /status/503
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendAfterFailures: 1
+                  suspendDuration: 120
+                  statusCodes:
+                    - 503
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    # The control first, so a failure here is read as "failover is broken"
+    # rather than as a finding about pass-through.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-passthru/v1.0/status/503" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/mf-passthru-alive"
+
+    # The subject. Same policy, same chain, a status the publisher did not
+    # nominate: one attempt, and the upstream's own status reaches the client.
+    When I send a POST request to "http://localhost:8080/mf-passthru/v1.0/status/422" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 422
+    And the response header "x-envoy-attempt-count" should be "1"
+    And the response body should not contain "/mf-passthru-alive"
+
+    # ...and the target was not penalised for the client's mistake. A second
+    # request still reaches it, which it would not if the 422 had counted
+    # towards suspension.
+    When I send a POST request to "http://localhost:8080/mf-passthru/v1.0/status/422" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 422
+    And the response body should not contain "/mf-passthru-alive"
+
+    # Cleanup
+    When I delete the API "mf-passthru-v1.0"
+    Then the response status code should be 200
+
+  Scenario: However the primary fails, a healthy fallback means the client never sees a 5xx
+    # The property the whole feature exists for, asserted as its own subject
+    # rather than as a side effect of scenarios testing something else.
+    #
+    # Two failure modes behind one chain and one API, because they reach the
+    # guarantee by different routes and only one of them involves this policy at
+    # all. An error status is graded by the policy; an attempt cut off at
+    # perTryTimeout is a local reply Envoy never calls ext_proc for, so the
+    # rescue there is Envoy's retry policy alone. A guarantee that holds for the
+    # path the policy drives says nothing about the path it never sees.
+    #
+    # A refused connection is the third mode and is deliberately NOT here: it is
+    # already the subject of the RestApi parity scenario above, which turns on
+    # refusal being retriable on both API kinds.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-no5xx-v1.0
+      spec:
+        displayName: MF No 5xx
+        version: v1.0
+        context: /mf-no5xx/$version
+        upstreamDefinitions:
+          - name: primary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+          - name: alive
+            basePath: /mf-no5xx-alive
+            upstreams:
+              - url: http://sample-backend:9080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /status/503
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+          - method: POST
+            path: /delay/5
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendDuration: 0
+                  perTryTimeout: 1
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: alive
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    # The primary answers with an error status. The policy grades it, and the
+    # retry lands on the fallback.
+    When I set header "Content-Type" to "application/json"
+    And I send a POST request to "http://localhost:8080/mf-no5xx/v1.0/status/503" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/mf-no5xx-alive"
+
+    # The primary hangs five seconds against a one-second per-try bound. No
+    # response ever reaches the policy, so nothing here is graded; the client is
+    # still served, and still never sees a 5xx.
+    When I send a POST request to "http://localhost:8080/mf-no5xx/v1.0/delay/5" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/mf-no5xx-alive"
+
+    # Cleanup
+    When I delete the API "mf-no5xx-v1.0"
+    Then the response status code should be 200
+
+  # ====================================================================
+  # FR-030k/l/m — the fault flow. @faultflow scenarios assert the gateway
+  # is running with handle_upstream_faults ON, which the default stack
+  # does not do, so they are excluded from an ordinary run and would FAIL
+  # in one. `make test-faultflow` starts the stack that makes them true.
+  # ====================================================================
+
+  @faultflow
+  Scenario: Failover keeps grading and keeps substituting when the fault flow handles the failure
+    # This scenario's FIRST job is to prove the posture is real. A fault-flow run
+    # whose overlay silently stopped applying would otherwise be indistinguishable
+    # from an ordinary green run — the other scenarios would pass either way,
+    # because they pass on both paths by design. That is the exact failure mode
+    # this target exists to rule out, so it is asserted directly rather than
+    # assumed from the Makefile.
+    When I deploy this API configuration:
+      """
+      apiVersion: gateway.api-platform.wso2.com/v1
+      kind: RestApi
+      metadata:
+        name: mf-faultflow-v1.0
+      spec:
+        displayName: MF Fault Flow
+        version: v1.0
+        context: /mf-faultflow/$version
+        upstreamDefinitions:
+          - name: primary
+            basePath: /mf-faultflow-primary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+          - name: secondary
+            basePath: /mf-faultflow-secondary
+            upstreams:
+              - url: http://echo-backend-multi-arch:8080
+        upstream:
+          main:
+            ref: primary
+        operations:
+          - method: POST
+            path: /chat/completions
+            policies:
+              - name: model-failover
+                version: v0
+                params:
+                  suspendAfterFailures: 1
+                  suspendDuration: 120
+                  statusCodes:
+                    - 404
+                  targets:
+                    - model: gpt-4o
+                      fallbacks:
+                        - model: claude-sonnet-4-5-20250929
+                          provider: secondary
+      """
+    Then the response should be successful
+    And I wait for 5 seconds
+
+    When I set header "Content-Type" to "application/json"
+    And I note the current gateway runtime log position
+    And I send a POST request to "http://localhost:8080/mf-faultflow/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+
+    # The posture itself. Without this line the engine never diverted the response,
+    # and everything below would be proving the ordinary path all over again.
+    Then the gateway runtime log since then should contain "skipping the response policies for the fault policies"
+
+    # The exhaustion substitution survives the different return type the fault path
+    # uses: there is no ImmediateResponse there, so the same decision has to be
+    # expressed as an edit to the error the client is already receiving.
+    And the response status code should be 503
+    And the response body should contain "failover_exhausted"
+    And the response body should not contain "404 page not found"
+
+    # ...and health was still graded, by the hook that runs INSTEAD of the response
+    # one. Both members were charged, so the chain is now out of rotation and the
+    # next request is refused before anything is dispatched. This is the assertion
+    # that would fail if the two chains did not share a health store: grading would
+    # land in an instance nothing reads, and this request would traverse instead.
+    When I send a POST request to "http://localhost:8080/mf-faultflow/v1.0/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 503
+    And the gateway runtime log since then should contain "every target is suspended; nothing was attempted"
+
+    # Cleanup
+    When I delete the API "mf-faultflow-v1.0"
+    Then the response status code should be 200

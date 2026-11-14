@@ -6,5 +6,6 @@ spec:
   displayName: ${VALUE:displayName}
   version: ${VALUE:version}
   context: ${VALUE:context}
-  provider:
-    id: ${VALUE:provider.id}
+  providers:
+    - id: ${VALUE:provider.id}
+      isPrimary: true

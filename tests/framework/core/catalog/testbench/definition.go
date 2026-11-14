@@ -48,6 +48,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/testbench/services/opa"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/openai"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/specs"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/streamfault"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/stripe"
 	"github.com/wso2/api-platform/tests/framework/testbench/services/webhook"
 )
@@ -181,6 +182,11 @@ func Testbench() *components.Definition {
 			// faults, then forwards to another service on this testbench, addressed as
 			// http://testbench:3026/<block>/<id>. See testbench/services/faultinjection.
 			{Name: "fault-injection", Port: faultinjection.Port, Scheme: "http", AwaitListening: true},
+			// Responses that fail AFTER their headers: a committed 200 cut off mid-body, a
+			// complete stream of the same shape as its control, an outright refusal, and a
+			// slow drip. The shape is named in a request header, so one URL serves them all.
+			// See testbench/services/streamfault.
+			{Name: "stream-fault", Port: streamfault.Port, Scheme: "http", AwaitListening: true},
 		},
 		Env: map[string]string{
 			oidc.EnvTLSCert:  string(shared.IdentityProviderTLS().CertPEM),
