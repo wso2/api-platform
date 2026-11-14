@@ -18,12 +18,39 @@ package v1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
+
+// SubscriptionPlanCondition is one condition of a subscription plan. The
+// gateway-controller checks the params and the per-type rules (one condition
+// of each built-in type, fixed ids, 1-10 limit windows).
+// +kubebuilder:validation:XValidation:rule="self.type != 'custom' || has(self.id)",message="a custom condition needs an id"
+type SubscriptionPlanCondition struct {
+	// Id names the condition. Built-in types have fixed ids (requests,
+	// tool-calls, tokens) and may omit it; custom conditions need one.
+	// +optional
+	// +kubebuilder:validation:MaxLength=63
+	Id string `json:"id,omitempty"`
+
+	// Type is the condition type.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=request-count;tool-call-count;token-count;custom
+	Type string `json:"type"`
+
+	// Params holds the condition's settings. Built-in types take
+	// {"limits": [{"count", "timeAmount", "timeUnit"}], "onExceed"} (token-count
+	// also takes "tokenType"); custom conditions take free-form key-values.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Type=object
+	// +kubebuilder:pruning:PreserveUnknownFields
+	Params *runtime.RawExtension `json:"params"`
+}
 
 // SubscriptionPlanSpec mirrors the management-API SubscriptionPlanCreateRequest
 // payload. The gateway-controller assigns a UUID id on first POST; the
 // controller persists it to .status.id and uses it for subsequent
 // PUT/DELETE.
+// +kubebuilder:validation:XValidation:rule="!has(self.conditions) || (!has(self.throttleLimitCount) && !has(self.throttleLimitUnit))",message="set conditions or throttleLimitCount/throttleLimitUnit, not both"
 type SubscriptionPlanSpec struct {
 	// PlanName is the human-readable plan name.
 	// +kubebuilder:validation:Required
@@ -57,6 +84,14 @@ type SubscriptionPlanSpec struct {
 	// +optional
 	// +kubebuilder:validation:Enum=Day;Hour;Min;Month
 	ThrottleLimitUnit *string `json:"throttleLimitUnit,omitempty"`
+
+	// Conditions are the plan's limits and custom conditions. When set, the
+	// gateway derives the legacy throttle fields from the request-count
+	// condition, so leave throttleLimitCount/throttleLimitUnit unset.
+	// +optional
+	// +kubebuilder:validation:MaxItems=20
+	// +listType=atomic
+	Conditions []SubscriptionPlanCondition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true

@@ -27,6 +27,13 @@ import (
 	"time"
 )
 
+// SubscriptionPlanCondition mirrors the management-API SubscriptionPlanCondition.
+type SubscriptionPlanCondition struct {
+	Id     string          `json:"id,omitempty"`
+	Type   string          `json:"type"`
+	Params json.RawMessage `json:"params"`
+}
+
 // SubscriptionPlanCreatePayload mirrors the management-API
 // SubscriptionPlanCreateRequest. Pointer fields are omitted when nil so the
 // gateway-controller fills in defaults.
@@ -38,6 +45,8 @@ type SubscriptionPlanCreatePayload struct {
 	StopOnQuotaReach   *bool      `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int64     `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  *string    `json:"throttleLimitUnit,omitempty"`
+
+	Conditions []SubscriptionPlanCondition `json:"conditions,omitempty"`
 }
 
 // SubscriptionPlanUpdatePayload mirrors SubscriptionPlanUpdateRequest.
@@ -49,6 +58,10 @@ type SubscriptionPlanUpdatePayload struct {
 	StopOnQuotaReach   *bool      `json:"stopOnQuotaReach,omitempty"`
 	ThrottleLimitCount *int64     `json:"throttleLimitCount,omitempty"`
 	ThrottleLimitUnit  *string    `json:"throttleLimitUnit,omitempty"`
+
+	// Conditions replaces the plan's conditions when non-nil; an empty list
+	// removes them all.
+	Conditions *[]SubscriptionPlanCondition `json:"conditions,omitempty"`
 }
 
 // SubscriptionPlanResponse captures the gateway-issued fields returned from
@@ -57,6 +70,9 @@ type SubscriptionPlanResponse struct {
 	Id        string `json:"id"`
 	PlanName  string `json:"planName"`
 	GatewayId string `json:"gatewayId"`
+	// ConditionCount is how many conditions the gateway reports for the plan. A gateway that
+	// predates subscription plan conditions ignores them and reports none.
+	ConditionCount int `json:"-"`
 }
 
 func decodeSubscriptionPlanResponseBody(respBody []byte) (SubscriptionPlanResponse, error) {
@@ -65,6 +81,8 @@ func decodeSubscriptionPlanResponseBody(respBody []byte) (SubscriptionPlanRespon
 		PlanId    string `json:"planId"`
 		PlanName  string `json:"planName"`
 		GatewayId string `json:"gatewayId"`
+		// Conditions is decoded loosely: only how many there are matters here.
+		Conditions []json.RawMessage `json:"conditions"`
 	}
 	if err := json.Unmarshal(respBody, &aux); err != nil {
 		return SubscriptionPlanResponse{}, err
@@ -74,9 +92,10 @@ func decodeSubscriptionPlanResponseBody(respBody []byte) (SubscriptionPlanRespon
 		id = strings.TrimSpace(aux.PlanId)
 	}
 	return SubscriptionPlanResponse{
-		Id:        id,
-		PlanName:  aux.PlanName,
-		GatewayId: aux.GatewayId,
+		Id:             id,
+		PlanName:       aux.PlanName,
+		GatewayId:      aux.GatewayId,
+		ConditionCount: len(aux.Conditions),
 	}, nil
 }
 
