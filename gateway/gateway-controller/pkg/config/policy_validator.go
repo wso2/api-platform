@@ -294,8 +294,42 @@ func (pv *PolicyValidator) ValidateLLMProviderPolicies(cfg *api.LLMProviderConfi
 // ValidateLLMProxyPolicies validates all policy references in an LLM proxy configuration.
 // See ValidateLLMProviderPolicies for the rationale on validating the source configuration.
 func (pv *PolicyValidator) ValidateLLMProxyPolicies(cfg *api.LLMProxyConfiguration) []ValidationError {
-	return pv.validateLLMPolicyRefs(cfg.Spec.GlobalPolicies, cfg.Spec.OperationPolicies, cfg.Spec.Policies,
+	errors := pv.validateLLMPolicyRefs(cfg.Spec.GlobalPolicies, cfg.Spec.OperationPolicies, cfg.Spec.Policies,
 		cfg.Spec.GlobalFaultPolicies, cfg.Spec.OperationFaultPolicies)
+
+	// Per-upstream policies run once per attempt and are resolved like any other policy
+	// reference, so they need the same name/version/params validation as the operation-level
+	// ones — plus the rule that model-failover cannot live here (FR-040).
+	//
+	// Walked over the NORMALISED attachments so both provider shapes are checked. Reading
+	// spec.AdditionalProviders directly let a canonically-authored proxy list model-failover
+	// per upstream unchallenged, and skipped name/version resolution for those policies
+	// entirely — the same omission that left those providers with no per-attempt chain.
+	attachments, err := models.NormaliseLLMProxyAttachments(cfg.Spec)
+	if err != nil {
+		// The shape itself is invalid and is reported by the shape validator. Returning what
+		// we have avoids a second, confusing error about policies on a provider list that
+		// could not be read.
+		return errors
+	}
+	canonical := cfg.Spec.Providers != nil
+	for _, attachment := range attachments {
+		if attachment.Policies == nil {
+			continue
+		}
+		// Field paths name the field the operator actually wrote. SourceIndex is the
+		// pre-normalisation position: 0-based into `providers`, and 1-based in the legacy
+		// shape where 0 is the primary (which has no policies field at all).
+		fieldPath := fmt.Sprintf("spec.additionalProviders[%d].policies", attachment.SourceIndex-1)
+		if canonical {
+			fieldPath = fmt.Sprintf("spec.providers[%d].policies", attachment.SourceIndex)
+		}
+		errors = append(errors, ValidateUpstreamPolicies(attachment.Policies, fieldPath)...)
+		for j, p := range *attachment.Policies {
+			errors = append(errors, pv.validatePolicy(p, fmt.Sprintf("%s[%d]", fieldPath, j))...)
+		}
+	}
+	return errors
 }
 
 // validateLLMPolicyRefs validates the policy collections shared by LLM providers and proxies:
@@ -406,7 +440,8 @@ func (pv *PolicyValidator) validateAttachedPolicyParams(policyDef *models.Policy
 	} else {
 		coerceParamsBySchema(params, *policyDef.Parameters)
 	}
-	return pv.validatePolicyParams(params, *policyDef.Parameters, fieldPath+".params", nil)
+	errors := pv.validatePolicyParams(params, *policyDef.Parameters, fieldPath+".params", nil)
+	return append(errors, validateFailoverParams(policyDef.Name, params, fieldPath+".params")...)
 }
 
 // validatePolicy validates a single policy reference (name + version existence) and, when the
@@ -432,6 +467,10 @@ func (pv *PolicyValidator) validatePolicy(policy api.Policy, fieldPath string) [
 		}
 		schemaErrs := pv.validatePolicyParams(params, *policyDef.Parameters, fieldPath+".params", keep)
 		errors = append(errors, schemaErrs...)
+		// Cross-field constraints no JSON schema can express. Applied here and in
+		// validateAttachedPolicyParams, the two funnels every policy attachment passes
+		// through, so no entry point can reach the transformer without them.
+		errors = append(errors, validateFailoverParams(policy.Name, params, fieldPath+".params")...)
 	}
 
 	return errors

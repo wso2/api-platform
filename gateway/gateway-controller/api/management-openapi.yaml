@@ -6797,6 +6797,28 @@ components:
           $ref: '#/components/schemas/LLMUpstreamAuth'
         transformer:
           $ref: '#/components/schemas/LLMProxyTransformer'
+        policies:
+          type: array
+          description: >
+            Policies that run ONCE PER UPSTREAM ATTEMPT, and only on attempts routed to
+            this provider — including a failover retry that lands here. The same field
+            as `policies` on a legacy `additionalProviders` entry, and it applies to the
+            primary entry too.
+
+            Operation policies run once per client request and cannot vary between
+            failover attempts, because the proxy does not re-run that chain on a retry.
+            Work that is specific to the target an attempt actually reaches belongs here
+            instead: request shaping for this provider's API, headers it alone expects.
+
+            The gateway appends this provider's transformer and then its authentication
+            after these policies, so a policy listed here never observes the credential.
+
+            `model-failover` must NOT be listed here. It is attached once — in
+            operationPolicies, or at the API level — and the gateway adds whatever per-attempt
+            work it needs. A policy in this list runs after the attempt's target has already
+            been selected, so failover cannot steer from this position.
+          items:
+            $ref: "#/components/schemas/Policy"
 
     LLMProxyAdditionalProvider:
       type: object
@@ -6829,6 +6851,26 @@ components:
           $ref: '#/components/schemas/LLMUpstreamAuth'
         transformer:
           $ref: '#/components/schemas/LLMProxyTransformer'
+        policies:
+          type: array
+          description: >
+            Policies that run ONCE PER UPSTREAM ATTEMPT, and only on attempts routed to
+            this provider — including a failover retry that lands here.
+
+            Operation policies run once per client request and cannot vary between
+            failover attempts, because the proxy does not re-run that chain on a retry.
+            Work that is specific to the target an attempt actually reaches belongs here
+            instead: request shaping for this provider's API, headers it alone expects.
+
+            The gateway appends this provider's transformer and then its authentication
+            after these policies, so a policy listed here never observes the credential.
+
+            `model-failover` must NOT be listed here. It is attached once — in
+            operationPolicies, or at the API level — and the gateway adds whatever per-attempt
+            work it needs. A policy in this list runs after the attempt's target has already
+            been selected, so failover cannot steer from this position.
+          items:
+            $ref: "#/components/schemas/Policy"
 
     LLMProxyTransformer:
       type: object

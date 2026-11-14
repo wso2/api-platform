@@ -76,6 +76,32 @@ func HydrateLLMConfig(cfg *models.StoredConfig, store *storage.ConfigStore, db s
 	return nil
 }
 
+// ProviderPolicies is one provider's per-attempt work, named rather than positional.
+//
+// A positional list would be a trap: a provider with a credential and no transformer has one
+// entry, and reading index 0 as "the transformer" would apply its credential as a translator.
+type ProviderPolicies struct {
+	// Transformer reshapes the request for this provider's API. Runs FIRST.
+	Transformer *api.Policy
+	// Auth applies this provider's credential. Runs LAST, so no policy in the chain can
+	// observe it (FR-039).
+	Auth *api.Policy
+}
+
+// TransformWithUpstreamPolicies is Transform, additionally returning each provider's per-attempt
+// policies keyed by the alias an attempt is routed to.
+//
+// The map is empty unless per-attempt placement is enabled — when it is not, a provider's
+// transformer and credential are on the downstream chain instead, exactly as before.
+func (t *LLMProviderTransformer) TransformWithUpstreamPolicies(input any, output *api.RestAPI) (*api.RestAPI, map[string]ProviderPolicies, error) {
+	proxy, ok := input.(*api.LLMProxyConfiguration)
+	if !ok {
+		result, err := t.Transform(input, output)
+		return result, nil, err
+	}
+	return t.transformProxyWithUpstreamPolicies(proxy, output)
+}
+
 func (t *LLMProviderTransformer) Transform(input any, output *api.RestAPI) (*api.RestAPI, error) {
 	switch v := input.(type) {
 	case *api.LLMProviderConfiguration:
@@ -140,31 +166,41 @@ func (t *LLMProviderTransformer) getTemplateByHandle(handle string) (*models.Sto
 	return t.db.GetLLMProviderTemplateByHandle(handle)
 }
 
+// transformProxy keeps the two-value shape every existing caller expects.
 func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration,
 	output *api.RestAPI) (*api.RestAPI, error) {
+	result, _, err := t.transformProxyWithUpstreamPolicies(proxy, output)
+	return result, err
+}
+
+// transformProxyWithUpstreamPolicies also returns each provider's per-attempt policies, keyed by
+// the alias an attempt is routed to. Non-empty only when per-attempt placement is enabled; when
+// it is not, those policies are on the downstream chain instead and this map is empty.
+func (t *LLMProviderTransformer) transformProxyWithUpstreamPolicies(proxy *api.LLMProxyConfiguration,
+	output *api.RestAPI) (*api.RestAPI, map[string]ProviderPolicies, error) {
 
 	// Step 0: Normalise whichever provider shape arrived into one attachment
 	// list, primary first. Nothing below this line looks at the raw shapes, so
 	// the canonical and legacy forms cannot diverge.
 	attachments, err := models.NormaliseLLMProxyAttachments(proxy.Spec)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	primary := attachments[0]
 
 	// Step 1: Retrieve and validate provider reference
 	provider, err := t.db.GetConfigByKindAndHandle(string(api.LLMProviderConfigurationKindLlmProvider), primary.Id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to look up provider '%s': %w", primary.Id, err)
+		return nil, nil, fmt.Errorf("failed to look up provider '%s': %w", primary.Id, err)
 	}
 	if provider == nil {
-		return nil, fmt.Errorf("failed to retrieve provider by id '%s'", primary.Id)
+		return nil, nil, fmt.Errorf("failed to retrieve provider by id '%s'", primary.Id)
 	}
 
 	// Step 1.5: Get provider's template and extract template params
 	providerConfig, ok := provider.SourceConfiguration.(api.LLMProviderConfiguration)
 	if !ok {
-		return nil, fmt.Errorf("provider source configuration is not LLMProviderConfiguration")
+		return nil, nil, fmt.Errorf("provider source configuration is not LLMProviderConfiguration")
 	}
 
 	// The template that drives extraction is a property of the PROXY, not of
@@ -183,9 +219,9 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	tmpl, err := t.getTemplateByHandle(templateHandle)
 	if err != nil {
 		if declaredInbound {
-			return nil, fmt.Errorf("failed to retrieve inbound interface template '%s': %w", templateHandle, err)
+			return nil, nil, fmt.Errorf("failed to retrieve inbound interface template '%s': %w", templateHandle, err)
 		}
-		return nil, fmt.Errorf("failed to retrieve template '%s' from provider: %w", templateHandle, err)
+		return nil, nil, fmt.Errorf("failed to retrieve template '%s' from provider: %w", templateHandle, err)
 	}
 
 	// Step 2: Configure API metadata and basic spec
@@ -208,7 +244,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	// 3. Self-signed listener certificates can cause TLS verification failures
 	providerContext, err := provider.GetContext()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get provider context: %w", err)
+		return nil, nil, fmt.Errorf("failed to get provider context: %w", err)
 	}
 	upstream := fmt.Sprintf("%s://%s:%d%s",
 		constants.SchemeHTTP, constants.LocalhostIP, t.routerConfig.ListenerPort, providerContext)
@@ -237,28 +273,28 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		seen := map[string]bool{primary.EffectiveName(): true}
 		for _, ap := range attachments[1:] {
 			if ap.Id == "" {
-				return nil, fmt.Errorf("additionalProviders entry must have a non-empty id")
+				return nil, nil, fmt.Errorf("additionalProviders entry must have a non-empty id")
 			}
 			name := ap.EffectiveName()
 			if seen[name] {
-				return nil, fmt.Errorf("duplicate upstream name '%s' in additionalProviders (must be unique within the proxy and not collide with the primary provider id)", name)
+				return nil, nil, fmt.Errorf("duplicate upstream name '%s' in additionalProviders (must be unique within the proxy and not collide with the primary provider id)", name)
 			}
 			seen[name] = true
 
 			addCfg, err := t.db.GetConfigByKindAndHandle(string(api.LLMProviderConfigurationKindLlmProvider), ap.Id)
 			if err != nil {
-				return nil, fmt.Errorf("failed to look up additional provider '%s': %w", ap.Id, err)
+				return nil, nil, fmt.Errorf("failed to look up additional provider '%s': %w", ap.Id, err)
 			}
 			if addCfg == nil {
-				return nil, fmt.Errorf("additional provider '%s' not found", ap.Id)
+				return nil, nil, fmt.Errorf("additional provider '%s' not found", ap.Id)
 			}
 			addCtx, err := addCfg.GetContext()
 			if err != nil {
-				return nil, fmt.Errorf("failed to get context for additional provider '%s': %w", ap.Id, err)
+				return nil, nil, fmt.Errorf("failed to get context for additional provider '%s': %w", ap.Id, err)
 			}
 			addProviderConfig, ok := addCfg.SourceConfiguration.(api.LLMProviderConfiguration)
 			if !ok {
-				return nil, fmt.Errorf("additional provider '%s' source configuration is not LLMProviderConfiguration", ap.Id)
+				return nil, nil, fmt.Errorf("additional provider '%s' source configuration is not LLMProviderConfiguration", ap.Id)
 			}
 			additionalValuePrefixByID[ap.Id] = apiKeyAuthValuePrefix(addProviderConfig.Spec.GlobalPolicies)
 			// UpstreamDefinition URLs are host[:port] only. Keep the provider's
@@ -282,11 +318,11 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		// Add host header adding policy at API level
 		hParams, err := GetHostAdditionPolicyParams(providerVhost)
 		if err != nil {
-			return nil, fmt.Errorf("failed to build host addition policy params: %w", err)
+			return nil, nil, fmt.Errorf("failed to build host addition policy params: %w", err)
 		}
 		policyVersion, err := t.resolvePolicyVersion(constants.PROXY_HOST__HEADER_POLICY_NAME)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		hh := api.Policy{
@@ -313,6 +349,10 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	// and inline translators declared per additional provider. Both are attached as
 	// conditional policies so they run only when their provider is selected.
 	var upstreamAuthPolicies []api.Policy
+	// Per-provider policies for the PER-ATTEMPT chain, keyed by the alias an attempt is
+	// routed to. Built alongside the downstream copies so the two placements cannot drift;
+	// which one is actually used is decided below.
+	perProvider := map[string]ProviderPolicies{}
 	var transformerPolicies []api.Policy
 	// Every attachment is treated alike — the primary differs only in its
 	// execution condition, which is also true when no provider was selected.
@@ -331,10 +371,19 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		if ap.Auth != nil {
 			pol, err := t.proxyUpstreamAuthPolicy(ap.Auth, valuePrefix, authField)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			// "other"/"none" auth yield no policy - nothing to attach.
 			if pol != nil {
+				// Copied BEFORE the execution condition and request-body phase are
+				// applied below: both are downstream concerns. The per-attempt chain is
+				// already scoped to one provider, so gating it on the provider selected
+				// downstream would be redundant at best and unevaluable at worst — that
+				// metadata need not exist at the upstream position.
+				entry := perProvider[name]
+				credential := *pol
+				entry.Auth = &credential
+				perProvider[name] = entry
 				condition := selectedProviderExecutionCondition(name, ap.IsPrimary)
 				pol.ExecutionCondition = &condition
 				// A router may pick the provider while processing the request body,
@@ -349,8 +398,16 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 		if ap.Transformer != nil {
 			pol, err := t.proxyTransformerPolicy(ap.Transformer, name, transformerField, ap.IsPrimary)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
+			// Transformer BEFORE auth in the per-attempt chain, so the request is already
+			// in the provider's shape when its credential is applied, and no policy after
+			// the credential can observe it (FR-039).
+			bare := *pol
+			bare.ExecutionCondition = nil
+			entry := perProvider[name]
+			entry.Transformer = &bare
+			perProvider[name] = entry
 			transformerPolicies = append(transformerPolicies, *pol)
 		}
 	}
@@ -404,7 +461,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 
 							templateParams, err := buildTemplateParams(tmpl, targetPath)
 							if err != nil {
-								return nil, fmt.Errorf("failed to build template params: %w", err)
+								return nil, nil, fmt.Errorf("failed to build template params: %w", err)
 							}
 							pol := api.Policy{
 								Name:               attachment.policy.Name,
@@ -433,6 +490,38 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	}
 	ops = sortOperationsBySpecificity(ops)
 
+	// PLACEMENT, derived from what the proxy attaches rather than from a flag (FR-012h).
+	//
+	// Downstream, a provider's transformer and credential run once per client request, gated on
+	// the provider selected at that moment — correct until failover, when a later attempt
+	// reaches a DIFFERENT provider carrying the first one's shape and key (FR-042).
+	//
+	// So: failover attached means they belong in each provider's PER-ATTEMPT chain and must not
+	// also remain downstream, or both copies run and the transformer is applied twice. No
+	// failover means exactly one attempt, where per-attempt and per-request are the same thing,
+	// so they stay downstream and the proxy generates no per-attempt chain for them at all.
+	//
+	// A flag could not express this: the right answer differs per API, and everything needed to
+	// decide it is already here. The flag that used to live here never enabled per-attempt
+	// placement either — the chains were built unconditionally, so it only deleted the
+	// downstream copy, and with it off the shipped default applied both.
+	if proxyAttachesFailover(proxy.Spec) {
+		transformerPolicies = nil
+		upstreamAuthPolicies = nil
+	} else {
+		// Nothing per-attempt to place. Clearing the map is what stops
+		// buildUpstreamPolicyChains generating a chain, and therefore what stops
+		// attachUpstreamChainTo putting an ext_proc filter on a cluster that has no
+		// per-attempt work — a gRPC round trip per request for nothing.
+		//
+		// Authored providers[].policies are unaffected: those are per-attempt by definition
+		// and reach the chain through the attachment, not through this map.
+		for name, entry := range perProvider {
+			entry.Transformer, entry.Auth = nil, nil
+			perProvider[name] = entry
+		}
+	}
+
 	// Translators must run before upstream auth so the request is rewritten into
 	// the selected provider's shape before the upstream key is added.
 	if len(transformerPolicies) > 0 {
@@ -452,7 +541,7 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	// Phase 4: Attach loopback marker policy to all operations so the gateway can identify
 	loopbackMarkerPolicy, err := t.proxyInternalLoopbackMarkerPolicy()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for i := range ops {
 		appendOperationPolicy(&ops[i], *loopbackMarkerPolicy)
@@ -486,7 +575,37 @@ func (t *LLMProviderTransformer) transformProxy(proxy *api.LLMProxyConfiguration
 	spec.FaultPolicies = proxy.Spec.GlobalFaultPolicies
 
 	output.Spec = spec
-	return output, nil
+	return output, perProvider, nil
+}
+
+// proxyAttachesFailover reports whether this proxy attaches model-failover anywhere, which is
+// what decides where a provider's transformer and credential execute (FR-012h).
+//
+// Scans the API level as well as every operation: attachment point decides which operations the
+// policy covers, never whether the per-attempt half is installed — the same rule
+// transform.ResolveFailoverAttachment applies, and the same omission that once left an API-level
+// attachment with no per-attempt instance (FR-030r).
+//
+// Duplicated from pkg/transform rather than imported: pkg/transform already imports this package,
+// so the dependency cannot run the other way. Pinned by TestProxyAttachesFailover_MatchesTransform.
+func proxyAttachesFailover(spec api.LLMProxyConfigData) bool {
+	if spec.GlobalPolicies != nil {
+		for _, p := range *spec.GlobalPolicies {
+			if p.Name == config.FailoverPolicyName {
+				return true
+			}
+		}
+	}
+	// An operationPolicies entry IS a policy, carrying the paths and methods it covers, so the
+	// name is read directly rather than from a nested list.
+	if spec.OperationPolicies != nil {
+		for _, p := range *spec.OperationPolicies {
+			if p.Name == config.FailoverPolicyName {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (t *LLMProviderTransformer) transformProvider(provider *api.LLMProviderConfiguration,

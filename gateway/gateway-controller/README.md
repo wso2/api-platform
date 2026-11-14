@@ -817,3 +817,17 @@ Debug logs include:
 - xDS update push: < 5 seconds
 - Supports 100+ API configurations
 - Thread-safe concurrent operations
+
+## Envoy / control-plane version requirements
+
+The model failover policy generates a `priority_group` cluster specifier and a route retry policy
+carrying `refresh_cluster_on_retry`. Both require:
+
+| Component | Minimum | Pinned at |
+|---|---|---|
+| Envoy data plane | 1.40.0 | `gateway/gateway-runtime/Dockerfile` (`ARG ENVOY_VERSION`) |
+| `go-control-plane/envoy` | v1.40.0 | `go.mod` |
+| Go toolchain | **1.26.0** (required by `go-control-plane/envoy@v1.40.0`) | 1.26.5 in this module and in CI (`.github/workflows/gateway-integration-test.yml`) |
+
+Verified 2026-10-23: all three modules (`gateway-controller`, `policy-engine`, `it`) declare
+`go 1.26.5`, and CI pins `go-version: '1.26.5'`, so the toolchain floor is satisfied everywhere.

@@ -40,6 +40,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/admin"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/analytics/correlation"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/attemptverdict"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/config"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/constants"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
@@ -362,16 +363,44 @@ func main() {
 		metrics.StartMemoryMetricsUpdater(ctx, 15*time.Second)
 	}
 
-	// Start the access log service server when the collector is enabled. The
-	// collector is the shared transport that carries collected data to its
-	// consumers (analytics, traffic logging).
+	// Start the access log service server. The collector is the shared transport that carries
+	// collected data to its consumers (analytics, traffic logging) — but it is no longer the
+	// only reason this receiver exists: failover health grading reads Envoy's response flags
+	// off the same stream, and both collector inputs default to off, so gating the receiver on
+	// them would leave the common deployment unable to detect a provider that truncates every
+	// stream (FR-030o).
+	//
+	// Started unconditionally rather than on a failover signal because there is nothing to
+	// signal with at boot — routes arrive later, over xDS. The idle cost is one listener and
+	// one goroutine, and nothing ever connects unless the gateway-controller emitted the
+	// matching cluster and sink, which it does only when some consumer actually needs them.
+	//
+	// This adds no network surface in a default deployment: collector.server.mode ships as
+	// "uds", so the receiver binds a Unix socket rather than a port. An operator who has
+	// explicitly selected "tcp" while leaving every collector consumer disabled will now see
+	// that port bound — narrow, and a mode they chose.
 	var alsServer *grpc.Server
 	var alsAnalytics *analytics.Analytics
 	slog.DebugContext(ctx, "Policy engine ALS server config", "config", cfg.Collector.Server)
-	if cfg.IsCollectorEnabled() {
-		// Start the access log service server
-		slog.Info("Starting the ALS gRPC server...")
-		alsServer, alsAnalytics = utils.StartAccessLogServiceServer(cfg, corrStore)
+	slog.Info("Starting the ALS gRPC server...")
+	// Verdicts are delivered to the policies on the route that produced them, resolved through
+	// the kernel's own chain map so attribution is structural rather than inferred (T030k3).
+	verdictSink := attemptverdict.NewPolicyDeliverySink(k.GetPolicyChain, nil)
+	als, alsErr := utils.StartAccessLogServiceServer(cfg, corrStore, verdictSink)
+	switch {
+	case alsErr != nil && cfg.IsCollectorEnabled():
+		// Analytics or traffic logging is configured and this stream is its only data source.
+		// Continuing would serve traffic while silently collecting nothing.
+		slog.ErrorContext(ctx, "Failed to start the ALS gRPC server", "error", alsErr)
+		os.Exit(1)
+	case alsErr != nil:
+		// Nothing is configured to consume it; the receiver was being started only so failover
+		// could grade mid-stream failures. Failover still works without it, grading
+		// conservatively (FR-030p), so this degrades rather than refusing to serve.
+		slog.WarnContext(ctx, "ALS gRPC server unavailable; failover will not see mid-stream "+
+			"failures and will record nothing for attempts it cannot verify", "error", alsErr)
+	default:
+		alsServer, alsAnalytics = als.Server, als.Analytics
 	}
 
 	// Setup graceful shutdown
