@@ -790,6 +790,7 @@ func TestAPIServiceCreate_MissingSecretRef_Rejected(t *testing.T) {
 	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService())
 	service := &APIService{
 		apiRepo:       apiRepo,
+		projectRepo:   &mockProjectRepository{projectByUUID: &model.Project{ID: "11111111-1111-1111-1111-111111111111", Handle: "test-project"}},
 		secretService: secretService,
 		identity:      newTestIdentityService(),
 	}

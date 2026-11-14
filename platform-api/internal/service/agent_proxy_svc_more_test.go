@@ -1212,7 +1212,7 @@ func TestValidateSecretRefs_StoreFailureIsInternal(t *testing.T) {
 	cfg := model.AgentProxyConfiguration{Upstream: model.UpstreamConfig{Main: &model.UpstreamEndpoint{
 		Auth: &model.UpstreamAuth{Type: "bearer", Value: `{{ secret "private-handle" }}`},
 	}}}
-	err := svc.validateSecretRefs(agentTestOrg, cfg)
+	err := svc.validateSecretRefs(agentTestOrg, SecretRefContext{}, cfg)
 	if !apperror.Internal.Is(err) {
 		t.Fatalf("expected Internal, got %v", err)
 	}
@@ -1222,7 +1222,7 @@ func TestValidateSecretRefs_StoreFailureIsInternal(t *testing.T) {
 	}
 
 	// No placeholders: nothing to validate.
-	if err := svc.validateSecretRefs(agentTestOrg, model.AgentProxyConfiguration{}); err != nil {
+	if err := svc.validateSecretRefs(agentTestOrg, SecretRefContext{}, model.AgentProxyConfiguration{}); err != nil {
 		t.Fatalf("no placeholders: %v", err)
 	}
 }

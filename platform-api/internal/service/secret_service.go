@@ -47,10 +47,28 @@ type SecretService struct {
 	repo     repository.SecretRepository
 	vault    vault.SecretVault
 	identity *IdentityService
+	// scopeResolver turns project and artifact handles in a secret's scopes into
+	// UUIDs and back. Without it only org-wide scopes can be set.
+	scopeResolver SecretScopeResolver
 }
 
 func NewSecretService(repo repository.SecretRepository, v vault.SecretVault, identity *IdentityService) *SecretService {
 	return &SecretService{repo: repo, vault: v, identity: identity}
+}
+
+// SetScopeResolver lets secrets be scoped to projects and artifacts.
+func (s *SecretService) SetScopeResolver(r SecretScopeResolver) {
+	s.scopeResolver = r
+}
+
+// scopesFor returns the scopes of the secret handle rendered back to handles,
+// or nil when they cannot be read.
+func (s *SecretService) scopesFor(orgID, handle string) []string {
+	info, err := s.repo.GetScopeInfoByHandles(orgID, []string{handle})
+	if err != nil || info[handle] == nil {
+		return nil
+	}
+	return s.describeSecretScopes(orgID, info[handle].Scopes)
 }
 
 // toSecretResponse converts secret via secretToResponse and resolves its
@@ -70,6 +88,7 @@ func (s *SecretService) toSecretResponse(secret *model.Secret) (*dto.SecretRespo
 		return nil, err
 	}
 	resp.UpdatedBy = updatedBy
+	resp.Scopes = s.scopesFor(secret.OrganizationID, secret.Handle)
 	return resp, nil
 }
 
@@ -85,6 +104,7 @@ func (s *SecretService) toSecretSummary(secret *model.Secret) (*dto.SecretSummar
 		return nil, err
 	}
 	resp.CreatedBy = createdBy
+	resp.Scopes = s.scopesFor(secret.OrganizationID, secret.Handle)
 	return resp, nil
 }
 
@@ -104,6 +124,14 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 		return nil, apperror.SecretExists.New()
 	}
 
+	scopes, err := s.parseSecretScopes(orgID, req.Scopes)
+	if err != nil {
+		return nil, err
+	}
+	if len(scopes) == 0 {
+		scopes = []model.SecretScope{{Scope: model.SecretScopeTypeOrg, ScopeValue: orgID}}
+	}
+
 	ciphertext, err := s.vault.Encrypt(context.Background(), req.Value)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt secret: %w", err)
@@ -121,9 +149,7 @@ func (s *SecretService) Create(orgID, createdBy string, req *dto.CreateSecretReq
 		Status:         model.SecretStatusActive,
 		CreatedBy:      createdBy,
 		UpdatedBy:      createdBy,
-		Scopes: []model.SecretScope{
-			{Scope: model.SecretScopeTypeOrg, ScopeValue: orgID},
-		},
+		Scopes:         scopes,
 	}
 
 	if err := s.repo.Create(secret); err != nil {
@@ -178,6 +204,20 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 		return nil, err
 	}
 
+	var newScopes []model.SecretScope
+	if req.ScopesSet {
+		newScopes, err = s.parseSecretScopes(orgID, req.Scopes)
+		if err != nil {
+			return nil, err
+		}
+		if len(newScopes) == 0 {
+			newScopes = []model.SecretScope{{Scope: model.SecretScopeTypeOrg, ScopeValue: orgID}}
+		}
+		if err := s.checkScopesKeepReferences(orgID, handle, newScopes); err != nil {
+			return nil, err
+		}
+	}
+
 	ciphertext, err := s.vault.Encrypt(context.Background(), req.Value)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt secret: %w", err)
@@ -198,8 +238,45 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 	if err := s.repo.Update(existing); err != nil {
 		return nil, fmt.Errorf("failed to update secret: %w", err)
 	}
+	if req.ScopesSet {
+		if err := s.repo.ReplaceScopes(existing.UUID, newScopes); err != nil {
+			return nil, fmt.Errorf("failed to update secret scopes: %w", err)
+		}
+	}
 
 	return s.toSecretResponse(existing)
+}
+
+// checkScopesKeepReferences refuses a scope change that would leave an artifact
+// referencing the secret outside its new scopes: that artifact's configuration
+// was accepted under the old scopes and the gateway would keep resolving it.
+// Remove the reference first, or include the artifact or its project.
+func (s *SecretService) checkScopesKeepReferences(orgID, handle string, scopes []model.SecretScope) error {
+	for _, sc := range scopes {
+		if sc.Scope == model.SecretScopeTypeOrg {
+			return nil
+		}
+	}
+	refs, err := s.repo.FindRefArtifactUUIDs(orgID, handle)
+	if err != nil {
+		return fmt.Errorf("failed to check secret references: %w", err)
+	}
+	for _, artifactUUID := range refs {
+		ctx := SecretRefContext{ArtifactUUID: artifactUUID}
+		if s.scopeResolver != nil {
+			projectUUID, err := s.scopeResolver.ArtifactProjectUUID(orgID, artifactUUID)
+			if err != nil {
+				return fmt.Errorf("failed to resolve the project of a referencing artifact: %w", err)
+			}
+			ctx.ProjectUUID = projectUUID
+		}
+		if !scopeAdmits(orgID, scopes, ctx) {
+			return apperror.ValidationFailed.New(
+				"The new scopes would exclude an artifact that references this secret. " +
+					"Remove the reference first, or include that artifact or its project in the scopes.")
+		}
+	}
+	return nil
 }
 
 func (s *SecretService) Delete(orgID, handle, updatedBy string) error {
@@ -269,35 +346,56 @@ func (s *SecretService) cleanupRotatedSecret(orgUUID, oldValue, newValue, update
 }
 
 // ValidateSecretRefs checks that every {{ secret "handle" }} placeholder in configText
-// resolves to an active org-scoped secret.
+// resolves to an active secret scoped to the whole organization. Callers that know
+// the referencing artifact use ValidateSecretRefsFor, which also admits secrets
+// scoped to that artifact or its project.
 func (s *SecretService) ValidateSecretRefs(orgID, configText string) error {
+	return s.ValidateSecretRefsFor(orgID, SecretRefContext{}, configText)
+}
+
+// ValidateSecretRefsFor checks that every {{ secret "handle" }} placeholder in
+// configText resolves to an active secret the artifact ctx describes may use: one
+// scoped to the whole organization, to ctx.ProjectUUID or to ctx.ArtifactUUID.
+//
+// The gateway-controller resolves any handle it holds, whatever its scopes, so this
+// check is what keeps a secret scoped to one artifact out of another artifact's
+// configuration. A handle that does not exist and one that exists but is not
+// available here get the same message, so the check is not an existence oracle
+// for secrets the caller may not use.
+func (s *SecretService) ValidateSecretRefsFor(orgID string, ctx SecretRefContext, configText string) error {
 	matches := constants.SecretPlaceholderRe.FindAllStringSubmatch(configText, -1)
 	if len(matches) == 0 {
 		return nil
 	}
 
 	seen := make(map[string]struct{})
-	var missing []string
-
+	var handles []string
 	for _, m := range matches {
 		handle := m[1]
 		if _, already := seen[handle]; already {
 			continue
 		}
 		seen[handle] = struct{}{}
+		handles = append(handles, handle)
+	}
 
-		found, err := s.repo.Exists(orgID, handle)
-		if err != nil {
-			return fmt.Errorf("failed to check existence of secret %q: %w", handle, err)
-		}
-		if !found {
-			missing = append(missing, handle)
+	infos, err := s.repo.GetScopeInfoByHandles(orgID, handles)
+	if err != nil {
+		return fmt.Errorf("failed to check referenced secrets: %w", err)
+	}
+
+	var unavailable []string
+	for _, handle := range handles {
+		info := infos[handle]
+		if info == nil || info.Status != model.SecretStatusActive || !scopeAdmits(orgID, info.Scopes, ctx) {
+			unavailable = append(unavailable, handle)
 		}
 	}
 
-	if len(missing) > 0 {
+	if len(unavailable) > 0 {
 		return apperror.ValidationFailed.New(fmt.Sprintf(
-			"The following referenced secrets do not exist: %s.", strings.Join(missing, ", ")))
+			"The following referenced secrets do not exist or are not available to this artifact: %s.",
+			strings.Join(unavailable, ", ")))
 	}
 	return nil
 }

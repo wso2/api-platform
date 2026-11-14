@@ -105,20 +105,6 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 		return nil, "", err
 	}
 
-	// Validate {{ secret "..." }} placeholders anywhere in the request — the
-	// gateway-controller's template engine resolves placeholders generically
-	// across the whole artifact (upstream auth and policies alike), so
-	// validation must cover the same surface.
-	if s.secretService != nil {
-		configJSON, err := marshalUpstreamForValidation(req)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to marshal request for secret validation: %w", err)
-		}
-		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
-			return nil, "", err
-		}
-	}
-
 	projectHandle := strings.TrimSpace(req.ProjectId)
 	// Check if project exists
 	project, err := s.projectRepo.GetProjectByHandleAndOrgID(projectHandle, orgUUID)
@@ -127,6 +113,21 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 	}
 	if project == nil {
 		return nil, "", apperror.ProjectNotFound.New()
+	}
+
+	// Validate {{ secret "..." }} placeholders anywhere in the request — the
+	// gateway-controller's template engine resolves placeholders generically
+	// across the whole artifact (upstream auth and policies alike), so
+	// validation must cover the same surface. The new API has no UUID yet, so
+	// only org-wide secrets and secrets scoped to its project are available.
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to marshal request for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefsFor(orgUUID, SecretRefContext{ProjectUUID: project.ID}, configJSON); err != nil {
+			return nil, "", err
+		}
 	}
 
 	// Handle the API handle (user-facing identifier)
@@ -426,7 +427,8 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
-		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+		refCtx := SecretRefContext{ProjectUUID: existingAPIModel.ProjectID, ArtifactUUID: existingAPIModel.ID}
+		if err := s.secretService.ValidateSecretRefsFor(orgUUID, refCtx, configJSON); err != nil {
 			return nil, err
 		}
 	}

@@ -142,7 +142,7 @@ func (s *AgentProxyService) Create(orgUUID, createdBy string, req *api.A2AAgentP
 	if err := validateEffectiveUpstreamAuth(&configuration.Upstream); err != nil {
 		return nil, err
 	}
-	if err := s.validateSecretRefs(orgUUID, configuration); err != nil {
+	if err := s.validateSecretRefs(orgUUID, SecretRefContext{ProjectUUID: projectUUID}, configuration); err != nil {
 		return nil, err
 	}
 
@@ -297,7 +297,7 @@ func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A
 		if err := validateEffectiveUpstreamAuth(&configuration.Upstream); err != nil {
 			return nil, err
 		}
-		if err := s.validateSecretRefs(orgUUID, configuration); err != nil {
+		if err := s.validateSecretRefs(orgUUID, SecretRefContext{ProjectUUID: existing.ProjectUUID, ArtifactUUID: existing.UUID}, configuration); err != nil {
 			return nil, err
 		}
 		existing.Name = req.DisplayName
@@ -757,10 +757,10 @@ func (s *AgentProxyService) resolveNewHandle(orgUUID string, req *api.A2AAgentPr
 }
 
 // validateSecretRefs checks every {{ secret "handle" }} placeholder anywhere in
-// the configuration resolves in this organization. The whole document is scanned
+// the configuration resolves to a secret this Agent proxy may use. The whole document is scanned
 // rather than upstream.auth alone, because the gateway-controller's template
 // engine resolves placeholders generically across the artifact.
-func (s *AgentProxyService) validateSecretRefs(orgUUID string, configuration model.AgentProxyConfiguration) error {
+func (s *AgentProxyService) validateSecretRefs(orgUUID string, refCtx SecretRefContext, configuration model.AgentProxyConfiguration) error {
 	if s.secretService == nil {
 		return nil
 	}
@@ -768,7 +768,7 @@ func (s *AgentProxyService) validateSecretRefs(orgUUID string, configuration mod
 	if err != nil {
 		return fmt.Errorf("failed to marshal agent proxy configuration for secret validation: %w", err)
 	}
-	if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+	if err := s.secretService.ValidateSecretRefsFor(orgUUID, refCtx, configJSON); err != nil {
 		return sanitizeAgentProxySecretRefError(err)
 	}
 	return nil
@@ -793,7 +793,7 @@ func (s *AgentProxyService) validateSecretRefs(orgUUID string, configuration mod
 func sanitizeAgentProxySecretRefError(err error) error {
 	if apperror.ValidationFailed.Is(err) {
 		return apperror.ValidationFailed.New(
-			"One or more secrets referenced by this Agent proxy could not be resolved in this organization. " +
+			"One or more secrets referenced by this Agent proxy do not exist or are not available to it. " +
 				"Check the secret references in the upstream authentication configuration.").
 			WithLogMessage("agent proxy references one or more secret handles that do not resolve")
 	}

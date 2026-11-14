@@ -551,6 +551,13 @@ type SecretRepository interface {
 	FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]model.SecretReference, error)
 	FindRefs(orgID, handle string) ([]model.SecretReference, error)
 	Exists(orgID, handle string) (bool, error)
+	// GetScopeInfoByHandles returns the UUID, status and scopes of each handle that
+	// names a secret in the organization; a handle with no secret is absent.
+	GetScopeInfoByHandles(orgID string, handles []string) (map[string]*model.SecretScopeInfo, error)
+	// ReplaceScopes replaces every scope of the secret, in one transaction.
+	ReplaceScopes(secretUUID string, scopes []model.SecretScope) error
+	// FindRefArtifactUUIDs returns the UUIDs of the artifacts that reference the handle.
+	FindRefArtifactUUIDs(orgID, handle string) ([]string, error)
 }
 
 // WebhookSecretRepository persists org-level managed secrets and their

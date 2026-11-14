@@ -361,6 +361,94 @@ func (r *SecretRepo) FindRefs(orgID, handle string) ([]model.SecretReference, er
 	return refs, rows.Err()
 }
 
+// GetScopeInfoByHandles returns, for each handle that names a secret in the
+// organization, its UUID, status and scopes. A handle with no secret is absent
+// from the map.
+func (r *SecretRepo) GetScopeInfoByHandles(orgID string, handles []string) (map[string]*model.SecretScopeInfo, error) {
+	out := make(map[string]*model.SecretScopeInfo, len(handles))
+	if len(handles) == 0 {
+		return out, nil
+	}
+	placeholders := make([]string, len(handles))
+	args := make([]interface{}, 0, len(handles)+1)
+	args = append(args, orgID)
+	for i, h := range handles {
+		placeholders[i] = "?"
+		args = append(args, h)
+	}
+	query := r.db.Rebind(`
+		SELECT s.handle, s.uuid, s.status, sc.scope, sc.scope_value
+		FROM secrets s
+		LEFT JOIN secret_scopes sc ON sc.secret_uuid = s.uuid
+		WHERE s.organization_uuid = ? AND s.handle IN (` + strings.Join(placeholders, ",") + `)
+	`)
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query secret scopes: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			handle, uuid, status string
+			scope, scopeValue    sql.NullString
+		)
+		if err := rows.Scan(&handle, &uuid, &status, &scope, &scopeValue); err != nil {
+			return nil, fmt.Errorf("failed to scan secret scope row: %w", err)
+		}
+		info, ok := out[handle]
+		if !ok {
+			info = &model.SecretScopeInfo{UUID: uuid, Status: status}
+			out[handle] = info
+		}
+		if scope.Valid {
+			info.Scopes = append(info.Scopes, model.SecretScope{SecretUUID: uuid, Scope: scope.String, ScopeValue: scopeValue.String})
+		}
+	}
+	return out, rows.Err()
+}
+
+// ReplaceScopes replaces every scope of the secret with scopes, in one transaction.
+func (r *SecretRepo) ReplaceScopes(secretUUID string, scopes []model.SecretScope) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.Exec(r.db.Rebind(`DELETE FROM secret_scopes WHERE secret_uuid = ?`), secretUUID); err != nil {
+		return fmt.Errorf("failed to clear secret scopes: %w", err)
+	}
+	insert := r.db.Rebind(`INSERT INTO secret_scopes (secret_uuid, scope, scope_value) VALUES (?, ?, ?)`)
+	for _, sc := range scopes {
+		if _, err := tx.Exec(insert, secretUUID, sc.Scope, sc.ScopeValue); err != nil {
+			return fmt.Errorf("failed to create secret scope: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// FindRefArtifactUUIDs returns the UUIDs of the artifacts that reference the
+// secret handle in the organization.
+func (r *SecretRepo) FindRefArtifactUUIDs(orgID, handle string) ([]string, error) {
+	rows, err := r.db.Query(r.db.Rebind(`
+		SELECT DISTINCT artifact_uuid FROM artifact_secret_refs
+		WHERE organization_uuid = ? AND secret_handle = ?
+	`), orgID, handle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find secret ref artifacts: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 func isSecretUniqueViolation(err error) bool {
 	if err == nil {
 		return false

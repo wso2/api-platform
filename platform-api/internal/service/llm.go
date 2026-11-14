@@ -977,13 +977,14 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 	// Validate {{ secret "..." }} placeholders anywhere in the request — the
 	// gateway-controller's template engine resolves placeholders generically
 	// across the whole artifact (policies included), not just upstream.auth,
-	// so validation must cover the same surface.
+	// so validation must cover the same surface. A new provider has no UUID or
+	// project yet, so only org-wide secrets are available to it here.
 	if s.secretService != nil {
 		configJSON, err := marshalUpstreamForValidation(req)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
-		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+		if err := s.secretService.ValidateSecretRefsFor(orgUUID, SecretRefContext{}, configJSON); err != nil {
 			return nil, err
 		}
 	}
@@ -1202,7 +1203,7 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
-		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+		if err := s.secretService.ValidateSecretRefsFor(orgUUID, SecretRefContext{ArtifactUUID: existing.UUID}, configJSON); err != nil {
 			return nil, err
 		}
 	}
@@ -1872,7 +1873,7 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
-		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+		if err := s.secretService.ValidateSecretRefsFor(orgUUID, SecretRefContext{ProjectUUID: projectUUID}, configJSON); err != nil {
 			return nil, err
 		}
 	}
@@ -2194,7 +2195,7 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
-		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+		if err := s.secretService.ValidateSecretRefsFor(orgUUID, SecretRefContext{ProjectUUID: existing.ProjectUUID, ArtifactUUID: existing.UUID}, configJSON); err != nil {
 			return nil, err
 		}
 	}

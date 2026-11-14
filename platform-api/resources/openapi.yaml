@@ -9120,7 +9120,11 @@ paths:
     post:
       summary: Create a secret
       description: |
-        Create a new encrypted secret scoped to the organization. The plaintext value is never returned.
+        Create a new encrypted secret. The plaintext value is never returned.
+
+        `scopes` decides which artifacts may reference the secret with
+        `{{ secret "id" }}`. Without it the secret is available to every artifact
+        in the organization.
       operationId: createSecret
       security:
         - OAuth2Security:
@@ -9454,6 +9458,10 @@ paths:
         Re-encrypts and stores a new value for an existing secret. The handle is immutable
         so all `{{ secret "handle" }}` placeholder references across resources remain valid
         without modification.
+
+        Sending `scopes` replaces the secret's scopes; omitting it keeps them. A change
+        that would exclude an artifact that still references the secret is refused
+        with 400.
       operationId: rotateSecret
       security:
         - OAuth2Security:
@@ -15332,6 +15340,24 @@ components:
           items:
             type: object
 
+    SecretScopes:
+      type: array
+      description: |
+        Which artifacts may reference the secret with `{{ secret "id" }}`. Each entry is one of:
+        - `org`: every artifact in the organization (the default). Cannot be combined with other scopes.
+        - `project:<project id>`: artifacts in that project.
+        - `artifact:<kind>:<artifact id>`: that artifact only. Kind is one of RestApi, GraphQLApi,
+          LlmProvider, LlmProxy, Mcp, AgentProxy. Use this for LLM providers, which belong to no project.
+
+        A reference from an artifact the secret is not available to is rejected as if the secret did not
+        exist. In multipart requests, repeat the `scopes` field or send comma-separated values.
+      items:
+        type: string
+        example: project:payments
+      example:
+        - project:payments
+        - artifact:LlmProvider:openai-prod
+
     SecretCreateRequest:
       type: object
       required:
@@ -15362,6 +15388,8 @@ components:
           type: string
           enum: [GENERIC, CERTIFICATE]
           default: GENERIC
+        scopes:
+          $ref: '#/components/schemas/SecretScopes'
 
     SecretUpdateRequest:
       type: object
@@ -15386,6 +15414,10 @@ components:
           type: string
           description: New plaintext secret value — re-encrypted at rest
           writeOnly: true
+        scopes:
+          allOf:
+            - $ref: '#/components/schemas/SecretScopes'
+          description: Replaces the secret's scopes when sent; omit it to keep them. An empty value means "org".
 
     SecretResponse:
       type: object
@@ -15420,6 +15452,8 @@ components:
         updatedAt:
           type: string
           format: date-time
+        scopes:
+          $ref: '#/components/schemas/SecretScopes'
 
     SecretSummary:
       type: object
@@ -15463,6 +15497,8 @@ components:
         updatedAt:
           type: string
           format: date-time
+        scopes:
+          $ref: '#/components/schemas/SecretScopes'
 
     SecretListResponse:
       type: object

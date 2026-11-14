@@ -3597,7 +3597,11 @@ export interface paths {
         put?: never;
         /**
          * Create a secret
-         * @description Create a new encrypted secret scoped to the organization. The plaintext value is never returned.
+         * @description Create a new encrypted secret. The plaintext value is never returned.
+         *
+         *     `scopes` decides which artifacts may reference the secret with
+         *     `{{ secret "id" }}`. Without it the secret is available to every artifact
+         *     in the organization.
          */
         post: operations["createSecret"];
         delete?: never;
@@ -3720,6 +3724,10 @@ export interface paths {
          * @description Re-encrypts and stores a new value for an existing secret. The handle is immutable
          *     so all `{{ secret "handle" }}` placeholder references across resources remain valid
          *     without modification.
+         *
+         *     Sending `scopes` replaces the secret's scopes; omitting it keeps them. A change
+         *     that would exclude an artifact that still references the secret is refused
+         *     with 400.
          */
         put: operations["rotateSecret"];
         post?: never;
@@ -7757,6 +7765,21 @@ export interface components {
             /** @description List of prompt capabilities supported by this proxy */
             prompts?: Record<string, never>[];
         };
+        /**
+         * @description Which artifacts may reference the secret with `{{ secret "id" }}`. Each entry is one of:
+         *     - `org`: every artifact in the organization (the default). Cannot be combined with other scopes.
+         *     - `project:<project id>`: artifacts in that project.
+         *     - `artifact:<kind>:<artifact id>`: that artifact only. Kind is one of RestApi, GraphQLApi,
+         *       LlmProvider, LlmProxy, Mcp, AgentProxy. Use this for LLM providers, which belong to no project.
+         *
+         *     A reference from an artifact the secret is not available to is rejected as if the secret did not
+         *     exist. In multipart requests, repeat the `scopes` field or send comma-separated values.
+         * @example [
+         *       "project:payments",
+         *       "artifact:LlmProvider:openai-prod"
+         *     ]
+         */
+        SecretScopes: string[];
         SecretCreateRequest: {
             /**
              * @description Handle (slug) used in {{ secret "id" }} placeholders. Immutable after creation.
@@ -7780,6 +7803,7 @@ export interface components {
              * @enum {string}
              */
             type: "GENERIC" | "CERTIFICATE";
+            scopes?: components["schemas"]["SecretScopes"];
         };
         SecretUpdateRequest: {
             /**
@@ -7792,6 +7816,8 @@ export interface components {
             description?: string;
             /** @description New plaintext secret value — re-encrypted at rest */
             value: string;
+            /** @description Replaces the secret's scopes when sent; omit it to keep them. An empty value means "org". */
+            scopes?: components["schemas"]["SecretScopes"];
         };
         /** @description Returned on create (201) and rotate (200). The plaintext value is never included. */
         SecretResponse: {
@@ -7816,6 +7842,7 @@ export interface components {
             createdAt?: string;
             /** Format: date-time */
             updatedAt?: string;
+            scopes?: components["schemas"]["SecretScopes"];
         };
         /** @description Secret metadata — never includes the plaintext value. */
         SecretSummary: {
@@ -7844,6 +7871,7 @@ export interface components {
             createdAt?: string;
             /** Format: date-time */
             updatedAt?: string;
+            scopes?: components["schemas"]["SecretScopes"];
         };
         SecretListResponse: {
             /** @description Number of secrets in current response */

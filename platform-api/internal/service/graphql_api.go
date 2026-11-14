@@ -185,20 +185,6 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 		return nil, apperror.ValidationFailed.New("The projectId field is required.")
 	}
 
-	// Validate {{ secret "..." }} placeholders anywhere in the request — the
-	// gateway-controller's template engine resolves placeholders generically
-	// across the whole artifact (upstream auth and policies alike), so
-	// validation must cover the same surface as REST's CreateAPI does.
-	if s.secretService != nil {
-		configJSON, err := marshalUpstreamForValidation(req)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
-		}
-		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
-			return nil, err
-		}
-	}
-
 	// Resolve the project by handle (req.ProjectId is actually the project's
 	// user-facing handle, e.g. "default-project", not its internal UUID —
 	// mirrors internal/service/api.go's CreateAPI). GO-AUTH-005: org scoping
@@ -213,6 +199,21 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 			return nil, apperror.ProjectRefNotFound.New()
 		}
 		projectUUID = project.ID
+	}
+
+	// Validate {{ secret "..." }} placeholders anywhere in the request — the
+	// gateway-controller's template engine resolves placeholders generically
+	// across the whole artifact (upstream auth and policies alike), so
+	// validation must cover the same surface as REST's CreateAPI does. The new
+	// API has no UUID yet: org-wide secrets and its project's secrets only.
+	if s.secretService != nil {
+		configJSON, err := marshalUpstreamForValidation(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
+		}
+		if err := s.secretService.ValidateSecretRefsFor(orgUUID, SecretRefContext{ProjectUUID: projectUUID}, configJSON); err != nil {
+			return nil, err
+		}
 	}
 
 	// Handle (user-facing identifier): use the supplied one, or generate from
@@ -687,6 +688,14 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 		return nil, apperror.ValidationFailed.New("The displayName and version fields are required.")
 	}
 
+	existing, err := s.repo.GetByHandle(handle, orgUUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GraphQL API: %w", err)
+	}
+	if existing == nil {
+		return nil, apperror.GraphQLAPINotFound.New()
+	}
+
 	// Validate {{ secret "..." }} placeholders anywhere in the request — see
 	// Create for why this covers the whole request, not just upstream.
 	if s.secretService != nil {
@@ -694,17 +703,10 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request for secret validation: %w", err)
 		}
-		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
+		refCtx := SecretRefContext{ProjectUUID: existing.ProjectID, ArtifactUUID: existing.ID}
+		if err := s.secretService.ValidateSecretRefsFor(orgUUID, refCtx, configJSON); err != nil {
 			return nil, err
 		}
-	}
-
-	existing, err := s.repo.GetByHandle(handle, orgUUID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get GraphQL API: %w", err)
-	}
-	if existing == nil {
-		return nil, apperror.GraphQLAPINotFound.New()
 	}
 	// DP-originated artifacts are read-only in the control plane.
 	if err := ensureOriginMutable(existing.Origin); err != nil {
