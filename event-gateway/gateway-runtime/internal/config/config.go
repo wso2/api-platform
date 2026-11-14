@@ -27,10 +27,12 @@ import (
 	"time"
 
 	"github.com/knadh/koanf/parsers/toml/v2"
+	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
+	"github.com/wso2/api-platform/common/configcompat"
 	"github.com/wso2/api-platform/httpkit/tlsconfig"
 )
 
@@ -152,13 +154,13 @@ type LoggingConfig struct {
 // see the preset's own doc comment), so blocking RFC 1918/loopback would break that core,
 // intended deployment shape. Link-local (where the cloud metadata endpoint lives),
 // unspecified, and multicast/broadcast addresses stay refused regardless. Only the
-// redirect/scheme knobs netguard exposes are configurable, via HTTPClientSSRFConfig.
+// redirect/scheme knobs netguard exposes are configurable, via HTTPClientDestinationGuardConfig.
 type HTTPClientConfig struct {
-	Pooling  HTTPClientPoolingConfig  `koanf:"pooling"`
-	Timeouts HTTPClientTimeoutsConfig `koanf:"timeouts"`
-	TLS      HTTPClientTLSConfig      `koanf:"tls"`
-	Proxy    HTTPClientProxyConfig    `koanf:"proxy"`
-	SSRF     HTTPClientSSRFConfig     `koanf:"ssrf"`
+	Pooling          HTTPClientPoolingConfig          `koanf:"pooling"`
+	Timeouts         HTTPClientTimeoutsConfig         `koanf:"timeouts"`
+	TLS              HTTPClientTLSConfig              `koanf:"tls"`
+	Proxy            HTTPClientProxyConfig            `koanf:"proxy"`
+	DestinationGuard HTTPClientDestinationGuardConfig `koanf:"destination_guard"`
 }
 
 // HTTPClientPoolingConfig mirrors httpclient.PoolingConfig.
@@ -242,11 +244,11 @@ type HTTPClientProxyTLSConfig struct {
 	InsecureSkipVerifyAcknowledged bool `koanf:"insecure_skip_verify_acknowledged"`
 }
 
-// HTTPClientSSRFConfig mirrors the TOML-expressible redirect/scheme knobs of
-// httpclient.SSRFConfig. It deliberately has NO Enabled/Preset field: SSRF guarding for
+// HTTPClientDestinationGuardConfig mirrors the TOML-expressible redirect/scheme knobs of
+// httpclient.DestinationGuardConfig. It deliberately has NO Enabled/Preset field: the destination guard for
 // this client is always on with netguard.PermitPrivateBlockMetadata() (see
 // HTTPClientConfig's doc comment) — there is no supported way to disable it via config.
-type HTTPClientSSRFConfig struct {
+type HTTPClientDestinationGuardConfig struct {
 	MaxRedirects   int      `koanf:"max_redirects"`   // 0 uses netguard's own default (5)
 	AllowedSchemes []string `koanf:"allowed_schemes"` // empty defaults to {"https"}
 }
@@ -321,6 +323,21 @@ func Load(path string) (*Config, map[string]interface{}, error) {
 	if path != "" {
 		if err := k.Load(file.Provider(path), toml.Parser()); err != nil {
 			return nil, nil, fmt.Errorf("failed to load config file %s: %w", path, err)
+		}
+	}
+
+	// http_client.destination_guard shipped under an earlier name; a config that
+	// still uses it keeps working, with a deprecation warning.
+	raw := k.Raw()
+	deprecated, err := configcompat.MigrateDestinationGuard(raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	if deprecated != "" {
+		slog.Warn("Deprecated configuration key; rename it to http_client.destination_guard", "key", deprecated)
+		k = koanf.New(".")
+		if err := k.Load(confmap.Provider(raw, "."), nil); err != nil {
+			return nil, nil, fmt.Errorf("failed to reload configuration: %w", err)
 		}
 	}
 

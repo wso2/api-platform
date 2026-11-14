@@ -111,7 +111,7 @@ func CheckUserURL(ctx context.Context, rawURL string) error {
 	if cfg == nil {
 		return nil
 	}
-	if err := cfg.SSRF.Policy.CheckURL(ctx, rawURL, false); errors.Is(err, netguard.ErrDestinationNotAllowed) {
+	if err := cfg.DestinationGuard.Policy.CheckURL(ctx, rawURL, false); errors.Is(err, netguard.ErrDestinationNotAllowed) {
 		return apperror.DestinationNotAllowed.Wrap(err)
 	}
 	return nil
@@ -233,7 +233,7 @@ func NewUpstreamClientWithTimeout(timeout time.Duration) (*http.Client, error) {
 // NewOperatorUpstreamClientWithTimeout is NewUpstreamClientWithTimeout for a destination the
 // operator configured rather than a tenant, such as the feature-usage collector and its token
 // endpoint. Those are often in-cluster services, so private, loopback and carrier-grade-NAT
-// addresses stay reachable even when platform_api.http_client.ssrf.preset is "public_only",
+// addresses stay reachable even when platform_api.http_client.destination_guard.preset is "public_only",
 // which is meant for tenant-supplied URLs. Every other part of the shared policy is kept:
 // link-local/metadata, unspecified and multicast addresses are still refused at dial time,
 // and the schemes, redirects, TLS and pooling settings are the shared client's.
@@ -252,10 +252,10 @@ func clientWithTimeout(client *http.Client, cfg *httpclient.Config, timeout time
 		own := *cfg
 		own.Timeouts.Overall = timeout
 		own.Timeouts.ResponseHeader = timeout
-		if permitPrivate && own.SSRF.Enabled {
-			own.SSRF.Policy.BlockPrivate = false
-			own.SSRF.Policy.BlockLoopback = false
-			own.SSRF.Policy.BlockCGNAT = false
+		if permitPrivate && own.DestinationGuard.Enabled {
+			own.DestinationGuard.Policy.BlockPrivate = false
+			own.DestinationGuard.Policy.BlockLoopback = false
+			own.DestinationGuard.Policy.BlockCGNAT = false
 		}
 		return httpclient.New(own)
 	}

@@ -248,7 +248,7 @@ func defaultConfig() *Server {
 			Proxy: HTTPClientProxyConfig{
 				Mode: "none",
 			},
-			SSRF: HTTPClientSSRFConfig{
+			DestinationGuard: HTTPClientDestinationGuardConfig{
 				Enabled:        true,
 				Preset:         "permit_private_block_metadata",
 				MaxRedirects:   5,

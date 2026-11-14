@@ -41,7 +41,7 @@ func useAccessControl(t *testing.T, gc netguard.GuardConfig) {
 	cfg := httpclient.DefaultConfig()
 	cfg.Pooling.DisableKeepAlives = true
 	cfg.Timeouts.MaxResponseBytes = -1
-	cfg.SSRF = httpclient.SSRFConfig{Enabled: true, Policy: policy, MaxRedirects: gc.MaxRedirects}
+	cfg.DestinationGuard = httpclient.DestinationGuardConfig{Enabled: true, Policy: policy, MaxRedirects: gc.MaxRedirects}
 	if err := InitUserURLClientFromConfig(cfg); err != nil {
 		t.Fatalf("InitUserURLClientFromConfig: %v", err)
 	}

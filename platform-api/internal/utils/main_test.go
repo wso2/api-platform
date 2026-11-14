@@ -40,9 +40,9 @@ func TestMain(m *testing.M) {
 	cfg := httpclient.DefaultConfig()
 	cfg.Pooling.DisableKeepAlives = true
 	cfg.Timeouts.MaxResponseBytes = -1
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = policy
-	cfg.SSRF.MaxRedirects = 5
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = policy
+	cfg.DestinationGuard.MaxRedirects = 5
 
 	// Installed with its config, as production does (server.InitSharedHTTPClient), so
 	// clients with other timeouts can be derived from it.

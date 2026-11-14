@@ -37,6 +37,7 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"github.com/wso2/api-platform/common/collector"
+	"github.com/wso2/api-platform/common/configcompat"
 	"github.com/wso2/api-platform/common/configinterpolate"
 )
 
@@ -678,17 +679,17 @@ type BodyConfig struct {
 // context.WithTimeout, since http.Client.Do honors a request's context
 // deadline independent of the client-level Timeout.
 //
-// SSRF guarding is off by default (see HTTPClientSSRFConfig) since not every
+// The destination guard is off by default (see HTTPClientDestinationGuardConfig) since not every
 // policy dials a tenant/user-supplied URL. A policy whose outbound target
 // comes from request-derived or tenant-configured data — as opposed to a
 // fixed, operator-configured backend — should have its operator enable SSRF
 // guarding here; see ssrf-prevention.md.
 type HTTPClientConfig struct {
-	Pooling  HTTPClientPoolingConfig  `koanf:"pooling"`
-	Timeouts HTTPClientTimeoutsConfig `koanf:"timeouts"`
-	TLS      HTTPClientTLSConfig      `koanf:"tls"`
-	Proxy    HTTPClientProxyConfig    `koanf:"proxy"`
-	SSRF     HTTPClientSSRFConfig     `koanf:"ssrf"`
+	Pooling          HTTPClientPoolingConfig          `koanf:"pooling"`
+	Timeouts         HTTPClientTimeoutsConfig         `koanf:"timeouts"`
+	TLS              HTTPClientTLSConfig              `koanf:"tls"`
+	Proxy            HTTPClientProxyConfig            `koanf:"proxy"`
+	DestinationGuard HTTPClientDestinationGuardConfig `koanf:"destination_guard"`
 }
 
 // HTTPClientPoolingConfig mirrors httpclient.PoolingConfig.
@@ -754,9 +755,9 @@ type HTTPClientProxyTLSConfig struct {
 	InsecureSkipVerify bool   `koanf:"insecure_skip_verify"`
 }
 
-// HTTPClientSSRFConfig mirrors the TOML-expressible subset of httpclient.SSRFConfig. Off by
+// HTTPClientDestinationGuardConfig mirrors the TOML-expressible subset of httpclient.DestinationGuardConfig. Off by
 // default — see HTTPClientConfig's doc comment on when a policy's operator should enable it.
-type HTTPClientSSRFConfig struct {
+type HTTPClientDestinationGuardConfig struct {
 	Enabled bool `koanf:"enabled"`
 	// Preset selects a built-in netguard policy: "permit_private_block_metadata" (a
 	// backend that is normally private — a ClusterIP, a service-DNS name, localhost —
@@ -1171,6 +1172,17 @@ func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
 		return nil, fmt.Errorf("config interpolation failed: %w", err)
 	}
 
+	// http_client.destination_guard shipped under an earlier name; a config that
+	// still uses it keeps working, with a deprecation warning.
+	deprecated, err := configcompat.MigrateDestinationGuard(expanded, "policy_engine")
+	if err != nil {
+		return nil, err
+	}
+	if deprecated != "" {
+		slog.Warn("Deprecated configuration key; rename it to http_client.destination_guard",
+			slog.String("key", deprecated))
+	}
+
 	out := koanf.New(".")
 	if err := out.Load(confmap.Provider(expanded, "."), nil); err != nil {
 		return nil, fmt.Errorf("failed to reload interpolated config: %w", err)
@@ -1365,7 +1377,7 @@ func defaultConfig() *Config {
 				Proxy: HTTPClientProxyConfig{
 					Mode: "none",
 				},
-				SSRF: HTTPClientSSRFConfig{
+				DestinationGuard: HTTPClientDestinationGuardConfig{
 					Enabled: false,
 				},
 			},
