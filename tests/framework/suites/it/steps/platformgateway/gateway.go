@@ -1268,6 +1268,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.assertCPArtifactID)
 
 	g.registerTimeoutSteps(sc)
+	g.registerAuditSteps(sc)
 }
 
 const elapsedTolerance = 0.05
@@ -1658,6 +1659,7 @@ var serviceEndpoints = map[string]struct {
 	"policy-engine":                {component: "platform-gateway", endpoint: "policy-admin"},
 	"analytics":                    {component: "testbench", endpoint: "analytics", partitioned: true},
 	"capture":                      {component: "testbench", endpoint: "capture", partitioned: true},
+	"webhook":                      {component: "testbench", endpoint: "webhook", partitioned: true},
 	"oauth2":                       {component: "testbench", endpoint: "oauth2", partitioned: true},
 	// The TypeSafe Jev API. Not block-partitioned here: a scenario addresses its own partition
 	// as the first path segment, so request counts are scoped to the scenario.

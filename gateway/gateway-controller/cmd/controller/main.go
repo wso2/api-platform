@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/certmetrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
@@ -809,6 +810,22 @@ func main() {
 	// Without an encryption provider, gateway identity uploads are refused.
 	apiServer.SetEncryptionManager(encryptionProviderManager)
 
+	// Only changes users make through the management API are audited: the
+	// control-plane client builds its own services, which never get the audit
+	// service. An immutable gateway rejects every API change, and its boot
+	// loader shares restAPIService and agentSvc, so nothing is audited there.
+	var auditService *audit.AuditService
+	if !cfg.ImmutableGateway.Enabled {
+		auditService, err = audit.NewAuditService(gatewayID, cfg.Controller.Audit, log)
+		if err != nil {
+			log.Error("Failed to initialize audit outputs", slog.Any("error", err))
+			os.Exit(1)
+		}
+		restAPIService.SetAuditService(auditService)
+		agentSvc.SetAuditService(auditService)
+		apiServer.SetAuditService(auditService)
+	}
+
 	// Recompute certificate metrics and expiry warnings at startup and then
 	// every 24h.
 	certSweepCtx, certSweepCancel := context.WithCancel(context.Background())
@@ -1030,6 +1047,14 @@ func main() {
 			log.Error("REST API TLS server forced to shutdown", slog.Any("error", err))
 		}
 	}
+
+	// After the API servers, so records from requests that just finished are
+	// flushed. Its own bound: the servers may have used the whole budget above.
+	auditCtx, auditCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := auditService.Close(auditCtx); err != nil {
+		log.Warn("Failed to close audit outputs cleanly", slog.Any("error", err))
+	}
+	auditCancel()
 
 	xdsServer.Stop()
 

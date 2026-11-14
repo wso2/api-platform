@@ -429,6 +429,33 @@ blocks:
         features:
           - features/gateway/observability/metrics.feature
 
+  # Audit with every output on (stdout, a file and the testbench webhook): the overlay would make
+  # every other runner write audit records too, so each gets its own instance. The masked block
+  # also sets mask_sensitive_fields, which the unmasked checks must not see.
+  - name: gateway-audit
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-audit.toml
+      - name: testbench
+    runners:
+      - name: audit
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/audit.feature
+
+  - name: gateway-audit-masked
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-audit-masked.toml
+      - name: testbench
+    runners:
+      - name: audit-masked
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/audit_masked.feature
+
   # The gateway returns no request ID in responses and serves no JWKS endpoint
   # (request-id-response.toml), settings gateway-core's runners must not see.
   - name: gateway-request-id-disabled

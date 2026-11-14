@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/handlers/handlerkit"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/middleware"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/certmetrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/clientca"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
@@ -285,6 +286,7 @@ func (s *APIServer) UploadCertificate(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		s.auditService.Record("CREATE", certID, cert.Name, "certificate", audit.OutcomeFailed, actorFromRequest(r), correlationID)
 		log.Error("Failed to save certificate to database",
 			slog.String("name", req.Name),
 			slog.Any("error", err))
@@ -300,6 +302,7 @@ func (s *APIServer) UploadCertificate(w http.ResponseWriter, r *http.Request) {
 		slog.String("name", req.Name),
 		slog.Int("cert_count", count))
 	s.publishCertificateEvent("CREATE", certID, correlationID, log)
+	s.auditService.Record("CREATE", certID, cert.Name, "certificate", audit.OutcomeSucceeded, actorFromRequest(r), correlationID)
 
 	// Get cert store from snapshot manager
 	translator := s.snapshotManager.GetTranslator()
@@ -577,8 +580,15 @@ func (s *APIServer) DeleteCertificate(w http.ResponseWriter, r *http.Request, id
 		}
 	}
 
+	certName := ""
+	if preDeleteCert != nil {
+		certName = preDeleteCert.Name
+	}
 	// Delete from database
 	if err := s.db.DeleteCertificate(id); err != nil {
+		if !storage.IsNotFoundError(err) {
+			s.auditService.Record("DELETE", id, certName, "certificate", audit.OutcomeFailed, actorFromRequest(r), correlationID)
+		}
 		log.Error("Failed to delete certificate",
 			slog.String("id", id),
 			slog.Any("error", err))
@@ -591,6 +601,7 @@ func (s *APIServer) DeleteCertificate(w http.ResponseWriter, r *http.Request, id
 
 	log.Info("Certificate deleted from database", slog.String("id", id))
 	s.publishCertificateEvent("DELETE", id, correlationID, log)
+	s.auditService.Record("DELETE", id, certName, "certificate", audit.OutcomeSucceeded, actorFromRequest(r), correlationID)
 
 	certStore := translator.GetCertStore()
 
@@ -878,6 +889,7 @@ func (s *APIServer) UpdateCertificate(w http.ResponseWriter, r *http.Request, id
 	}
 
 	if err := s.db.UpdateCertificate(updated); err != nil {
+		s.auditService.Record("UPDATE", updated.UUID, updated.Name, "certificate", audit.OutcomeFailed, actorFromRequest(r), correlationID)
 		log.Error("Failed to update certificate", slog.String("id", id), slog.Any("error", err))
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]any{
 			"status":  "error",
@@ -886,6 +898,7 @@ func (s *APIServer) UpdateCertificate(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 	s.publishCertificateEvent("UPDATE", updated.UUID, correlationID, log)
+	s.auditService.Record("UPDATE", updated.UUID, updated.Name, "certificate", audit.OutcomeSucceeded, actorFromRequest(r), correlationID)
 
 	// The SDS update rebuilds this identity's gateway_identity:<name> secret.
 	// Reload does nothing for identity rows but keeps parity with upload.

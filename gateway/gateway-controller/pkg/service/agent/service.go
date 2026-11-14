@@ -31,6 +31,7 @@ import (
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/common/eventhub"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/audit"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
@@ -85,6 +86,11 @@ type AgentService struct {
 	// deploymentPushEnabled is false, nothing is pushed.
 	controlPlaneClient    utils.ArtifactPusher
 	deploymentPushEnabled bool
+	auditService          *audit.AuditService
+}
+
+func (s *AgentService) SetAuditService(auditService *audit.AuditService) {
+	s.auditService = auditService
 }
 
 // SetControlPlanePusher wires the DP->CP push dependency. It is called on the
@@ -152,6 +158,7 @@ type CreateParams struct {
 	// stale one. Defaults to now.
 	DeployedAt *time.Time
 	Logger     *slog.Logger
+	Actor      string
 }
 
 // Create deploys a new Agent configuration.
@@ -225,8 +232,13 @@ func (s *AgentService) Create(params CreateParams) (*CreateResult, error) {
 	// Timestamp-guarded upsert: affected=false means a newer version of this
 	// artifact is already stored, so this request lost a race and must not
 	// publish an event that would make replicas converge backwards.
+	action := "CREATE"
+	if isUpdate {
+		action = "UPDATE"
+	}
 	affected, err := s.db.UpsertConfig(storedCfg)
 	if err != nil {
+		s.auditService.Record(action, artifactID, storedCfg.Handle, "agent", audit.OutcomeFailed, params.Actor, params.CorrelationID)
 		return nil, fmt.Errorf("failed to persist agent configuration: %w", err)
 	}
 	if !affected {
@@ -236,11 +248,8 @@ func (s *AgentService) Create(params CreateParams) (*CreateResult, error) {
 		return &CreateResult{StoredConfig: storedCfg, IsUpdate: isUpdate, IsStale: true}, nil
 	}
 
-	action := "CREATE"
-	if isUpdate {
-		action = "UPDATE"
-	}
 	s.publishEvent(action, artifactID, params.CorrelationID, log)
+	s.auditService.Record(action, artifactID, storedCfg.Handle, "agent", audit.OutcomeSucceeded, params.Actor, params.CorrelationID)
 
 	s.pushDeployedArtifact(storedCfg, params.CorrelationID, log)
 
@@ -345,6 +354,7 @@ type UpdateParams struct {
 	ContentType   string
 	CorrelationID string
 	Logger        *slog.Logger
+	Actor         string
 }
 
 // Update modifies an existing Agent configuration.
@@ -399,10 +409,12 @@ func (s *AgentService) Update(params UpdateParams) (*UpdateResult, error) {
 
 	if err := s.db.UpdateConfig(existing); err != nil {
 		log.Error("Failed to update agent config in database", slog.Any("error", err))
+		s.auditService.Record("UPDATE", existing.UUID, existing.Handle, "agent", audit.OutcomeFailed, params.Actor, params.CorrelationID)
 		return nil, fmt.Errorf("failed to persist configuration update: %w", err)
 	}
 
 	s.publishEvent("UPDATE", existing.UUID, params.CorrelationID, log)
+	s.auditService.Record("UPDATE", existing.UUID, existing.Handle, "agent", audit.OutcomeSucceeded, params.Actor, params.CorrelationID)
 	s.pushDeployedArtifact(existing, params.CorrelationID, log)
 
 	log.Info("Agent configuration updated",
@@ -494,6 +506,7 @@ type DeleteParams struct {
 	Handle        string
 	CorrelationID string
 	Logger        *slog.Logger
+	Actor         string
 }
 
 // Delete removes an Agent configuration.
@@ -510,6 +523,9 @@ func (s *AgentService) Delete(params DeleteParams) (*DeleteResult, error) {
 
 	if err := s.db.DeleteConfig(cfg.UUID); err != nil {
 		log.Error("Failed to delete agent config from database", slog.Any("error", err))
+		if !storage.IsNotFoundError(err) {
+			s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "agent", audit.OutcomeFailed, params.Actor, params.CorrelationID)
+		}
 		return nil, fmt.Errorf("failed to delete configuration: %w", err)
 	}
 
@@ -523,6 +539,7 @@ func (s *AgentService) Delete(params DeleteParams) (*DeleteResult, error) {
 	}
 
 	s.publishEvent("DELETE", cfg.UUID, params.CorrelationID, log)
+	s.auditService.Record("DELETE", cfg.UUID, cfg.Handle, "agent", audit.OutcomeSucceeded, params.Actor, params.CorrelationID)
 	s.pushArtifactUndeploy(cfg, log)
 
 	log.Info("Agent configuration deleted",

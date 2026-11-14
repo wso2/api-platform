@@ -922,7 +922,7 @@ func (c *Client) syncSubscriptionPlans(gatewayID string) {
 		for _, lp := range localPlans {
 			if _, exists := fetchedIDs[lp.ID]; !exists {
 				correlationID := utils.GenerateDeterministicUUIDv7(lp.ID, lp.UpdatedAt)
-				if err := resourceService.DeleteSubscriptionPlan(lp.ID, correlationID, c.logger); err != nil {
+				if err := resourceService.DeleteSubscriptionPlan(lp.ID, correlationID, "", c.logger); err != nil {
 					c.logger.Warn("Failed to delete orphaned subscription plan during bulk sync",
 						slog.String("planId", lp.ID), slog.Any("error", err))
 				}
@@ -1043,7 +1043,7 @@ func (c *Client) syncSubscriptionsForExistingAPIs(gatewayID string) {
 			for _, ls := range localSubs {
 				if _, exists := fetchedSubIDs[ls.ID]; !exists {
 					correlationID := utils.GenerateDeterministicUUIDv7(ls.ID, ls.UpdatedAt)
-					if err := resourceService.DeleteSubscription(ls.ID, correlationID, c.logger); err != nil {
+					if err := resourceService.DeleteSubscription(ls.ID, correlationID, "", c.logger); err != nil {
 						c.logger.Warn("Failed to delete orphaned subscription during bulk sync",
 							slog.String("subscription_id", ls.ID),
 							slog.String("api_id", apiID), slog.Any("error", err))
@@ -2923,7 +2923,7 @@ func (c *Client) handleLLMProviderDeletedEvent(event map[string]interface{}) {
 
 	// Delete via LLM deployment service (handles DB cleanup, store cleanup,
 	// eventHub publish, template mapping removal, and xDS update)
-	_, err = c.llmDeploymentService.DeleteLLMProvider(providerConfig.Handle, deletedEvent.CorrelationID, c.logger)
+	_, err = c.llmDeploymentService.DeleteLLMProvider(providerConfig.Handle, deletedEvent.CorrelationID, "", c.logger)
 	if err != nil {
 		c.logger.Error("Failed to delete LLM provider configuration",
 			slog.String("provider_id", providerID),
@@ -3014,7 +3014,7 @@ func (c *Client) handleLLMProxyDeletedEvent(event map[string]interface{}) {
 
 	// Delete via LLM deployment service (handles DB cleanup, store cleanup,
 	// eventHub publish, and xDS update)
-	_, err = c.llmDeploymentService.DeleteLLMProxy(proxyConfig.Handle, deletedEvent.CorrelationID, c.logger)
+	_, err = c.llmDeploymentService.DeleteLLMProxy(proxyConfig.Handle, deletedEvent.CorrelationID, "", c.logger)
 	if err != nil {
 		c.logger.Error("Failed to delete LLM proxy configuration",
 			slog.String("proxy_id", proxyID),
@@ -3289,7 +3289,7 @@ func (c *Client) handleMCPProxyDeletedEvent(event map[string]any) {
 		return
 	}
 
-	_, err = c.mcpDeploymentService.DeleteMCPProxy(mcpConfig.Handle, deletedEvent.CorrelationID, c.logger)
+	_, err = c.mcpDeploymentService.DeleteMCPProxy(mcpConfig.Handle, deletedEvent.CorrelationID, "", c.logger)
 	if err != nil {
 		c.logger.Error("Failed to delete MCP proxy configuration",
 			slog.String("proxy_id", proxyID),
@@ -4353,7 +4353,7 @@ func (c *Client) handleSubscriptionUpdatedEvent(event map[string]interface{}) {
 		existing.BillingSubscriptionID = &payload.BillingSubscriptionID
 	}
 	existing.Status = models.SubscriptionStatus(payload.Status)
-	if err := resourceService.UpdateSubscription(existing, updatedEvent.CorrelationID, logger); err != nil {
+	if err := resourceService.UpdateSubscription(existing, updatedEvent.CorrelationID, "", logger); err != nil {
 		logger.Error("Failed to update subscription from subscription.updated event",
 			slog.Any("error", err))
 		return
@@ -4384,7 +4384,7 @@ func (c *Client) handleSubscriptionDeletedEvent(event map[string]interface{}) {
 		slog.String("subscription_id", payload.SubscriptionID),
 	)
 
-	if err := resourceService.DeleteSubscription(payload.SubscriptionID, deletedEvent.CorrelationID, logger); err != nil {
+	if err := resourceService.DeleteSubscription(payload.SubscriptionID, deletedEvent.CorrelationID, "", logger); err != nil {
 		logger.Warn("Failed to delete subscription from subscription.deleted event",
 			slog.Any("error", err))
 		return
@@ -4489,7 +4489,7 @@ func (c *Client) handleSubscriptionPlanUpdatedEvent(event map[string]interface{}
 		existing.Status = models.SubscriptionPlanStatus(payload.Status)
 	}
 
-	if err := resourceService.UpdateSubscriptionPlan(existing, updated.CorrelationID, logger); err != nil {
+	if err := resourceService.UpdateSubscriptionPlan(existing, updated.CorrelationID, "", logger); err != nil {
 		logger.Error("Failed to update subscription plan from subscriptionPlan.updated event",
 			slog.Any("error", err))
 		return
@@ -4516,7 +4516,7 @@ func (c *Client) handleSubscriptionPlanDeletedEvent(event map[string]interface{}
 		slog.String("plan_id", payload.PlanId),
 	)
 
-	if err := resourceService.DeleteSubscriptionPlan(payload.PlanId, deleted.CorrelationID, logger); err != nil {
+	if err := resourceService.DeleteSubscriptionPlan(payload.PlanId, deleted.CorrelationID, "", logger); err != nil {
 		logger.Warn("Failed to delete subscription plan from subscriptionPlan.deleted event",
 			slog.Any("error", err))
 		return

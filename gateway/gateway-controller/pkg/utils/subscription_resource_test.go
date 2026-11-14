@@ -21,14 +21,21 @@ package utils
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wso2/api-platform/common/eventhub"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/audit"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
 type recordingSubscriptionDB struct {
@@ -116,7 +123,7 @@ func TestSubscriptionResourceServiceSaveSubscription_PublishesAfterDBWrite(t *te
 		Status:            models.SubscriptionStatusActive,
 	}
 
-	err := service.SaveSubscription(sub, "corr-sub-create", newSubscriptionResourceTestLogger())
+	err := service.SaveSubscription(sub, "corr-sub-create", "", newSubscriptionResourceTestLogger())
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"save_subscription", "publish_event"}, calls)
@@ -206,4 +213,124 @@ func TestCopySubscriptionFields_CopiesBillingIDsAsSent(t *testing.T) {
 	copySubscriptionFields(stored, &models.Subscription{ID: "sub-1"})
 	assert.Nil(t, stored.BillingCustomerID)
 	assert.Nil(t, stored.BillingSubscriptionID)
+}
+
+// auditRowRecorder reads back the records the audit service wrote to its file output.
+type auditRowRecorder struct {
+	path string
+}
+
+// read returns each record's action, resource id, name and type, outcome, actor
+// and correlation ID.
+func (r *auditRowRecorder) read(t *testing.T) [][]string {
+	t.Helper()
+	data, err := os.ReadFile(r.path)
+	require.NoError(t, err)
+	var rows [][]string
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line == "" {
+			continue
+		}
+		var record map[string]string
+		require.NoError(t, json.Unmarshal([]byte(line), &record))
+		rows = append(rows, []string{record["action"], record["resourceId"], record["resourceName"], record["resourceType"],
+			record["outcome"], record["performedBy"], record["correlationId"]})
+	}
+	return rows
+}
+
+func newRecordingAuditService(t *testing.T) (*audit.AuditService, *auditRowRecorder) {
+	t.Helper()
+	rows := &auditRowRecorder{path: filepath.Join(t.TempDir(), "audit.log")}
+	auditService, err := audit.NewAuditService("gateway-1", config.AuditConfig{
+		Enabled: true,
+		Outputs: []string{config.AuditOutputFile},
+		File:    config.AuditFileConfig{Path: rows.path},
+	}, newSubscriptionResourceTestLogger())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = auditService.Close(context.Background()) })
+	return auditService, rows
+}
+
+// failingSubscriptionDB fails every subscription and plan write with err.
+type failingSubscriptionDB struct {
+	*testMockDB
+	err error
+}
+
+func (m *failingSubscriptionDB) SaveSubscription(*models.Subscription) error   { return m.err }
+func (m *failingSubscriptionDB) UpdateSubscription(*models.Subscription) error { return m.err }
+func (m *failingSubscriptionDB) DeleteSubscription(string, string) error       { return m.err }
+func (m *failingSubscriptionDB) SaveSubscriptionPlan(*models.SubscriptionPlan) error {
+	return m.err
+}
+func (m *failingSubscriptionDB) UpdateSubscriptionPlan(*models.SubscriptionPlan) error {
+	return m.err
+}
+func (m *failingSubscriptionDB) DeleteSubscriptionPlan(string, string) error { return m.err }
+
+func TestSubscriptionResourceServiceRecordsAudit(t *testing.T) {
+	logger := newSubscriptionResourceTestLogger()
+	sub := &models.Subscription{ID: "sub-1", APIID: "api-1"}
+	plan := &models.SubscriptionPlan{ID: "plan-1", PlanName: "Gold"}
+	operations := []struct {
+		name string
+		call func(*SubscriptionResourceService) error
+		want []string // action, resource id, name and type
+	}{
+		{"create subscription", func(s *SubscriptionResourceService) error { return s.SaveSubscription(sub, "corr-1", "alice", logger) },
+			[]string{"CREATE", "sub-1", "", "subscription"}},
+		{"update subscription", func(s *SubscriptionResourceService) error {
+			return s.UpdateSubscription(sub, "corr-1", "alice", logger)
+		},
+			[]string{"UPDATE", "sub-1", "", "subscription"}},
+		{"delete subscription", func(s *SubscriptionResourceService) error {
+			return s.DeleteSubscription("sub-1", "corr-1", "alice", logger)
+		},
+			[]string{"DELETE", "sub-1", "", "subscription"}},
+		{"create plan", func(s *SubscriptionResourceService) error {
+			return s.SaveSubscriptionPlan(plan, "corr-1", "alice", logger)
+		},
+			[]string{"CREATE", "plan-1", "Gold", "subscription_plan"}},
+		{"update plan", func(s *SubscriptionResourceService) error {
+			return s.UpdateSubscriptionPlan(plan, "corr-1", "alice", logger)
+		},
+			[]string{"UPDATE", "plan-1", "Gold", "subscription_plan"}},
+		{"delete plan", func(s *SubscriptionResourceService) error {
+			return s.DeleteSubscriptionPlan("plan-1", "corr-1", "alice", logger)
+		},
+			[]string{"DELETE", "plan-1", "", "subscription_plan"}},
+	}
+	outcomes := []struct {
+		name        string
+		dbErr       error
+		wantOutcome string // empty: nothing recorded
+	}{
+		{"succeeds", nil, audit.OutcomeSucceeded},
+		{"write fails", errors.New("disk I/O error"), audit.OutcomeFailed},
+		{"not found", storage.ErrNotFound, ""},
+		{"conflict", storage.ErrConflict, ""},
+	}
+	for _, op := range operations {
+		for _, oc := range outcomes {
+			t.Run(op.name+"/"+oc.name, func(t *testing.T) {
+				auditService, rows := newRecordingAuditService(t)
+				calls := []string{}
+				db := &failingSubscriptionDB{testMockDB: newTestMockDB(), err: oc.dbErr}
+				service := NewSubscriptionResourceService(db, nil, &recordingSubscriptionEventHub{calls: &calls}, "gateway-1")
+				service.SetAuditService(auditService)
+
+				err := op.call(service)
+
+				require.ErrorIs(t, err, oc.dbErr)
+				if oc.wantOutcome == "" {
+					assert.Empty(t, rows.read(t))
+					return
+				}
+				got := rows.read(t)
+				require.Len(t, got, 1)
+				assert.Equal(t, append(append([]string{}, op.want...), oc.wantOutcome, "alice", "corr-1"), got[0])
+			})
+		}
+	}
 }
