@@ -1,0 +1,40 @@
+# Stage 0 probe harness: three fake providers on fixed IPs + one Envoy.
+# Fixed IPs make the override-host address strings deterministic.
+networks:
+  probe:
+    ipam:
+      config: [ { subnet: 172.28.0.0/16 } ]
+services:
+  provider-a:
+    image: python:3.12-alpine
+    environment: { PROVIDER: a, ALWAYS_FAIL: "${A_FAIL:-false}", DELAY_BEFORE_HEADERS: "${A_DELAY:-0}", STREAM_CHUNKS: "${A_CHUNKS:-0}", CHUNK_GAP: "${A_GAP:-0}" }
+    volumes: [ "./backend.py:/backend.py:ro" ]
+    command: python /backend.py
+    networks: { probe: { ipv4_address: 172.28.0.11 } }
+  provider-b:
+    image: python:3.12-alpine
+    environment: { PROVIDER: b, ALWAYS_FAIL: "${B_FAIL:-false}", DELAY_BEFORE_HEADERS: "${B_DELAY:-0}", STREAM_CHUNKS: "${B_CHUNKS:-0}", CHUNK_GAP: "${B_GAP:-0}" }
+    volumes: [ "./backend.py:/backend.py:ro" ]
+    command: python /backend.py
+    networks: { probe: { ipv4_address: 172.28.0.12 } }
+  provider-c:
+    image: python:3.12-alpine
+    environment: { PROVIDER: c, ALWAYS_FAIL: "${C_FAIL:-false}", DELAY_BEFORE_HEADERS: "${C_DELAY:-0}", STREAM_CHUNKS: "${C_CHUNKS:-0}", CHUNK_GAP: "${C_GAP:-0}" }
+    volumes: [ "./backend.py:/backend.py:ro" ]
+    command: python /backend.py
+    networks: { probe: { ipv4_address: 172.28.0.13 } }
+  extproc:
+    # Probe E only. Statically linked, cross-compiled on the host:
+    #   cd extproc && GOWORK=off GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o extproc-server .
+    image: alpine:3.20
+    environment: { PROBE_BODY_MODE: "${PROBE_BODY_MODE:-on}" }
+    volumes: [ "./extproc/extproc-server:/extproc-server:ro" ]
+    command: /extproc-server
+    networks: { probe: { ipv4_address: 172.28.0.20 } }
+  envoy:
+    image: envoyproxy/envoy:${ENVOY_TAG:-v1.39.0}
+    volumes: [ "./${ENVOY_CONFIG:-a1-ordering.yaml}:/etc/envoy/envoy.yaml:ro" ]
+    command: ["-c", "/etc/envoy/envoy.yaml", "-l", "${ENVOY_LOG:-info}"]
+    ports: [ "10000:10000", "19901:9901" ]   # admin on 19901: 9901 is usually taken by a dev gateway-runtime
+    networks: { probe: { ipv4_address: 172.28.0.2 } }
+    depends_on: [ provider-a, provider-b, provider-c, extproc ]

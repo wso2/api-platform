@@ -1,0 +1,188 @@
+# Contract: model-failover policy definition
+#
+# Shape follows the conventions of the shipped policy definitions under
+# gateway/target/build/gateway-controller/policies/ (compare model-round-robin-v1.1.1.yaml).
+# Implementation lives in wso2/gateway-controllers as an independently versioned Go module;
+# this repo pins it in gateway/build-manifest.yaml.
+
+name: model-failover
+version: v0.1.0
+displayName: Model Failover
+description: |
+  Re-attempts a failed AI model request against the next target in an ordered chain, so a
+  client application receives a successful response instead of an upstream failure.
+
+  Attachable to any API kind whose operations resolve model targets (RestApi, LlmProxy),
+  matching model-round-robin. APIs that do not attach it are unaffected, including those
+  routing to the same shared provider upstream.
+
+  Targets are (model, provider) pairs with independent health.
+
+  A target that fails repeatedly is suspended; when the suspension expires it returns to full
+  normal rotation, and a further failure doubles the suspension up to a configured ceiling.
+
+  When a routing policy that publishes an ordered target preference list is attached to the
+  same operation, that ranking is traversed first and these targets follow as a last-resort
+  tail; the routing policy's own suspension setting becomes inert and this policy's health
+  view governs. See contracts/target-preference-list.md.
+
+  Failover is never attempted after response headers or streamed content have reached the
+  client. Every attempt carries the request-body mutations applied by preceding policies.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    targets:
+      type: array
+      x-wso2-policy-advanced-param: false
+      description: |
+        Ordered fallback targets, highest priority first. Optional when a routing policy that
+        publishes a target preference list is attached to this operation; required otherwise.
+        Targets not present in a published ranking act as a last-resort tail, reachable only
+        after that ranking is exhausted.
+      items:
+        type: object
+        additionalProperties: false
+        properties:
+          model:
+            type: string
+            description: AI model name.
+            minLength: 1
+          provider:
+            type: string
+            description: |
+              Optional provider for this target. Must match an LlmProxy
+              additionalProviders[].as value, or the provider id when `as` is absent.
+              When omitted, the primary provider is used. The pair (model, provider) is
+              the target's identity and the unit of health tracking.
+            minLength: 1
+        required:
+          - model
+      minItems: 1
+
+    failureConditions:
+      type: object
+      additionalProperties: false
+      x-wso2-policy-advanced-param: false
+      description: Which upstream outcomes cause an attempt to move to the next target.
+      properties:
+        statusCodes:
+          type: array
+          description: |
+            Response status codes treated as failover-worthy. Rate-limit and server-error
+            codes are the defaults; client-input and authorization failures are deliberately
+            excluded, since retrying them elsewhere fails the same way or masks a client bug.
+          items:
+            type: integer
+            minimum: 400
+            maximum: 599
+          default: [429, 500, 502, 503, 504]
+        onTransportFailure:
+          type: boolean
+          description: |
+            Fail over on connection failure, connection reset, unavailable upstream, or
+            per-attempt timeout. These are independent of statusCodes.
+          default: true
+
+    suspension:
+      type: object
+      additionalProperties: false
+      x-wso2-policy-advanced-param: true
+      description: Removing a repeatedly failing target from selection.
+      properties:
+        consecutiveFailures:
+          type: integer
+          description: Consecutive failures that suspend a target. 0 disables suspension.
+          minimum: 0
+          default: 3
+        durationSeconds:
+          type: integer
+          description: |
+            Base suspension duration. Doubles on each re-suspension up to maxDurationSeconds,
+            and resets to this value after backoffResetSeconds of healthy operation.
+          minimum: 0
+          default: 30
+        maxDurationSeconds:
+          type: integer
+          description: |
+            Ceiling for the doubled suspension duration. Once reached, further failures keep
+            the duration here rather than growing it.
+          minimum: 1
+          default: 600
+        backoffResetSeconds:
+          type: integer
+          description: |
+            How long a restored target must stay healthy before its next suspension starts
+            from durationSeconds again. A target that keeps flapping never earns the reset
+            and keeps doubling toward maxDurationSeconds.
+          minimum: 1
+          default: 600
+        errorRatePercent:
+          type: integer
+          description: |
+            Failure rate within windowSeconds that suspends a target, independently of
+            consecutiveFailures. Catches a target failing intermittently, which never
+            produces a run of consecutive failures. 0 disables the windowed rule.
+          minimum: 0
+          maximum: 100
+          default: 50
+        windowSeconds:
+          type: integer
+          description: Rolling window over which errorRatePercent is evaluated.
+          minimum: 1
+          default: 60
+        p95LatencyMs:
+          type: integer
+          description: |
+            95th-percentile latency over windowSeconds that suspends a target, subject to
+            minimumRequests. Judges sustained slowness; a single slow request fails over but
+            never suspends on its own. 0 disables latency-based suspension.
+          minimum: 0
+          default: 0
+        minimumRequests:
+          type: integer
+          description: |
+            Minimum requests within the window before errorRatePercent is evaluated.
+            Without this, two failures out of two requests reads as a 100% error rate
+            and would suspend a healthy target during quiet periods.
+          minimum: 1
+          default: 20
+
+
+    perAttemptTimeoutMs:
+      type: integer
+      x-wso2-policy-advanced-param: true
+      description: |
+        Maximum time to wait on a single target before treating the attempt as failed.
+        Must be smaller than the operation's overall request timeout, so a slow primary
+        cannot consume the whole budget.
+      minimum: 1
+      default: 30000
+
+systemParameters:
+  type: object
+  additionalProperties: false
+  properties: {}
+
+# --- Deployment-time validation (enforced by gateway-controller) ---
+#
+# V1  Schema-level validation only: numeric ranges and structural validity.       (FR-006)
+#     Unresolvable model/provider references are NOT rejected -> skipped.          (FR-006a)
+# V2  targets absent AND no ranking-publishing routing policy -> accepted and      (FR-006b)
+#     inert, not rejected. Failover must not be the first policy in the gateway
+#     to block a deployment for an environment mismatch.
+# V3  perAttemptTimeoutMs < operation request timeout.                             (hardening d.5)
+# V4  Numeric settings within the ranges above.                                    (FR-006)
+# V4a errorRatePercent in 0-100; windowSeconds >= 1; minimumRequests >= 1.         (FR-018a/b)
+# V4b p95LatencyMs >= 0; when non-zero it should exceed typical model latency so
+#     normal traffic does not suspend the target.                                  (FR-018e)
+# V4c maxDurationSeconds >= durationSeconds; backoffResetSeconds >= 1.             (FR-019b/c)
+# V5  When a routing policy declares its own suspension setting, report that this  (FR-026b)
+#     policy's health view supersedes it. Report, never silently apply.
+# V6  Applicability is decided by target resolution, not by a kind allowlist:      (FR-030a/b)
+#     attachable to any kind whose operations resolve model targets (RestApi,
+#     LlmProxy today). Where nothing resolves, the policy is silently inert and
+#     indistinguishable from not being attached.                                   (FR-030e)
+# V7  Generated config is scoped to the attaching operation; shared provider       (FR-030c/d)
+#     upstreams used by other APIs must not be mutated.

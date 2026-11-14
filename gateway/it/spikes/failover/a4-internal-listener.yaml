@@ -1,0 +1,118 @@
+# PROBE A4 — THE DECISIVE ONE for Option A.
+# Can an internal-listener endpoint be selected from the override-host list?
+# Each provider sits behind its own internal listener and its own cluster,
+# so per-provider TLS/credentials would stay intact. The failover cluster's
+# endpoints are internal addresses wrapped in internal_upstream.
+admin: { address: { socket_address: { address: 0.0.0.0, port_value: 9901 } } }
+bootstrap_extensions:
+- name: envoy.bootstrap.internal_listener
+  typed_config:
+    "@type": type.googleapis.com/envoy.extensions.bootstrap.internal_listener.v3.InternalListener
+static_resources:
+  listeners:
+  - name: main
+    address: { socket_address: { address: 0.0.0.0, port_value: 10000 } }
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: probe
+          route_config:
+            virtual_hosts:
+            - name: vh
+              domains: ["*"]
+              routes:
+              - match: { prefix: "/" }
+                route:
+                  cluster: failover
+                  retry_policy:
+                    retry_on: "5xx,connect-failure,reset,retriable-status-codes"
+                    retriable_status_codes: [429, 500, 503]
+                    num_retries: 2
+                    per_try_timeout: 5s
+          http_filters:
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  # One internal listener per provider. Anything reaching it goes to that
+  # provider's own cluster, which keeps its own settings.
+  - name: int-provider-a
+    internal_listener: {}
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: int_a
+          route_config:
+            virtual_hosts:
+            - { name: vh, domains: ["*"], routes: [ { match: { prefix: "/" }, route: { cluster: provider_a } } ] }
+          http_filters:
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  - name: int-provider-b
+    internal_listener: {}
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: int_b
+          route_config:
+            virtual_hosts:
+            - { name: vh, domains: ["*"], routes: [ { match: { prefix: "/" }, route: { cluster: provider_b } } ] }
+          http_filters:
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+  - name: failover
+    connect_timeout: 2s
+    type: STATIC
+    load_balancing_policy:
+      policies:
+      - typed_extension_config:
+          name: envoy.load_balancing_policies.override_host
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.load_balancing_policies.override_host.v3.OverrideHost
+            override_host_sources:
+            - header: x-failover-targets
+            fallback_policy:
+              policies:
+              - typed_extension_config:
+                  name: envoy.load_balancing_policies.round_robin
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.load_balancing_policies.round_robin.v3.RoundRobin
+    transport_socket:
+      name: envoy.transport_sockets.internal_upstream
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.internal_upstream.v3.InternalUpstreamTransport
+        passthrough_metadata:
+        - kind: { host: {} }
+          name: wso2
+        transport_socket:
+          name: envoy.transport_sockets.raw_buffer
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.transport_sockets.raw_buffer.v3.RawBuffer
+    load_assignment:
+      cluster_name: failover
+      endpoints:
+      - lb_endpoints:
+        - endpoint: { address: { envoy_internal_address: { server_listener_name: int-provider-a } } }
+          metadata: { filter_metadata: { wso2: { provider: "a" } } }
+        - endpoint: { address: { envoy_internal_address: { server_listener_name: int-provider-b } } }
+          metadata: { filter_metadata: { wso2: { provider: "b" } } }
+  - name: provider_a
+    connect_timeout: 2s
+    type: STATIC
+    load_assignment:
+      cluster_name: provider_a
+      endpoints: [ { lb_endpoints: [ { endpoint: { address: { socket_address: { address: 172.28.0.11, port_value: 8080 } } } } ] } ]
+  - name: provider_b
+    connect_timeout: 2s
+    type: STATIC
+    load_assignment:
+      cluster_name: provider_b
+      endpoints: [ { lb_endpoints: [ { endpoint: { address: { socket_address: { address: 172.28.0.12, port_value: 8080 } } } } ] } ]

@@ -1,0 +1,2333 @@
+# Stage 0 POC results — Option A vs Option B
+
+**Run**: 2026-10-23 · **Harness**: `gateway/it/spikes/failover/` · **Branch**: `poc/failover-envoy-probes`
+
+Three fake providers on fixed IPs (`172.28.0.11/.12/.13`) that echo what they received and can be
+forced to fail, plus one Envoy. Option A probes ran on **envoyproxy/envoy:v1.39.0** (what we ship
+today); Option B probes on **envoyproxy/envoy:v1.40.0**.
+
+Every result below was observed, not inferred.
+
+---
+
+## Scorecard
+
+| # | Question | Option A (Override Host, 1.39.0) | Option B (priority_group, 1.40.0) |
+|---|---|---|---|
+| 1 | Per-request order honored on attempt 1 | **PASS** | **PASS — only with route-cache clear** |
+| 2 | Ordered traversal across retries | **PASS** | **PASS** |
+| 3 | Each target attempted at most once | **PASS** (1 hit per provider) | **PASS** |
+| 4 | Per-provider clusters kept intact | **PASS** (via internal listeners) | **PASS** (native) |
+| 5 | Body mutations survive to the fallback attempt | **PASS** | **PASS** |
+| 6 | Excluded target stays untouched when attempts overrun | **FAIL** | **PASS** |
+| 7 | Config accepted without custom builds | **PASS** | **PASS** |
+| 8 | Silent-failure modes found | 1 (overrun) | 2 (missing flag, missing cache clear) |
+
+---
+
+## What each probe showed
+
+### A1 — ordering (PASS)
+
+List `[c,a,b]` → served by **c**. `[b,c]` → **b**. `[a]` → **a**. With no list at all, the fallback
+round-robin served normally, so a policy that writes nothing degrades to ordinary routing rather than
+breaking.
+
+### A2 — traversal (PASS)
+
+Providers a and c forced to 500, list `[a,c,b]`:
+
+```
+HTTP=200, served by b
+provider-a hits: 1   provider-b hits: 1   provider-c hits: 1
+```
+
+Exactly one attempt per target, in order, client never saw the failures.
+
+### A3 — overrun (**FAIL — the important one**)
+
+List `[a,c]` (two entries, both failing) while the retry policy allowed three attempts. Provider **b
+was not in the list at all**:
+
+```
+HTTP=200, served by b
+provider-a: 1   provider-b: 1   provider-c: 1
+```
+
+**A target the policy deliberately excluded received traffic and served the request.** In production
+that excluded target is a *suspended* one — so with Option A, suspension is silently overridden
+whenever `num_retries` exceeds the list length. Omitting a target from the list is not sufficient to
+keep traffic away from it.
+
+### A4 — internal listener addressing (PASS, with an asterisk)
+
+This was Option A's make-or-break question. Trace logging revealed the host-map keys:
+
+```
+Looking up BOGUS-PROBE-VALUE in envoy://int-provider-b/, envoy://int-provider-a/
+```
+
+Using those strings in the override list works — ordering honored, traversal correct, each provider
+reached through its own cluster behind its own internal listener:
+
+```
+order=[a,b] -> a     order=[b,a] -> b     order=[a only] -> a     order=[b only] -> b
+```
+
+**Asterisk**: the documentation promises `IP:Port`. The `envoy://<listener>/` form works because the
+lookup is a plain string match against the host's address string. It is undocumented behaviour that
+could change in any release.
+
+*(An earlier reading suggested ordering was unreliable here; that was a stale connection to a
+container I had recreated mid-probe — a harness artifact, not Envoy. The clean re-run is above.)*
+
+### B1 — attempt-indexed cluster walking (PASS)
+
+Configured groups rank-1=a, rank-2=b, rank-3=c with a and b failing → served by **c**. Three separate
+clusters, each keeping its own configuration, walked by attempt number.
+
+### B2 — per-request override (PASS, conditional)
+
+A Lua filter standing in for our policy wrote the order into dynamic metadata. The access log confirms
+the metadata arrived intact:
+
+```
+md={"priority_groups":[{"clusters":[{"cluster_name":"provider_c",...}],"name":"rank-1"}, ...]}
+```
+
+**But the first attempt ignored it** — `cluster=provider_a attempts=1` when the override said `c`
+first. The route, and therefore the cluster, had already been resolved before the metadata was
+written.
+
+Adding `clearRouteCache()` after writing the metadata fixed it completely:
+
+```
+override=[c,b,a] -> provider_c    override=[b,a,c] -> provider_b    override=[a,c,b] -> provider_a
+```
+
+**Relevance to us**: our policy-engine kernel already sets `ClearRouteCache: true` on its responses,
+so this is satisfied by existing behaviour — but it must be asserted by a test, because without it
+the first pick silently falls back to the configured order.
+
+### B3 — missing `refresh_cluster_on_retry` (**fails loudly in the worst way**)
+
+With the flag set to false, override `[a,b,c]`, a failing and b healthy:
+
+```
+HTTP=500 returned to the client
+cluster=provider_a attempts=3
+provider-a hits: 3    provider-b hits: 0
+```
+
+Not merely a no-op: Envoy hammered the **same failing provider three times** and returned the error,
+while the healthy next target received nothing. Worse than no failover — it triples load on a backend
+that is already failing.
+
+### B4 — overrun (PASS, and the key contrast with A3)
+
+Override `[a,c]` (both failing), three attempts allowed, provider b excluded:
+
+```
+HTTP=500, cluster=provider_c attempts=3
+provider-a: 1    provider-b: 0    provider-c: 2
+```
+
+The surplus attempt **repeated the last group** instead of reaching for an excluded target. Provider b
+— the stand-in for a suspended provider — was never touched. This is the behaviour A3 failed.
+
+### C — body-mutation preservation (both PASS)
+
+A Lua filter masked `SECRET-12345` → `[MASKED]` in the request body, then attempt 1 was forced to fail.
+
+| | Attempt 1 saw | Fallback attempt saw |
+|---|---|---|
+| Option A | `{"prompt":"my key is [MASKED]"}` | `{"prompt":"my key is [MASKED]"}` |
+| Option B | `{"prompt":"my key is [MASKED]"}` | `{"prompt":"my key is [MASKED]"}` |
+
+Neither leaked the unmasked body to the second provider. The defect class seen in a comparable product
+did not reproduce here with filter-based mutation.
+
+---
+
+## What this changes
+
+**Option A is viable** — its decisive unknown (internal-listener addressing) works. But probe A3 found
+a safety gap that is not merely theoretical: an excluded, suspended target can receive live traffic
+whenever the attempt budget exceeds the list length. Correct `num_retries` is the *only* thing
+preventing it, and nothing in the proxy enforces the relationship.
+
+**Option B is viable and safer on the one axis that matters most.** Its overrun behaviour keeps
+excluded targets untouched, and it needs no internal listeners, no undocumented address form, and no
+endpoint flattening. It carries two silent failure modes instead of one — but both are
+configuration-generation concerns we control and can test, rather than runtime behaviour we must work
+around.
+
+## Recommendation
+
+**Option B**, if the Envoy 1.40.0 upgrade is acceptable.
+
+The deciding evidence is A3 versus B4. Both options deliver failover; only B keeps traffic away from a
+target the policy excluded. Since suspension is the mechanism protecting a degraded provider from more
+load, an option that can silently route to a suspended target is carrying a real operational hazard.
+
+If the upgrade is not acceptable now, Option A can ship — but `num_retries` alignment must be enforced
+at deployment time and covered by a test that fails loudly, because it is the single control standing
+between a suspended provider and live traffic.
+
+## Not yet proven
+
+- The full IT suite has not been run against Envoy 1.40.0 — this remains Option B's real risk and is
+  independent of the mechanism (branch `chore/envoy-1.40-trial`).
+- Mutation here came from a Lua filter; our real chain mutates via ext_proc. The defect class in the
+  comparable product involved an ext_proc upstream filter rebuilding the body from a snapshot. Probe C
+  should be repeated against the real policy engine before FR-012a is considered settled.
+- No controller code and no real policy were built. These probes test the Envoy mechanisms only.
+
+---
+
+## Probe D — per-attempt upstream filter (2026-10-26)
+
+Run after the first end-to-end IT run showed the control plane working while the
+feature still failed. Configs: `gateway/it/spikes/failover/d1-upstream-filter.yaml`,
+`d2-attempt-indexed-rewrite.yaml`. Envoy v1.40.0, provider_a always fails,
+provider_b healthy.
+
+### Why this probe was needed
+
+The IT run proved Envoy switches clusters correctly on retry. It also proved that
+does not help: every LlmProxy provider cluster is a loopback to the same socket
+(`127.0.0.1:8080`), and the thing that actually selects a provider is the route's
+`regex_rewrite` substitution — fixed per route, identical on every attempt. Both
+attempts re-entered the gateway on the primary provider's context.
+
+So the open question was whether a filter at the upstream position can re-point
+the request per attempt. If not, T021–T023 needed a different approach entirely.
+
+### D1 — does the upstream chain run per attempt, and can it mutate `:path`?
+
+**Both yes.** One client request produced:
+
+| Position | Invocations |
+|---|---|
+| downstream HTTP filter | 1 |
+| upstream HTTP filter | 2 (one per attempt) |
+
+and the backends confirmed each attempt carried a *different* path.
+
+Two constraints surfaced that shape the implementation:
+
+1. **Mutations accumulate across attempts.** The upstream filter does not receive
+   a pristine copy of the request; it sees whatever the previous attempt left.
+   A naive prefix produced `/ctx-attempt-2/ctx-attempt-1/chat/completions`. The
+   rewrite MUST be computed from an immutable source, never from the current
+   `:path`.
+2. **`StreamInfo` at the upstream position exposes neither `upstreamClusterName()`
+   nor `upstreamHost()`** (both are nil in Lua). The filter cannot ask which
+   cluster was selected, so it must derive the target from the attempt *number*
+   plus the chain the downstream filter already published.
+
+### D2 — the resulting pattern, validated
+
+Downstream filter stashes `original_path` and the ordered chain in dynamic
+metadata; upstream filter reads `x-envoy-attempt-count`, indexes the chain, and
+replaces `:path` built from the stashed original:
+
+```
+PROBE downstream published chain, original_path=/chat/completions   <- once
+PROBE upstream attempt=1 -> /ctx-a/chat/completions                 <- provider_a, failed
+PROBE upstream attempt=2 -> /ctx-b/chat/completions                 <- provider_b, 200
+ACCESSLOG cluster=provider_b attempts=2 status=200
+```
+
+Client received 200. Each attempt reached a different provider context. This is
+the design T021–T023 should implement.
+
+### Incidental findings
+
+- The virtual-host field is `include_request_attempt_count` (not
+  `include_attempt_count_in_request`); it is what makes `x-envoy-attempt-count`
+  visible to the upstream filter. Without it the filter cannot tell which attempt
+  it is serving.
+- Envoy 1.40.0 logs its supported upstream filters at startup. The list includes
+  **both `envoy.filters.http.lua` and `envoy.filters.http.ext_proc`**, plus
+  `header_mutation`, `credential_injector`, `buffer`, `upstream_rbac` and `wasm`.
+  So the light (Lua/header_mutation) and heavy (ext_proc policy chain) options
+  are both available — the choice is about scope, not feasibility.
+- `credential_injector` being available at the upstream position is notable: it
+  suggests per-attempt provider credentials may not require the full ext_proc
+  chain either.
+
+---
+
+## Probe E — ext_proc at the upstream position (2026-10-26)
+
+Run after the decision that the upstream position must host the general policy
+engine: the platform is introducing upstream and downstream policy *types*, so an
+author can target the upstream path directly. Failover is the first consumer of
+that mechanism, not a special case, and a bespoke Lua filter would be thrown away.
+
+Config: `gateway/it/spikes/failover/e1-upstream-extproc.yaml`; throwaway gRPC
+server in `gateway/it/spikes/failover/extproc/`. Envoy v1.40.0.
+
+### E1 — is ext_proc invoked once per retry attempt? **Yes**
+
+Probe D proved the *position* runs per attempt using Lua; ext_proc is a different
+filter with a gRPC round trip, so it needed its own confirmation.
+
+```
+PROBE call attempt=1 path=/chat/completions
+PROBE call attempt=2 path=/ctx-a/chat/completions
+```
+
+### E2 — do request_attributes carry per-attempt target identity? **Yes** — and this deletes the Probe D workaround
+
+| Attempt | `xds.cluster_name` | `upstream.address` |
+|---|---|---|
+| 1 | `provider_a` | `172.28.0.11:8080` |
+| 2 | `provider_b` | `172.28.0.12:8080` |
+
+Both are correct **per attempt**. This is strictly better than Probe D's
+constraint 2, where Lua exposed neither `upstreamClusterName()` nor
+`upstreamHost()` and the target had to be inferred by indexing the published
+chain with `x-envoy-attempt-count`. With ext_proc:
+
+- the attempt-index workaround can be **deleted**;
+- every upstream policy gets real target identity for free, rather than each one
+  reinventing an inference;
+- a policy no longer has to know the chain to know which target it is serving,
+  which keeps per-attempt policies independent of failover.
+
+Note `xds.route_name` came back empty. Attributes are namespaced on arrival as
+`envoy.filters.http.ext_proc.<attribute>`.
+
+### E3 — what does the round trip cost? ~1ms per attempt
+
+| Call | Server-side handling |
+|---|---|
+| first (cold gRPC stream) | 17.1 ms |
+| warm | 0.60 ms |
+| warm (retry attempt) | 1.06 ms |
+
+Envoy closes the gRPC stream after the headers response when every other
+processing mode is `SKIP`, so each attempt opens a fresh stream. Sub-millisecond
+warm, but this now sits in the path of every request carrying an upstream policy,
+not just retries — worth a load test before it ships (T044-series).
+
+### Mutation accumulation re-confirmed at the ext_proc layer
+
+Attempt 2 arrived with `:path` and the `request.path` attribute both set to
+`/ctx-a/chat/completions` — attempt 1's rewrite, not the client's original. The
+probe server was unaffected because it rebuilds the path from a fixed source, but
+this re-proves Probe D's constraint 1 for ext_proc specifically. **Every upstream
+policy sees the previous attempt's mutations.** The kernel must hand each attempt
+a pristine request or document the re-entrancy contract explicitly.
+
+### `mutation_rules.allow_all_routing` is mandatory
+
+ext_proc refuses to mutate `:path`, `:method`, `:authority`, `:scheme` or `host`
+unless `mutation_rules: { allow_all_routing: true }` is set — the mutation is
+dropped silently otherwise, with no error. Any upstream policy that re-points a
+request needs it, so this is a platform-level configuration decision rather than
+a failover one, and it widens what *every* upstream policy may rewrite.
+
+### Not a finding: cold-start 504
+
+The first request against a freshly created stack returned 504 twice. It did not
+reproduce: three consecutive Envoy restarts gave 9/9 × 200. The cause was the
+Python provider containers still starting, not ext_proc.
+
+---
+
+## Probe F — outlier detection under priority_group (2026-10-26)
+
+**Result: NEGATIVE. The design document's rejection of outlier detection holds for
+`priority_group` too. Do not use it.**
+
+Config: `gateway/it/spikes/failover/f1-outlier-detection.yaml`. Envoy v1.40.0. `provider_dead`
+points at a live container on a closed port (immediate `ECONNREFUSED`); `provider_b` is healthy;
+groups are `[dead, b]` with `refresh_cluster_on_retry`.
+
+### The hypothesis, and why it was wrong
+
+C3 asked whether Envoy could suspend transport-dead members itself, since ext_proc is never
+invoked for Envoy's own local replies and the policy therefore cannot see a connection failure.
+The design document had rejected outlier detection — *"Disproven live: the composite still sends
+attempt 1 to an ejected leaf → 503 'no healthy upstream', not retryable (envoy#11307)"* — but that
+was the **composite** cluster, and the IT run had shown a zero-host cluster under `priority_group`
+return a 503 that *was* retried. That observation came from an inner loopback hop rather than an
+ejected cluster, which is why it needed its own probe. The hypothesis did not survive it.
+
+### What was measured
+
+Ejection itself works. `consecutive_local_origin_failure` with
+`split_external_local_origin_errors: true` detects connection failures, and the host is marked:
+
+```
+cluster.provider_dead.outlier_detection.ejections_active: 1
+cluster.provider_dead.outlier_detection.ejections_detected_consecutive_local_origin_failure: 1
+provider_dead::172.28.0.13:9999::health_flags::/failed_outlier_check
+```
+
+What it buys depends entirely on panic mode, and neither setting is usable:
+
+| `healthy_panic_threshold` | Dead host dialled? | Client result | Verdict |
+|---|---|---|---|
+| default (50%) | **Yes** — `upstream_cx_connect_fail` climbed 9 → 12 over 3 requests, `lb_healthy_panic` incrementing | 200, 2 attempts | Failover works, ejection is **cosmetic** — every request still pays the dead dial |
+| `0` | No — dial count flat at 2 across 3 requests | **503, 1 attempt** | Dead host avoided, but **failover is broken**: the local reply is not retried and the chain never reaches group 2 |
+
+A provider cluster normally has **one** host. Ejecting it leaves 0% healthy, which is below the
+default 50% panic threshold, so Envoy enters panic mode and routes to all hosts regardless of
+health — that is why ejection changes nothing by default. Disabling panic mode makes the ejection
+real and immediately reproduces the document's finding: `503 no healthy upstream`, not retryable,
+`attempts=1`.
+
+### Consequence
+
+Disabling panic mode would turn a *working* failover into a hard client-facing failure, so it is
+strictly worse than leaving it on, and leaving it on makes outlier detection pointless here. **The
+document's architecture limit stands.** T024i2 is closed negative; proceed to T024i3 (feed
+transport failures to the health store over the existing access-log pipeline) or accept the
+documented limit that transport failures fail over but never suspend.
+
+The attempt-count inference (T024i1) is unaffected and still covers the common case: a
+transport-dead member followed by a healthy one is recorded as failed, because the policy does run
+on the later real response.
+
+---
+
+## Probe G — an unconfigured group name (2026-10-26)
+
+**Result: the routing-policy ranking contract has a hole. A ranked target that model-failover does
+not itself configure has no group to resolve to, and Envoy's fallback for that is actively harmful
+rather than merely ineffective.**
+
+Config: `gateway/it/spikes/failover/g1-unknown-group.yaml`. Route configures `rank-1 → provider_a`
+(always fails) and `rank-2 → provider_b` (healthy); `num_retries: 2`. The Lua stand-in publishes
+group **names** verbatim, exactly as the real policy does.
+
+### Why this was probed
+
+`resolveChain` puts a routing policy's published ranking FIRST, ahead of the configured chain —
+that is the "obey the ordering decided by other policies" requirement. But the controller builds
+the configured groups from the model-failover policy's own `targets` only
+(`flattenChainMembers(params["targets"])`), and the policy publishes **names**, which Envoy
+resolves against those configured groups. So a routing policy can rank a `(model, provider)` pair
+that has no group.
+
+### Measured
+
+| Published order | Attempts | Served by | Reading |
+|---|---|---|---|
+| `rank-2, rank-1` | 1 | provider_b | Reorder honoured |
+| `rank-1, rank-2` | 2 | provider_b | Configured order, a fails then b |
+| `rank-2, t:unknown:x` | 1 | provider_b | Known name at position 1 is honoured |
+| `t:unknown:x, rank-2` | 2 | provider_b | Unknown name consumed position 1 |
+| `t:unknown:x, t:p:q` | 2 | provider_b | Both unknown |
+| **`t:unknown:x, rank-1`** | **3** | **provider_a** | **Burned the whole budget on the failing provider** |
+
+An unknown name is **not skipped**. It falls back to the **configured group at that position**. The
+last row is the damaging case: the ranking asked for an unknown target then `rank-1`, and the
+request made three attempts entirely against the failing `provider_a`, never reaching the healthy
+`provider_b` at all.
+
+### Consequence
+
+A routing policy that ranks anything outside model-failover's own `targets` does not merely get
+ignored — it can steer the request to a target its ranking never nominated and exhaust the attempt
+budget there. Nothing fails loudly; the client may still get a 200 from a later attempt, so the
+discarded ranking leaves no signal.
+
+### Fix
+
+The controller must generate a priority group for **every `(model, provider)` reachable on the
+operation**, not only those listed in model-failover's own parameters — which means flattening the
+attached routing policy's target list (`model-round-robin` / `model-weighted-round-robin`
+`models[]`, and any future ranking policy) into the same group set. Both lists are known at deploy
+time, so this is control-plane work, not a runtime lookup. Tracked as T024v.
+
+---
+
+## Probe H — per-request attempt budget via `x-envoy-max-retries` (2026-10-27)
+
+**Result: POSITIVE on all three questions. The downstream policy can size the attempt budget to the
+ranking it just published, and a client cannot inflate its own budget.**
+
+Config: `gateway/it/spikes/failover/h1-max-retries.yaml`. Envoy v1.40.0. Three groups —
+`rank-1 → provider_a` (fails), `rank-2 → provider_c` (fails), `rank-3 → provider_b` (healthy) —
+with `num_retries: 1` in the **route** config, so only 2 attempts are configured and the healthy
+third group is unreachable. Reaching provider_b is therefore unambiguous proof the budget grew.
+
+### Why this was probed
+
+Dynamic metadata overrides the cluster specifier's groups but has no hook for retry count, so a
+policy could reorder a chain freely and lengthen it not at all. `num_retries` is generated from
+`ChainLength() - 1` — the publisher's own configured members — which silently truncates any longer
+ranking a routing policy produces.
+
+### Measured
+
+| Test | `x-envoy-max-retries` set by | Attempts | Status | Served by |
+|---|---|---|---|---|
+| baseline | nobody | 2 | 500 | provider_c |
+| client trust | **the client** (curl) | **2** | 500 | provider_c |
+| policy raise | **the Lua policy stand-in** | **3** | 200 | provider_b |
+| overrun | policy, value 10 | 3 | 200 | provider_b |
+
+- **(a) Honoured with a route-config retry policy** — yes. The budget changed without the retry
+  policy living in the router filter.
+- **(b) Can RAISE above the configured `num_retries`** — yes, 2 → 3. The previously unreachable
+  third group served the request.
+- **(c) Stripped from client requests** — yes. The client-set header had no effect at all, and the
+  filter chain observed `x-envoy-max-retries=nil`: Envoy sanitized it before any filter ran. A
+  caller cannot inflate their own retry budget and multiply inference spend.
+
+The value 10 against a 3-group list still produced 3 attempts, consistent with Probe B4 — overrun
+repeats the last group rather than reaching for an unranked cluster.
+
+### Consequence
+
+T024w4's deploy-time worst-case counting is unnecessary. The downstream policy should set
+`x-envoy-max-retries` to the length of the ranking it publishes, in the same pass. Order and length
+then both become per-request, which is what FR-021 asks for.
+
+### One caveat to carry into the real config
+
+(c) holds because Envoy classifies the downstream as **external**, and sanitization of `x-envoy-*`
+applies to external requests only. A downstream classified as *internal* — via
+`internal_address_config` on the HCM — would NOT have the header stripped. The generated gateway
+config sets no `internal_address_config` today, so the default applies and clients are external.
+That is a property worth asserting in a test rather than assuming, because the day someone adds an
+internal-address range for an unrelated reason, this becomes a client-controllable spend
+multiplier with no other symptom.
+
+---
+
+## Runtime finding — ext_proc refuses `x-envoy-*` mutations (2026-10-27)
+
+First end-to-end run of the per-attempt dispatch returned **500 on every failover request**:
+
+```
+[error][ext_proc] mutation_utils.cc:247
+Header x-envoy-max-retries may not be modified. Returning error
+```
+
+### Why Probe H did not catch it
+
+Probe H established that Envoy honours `x-envoy-max-retries`, that it can raise the budget above
+the configured `num_retries`, and that a client cannot set it. All three still hold. What it did
+not establish is whether **this gateway's policy path** is allowed to set it — because the probe
+used a Lua filter, and Lua is not subject to ext_proc's `HeaderMutationRules` at all.
+
+ext_proc refuses `x-envoy-*` mutations unless `allow_envoy` is set, and this deployment also sets
+`disallow_is_error: true`, which turns that refusal into a failed request rather than a dropped
+mutation. So the policy's attempt-budget header failed the whole request.
+
+### Fix
+
+`allow_expression: "^x-envoy-max-retries$"` on the downstream processor — exactly one header.
+
+`allow_envoy: true` would have been the one-line fix and is the wrong one: it lets **any**
+downstream policy rewrite **every** `x-envoy-*` header, including
+`x-envoy-upstream-rq-timeout-ms` and the retry-policy overrides. A policy bug there is a
+per-request denial of service against the upstream, reachable by any policy author.
+
+### Lesson for the remaining probes
+
+A probe that stands in for a policy with Lua proves what **Envoy** does, not what the **policy
+engine is permitted** to do. The two differ wherever ext_proc applies its own rules — header
+mutation being the obvious one. Worth re-reading the earlier probes with that distinction in
+mind before relying on them.
+
+---
+
+## Runtime verification — the per-attempt position works (2026-10-27)
+
+After fixing the `x-envoy-max-retries` mutation rule above, the engine's own logs confirm the
+whole per-attempt path end to end:
+
+```
+running per-attempt policy chain    cluster=upstream_LlmProxy_<uuid>_alive-provider attempt=1 policies=1
+running per-attempt response chain  cluster=upstream_LlmProxy_<uuid>_alive-provider attempt=1 status=503
+running per-attempt policy chain    cluster=upstream_LlmProxy_<uuid>_alive-provider attempt=2 policies=1
+```
+
+Each line is a separate thing working:
+
+| Observed | Confirms |
+|---|---|
+| the handler ran at all | the router generated `upstream_http_filters`, and the engine recognised the stream as upstream from the gRPC position metadata — not inferred |
+| `cluster=upstream_LlmProxy_..._alive-provider` | `xds.cluster_name` reaches the engine per attempt, as Probe E predicted |
+| `policies=1` | the chain published under `upstream:<cluster>` was found — the cross-module key contract holds |
+| both "policy chain" AND "response chain" | the response half runs, so a provider's transformer will be able to convert its response back |
+| `attempt=1` then `attempt=2` | `include_request_attempt_count` works and the attempt number is readable |
+
+So T021, T024d and T024e are verified against a running gateway, not just unit-tested.
+
+### What is still not working, and why
+
+The request itself returns 503 `no healthy upstream`. That is the **original** gap, unchanged:
+the cluster switches per attempt but the route's `regex_rewrite` still points every attempt at
+the PRIMARY provider's context, so the loopback lands on the dead provider either way.
+
+The per-attempt chain now exists and runs — what it does not yet contain is anything that
+rewrites the provider context path. That is the transformer/auth migration (the builders are
+still stubs returning nil), plus a context-path rewrite for the selected provider. Until those
+land, a per-attempt policy can stamp headers but cannot re-point the attempt.
+
+---
+
+## END TO END — cross-provider failover works (2026-10-27)
+
+First green rescue, against a running gateway:
+
+```
+HTTP/1.1 200 OK
+x-envoy-attempt-count: 2
+path:  /alive-upstream/chat/completions
+X-Attempt-Provider: ["alive"]
+```
+
+Four things proven by one response:
+
+| Evidence | Proves |
+|---|---|
+| `200 OK` | the client receives a success it never had to retry for (FR-008, FR-015) |
+| `attempt-count: 2` | attempt 1 failed and Envoy retried within the same client request |
+| `path: /alive-upstream/...` | the provider re-point worked — attempt 2 reached the FALLBACK's own context, not the primary's (T024x) |
+| `X-Attempt-Provider: alive` | the fallback's OWN per-attempt policy ran, and only on the attempt routed to it (FR-035, FR-041) |
+
+The last row is the one that cannot be faked: the primary provider carries no policies at all, so
+that header could only come from the fallback's chain executing on attempt 2.
+
+Envoy's access log shows the full shape:
+
+```
+attempt 1: POST /pa-dead-ctx/chat/completions  -> /dead/chat/completions   -> 503 UH
+attempt 2: POST /pa-alive-ctx/chat/completions -> /alive-upstream/chat/... -> 200
+```
+
+### A diagnostic note worth keeping
+
+The first run on this build still returned 503 and I went looking for a bug in the re-point. The
+access log showed it had been working all along — attempt 2 was already landing on
+`/pa-alive-ctx`. The actual failure was `SERVFAIL` resolving `sample-backend` from the runtime
+container, caused by repeated `docker compose up -d --force-recreate` cycles leaving Docker's DNS
+inconsistent. A full `down -v` then `up` fixed it.
+
+Checking the access log before changing code is what avoided reporting a feature bug that did not
+exist. Repeated partial recreation of the IT stack is unreliable; prefer a clean cycle.
+
+---
+
+## Measurement — cost of re-sending the body per attempt (2026-10-27)
+
+The per-attempt chain asks Envoy for a BUFFERED body whenever a provider has a transformer, so a
+request that fails over carries its payload to the engine once per attempt instead of once. The
+alternative — holding the post-downstream body in engine memory and replacing it from the headers
+phase — trades bandwidth for resident memory, so it is only worth building if the bandwidth costs
+something. Measured rather than assumed.
+
+Benchmark: `gateway/it/spikes/failover/extproc/bodycost_test.go`. One ext_proc round trip over
+loopback gRPC carrying a body of size N, with the response also carrying a body (a transformer
+rewrites the payload, so a request-only measurement would understate it). 2000 iterations, two
+runs.
+
+| Body | Round trip | **Marginal vs headers-only** | Allocations |
+|---|---|---|---|
+| none (headers only) | 88–92 µs | baseline | 10 KB |
+| 1 KB | 91 µs | **~0 µs** | 13 KB |
+| 10 KB | 103–107 µs | **~15 µs** | 33 KB |
+| 100 KB | 259 µs | **~170 µs** | 281 KB |
+| 1 MB | 1.20–1.27 ms | **~1.14 ms** | 2.8 MB |
+
+### SUPERSEDED by the per-request measurement below
+
+The figures above are for ONE round trip. A real request makes two attempts, and the response
+carries the body as well (a transformer returns `CONTINUE_AND_REPLACE`), so the per-request cost
+is roughly four times the marginal figure in that table. The conclusion drawn from it was
+correspondingly too optimistic; see "Measurement — wire vs resident" below.
+
+### Original conclusion (from single round trips)
+
+Even a 1 MB prompt adds **~1.1 ms per extra attempt**, against an LLM call measured in hundreds of
+milliseconds to tens of seconds. For a typical chat request (10 KB) the cost is ~15 µs — about
+0.003% of a 500 ms completion.
+
+The striking result is the **~90 µs floor**: per-attempt stream setup costs more than the body
+does for anything under roughly 50 KB. Optimising the body while leaving a fresh gRPC stream per
+attempt would be optimising the smaller term.
+
+### The number that might matter is allocation, not latency
+
+A 100 KB body allocates ~280 KB per round trip, a 1 MB body ~2.8 MB — roughly 3x the payload.
+At high concurrency that is real GC pressure: 1000 rps of 100 KB failover attempts is ~280 MB/s
+of allocation.
+
+That is the case worth revisiting, and it is an argument for the in-memory approach only if
+holding bodies resident proves cheaper than allocating them transiently — which is not obvious
+and would need its own measurement under load.
+
+### Caveats
+
+Loopback TCP with a trivial echo server. Production uses UDS (likely faster) and a real engine
+(slower, but that cost is not the body's). The numbers bound the *marginal* cost of one extra
+body send, which is the decision at hand, and nothing more.
+
+---
+
+## Measurement — wire vs resident body (2026-10-27)
+
+Both sides of the trade, measured per REQUEST rather than per round trip.
+Benchmark: `gateway/it/spikes/failover/extproc/residentcost_test.go`. Two attempts per request
+(primary fails, fallback answers), body carried in both directions, 1000 iterations.
+
+| Prompt | wire | memory | saved | wire alloc/req | memory alloc/req |
+|---|---|---|---|---|---|
+| 10 KB | 234 µs | 186 µs | 48 µs (20%) | 67 KB | 21 KB |
+| 100 KB | 573 µs | 179 µs | **394 µs (69%)** | 482 KB | 21 KB |
+| 1 MB | 2.72 ms | 167 µs | **2.55 ms (94%)** | 4.5 MB | 21 KB |
+
+The memory approach is flat in body size — nothing crosses the wire, so a 1 MB prompt costs the
+same as a 10 KB one.
+
+What it costs instead, measured by holding N bodies and reading heap:
+
+| In-flight x size | Resident |
+|---|---|
+| 1000 x 10 KB | 10 MB |
+| 1000 x 100 KB | 101 MB |
+| 5000 x 100 KB | 508 MB |
+
+### Correction to the earlier conclusion
+
+The previous section measured a single round trip and reported ~15 µs for a 10 KB body, calling
+the optimisation unnecessary. A real request is ~4x that: two attempts, each carrying the body in
+both directions. The per-request figure is 48 µs at 10 KB, and the gap widens sharply with size.
+
+The allocation difference is the larger finding: **23x less at 100 KB** (482 KB -> 21 KB per
+request). That is the GC-pressure concern from the earlier section, now quantified rather than
+speculated about.
+
+### Decision
+
+Still not building it now, but on a stated threshold rather than a hunch:
+
+- **Prompts <= 10 KB**: 48 µs and 46 KB per failover. Not worth the resident memory or the code.
+- **Prompts >= 100 KB with a material failover rate**: 394 µs and 461 KB saved per request, for
+  ~100 MB resident per 1000 concurrent in-flight. Worth taking.
+
+If built, it needs a **size ceiling**: hold bodies below a threshold, fall back to the wire above
+it. That bounds resident memory while capturing most of the benefit, since small bodies are
+exactly where holding is cheapest and large ones are where resident cost bites.
+
+---
+
+## Probe I — can the upstream position run a BODY phase? (2026-10-27)
+
+**Why.** The per-attempt chain was running its header phase (the credential reached the fallback
+provider) but its body phase never ran, so a transformer never rewrote the payload and the
+fallback received the request in the primary's format. Before hunting a code bug, the capability
+itself had to be established: Agent Router deliberately keeps per-attempt bodies in filter memory
+and configures `request_body_mode: NONE`, which is consistent with the upstream position not
+supporting a body phase at all.
+
+**Configs.** `gateway/it/spikes/failover/i1-upstream-body.yaml` (static `BUFFERED`),
+`i2-mode-override.yaml` (`NONE` + server-sent `mode_override`), `i3-per-cluster.yaml` (same, but
+the filter attached per-cluster via `HttpProtocolOptions.http_filters` rather than router-wide).
+
+| Question | Result |
+|---|---|
+| I1. Does the upstream position deliver a request body with static `request_body_mode: BUFFERED`? | **YES** — 65 bytes received, on every attempt |
+| I2. Does a server-sent `mode_override` turn the body phase on at the upstream position? | **YES** — honoured per attempt, with `allow_mode_override: true` |
+| I3. Does it still work when the filter is attached **per-cluster** rather than router-wide? | **YES** — identical behaviour |
+
+**Conclusion: the mechanism was never the problem.** Envoy supports a per-attempt body phase at
+the upstream position, in both filter placements, driven by `mode_override`. Holding bodies in
+filter memory is therefore an optimisation (see the body-cost measurements above), not a
+requirement — the per-attempt design stands as specified.
+
+### The actual defect this probe isolated
+
+Envoy attaches `request_attributes` (and the metadata context) to the **first message of an
+ext_proc stream only**. The headers message carries `xds.cluster_name`; the `RequestBody` message
+that follows carries nothing. The body handler was deriving the cluster from the request it was
+handed, so on the body message it resolved to `""`, found no chain, and returned a passthrough —
+silently skipping the transformer.
+
+This is invisible in the ordinary (downstream) position, where the chain is keyed by route rather
+than by cluster, so no existing code exercised it.
+
+**Fix.** `upstreamAttemptState` (`internal/kernel/upstream_position.go`) carries the cluster and
+metadata resolved by an attempt's headers phase into that same attempt's body phase. An upstream
+stream serves exactly one attempt — Envoy opens a fresh one per retry — so one value per stream
+needs no keying and no eviction.
+
+**Standing constraint for any future upstream-position work:** anything derived from
+`request_attributes` must be resolved during the headers phase and carried forward. Later messages
+on the same stream cannot re-derive it.
+
+### Two further defects the same runtime test surfaced
+
+Both sit behind the first one — each was only reachable once the body phase actually ran.
+
+1. **The body arrived flagged absent.** `policy.Body.Present` was left at its zero value. Every
+   body-rewriting policy in this repo opens with `if Body == nil || !Body.Present ||
+   len(Content) == 0 { nothing to do }`, so the chain ran, the transformer returned no
+   modification, and the fallback provider received the primary's payload format — no error
+   anywhere. Fixed by `upstreamBodyContext`, which states the truth for a BUFFERED body: present
+   and complete (FR-037c).
+
+2. **The body context had no headers, which panicked the engine.** The executor writes a policy's
+   `HeadersToSet` straight into the map behind `ctx.Headers`; with no headers that map is nil, so
+   the first per-attempt policy to set a header panicked with `assignment to entry in nil map`,
+   killing the ext_proc stream and returning a 500
+   (`ext_proc_error_gRPC_error_13{upstream_reset_after_response_started}`). The body phase now
+   starts from the attempt's post-headers-phase header set, copied across the boundary, and emits
+   whatever it changes back to Envoy (FR-037d).
+
+The common shape across all three: **a per-attempt phase that silently does nothing looks exactly
+like a per-attempt phase that has nothing to do.** The header phase succeeding (the credential was
+correct on the fallback) made it look like the feature worked.
+
+---
+
+## The published ranking was never reaching Envoy (2026-10-27)
+
+Found while tracing why the per-attempt model substitution never fired. It invalidates how every
+earlier runtime observation in this document should be read, so it is recorded at the top level
+rather than as a footnote to Probe I.
+
+**The downstream ext_proc filter's `receiving_namespaces` listed only the analytics namespace.**
+Envoy drops a dynamic-metadata update for any namespace absent from that list — it logs
+`processing response included dynamic metadata for namespace not configured for receiving:
+wso2.failover` and carries on. So the failover policy computed a ranking, published it, and Envoy
+discarded it on arrival, every time.
+
+**Why nothing looked wrong.** With no published groups, `priority_group` falls back to the group
+configured at that POSITION — the behaviour Probe G measured and flagged as a hazard. The request
+still failed over, still reached the fallback provider, and still returned `200` with
+`x-envoy-attempt-count: 2`. Every symptom available at the edge said the feature worked. What was
+actually being ignored was everything the policy decides: the published order, the health state,
+the suspensions, and the per-request chain length.
+
+**What this means for the earlier results.** The mechanism probes (A, B, D, E, G, H, I) measured
+Envoy behaviour directly and stand unchanged. But every end-to-end run before this fix exercised
+positional fallback, not the published ranking — so none of them was evidence that ranking,
+suspension, or health attribution works end to end. Those have now been re-verified; see below.
+
+**Fix.** `wso2.failover` added to `receiving_namespaces` (so Envoy accepts the ranking at all) and
+to `forwarding_namespaces` on both filter positions (so the per-attempt position can read back the
+ranking that request installed). Regression tests assert both, on both filters.
+
+**The general lesson, and it is the same one as Probe I's:** a silent-drop failure in this design
+is indistinguishable from success at the edge. Neither the status code, nor the attempt count, nor
+the target that answered can tell you whether the policy's decision was honoured — only the
+metadata path can. Any future work here needs an assertion on the decision, not just the outcome.
+
+---
+
+## Re-verification after the metadata fix (2026-10-27)
+
+Everything below was run against the live IT stack **after** `wso2.failover` started reaching
+Envoy. These are the first runs in which the published ranking actually drove routing.
+
+### The ranking drives routing
+
+The proof is indirect but conclusive: **positional fallback is static.** If the order a request
+takes ever changes in response to health state, the published ranking must be what Envoy is
+reading. Every result below turns on exactly that, so each one re-confirms it.
+
+### Suspension, and escalating backoff
+
+Fixture: `primary(dead) → anthropic(alive)`, `suspendAfterFailures: 1`, fresh health store.
+
+| Step | `x-envoy-attempt-count` | Meaning |
+|---|---|---|
+| request 1 | 2 | both tried; the primary fails and is suspended |
+| request 2 | 1 | the primary is **skipped** — straight to the fallback |
+| 1st suspension | ~22s | configured base 20s (2s poll granularity) |
+| 2nd suspension | ~41s | doubled, as specified |
+
+The attempt count dropping to 1 is the whole result: a static positional fallback can never
+reorder, so the ranking is being honoured.
+
+A first attempt at measuring this was misleading — the timer started when the *command* started,
+not when the suspension did, and the store still held state from a previous run. Read correctly,
+those numbers agreed (a 22s remainder of an already-doubled 60s suspension, then ~121s for the
+next doubling); the table above is the clean run from a reset store.
+
+### Attribution across a multi-member chain
+
+With a two-member chain the failing member *is* member[0], so "grades the member that failed" and
+"always grades the first member" are indistinguishable. A third member discriminates.
+
+Fixture: `primary(dead) → dead2(dead) → anthropic(alive)`.
+
+| Step | Result | Meaning |
+|---|---|---|
+| request 1 | 200, **3 attempts**, model `claude-sonnet-4-5-20250929` | full chain ran; the budget sized to the ranking (FR-059a) |
+| request 2 | 200, **1 attempt** | **both** dead members were suspended — not just member[0] |
+
+Had attribution graded only the first member, request 2 would have taken 2 attempts (dead2, then
+anthropic). It took 1. Attribution by attempt count across the whole chain works.
+
+The run also confirms two things incidentally: the healthy member was never suspended despite
+being graded on every request, and the model substitution stayed correct when the surviving member
+was reached on **attempt 1** — which is the cluster-keyed lookup of FR-057b doing its job, since an
+attempt-index lookup would have read the wrong member the moment the chain shortened.
+
+### Composition with a routing policy (T024v3)
+
+`model-round-robin` and `model-failover` attached to the same operation. Round-robin rotates
+between `gpt-4o`@primary (dead) and `claude-sonnet-4-5-20250929`@anthropic (alive); failover
+configures `claude@anthropic` as the fallback for `gpt-4o`. Suspension disabled, so health state
+cannot mask the alternation being measured.
+
+| request | attempts | reading |
+|---|---|---|
+| 1, 3, 5 | 2 | round-robin picked the dead primary; failover rescued via its own fallback |
+| 2, 4, 6 | 1 | round-robin picked anthropic; succeeded first time |
+
+All 200, correct model substituted in both cases. Failover starts its chain from whatever the
+routing policy decided — the designed behaviour, now demonstrated.
+
+### What that test also exposed: the multi-member handoff is not wired
+
+`resolveChain` merges a published ranking ahead of the configured fallbacks, and FR-021 promises
+that **order and length** both come from that ranking. Only the *order of the first member* is
+actually deliverable today:
+
+- **Nothing publishes the list key.** `model_routing.published_ranking` is declared in
+  `model-failover/publish.go` and referenced nowhere else in the policy set. `model-round-robin`
+  publishes only its single selection (`model_roundrobin.selected_model` / `selected_provider`),
+  which is the path the test above exercised.
+- **The reader could not accept it anyway.** `publishedRanking` asserts `raw.([]Target)` against
+  model-failover's own named type. A routing policy in a different module publishes its own
+  `[]Target`, and Go type assertions require *identical* types, not structurally compatible ones —
+  so the assertion fails even when a well-behaved publisher does exactly the right thing.
+
+So a routing policy can hand failover **one** target (works, verified) but not **a list** (no
+publisher, and an unusable reader). Fixing it needs a serialisation-friendly shared shape — an
+SDK-owned type or a plain `[]map[string]any` — rather than a module-local struct. Until then,
+length always comes from failover's own configuration.
+
+---
+
+## Nested failover: proxy AND provider both configured (2026-10-28)
+
+Tested because the interaction was reasoned about but never run. An `LlmProxy` with failover across
+providers, and one of those providers (`LlmProvider`) carrying its own failover across two of its
+`upstreamDefinitions`.
+
+### It works, and the two levels are independent
+
+| | outer (proxy route) | inner (provider route) |
+|---|---|---|
+| `upstream_request_attempt_count` | 1 | **2** |
+| outcome | 200 to the client | dead-region refused, live-region answered |
+
+The provider rescued itself internally and the proxy never needed a second attempt. The two operate
+on genuinely different axes — the proxy chooses *which provider*, the provider chooses *which of its
+own upstreams* — so nesting is coherent rather than a conflict.
+
+Two consequences, both now observed rather than predicted:
+
+- **Budgets multiply.** Outer and inner budgets are set independently on their own routes. Three
+  providers each with two regions is up to nine upstream calls for one client request. Nothing
+  bounds the product.
+- **Attribution is masked.** The proxy saw a clean success on attempt 1, so it never learns that
+  provider was degraded and never suspends it. Sometimes right — it *did* self-heal — but a
+  provider that is permanently half-broken stays at full share forever.
+
+### The finding that matters more: a member with no resolvable hosts is NOT failed over
+
+The first run of this test returned **503 `no_healthy_upstream`** with the inner route at
+`upstream_request_attempt_count: 1` — the provider's failover never engaged, despite the
+`priority_group` specifier being correctly generated on its route.
+
+The difference is the kind of failure:
+
+| Member's upstream | Envoy produces | Retried? | Failover engages? |
+|---|---|---|---|
+| Host does not resolve | local 503 `no_healthy_upstream` | **No** | **No** |
+| Resolves, refuses connection | `connect-failure` | Yes | Yes |
+
+`retry_on` covers upstream responses and transport failures. A cluster with zero resolvable hosts
+never produces either — the router answers locally, and that reply is terminal.
+
+**Why none of our earlier testing showed this.** At the proxy level every provider sits behind a
+*loopback* cluster (`127.0.0.1:<listener>`), which is always healthy. A dead provider's DNS failure
+happens on the *inner* route and comes back to the proxy as an ordinary upstream 503 — which is
+retriable. The loopback indirection hides the whole class.
+
+**Where it bites.** Any *direct* upstream: `RestApi` `upstream.main`/`sandbox`, and an
+`LlmProvider`'s own `upstreamDefinitions`. That is precisely the half of this feature that is not
+built yet — so the limitation would be discovered during that work rather than before it.
+
+Practical severity is narrower than it first reads: a provider that is merely *down* resolves and
+refuses, which fails over correctly. This affects members whose DNS does not resolve at all, which
+is closer to a misconfiguration than an outage. It still needs stating, because the failure is a
+hard 503 to the client with no failover attempted.
+
+### Mitigation: suspension turns it from permanent into one-request-per-window
+
+Same fixture, dead-region unresolvable, but with `suspendDuration: 60` / `suspendAfterFailures: 1`
+instead of suspension disabled:
+
+| request | result |
+|---|---|
+| 1 | **503** — nothing is retriable, the client takes the failure |
+| 2 | **200** — the member is suspended and excluded from the ranking |
+| 3 | **200** |
+
+The local 503 still returns through the downstream chain, so the policy's response phase runs,
+grades the member, and suspends it. Failover cannot rescue the *first* request, but every
+subsequent one routes around the dead member.
+
+**This only works if suspension is enabled, and it is OFF by default** — `suspendDuration` defaults
+to `0`, documented as "set to 0 to disable suspension tracking entirely". The earlier run 503'd
+indefinitely for exactly that reason. A publisher who never touches the advanced parameters gets no
+suspension, no escalating backoff, no probe recovery, and no mitigation here.
+
+| Mitigation | Covers | Cost |
+|---|---|---|
+| Suspension (built, off by default) | any runtime failure, DNS included | one failed request per window |
+| `LOGICAL_DNS` rather than `STRICT_DNS` | a host that *was* resolving and stops — the stale address is retained, so it degrades to a retriable `connect-failure` and even request 1 survives | one host per cluster; loses spreading across A records. No help for a never-resolved host |
+| Deploy-time resolution check | typos, decommissioned hosts — loud at deploy instead of silent at runtime | cannot catch later DNS loss |
+| Envoy `retry_on` | — | **not available**: no field covers locally-generated replies |
+
+Recommended pairing: **suspension on by default** plus a **deploy-time resolution check** —
+misconfiguration caught before deploy, runtime DNS loss self-correcting after one request.
+`LOGICAL_DNS` only if that single first failure proves unacceptable.
+
+### What the policy can and cannot see (2026-10-28, measured)
+
+| Failure | Fails over | Recorded against the member |
+|---|---|---|
+| Upstream 429 / 5xx | yes | yes |
+| Resolves but refuses / resets | yes | yes |
+| **Host does not resolve** | **no** — local reply, nothing to retry from | yes |
+| **Failure after response headers** | **no** — Envoy cannot retry | **no — graded as a SUCCESS** |
+| **Slow but working** | n/a | **no** — `perTryTimeout` and `p95LatencyMs` both default to 0 |
+| **200 carrying an error** | n/a | **no** — status codes only, by design |
+| **A member never attempted** | n/a | **no** — nothing observes an unused member |
+
+**Correction to the policy's documented limitation.** It claimed *"only a chain where every member
+is transport-dead goes unrecorded."* Measured: with every member dead, **three suspensions were
+still recorded** — the local 503 travels back through the downstream chain and the response phase
+grades it normally. The claim was reasoned, not measured, and is now rewritten in
+`policy-definition.yaml`.
+
+**The shape of the gaps.** Everything caught is caught from the outcome of a real request. The
+blind spots are all places where there is no outcome to read: nothing has gone wrong yet (slow),
+nothing was tried (unattempted member), the outcome already looked fine (post-headers failure,
+200-with-error), or the outcome is too coarse (nested attribution). Closing them means measuring
+health rather than inferring it — active health checks — which is where the Agent Router
+comparison also points.
+
+## Probe T2 — is the upstream filter invoked for a REFUSED attempt? (2026-11-13)
+
+Probe E measured "ext_proc runs once per attempt" against a provider returning **500** — a real
+HTTP response. It left open whether the per-attempt position is reached at all when the attempt's
+connection never establishes, which is a different path through Envoy: the upstream HTTP filter
+chain hangs off the cluster, and a connect failure may be resolved before the chain runs.
+
+`t2-connect-refused.yaml` points `provider_a` at a live container on a **closed port**, so the
+kernel answers with an instant RST. A reachable-but-closed port matters: a non-resolving hostname
+is a DNS failure, which Envoy answers with a local reply and never retries, so it would measure
+something else entirely.
+
+### Measured
+
+Re-run 2026-11-13 after fixing the harness fault described below. Earlier numbers from this probe
+were taken against a rig that intermittently stalled; they are superseded.
+
+| Run | provider_a | Result |
+|---|---|---|
+| Control (`e1-upstream-extproc.yaml`, `A_FAIL=true`) | returns 500 | `200`, **2 calls** — attempt 1 `provider_a`, attempt 2 `provider_b` |
+| T2 single request | connection refused | `200`, **1 call** — attempt 2 only |
+| T2 × 10, clean rig | connection refused | attempt 1 present in **5 of 10** |
+| T2 × 20, clean rig | connection refused | attempt 1 present in **10 of 20** |
+
+All 30 clean-rig requests returned `200` with `attempts=2`, zero 5xx, 36–46ms. The dead provider
+refuses in 4ms (verified from inside the network with a raw socket connect), so the connect
+failure itself is instant and clean.
+
+The decisive line, from a run where it appeared:
+
+```
+PROBE call attempt=1 path=/chat/completions
+  xds.cluster_name = "provider_a"
+  upstream.address = "172.28.0.11:9999"      <- the refused port
+```
+
+### Answer: yes, about half the time
+
+**The upstream filter IS invoked for an attempt whose connection is refused** — and the second
+target's call happens on 20 of 20, so the instrument is not dropping records.
+
+Reading a SINGLE request settles it the wrong way: the one-shot run showed only attempt 2, and
+that was first reported as "the filter is not invoked for a refused connection". It took
+repetition to correct.
+
+Not alternating, but clustered — runs of three or four requests share a behaviour before it
+flips, which points at connection-pool state rather than a per-request coin flip. Not chased
+further: the question was whether the position can be reached at all, and it can.
+
+### Consequence
+
+`handleUpstreamRequestHeaders` captures attempt 1's request shape as the baseline every later
+attempt resets to. When attempt 1 is skipped, attempt 2 becomes its own baseline and the engine
+logs "per-attempt baseline missing on a retry". That is CORRECT behaviour for this case — attempt
+2 genuinely is the first attempt the filter saw — but the warning reads as a defect and will fire
+on roughly half the requests whose leading target is transport-dead. Worth softening the wording
+rather than changing the behaviour.
+
+Nothing about grading changes: the attempt counter increments either way (`attempts=2` on every
+request above, including those where attempt 1 was never seen), so the downstream response phase
+still attributes attempt 1 as a failure.
+
+### Harness changes this probe needed
+
+- `extproc/main.go` gained `PROBE_BODY_MODE`. The server unconditionally asked Envoy for a
+  BUFFERED body (added for Probe I) and never answered the body message, so every request hung to
+  the per-try timeout and returned 504 — which made the CONTROL run look broken before any
+  variable was introduced. Default unchanged; `PROBE_BODY_MODE=off` gives a headers-only run.
+- `extproc-server` is no longer committed. Rebuild per the README before running Probe E or T2.
+- **`backend.py` now uses `ThreadingHTTPServer`.** It was `HTTPServer` — single-threaded — with
+  `protocol_version = "HTTP/1.1"`, so once Envoy's connection pool held one keep-alive connection
+  the fake provider could not accept a second, and later requests sat in the listen backlog until
+  `per_try_timeout` cut them. That surfaced as an intermittent `504` (`flags=URX,UT`,
+  `why=upstream_per_try_timeout`) from a provider that was working perfectly — the stall was the
+  harness, not Envoy, and it reads as a result. Before the fix, 4 of 5 and then 5 of 8 requests
+  were lost to it. After: 30 of 30 clean. This affected every probe using `backend.py` under
+  load, so earlier timing-sensitive numbers taken with concurrent or back-to-back requests should
+  be treated with the same suspicion.
+
+## Probe T4 — does the UPSTREAM position deliver responses? (2026-11-13)
+
+FR-037a made the upstream filter request-only, reasoning that a response there carries no cluster
+attribute and would need per-stream state carried from the request phase. That reason had already
+expired — `upstreamAttemptState` carries exactly that, for the body phase — so the question was
+whether the position can process responses at all.
+
+`t4d-long-timeout.yaml` sets `response_header_mode: SEND` on the upstream ext_proc filter. The
+probe server gained a catch-all that names every message type before any handling, so a message it
+fails to answer is distinguishable from one it never received.
+
+### Measured
+
+| `response_header_mode` | `message_timeout` | Result |
+|---|---|---|
+| `SEND` | default 200ms | **504** `ext_proc_error_per-message_timeout_exceeded` |
+| `SEND`, body `NONE` | default 200ms | **504** — same, so not the body mode |
+| `SKIP` (control) | default | `200` |
+| **`SEND`** | **5s** | **`200`**, and 5 further requests at 24–46ms |
+
+With the longer timeout, both directions arrive on every request:
+
+```
+PROBE >>> message received: *ext_procv3.ProcessingRequest_RequestHeaders
+PROBE >>> message received: *ext_procv3.ProcessingRequest_ResponseHeaders
+```
+
+And on a failover, the DISCARDED attempt's response is delivered too:
+
+```
+attempt 1:  RequestHeaders -> ResponseHeaders  status=500   <- retried away from
+attempt 2:  RequestHeaders -> ResponseHeaders  status=200
+```
+
+### Answer: yes, it works
+
+The 504 was the **200ms default message timeout**, exceeded only while the gRPC stream was cold.
+Not a filter-position limitation. Read once, the first run looked like proof that upstream
+response processing is impossible; it was proof that a cold stream is slower than 200ms.
+
+### Consequence
+
+FR-037a's stated reason is void. Its conclusion is kept on different ground (FR-037h): the
+downstream response phase runs exactly once, on the committed response, so "which response is
+final" is unambiguous there. At the upstream position it is not — when the filter sees a
+response, the router has not yet decided whether to retry it, and a policy there cannot tell a
+response that will be delivered from one that will be discarded.
+
+Two locks would need removing to use the position for responses: the generated
+`ResponseHeaderMode: SKIP`, and the engine's upstream switch, whose `default:` branch bare-acks
+anything that is not a request message without running a chain. Neither is hard; both are
+deliberate and documented as such.
+
+## Post-header failures: what Envoy can and cannot do (2026-10-28)
+
+Searched upstream rather than assuming. Two separate problems, with different answers.
+
+### Retrying mid-stream — closed by design, not a gap
+
+Envoy issue #5876 ("Retry on mid-stream resets result in 503 but no retry") is answered directly:
+**mid-stream retries are not supported by design** — once response headers have been sent there is
+nothing sensible to do but reset. There is no feature, flag or pending change. This is structural
+to HTTP, not an Envoy limitation: a `200` cannot be un-sent.
+
+So the failover half of the streaming gap stays. Only client-side retry or full response buffering
+can address it, and buffering defeats the point of streaming.
+
+### Grading it correctly — fixable today, no Envoy change
+
+The more damaging half is ours, not Envoy's: we grade health from the **response-headers** phase,
+which saw `200`, so a stream that dies mid-body is recorded as a **success**. A provider that
+consistently fails mid-stream therefore looks like the healthiest member of the chain and attracts
+more traffic.
+
+Envoy does report the true outcome — `upstream_reset_after_response_started{...}` in
+`response_code_details` on the **access log entry**, which is emitted after the stream completes.
+
+And the plumbing already exists in the engine:
+
+- `internal/utils/access_logger_server.go` — the engine already runs an access-log service
+- `internal/analytics/analytics.go:441` — already reads `GetResponseCodeDetails()`
+- `internal/kernel/fault_source.go:125` — already matches the `upstream_reset` prefix
+
+So failover health can be graded from the access-log entry instead of, or in addition to, the
+response-headers phase. That closes the mis-grading entirely without touching Envoy.
+
+### Second finding from the same search: `retry_on: reset` and expensive POSTs
+
+The generated retry policy is
+`5xx,connect-failure,refused-stream,reset,retriable-status-codes`.
+
+Per Envoy's docs, `reset` retries any upstream reset **before a response, including after the
+upstream has received the full request** — so a non-idempotent POST can be sent twice.
+`reset-before-request` retries only when Envoy has sent no bytes upstream.
+
+For LLM traffic this is not academic: a provider that has received the whole prompt and is
+generating can be reset, and the same prompt is then sent to another provider — **billed twice, and
+potentially answered twice**. Worth an explicit decision rather than inheriting the broader value.
+
+
+---
+
+## Merge rule, end to end (2026-10-29)
+
+**Question.** When a routing policy picks the target, do the failover policy's
+configured fallbacks apply to *that* target — and only to that target?
+
+**Why an ordinary test was not enough.** The first implementation of this rule
+passed the entire unit suite while being wrong: it replaced the configured
+target with routing's pick, which happens to agree whenever the two coincide.
+The runtime check below was therefore built to *discriminate* — to produce a
+different observable result under the old semantics than under the new.
+
+### Fixture
+
+| Piece | Value |
+|---|---|
+| `model-round-robin` (v1) | rotates `gpt-4o` (primary) ↔ `mistral-large` @ `mistral` |
+| `model-failover` (v0) | one target: `gpt-4o` → fallback `claude-sonnet-4-5-20250929` @ `anthropic` |
+| `tx-openai-provider` (primary) | `http://sample-backend:9998` — refuses |
+| `tx-mistral-provider` | `http://sample-backend:9999` — refuses |
+| `tx-anthropic-provider` | `http://sample-backend:9080/anthropic-upstream` — alive |
+| suspension | disabled on both policies, so ordering is the only variable |
+
+Both rotation members fail, and exactly one of them has a configured chain.
+
+### Result — `POST /tx-proxy/chat/completions`, six requests
+
+| # | Routing picked | HTTP | `x-envoy-attempt-count` | Served by |
+|---|---|---|---|---|
+| 1 | `gpt-4o` (configured) | `200` | `2` | `/anthropic-upstream/chat/completions` |
+| 2 | `mistral-large` (not configured) | `503` | `1` | — |
+| 3 | `gpt-4o` | `200` | `2` | `/anthropic-upstream/chat/completions` |
+| 4 | `mistral-large` | `503` | `1` | — |
+| 5 | `gpt-4o` | `200` | `2` | `/anthropic-upstream/chat/completions` |
+| 6 | `mistral-large` | `503` | `1` | — |
+
+**Both halves hold.** A configured target's own fallback fires (rows 1/3/5).
+An unconfigured target borrows nothing and is not rescued (rows 2/4/6) — under
+the previous semantics those rows would have returned `200` via anthropic. The
+alternation is the evidence.
+
+### Incidental findings
+
+- **Policy versions are major-only.** `version: v1.1.1` is rejected at admission
+  (`version must be major-only`); the attachment carries `v1` while the policy
+  definition carries `v1.1.1`.
+- **The request path carries no version segment.** Chains are keyed
+  `POST|/tx-proxy/chat/completions|*`; a request to
+  `/tx-proxy/v1.0/chat/completions` matches the `POST|/tx-proxy/*|*` wildcard
+  chain instead and runs neither routing nor failover. This is the suite's
+  existing convention (every `failover-core.feature` scenario calls
+  `/<context>/chat/completions`), not a defect — noted because the version-
+  prefixed form fails *silently*, returning a plausible `200` from the primary
+  with no indication the policies never ran.
+
+---
+
+## Canonical provider shape, end to end (2026-10-29)
+
+T024a0's controller-side fix was unit-tested only, so it was run at runtime. Two
+defects surfaced that no unit test had reached — the second of them severe.
+
+### Defect: a canonical proxy produced no routes at all
+
+`LLMTransformer.Transform` (`pkg/transform/llm.go:151`) dereferenced
+`proxy.Spec.Provider.Id` unconditionally. `spec.Provider` is **nil** in the
+canonical shape, so it panicked — and `processEventSafely` recovered:
+
+```
+level=ERROR msg="Recovered from panic while processing event" event_type=LLM_PROXY action=CREATE
+runtime error: invalid memory address or nil pointer dereference
+  transform.(*LLMTransformer).Transform  pkg/transform/llm.go:151
+  xds.(*Translator).TranslateConfigs     pkg/xds/translator.go:924
+```
+
+The management API answered `201`, `status.state` read `deployed`, the log said
+*"Artifact deployed successfully"* — and the gateway served `404` with
+`route_name: "no-api-found"`. A canonically-authored proxy could not be deployed
+at all, and nothing said so. This was introduced by this feature, in the block
+that points the empty alias at the primary's API-scoped cluster.
+
+**Fixed** by resolving through `PrimaryLLMProxyAttachment`. Matching on
+`EffectiveName()` rather than `Id` also closes a latent legacy bug: a legacy
+primary that sets `as` is named by that alias in its own loopback definition, so
+the `Id` lookup missed and left the empty alias on the **shared** main slot —
+the cross-API credential collision that block exists to prevent.
+
+### Verification
+
+Proxy `tx-canon-proxy`, authored canonically — primary `tx-mistral-provider`
+(refuses, forcing failover), fallback `anthropic` carrying `auth`, `transformer`,
+and the new `policies` field.
+
+Chain built for the fallback's cluster, in the FR-039 order:
+
+```
+upstream:upstream_LlmProxy_01a18663…_anthropic
+  -> [model-failover, set-headers, openai-to-anthropic-transformer, set-headers]
+      per-attempt    author's own   transformer                     credential (last)
+```
+
+`POST /tx-canon/chat/completions` → `200`, `x-envoy-attempt-count: 2`:
+
+| Observation | Value | Proves |
+|---|---|---|
+| `path` | `/anthropic-upstream/v1/messages` | transformer rewrote the path |
+| body | `{"max_tokens":4096,…,"model":"claude-sonnet-4-5-20250929"}` | transformer rewrote the body |
+| `x-api-key` | `canon-secret-key` | credential applied |
+| `anthropic-version` | `2023-06-01` | transformer header applied |
+| `x-canon-upstream-policy` | `ran` | the author's `policies` on the canonical entry ran |
+
+All four pieces the defect silently dropped are present on the failover attempt.
+
+---
+
+## Layered routing and failover, end to end (2026-10-30)
+
+First runtime proof that a ranking published by one policy module is consumed
+by another. Everything before this was unit-tested on each side of the module
+boundary separately.
+
+### Setup
+
+`model-round-robin` v1.2.0 rotating two targets, `model-failover` attached with
+**no fallbacks of its own** — so the only depth available is the ranking
+round-robin published. The dead target is a resolvable host with a closed port
+(`connect-failure`, retriable); see the correction below for why.
+
+### Result
+
+```
+ranking key present   go_type=[]map[string]string   decoded=2
+published failover chain   members=2
+```
+
+The pinned carrier crosses the module boundary and decodes. Attempt counts:
+
+| Request | Rotation leads with | HTTP | attempt-count |
+|---|---|---|---|
+| 1 | `gpt-4o` (dead) | 200 | **2** |
+| 2 | `claude@alive` | 200 | **1** |
+| 3 | `gpt-4o` (dead) | 200 | **2** |
+| 4 | `claude@alive` | 200 | **1** |
+
+**2, 1, 2, 1.** The alternation is the proof that round-robin advances once per
+CLIENT request, not once per attempt — had the cursor moved on the retry in
+request 1, request 2 would also have taken two attempts and the pattern would
+read 2, 2, 2, 2.
+
+### Suspension skip
+
+Same fixture with `suspendDuration: 300`, `suspendAfterFailures: 1`:
+
+| Request | Rotation leads with | attempt-count | |
+|---|---|---|---|
+| 1 | `gpt-4o` | **2** | fails, rescued — and is suspended |
+| 2 | `claude@alive` | **1** | |
+| 3 | `gpt-4o` **again** | **1** | round-robin still nominates it; failover skips it |
+
+Request 3 is the discriminator. Round-robin never learned the target was
+suspended — it is not told, by design — and nominated it anyway. A count of 2
+would mean the suspension was ignored and the dead target attempted. A count of
+1 proves both that the suspension is honoured and that **a skip costs no
+attempt**: had skips consumed budget, a chain of mostly-suspended targets would
+exhaust itself stepping over dead entries before reaching a live one.
+
+### Two corrections this run forced
+
+- **The test used an un-rescuable failure mode.** The dead target was on an
+  unresolvable hostname, copied from `failover-core.feature`. That yields
+  Envoy's local `no_healthy_upstream`, which is NOT retriable — this document
+  already recorded that, and the test contradicted it. Every request failed
+  with one attempt and no failover. Switched to a resolvable host with a closed
+  port. **`failover-core.feature` has the same flaw** and has never run in the
+  default suite.
+- **Wrong parameter name.** The fixture used `consecutiveFailures`; the policy
+  schema declares `suspendAfterFailures`. Rejected at deploy with
+  `Additional property consecutiveFailures is not allowed`.
+
+### What actually caused the hour of misdiagnosis
+
+The first run showed `members=1` with round-robin visibly publishing a correct
+two-element ranking, which read as a defect in the consumer. It was not. The
+deployed image had been built from `gateway/dev-policies/model-failover`, a
+manual copy that had never received the T066b decode fix — it still asserted
+`raw.([]Target)`, failed for `[]map[string]string`, and fell through to the
+single-selection path.
+
+The copy is what the image compiles, not the source repo, and nothing warned
+that the two had diverged. `gateway/sync-dev-policies.sh` now mirrors each dev
+policy and `--check` reports drift without writing.
+
+---
+
+## Timeouts: which slow targets fail over, and which legitimate ones get cut (2026-10-30)
+
+Prompted by the question "what about a timeout from the actual target?". Probed with
+`it/spikes/failover/t1-idle-timeout.yaml`, which mirrors the retry policy the controller
+generates today: `per_try_idle_timeout` set, `per_try_timeout` absent.
+
+### What the two timeouts do
+
+| | Bounds | On firing |
+|---|---|---|
+| `per_try_timeout` | one attempt's total duration | attempt failed → **retriable**, failover engages |
+| `per_try_idle_timeout` | silence within one attempt | attempt failed → **retriable**, failover engages |
+| route `timeout` | the whole request, retries included | local `504` → **terminal**, no failover |
+
+The route timeout is a local reply, so it joins `no_healthy_upstream` in the
+not-retriable class. The two per-try bounds are both retriable.
+
+### Measured
+
+**`per_try_idle_timeout` bounds TIME TO FIRST BYTE, not merely a mid-stream stall.**
+A target stalling 20s before sending anything, against a 5s idle timeout:
+
+```
+http=200  elapsed=5.3s  attempts=2  cluster=provider_b
+```
+
+Cancelled at 5s and failed over — despite being healthy and about to answer `200`.
+
+**Streaming with sub-threshold gaps never trips it.** Six chunks 3s apart, 15s total,
+same 5s idle timeout:
+
+```
+http=200  elapsed=15s  attempts=1  cluster=provider_a
+```
+
+### The defect this exposes is the OPPOSITE of the one suspected
+
+The concern was that a slow target would not fail over. It does. The real problem is that
+a *legitimately* slow one does, when it should not.
+
+A non-streaming completion sends **nothing** until the answer is ready. From the proxy's
+side that is indistinguishable from a hang, and the idle timer does not care which it is.
+With the current `perTryIdleTimeout` default of **10s**, any non-streaming completion
+taking longer than 10 seconds is cancelled and failed over — which for LLM traffic is
+routine, not exceptional.
+
+| Request shape | Behaviour today | Correct? |
+|---|---|---|
+| Streaming, target hangs before first token | failed over at 10s | yes |
+| Streaming, target stalls mid-stream >10s | failed over | yes |
+| Streaming, slow but steady (gaps <10s) | served, any total duration | yes |
+| **Non-streaming, legitimately takes >10s** | **failed over at 10s** | **no** |
+
+The effective ceiling for a non-streaming completion is therefore 10s, and the request
+then burns a second target for an answer the first was about to give.
+
+### Why it cannot simply be made per-request
+
+`x-envoy-upstream-rq-per-try-timeout-ms` overrides `per_try_timeout` per request, but
+**there is no header equivalent for `per_try_idle_timeout`** — confirmed against the full
+`RetryPolicy` field set in go-control-plane v1.40.0. It is static route configuration.
+
+So the policy cannot read `"stream": true` from the body and pick a bound, even though it
+already parses that body. The asymmetry is structural: streaming wants a SHORT idle bound,
+non-streaming wants a LONG one, and only one value exists per route.
+
+### Options
+
+| | Approach | Cost |
+|---|---|---|
+| **A** | Raise the `perTryIdleTimeout` default well above the longest expected non-streaming completion | A hung streaming target takes that long to fail over |
+| **B** | Generate separate routes for streaming and non-streaming; the policy rewrites `:path` on `"stream": true` and clears the route cache | Doubles the route count; needs `allow_all_routing`, which is already enabled (T021a) |
+| **C** | Set `per_try_timeout` per request via the header for non-streaming | **Does not work** — the idle timer fires first regardless |
+| **D** | Disable the idle timeout by default | Strictly worse than A: a hang then reaches the route timeout, which is terminal, so failover never engages at all |
+
+**A is the immediate fix**: a correct answer that is slow to fail over beats a fast failover
+of requests that were never broken. **B is the only option that gets both**, and its
+machinery already exists.
+
+### Secondary finding: the route timeout is itself tight for LLM
+
+`RouteTimeoutMs` defaults to **60000** (`config.go:1428`). That bounds the whole request,
+retries included, and firing it is terminal. Raising `perTryIdleTimeout` above 60s is
+therefore pointless — the route timeout wins. Any fix has to move both, and 60s is already
+short for a long non-streaming completion before failover is in the picture at all.
+
+---
+
+## An unresolvable host DOES fail over on an LlmProxy (2026-11-02)
+
+Settled by reverting the layered feature's dead upstreams to unresolvable
+hostnames and running it. The three failover scenarios **passed**.
+
+### Why — the loopback hop
+
+An LlmProxy request takes two hops through the same Envoy:
+
+```
+client → :8080  /my-proxy/chat/completions
+                     │   ← the failover retry policy is on THIS route
+                     ▼
+         cluster upstream_LlmProxy_<uuid>_anthropic
+             = 127.0.0.1:8080, base path /anthropic-ctx     ← loopback
+                     │
+                     ▼
+         :8080  /anthropic-ctx/chat/completions
+                     │   ← the LlmProvider's own route
+                     ▼
+         cluster api.anthropic.com      ← DNS fails HERE
+```
+
+The DNS failure lands on the **inner** route; the retry policy sits on the
+**outer** one. From the outer route's view its cluster is `127.0.0.1:8080`,
+which is always healthy — it connected and received a response that happens to
+be a `503`, and an upstream `503` matches `retry_on: 5xx`.
+
+| Whose view | What it sees |
+|---|---|
+| Inner route | local `no_healthy_upstream` — terminal |
+| Outer route, where failover lives | upstream returned `503` — **retriable** |
+
+The loopback launders a terminal local reply into a retriable status. On a
+DIRECT upstream there is no second hop, so the local reply lands on the route
+carrying the retry policy and nothing can be retried. **The limitation recorded
+earlier is real, but only for direct upstreams.**
+
+This does not make failover catch everything. The rule is unchanged: retriable
+means something reached an upstream. A committed response, the route's overall
+timeout, a `4xx`, a client disconnect and an exhausted attempt budget are all
+still terminal.
+
+### Two corrections this forced
+
+- **A fix applied earlier was unnecessary.** The layered feature's dead
+  upstreams had been changed from unresolvable hostnames to refusing ports.
+  That change was made in the same step as rebuilding a stale policy copy, and
+  the stale policy was the entire cause — the hostnames were never the problem.
+  Reverted, and the feature's prose now carries the loopback explanation
+  instead of the claim that a refusing port is required.
+- **A real defect in the feature file.** One scenario asserted
+  `x-envoy-attempt-count: 1` against a proxy with NO failover attached. The
+  controller sets `IncludeAttemptCountInResponse: t.vhostHasFailover(routes)`,
+  so that header does not exist there; the assertion was testing for the
+  presence of a feature the scenario deliberately omits. It survived manual
+  `curl` verification because that scenario was never exercised by hand.
+
+Result after both: **17 scenarios, 199 steps, all passed.**
+
+---
+
+## The attempt-count header is virtual-host scoped (2026-11-02)
+
+Found by the cross-API isolation scenario (T085), which is what that scenario is
+for.
+
+**FR-030d and SC-012a say an API that does not attach failover behaves
+identically whether or not another API does. For one response header, it does
+not.**
+
+`IncludeAttemptCountInResponse` is set per VIRTUAL HOST when any route in it
+has failover:
+
+```go
+IncludeAttemptCountInResponse: t.vhostHasFailover(routes)
+```
+
+Two LlmProxies on the same vhost therefore share the setting. Attaching
+failover to API A adds `x-envoy-attempt-count: 1` to API B's responses, though
+B has no failover and never retries.
+
+**It cannot be scoped away by configuration.** Checked against the full
+`VirtualHost` and `Route` field sets in go-control-plane v1.40.0:
+`include_attempt_count_in_response` exists on `VirtualHost` only. There is no
+per-route equivalent to set.
+
+### Severity, and the options
+
+Low. The header is informational, carries no identity, and says only that some
+API on this gateway uses failover. Nothing in a response body or status changes,
+and no credential or routing decision crosses between the APIs — the same
+scenario asserts both of those and they hold.
+
+| Option | Cost |
+|---|---|
+| Accept and document | FR-030d is not strictly true, and says so |
+| `response_headers_to_remove` on non-failover routes | Restores the requirement; adds a header mutation to unrelated routes in any mixed vhost, widening this feature's blast radius beyond APIs that use it |
+| Relax SC-012a to exclude informational Envoy headers | Honest, and narrows a requirement that was written without this constraint in view |
+
+Not fixed. The integration scenario asserts the header as it actually behaves,
+with a comment pointing here, so the day someone scopes it properly that line
+fails and is updated deliberately rather than silently drifting.
+
+### The value is never wrong, and the upstream side crosses too
+
+What crosses is the header's PRESENCE, not its value. Same run, same vhost,
+consecutive requests: API A reported `2` and API B reported `1`. Envoy's attempt
+counter is per-request stream state; the virtual-host flag only decides whether
+that per-request number is emitted. A shared switch, not a shared counter.
+
+The failover policy reads the header off its own response context, and API B has
+no failover policy at all, so nothing grades anything for B.
+
+`IncludeRequestAttemptCount` is enabled on the same virtual host and is required
+— it is how the per-attempt chain learns which attempt it is serving. So B's
+UPSTREAM also receives an `x-envoy-attempt-count` header it would not otherwise
+see. Same character as the response side: informational, correct value, on a
+request that never retries.
+
+### What the scenario still proves
+
+The isolation that matters holds. API B's request carried its own policy's
+marker and none of API A's credential, with an echo backend reporting what it
+actually received — so A's per-attempt chain did not run on B's request, which
+is the claim the design document makes.
+
+## RestApi failover reached the right cluster on the wrong path (2026-11-02)
+
+**T086a, the FR-030a parity scenario, failed on its first run — and the failure was real.**
+
+The same failover block was deployed under `kind: RestApi`, with a target's `provider` naming an
+`upstreamDefinition` instead of an `additionalProviders` alias. The primary pointed at a refusing
+port, the fallback at a live one.
+
+| Signal | Observed | Verdict |
+|---|---|---|
+| status | `200` | ✓ |
+| `x-envoy-attempt-count` | `2` | ✓ failover engaged |
+| echoed upstream path | `/rest-dead-upstream/chat/completions` | ✗ **primary's base path** |
+
+Port 9998 refuses, so the 200 can only have come from the live upstream. The fallback cluster was
+selected correctly and then handed the *primary's* base path.
+
+### Two mechanisms, only one of which was kind-agnostic
+
+Failover needs both of these, and they live in different places:
+
+1. **Selecting the fallback cluster** — Envoy's `priority_group` specifier, driven by the ranking
+   the downstream pass publishes. Nothing about it is kind-specific.
+2. **Sending that cluster its own base path** — `repointToProvider`, which runs in the
+   **per-attempt upstream filter chain**. The route's `regex_rewrite` is compiled once and points
+   every attempt at the primary, so without this an attempt arrives on the wrong context.
+
+`buildUpstreamPolicyChains(spec *api.LLMProxyConfigData, …)` in `pkg/transform/upstream_chains.go`
+was the only writer of `UpstreamPolicyChains`, and `attachUpstreamChainTo` gated the filter on that
+chain being non-empty. An LlmProxy always qualified — every provider carries a transformer and auth
+chain. A RestApi failing over between upstream definitions carries no per-provider policies at all,
+so it got no filter, so step 2 never ran.
+
+### Confirmed by isolating the one variable
+
+Re-running the identical scenario with both definitions sharing one `basePath` — which makes the
+re-point a no-op — passed outright (14/14 scenarios, `attempt-count: 2`, `200`). Cluster selection
+was never the problem.
+
+### Fix
+
+`attachUpstreamChainTo` now attaches the per-attempt filter when a cluster either carries authored
+upstream policies **or** appears as a resolved target in some route's `FailoverConfig`. The target
+set is static — an unresolvable target is dropped at config time, so `Targets[].Cluster` is exactly
+what Envoy can select — so this needs no new transport and never names the policy.
+
+FR-043 still holds by construction: a cluster with neither property carries no filter and pays no
+ext_proc round trip. Locked in by `TestAttachUpstreamChainTo_CoversFailoverTargetsWithoutPolicies`
+alongside the existing `…_SkipsClustersWithNoWork`.
+
+### Worth noting
+
+This is the failure mode that is worst to ship: no error, no log, a `200` body from a real backend.
+Only an assertion on *which* resource answered catches it. The two earlier lessons about absence
+assertions (T084, T085) have the same root — a passing status code proves far less than it appears
+to.
+
+## Failover telemetry reaches the logs but not the analytics collector (2026-11-03)
+
+Found while writing T086. That scenario needed to assert that an inert policy surfaces no
+telemetry, and the obvious assertion — the analytics event carries no `failover:` keys — turned out
+to be unfalsifiable.
+
+### What raised it
+
+The T086 run passed, but the analytics payload it asserted against contained an event from
+`MF RestApi Failover` — an API that had just failed over — and `should not contain "failover:"`
+passed anyway. An absence assertion that holds over a positive case is proving nothing.
+
+### The probe
+
+A throwaway feature deployed a RestApi that fails over, drove one request, and asserted the
+collector payload **does** contain `failover:`, with a positive control on the same body:
+
+| Assertion | Result |
+|---|---|
+| `x-envoy-attempt-count` is `2` | pass — failover genuinely happened |
+| body contains `mf-telemetry-probe` | pass — this request's own event is in the payload |
+| body contains `failover:` | **fail** |
+
+Searching the payload for the values rather than the keys found no `rescued`, no `exhausted`, and no
+attempt/outcome/serving fields under any spelling. So it is not a key-sanitisation issue.
+
+### Where it is, and where it is not
+
+The policy runs and emits. The runtime log carries both lines:
+
+```
+ModelFailover: published failover chain
+ModelFailover: request rescued by a later target
+```
+
+`OnResponseHeaders` returns `DownstreamResponseHeaderModifications{AnalyticsMetadata: record.analytics()}`,
+and `analytics()` builds a non-empty map unconditionally. Both response-phase handlers in
+`internal/kernel/translator.go` (header-only at ~1038, header+body at ~1143) merge
+`mods.AnalyticsMetadata` into `analyticsData`, and `buildAnalyticsStruct` applies no allowlist. Every
+link inspected so far looks correct, which is why this is recorded as a finding rather than a
+diagnosis — the loss is somewhere between `buildAnalyticsStruct` and the published event, and has
+not yet been isolated.
+
+**So: the log half of US5 works, the analytics half does not.** US5 was closed on the strength of
+the emission code existing; it was never verified at the collector.
+
+### Consequence for T086
+
+The "no telemetry about being inert" half of FR-030b/e is **not** asserted. The scenario asserts what
+is genuinely observable — deployment accepted, behaviour byte-identical to the policy being absent,
+no `x-envoy-attempt-count` on the virtual host, and an ordinary analytics event present — and
+deliberately omits the `failover:` absence check rather than shipping one that cannot fail. Tracked
+as T091.
+
+### Worth noting
+
+This is the fourth time this session that an absence assertion needed a positive control beside it
+(T084, T085, T086a, now T086). The pattern is consistent enough to be worth stating as a rule: an
+assertion that something is missing is only worth the positive case that proves it would have been
+found.
+
+## T091 root cause: the analytics event schema is closed (2026-11-03)
+
+The missing telemetry is not lost in transit. Every key arrives at the final handler and is
+discarded there because nothing maps it.
+
+### Localised by elimination, not by reading
+
+Three hypotheses were killed before the right one:
+
+| Hypothesis | Killed by |
+|---|---|
+| The correlation store swallows the keys | `isCorrelatedField` matches only four header/payload keys |
+| A value type `structpb` cannot encode errors the whole struct | `Outcome` is a plain `string`; the rest are strings and ints |
+| Response-phase analytics is broken for every policy | the control below |
+
+The third needed care. A first probe used `response_content_type` as the control and it "failed" —
+but that key is *consumed and renamed* to `responseContentType` by the handler, so searching the
+event for it could never succeed. **The control was wrong, not the subject.** Re-run against the
+real field:
+
+| Event | `responseContentType` | `failover:*` |
+|---|---|---|
+| plain API, 1 attempt | `application/json` | none |
+| failover API, **2 attempts** | `application/json` | none |
+
+Response-phase analytics works, and works on a retried request. So the loss is specific to this
+policy's keys — not to the response phase, not to retries, and not to the upstream filter added by
+T030q.
+
+### The keys reach the handler
+
+`slog.Debug("Analytics metadata", ...)` in `internal/analytics/analytics.go` logs what the
+access-log handler received. All nine are there:
+
+```
+failover:attempts:2
+failover:chain_length:2
+failover:outcome:rescued
+failover:serving_model:claude-sonnet-4-5-20250929
+failover:serving_provider:alive
+failover:ranking_source:configured
+failover:failed_targets:default:gpt-4o
+failover:requested_model:gpt-4o
+response_content_type:application/json
+```
+
+So policy → ext_proc → Envoy → access log → handler is entirely correct.
+
+### Where it dies
+
+The handler builds the event by copying **named** keys into typed fields —
+`extendedAPI.APIName = keyValuePairsFromMetadata[APINameKey]`,
+`subscription.BillingCustomerID = keyValuePairsFromMetadata[BillingCustomerIDKey]`,
+`responseContentType` from `keyValuePairsFromMetadata["response_content_type"]` — about thirty such
+assignments. There is **no general pass-through**: no loop copies unclaimed keys into the event. The
+only sweep that exists, `otelSweepUnclaimed`, is called at exactly three sites, all MCP
+(`mcp.`, `mcp.client.`, `mcp.server.`), on a nested object the handler had already placed in the
+event.
+
+**A policy cannot contribute a new analytics field.** It can emit one, and it will be carried
+faithfully to the last hop and dropped.
+
+### Relation to T079
+
+This is the analytics twin of the metrics finding. T079: *"No policy on this platform can emit a
+metric."* T091: a policy can emit an analytics field, but no policy-defined field can reach a
+consumer. Both are the same shape of gap — the policy SDK's two documented output paths, and only
+`slog` actually delivers something a policy defines.
+
+The difference is where the fix sits. Metrics need a new SDK surface. This needs roughly the MCP
+sweep applied to policy metadata generally — small, and it changes the shape of every analytics
+event, which is why it is not a unilateral call.
+
+## `handle_upstream_faults` silently disables failover's response phase (2026-11-04)
+
+Found while implementing T039, by reading the engine rather than by a probe — worth recording
+because nothing in the policy or its documentation hints at it.
+
+`PolicyExecutionContext.processResponseHeaders` calls `noteUpstreamFault(status)`, and when the
+response arrived with status >= 400 **and** `policy_engine.fault_policies.handle_upstream_faults`
+is on, it sets `upstreamFault`. `responsePolicies()` then returns `nil, nil`:
+
+```go
+func (ec *PolicyExecutionContext) responsePolicies() ([]policy.Policy, []policy.PolicySpec) {
+	if ec.upstreamFault {
+		return nil, nil
+	}
+	return ec.policyChain.Policies, ec.policyChain.PolicySpecs
+}
+```
+
+Every response policy is skipped in favour of the fault chain. For model-failover that means, on
+exactly the responses it cares about:
+
+- **no health grading.** `OnResponseHeaders` is where failures are recorded, so a target that
+  fails with a real error status is never counted toward suspension. A provider could be down
+  indefinitely and never be suspended.
+- **no exhaustion response.** T039's sterile error is produced in that same phase, so the final
+  upstream's own error body reaches the client after all.
+
+Not a defect in either component — the fault flow is doing what it was built to do, and this
+policy was written before it existed. The interaction is simply unowned.
+
+**RESOLVED 2026-11-04 — the policy now implements the fault path too.** The original note below
+said the fix was "not the policy's to make". That was wrong, and the evidence was already in the
+tree: the analytics system policy had hit the identical problem and solved it by implementing
+`FaultPolicy` and DELEGATING `OnFault` to its own `OnResponseHeaders`. Its comment names our bug
+exactly — "for an upstream or router failure this policy is excluded from the response chain so
+it can run here instead (see kernel.responsePolicies)".
+
+model-failover now does the same, and the control plane attaches it to the fault chain
+automatically for any operation that resolved a failover configuration, so a publisher still
+configures failover once. Three things that were not obvious going in:
+
+- **A second instance would have made the whole fix inert.** `PolicyRegistry.GetInstance` calls
+  the factory once per CHAIN entry — "may return a new instance or a cached one, this is up to the
+  policy implementation" — so the response chain and the fault chain get different `*Policy`
+  values. With a private health store each, the fault chain would have graded into a store nothing
+  reads. `shared_health.go` keys one store per attachment and hands it to both.
+- **A returned `Fault` REPLACES the engine's description** (`applyFaultResponse` does
+  `faultCtx.Fault = &redescribed`, keeping only `Policy`). Returning a fresh one carrying just
+  this policy's code would have deleted the engine's `FaultTypeUpstream` classification — a class
+  a policy is explicitly not allowed to set for itself. The code and message are overlaid onto the
+  existing description instead.
+- **Both hooks can run for one request**, when a 200 is graded normally and a later response
+  policy then rejects it. A `model_failover.graded` marker stops the same outcome being charged
+  twice, which would otherwise put two samples in the window for one request.
+
+Verified at runtime with `handle_upstream_faults = true`: the runtime log carries
+`skipping the response policies for the fault policies` — so the response chain really was
+skipped — and in the same window both targets are suspended, the chain reports exhausted, and the
+next request is refused with `every target is suspended; nothing was attempted`. Both requests
+received the sterile 503. The same 34 scenarios pass with the flag off and on.
+
+Original note, kept for the reasoning: the flag is `false` by default in both
+`gateway/configs/config-template.toml` and the Helm chart's `values.yaml`, so no default
+deployment was affected. What made this worth fixing rather than flagging is that the flag is the
+recommended posture going forward, and with it on the policy was not degraded but off.
+
+## `echo-backend-multi-arch` is the controllable failure backend T029c asked for (2026-11-04)
+
+T029c was filed because `sample-service` echoes `?statusCode=` back in its `query` field and still
+answers 200, so no scenario could force a chosen upstream status. The suite already contains a
+service that can: `echo-backend-multi-arch` (`mccutchen/go-httpbin`, port 8080). Verified directly
+against the image:
+
+| Path | Behaviour |
+|---|---|
+| `/status/503` | returns exactly 503 |
+| `/status/200:2,503:1` | weighted random — measured 18/12 over 30 calls |
+| `/delay/1` | responds after 1.02s, status 200 |
+| anything unrouted | 404 with body `404 page not found` |
+
+The constraint is the path. An upstream's final path is `basePath + operation path`, and go-httpbin
+matches `/status/NNN` **exactly** — `/status/503/` and `/status/503/chat/completions` both 404. So a
+member that must return a chosen status omits `basePath` (optional: "omit for root") and names the
+status in the OPERATION path, and chain members are differentiated by HOST rather than by basePath:
+
+```yaml
+upstreamDefinitions:
+  - name: primary                                  # returns the chosen status
+    upstreams: [{url: "http://echo-backend-multi-arch:8080"}]
+  - name: alive                                    # echoes 200
+    upstreams: [{url: "http://sample-backend:9080"}]
+operations:
+  - method: POST
+    path: /status/503
+```
+
+The two exhaustion scenarios added with T039 use the simpler variant of the same idea — both members
+on go-httpbin under basePaths it does not serve, with `statusCodes: [404]` nominating 404 as
+failover-worthy — because there the members only need to fail, not to differ.
+
+This unblocks T041 #5, T064 (the weighted form drives a precise one-in-three failure rate) and
+T065 (`/delay/N`).
+
+## The latency rule could never fire for the target it was written for (2026-11-04)
+
+Found while writing T065's integration scenario, which is the only reason it was found at all:
+the rule had a passing unit test and read as covered.
+
+FR-018e and SC-011b both describe the same target — one that has got slow while *working*:
+
+> A target whose p95 triples while **every request still completes** under `perAttemptTimeoutMs`
+> is suspended by FR-018e — the case a timeout-only rule never sees.
+
+The implementation evaluated the windowed rules only inside `RecordFailure`. `RecordSuccess` fed
+the window and returned. So a target that is slow and succeeds — which is every target this rule
+exists for — accumulated samples that nothing ever read. The rule was unreachable in production.
+
+The existing unit test passed because it reached the rule through a failure, and said so in a
+comment that read as description rather than as a problem:
+
+```go
+// A failure is what triggers evaluation; the latency rule then fires on the window.
+suspended = store.RecordFailure(targetA, 2*time.Second, now)
+```
+
+That test proves the threshold arithmetic. It cannot prove the rule is reachable, and the
+arithmetic being right is not the requirement.
+
+**The fix.** `evaluateLatencyLocked` is now called from both record paths, and `RecordSuccess`
+returns `(*RecoveryEvent, *SuspensionEvent)` so a success can report the suspension it caused.
+
+The error-rate rule is deliberately NOT evaluated on success. A success can only push a rate
+down, so there is nothing there for it to discover; latency is different precisely because
+successes are its only samples in the case that matters. The asymmetry is pinned by
+`TestHealth_SuccessDoesNotEvaluateTheErrorRateRule` so it stays a decision rather than becoming
+a side effect of someone tidying the two paths together.
+
+**Risk.** Low, and bounded by configuration rather than by argument: `p95LatencyMs` defaults to
+0, which disables the rule, so no existing deployment changes behaviour unless an operator has
+already opted in — and for one that has, the rule starting to work is the point.
+`TestHealth_OneSlowRequestAmongFastOnesSuspendsNothing` pins the other half of SC-011b, since
+"a success can suspend" is exactly the change that could turn an aggregate rule into
+one-slow-request-condemns.
+
+**Why no probe found this.** Every earlier probe drove failures, because that is what failover
+is about. A target that never fails was outside the shape of every scenario written so far,
+which is also why T065 sat behind T029c as "needs a slow backend" rather than "needs the rule
+to work".
+
+## T093: walking the quickstart end to end (2026-11-05)
+
+Executed V0–V10 against a gateway built from this branch. Three suites, all green **after** the
+fixes below:
+
+| Suite | Result |
+|---|---|
+| `make test` — health, api_deploy and all five failover features | 43 scenarios, 43 passed |
+| `make test-faultflow` | 35 scenarios, 35 passed |
+| `make test-load` | 2 scenarios, 2 passed (10,000 requests driven) |
+
+The first run was **not** green — 3 of 43 failed — and that is the finding, not a footnote. Every
+one of the four problems below was reachable only by doing this, and none would have been caught by
+the runs performed while building the features.
+
+**1. T039 broke a scenario that had asked to be updated.** `failover-core.feature`'s exhaustion
+scenario carried a note addressed to whoever implemented T039: "when it lands it changes what the
+client sees here, so this scenario must be updated in the same change." T039 landed on 2026-11-04
+and the note was missed, because that work ran `model-failover.feature` and never
+`failover-core.feature`. The header assertion broke exactly as the note predicted: the exhaustion
+response REPLACES the upstream's, so `x-envoy-attempt-count` does not survive it.
+
+**2. Two scenarios were green only because nobody ran the files together.** Both proved the policy
+was inert by asserting `x-envoy-attempt-count` is ABSENT. That header is set per VIRTUAL HOST, so it
+appears on every response in the vhost as soon as ANY route in it fails over — the assertion was
+really about which other APIs happened to be deployed. One of the two passed in the
+model-failover-only runs all week and failed the moment the five failover features ran together,
+with no defect in either. `failover-core` had anticipated the mechanism ("this scenario must stay
+last in the file") but that only holds WITHIN a file; no single file controls suite-wide state.
+Both now assert one upstream attempt, via a step that reads an absent header as one — the invariant
+this operation actually controls. The vhost scoping itself remains a known limitation against
+FR-030d/SC-012a, recorded above.
+
+**3. V4 and T060 both described behaviour the spec was revised AWAY from.** Both said a suspension
+expiring returns the target to full rotation with no probe phase. FR-019 was revised on 2026-10-28
+to restore the half-open probe phase, and records why: backoff decides how long a target stays out,
+the probe phase decides how it gets back in. The implementation half-opens, correctly. Only the two
+documents drifted — which is the dangerous direction, because someone validating against V4 would
+have concluded the implementation was wrong when it was the only one of the three that was right.
+
+**4. V10 required a withdrawn requirement.** It asked that a routing policy's superseded suspension
+setting be reported at deployment, citing FR-026b — withdrawn 2026-10-29, along with its task T015,
+because with no override to apply there is nothing to report. Row removed. The `perAttemptTimeoutMs`
+row was also marked honestly: no such constraint exists, a value at or above `RouteTimeoutMs` is
+accepted and silently inert, and that is T030p, still open.
+
+**Prerequisites were wrong in two ways that would stop a reader before they started.** The section
+claimed `model-failover` is pinned in `build-manifest.yaml` — it is absent from the manifest
+entirely, and from the committed `build.yaml`; until T040 it builds only from an uncommitted
+`filePath:` entry. And it named the IT sample backend as the way to force a failure "via
+`?statusCode=NNN`", which does not work — that backend echoes the parameter and still answers 200,
+the T029c finding. Both corrected, pointing at `echo-backend-multi-arch` instead.
+
+**What V0–V10 does NOT cover, stated rather than stretched:**
+
+- **V0.1 negative half** — the generated config is asserted to carry `refresh_cluster_on_retry`
+  (`TestFailoverRetryPolicy_RefreshClusterOnRetryIsSet`), but no scenario deploys with it FALSE to
+  pin the failure mode. **T027, closed 2026-11-05: not buildable.** The flag is a literal in
+  `buildFailoverRetryPolicy` with no configuration surface, so no deployment the suite can perform
+  omits it. Reaching the gap would mean giving the controller a way to generate a knowingly broken
+  route so a test could deploy it. The unit test guards the only level at which the bug can return,
+  and probe B3 above records the runtime behaviour from observation.
+- **V2 second bullet** — suspending one provider leaving the other's health untouched. T046, open.
+- **V3 first bullet** — a failover-only vendor taking zero traffic while in-house models are
+  healthy. T051, open.
+- **V7 last bullet** — a policy with no declared execution class behaving as once-per-request.
+  Execution classes were implemented and then reverted (T036, descoped), so there is nothing to
+  assert against; the bullet describes a mechanism that does not exist.
+- **V10 rows** for an out-of-range numeric setting and for "no targets and no ranking policy" have
+  no integration scenario; the first is ordinary schema validation, the second is covered only
+  indirectly by the inert-policy scenarios.
+
+Every one of these is an existing open task or an explicit descoping, not a new gap — the value of
+the walk was confirming which, rather than discovering unknowns.
+
+---
+
+## T029a: the overrun never happens, and a log-count assertion that proved nothing (2026-11-05)
+
+Two findings from pinning the safety property that chose the mechanism — one about the gateway,
+one about how the scenario was measuring it.
+
+### The surplus attempts are not made at all
+
+The attempt budget and the published chain are sized from different things: `num_retries` from
+every target the operation resolves at deploy time, the chain from the target the request actually
+resolved to plus its own fallbacks. A proxy with two independent chains therefore has a budget
+larger than the chain serving any one request.
+
+Deployed exactly that — two chains, one of two dead providers, one of two healthy ones — and asked
+for the dead chain's model. Confirmed from Envoy's own config dump rather than inferred:
+
+```
+num_retries: 3                    # four attempts budgeted
+retry_on: 5xx,connect-failure,refused-stream,reset,retriable-status-codes
+refresh_cluster_on_retry: True
+cluster_specifier_plugin: failover-groups/POST|/fo-overrun-proxy/chat/completions|*
+```
+
+Two attempts were made:
+
+```
+"POST /fo-ovr-dead-primary-ctx/chat/completions"  -> /overrun-dead-a/... -> 503 UH
+"POST /fo-ovr-dead-fallback-ctx/chat/completions" -> /overrun-dead-b/... -> 503 UH
+"POST /fo-overrun-proxy/chat/completions"         -> 503 URX
+```
+
+One per published group, then the exhaustion error. **Attempts three and four were never made**,
+and the healthy spare chain — deliberately healthy, so that reaching it would have returned a
+loud `200` instead of the demanded `503` — was never dialled.
+
+**This supersedes probe B4**, which predicted the surplus attempt *repeating the last group*
+(`provider-a: 1, provider-c: 2` over two groups and three attempts). B4 stands for the static
+Envoy configuration it ran against; the generated configuration behaves differently, and better.
+The chain bounds the attempt sequence, not the budget. `architecture.md` §6b and the
+generated-config contract both asserted the repeat and have been corrected.
+
+The property that decided Option B is unaffected and now rests on stronger ground: Option A's
+probe A3 had an excluded target *serving* the request on overrun; here it is not contacted at all.
+
+### A `contains` assertion that a single attempt satisfied twice
+
+The scenario first asserted `"/overrun-dead-b" at least 2 times` in the runtime log, intending
+"this group was dialled more than once". It passed, and it was measuring nothing: **one attempt
+writes the upstream path twice** — once in the policy engine's structured log entry, once in the
+router's access line. Counted against the container log for a single request:
+
+| Search string | Occurrences | Attempts |
+|---|---:|---:|
+| `/overrun-dead-a` | 2 | 1 |
+| `/overrun-dead-b` | 2 | 1 |
+| `POST /fo-ovr-dead-primary-ctx/chat/completions HTTP/1.1` | 1 | 1 |
+| `/overrun-spare-upstream` | 0 | 0 |
+
+What exposed it was switching the floor to an **exact** count, which failed with the real number
+(`contains "/overrun-dead-b" 2 times ... want exactly 3`) and sent me to the container log. A floor
+cannot distinguish a repeated attempt from a repeated log line; where the count *is* the property,
+only an exact count can. The scenario now matches on `POST <context> HTTP/1.1`, which appears once
+per upstream attempt and nowhere else, verified directly rather than assumed.
+
+Two further notes for anyone asserting on this log:
+
+- **The router's access lines flush late** — 8-12s after the request, with the event timestamp
+  preserved, so they look contemporaneous when they arrive. An assertion reading immediately after
+  a request sees the `[pol]` entry only. The `exactly` step waits for the count to reach its target
+  and then settles before judging.
+- **The exhaustion response replaces upstream headers**, so `x-envoy-attempt-count` is not available
+  on an exhausted chain and the log is the only observable. Prefer the header wherever the chain
+  succeeds.
+
+---
+
+## DEFECT: a failed attempt's credential is forwarded to the next vendor (2026-11-05)
+
+Found by T024j on its first run. **One provider's API key is delivered to a different provider.**
+
+### What was observed
+
+A proxy with a dead, credentialed primary (`x-dead-key`) failing over to a healthy vendor B
+(`x-api-key`) with its own credential and transformer. The echo backend reports what B received:
+
+```json
+"path": "/perattempt-b-upstream/v1/messages",
+"headers": {
+  "X-Api-Key":  ["mf-perattempt-b-credential"],      // correct — B's own chain ran
+  "X-Dead-Key": ["mf-perattempt-dead-credential"]    // LEAK — attempt 1's credential
+}
+```
+
+The client sent neither header. `x-dead-key` is the dead vendor's configured auth header, applied
+by its per-attempt chain before its dial failed, and it was still on the request when attempt 2 was
+sent to a different vendor.
+
+### Mechanism (inferred, consistent with the code)
+
+Each attempt's chain emits only its OWN mutations. `upstreamHeadersResponse`
+(`policy-engine/internal/kernel/upstream_dispatch.go:263`) builds a `HeaderMutation` from that
+attempt's policy results and nothing else — there is no reset of what a previous attempt set, and
+`RemoveHeaders` carries only what a policy explicitly asked to remove. Header mutations applied at
+the upstream position persist on the request across retries, so attempt 2 inherits attempt 1's
+credential and then adds its own.
+
+Credential injection is appended last in a provider's chain, so this affects **every** cross-provider
+failover where the first target has an auth header the second does not overwrite. Same-header
+providers are masked by overwrite (`OVERWRITE_IF_EXISTS_OR_ADD`); different header names accumulate.
+
+### Why it was not caught earlier
+
+The existing cross-vendor scenario asserts only the positive half — that B's credential and format
+arrived. A chain leaking every previous attempt's headers satisfies that assertion perfectly. The
+defect is invisible from the client: the request succeeds, the transformer reports success, and the
+only trace is a key sitting in a body a third party received.
+
+### This also corrects a conclusion drawn earlier the same day
+
+T024h was closed hours before with the credential clause marked "structural — the upstream position
+is REQUEST ONLY, so a credential injected there cannot reach a response." That sentence is true and
+irrelevant: FR-042's exposure is the **request** path to the wrong vendor, not the response path.
+The reasoning answered a narrower question than the requirement asks. T024h's original third clause
+was live after all, and its second clause — "strip the internal provider-selection header" — was
+dismissed as stale on the grounds that no such header exists, when the hygiene principle behind it
+is exactly what is missing here.
+
+### The fix is a design decision, not a patch
+
+It belongs to **T021b** (the per-attempt re-entrancy contract), which asks precisely this: hand each
+attempt a pristine request, or make each chain responsible for clearing what preceded it.
+
+- **Reset per attempt.** "Pristine" must mean *post-downstream-chain*, never *as the client sent
+  it* — resetting to the client's bytes would discard PII redaction and guardrail output, breaking
+  FR-012a and the guarantee T084 exists to protect. That interaction is what makes this a decision
+  rather than a one-line change.
+- **Remove siblings' headers.** The controller knows every provider's auth header name on the
+  operation and could have each chain remove the others'. Narrower, but needs those names plumbed
+  to the per-attempt chain, and it only covers headers the control plane knows about.
+
+Not shipped: the policy is unpublished (T040 deferred), so there is no customer exposure. It must be
+fixed before publishing.
+
+---
+
+## T030k0: Envoy DOES flag a mid-stream reset on a 200 (2026-11-05)
+
+The filtered-access-log design for T030k rests on one assumption: that Envoy sets a response flag
+when the upstream resets **after** a `200` has already gone to the client. Probed rather than
+assumed, because an unflagged entry would mean the sink has to carry every request.
+
+Probe backend (`/tmp/truncbackend`): sends `200` + `Transfer-Encoding: chunked`, one chunk, flushes,
+**waits 1.5s**, then closes with `SetLinger(0)` — an RST mid-stream. A `/whole` endpoint returning a
+complete SSE response is the control. Plain `RestApi` in front of it, no failover involved.
+
+### Result
+
+```
+/whole     (control)          200 -    via_upstream
+/truncate  (early reset)      502 UPE  upstream_reset_after_response_started{protocol_error}
+/truncate  (mid-stream reset) 200 UPE  upstream_reset_after_response_started{protocol_error}
+```
+
+The client on the third line received `200 OK`, `content-type: text/event-stream`, 20 bytes, and
+curl exit **18** (`CURLE_PARTIAL_FILE`) — a success with a truncated body, which is exactly the
+request the policy currently banks as healthy.
+
+**A flag is set (`UPE`), and the control carries none (`-`).** `response_flag_filter` can therefore
+select these entries, so the gRPC sink can be scoped to failures and healthy traffic costs nothing.
+That was the open question and it is answered.
+
+### The delay is load-bearing, and the first attempt without it was wrong
+
+The first version of the probe closed immediately after the chunk and produced a **502**, not a
+truncated 200 — line 2 above. Envoy had not yet committed the response downstream, so it converted
+the reset into a clean error.
+
+That is a finding, not just a probe artefact: **a reset that arrives before the response is committed
+becomes a 502 the policy already grades correctly today.** The defect is confined to resets that
+happen after the client has the `200`. The bug is narrower than T030k's original wording implies,
+and a scenario that does not stream first would "pass" while testing nothing.
+
+### One thing NOT established
+
+`UPE` is the flag for *this* failure mode — a chunked stream cut without its terminating zero-length
+chunk is literally a protocol error. A provider dying another way (clean FIN mid-SSE, HTTP/2
+`RST_STREAM`, idle-timeout at a load balancer) may produce `UC`, `UR` or another member of the
+family. The filter must list the family rather than the single value this probe produced; deriving
+that list from Envoy's response-flag documentation is part of T030k1, not something this probe
+settled.
+
+## T030k1 / T030k2 — the access-log verdict reaches the engine with analytics off (2026-11-05)
+
+Verified at runtime against the IT stack started with `analytics.enabled = false`, which is the
+deployment shape FR-030o exists for — the suite's own `test-config.toml` enables analytics, so the
+default stack exercises the collector branch and never the failover-only one. Both containers were
+checked for the override rather than trusting the Compose volume merge.
+
+**Generated configuration** (Envoy `/config_dump`, collector disabled):
+
+- `apip_als_cluster` present — the cluster gate now follows `needsALSStream()`.
+- Both listeners (`listener_http_8080`, `listener_https_8443`) carry the `http_grpc` sink with
+  `response_flag_filter: [UPE, UC, UR, UT, UF, URX, UMSDR]`. Envoy accepted every flag string, which
+  is the check that matters: it validates against its own closed list and rejects the listener on a
+  typo.
+
+**Delivery**, truncating backend (`200` + chunked headers, one chunk, 1.5 s, then `RST`):
+
+```
+WARN failover attempt failed after its response was committed; the policy cannot see this from
+     response headers
+     request_id=8fc623dc-… upstream_cluster=upstream_LlmProxy_…_k1-trunc-provider
+     response_flags=[UPE] response_code=200
+```
+
+The client received `200` and 20 bytes — the exact shape the policy grades as a success today.
+
+**Controls, both clean:**
+
+| Case | Verdicts |
+|---|---|
+| Failover-rescued request (first target dead, second serves) | 0 |
+| Complete SSE response — same streaming shape and content-type, no reset | 0 |
+
+The second control is the load-bearing one: it shares every property with the truncation except the
+reset, so a filter that merely matched "streamed responses" would fire on it. It does not.
+
+### Finding for T030k3: one client request produces TWO flagged entries
+
+The truncation logged the same `request_id` twice, from two clusters:
+
+```
+upstream_cluster=upstream_main_host.docker.internal_9099
+upstream_cluster=upstream_LlmProxy_01a1ac87-…_k1-trunc-provider
+```
+
+An LLM proxy forwards through the provider's own route, so one client call is two Envoy hops and two
+access-log entries, each independently flagged. Attribution by `upstream_cluster` must therefore
+grade **only** the cluster belonging to a failover target: counting both would record two failures
+for one, and the loopback-hop cluster is not a failover target at all. Analytics already faces this
+and suppresses the loopback hop via a marker header (`PropInternalLoopbackProvider` in
+`internal/analytics/analytics.go`) — the verdict path needs its own answer, since it is deliberately
+not routed through analytics.
+
+### Finding: ALS entries are per downstream request, not per attempt
+
+A failure that failover successfully rescues leaves no flagged entry at all — the surviving attempt
+determines the entry's response code and flags. That is not a gap (the policy already grades
+pre-commitment failures correctly from response headers), but T030k3 must not be designed expecting
+one entry per attempt.
+
+## T030k3 — the verdict reaches the POLICY and suspends the target (2026-11-06)
+
+Runtime, analytics disabled, truncating backend (`200` + chunked, one chunk, 1.5 s, then `RST`).
+Suspension is opt-in — `suspendDuration` defaults to 0, which disables tracking entirely — so the
+proxy sets `suspendAfterFailures: 2, suspendDuration: 60`.
+
+```
+WARN ModelFailover: target failed after committing its response
+     model=gpt-4o provider="" response_flags=[UPE] duration=2.65s request_id=5dae88b2-…
+WARN ModelFailover: target failed after committing its response
+     model=gpt-4o provider="" response_flags=[UPE] duration=2.57s request_id=15031ec7-…
+WARN ModelFailover: target suspended
+     model=gpt-4o provider="" reason=consecutive_failures observed=2 for_seconds=60
+```
+
+Three things this proves beyond the k1/k2 run:
+
+- **Delivery through the SDK interface works.** The grading is the policy's own, not the engine's
+  placeholder sink.
+- **The target is the exact configured one.** `provider=""` is the primary provider. A target
+  reconstructed from the cluster name could not have produced it — the whole reason the chain is
+  recorded in flight rather than inferred (FR-030q).
+- **The duration is real** (2.65 s, not 0), so the latency window gets a truthful sample.
+
+**Control, same suspension configuration:** three *complete* SSE responses through
+`/whole/chat/completions` — identical streaming shape, identical content type, no reset — produced
+**0** verdicts and no suspension. The discrimination is on how the exchange ended, not on the
+response looking streamed.
+
+### Finding: the published `sdk/core` is not reproducible from this repository
+
+Hit while pointing the image build at the local SDK. Published `sdk/core` v0.5.0/v0.5.1 contain
+identifiers present in **no** branch, tag or working tree here (`origin/main` included):
+
+| missing locally | needed by |
+|---|---|
+| the whole `sdk/core/signing` package | `backend-jwt` |
+| `FaultCodeProviderStreamFailed` `"960002"` | the three `openai-to-*` transformers |
+| `FaultCodeNoModelAvailable` `"960003"` | `model-weighted-round-robin` |
+| `FaultCodeInvalidRequestHeader` `"960004"` | `mcp-auth` |
+| `FaultCodeInvalidRequestURI` `"960005"` | — |
+| `APIKindWebSocket` `"WebSocketApi"` | — |
+
+Unrelated to this feature; it surfaced only because a main-module `replace` is the first thing
+that makes every compiled-in policy resolve the local tree instead of the published module. Worth
+raising with whoever owns the SDK release process — the repo cannot currently rebuild its own SDK.
+Backfilled locally as clearly-marked dev scaffolding (values copied verbatim so a backfilled
+constant cannot disagree with the wire value a shipped policy was compiled against); an exported-
+symbol diff via `go doc -all` across all four packages then showed no remaining gap.
+

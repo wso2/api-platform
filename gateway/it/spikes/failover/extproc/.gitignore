@@ -1,0 +1,3 @@
+# Cross-compiled probe server. Build it when you need it:
+#   GOWORK=off GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o extproc-server .
+extproc-server
