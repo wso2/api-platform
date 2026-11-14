@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/policysecret"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 
@@ -61,6 +62,19 @@ type GatewayPolicyDefinition struct {
 	Description      *string                `json:"description,omitempty"`
 	ManagedBy        string                 `json:"managedBy"`
 	PolicyDefinition map[string]interface{} `json:"policyDefinition,omitempty"`
+	// WriteOnlyParams lists the parameters the definition declares
+	// `writeOnly: true` — credentials supplied when an API is configured and not
+	// meant to be read back. Each entry is the parameter's path within the
+	// policy's parameter map, so a nested declaration is addressable.
+	//
+	// It is kept for every policy, not only the organization-managed ones that
+	// carry PolicyDefinition. A WSO2-managed policy's schema is not stored here
+	// — the catalog is the same everywhere and storing it per gateway would
+	// bloat the manifest for no gain — but the declarations still have to reach
+	// the control plane, because every one of the catalog's credential
+	// parameters belongs to a WSO2-managed policy. Keeping only the resolved
+	// paths is what makes that affordable.
+	WriteOnlyParams []policysecret.Path `json:"writeOnlyParams,omitempty"`
 }
 
 // Manifest holds the gateway manifest returned to APIM.
@@ -80,6 +94,14 @@ type GatewayService struct {
 	enableFunctionalityTypeVerification bool
 	auditRepo                           repository.AuditRepository
 	identity                            *IdentityService
+	policySecrets                       *policysecret.Store
+}
+
+// SetPolicySecrets injects the store that resolves which policy parameters a
+// policy definition declares write-only, so that a newly reported manifest can
+// drop the organization's resolved index. Wired at startup.
+func (s *GatewayService) SetPolicySecrets(store *policysecret.Store) {
+	s.policySecrets = store
 }
 
 // NewGatewayService creates a new gateway service
@@ -250,11 +272,12 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 			continue
 		}
 		entry := GatewayPolicyDefinition{
-			Name:        strings.ToLower(p.Name),
-			Version:     p.Version,
-			DisplayName: p.DisplayName,
-			Description: p.Description,
-			ManagedBy:   managedBy,
+			Name:            strings.ToLower(p.Name),
+			Version:         p.Version,
+			DisplayName:     p.DisplayName,
+			Description:     p.Description,
+			ManagedBy:       managedBy,
+			WriteOnlyParams: policysecret.PathsFromParameterSchema(p.Parameters),
 		}
 		if managedBy == constants.PolicyManagedByOrganization {
 			organizationCount++
@@ -276,6 +299,14 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 	}
 	if err := s.gatewayRepo.UpdateGatewayManifest(gatewayID, raw); err != nil {
 		return fmt.Errorf("failed to store gateway manifest: %w", err)
+	}
+
+	// The manifest just replaced is where the organization's write-only
+	// declarations come from, so the index resolved from the previous one is
+	// now stale. Dropping it here is what lets a policy's new version start
+	// withholding a parameter the old one did not.
+	if s.policySecrets != nil {
+		s.policySecrets.Invalidate(orgID)
 	}
 
 	// Persist the version the controller reported so the deploy transform uses the

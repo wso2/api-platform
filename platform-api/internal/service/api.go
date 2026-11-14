@@ -31,6 +31,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/policysecret"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 	"gopkg.in/yaml.v3"
@@ -51,6 +52,14 @@ type APIService struct {
 	slogger              *slog.Logger
 	auditRepo            repository.AuditRepository
 	identity             *IdentityService
+	policySecrets        *policysecret.Store
+}
+
+// SetPolicySecrets injects the store that resolves which policy parameters a
+// policy definition declares write-only. Wired at startup, after the gateway
+// service it shares an invalidation with is constructed.
+func (s *APIService) SetPolicySecrets(store *policysecret.Store) {
+	s.policySecrets = store
 }
 
 // NewAPIService creates a new API service
@@ -203,7 +212,14 @@ func (s *APIService) modelToRESTAPIUnresolved(apiModel *model.API) (*api.RESTAPI
 	if project != nil {
 		projectHandle = project.Handle
 	}
-	return s.apiUtil.ModelToRESTAPI(apiModel, projectHandle)
+	resp, err := s.apiUtil.ModelToRESTAPI(apiModel, projectHandle)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.blankAPIPolicySecrets(apiModel.OrganizationID, resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 // modelToRESTAPI converts an internal API model to the API representation,
@@ -449,6 +465,16 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 	updatedAPIModel.Kind = existingAPIModel.Kind
 	updatedAPIModel.Origin = existingAPIModel.Origin
 	updatedAPIModel.CreatedBy = existingAPIModel.CreatedBy
+
+	// Carry forward every policy credential the read withheld. applyAPIUpdates
+	// builds its result from the response shape — blanked — so without this an
+	// update that never mentioned a policy would persist the empty strings the
+	// reader was shown. It runs before the runtime-artifact diff below, which
+	// would otherwise read those same empty strings as a change to a
+	// DP-originated artifact and refuse an edit that changed nothing.
+	if err := s.preserveAPIPolicySecrets(orgUUID, existingAPIModel, updatedAPIModel); err != nil {
+		return nil, err
+	}
 
 	// A DP-originated (gateway_api) artifact is read-only in the control plane only for
 	// changes that alter the gateway runtime artifact. Allow edits that leave the

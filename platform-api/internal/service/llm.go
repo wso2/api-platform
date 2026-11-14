@@ -33,6 +33,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/policysecret"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
@@ -64,6 +65,7 @@ type LLMProviderService struct {
 	auditRepo            repository.AuditRepository
 	cfg                  *config.Server
 	identity             *IdentityService
+	policySecrets        *policysecret.Store
 }
 
 type LLMProxyService struct {
@@ -79,6 +81,7 @@ type LLMProxyService struct {
 	auditRepo            repository.AuditRepository
 	cfg                  *config.Server
 	identity             *IdentityService
+	policySecrets        *policysecret.Store
 }
 
 func NewLLMProviderTemplateService(repo repository.LLMProviderTemplateRepository, auditRepo repository.AuditRepository, identity *IdentityService) *LLMProviderTemplateService {
@@ -150,6 +153,13 @@ func (s *LLMProviderService) SetCustomPolicyRepository(repo repository.CustomPol
 	s.customPolicyRepo = repo
 }
 
+// SetPolicySecrets injects the store that resolves which policy parameters a
+// policy definition declares write-only. Wired at startup, after the gateway
+// service it shares an invalidation with is constructed.
+func (s *LLMProviderService) SetPolicySecrets(store *policysecret.Store) {
+	s.policySecrets = store
+}
+
 // SetSecretService injects the SecretService used to clean up a rotated-away
 // credential after Update. Called after both services are constructed to
 // avoid circular dependency.
@@ -166,12 +176,22 @@ func (s *LLMProxyService) SetTemplateRepository(repo repository.LLMProviderTempl
 	s.templateRepo = repo
 }
 
+// SetPolicySecrets injects the store that resolves which policy parameters a
+// policy definition declares write-only. Wired at startup, after the gateway
+// service it shares an invalidation with is constructed.
+func (s *LLMProxyService) SetPolicySecrets(store *policysecret.Store) {
+	s.policySecrets = store
+}
+
 // toProviderAPI converts m via mapProviderModelToAPI and resolves its
 // createdBy/updatedBy UUIDs to their raw external identity.
 func (s *LLMProviderService) toProviderAPI(m *model.LLMProvider, templateHandle string) (*api.LLMProvider, error) {
 	resp := mapProviderModelToAPI(m, templateHandle)
 	if resp == nil {
 		return nil, nil
+	}
+	if err := s.blankProviderPolicySecrets(m.OrganizationUUID, resp); err != nil {
+		return nil, err
 	}
 	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
 		return nil, err
@@ -250,6 +270,9 @@ func (s *LLMProxyService) toProxyAPI(orgUUID string, m *model.LLMProxy) (*api.LL
 	resp := mapProxyModelToAPI(m)
 	if resp == nil {
 		return nil, nil
+	}
+	if err := s.blankProxyPolicySecrets(orgUUID, resp); err != nil {
+		return nil, err
 	}
 	projectHandle, err := s.resolveProjectHandle(orgUUID, resp.ProjectId, nil)
 	if err != nil {
@@ -1237,6 +1260,14 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		},
 	}
 	migrateLegacyProviderPoliciesInPlace(&m.Configuration)
+
+	// Carry forward every policy credential the read withheld. Without this, a
+	// caller who fetched the provider, changed one unrelated field and sent it
+	// back would store the empty strings the response carried in place of the
+	// credentials — losing them outright rather than merely hiding them.
+	if err := s.preserveProviderPolicySecrets(orgUUID, &existing.Configuration, &m.Configuration); err != nil {
+		return nil, err
+	}
 
 	// Preserve stored upstream auth credential only when auth object is provided with an empty value.
 	// If auth object is omitted, treat it as explicit removal and clear stored auth.
@@ -2233,6 +2264,12 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		},
 	}
 	migrateLegacyProxyPoliciesInPlace(&m.Configuration)
+
+	// Carry forward every policy credential the read withheld — see the provider
+	// update for why an echoed-back response would otherwise erase them.
+	if err := s.preserveProxyPolicySecrets(orgUUID, &existing.Configuration, &m.Configuration); err != nil {
+		return nil, err
+	}
 
 	// Preserve each stored upstream auth credential only when the update provides
 	// an auth object with an empty value. If the auth object is omitted, treat it
