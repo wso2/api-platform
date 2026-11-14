@@ -23,7 +23,8 @@ import {
   attachedPlanIdsOf,
   policiesToAttach,
   policiesToRemove,
-  keysToAttach,
+  validationToMove,
+  withoutOperationValidation,
   withAttachedPlans,
   withPoliciesAdded,
   withPoliciesRemoved,
@@ -135,17 +136,22 @@ describe('usage plans helpers', () => {
     ]);
   });
 
-  it('adds subscription-validation at API level, first, when it is only on operations and a plan policy is added', () => {
-    const onOps: Policy[] = [];
-    expect(keysToAttach(onOps, ['subscription-request-ratelimit'])).toEqual([
-      'subscription-validation',
-      'subscription-request-ratelimit',
-    ]);
-    const atApi: Policy[] = [{ name: 'subscription-validation', params: {}, version: 'v1' }];
-    expect(keysToAttach(atApi, ['subscription-request-ratelimit'])).toEqual(['subscription-request-ratelimit']);
-    expect(keysToAttach(onOps, ['subscription-validation'])).toEqual(['subscription-validation']);
+  it('moves subscription-validation from the operations to API level, first, when a plan policy is added', () => {
+    const onOps = [
+      { policies: [{ name: 'subscription-validation', params: { subscriptionKeyHeader: 'X-Key' }, version: 'v1' }] },
+      { policies: [{ name: 'cors', params: {}, version: 'v1' }, { name: 'subscription-validation', params: { subscriptionKeyHeader: 'X-Key' }, version: 'v1' }] },
+    ];
+    const moved = validationToMove([], onOps, ['subscription-request-ratelimit']);
+    // As the operations had it: the same version and key header.
+    expect(moved).toEqual({ name: 'subscription-validation', params: { subscriptionKeyHeader: 'X-Key' }, version: 'v1' });
+    expect(withoutOperationValidation(onOps).map((op) => (op.policies ?? []).map((p) => p.name))).toEqual([[], ['cors']]);
     expect(
-      withPoliciesAdded(onOps, keysToAttach(onOps, ['subscription-request-ratelimit'])).map((p) => p.name),
+      withPoliciesAdded([moved as Policy], ['subscription-request-ratelimit']).map((p) => p.name),
     ).toEqual(['subscription-validation', 'subscription-request-ratelimit']);
+    // Nothing moves when it is already at API level, on no operation, or nothing depends on it.
+    const atApi: Policy[] = [{ name: 'subscription-validation', params: {}, version: 'v1' }];
+    expect(validationToMove(atApi, onOps, ['subscription-request-ratelimit'])).toBeNull();
+    expect(validationToMove([], [{ policies: [] }], ['subscription-request-ratelimit'])).toBeNull();
+    expect(validationToMove([], onOps, ['subscription-validation'])).toBeNull();
   });
 });

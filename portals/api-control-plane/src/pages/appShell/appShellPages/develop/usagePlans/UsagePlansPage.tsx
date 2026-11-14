@@ -53,6 +53,7 @@ import { routes } from '@/routes/paths';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { ScopeGate } from '@/scope/ScopeGate';
 import {
+  type EditableOperation,
   toEditableOperations,
   withMajorPolicyVersion,
   withPolicyEdits,
@@ -66,6 +67,7 @@ import {
   policyAttachment,
   policyLabel,
   requiredPolicies,
+  SUBSCRIPTION_VALIDATION,
 } from './planPolicies';
 import { PolicyName } from '../policies/PolicyChip';
 import { SaveBar } from '../SaveBar';
@@ -76,8 +78,9 @@ import {
   missingPolicies,
   policiesToAttach,
   policiesToRemove,
+  validationToMove,
   withAttachedPlans,
-  keysToAttach,
+  withoutOperationValidation,
   withPoliciesAdded,
   withPoliciesRemoved,
 } from './usagePlans';
@@ -385,8 +388,8 @@ type PlanAttachmentProps = {
   /** The API's own (API-level) policies. */
   apiPolicies: Policy[];
   /** Per-operation policies (a REST API's resources); they count towards what applies to every
-   * request but are not edited here. */
-  operations?: Parameters<typeof policyAttachment>[0]['operations'];
+   * request. They are edited only to move subscription-validation to API level (see validationToMove). */
+  operations?: EditableOperation[];
   /** The kind of API: plan conditions it never counts ask for no policy. */
   kind: ApiKind;
   readOnly: boolean;
@@ -395,8 +398,8 @@ type PlanAttachmentProps = {
   saveDisabled?: boolean;
   /** Shown under the title, e.g. why Save is blocked. */
   notice?: ReactNode;
-  /** Stores the plans and API-level policies; calls `onSaved` once they are stored. */
-  onSave: (planIds: string[], policies: Policy[], onSaved: () => void) => void;
+  /** Stores the plans, API-level policies and operations; calls `onSaved` once they are stored. */
+  onSave: (planIds: string[], policies: Policy[], operations: EditableOperation[], onSaved: () => void) => void;
 };
 
 /**
@@ -423,6 +426,7 @@ function PlanAttachmentPanel({
 
   const [planIds, setPlanIds] = useState<string[]>(attachedPlanIds);
   const [policies, setPolicies] = useState<Policy[]>(apiPolicies);
+  const [ops, setOps] = useState<EditableOperation[]>(operations);
   const [prompt, setPrompt] = useState<PolicyPrompt>(null);
 
   const { dirty, markSaved, saved } = useDirtyTracking({ planIds, policies });
@@ -438,14 +442,16 @@ function PlanAttachmentPanel({
   );
   // The unit a per-unit price counts (call or token) comes from its meter, as on the plans page.
   const { meters } = useMetersById(shownPlans.flatMap((plan) => summaryMeterIds(plan.pricing)));
-  const attachment = policyAttachment({ operations, policies });
+  const attachment = policyAttachment({ operations: ops, policies });
 
   // Each as `name version`: a custom policy's key carries its version; a built-in one's comes from
   // the API (when removing) or its default (when attaching).
   const labelOf = (key: string) => {
     if (parsePolicyKey(key).version) return policyLabel(key);
     const version =
-      policies.find((policy) => policy.name === key)?.version ?? defaultPolicy(key).version;
+      policies.find((policy) => policy.name === key)?.version ??
+      validationToMove(policies, ops, [key, 'any'])?.version ??
+      defaultPolicy(key).version;
     return `${key} ${version}`;
   };
   const missing = missingPolicies(
@@ -474,7 +480,12 @@ function PlanAttachmentPanel({
     const nameOf = (plans: DisplayablePlan[]) =>
       plans.length === 1 ? plans[0].displayName : intl.formatMessage(messages.selectedPlans);
     if (added.length > 0) {
-      const names = policiesToAttach(added, kind, attachment);
+      const needed = policiesToAttach(added, kind, attachment);
+      // subscription-validation that moves from the resources to API level is listed too.
+      const names =
+        validationToMove(policies, ops, needed) && !needed.includes(SUBSCRIPTION_VALIDATION)
+          ? [SUBSCRIPTION_VALIDATION, ...needed]
+          : needed;
       if (names.length > 0) {
         setPrompt({ action: 'attach', count: added.length, names, plan: nameOf(added) });
       }
@@ -502,7 +513,10 @@ function PlanAttachmentPanel({
     if (prompt.action === 'attach') {
       // subscription-validation goes before the attached policies the ticked plans rely on.
       const ticked = planIds.flatMap((id) => plansById.get(id) ?? []);
-      setPolicies(withPoliciesAdded(policies, keysToAttach(policies, prompt.names), requiredPolicies(ticked, kind)));
+      const moved = validationToMove(policies, ops, prompt.names);
+      const base = moved ? [moved, ...policies] : policies;
+      if (moved) setOps(withoutOperationValidation(ops));
+      setPolicies(withPoliciesAdded(base, prompt.names, requiredPolicies(ticked, kind)));
       notify(intl.formatMessage(messages.policiesAttached), 'success');
     } else {
       setPolicies(withPoliciesRemoved(policies, prompt.names));
@@ -514,11 +528,12 @@ function PlanAttachmentPanel({
   const cancel = () => {
     setPlanIds(attachedPlanIds);
     setPolicies(apiPolicies);
+    setOps(operations);
     setPrompt(null);
   };
 
   const save = () =>
-    onSave(planIds, policies, () => {
+    onSave(planIds, policies, ops, () => {
       markSaved();
       notify(intl.formatMessage(messages.saved), 'success');
     });
@@ -726,12 +741,12 @@ export function UsagePlansPanel({ api }: { api: RestApi }) {
       apiPolicies={api.policies ?? []}
       attachedPlanIds={attachedPlanIdsOf(api)}
       kind="rest"
-      onSave={(planIds, policies, onSaved) => {
+      onSave={(planIds, policies, editedOperations, onSaved) => {
         if (!api.id) return;
         update.mutate(
           {
             restApiId: api.id,
-            body: withAttachedPlans(withPolicyEdits(api, { operations, policies }), planIds),
+            body: withAttachedPlans(withPolicyEdits(api, { operations: editedOperations, policies }), planIds),
           },
           // No `onError`: the query client's `onMutationError` already notifies.
           { onSuccess: onSaved },
@@ -798,7 +813,7 @@ export function GraphqlUsagePlansPanel({ api }: { api: GraphQLApiDetail }) {
           </Alert>
         ) : undefined
       }
-      onSave={(planIds, policies, onSaved) => {
+      onSave={(planIds, policies, _operations, onSaved) => {
         if (!api.id) return;
         const metadata = graphqlUsagePlansMetadata(api, planIds, policies, sdlQuery.data);
         if (!metadata) return;

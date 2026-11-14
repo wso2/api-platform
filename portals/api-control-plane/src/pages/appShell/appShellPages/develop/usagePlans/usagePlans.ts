@@ -155,18 +155,38 @@ export const withPoliciesAdded = (
   return [...policies.slice(0, at), validation, ...policies.slice(at), ...rest];
 };
 
+/** An operation as far as its policies go (a REST API's resource, flattened for editing). */
+export type OperationPolicies = { readonly policies?: Policy[] };
+
 /**
- * The keys to attach at API level for `names`. Route chains run API-level policies before
- * operation-level ones, so when subscription-validation is only on operations, a plan policy added
- * at API level would run before it: subscription-validation is then attached at API level too,
- * first, so it always precedes the policies that read what it records.
+ * The subscription-validation to move to API level when plan policies (`names`) are attached there.
+ * Route chains run API-level policies before operation-level ones, so while subscription-validation
+ * is only on operations, a plan policy added at API level would run before it. It then moves to API
+ * level, first, as the operations had it (version and params, so the same key header): it runs once,
+ * before the policies that read what it records. Null when it is already at API level, on no
+ * operation, or nothing that depends on it is attached.
  */
-export const keysToAttach = (apiPolicies: readonly Policy[], names: readonly string[]): string[] => {
-  const atApiLevel = apiPolicies.some((policy) => policy.name === SUBSCRIPTION_VALIDATION);
-  const addsDependent = names.some((key) => parsePolicyKey(key).name !== SUBSCRIPTION_VALIDATION);
-  const hasValidation = names.some((key) => parsePolicyKey(key).name === SUBSCRIPTION_VALIDATION);
-  return !atApiLevel && addsDependent && !hasValidation ? [SUBSCRIPTION_VALIDATION, ...names] : [...names];
+export const validationToMove = (
+  apiPolicies: readonly Policy[],
+  operations: readonly OperationPolicies[],
+  names: readonly string[],
+): Policy | null => {
+  if (apiPolicies.some((policy) => policy.name === SUBSCRIPTION_VALIDATION)) return null;
+  if (!names.some((key) => parsePolicyKey(key).name !== SUBSCRIPTION_VALIDATION)) return null;
+  for (const operation of operations) {
+    const found = operation.policies?.find((policy) => policy.name === SUBSCRIPTION_VALIDATION);
+    if (found) return found;
+  }
+  return null;
 };
+
+/** `operations` without subscription-validation, once it has moved to API level. */
+export const withoutOperationValidation = <T extends OperationPolicies>(operations: readonly T[]): T[] =>
+  operations.map((operation) =>
+    operation.policies?.some((policy) => policy.name === SUBSCRIPTION_VALIDATION)
+      ? { ...operation, policies: operation.policies.filter((policy) => policy.name !== SUBSCRIPTION_VALIDATION) }
+      : operation,
+  );
 
 /** `policies` without any matching `keys` (a name, or `name@v<major>`). */
 export const withPoliciesRemoved = (
