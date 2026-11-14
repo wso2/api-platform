@@ -347,30 +347,17 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// Which policy parameters are credentials is declared by the policy
 	// definitions, which reach the control plane in the manifests the gateways
 	// report. One store resolves them for every service that has to withhold a
-	// credential on read or carry one forward on update, and the gateway service
-	// drops an organization's resolved index when a new manifest replaces the one
-	// it was built from.
-	policySecretStore := policysecret.NewStore(func(orgID string) ([][]byte, error) {
-		gateways, err := gatewayRepo.GetByOrganizationID(orgID)
-		if err != nil {
-			return nil, err
-		}
-		manifests := make([][]byte, 0, len(gateways))
-		for _, gateway := range gateways {
-			raw, err := gatewayRepo.GetGatewayManifest(gateway.ID)
-			if err != nil {
-				return nil, err
-			}
-			if len(raw) > 0 {
-				manifests = append(manifests, raw)
-			}
-		}
-		return manifests, nil
-	})
-	gatewayService.SetPolicySecrets(policySecretStore)
+	// credential on read or carry one forward on update. It re-reads the
+	// manifests on each use and reuses its resolved index only while their
+	// content is unchanged, so a manifest reported to any replica is picked up
+	// by all of them without an invalidation signal between them.
+	policySecretStore := policysecret.NewStore(gatewayRepo.GetManifestsByOrganizationID)
 	apiService.SetPolicySecrets(policySecretStore)
 	llmProviderService.SetPolicySecrets(policySecretStore)
 	llmProxyService.SetPolicySecrets(policySecretStore)
+	mcpProxyService.SetPolicySecrets(policySecretStore)
+	agentProxyService.SetPolicySecrets(policySecretStore)
+	graphqlAPIService.SetPolicySecrets(policySecretStore)
 
 	// The single configured encryption key (APIP_CP_ENCRYPTION_KEY) is used for all encrypted DB
 	// columns (secrets, subscription tokens, WebSub HMAC secrets)

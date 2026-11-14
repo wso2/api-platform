@@ -29,6 +29,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/policysecret"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
@@ -47,6 +48,13 @@ type GraphQLAPIService struct {
 	secretService        *SecretService
 	slogger              *slog.Logger
 	maxSDLFetchBytes     int64
+	policySecrets        *policysecret.Store
+}
+
+// SetPolicySecrets injects the store that resolves which policy parameters a
+// policy definition declares write-only. Wired at startup.
+func (s *GraphQLAPIService) SetPolicySecrets(store *policysecret.Store) {
+	s.policySecrets = store
 }
 
 // NewGraphQLAPIService creates a new GraphQLAPIService instance.
@@ -102,6 +110,9 @@ func (s *GraphQLAPIService) toGraphQLAPI(m *model.GraphQLAPI) (*api.GraphQLAPI, 
 	if resp == nil {
 		return nil, nil
 	}
+	if err := s.blankGraphQLPolicySecrets(m.OrganizationID, resp.Policies); err != nil {
+		return nil, err
+	}
 	if s.projectRepo != nil {
 		project, err := s.projectRepo.GetProjectByUUID(resp.ProjectId)
 		if err != nil {
@@ -127,6 +138,9 @@ func (s *GraphQLAPIService) toGraphQLAPIDetail(m *model.GraphQLAPI) (*api.GraphQ
 	resp := mapGraphQLAPIModelToDetail(m)
 	if resp == nil {
 		return nil, nil
+	}
+	if err := s.blankGraphQLPolicySecrets(m.OrganizationID, resp.Policies); err != nil {
+		return nil, err
 	}
 	if s.projectRepo != nil {
 		project, err := s.projectRepo.GetProjectByUUID(resp.ProjectId)
@@ -758,6 +772,7 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 	existing.Version = req.Version
 	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.UpdatedBy = updatedBy
+	storedPolicies := existing.Configuration.Policies
 	existing.Configuration = model.GraphQLAPIConfig{
 		Name:              req.DisplayName,
 		Version:           req.Version,
@@ -768,6 +783,13 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 		Upstream:          *upstream,
 		Policies:          mapMCPPoliciesAPIToModel(req.Policies),
 		SubscriptionPlans: subscriptionPlans,
+	}
+
+	// Carry forward every policy credential the read withheld, matching what
+	// preserveUpstreamAuthOnAPIUpdate above does for the upstream credential.
+	if err := s.preserveGraphQLPolicySecrets(orgUUID,
+		storedPolicies, existing.Configuration.Policies); err != nil {
+		return nil, err
 	}
 
 	if err := s.repo.Update(existing); err != nil {

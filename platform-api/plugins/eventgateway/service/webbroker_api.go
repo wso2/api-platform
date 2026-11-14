@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/policysecret"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	coreservice "github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -46,6 +47,13 @@ type WebBrokerAPIService struct {
 	auditRepo            repository.AuditRepository
 	cfg                  *config.Server
 	identity             *coreservice.IdentityService
+	policySecrets        *policysecret.Store
+}
+
+// SetPolicySecrets injects the store that resolves which policy parameters a
+// policy definition declares write-only. Wired when the plugin initialises.
+func (s *WebBrokerAPIService) SetPolicySecrets(store *policysecret.Store) {
+	s.policySecrets = store
 }
 
 // NewWebBrokerAPIService creates a new WebBrokerAPIService instance
@@ -79,6 +87,9 @@ func (s *WebBrokerAPIService) toWebBrokerAPI(m *model.WebBrokerAPI) (*api.WebBro
 	resp := mapWebBrokerAPIModelToAPI(m, s.apiUtil)
 	if resp == nil {
 		return nil, nil
+	}
+	if err := s.blankWebBrokerPolicySecrets(m.OrganizationUUID, resp); err != nil {
+		return nil, err
 	}
 	resp.ProjectId = projectHandleFor(s.projectRepo, m.ProjectUUID)
 	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
@@ -295,6 +306,7 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api
 	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.UpdatedBy = updatedBy
 	existing.LifeCycleStatus = lifeCycleStatus
+	storedConfiguration := existing.Configuration
 	existing.Configuration = model.WebBrokerAPIConfiguration{
 		Name:              req.DisplayName,
 		Version:           req.Version,
@@ -305,6 +317,13 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api
 		Broker:            mapWebBrokerBrokerAPIToModel(req.Broker),
 		AllChannels:       mapWebBrokerAllChannelPoliciesAPIToModel(req.AllChannels),
 		SubscriptionPlans: subscriptionPlans,
+	}
+
+	// Carry forward every policy credential the read withheld, so a client
+	// echoing a response back does not store the empty values it was shown.
+	if err := s.preserveWebBrokerPolicySecrets(orgUUID,
+		&storedConfiguration, &existing.Configuration); err != nil {
+		return nil, err
 	}
 
 	if err := s.repo.Update(existing); err != nil {

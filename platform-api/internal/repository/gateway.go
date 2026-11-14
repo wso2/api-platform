@@ -622,6 +622,33 @@ func (r *GatewayRepo) UpdateGatewayVersion(gatewayID, version string) error {
 	return err
 }
 
+// GetManifestsByOrganizationID returns the stored manifests of an
+// organization's gateways, skipping those that have not reported one.
+//
+// One query rather than a listing followed by a fetch per gateway: the caller
+// reads this on every artifact read to check whether its cached view of the
+// manifests is still current, so the round trips matter.
+func (r *GatewayRepo) GetManifestsByOrganizationID(orgID string) ([][]byte, error) {
+	query := `SELECT manifest FROM gateways WHERE organization_uuid = ? AND manifest IS NOT NULL`
+	rows, err := r.db.Query(r.db.Rebind(query), orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var manifests [][]byte
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		if len(raw) > 0 {
+			manifests = append(manifests, raw)
+		}
+	}
+	return manifests, rows.Err()
+}
+
 // GetGatewayManifest returns the raw manifest JSON stored for the gateway.
 // Returns nil data (no error) if the gateway exists but has no manifest yet.
 // Returns an error if the gateway row does not exist.

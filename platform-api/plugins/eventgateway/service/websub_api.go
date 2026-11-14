@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/policysecret"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	coreservice "github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
@@ -46,6 +47,13 @@ type WebSubAPIService struct {
 	auditRepo            repository.AuditRepository
 	cfg                  *config.Server
 	identity             *coreservice.IdentityService
+	policySecrets        *policysecret.Store
+}
+
+// SetPolicySecrets injects the store that resolves which policy parameters a
+// policy definition declares write-only. Wired when the plugin initialises.
+func (s *WebSubAPIService) SetPolicySecrets(store *policysecret.Store) {
+	s.policySecrets = store
 }
 
 // NewWebSubAPIService creates a new WebSubAPIService instance
@@ -79,6 +87,9 @@ func (s *WebSubAPIService) toWebSubAPI(m *model.WebSubAPI) (*api.WebSubAPI, erro
 	resp := mapWebSubAPIModelToAPI(m, s.apiUtil)
 	if resp == nil {
 		return nil, nil
+	}
+	if err := s.blankWebSubPolicySecrets(m.OrganizationUUID, resp); err != nil {
+		return nil, err
 	}
 	resp.ProjectId = projectHandleFor(s.projectRepo, m.ProjectUUID)
 	if err := s.identity.ResolveIdentityField(&resp.CreatedBy); err != nil {
@@ -294,6 +305,7 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.UpdatedBy = updatedBy
 	existing.LifeCycleStatus = lifeCycleStatus
+	storedConfiguration := existing.Configuration
 	existing.Configuration = model.WebSubAPIConfiguration{
 		Name:              req.DisplayName,
 		Version:           req.Version,
@@ -303,6 +315,13 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 		Upstream:          *mapUpstreamAPIToModel(req.Upstream),
 		AllChannels:       mapWebSubAllChannelPoliciesAPIToModel(req.AllChannels),
 		SubscriptionPlans: subscriptionPlans,
+	}
+
+	// Carry forward every policy credential the read withheld, so a client
+	// echoing a response back does not store the empty values it was shown.
+	if err := s.preserveWebSubPolicySecrets(orgUUID,
+		&storedConfiguration, &existing.Configuration); err != nil {
+		return nil, err
 	}
 
 	if err := s.repo.Update(existing); err != nil {

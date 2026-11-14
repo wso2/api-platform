@@ -23,7 +23,6 @@ import (
 	"reflect"
 	"sort"
 	"testing"
-	"time"
 )
 
 // awsAuthenticationSchema is the shape aws-authentication carries: write-only
@@ -491,36 +490,29 @@ func TestNewIndexRejectsAnUnreadableManifest(t *testing.T) {
 	}
 }
 
-func TestStoreCachesPerOrganizationAndRebuildsAfterInvalidate(t *testing.T) {
-	manifest := []byte(`[{"name": "basic-auth", "version": "v1.1.1", "writeOnlyParams": [["password"]]}]`)
-	loads := map[string]int{}
+func TestStoreKeepsAnIndexPerOrganization(t *testing.T) {
+	manifests := map[string][]byte{
+		"org-a": []byte(`[{"name": "basic-auth", "version": "v1", "writeOnlyParams": [["password"]]}]`),
+		"org-b": []byte(`[{"name": "opa-policy", "version": "v1", "writeOnlyParams": [["accessKey"]]}]`),
+	}
 	store := NewStore(func(orgID string) ([][]byte, error) {
-		loads[orgID]++
-		return [][]byte{manifest}, nil
+		return [][]byte{manifests[orgID]}, nil
 	})
 
-	for i := 0; i < 3; i++ {
-		if _, err := store.For("org-a"); err != nil {
-			t.Fatalf("For returned %v", err)
-		}
-	}
-	if loads["org-a"] != 1 {
-		t.Errorf("manifests loaded %d times, want them cached after the first", loads["org-a"])
-	}
-
-	if _, err := store.For("org-b"); err != nil {
+	a, err := store.For("org-a")
+	if err != nil {
 		t.Fatalf("For returned %v", err)
 	}
-	if loads["org-b"] != 1 {
-		t.Errorf("org-b loaded %d times, want its own index built", loads["org-b"])
-	}
-
-	store.Invalidate("org-a")
-	if _, err := store.For("org-a"); err != nil {
+	b, err := store.For("org-b")
+	if err != nil {
 		t.Fatalf("For returned %v", err)
 	}
-	if loads["org-a"] != 2 {
-		t.Errorf("manifests loaded %d times after invalidate, want a rebuild", loads["org-a"])
+
+	if len(a.WriteOnlyPaths("basic-auth", "v1")) != 1 {
+		t.Error("org-a did not resolve its own declaration")
+	}
+	if len(b.WriteOnlyPaths("basic-auth", "v1")) != 0 {
+		t.Error("org-b resolved a declaration belonging to org-a")
 	}
 }
 
@@ -536,68 +528,69 @@ func TestStoreReportsALoadFailureRatherThanResolvingNothing(t *testing.T) {
 	}
 }
 
-// A build that read manifests an invalidation has since superseded must not
-// publish them. Without the generation guard it would, and the superseded
-// declarations would then be served for a full TTL.
-func TestStoreDoesNotPublishAnIndexInvalidatedMidBuild(t *testing.T) {
+// The cached index is reused only while the manifests behind it are unchanged,
+// so a manifest reported to another replica is picked up on the next read
+// rather than waiting for an invalidation that never arrives.
+func TestStoreRebuildsWhenTheManifestsChange(t *testing.T) {
 	before := []byte(`[{"name": "basic-auth", "version": "v1.1.0", "writeOnlyParams": [["password"]]}]`)
 	after := []byte(`[{"name": "basic-auth", "version": "v1.1.0",
 	  "writeOnlyParams": [["password"], ["clientSecret"]]}]`)
 
-	var store *Store
+	current := before
 	loads := 0
-	store = NewStore(func(string) ([][]byte, error) {
+	store := NewStore(func(string) ([][]byte, error) {
 		loads++
-		if loads == 1 {
-			// A manifest lands while this build is reading the previous one.
-			store.Invalidate("org-a")
-			return [][]byte{before}, nil
-		}
-		return [][]byte{after}, nil
+		return [][]byte{current}, nil
 	})
 
-	if _, err := store.For("org-a"); err != nil {
-		t.Fatalf("For returned %v", err)
-	}
-
-	// The superseded build must not be what a later read is served.
 	resolver, err := store.For("org-a")
 	if err != nil {
 		t.Fatalf("For returned %v", err)
 	}
+	if got := len(resolver.WriteOnlyPaths("basic-auth", "v1.1.0")); got != 1 {
+		t.Fatalf("paths = %d, want 1", got)
+	}
+
+	current = after
+	resolver, err = store.For("org-a")
+	if err != nil {
+		t.Fatalf("For returned %v", err)
+	}
 	if got := len(resolver.WriteOnlyPaths("basic-auth", "v1.1.0")); got != 2 {
-		t.Errorf("paths = %d, want the 2 of the manifest that superseded the build", got)
+		t.Errorf("paths = %d, want the replaced manifest's 2", got)
+	}
+	if loads != 2 {
+		t.Errorf("manifests read %d times, want one per call", loads)
 	}
 }
 
-// Invalidate reaches the replica that handled the manifest report and no other,
-// so a cached index expires rather than being held until restart.
-func TestStoreRebuildsAnExpiredIndex(t *testing.T) {
+// Unchanged manifests are not re-parsed. The read still happens; the resolved
+// index is what the cache saves.
+func TestStoreReusesTheIndexWhileManifestsAreUnchanged(t *testing.T) {
 	manifest := []byte(`[{"name": "basic-auth", "version": "v1.1.1", "writeOnlyParams": [["password"]]}]`)
-	loads := 0
-	store := NewStore(func(string) ([][]byte, error) {
-		loads++
-		return [][]byte{manifest}, nil
-	})
-	now := time.Now()
-	store.now = func() time.Time { return now }
+	store := NewStore(func(string) ([][]byte, error) { return [][]byte{manifest}, nil })
 
-	if _, err := store.For("org-a"); err != nil {
+	first, err := store.For("org-a")
+	if err != nil {
 		t.Fatalf("For returned %v", err)
 	}
-	if _, err := store.For("org-a"); err != nil {
+	second, err := store.For("org-a")
+	if err != nil {
 		t.Fatalf("For returned %v", err)
 	}
-	if loads != 1 {
-		t.Fatalf("manifests loaded %d times inside the TTL, want them cached", loads)
+	if first != second {
+		t.Error("the index was rebuilt although the manifests were unchanged")
 	}
+}
 
-	now = now.Add(DefaultTTL + time.Second)
-	if _, err := store.For("org-a"); err != nil {
-		t.Fatalf("For returned %v", err)
-	}
-	if loads != 2 {
-		t.Errorf("manifests loaded %d times after expiry, want a reload", loads)
+// Splitting the same bytes across manifests differently is a different state,
+// and the length-prefixed fingerprint must not collide across the two.
+func TestStoreFingerprintDistinguishesManifestBoundaries(t *testing.T) {
+	a := [][]byte{[]byte(`[{"name":"x"}]`), []byte(`[{"name":"y"}]`)}
+	b := [][]byte{[]byte(`[{"name":"x"}][{"name":"y"}]`)}
+
+	if fingerprintOf(a) == fingerprintOf(b) {
+		t.Error("manifests concatenated differently produced the same fingerprint")
 	}
 }
 

@@ -33,6 +33,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/policysecret"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
@@ -55,6 +56,13 @@ type MCPProxyService struct {
 	auditRepo            repository.AuditRepository
 	cfg                  *config.Server
 	identity             *IdentityService
+	policySecrets        *policysecret.Store
+}
+
+// SetPolicySecrets injects the store that resolves which policy parameters a
+// policy definition declares write-only. Wired at startup.
+func (s *MCPProxyService) SetPolicySecrets(store *policysecret.Store) {
+	s.policySecrets = store
 }
 
 // NewMCPProxyService creates a new MCPProxyService instance
@@ -118,6 +126,9 @@ func (s *MCPProxyService) toMCPProxyAPI(orgUUID string, m *model.MCPProxy) (*api
 	resp := mapMCPProxyModelToAPI(m)
 	if resp == nil {
 		return nil, nil
+	}
+	if err := s.blankMCPProxyPolicySecrets(orgUUID, resp); err != nil {
+		return nil, err
 	}
 	projectHandle, err := s.resolveProjectHandle(orgUUID, resp.ProjectId, nil)
 	if err != nil {
@@ -449,6 +460,14 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	// Preserve existing upstream auth credential if not provided in update request
 	// (the auth value is redacted in GET responses, so clients send empty value on updates)
 	existing.Configuration.Upstream = *preserveMCPUpstreamAuthValue(&existingUpstreamConfig, &existing.Configuration.Upstream)
+
+	// Carry forward every policy credential the read withheld, for the same
+	// reason as the upstream credential above: reads empty it, so a client
+	// echoing a response back would otherwise store the empty value.
+	if err := s.preserveMCPProxyPolicySecrets(orgUUID,
+		origConfiguration.Policies, existing.Configuration.Policies); err != nil {
+		return nil, err
+	}
 
 	// The gateway owns the runtime configuration of a DP-originated proxy: preserve it
 	// verbatim and keep only the control-plane-editable description from the request.

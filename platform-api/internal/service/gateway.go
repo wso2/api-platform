@@ -94,14 +94,6 @@ type GatewayService struct {
 	enableFunctionalityTypeVerification bool
 	auditRepo                           repository.AuditRepository
 	identity                            *IdentityService
-	policySecrets                       *policysecret.Store
-}
-
-// SetPolicySecrets injects the store that resolves which policy parameters a
-// policy definition declares write-only, so that a newly reported manifest can
-// drop the organization's resolved index. Wired at startup.
-func (s *GatewayService) SetPolicySecrets(store *policysecret.Store) {
-	s.policySecrets = store
 }
 
 // NewGatewayService creates a new gateway service
@@ -299,14 +291,6 @@ func (s *GatewayService) ReceiveGatewayManifest(orgID, gatewayID, gatewayVersion
 	}
 	if err := s.gatewayRepo.UpdateGatewayManifest(gatewayID, raw); err != nil {
 		return fmt.Errorf("failed to store gateway manifest: %w", err)
-	}
-
-	// The manifest just replaced is where the organization's write-only
-	// declarations come from, so the index resolved from the previous one is
-	// now stale. Dropping it here is what lets a policy's new version start
-	// withholding a parameter the old one did not.
-	if s.policySecrets != nil {
-		s.policySecrets.Invalidate(orgID)
 	}
 
 	// Persist the version the controller reported so the deploy transform uses the
