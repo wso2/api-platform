@@ -131,7 +131,7 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 	if err != nil {
 		t.Fatalf("create vault: %v", err)
 	}
-	secretSvc := service.NewSecretService(repository.NewSecretRepo(db), v, identity)
+	secretSvc := service.NewSecretService(repository.NewSecretRepo(db), v, identity, nil)
 
 	hub := newFaultyEventHub(t, sqlDB)
 	gatewayEvents := service.NewGatewayEventsService(hub, identity, slog.Default())
@@ -165,13 +165,17 @@ func newAgentProxyTestEnv(t *testing.T, cfg *config.Server) *agentProxyTestEnv {
 	)
 
 	apiKeyRepo := repository.NewAPIKeyRepo(db, registry)
+	auditSvc, err := service.NewAuditService(repository.NewAuditRepo(db), nil, config.Audit{Enabled: true}, slog.Default())
+	if err != nil {
+		t.Fatalf("NewAuditService: %v", err)
+	}
 	apiKeySvc := service.NewAPIKeyService(
 		repository.NewAPIRepo(db),
 		repository.NewArtifactRepo(db, registry),
 		apiKeyRepo,
 		gatewayEvents,
-		repository.NewAuditRepo(db), // real rows, so key-deletion auditing is observable
-		nil,                         // defaults to [sha256]
+		auditSvc, // real rows, so key-deletion auditing is observable
+		nil,      // defaults to [sha256]
 		slog.Default(),
 	)
 	keyListSvc := service.NewAgentProxyAPIKeyService(agentRepo, apiKeyRepo, identity)

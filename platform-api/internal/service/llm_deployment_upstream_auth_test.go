@@ -170,7 +170,7 @@ func TestUpstreamAuthOverride_RefusesAValueThatIsNotAString(t *testing.T) {
 // The reference has to name a secret this organization actually has, so a typo is
 // refused at deploy time rather than reaching the gateway as an unresolvable placeholder.
 func TestUpstreamAuthOverride_RefusesAReferenceToASecretTheOrganizationDoesNotHave(t *testing.T) {
-	svc := &LLMProviderDeploymentService{secretService: NewSecretService(newMockRepo(), nil, nil)}
+	svc := &LLMProviderDeploymentService{secretService: NewSecretService(newMockRepo(), nil, nil, nil)}
 	rendered := providerWithUpstreamAuth("api-key", "")
 
 	err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
@@ -198,7 +198,7 @@ func TestUpstreamAuthOverride_AcceptsAReferenceToASecretTheOrganizationHas(t *te
 	}); err != nil {
 		t.Fatalf("seeding the secret: %v", err)
 	}
-	svc := &LLMProviderDeploymentService{secretService: NewSecretService(repo, nil, nil)}
+	svc := &LLMProviderDeploymentService{secretService: NewSecretService(repo, nil, nil, nil)}
 	rendered := providerWithUpstreamAuth("api-key", "")
 
 	err := svc.applyUpstreamOverrides(rendered, map[string]interface{}{
@@ -276,7 +276,7 @@ func TestRotatedCredential_ReleasesTheSecretTheGatewayMovedOffOf(t *testing.T) {
 		return nil, nil
 	}
 	svc := &LLMProviderDeploymentService{
-		secretService: NewSecretService(repo, nil, nil),
+		secretService: NewSecretService(repo, nil, nil, nil),
 		slogger:       slog.Default(),
 	}
 
@@ -299,7 +299,7 @@ func TestRotatedCredential_ReleasesNothingWhenTheCredentialIsUnchanged(t *testin
 		return nil, nil
 	}
 	svc := &LLMProviderDeploymentService{
-		secretService: NewSecretService(repo, nil, nil),
+		secretService: NewSecretService(repo, nil, nil, nil),
 		slogger:       slog.Default(),
 	}
 
@@ -324,7 +324,7 @@ func TestRotatedCredential_ReleasesNothingWhenTheDeploymentCarriesNoCredential(t
 		return nil, nil
 	}
 	svc := &LLMProviderDeploymentService{
-		secretService: NewSecretService(repo, nil, nil),
+		secretService: NewSecretService(repo, nil, nil, nil),
 		slogger:       slog.Default(),
 	}
 
@@ -350,7 +350,7 @@ func TestRotatedCredential_ReleasesNothingOnAFirstDeployment(t *testing.T) {
 		return nil, nil
 	}
 	svc := &LLMProviderDeploymentService{
-		secretService: NewSecretService(repo, nil, nil),
+		secretService: NewSecretService(repo, nil, nil, nil),
 		slogger:       slog.Default(),
 	}
 

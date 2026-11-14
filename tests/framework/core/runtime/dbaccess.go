@@ -28,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" driver
 	_ "github.com/mattn/go-sqlite3"    // registers the "sqlite3" driver
@@ -200,13 +201,13 @@ func pauseContainer(ctx context.Context, stack *ComposeStack, service string) (f
 
 // copyContainerFile copies one file from a service's container to a local path.
 // isNotFound reports whether err means the container path does not exist, as opposed to the
-// copy having failed. The Docker client marks such errors with a NotFound method rather than
-// a comparable sentinel; matching the method keeps this free of a dependency on the errdefs
-// package that defines it. An unrecognised error is treated as a real failure, so a change in
-// that convention surfaces a missing sidecar loudly instead of yielding a stale snapshot.
+// copy having failed. Some client-side failures carry a NotFound method; a missing file on the
+// archive endpoint is a daemon 404 whose only mark is its message. An unrecognised error is
+// treated as a real failure, so a change in either convention surfaces a missing sidecar
+// loudly instead of yielding a stale snapshot.
 func isNotFound(err error) bool {
 	var notFound interface{ NotFound() }
-	return errors.As(err, &notFound)
+	return errors.As(err, &notFound) || (err != nil && strings.Contains(err.Error(), "Could not find the file "))
 }
 
 func copyContainerFile(ctx context.Context, stack *ComposeStack, service, containerPath, localPath string) error {

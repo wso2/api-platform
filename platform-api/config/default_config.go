@@ -190,6 +190,21 @@ func defaultConfig() *Server {
 				HashingAlgorithms: []string{"sha256"},
 			},
 		},
+		Audit: Audit{
+			Enabled: false,
+			File:    AuditFile{MaxSizeMB: 100},
+			HTTP: AuditHTTP{
+				ContentType:    "application/x-ndjson",
+				BatchMaxEvents: 100,
+				BatchMaxBytes:  1 << 20, // 1 MiB
+				FlushInterval:  5 * time.Second,
+				QueueCapacity:  10000,
+				RequestTimeout: 10 * time.Second,
+				MaxRetries:     3,
+				RetryBackoff:   1 * time.Second,
+				Auth:           AuditHTTPAuth{Type: AuditAuthNone},
+			},
+		},
 		EventHub: EventHub{
 			PollInterval:    3 * time.Second,
 			CleanupInterval: 10 * time.Minute,

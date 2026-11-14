@@ -1697,7 +1697,7 @@ func TestLLMProviderServiceCreate_PolicySecretRef_Rejected(t *testing.T) {
 		},
 	}
 	orgRepo := &mockOrganizationRepo{org: &model.Organization{ID: "org-1"}}
-	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService())
+	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService(), nil)
 	service := NewLLMProviderService(providerRepo, templateRepo, orgRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 	service.SetSecretService(secretService)
 
@@ -1724,7 +1724,7 @@ func TestLLMProxyServiceCreate_MissingSecretRef_Rejected(t *testing.T) {
 			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
 		},
 	}
-	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService())
+	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService(), nil)
 	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 	service.SetSecretService(secretService)
 
@@ -1767,7 +1767,7 @@ func TestLLMProxyServiceUpdate_MissingSecretRef_Rejected(t *testing.T) {
 			return &model.LLMProvider{UUID: "provider-uuid", ID: providerID}, nil
 		},
 	}
-	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService())
+	secretService := NewSecretService(newMockRepo(), &mockVault{}, newTestIdentityService(), nil)
 	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 	service.SetSecretService(secretService)
 
@@ -1831,7 +1831,7 @@ func TestLLMProviderServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
 	secretRepo := newMockRepo()
 	secretRepo.secrets["old-handle"] = &model.Secret{Handle: "old-handle", Status: model.SecretStatusActive}
 	secretRepo.secrets["new-handle"] = &model.Secret{Handle: "new-handle", Status: model.SecretStatusActive}
-	secretService := NewSecretService(secretRepo, &mockVault{}, newTestIdentityService())
+	secretService := NewSecretService(secretRepo, &mockVault{}, newTestIdentityService(), nil)
 
 	service := NewLLMProviderService(providerRepo, templateRepo, nil, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 	service.SetSecretService(secretService)
@@ -1888,7 +1888,7 @@ func TestLLMProxyServiceUpdate_CleansUpRotatedSecret(t *testing.T) {
 	secretRepo := newMockRepo()
 	secretRepo.secrets["old-handle"] = &model.Secret{Handle: "old-handle", Status: model.SecretStatusActive}
 	secretRepo.secrets["new-handle"] = &model.Secret{Handle: "new-handle", Status: model.SecretStatusActive}
-	secretService := NewSecretService(secretRepo, &mockVault{}, newTestIdentityService())
+	secretService := NewSecretService(secretRepo, &mockVault{}, newTestIdentityService(), nil)
 
 	service := NewLLMProxyService(proxyRepo, providerRepo, nil, nil, nil, nil, slog.Default(), &noopAuditRepo{}, &config.Server{}, newTestIdentityService())
 	service.SetSecretService(secretService)

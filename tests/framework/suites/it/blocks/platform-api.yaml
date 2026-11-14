@@ -25,6 +25,33 @@
 # Feature paths are relative to suites/it, as in it-suite.yaml.
 
 blocks:
+  # Audit with every output on (stdout, a file and the testbench webhook): the overlay would make
+  # every other runner write audit records too, so each gets its own instance. The masked block
+  # also sets mask_sensitive_fields, which the unmasked checks must not see.
+  - name: platform-api-audit
+    parallel: 1
+    components:
+      - name: platform-api
+        db: sqlite
+        overlay: tests/framework/core/catalog/overlays/platform-api-audit.toml
+      - name: testbench
+    runners:
+      - name: platform-api-audit
+        features:
+          - features/management-portal/resources/audit.feature
+
+  - name: platform-api-audit-masked
+    parallel: 1
+    components:
+      - name: platform-api
+        db: sqlite
+        overlay: tests/framework/core/catalog/overlays/platform-api-audit-masked.toml
+      - name: testbench
+    runners:
+      - name: platform-api-audit-masked
+        features:
+          - features/management-portal/resources/audit_masked.feature
+
   # The deny-by-default posture of platform-api-core's shared-secret fallback (its overlay sets
   # legacy_shared_secret = true, see the webhook-secret-* runners there): a platform-api with the
   # webhook receiver enabled but legacy_shared_secret left at its default must still refuse a

@@ -18,8 +18,11 @@
 package service
 
 import (
-	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"testing"
+
+	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/model"
+	"github.com/wso2/api-platform/platform-api/internal/repository"
 )
 
 // TestValidateGatewayInput tests input validation logic
@@ -366,4 +369,44 @@ func findSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+type revokeTokenRepo struct {
+	repository.GatewayRepository
+	gateway *model.Gateway
+	token   *model.GatewayToken
+}
+
+func (r *revokeTokenRepo) GetByHandleAndOrgID(string, string) (*model.Gateway, error) {
+	return r.gateway, nil
+}
+
+func (r *revokeTokenRepo) GetTokenByUUID(string) (*model.GatewayToken, error) {
+	token := *r.token
+	return &token, nil
+}
+
+func (r *revokeTokenRepo) RevokeToken(_, revokedBy string) error {
+	r.token.Revoke(revokedBy)
+	return nil
+}
+
+func TestRevokeTokenRecordsRevokeOnlyForAnActiveToken(t *testing.T) {
+	repo := &revokeTokenRepo{
+		gateway: &model.Gateway{ID: "gw-1"},
+		token:   &model.GatewayToken{ID: "tok-1", GatewayID: "gw-1", Status: constants.GatewayTokenStatusActive},
+	}
+	audit := &recordingAuditRepo{}
+	service := &GatewayService{gatewayRepo: repo, auditRepo: audit}
+
+	if err := service.RevokeToken("prod", "tok-1", "org-1", "alice"); err != nil {
+		t.Fatalf("first revoke: %v", err)
+	}
+	if err := service.RevokeToken("prod", "tok-1", "org-1", "bob"); err != nil {
+		t.Fatalf("second revoke: %v", err)
+	}
+
+	if want := []auditCall{{"REVOKE", "tok-1", "gateway_token", "org-1", "alice"}}; len(audit.calls) != 1 || audit.calls[0] != want[0] {
+		t.Errorf("audit calls = %+v, want %+v", audit.calls, want)
+	}
 }

@@ -981,6 +981,10 @@ func (s *GatewayService) RotateToken(gatewayId, orgId, createdBy string) (*api.T
 		return nil, fmt.Errorf("failed to create token: %w", err)
 	}
 
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("CREATE", tokenId, "gateway_token", orgId, createdBy)
+	}
+
 	// 8. Return TokenRotationResponse
 	return tokenRotationModelToAPI(tokenId, plainToken, gatewayToken.CreatedAt), nil
 }
@@ -1008,6 +1012,10 @@ func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId, revokedBy string
 
 	if err := s.gatewayRepo.RevokeToken(tokenId, revokedBy); err != nil {
 		return fmt.Errorf("failed to revoke token: %w", err)
+	}
+
+	if s.auditRepo != nil && token.IsActive() {
+		_ = s.auditRepo.Record("REVOKE", tokenId, "gateway_token", orgId, revokedBy)
 	}
 
 	return nil

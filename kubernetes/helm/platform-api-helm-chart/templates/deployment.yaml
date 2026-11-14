@@ -4,6 +4,29 @@
 {{- $tls := $pa.tls -}}
 {{- $https := $pa.config.server.https -}}
 {{- $jwt := $pa.config.auth.jwt -}}
+{{- $audit := $pa.config.audit | default dict -}}
+{{- $auditFileSelected := false -}}
+{{- if and (kindIs "bool" $audit.enabled) $audit.enabled -}}
+  {{- range ($audit.outputs | default list) -}}
+    {{- if eq (lower (trim .)) "file" -}}{{- $auditFileSelected = true -}}{{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $auditLogVolume := merge (dict) ($pa.auditLogVolume | default dict) (dict "mountPath" "/var/log/wso2" "sizeLimit" "512Mi") -}}
+{{- /* hasKey, not merge, so an explicit enabled: false is kept. */ -}}
+{{- $alvEnabled := $auditFileSelected -}}
+{{- if hasKey $auditLogVolume "enabled" -}}
+  {{- $alvEnabled = $auditLogVolume.enabled -}}
+{{- end -}}
+{{- $auditLogVolume = set $auditLogVolume "enabled" $alvEnabled -}}
+{{- if and $auditLogVolume.enabled $auditFileSelected -}}
+  {{- $logPath := "" -}}
+  {{- if $audit.file -}}{{- $logPath = $audit.file.path | default "" -}}{{- end -}}
+  {{- $mount := printf "%s/" (trimSuffix "/" (clean $auditLogVolume.mountPath)) -}}
+  {{- /* clean collapses "../" so a path cannot match the prefix and resolve outside the mount. */ -}}
+  {{- if and $logPath (not (hasPrefix $mount (clean $logPath))) -}}
+    {{- fail (printf "platform-api: config.audit.file.path (%q) is not under auditLogVolume.mountPath (%q), so it would not land on the audit log volume: the Platform API would fail to start, or write the log onto its data volume. Move the path under the mount, change the mountPath, or set auditLogVolume.enabled=false if you are mounting your own volume." $logPath $auditLogVolume.mountPath) -}}
+  {{- end -}}
+{{- end -}}
 {{- /*
      Which modes actually open a local PEM. "file" always does (it signs its own
      login tokens); "internal_token" does unless skipValidation turns every
@@ -237,6 +260,10 @@ spec:
               mountPath: {{ $https.certDir }}
               readOnly: true
             {{- end }}
+            {{- if $auditLogVolume.enabled }}
+            - name: audit-log
+              mountPath: {{ $auditLogVolume.mountPath | quote }}
+            {{- end }}
             {{- with $deployment.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -297,6 +324,17 @@ spec:
                 path: cert.pem
               - key: {{ if eq $tls.certificateProvider "cert-manager" }}tls.key{{ else }}{{ $tls.secret.keyKey }}{{ end }}
                 path: key.pem
+        {{- end }}
+        {{- if $auditLogVolume.enabled }}
+        {{- /* Per pod, so each replica rotates its own file. Keep sizeLimit above 2 x audit.file.maxSizeMb. */}}
+        - name: audit-log
+          emptyDir:
+            {{- if $auditLogVolume.sizeLimit }}
+            sizeLimit: {{ $auditLogVolume.sizeLimit }}
+            {{- end }}
+            {{- if $auditLogVolume.medium }}
+            medium: {{ $auditLogVolume.medium | quote }}
+            {{- end }}
         {{- end }}
         {{- with $deployment.extraVolumes }}
         {{- toYaml . | nindent 8 }}

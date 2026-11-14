@@ -197,6 +197,7 @@ type Server struct {
 
 	Database             Database             `koanf:"database"`
 	Auth                 Auth                 `koanf:"auth"`
+	Audit                Audit                `koanf:"audit"`
 	Deployments          Deployments          `koanf:"deployments"`
 	Listeners            ServerListeners      `koanf:"server"`
 	Security             Security             `koanf:"security"`
@@ -1058,6 +1059,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 		return nil, err
 	}
 	if err := validateWebhookConfig(&cfg.Webhook); err != nil {
+		return nil, err
+	}
+	if err := validateAuditConfig(&cfg.Audit); err != nil {
 		return nil, err
 	}
 	if err := validateMCPServerConfig(&cfg.MCPServer, &cfg.Auth); err != nil {

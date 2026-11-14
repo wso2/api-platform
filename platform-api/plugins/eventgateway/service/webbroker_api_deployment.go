@@ -51,6 +51,7 @@ type WebBrokerAPIDeploymentService struct {
 	gatewayEventsService *coreservice.GatewayEventsService
 	cfg                  *config.Server
 	slogger              *slog.Logger
+	auditService         *coreservice.AuditService
 }
 
 // NewWebBrokerAPIDeploymentService creates a new WebBrokerAPIDeploymentService
@@ -65,8 +66,10 @@ func NewWebBrokerAPIDeploymentService(
 	gatewayEventsService *coreservice.GatewayEventsService,
 	cfg *config.Server,
 	slogger *slog.Logger,
+	auditService *coreservice.AuditService,
 ) *WebBrokerAPIDeploymentService {
 	return &WebBrokerAPIDeploymentService{
+		auditService:         auditService,
 		webbrokerAPIRepo:     webbrokerAPIRepo,
 		deploymentRepo:       deploymentRepo,
 		gatewayRepo:          gatewayRepo,
@@ -90,21 +93,21 @@ func (s *WebBrokerAPIDeploymentService) DeployWebBrokerAPIByHandle(apiHandle str
 }
 
 // RestoreWebBrokerAPIDeploymentByHandle restores a previous deployment using WebBroker API handle
-func (s *WebBrokerAPIDeploymentService) RestoreWebBrokerAPIDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) RestoreWebBrokerAPIDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebBrokerAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.restoreWebBrokerAPIDeployment(apiUUID, &deploymentID, &gatewayID, orgUUID)
+	return s.restoreWebBrokerAPIDeployment(apiUUID, &deploymentID, &gatewayID, orgUUID, actor)
 }
 
 // UndeployWebBrokerAPIDeploymentByHandle undeploys a deployment using WebBroker API handle
-func (s *WebBrokerAPIDeploymentService) UndeployWebBrokerAPIDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) UndeployWebBrokerAPIDeploymentByHandle(apiHandle, deploymentID, gatewayID, orgUUID, actor string) (*api.DeploymentResponse, error) {
 	apiUUID, err := s.getWebBrokerAPIUUIDByHandle(apiHandle, orgUUID)
 	if err != nil {
 		return nil, err
 	}
-	return s.undeployWebBrokerAPIDeployment(apiUUID, &deploymentID, &gatewayID, orgUUID)
+	return s.undeployWebBrokerAPIDeployment(apiUUID, &deploymentID, &gatewayID, orgUUID, actor)
 }
 
 // DeleteWebBrokerAPIDeploymentByHandle deletes a deployment using WebBroker API handle
@@ -279,6 +282,10 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, gatewayID, createdBy)
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("DEPLOY", deploymentID, "deployment", orgID, createdBy)
+	}
+
 	return toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
@@ -294,7 +301,7 @@ func (s *WebBrokerAPIDeploymentService) deployWebBrokerAPI(apiUUID string, req *
 }
 
 // undeployWebBrokerAPIDeployment undeploys a WebBroker API from a gateway
-func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID, actor string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane: their deploy/undeploy
 	// lifecycle is owned by the data-plane gateway, so the control plane must not
 	// initiate an undeployment for them.
@@ -379,6 +386,10 @@ func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(apiUUID s
 		}
 	}
 
+	if s.auditService != nil {
+		_ = s.auditService.Record("UNDEPLOY", deployment.DeploymentID, "deployment", orgID, actor)
+	}
+
 	return toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
@@ -394,7 +405,7 @@ func (s *WebBrokerAPIDeploymentService) undeployWebBrokerAPIDeployment(apiUUID s
 }
 
 // restoreWebBrokerAPIDeployment restores a previously undeployed WebBroker API deployment
-func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID string) (*api.DeploymentResponse, error) {
+func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID string, deploymentId *string, gatewayId *string, orgID, actor string) (*api.DeploymentResponse, error) {
 	// DP-originated artifacts are read-only in the control plane; their deployment
 	// lifecycle is owned by the data-plane gateway, so restore cannot be CP-initiated.
 	if err := ensureArtifactMutableByUUID(s.artifactRepo, apiUUID, orgID); err != nil {
@@ -463,6 +474,10 @@ func (s *WebBrokerAPIDeploymentService) restoreWebBrokerAPIDeployment(apiUUID st
 
 		// Backfill existing active API keys to the gateway (see BackfillAPIKeysToGateway).
 		coreservice.BackfillAPIKeysToGateway(s.apiKeyRepo, s.gatewayRepo, s.gatewayEventsService, s.slogger, apiUUID, targetDeployment.GatewayID, "")
+	}
+
+	if s.auditService != nil {
+		_ = s.auditService.Record("RESTORE", targetDeployment.DeploymentID, "deployment", orgID, actor)
 	}
 
 	return toAPIDeploymentResponse(

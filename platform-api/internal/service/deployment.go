@@ -468,6 +468,10 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 		s.backfillAPIKeysToGateway(apiUUID, gatewayID, createdBy)
 	}
 
+	if s.auditRepo != nil {
+		_ = s.auditRepo.Record("DEPLOY", deploymentID, "deployment", orgUUID, createdBy)
+	}
+
 	resp, err := toAPIDeploymentResponse(
 		s.gatewayRepo,
 		deployment.DeploymentID,
