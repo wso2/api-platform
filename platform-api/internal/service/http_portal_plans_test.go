@@ -337,10 +337,7 @@ func TestSyncPlans_MatchesHandlesExactly(t *testing.T) {
 }
 
 func TestSyncPlans_MapsPlanFields(t *testing.T) {
-	limited := testPlan("limited")
-	count := 1000
-	limited.ThrottleLimitCount = &count
-	limited.ThrottleLimitUnit = "HOUR"
+	limited := limitedPlan("limited", "Plan limited", 1000, "HOUR")
 	unlimited := testPlan("unlimited")
 
 	pp := &planPortal{}
@@ -612,7 +609,8 @@ func syncPlans(t *testing.T, pp *planPortal, plans []*model.SubscriptionPlan, pr
 func limitedPlan(handle, name string, count int, unit string) *model.SubscriptionPlan {
 	plan := testPlan(handle)
 	plan.Name = name
-	plan.ThrottleLimitCount, plan.ThrottleLimitUnit = &count, unit
+	plan.Conditions = []model.SubscriptionPlanCondition{*requestLimit(count, unit)}
+	plan.SetLegacyLimit()
 	return plan
 }
 
@@ -659,7 +657,7 @@ func TestSyncPlans_UpdatesCopiesWhoseNameOrLimitDiffer(t *testing.T) {
 }
 
 // An update never carries pricing, which the portal refuses for a plan that exists, and always
-// carries limits, without which the portal keeps the old ones.
+// carries limits, description and conditions, so the portal never keeps old values.
 func TestSyncPlans_UpdateBodyShape(t *testing.T) {
 	var raw []map[string]json.RawMessage
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -697,7 +695,8 @@ func TestSyncPlans_UpdateBodyShape(t *testing.T) {
 	if _, ok := raw[0]["pricing"]; ok {
 		t.Fatalf("an update must not carry pricing: %v", raw[0])
 	}
-	if string(raw[0]["limits"]) != "[]" || string(raw[0]["id"]) != `"gold"` || string(raw[0]["displayName"]) != `"Gold"` {
+	if string(raw[0]["limits"]) != "[]" || string(raw[0]["id"]) != `"gold"` || string(raw[0]["displayName"]) != `"Gold"` ||
+		string(raw[0]["description"]) != `""` || string(raw[0]["conditions"]) != "[]" {
 		t.Fatalf("update body = %v", raw[0])
 	}
 }
@@ -878,5 +877,70 @@ func TestSyncPlans_PerUnitPriceWithoutQuantity(t *testing.T) {
 	}
 	if len(pp.posted) != 0 || len(pp.updated) != 0 {
 		t.Fatalf("an unchanged copy is left alone: %d creates, %d updates", len(pp.posted), len(pp.updated))
+	}
+}
+
+// Creates and updates carry the plan's description and conditions; a plan with none sends an empty
+// conditions list.
+func TestSyncPlans_SendsDescriptionAndConditions(t *testing.T) {
+	pp := &planPortal{
+		handles: []string{"gold"},
+		listed:  map[string]map[string]any{"gold": {"id": "gold", "displayName": "Gold", "description": "Old text", "limits": listedLimit(1000, "MINUTE")}},
+	}
+	gold := limitedPlan("gold", "Gold", 1000, "MINUTE")
+	gold.Description = "New text"
+	silver := testPlan("silver")
+	silver.Description = "For teams"
+	if err := syncPlans(t, pp, []*model.SubscriptionPlan{gold, silver}, nil); err != nil {
+		t.Fatalf("SyncPlans: %v", err)
+	}
+	if len(pp.posted) != 1 || pp.posted[0][0].ID != "silver" || pp.posted[0][0].Description != "For teams" ||
+		pp.posted[0][0].Conditions == nil || len(pp.posted[0][0].Conditions) != 0 {
+		t.Fatalf("create = %+v", pp.posted)
+	}
+	if len(pp.updated) != 1 || pp.updated[0][0].ID != "gold" || pp.updated[0][0].Description != "New text" ||
+		len(pp.updated[0][0].Conditions) != 1 || pp.updated[0][0].Conditions[0].ID != "requests" {
+		t.Fatalf("a changed description must update the copy with the plan's conditions, got %+v", pp.updated)
+	}
+}
+
+// A portal that predates conditions doesn't list them: only name, description and limits decide an
+// update, so a plan whose other conditions it can't hold isn't updated on every publish.
+func TestSyncPlans_OldPortalIgnoresConditionsInTheComparison(t *testing.T) {
+	pp := &planPortal{
+		handles: []string{"gold"},
+		listed:  map[string]map[string]any{"gold": {"id": "gold", "displayName": "Gold", "description": "Partners", "limits": listedLimit(1000, "MINUTE")}},
+	}
+	gold := limitedPlan("gold", "Gold", 1000, "MINUTE")
+	gold.Description = "Partners"
+	gold.Conditions = append(gold.Conditions, model.SubscriptionPlanCondition{ID: "promo", Type: model.ConditionTypeCustom, Params: []byte(`{}`)})
+	if err := syncPlans(t, pp, []*model.SubscriptionPlan{gold}, nil); err != nil {
+		t.Fatalf("SyncPlans: %v", err)
+	}
+	if len(pp.updated) != 0 {
+		t.Fatalf("an old portal's copy with the same name, description and limits was updated: %+v", pp.updated)
+	}
+}
+
+// A portal that lists conditions gets an update when its copy's conditions differ, compared in their
+// stored form.
+func TestSyncPlans_ComparesConditionsWhenListed(t *testing.T) {
+	requests := map[string]any{"type": "request-count", "params": map[string]any{
+		"limits": []any{map[string]any{"count": 1000, "timeUnit": "MINUTE"}}}}
+	pp := &planPortal{
+		handles: []string{"gold", "silver"},
+		listed: map[string]map[string]any{
+			"gold":   {"id": "gold", "displayName": "Gold", "limits": listedLimit(1000, "MINUTE"), "conditions": []any{requests}},
+			"silver": {"id": "silver", "displayName": "Silver", "limits": listedLimit(1000, "MINUTE"), "conditions": []any{requests}},
+		},
+	}
+	gold := limitedPlan("gold", "Gold", 1000, "MINUTE") // same conditions, written another way
+	silver := limitedPlan("silver", "Silver", 1000, "MINUTE")
+	silver.Conditions = append(silver.Conditions, model.SubscriptionPlanCondition{ID: "promo", Type: model.ConditionTypeCustom, Params: []byte(`{}`)})
+	if err := syncPlans(t, pp, []*model.SubscriptionPlan{gold, silver}, nil); err != nil {
+		t.Fatalf("SyncPlans: %v", err)
+	}
+	if len(pp.updated) != 1 || len(pp.updated[0]) != 1 || pp.updated[0][0].ID != "silver" {
+		t.Fatalf("want only silver updated, got %+v", pp.updated)
 	}
 }

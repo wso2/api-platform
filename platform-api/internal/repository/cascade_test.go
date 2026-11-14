@@ -32,7 +32,7 @@ type graph struct {
 	apiArtifact, depArtifact   string
 	plan, sub, gateway, deploy string
 	apiKey                     string
-	planLimit                  string
+	planCondition              string
 	secretHandle               string
 	customPolicy               string
 	apiPortal                  string
@@ -55,12 +55,12 @@ func seedOrgGraph(t *testing.T, tdb *schemaDB) graph {
 		org: id(), project: id(), app: id(),
 		apiArtifact: id(), depArtifact: id(),
 		plan: id(), sub: id(), gateway: id(), deploy: id(),
-		apiKey:       id(),
-		planLimit:    id(),
-		secretHandle: id(),
-		customPolicy: id(),
-		apiPortal:    id(),
-		apiDoc:       id(),
+		apiKey:        id(),
+		planCondition: id(),
+		secretHandle:  id(),
+		customPolicy:  id(),
+		apiPortal:     id(),
+		apiDoc:        id(),
 	}
 
 	tdb.exec(t, `INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid) VALUES (?, ?, ?, ?, ?)`,
@@ -78,8 +78,8 @@ func seedOrgGraph(t *testing.T, tdb *schemaDB) graph {
 
 	tdb.exec(t, `INSERT INTO subscription_plans (uuid, handle, display_name, organization_uuid) VALUES (?, ?, ?, ?)`,
 		g.plan, "plan-"+g.plan[:8], "Plan "+g.plan[:8], g.org)
-	tdb.exec(t, `INSERT INTO subscription_plan_limits (uuid, subscription_plan_uuid, limit_type, limit_count, time_unit) VALUES (?, ?, ?, ?, ?)`,
-		g.planLimit, g.plan, "REQUEST_COUNT", 100, "MINUTE")
+	tdb.exec(t, `INSERT INTO subscription_plan_conditions (uuid, subscription_plan_uuid, organization_uuid, condition_id, condition_type, params) VALUES (?, ?, ?, ?, ?, ?)`,
+		g.planCondition, g.plan, g.org, "requests", "request-count", []byte(`{"limits":[{"count":100,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}`))
 	tdb.exec(t, `INSERT INTO subscriptions (uuid, artifact_uuid, subscriber_id, subscription_token, subscription_token_hash, subscription_plan_uuid, organization_uuid)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		g.sub, g.apiArtifact, "subscriber", "tok-"+g.sub[:8], "hash-"+g.sub[:8], g.plan, g.org)
@@ -267,24 +267,24 @@ func TestCascade_DeleteApplicationRemovesMappings(t *testing.T) {
 	}
 }
 
-// TestCascade_DeleteSubscriptionPlanRemovesLimits verifies that deleting a
-// subscription plan cascade-removes its subscription_plan_limits rows. On SQL
-// Server the limit's organization/composite edges are NO ACTION (to avoid the
+// TestCascade_DeleteSubscriptionPlanRemovesConditions verifies that deleting a
+// subscription plan cascade-removes its subscription_plan_conditions rows. On SQL
+// Server the condition's organization edge is NO ACTION (to avoid the
 // multiple-cascade-paths restriction), so cleanup must flow through the
 // subscription_plan_uuid -> subscription_plans CASCADE edge. The subscription is
 // removed first because subscriptions.subscription_plan_uuid blocks plan deletion.
-func TestCascade_DeleteSubscriptionPlanRemovesLimits(t *testing.T) {
+func TestCascade_DeleteSubscriptionPlanRemovesConditions(t *testing.T) {
 	tdb := openSchemaDB(t)
 	g := seedOrgGraph(t, tdb)
 
-	if got := tdb.count(t, "subscription_plan_limits", "uuid", g.planLimit); got != 1 {
-		t.Fatalf("precondition: want 1 subscription_plan_limit, got %d", got)
+	if got := tdb.count(t, "subscription_plan_conditions", "uuid", g.planCondition); got != 1 {
+		t.Fatalf("precondition: want 1 subscription_plan_condition, got %d", got)
 	}
 	tdb.exec(t, `DELETE FROM subscriptions WHERE uuid = ?`, g.sub)
 	tdb.exec(t, `DELETE FROM subscription_plans WHERE uuid = ? AND organization_uuid = ?`, g.plan, g.org)
 
-	if got := tdb.count(t, "subscription_plan_limits", "uuid", g.planLimit); got != 0 {
-		t.Fatalf("subscription_plan_limit not removed after plan delete: %d remain", got)
+	if got := tdb.count(t, "subscription_plan_conditions", "uuid", g.planCondition); got != 0 {
+		t.Fatalf("subscription_plan_condition not removed after plan delete: %d remain", got)
 	}
 }
 

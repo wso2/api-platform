@@ -8386,10 +8386,11 @@ paths:
     put:
       summary: Update subscription plan
       description: >-
-        Updates the plan's name, limits, status and expiry. The name and the request limit can change only while
-        nothing uses the plan: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, such as "The plan Gold is in use. To
-        change its name or limit, create a new plan." The plan's `usage` (GET
-        /subscription-plans/{subscriptionPlanId}) counts what uses it. Status and expiry can always change.
+        Updates the plan's name, description, conditions, status and expiry. The name and the conditions can change
+        only while nothing uses the plan: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, such as "The plan Gold is in
+        use. To change its name or conditions, create a new plan." The plan's `usage` (GET
+        /subscription-plans/{subscriptionPlanId}) counts what uses it. Description, status and expiry can always
+        change.
         Leave `pricing` out: it is the only part of a plan that never changes once the plan is created, and a body
         that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED.
       operationId: UpdateSubscriptionPlan
@@ -10780,11 +10781,16 @@ components:
         subscriptionPlans:
           type: array
           description: |
-            List of subscription plan names enabled for this API (e.g. Gold, Silver).
-            When set, only these plans can be used when subscribing to the API.
+            The subscription plans attached to this API, with the name each had when attached and how it
+            compares now. When set, only these plans can be used when subscribing to the API.
+            On create and update, send each plan as `{"id": "<plan handle>"}`; a plain handle string is
+            also accepted. `displayName` and `sourceStatus` are read-only.
           items:
-            type: string
-          example: [Gold, Silver]
+            $ref: '#/components/schemas/SubscriptionPlanRef'
+          example:
+            - id: gold
+              displayName: Gold
+              sourceStatus: UNCHANGED
 
     SecurityConfig:
       title: Security Configuration
@@ -12058,10 +12064,15 @@ components:
             $ref: '#/components/schemas/Policy'
         subscriptionPlans:
           type: array
-          description: List of subscription plan names enabled for this API.
+          description: |
+            The subscription plans attached to this API (see RESTAPI.subscriptionPlans). On create and
+            update, send each plan as `{"id": "<plan handle>"}`; a plain handle string is also accepted.
           items:
-            type: string
-          example: [Gold, Silver]
+            $ref: '#/components/schemas/SubscriptionPlanRef'
+          example:
+            - id: gold
+              displayName: Gold
+              sourceStatus: UNCHANGED
 
     # GraphQLAPI minus sdl/sdlUrl — the shape returned by GET
     # /graphql-apis/{graphqlApiId}. Duplicated rather than composed via allOf
@@ -12192,10 +12203,15 @@ components:
             $ref: '#/components/schemas/Policy'
         subscriptionPlans:
           type: array
-          description: List of subscription plan names enabled for this API.
+          description: |
+            The subscription plans attached to this API (see RESTAPI.subscriptionPlans). On create and
+            update, send each plan as `{"id": "<plan handle>"}`; a plain handle string is also accepted.
           items:
-            type: string
-          example: [Gold, Silver]
+            $ref: '#/components/schemas/SubscriptionPlanRef'
+          example:
+            - id: gold
+              displayName: Gold
+              sourceStatus: UNCHANGED
 
     GraphQLAPISDLResponse:
       title: GraphQL API SDL
@@ -12630,6 +12646,91 @@ components:
           description: Whether to block requests when this limit's quota is exhausted
           default: true
 
+    SubscriptionPlanCondition:
+      type: object
+      required: [type, params]
+      description: >-
+        One condition of a subscription plan. A built-in condition (request-count, tool-call-count, token-count)
+        has the id its type fixes (requests, tool-calls, tokens), so the policy that enforces it finds it in every
+        plan; params holds its limits. A custom condition has an id the admin gives it and key-value pairs as
+        params, which a policy the customer writes reads.
+      properties:
+        id:
+          type: string
+          maxLength: 63
+          pattern: '^[a-z][a-z0-9-]{0,62}$'
+          description: >-
+            Required for a custom condition, unique in the plan and not one of the built-in ids. For a built-in
+            condition it may be omitted; when sent, it must be the id the type fixes.
+          example: requests
+        type:
+          type: string
+          enum: [request-count, tool-call-count, token-count, custom]
+          x-enum-varnames: [SubscriptionPlanConditionTypeRequestCount, SubscriptionPlanConditionTypeToolCallCount, SubscriptionPlanConditionTypeTokenCount, SubscriptionPlanConditionTypeCustom]
+        params:
+          type: object
+          additionalProperties: true
+          description: >-
+            For a built-in type, a SubscriptionPlanConditionLimits object. For a custom condition, any JSON object
+            of key-value pairs, at most 4096 bytes.
+      example:
+        id: requests
+        type: request-count
+        params:
+          limits:
+            - { count: 100, timeAmount: 1, timeUnit: MINUTE }
+            - { count: 10000, timeAmount: 1, timeUnit: DAY }
+          onExceed: reject
+
+    SubscriptionPlanConditionLimits:
+      type: object
+      required: [limits]
+      additionalProperties: false
+      description: >-
+        The params of a built-in condition: windows on the same counter, all of which must have room. No two windows
+        may be the same length (60 MINUTE and 1 HOUR are the same window). A field not listed here is refused.
+      properties:
+        limits:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/SubscriptionPlanConditionWindow'
+        onExceed:
+          type: string
+          enum: [reject, allow]
+          x-enum-varnames: [SubscriptionPlanConditionOnExceedReject, SubscriptionPlanConditionOnExceedAllow]
+          default: reject
+          description: >-
+            What happens once a window is used up: reject the request (429), or let it through and mark it as
+            overage.
+        tokenType:
+          type: string
+          enum: [total, prompt, completion]
+          x-enum-varnames: [SubscriptionPlanConditionTokenTypeTotal, SubscriptionPlanConditionTokenTypePrompt, SubscriptionPlanConditionTokenTypeCompletion]
+          description: token-count only (default total). Refused for the other types.
+
+    SubscriptionPlanConditionWindow:
+      type: object
+      required: [count, timeUnit]
+      additionalProperties: false
+      properties:
+        count:
+          type: integer
+          minimum: 1
+          description: The requests, tool calls or tokens allowed in the window.
+          example: 100
+        timeAmount:
+          type: integer
+          minimum: 1
+          default: 1
+          description: How many timeUnit the window lasts (2 with HOUR is per 2 hours).
+        timeUnit:
+          type: string
+          enum: [MINUTE, HOUR, DAY, MONTH]
+          x-enum-varnames: [SubscriptionPlanConditionWindowMinute, SubscriptionPlanConditionWindowHour, SubscriptionPlanConditionWindowDay, SubscriptionPlanConditionWindowMonth]
+          description: A MONTH is a calendar month.
+
     CreateSubscriptionPlanRequest:
       type: object
       required:
@@ -12649,13 +12750,27 @@ components:
           minLength: 1
           maxLength: 128
           example: "Gold"
+        description:
+          type: string
+          maxLength: 1023
+          description: What the plan offers, in words for developers and subscribers. Optional.
+          example: "100 requests per minute and 10,000 tool calls per day"
+        conditions:
+          type: array
+          maxItems: 20
+          description: >-
+            What the plan allows, in order. A plan has at most one condition of each built-in type (request-count,
+            tool-call-count, token-count) and any number of custom conditions. The policies attached to an API enforce
+            them; a plan with no conditions is unlimited. Send either conditions or limits, not both.
+          items:
+            $ref: '#/components/schemas/SubscriptionPlanCondition'
         limits:
           type: array
+          deprecated: true
           description: >-
-            Throttling limits for the plan (e.g. requests per hour, requests per month).
-            The table backing this API already supports multiple limits per plan, but
-            the platform-api currently only persists and enforces the first entry in
-            this array; any additional entries are accepted but ignored.
+            Request limits, for clients that predate conditions; use conditions instead. Each limit is a window of
+            the plan's request-count condition (only REQUEST_COUNT limits are accepted), and whether requests over
+            the limit are blocked is taken from the first one.
           items:
             $ref: '#/components/schemas/SubscriptionPlanLimit'
         expiryTime:
@@ -12688,11 +12803,27 @@ components:
           description: Human-readable name for the subscription plan
           minLength: 1
           maxLength: 128
+        description:
+          type: string
+          maxLength: 1023
+          description: What the plan offers, in words for developers and subscribers. Optional.
+          example: "100 requests per minute and 10,000 tool calls per day"
+        conditions:
+          type: array
+          maxItems: 20
+          description: >-
+            What the plan allows, in order. A plan has at most one condition of each built-in type (request-count,
+            tool-call-count, token-count) and any number of custom conditions. The policies attached to an API enforce
+            them; a plan with no conditions is unlimited. On update, an omitted conditions leaves them unchanged and [] removes them all. Send either conditions or limits, not both. A plan saved before conditions is returned with its request limit as a request-count condition.
+          items:
+            $ref: '#/components/schemas/SubscriptionPlanCondition'
         limits:
           type: array
+          deprecated: true
           description: >-
-            Throttling limits configured for the plan. Only one entry is currently
-            supported and returned, even though the underlying storage allows multiple.
+            The windows of the plan's request-count condition, for clients that predate conditions; empty when the
+            plan has none. On update, limits replace only the request-count condition and keep the plan's other
+            conditions; [] removes it.
           items:
             $ref: '#/components/schemas/SubscriptionPlanLimit'
         expiryTime:
@@ -12742,7 +12873,7 @@ components:
           description: >-
             What offers or uses the plan. Only present in the detail response (GET
             /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and
-            its name and limit cannot be updated.
+            its name and conditions cannot be updated.
           allOf:
             - $ref: '#/components/schemas/SubscriptionPlanUsage'
 
@@ -12759,6 +12890,9 @@ components:
         restApis:
           type: integer
           description: How many REST APIs list the plan in their configuration.
+        mcpProxies:
+          type: integer
+          description: How many MCP proxies list the plan in their configuration.
         drafts:
           type: integer
           description: How many APIs offer the plan in a publication draft (each API once).
@@ -15130,6 +15264,15 @@ components:
           description: List of policies to be applied
           items:
             $ref: '#/components/schemas/Policy'
+        subscriptionPlans:
+          type: array
+          description: |
+            IDs (handles) of the subscription plans enabled for this MCP proxy (e.g. gold, silver).
+            When set, only these plans can be used when subscribing to the MCP proxy.
+            Each plan must exist in the organization and be ACTIVE.
+          items:
+            type: string
+          example: [gold, silver]
         kind:
           type: string
           description: Kind of the API based on its communication protocol or architectural style
@@ -16003,6 +16146,35 @@ components:
             - UNCHANGED: It has not changed since.
             - UPDATED: It was changed since. Saving the draft or publishing again makes it UNCHANGED.
             - DELETED: It no longer exists. The publication keeps the selection until the next publish.
+
+    SubscriptionPlanRef:
+      type: object
+      description: |
+        A subscription plan attached to an API, as a publication selection reports it: the plan's
+        handle, the name stored when it was attached, and how the plan compares with that.
+      required: [id]
+      properties:
+        id:
+          type: string
+          description: The plan's handle (GET /subscription-plans), not the database UUID.
+          example: gold
+        displayName:
+          type: string
+          readOnly: true
+          description: |
+            The plan's current name, or the name stored when it was attached if the plan no longer
+            exists.
+          example: Gold
+        sourceStatus:
+          type: string
+          readOnly: true
+          enum: [UNCHANGED, UPDATED, DELETED]
+          x-enum-varnames: [SubscriptionPlanRefUnchanged, SubscriptionPlanRefUpdated, SubscriptionPlanRefDeleted]
+          description: |
+            How the plan compares with the copy stored when it was attached (the API was last saved):
+            - UNCHANGED: It has not changed since.
+            - UPDATED: It was changed since. Saving the API again makes it UNCHANGED.
+            - DELETED: It no longer exists.
 
     PublicationDraftDetailsInput:
       allOf:
@@ -17111,8 +17283,8 @@ components:
         consumers, or deprecate instead), except a plan conflict from a concurrent publish, which
         usually does. No local state was changed by any of these. Before the API is pushed, the
         API Portal's copy of each offered plan is created, after the meters its prices charge for,
-        or, when its name or limit differs, updated. When the push then fails, the plans and
-        meters this publish created are removed again; the name and limit updates stay.
+        or, when its name, description, limits or conditions differ, updated. When the push then fails, the
+        plans and meters this publish created are removed again; the updates stay.
       content:
         application/json:
           schema:

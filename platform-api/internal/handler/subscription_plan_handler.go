@@ -41,9 +41,9 @@ import (
 	"github.com/wso2/api-platform/httpkit/httputil"
 )
 
-// maxPlanBodyBytes caps a plan create or update body; a plan is a few hundred bytes, and its pricing
-// a few kilobytes at most.
-const maxPlanBodyBytes = 64 << 10
+// maxPlanBodyBytes caps a plan create or update body: room for the most conditions a plan can have
+// and its pricing.
+const maxPlanBodyBytes = 128 << 10
 
 // SubscriptionPlanHandler handles subscription plan CRUD
 type SubscriptionPlanHandler struct {
@@ -71,13 +71,8 @@ func NewSubscriptionPlanHandler(planService *service.SubscriptionPlanService, id
 	}
 }
 
-// SubscriptionPlanLimitRequest is a single throttling limit entry within a
-// subscription plan create/update request.
-//
-// NOTE: SINGLE-LIMIT ASSUMPTION. subscription_plan_limits supports multiple limits
-// per plan, but the platform-api currently only persists and enforces the first
-// entry of the limits array on a request; any further entries are accepted but
-// silently ignored. This must be improved to write/enforce all submitted limits.
+// SubscriptionPlanLimitRequest is one entry of the old "limits" field. Each becomes a window of the
+// plan's request-count condition.
 type SubscriptionPlanLimitRequest struct {
 	LimitType        string `json:"limitType,omitempty"`
 	TimeUnit         string `json:"timeUnit"`
@@ -138,21 +133,55 @@ func apiLimitsToRequests(limits []api.SubscriptionPlanLimit) []SubscriptionPlanL
 	return out
 }
 
-// firstLimit returns a pointer to the first entry of limits, or nil if empty.
-// Any entries beyond the first are ignored (see SubscriptionPlanLimitRequest).
-func firstLimit(limits []SubscriptionPlanLimitRequest) *SubscriptionPlanLimitRequest {
+// limitsToRequestCondition turns old "limits" into a request-count condition. As before, only the first
+// limit is validated; later limits that are invalid or repeat a window length are skipped. Blocking
+// over the limit is taken from the first limit.
+func limitsToRequestCondition(limits []SubscriptionPlanLimitRequest) (*model.SubscriptionPlanCondition, string) {
 	if len(limits) == 0 {
-		return nil
+		return nil, ""
 	}
-	l := limits[0]
-	return &l
+	if errMsg := normalizeAndValidateLimit(&limits[0]); errMsg != "" {
+		return nil, errMsg
+	}
+	windows := make([]model.ConditionWindow, 0, len(limits))
+	seen := map[string]bool{}
+	for i := range limits {
+		if i > 0 && normalizeAndValidateLimit(&limits[i]) != "" {
+			continue
+		}
+		key := model.WindowKey(limits[i].TimeAmount, limits[i].TimeUnit)
+		if seen[key] || len(windows) == 10 {
+			continue
+		}
+		seen[key] = true
+		windows = append(windows, model.ConditionWindow{
+			Count: limits[i].LimitCount, TimeAmount: limits[i].TimeAmount, TimeUnit: limits[i].TimeUnit,
+		})
+	}
+	stopOnQuotaReach := limits[0].StopOnQuotaReach == nil || *limits[0].StopOnQuotaReach
+	c := model.NewRequestCountCondition(windows, stopOnQuotaReach)
+	return &c, ""
 }
 
-// CreateSubscriptionPlanRequest is the body for POST /api/v0.9/subscription-plans. Pricing, a
-// SubscriptionPlanPricingRequest, makes the plan paid; the service checks it.
+// decodeConditions reads the "conditions" field. null or a non-array is refused.
+func decodeConditions(raw json.RawMessage) ([]model.SubscriptionPlanCondition, error) {
+	var conditions []model.SubscriptionPlanCondition
+	if string(raw) == "null" {
+		return nil, apperror.ValidationFailed.New("conditions must be an array; send [] for a plan with no conditions")
+	}
+	if err := json.Unmarshal(raw, &conditions); err != nil {
+		return nil, apperror.ValidationFailed.Wrap(err, "conditions must be an array of {id, type, params}")
+	}
+	return conditions, nil
+}
+
+// CreateSubscriptionPlanRequest is the body for POST /api/v0.9/subscription-plans. Send Conditions, or
+// Limits from older clients. Pricing makes the plan paid.
 type CreateSubscriptionPlanRequest struct {
 	Id          string                         `json:"id" binding:"required"`
 	DisplayName string                         `json:"displayName" binding:"required"`
+	Description string                         `json:"description,omitempty"`
+	Conditions  json.RawMessage                `json:"conditions,omitempty"`
 	Limits      []SubscriptionPlanLimitRequest `json:"limits,omitempty"`
 	ExpiryTime  *string                        `json:"expiryTime,omitempty"`
 	Status      string                         `json:"status,omitempty"`
@@ -206,20 +235,29 @@ func (h *SubscriptionPlanHandler) CreateSubscriptionPlan(w http.ResponseWriter, 
 	}
 
 	plan := &model.SubscriptionPlan{
-		Handle:           req.Id,
-		Name:             req.DisplayName,
-		StopOnQuotaReach: true,
-		Status:           model.SubscriptionPlanStatus(req.Status),
+		Handle:      req.Id,
+		Name:        req.DisplayName,
+		Description: strings.TrimSpace(req.Description),
+		Status:      model.SubscriptionPlanStatus(req.Status),
+		Conditions:  []model.SubscriptionPlanCondition{},
 	}
-	if limit := firstLimit(req.Limits); limit != nil {
-		if errMsg := normalizeAndValidateLimit(limit); errMsg != "" {
+	if len(req.Conditions) > 0 {
+		// Sent at all, even as [], limits can't come with conditions.
+		if req.Limits != nil {
+			return apperror.ValidationFailed.New("send conditions or limits, not both")
+		}
+		conditions, err := decodeConditions(req.Conditions)
+		if err != nil {
+			return err
+		}
+		plan.Conditions = conditions
+	} else {
+		requestLimit, errMsg := limitsToRequestCondition(req.Limits)
+		if errMsg != "" {
 			return apperror.ValidationFailed.New(errMsg)
 		}
-		count := limit.LimitCount
-		plan.ThrottleLimitCount = &count
-		plan.ThrottleLimitUnit = limit.TimeUnit
-		if limit.StopOnQuotaReach != nil {
-			plan.StopOnQuotaReach = *limit.StopOnQuotaReach
+		if requestLimit != nil {
+			plan.Conditions = []model.SubscriptionPlanCondition{*requestLimit}
 		}
 	}
 	if req.ExpiryTime != nil {
@@ -333,9 +371,9 @@ func (h *SubscriptionPlanHandler) GetSubscriptionPlan(w http.ResponseWriter, r *
 		return apperror.Internal.Wrap(err).
 			WithLogMessage(fmt.Sprintf("failed to resolve subscription plan identity for plan %s in org %s", planId, orgId))
 	}
-	// What offers or uses the plan, so a client can show a delete, or a change of name or limit, as
+	// What offers or uses the plan, so a client can show a delete, or a change of name or conditions, as
 	// refused before it is tried. Only a single plan's read carries it: working it out reads every
-	// REST API of the organization.
+	// REST API and MCP proxy of the organization.
 	usage, err := h.planService.GetUsage(plan)
 	if err != nil {
 		return apperror.Internal.Wrap(err).
@@ -344,6 +382,7 @@ func (h *SubscriptionPlanHandler) GetSubscriptionPlan(w http.ResponseWriter, r *
 	resp["usage"] = map[string]any{
 		"inUse":         usage.InUse(),
 		"restApis":      usage.RESTAPIs,
+		"mcpProxies":    usage.MCPProxies,
 		"drafts":        usage.Drafts,
 		"publications":  usage.Publications,
 		"subscriptions": usage.Subscriptions,
@@ -374,9 +413,12 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 	//   - expiryTime: an explicit null clears the expiry, while an omitted one leaves it unchanged
 	//     (*time.Time cannot tell the two apart);
 	//   - pricing: refused even when null, since pricing is set only when a plan is created.
+	//   - conditions and description: read as sent; an omitted one leaves the plan's unchanged.
 	var presence struct {
-		ExpiryTime json.RawMessage `json:"expiryTime"`
-		Pricing    json.RawMessage `json:"pricing"`
+		ExpiryTime  json.RawMessage `json:"expiryTime"`
+		Pricing     json.RawMessage `json:"pricing"`
+		Conditions  json.RawMessage `json:"conditions"`
+		Description *string         `json:"description"`
 	}
 	if err := json.Unmarshal(body, &presence); err != nil {
 		return apperror.ValidationFailed.Wrap(err, "Invalid request body").
@@ -401,22 +443,27 @@ func (h *SubscriptionPlanHandler) UpdateSubscriptionPlan(w http.ResponseWriter, 
 	}
 	update := &model.SubscriptionPlanUpdate{
 		Name:            &displayName,
+		Description:     presence.Description,
 		ExpiryTime:      req.ExpiryTime,
 		ClearExpiryTime: req.ExpiryTime == nil && string(presence.ExpiryTime) == "null",
 	}
-	if req.Limits != nil {
-		if limit := firstLimit(apiLimitsToRequests(*req.Limits)); limit != nil {
-			if errMsg := normalizeAndValidateLimit(limit); errMsg != "" {
-				return apperror.ValidationFailed.New(errMsg)
-			}
-			count := limit.LimitCount
-			update.ThrottleLimitCount = &count
-			update.ThrottleLimitUnit = &limit.TimeUnit
-			stopOnQuotaReach := true
-			if limit.StopOnQuotaReach != nil {
-				stopOnQuotaReach = *limit.StopOnQuotaReach
-			}
-			update.StopOnQuotaReach = &stopOnQuotaReach
+	if presence.Conditions != nil {
+		// Sent at all, even as [], limits can't come with conditions.
+		if req.Limits != nil {
+			return apperror.ValidationFailed.New("send conditions or limits, not both")
+		}
+		conditions, err := decodeConditions(presence.Conditions)
+		if err != nil {
+			return err
+		}
+		update.Conditions = &conditions
+	} else if req.Limits != nil {
+		requestLimit, errMsg := limitsToRequestCondition(apiLimitsToRequests(*req.Limits))
+		if errMsg != "" {
+			return apperror.ValidationFailed.New(errMsg)
+		}
+		if requestLimit != nil {
+			update.RequestLimit = requestLimit
 		} else {
 			update.ClearLimit = true
 		}
@@ -501,20 +548,22 @@ func (h *SubscriptionPlanHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("DELETE "+constants.APIBasePath+"/subscription-plans/{subscriptionPlanId}", middleware.MapErrors(h.slogger, h.DeleteSubscriptionPlan))
 }
 
-// toSubscriptionPlanResponse builds the API response for a plan.
-// updatedBy is only included when detail is true (GET/POST/PUT single-plan responses),
-// matching the platform-wide policy of omitting it from list responses.
-//
-// NOTE: SINGLE-LIMIT ASSUMPTION. The "limits" array holds at most one entry today
-// even though subscription_plan_limits supports many; see model.SubscriptionPlan.
+// toSubscriptionPlanResponse builds the API response for a plan. updatedBy is only included when detail
+// is true, as list responses omit it. "limits" is kept for older clients (requestLimits).
 func (h *SubscriptionPlanHandler) toSubscriptionPlanResponse(plan *model.SubscriptionPlan, detail bool) (map[string]any, error) {
 	createdBy, err := h.identity.DisplayNameForUUID(plan.CreatedBy)
 	if err != nil {
 		return nil, err
 	}
+	conditions := plan.Conditions
+	if conditions == nil {
+		conditions = []model.SubscriptionPlanCondition{}
+	}
 	resp := map[string]any{
 		"id":             plan.Handle,
 		"displayName":    plan.Name,
+		"description":    plan.Description,
+		"conditions":     conditions,
 		"organizationId": h.planService.ResolveOrgHandle(plan.OrganizationUUID),
 		"status":         string(plan.Status),
 		"createdBy":      createdBy,
@@ -528,17 +577,7 @@ func (h *SubscriptionPlanHandler) toSubscriptionPlanResponse(plan *model.Subscri
 		}
 		resp["updatedBy"] = updatedBy
 	}
-	limits := []map[string]any{}
-	if plan.ThrottleLimitCount != nil {
-		limits = append(limits, map[string]any{
-			"limitType":        constants.LimitTypeRequestCount,
-			"timeUnit":         plan.ThrottleLimitUnit,
-			"timeAmount":       1,
-			"limitCount":       *plan.ThrottleLimitCount,
-			"stopOnQuotaReach": plan.StopOnQuotaReach,
-		})
-	}
-	resp["limits"] = limits
+	resp["limits"] = requestLimits(plan)
 	if plan.ExpiryTime != nil {
 		resp["expiryTime"] = plan.ExpiryTime
 	}
@@ -552,4 +591,27 @@ func (h *SubscriptionPlanHandler) toSubscriptionPlanResponse(plan *model.Subscri
 		}
 	}
 	return resp, nil
+}
+
+// requestLimits returns the request-count windows in the old "limits" shape.
+func requestLimits(plan *model.SubscriptionPlan) []map[string]any {
+	limits := []map[string]any{}
+	c := model.FindCondition(plan.Conditions, model.ConditionTypeRequestCount)
+	if c == nil {
+		return limits
+	}
+	var params model.ConditionLimits
+	if err := json.Unmarshal(c.Params, &params); err != nil {
+		return limits
+	}
+	for _, w := range params.Limits {
+		limits = append(limits, map[string]any{
+			"limitType":        constants.LimitTypeRequestCount,
+			"timeUnit":         w.TimeUnit,
+			"timeAmount":       w.TimeAmount,
+			"limitCount":       w.Count,
+			"stopOnQuotaReach": params.OnExceed != model.ConditionOnExceedAllow,
+		})
+	}
+	return limits
 }

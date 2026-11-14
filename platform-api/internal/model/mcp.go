@@ -50,6 +50,8 @@ type MCPProxyConfiguration struct {
 	Upstream     UpstreamConfig        `json:"upstream" db:"-"`
 	Policies     []Policy              `json:"policies,omitempty" db:"-"`
 	Capabilities *MCPProxyCapabilities `json:"capabilities,omitempty" db:"-"`
+	// SubscriptionPlans lists the plan handles enabled for this proxy, as RestAPIConfig does.
+	SubscriptionPlans []string `json:"subscriptionPlans,omitempty" db:"-"`
 	// UpstreamSpecVersions is what the server reported at discovery. It declares nothing and
 	// reaches no gateway: MCPProxyDeploymentSpec is an allow-list struct that omits it.
 	UpstreamSpecVersions []string `json:"upstreamSpecVersions,omitempty" db:"-"`

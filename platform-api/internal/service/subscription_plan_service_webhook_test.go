@@ -19,8 +19,10 @@ package service
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
@@ -94,11 +96,16 @@ func (f *webhookPlanRepo) DeleteWithReferences(uuid, _, _ string) (bool, error) 
 
 var planEventT0 = time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC)
 
+// win is the one request window count per unit, as a portal that predates conditions sends a limit.
+func win(count int, unit string) []model.ConditionWindow {
+	return []model.ConditionWindow{{Count: count, TimeAmount: 1, TimeUnit: unit}}
+}
+
 func TestUpsertPlanFromWebhook_CreatesMissingPlan(t *testing.T) {
 	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{}}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	plan, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", intPtr(5000), "MINUTE", nil, planEventT0)
+	plan, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, win(5000, "MINUTE"), nil, planEventT0)
 	if err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}
@@ -112,12 +119,13 @@ func TestUpsertPlanFromWebhook_CreatesMissingPlan(t *testing.T) {
 
 func TestUpsertPlanFromWebhook_UnchangedPlanIsNotWritten(t *testing.T) {
 	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{
-		"gold": {UUID: "u1", Handle: "gold", Name: "Gold", ThrottleLimitCount: intPtr(5000), ThrottleLimitUnit: "MINUTE",
-			StopOnQuotaReach: false, Status: model.SubscriptionPlanStatusInactive},
+		"gold": {UUID: "u1", Handle: "gold", Name: "Gold", Conditions: []model.SubscriptionPlanCondition{
+			model.NewRequestCountCondition([]model.ConditionWindow{{Count: 5000, TimeAmount: 1, TimeUnit: "MINUTE"}}, false)},
+			Status: model.SubscriptionPlanStatusInactive},
 	}}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", intPtr(5000), "MINUTE", nil, planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, win(5000, "MINUTE"), nil, planEventT0); err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}
 	if repo.creates != 0 || repo.updates != 0 {
@@ -125,21 +133,39 @@ func TestUpsertPlanFromWebhook_UnchangedPlanIsNotWritten(t *testing.T) {
 	}
 }
 
-func TestUpsertPlanFromWebhook_UpdatesChangedFieldsOnly(t *testing.T) {
+// The name is stored trimmed, so a portal name with edge spaces is the same name, not a change.
+func TestUpsertPlanFromWebhook_NameWithEdgeSpacesIsNotAChange(t *testing.T) {
 	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{
-		"gold": {UUID: "u1", Handle: "gold", Name: "Gold", ThrottleLimitCount: intPtr(5000), ThrottleLimitUnit: "MINUTE",
-			StopOnQuotaReach: false, Status: model.SubscriptionPlanStatusInactive},
+		"gold": {UUID: "u1", Handle: "gold", Name: "Gold", Conditions: []model.SubscriptionPlanCondition{
+			model.NewRequestCountCondition([]model.ConditionWindow{{Count: 5000, TimeAmount: 1, TimeUnit: "MINUTE"}}, false)},
+			Status: model.SubscriptionPlanStatusInactive},
 	}}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold Plus", intPtr(100), "HOUR", nil, planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "  Gold ", "", nil, win(5000, "MINUTE"), nil, planEventT0); err != nil {
+		t.Fatalf("UpsertPlanFromWebhook: %v", err)
+	}
+	if repo.updates != 0 {
+		t.Fatalf("updates = %d, want none for the same name with edge spaces", repo.updates)
+	}
+}
+
+func TestUpsertPlanFromWebhook_UpdatesChangedFieldsOnly(t *testing.T) {
+	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{
+		"gold": {UUID: "u1", Handle: "gold", Name: "Gold", Conditions: []model.SubscriptionPlanCondition{
+			model.NewRequestCountCondition([]model.ConditionWindow{{Count: 5000, TimeAmount: 1, TimeUnit: "MINUTE"}}, false)},
+			Status: model.SubscriptionPlanStatusInactive},
+	}}
+	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
+
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold Plus", "", nil, win(100, "HOUR"), nil, planEventT0); err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}
 	got := repo.plans["gold"]
 	if repo.updates != 1 || got.Name != "Gold Plus" || *got.ThrottleLimitCount != 100 || got.ThrottleLimitUnit != "HOUR" {
 		t.Fatalf("updates = %d, plan = %+v", repo.updates, got)
 	}
-	// The portal has no stop-on-quota or status setting, so the stored values are kept.
+	// The portal has no stop-on-quota (onExceed) or status setting, so the stored values are kept.
 	if got.StopOnQuotaReach || got.Status != model.SubscriptionPlanStatusInactive {
 		t.Fatalf("stopOnQuotaReach and status must be left as they were: %+v", got)
 	}
@@ -147,11 +173,11 @@ func TestUpsertPlanFromWebhook_UpdatesChangedFieldsOnly(t *testing.T) {
 
 func TestUpsertPlanFromWebhook_ClearsRemovedLimit(t *testing.T) {
 	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{
-		"gold": {UUID: "u1", Handle: "gold", Name: "Gold", ThrottleLimitCount: intPtr(5000), ThrottleLimitUnit: "MINUTE"},
+		"gold": {UUID: "u1", Handle: "gold", Name: "Gold", Conditions: []model.SubscriptionPlanCondition{*requestLimit(5000, "MINUTE")}},
 	}}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", nil, "", nil, planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, nil, nil, planEventT0); err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}
 	if got := repo.plans["gold"]; got.ThrottleLimitCount != nil || got.ThrottleLimitUnit != "" {
@@ -214,7 +240,7 @@ func TestDeletePlanFromWebhook_DeletesACopyCreatedFromAnEarlierEvent(t *testing.
 	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{}, now: planEventT0.Add(5 * time.Second)}
 	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
 
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", nil, "", nil, planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, nil, nil, planEventT0); err != nil {
 		t.Fatalf("created event: %v", err)
 	}
 	if got := repo.plans["gold"]; got == nil || !got.CreatedAt.Equal(planEventT0) {
@@ -250,7 +276,7 @@ func TestUpsertPlanFromWebhook_StoresANewPlanWithItsPricing(t *testing.T) {
 		BillingPeriod: "MONTH", Prices: []model.SubscriptionPlanPrice{
 			{MeterHandle: "calls", PricingModel: model.PricingModelPerUnit, UnitAmount: &unit, Filters: []model.PriceFilter{}}}}
 
-	plan, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", intPtr(5000), "MINUTE", pricing, planEventT0)
+	plan, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, win(5000, "MINUTE"), pricing, planEventT0)
 	if err != nil {
 		t.Fatalf("UpsertPlanFromWebhook: %v", err)
 	}
@@ -270,7 +296,7 @@ func TestUpsertPlanFromWebhook_NeedsEveryMeter(t *testing.T) {
 		BillingPeriod: "MONTH", Prices: []model.SubscriptionPlanPrice{
 			{MeterHandle: "tokens", PricingModel: model.PricingModelPerUnit, UnitAmount: &unit, Filters: []model.PriceFilter{}}}}
 
-	_, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", nil, "", pricing, planEventT0)
+	_, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, nil, pricing, planEventT0)
 	if !apperror.ValidationFailed.Is(err) || repo.creates != 0 {
 		t.Fatalf("err = %v, creates = %d; want a refusal and nothing stored", err, repo.creates)
 	}
@@ -280,19 +306,19 @@ func TestUpsertPlanFromWebhook_NeedsEveryMeter(t *testing.T) {
 // accepted, and other pricing or none is refused, storing nothing.
 func TestUpsertPlanFromWebhook_APaidPlanHereKeepsItsPricing(t *testing.T) {
 	svc, repo, pricing := newPricedPlanService()
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", nil, "", flatPricing("10.00"), planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, nil, flatPricing("10.00"), planEventT0); err != nil {
 		t.Fatalf("first delivery: %v", err)
 	}
 	pricing.pricing["uuid-gold"] = repo.pricing
 
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold Plus", nil, "", flatPricing("10"), planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold Plus", "", nil, nil, flatPricing("10"), planEventT0); err != nil {
 		t.Fatalf("the same pricing again must be accepted: %v", err)
 	}
 	if repo.plans["gold"].Name != "Gold Plus" {
 		t.Errorf("name = %q, want the update applied", repo.plans["gold"].Name)
 	}
 	for name, other := range map[string]*model.SubscriptionPlanPricing{"other pricing": flatPricing("20.00"), "no pricing": nil} {
-		if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", nil, "", other, planEventT0); !apperror.SubscriptionPlanPricingLocked.Is(err) {
+		if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, nil, other, planEventT0); !apperror.SubscriptionPlanPricingLocked.Is(err) {
 			t.Errorf("%s: got %v, want the pricing-locked conflict", name, err)
 		}
 	}
@@ -306,7 +332,7 @@ func TestUpsertPlanFromWebhook_APaidPlanHereKeepsItsPricing(t *testing.T) {
 // handle: it is refused and stays free.
 func TestUpsertPlanFromWebhook_AnUpdateRecoversAMissedCreatedEvent(t *testing.T) {
 	svc, repo, pricing := newPricedPlanService()
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", nil, "", flatPricing("10.00"), planEventT0); err != nil {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, nil, flatPricing("10.00"), planEventT0); err != nil {
 		t.Fatalf("an update as the first event: %v", err)
 	}
 	if repo.creates != 1 || repo.pricing == nil || *repo.pricing.FlatAmount != "10.00" {
@@ -314,10 +340,106 @@ func TestUpsertPlanFromWebhook_AnUpdateRecoversAMissedCreatedEvent(t *testing.T)
 	}
 
 	repo.plans["silver"] = &model.SubscriptionPlan{UUID: "uuid-silver", Handle: "silver", Name: "Silver"}
-	if _, err := svc.UpsertPlanFromWebhook("org-1", "silver", "Silver", nil, "", flatPricing("5.00"), planEventT0); !apperror.SubscriptionPlanPricingLocked.Is(err) {
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "silver", "Silver", "", nil, nil, flatPricing("5.00"), planEventT0); !apperror.SubscriptionPlanPricingLocked.Is(err) {
 		t.Errorf("pricing for a free plan here: got %v, want the pricing-locked conflict", err)
 	}
 	if pricing.pricing["uuid-silver"] != nil || repo.plans["silver"].Name != "Silver" {
 		t.Errorf("the free plan must stay as it was")
+	}
+}
+
+// A portal that sends conditions creates the plan with them and its description.
+func TestUpsertPlanFromWebhook_CreatesWithConditionsAndDescription(t *testing.T) {
+	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{}}
+	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
+	conditions := []model.SubscriptionPlanCondition{
+		{Type: model.ConditionTypeToolCallCount, Params: []byte(`{"limits":[{"count":10,"timeUnit":"MINUTE"}]}`)},
+		{ID: "ip-ranges", Type: model.ConditionTypeCustom, Params: []byte(`{"cidr":"10.0.0.0/8"}`)},
+	}
+
+	plan, err := svc.UpsertPlanFromWebhook("org-1", "agents", "Agents", " For agents ", &conditions, win(99, "DAY"), nil, planEventT0)
+	if err != nil {
+		t.Fatalf("UpsertPlanFromWebhook: %v", err)
+	}
+	if plan.Description != "For agents" || len(plan.Conditions) != 2 || plan.Conditions[0].ID != "tool-calls" {
+		t.Fatalf("plan = %+v, want the sent conditions (not the limits) and the trimmed description", plan)
+	}
+	if plan.ThrottleLimitCount != nil {
+		t.Errorf("legacy limit = %d, want none: the plan has no request-count condition", *plan.ThrottleLimitCount)
+	}
+}
+
+// Invalid conditions from the portal are refused, and nothing is stored.
+func TestUpsertPlanFromWebhook_RefusesInvalidConditions(t *testing.T) {
+	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{}}
+	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
+	conditions := []model.SubscriptionPlanCondition{{Type: "bandwidth", Params: []byte(`{}`)}}
+
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", &conditions, nil, nil, planEventT0); !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("err = %v, want a validation error", err)
+	}
+	if repo.creates != 0 {
+		t.Fatalf("creates = %d, want none", repo.creates)
+	}
+
+	repo.plans["gold"] = &model.SubscriptionPlan{UUID: "u1", Handle: "gold", Name: "Gold"}
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", &conditions, nil, nil, planEventT0); !apperror.ValidationFailed.Is(err) {
+		t.Fatalf("existing plan: err = %v, want a validation error", err)
+	}
+	if repo.updates != 0 {
+		t.Fatalf("updates = %d, want none", repo.updates)
+	}
+}
+
+// A changed description alone is applied; the same description and conditions again write nothing.
+func TestUpsertPlanFromWebhook_DescriptionChange(t *testing.T) {
+	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{
+		"gold": {UUID: "u1", Handle: "gold", Name: "Gold", Description: "Old", Conditions: []model.SubscriptionPlanCondition{*requestLimit(5000, "MINUTE")}},
+	}}
+	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
+
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "New", nil, win(5000, "MINUTE"), nil, planEventT0); err != nil {
+		t.Fatalf("UpsertPlanFromWebhook: %v", err)
+	}
+	if repo.updates != 1 || repo.plans["gold"].Description != "New" {
+		t.Fatalf("updates = %d, plan = %+v", repo.updates, repo.plans["gold"])
+	}
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "New", nil, win(5000, "MINUTE"), nil, planEventT0); err != nil {
+		t.Fatalf("echo: %v", err)
+	}
+	if repo.updates != 1 {
+		t.Fatalf("an echo wrote again: updates = %d", repo.updates)
+	}
+}
+
+// An older portal's limits change only the request-count condition: the plan's other conditions,
+// which that portal knows nothing of, stay.
+func TestUpsertPlanFromWebhook_LimitsKeepOtherConditions(t *testing.T) {
+	custom := model.SubscriptionPlanCondition{ID: "ip-ranges", Type: model.ConditionTypeCustom, Params: []byte(`{"cidr":"10.0.0.0/8"}`)}
+	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{
+		"gold": {UUID: "u1", Handle: "gold", Name: "Gold", Conditions: []model.SubscriptionPlanCondition{*requestLimit(5000, "MINUTE"), custom}},
+	}}
+	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
+
+	if _, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", "", nil, win(10, "HOUR"), nil, planEventT0); err != nil {
+		t.Fatalf("UpsertPlanFromWebhook: %v", err)
+	}
+	got := repo.plans["gold"]
+	if len(got.Conditions) != 2 || got.Conditions[1].ID != "ip-ranges" || got.ThrottleLimitCount == nil || *got.ThrottleLimitCount != 10 {
+		t.Fatalf("plan = %+v, want the new request limit and ip-ranges kept", got)
+	}
+}
+
+// A portal description longer than the column is cut, so the plan still syncs.
+func TestUpsertPlanFromWebhook_TruncatesAnOverlongDescription(t *testing.T) {
+	repo := &webhookPlanRepo{plans: map[string]*model.SubscriptionPlan{}}
+	svc := NewSubscriptionPlanService(repo, nil, nil, nil, nil, nil)
+
+	plan, err := svc.UpsertPlanFromWebhook("org-1", "gold", "Gold", strings.Repeat("é", 2000), nil, nil, nil, planEventT0)
+	if err != nil {
+		t.Fatalf("UpsertPlanFromWebhook: %v", err)
+	}
+	if n := utf8.RuneCountInString(plan.Description); n != model.MaxSubscriptionPlanDescriptionChars {
+		t.Fatalf("description has %d characters, want %d", n, model.MaxSubscriptionPlanDescriptionChars)
 	}
 }

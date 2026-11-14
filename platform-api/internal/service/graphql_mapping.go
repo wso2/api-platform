@@ -53,10 +53,7 @@ func mapGraphQLAPIModelToAPI(m *model.GraphQLAPI) *api.GraphQLAPI {
 		schemaSource = &ss
 	}
 
-	var subscriptionPlans *[]string
-	if len(m.Configuration.SubscriptionPlans) > 0 {
-		subscriptionPlans = &m.Configuration.SubscriptionPlans
-	}
+	subscriptionPlans := utils.AttachedPlansToRefs(m.Configuration.SubscriptionPlans)
 
 	upstream := mapUpstreamConfigToDTO(&m.Configuration.Upstream)
 
@@ -108,10 +105,7 @@ func mapGraphQLAPIModelToDetail(m *model.GraphQLAPI) *api.GraphQLAPIDetail {
 		schemaSource = &ss
 	}
 
-	var subscriptionPlans *[]string
-	if len(m.Configuration.SubscriptionPlans) > 0 {
-		subscriptionPlans = &m.Configuration.SubscriptionPlans
-	}
+	subscriptionPlans := utils.AttachedPlansToRefs(m.Configuration.SubscriptionPlans)
 
 	upstream := mapUpstreamConfigToDTO(&m.Configuration.Upstream)
 

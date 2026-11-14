@@ -1,0 +1,74 @@
+# Scenario list: Subscription Plans in the Platform API (SUBPLAN).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: SUBPLAN
+title: Subscription Plans in the Platform API
+scenarios:
+  - id: SUBPLAN-001
+    title: "Create a plan with request-count, token-count, tool-call-count and custom conditions; each is stored with its fixed id and defaults, an update without conditions keeps them, conditions sent replace them and [] makes the plan unlimited."
+    priority: P0
+    ui:
+      status: planned
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/resources/subscription_plan_conditions.feature
+          scenario: "Every kind of condition is stored with its defaults, replaced, and removed to make the plan unlimited"
+  - id: SUBPLAN-002
+    title: "Limits from clients that predate conditions set only the request-count condition and keep the others; conditions with limits, or a limit other than requests, are refused."
+    priority: P1
+    ui:
+      status: exempt
+      reason: Deprecated API field for older clients; the console sends conditions.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/resources/subscription_plan_conditions.feature
+          scenario: "Request limits from clients that predate conditions set only the request-count condition"
+  - id: SUBPLAN-003
+    title: "A plan with an invalid condition (removed event-count type, bad windows, ids or params) is refused with 400 and the reason, and nothing is stored."
+    priority: P1
+    ui:
+      status: exempt
+      reason: Request validation of the plans API; the plan editor checks its fields before sending.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/resources/subscription_plan_conditions.feature
+          scenario: "A plan with an invalid condition is refused with the reason and nothing is stored"
+  - id: SUBPLAN-004
+    title: "Plans attached to a REST API by handle or reference are returned with their names and UNCHANGED or UPDATED status; an attached plan is in use and keeps its name and conditions and cannot be deleted until detached."
+    priority: P0
+    ui:
+      status: planned
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/resources/api_attached_plans.feature
+          scenario: "Plans attached by handle or by reference are returned with their names and status, and count as in use"
+  - id: SUBPLAN-005
+    title: "Attaching an inactive, unknown or blank plan to a REST API is refused and the API keeps its plans."
+    priority: P1
+    ui:
+      status: planned
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/resources/api_attached_plans.feature
+          scenario: "Attaching a plan that is inactive, unknown or blank is refused and the API keeps its plans"
+  - id: SUBPLAN-006
+    title: "A plan whose request limit is a request-count condition (2 HOUR and 1 MINUTE windows) is deployed with a secured REST API; a subscription through the control plane is throttled at the 4th request in a minute."
+    priority: P0
+    ui:
+      status: planned
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/subscriptions/plan_conditions_enforcement.feature
+          scenario: "A plan's request-count condition throttles a subscription on the gateway"

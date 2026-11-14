@@ -307,7 +307,9 @@ const (
 	// CodeSubscriptionPlanPricingLocked: a request that would change a plan's pricing, which is set
 	// once.
 	CodeSubscriptionPlanPricingLocked = "SUBSCRIPTION_PLAN_PRICING_LOCKED"
-	// CodeSubscriptionPlanInUse: a plan to delete, or whose name or limit would change, is still
+	// CodeSubscriptionPlanInUse: a plan to delete, or whose name or conditions would change, is still
 	// offered or used here.
 	CodeSubscriptionPlanInUse = "SUBSCRIPTION_PLAN_IN_USE"
+	// CodeSubscriptionPlanConditionsUnsupported: the database isn't upgraded for plan conditions yet.
+	CodeSubscriptionPlanConditionsUnsupported = "SUBSCRIPTION_PLAN_CONDITIONS_UNSUPPORTED"
 )

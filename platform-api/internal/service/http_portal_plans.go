@@ -56,16 +56,21 @@ type portalPlanList struct {
 type portalListedPlan struct {
 	ID          string              `json:"id"`
 	DisplayName string              `json:"displayName"`
+	Description string              `json:"description"`
 	Limits      []portalPlanLimit   `json:"limits"`
 	Pricing     *planPricingRequest `json:"pricing"`
+	// Conditions is nil when the portal predates conditions and doesn't list them.
+	Conditions *[]model.SubscriptionPlanCondition `json:"conditions"`
 }
 
 // portalPlan is one entry of the portal's bulk plan create.
 type portalPlan struct {
-	ID          string            `json:"id"`
-	RefID       string            `json:"refId"`
-	DisplayName string            `json:"displayName"`
-	Limits      []portalPlanLimit `json:"limits,omitempty"`
+	ID          string                            `json:"id"`
+	RefID       string                            `json:"refId"`
+	DisplayName string                            `json:"displayName"`
+	Description string                            `json:"description"`
+	Limits      []portalPlanLimit                 `json:"limits,omitempty"`
+	Conditions  []model.SubscriptionPlanCondition `json:"conditions"`
 	// Pricing is set for a paid plan: the portal saves the plan and its pricing together, or
 	// neither.
 	Pricing *planPricingRequest `json:"pricing,omitempty"`
@@ -75,9 +80,11 @@ type portalPlan struct {
 // the portal refuses for a plan that exists, and always carries limits, since the portal keeps a
 // plan's limits when the field is absent.
 type portalPlanUpdate struct {
-	ID          string            `json:"id"`
-	DisplayName string            `json:"displayName"`
-	Limits      []portalPlanLimit `json:"limits"`
+	ID          string                            `json:"id"`
+	DisplayName string                            `json:"displayName"`
+	Description string                            `json:"description"`
+	Limits      []portalPlanLimit                 `json:"limits"`
+	Conditions  []model.SubscriptionPlanCondition `json:"conditions"`
 }
 
 type portalPlanLimit struct {
@@ -92,7 +99,7 @@ type portalPlanLimit struct {
 //  2. checks the portal's copies of the meters the missing plans charge for;
 //  3. creates the missing meters, one by one;
 //  4. creates the missing plans in one bulk request, each paid one with its pricing;
-//  5. updates the copies whose name or limit differs, in another bulk request.
+//  5. updates the copies whose name, description, limits or conditions differ, in another bulk request.
 //
 // When a write fails, what was created before it is removed again (undoAfter).
 func (p *HTTPPortalPublisher) SyncPlans(ctx context.Context, portal *model.APIPortal, sync PlanSync) (PlanSyncResult, error) {
@@ -112,8 +119,7 @@ func (p *HTTPPortalPublisher) SyncPlans(ctx context.Context, portal *model.APIPo
 			missing = append(missing, plan)
 		case !samePricing(sync.Pricing[plan.UUID], portalCopy.Pricing):
 			return created, &PortalPlanPricingConflictError{Handle: plan.Handle}
-		case strings.TrimSpace(portalCopy.DisplayName) != strings.TrimSpace(plan.Name) ||
-			!sameLimits(portalLimits(plan), portalCopy.Limits):
+		case portalCopyDiffers(plan, portalCopy):
 			changed = append(changed, plan)
 		}
 	}
@@ -249,14 +255,15 @@ func (p *HTTPPortalPublisher) createPlans(ctx context.Context, portal *model.API
 	}
 }
 
-// updatePlans sends one bulk update of the plans' names and limits, which the portal applies all
-// or nothing. If a copy was deleted in the portal since the listing, the portal's update creates it
-// again (201), without pricing. That is fine for a free plan, but a paid plan would become a free
-// copy, so it is reported as a pricing conflict.
+// updatePlans sends one bulk update of the plans' names, descriptions, limits and conditions, which
+// the portal applies all or nothing. If a copy was deleted in the portal since the listing, the
+// update creates it again (201) without pricing: fine for a free plan, but a paid plan would become
+// a free copy, so that is reported as a pricing conflict.
 func (p *HTTPPortalPublisher) updatePlans(ctx context.Context, portal *model.APIPortal, plans []*model.SubscriptionPlan, pricing map[string]*model.SubscriptionPlanPricing) error {
 	payload := make([]portalPlanUpdate, 0, len(plans))
 	for _, plan := range plans {
-		payload = append(payload, portalPlanUpdate{ID: plan.Handle, DisplayName: plan.Name, Limits: portalLimits(plan)})
+		payload = append(payload, portalPlanUpdate{ID: plan.Handle, DisplayName: plan.Name, Description: plan.Description,
+			Limits: portalLimits(plan), Conditions: portalConditionList(plan)})
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -306,7 +313,8 @@ func (p *HTTPPortalPublisher) updatePlans(ctx context.Context, portal *model.API
 // subscription and subscription_plan events it sends back, and those are
 // resolved here by handle. pricing is nil for a free plan.
 func toPortalPlan(plan *model.SubscriptionPlan, pricing *model.SubscriptionPlanPricing) portalPlan {
-	out := portalPlan{ID: plan.Handle, RefID: plan.Handle, DisplayName: plan.Name}
+	out := portalPlan{ID: plan.Handle, RefID: plan.Handle, DisplayName: plan.Name, Description: plan.Description,
+		Conditions: portalConditionList(plan)}
 	if pricing != nil {
 		out.Pricing = portalPricing(pricing)
 	}
@@ -316,17 +324,57 @@ func toPortalPlan(plan *model.SubscriptionPlan, pricing *model.SubscriptionPlanP
 	return out
 }
 
-// portalLimits is a plan's request limit in the portal's shape, empty when the plan has none.
+// portalLimits sends every request-count window to the portal, so its copy stays complete.
 func portalLimits(plan *model.SubscriptionPlan) []portalPlanLimit {
-	if plan.ThrottleLimitCount == nil {
-		return []portalPlanLimit{}
+	limits := []portalPlanLimit{}
+	c := model.FindCondition(plan.Conditions, model.ConditionTypeRequestCount)
+	if c == nil {
+		return limits
 	}
-	return []portalPlanLimit{{
-		LimitType:  constants.LimitTypeRequestCount,
-		LimitCount: *plan.ThrottleLimitCount,
-		TimeUnit:   plan.ThrottleLimitUnit,
-		TimeAmount: 1,
-	}}
+	var params model.ConditionLimits
+	if err := json.Unmarshal(c.Params, &params); err != nil {
+		return limits
+	}
+	for _, w := range params.Limits {
+		amount := w.TimeAmount
+		if amount < 1 {
+			amount = 1
+		}
+		limits = append(limits, portalPlanLimit{
+			LimitType:  constants.LimitTypeRequestCount,
+			LimitCount: w.Count,
+			TimeUnit:   w.TimeUnit,
+			TimeAmount: amount,
+		})
+	}
+	return limits
+}
+
+// portalCopyDiffers reports whether the portal's copy needs an update. Conditions are compared only
+// when the portal lists them; older portals ignore them.
+func portalCopyDiffers(plan *model.SubscriptionPlan, portalCopy *portalListedPlan) bool {
+	if strings.TrimSpace(portalCopy.DisplayName) != strings.TrimSpace(plan.Name) ||
+		strings.TrimSpace(portalCopy.Description) != strings.TrimSpace(plan.Description) ||
+		!sameLimits(portalLimits(plan), portalCopy.Limits) {
+		return true
+	}
+	if portalCopy.Conditions == nil {
+		return false
+	}
+	want, err := normalizeConditions(plan.Conditions)
+	if err != nil {
+		return true
+	}
+	got, err := normalizeConditions(*portalCopy.Conditions)
+	return err != nil || !sameConditions(want, got)
+}
+
+// portalConditionList is the plan's conditions, never nil, so the portal always gets a list.
+func portalConditionList(plan *model.SubscriptionPlan) []model.SubscriptionPlanCondition {
+	if plan.Conditions == nil {
+		return []model.SubscriptionPlanCondition{}
+	}
+	return plan.Conditions
 }
 
 // sameLimits reports whether a portal copy's limits are want, ignoring order and the case of

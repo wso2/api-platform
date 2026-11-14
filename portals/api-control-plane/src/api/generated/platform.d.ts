@@ -3351,7 +3351,7 @@ export interface paths {
         get: operations["GetSubscriptionPlan"];
         /**
          * Update subscription plan
-         * @description Updates the plan's name, limits, status and expiry. The name and the request limit can change only while nothing uses the plan: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, such as "The plan Gold is in use. To change its name or limit, create a new plan." The plan's `usage` (GET /subscription-plans/{subscriptionPlanId}) counts what uses it. Status and expiry can always change. Leave `pricing` out: it is the only part of a plan that never changes once the plan is created, and a body that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED.
+         * @description Updates the plan's name, description, conditions, status and expiry. The name and the conditions can change only while nothing uses the plan: otherwise `409` SUBSCRIPTION_PLAN_IN_USE, such as "The plan Gold is in use. To change its name or conditions, create a new plan." The plan's `usage` (GET /subscription-plans/{subscriptionPlanId}) counts what uses it. Description, status and expiry can always change. Leave `pricing` out: it is the only part of a plan that never changes once the plan is created, and a body that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED.
          */
         put: operations["UpdateSubscriptionPlan"];
         post?: never;
@@ -4360,14 +4360,19 @@ export interface components {
             /** @description List of channels exposed by this API */
             channels?: components["schemas"]["Channel"][];
             /**
-             * @description List of subscription plan names enabled for this API (e.g. Gold, Silver).
-             *     When set, only these plans can be used when subscribing to the API.
+             * @description The subscription plans attached to this API, with the name each had when attached and how it
+             *     compares now. When set, only these plans can be used when subscribing to the API.
+             *     On create and update, send each plan as `{"id": "<plan handle>"}`; a plain handle string is
+             *     also accepted. `displayName` and `sourceStatus` are read-only.
              * @example [
-             *       "Gold",
-             *       "Silver"
+             *       {
+             *         "id": "gold",
+             *         "displayName": "Gold",
+             *         "sourceStatus": "UNCHANGED"
+             *       }
              *     ]
              */
-            subscriptionPlans?: string[];
+            subscriptionPlans?: components["schemas"]["SubscriptionPlanRef"][];
         };
         /**
          * Security Configuration
@@ -5381,13 +5386,17 @@ export interface components {
              */
             policies?: components["schemas"]["Policy"][];
             /**
-             * @description List of subscription plan names enabled for this API.
+             * @description The subscription plans attached to this API (see RESTAPI.subscriptionPlans). On create and
+             *     update, send each plan as `{"id": "<plan handle>"}`; a plain handle string is also accepted.
              * @example [
-             *       "Gold",
-             *       "Silver"
+             *       {
+             *         "id": "gold",
+             *         "displayName": "Gold",
+             *         "sourceStatus": "UNCHANGED"
+             *       }
              *     ]
              */
-            subscriptionPlans?: string[];
+            subscriptionPlans?: components["schemas"]["SubscriptionPlanRef"][];
         };
         /** GraphQL API detail (without sdl) */
         GraphQLAPIDetail: {
@@ -5482,13 +5491,17 @@ export interface components {
              */
             policies?: components["schemas"]["Policy"][];
             /**
-             * @description List of subscription plan names enabled for this API.
+             * @description The subscription plans attached to this API (see RESTAPI.subscriptionPlans). On create and
+             *     update, send each plan as `{"id": "<plan handle>"}`; a plain handle string is also accepted.
              * @example [
-             *       "Gold",
-             *       "Silver"
+             *       {
+             *         "id": "gold",
+             *         "displayName": "Gold",
+             *         "sourceStatus": "UNCHANGED"
+             *       }
              *     ]
              */
-            subscriptionPlans?: string[];
+            subscriptionPlans?: components["schemas"]["SubscriptionPlanRef"][];
         };
         /** GraphQL API SDL */
         GraphQLAPISDLResponse: {
@@ -5813,6 +5826,73 @@ export interface components {
              */
             stopOnQuotaReach: boolean;
         };
+        /**
+         * @description One condition of a subscription plan. A built-in condition (request-count, tool-call-count, token-count) has the id its type fixes (requests, tool-calls, tokens), so the policy that enforces it finds it in every plan; params holds its limits. A custom condition has an id the admin gives it and key-value pairs as params, which a policy the customer writes reads.
+         * @example {
+         *       "id": "requests",
+         *       "type": "request-count",
+         *       "params": {
+         *         "limits": [
+         *           {
+         *             "count": 100,
+         *             "timeAmount": 1,
+         *             "timeUnit": "MINUTE"
+         *           },
+         *           {
+         *             "count": 10000,
+         *             "timeAmount": 1,
+         *             "timeUnit": "DAY"
+         *           }
+         *         ],
+         *         "onExceed": "reject"
+         *       }
+         *     }
+         */
+        SubscriptionPlanCondition: {
+            /**
+             * @description Required for a custom condition, unique in the plan and not one of the built-in ids. For a built-in condition it may be omitted; when sent, it must be the id the type fixes.
+             * @example requests
+             */
+            id?: string;
+            /** @enum {string} */
+            type: "request-count" | "tool-call-count" | "token-count" | "custom";
+            /** @description For a built-in type, a SubscriptionPlanConditionLimits object. For a custom condition, any JSON object of key-value pairs, at most 4096 bytes. */
+            params: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description The params of a built-in condition: windows on the same counter, all of which must have room. No two windows may be the same length (60 MINUTE and 1 HOUR are the same window). A field not listed here is refused. */
+        SubscriptionPlanConditionLimits: {
+            limits: components["schemas"]["SubscriptionPlanConditionWindow"][];
+            /**
+             * @description What happens once a window is used up: reject the request (429), or let it through and mark it as overage.
+             * @default reject
+             * @enum {string}
+             */
+            onExceed: "reject" | "allow";
+            /**
+             * @description token-count only (default total). Refused for the other types.
+             * @enum {string}
+             */
+            tokenType?: "total" | "prompt" | "completion";
+        };
+        SubscriptionPlanConditionWindow: {
+            /**
+             * @description The requests, tool calls or tokens allowed in the window.
+             * @example 100
+             */
+            count: number;
+            /**
+             * @description How many timeUnit the window lasts (2 with HOUR is per 2 hours).
+             * @default 1
+             */
+            timeAmount: number;
+            /**
+             * @description A MONTH is a calendar month.
+             * @enum {string}
+             */
+            timeUnit: "MINUTE" | "HOUR" | "DAY" | "MONTH";
+        };
         CreateSubscriptionPlanRequest: {
             /**
              * @description Handle (URL-friendly slug) for the plan. Immutable after creation. At most 40 characters; a longer one is refused with 400 "id must be at most 40 characters".
@@ -5824,7 +5904,17 @@ export interface components {
              * @example Gold
              */
             displayName: string;
-            /** @description Throttling limits for the plan (e.g. requests per hour, requests per month). The table backing this API already supports multiple limits per plan, but the platform-api currently only persists and enforces the first entry in this array; any additional entries are accepted but ignored. */
+            /**
+             * @description What the plan offers, in words for developers and subscribers. Optional.
+             * @example 100 requests per minute and 10,000 tool calls per day
+             */
+            description?: string;
+            /** @description What the plan allows, in order. A plan has at most one condition of each built-in type (request-count, tool-call-count, token-count) and any number of custom conditions. The policies attached to an API enforce them; a plan with no conditions is unlimited. Send either conditions or limits, not both. */
+            conditions?: components["schemas"]["SubscriptionPlanCondition"][];
+            /**
+             * @deprecated
+             * @description Request limits, for clients that predate conditions; use conditions instead. Each limit is a window of the plan's request-count condition (only REQUEST_COUNT limits are accepted), and whether requests over the limit are blocked is taken from the first one.
+             */
             limits?: components["schemas"]["SubscriptionPlanLimit"][];
             /**
              * Format: date-time
@@ -5844,7 +5934,17 @@ export interface components {
             id?: string;
             /** @description Human-readable name for the subscription plan */
             displayName: string;
-            /** @description Throttling limits configured for the plan. Only one entry is currently supported and returned, even though the underlying storage allows multiple. */
+            /**
+             * @description What the plan offers, in words for developers and subscribers. Optional.
+             * @example 100 requests per minute and 10,000 tool calls per day
+             */
+            description?: string;
+            /** @description What the plan allows, in order. A plan has at most one condition of each built-in type (request-count, tool-call-count, token-count) and any number of custom conditions. The policies attached to an API enforce them; a plan with no conditions is unlimited. On update, an omitted conditions leaves them unchanged and [] removes them all. Send either conditions or limits, not both. A plan saved before conditions is returned with its request limit as a request-count condition. */
+            conditions?: components["schemas"]["SubscriptionPlanCondition"][];
+            /**
+             * @deprecated
+             * @description The windows of the plan's request-count condition, for clients that predate conditions; empty when the plan has none. On update, limits replace only the request-count condition and keep the plan's other conditions; [] removes it.
+             */
             limits?: components["schemas"]["SubscriptionPlanLimit"][];
             /**
              * Format: date-time
@@ -5874,7 +5974,7 @@ export interface components {
             updatedAt?: string;
             /** @description The plan's pricing, present only on a paid plan. It is set when the plan is created (POST /subscription-plans) and is the only part of a plan that never changes, so a free plan stays free and a paid one paid. An update changes the plan's other fields and leaves `pricing` out: a body that carries it gets `409` SUBSCRIPTION_PLAN_PRICING_LOCKED. */
             readonly pricing?: components["schemas"]["SubscriptionPlanPricing"];
-            /** @description What offers or uses the plan. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and its name and limit cannot be updated. */
+            /** @description What offers or uses the plan. Only present in the detail response (GET /subscription-plans/{planId}), omitted from list responses. A plan in use cannot be deleted, and its name and conditions cannot be updated. */
             readonly usage?: components["schemas"]["SubscriptionPlanUsage"];
         };
         /** @description Counts of what offers or uses a plan. Only counts are given: a plan may be offered by more APIs than a response or message can list. */
@@ -5883,6 +5983,8 @@ export interface components {
             inUse: boolean;
             /** @description How many REST APIs list the plan in their configuration. */
             restApis: number;
+            /** @description How many MCP proxies list the plan in their configuration. */
+            mcpProxies?: number;
             /** @description How many APIs offer the plan in a publication draft (each API once). */
             drafts: number;
             /** @description How many APIs offer the plan in a publication (each API once). */
@@ -7608,6 +7710,16 @@ export interface components {
             /** @description List of policies to be applied */
             policies?: components["schemas"]["Policy"][];
             /**
+             * @description IDs (handles) of the subscription plans enabled for this MCP proxy (e.g. gold, silver).
+             *     When set, only these plans can be used when subscribing to the MCP proxy.
+             *     Each plan must exist in the organization and be ACTIVE.
+             * @example [
+             *       "gold",
+             *       "silver"
+             *     ]
+             */
+            subscriptionPlans?: string[];
+            /**
              * @description Kind of the API based on its communication protocol or architectural style
              * @default Mcp
              * @example Mcp
@@ -8143,6 +8255,31 @@ export interface components {
              * @enum {string}
              */
             sourceStatus: "UNCHANGED" | "UPDATED" | "DELETED";
+        };
+        /**
+         * @description A subscription plan attached to an API, as a publication selection reports it: the plan's
+         *     handle, the name stored when it was attached, and how the plan compares with that.
+         */
+        SubscriptionPlanRef: {
+            /**
+             * @description The plan's handle (GET /subscription-plans), not the database UUID.
+             * @example gold
+             */
+            id: string;
+            /**
+             * @description The plan's current name, or the name stored when it was attached if the plan no longer
+             *     exists.
+             * @example Gold
+             */
+            readonly displayName?: string;
+            /**
+             * @description How the plan compares with the copy stored when it was attached (the API was last saved):
+             *     - UNCHANGED: It has not changed since.
+             *     - UPDATED: It was changed since. Saving the API again makes it UNCHANGED.
+             *     - DELETED: It no longer exists.
+             * @enum {string}
+             */
+            readonly sourceStatus?: "UNCHANGED" | "UPDATED" | "DELETED";
         };
         PublicationDraftDetailsInput: components["schemas"]["PublicationDetailsCore"] & {
             subscriptionPlanIds?: components["schemas"]["SubscriptionPlanIdList"];
@@ -8942,7 +9079,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid for the publication's current status, PUBLICATION_DRAFT_CHANGED when the draft was saved while a publish of it was in flight (the API Portal may hold the earlier copy; review the draft and publish again), PUBLICATION_PLAN_PRICING_CONFLICT when the API Portal already has a plan with the handle of an offered plan but different pricing (a portal cannot change a plan's pricing; offer a plan with another handle), PUBLICATION_METER_CONFLICT when it already has a meter with the same id as one an offered plan charges for, but with other settings (price a new plan with a meter of another id), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the change: the handle or display name and version is taken, the listing still has subscriptions or active API keys, a plan the publish removes from the API still has subscriptions to it there, or a subscription plan could not be created or updated. A portal conflict does not clear on retry (rename, remove the consumers, or deprecate instead), except a plan conflict from a concurrent publish, which usually does. No local state was changed by any of these. Before the API is pushed, the API Portal's copy of each offered plan is created, after the meters its prices charge for, or, when its name or limit differs, updated. When the push then fails, the plans and meters this publish created are removed again; the name and limit updates stay. */
+        /** @description Conflict. code identifies which: PUBLICATION_STATE_CONFLICT when the action is not valid for the publication's current status, PUBLICATION_DRAFT_CHANGED when the draft was saved while a publish of it was in flight (the API Portal may hold the earlier copy; review the draft and publish again), PUBLICATION_PLAN_PRICING_CONFLICT when the API Portal already has a plan with the handle of an offered plan but different pricing (a portal cannot change a plan's pricing; offer a plan with another handle), PUBLICATION_METER_CONFLICT when it already has a meter with the same id as one an offered plan charges for, but with other settings (price a new plan with a meter of another id), or PUBLICATION_PORTAL_CONFLICT when the API Portal refused the change: the handle or display name and version is taken, the listing still has subscriptions or active API keys, a plan the publish removes from the API still has subscriptions to it there, or a subscription plan could not be created or updated. A portal conflict does not clear on retry (rename, remove the consumers, or deprecate instead), except a plan conflict from a concurrent publish, which usually does. No local state was changed by any of these. Before the API is pushed, the API Portal's copy of each offered plan is created, after the meters its prices charge for, or, when its name, description, limits or conditions differ, updated. When the push then fails, the plans and meters this publish created are removed again; the updates stay. */
         PublicationConflict: {
             headers: {
                 [name: string]: unknown;

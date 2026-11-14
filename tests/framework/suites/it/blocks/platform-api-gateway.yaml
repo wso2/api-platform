@@ -78,6 +78,8 @@ blocks:
       - name: platform-api-subscription-management
         features:
           - features/management-portal/resources/subscription_management.feature
+          - features/management-portal/resources/subscription_plan_conditions.feature
+          - features/management-portal/resources/api_attached_plans.feature
       - name: platform-api-paid-subscription-access
         features:
           - features/management-portal/monetization/paid_subscription_access.feature
@@ -137,6 +139,7 @@ blocks:
       - name: platform-api-secured-invocation
         features:
           - features/management-portal/subscriptions/secured_api_invocation.feature
+          - features/management-portal/subscriptions/plan_conditions_enforcement.feature
         tags: "~@known-issue"
       - name: platform-api-mcp-server
         features:

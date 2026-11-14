@@ -634,8 +634,8 @@ func (s *PublicationService) getPublicationContent(apiType, apiId, apiPortalId, 
 //
 // When something fails:
 //   - The listing push fails: the plans and meters this publish created in the portal are removed
-//     again (undoPlanSync). Name and limit updates of plans the portal already had stay, since they
-//     match the plans here.
+//     again (undoPlanSync). Updates of plans the portal already had stay, since they match the
+//     plans here.
 //   - The listing push succeeds but the content push or the local write then fails: nothing is
 //     undone, so the portal is ahead of local state until the next publish.
 func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPortalId, orgUUID, actor string) (*model.Publication, bool, error) {
@@ -847,7 +847,7 @@ func (s *PublicationService) activePlansInOrder(handles []string, orgUUID string
 // (PortalPublisher.SyncPlans):
 //   - plans the portal lacks are created, each paid one with its pricing, after the meters its
 //     prices charge for;
-//   - copies whose name or limit differs are updated;
+//   - copies whose name, description, limits or conditions differ are updated;
 //   - a plan copy priced differently, or a meter with other settings, refuses the publish.
 //
 // Errors come back already turned into the caller's API errors; the result names what was

@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
@@ -45,6 +46,7 @@ type GraphQLAPIService struct {
 	gatewayEventsService *GatewayEventsService
 	identity             *IdentityService
 	secretService        *SecretService
+	subscriptionPlanRepo repository.SubscriptionPlanRepository
 	slogger              *slog.Logger
 	maxSDLFetchBytes     int64
 }
@@ -72,6 +74,12 @@ func NewGraphQLAPIService(
 		identity:             identity,
 		slogger:              slogger,
 	}
+}
+
+// SetSubscriptionPlanRepo injects the plan catalog, used to store each attached plan with its name
+// and to report on a read whether it changed since (see stampAttachedPlans).
+func (s *GraphQLAPIService) SetSubscriptionPlanRepo(repo repository.SubscriptionPlanRepository) {
+	s.subscriptionPlanRepo = repo
 }
 
 // SetSecretService injects the SecretService used to validate
@@ -102,6 +110,9 @@ func (s *GraphQLAPIService) toGraphQLAPI(m *model.GraphQLAPI) (*api.GraphQLAPI, 
 	if resp == nil {
 		return nil, nil
 	}
+	if err := annotatePlanRefs(s.subscriptionPlanRepo, resp.SubscriptionPlans, m.Configuration.SubscriptionPlans, m.OrganizationID); err != nil {
+		return nil, err
+	}
 	if s.projectRepo != nil {
 		project, err := s.projectRepo.GetProjectByUUID(resp.ProjectId)
 		if err != nil {
@@ -127,6 +138,9 @@ func (s *GraphQLAPIService) toGraphQLAPIDetail(m *model.GraphQLAPI) (*api.GraphQ
 	resp := mapGraphQLAPIModelToDetail(m)
 	if resp == nil {
 		return nil, nil
+	}
+	if err := annotatePlanRefs(s.subscriptionPlanRepo, resp.SubscriptionPlans, m.Configuration.SubscriptionPlans, m.OrganizationID); err != nil {
+		return nil, err
 	}
 	if s.projectRepo != nil {
 		project, err := s.projectRepo.GetProjectByUUID(resp.ProjectId)
@@ -268,9 +282,13 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 			WithDetails(map[string]any{"sdlErrors": resolution.SDLErrors})
 	}
 
-	var subscriptionPlans []string
-	if req.SubscriptionPlans != nil {
-		subscriptionPlans = *req.SubscriptionPlans
+	// Each plan must exist in the organization and be ACTIVE, as for REST APIs and MCP proxies.
+	if err := validateSubscriptionPlanRefs(s.subscriptionPlanRepo, req.SubscriptionPlans, orgUUID); err != nil {
+		return nil, err
+	}
+	subscriptionPlans, err := stampAttachedPlans(s.subscriptionPlanRepo, utils.PlanRefsToModel(req.SubscriptionPlans), orgUUID, time.Now())
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up the subscription plans: %w", err)
 	}
 
 	apiContext := utils.ValueOrEmpty(req.Context)
@@ -745,9 +763,13 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 		sdl, introspectionMode, storedSchemaSource = resolution.SDL, resolution.IntrospectionMode, resolution.SchemaSource
 	}
 
-	var subscriptionPlans []string
-	if req.SubscriptionPlans != nil {
-		subscriptionPlans = *req.SubscriptionPlans
+	// Each plan must exist in the organization and be ACTIVE, as for REST APIs and MCP proxies.
+	if err := validateSubscriptionPlanRefs(s.subscriptionPlanRepo, req.SubscriptionPlans, orgUUID); err != nil {
+		return nil, err
+	}
+	subscriptionPlans, err := stampAttachedPlans(s.subscriptionPlanRepo, utils.PlanRefsToModel(req.SubscriptionPlans), orgUUID, time.Now())
+	if err != nil {
+		return nil, fmt.Errorf("failed to look up the subscription plans: %w", err)
 	}
 
 	apiContext := utils.ValueOrEmpty(req.Context)

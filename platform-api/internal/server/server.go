@@ -340,6 +340,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	llmProviderService.SetCustomPolicyRepository(customPolicyRepo)
 	llmProxyService := service.NewLLMProxyService(llmProxyRepo, llmProviderRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	mcpProxyService := service.NewMCPProxyService(mcpProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
+	mcpProxyService.WithSubscriptionPlanRepository(subscriptionPlanRepo)
 	agentProxyService := service.NewAgentProxyService(agentProxyRepo, projectRepo, deploymentRepo, gatewayRepo, gatewayEventsService, slogger, auditRepo, cfg, identityService)
 	graphqlAPIService := service.NewGraphQLAPIService(graphqlAPIRepo, projectRepo, auditRepo, deploymentRepo, gatewayRepo, orgRepo, gatewayEventsService, identityService, slogger)
 
@@ -519,6 +520,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// placeholders already resolved; the internal fetch path needs the store for that.
 	internalGatewayService.SetSecretService(secretService)
 	graphqlAPIService.SetSecretService(secretService)
+	graphqlAPIService.SetSubscriptionPlanRepo(subscriptionPlanRepo)
 	graphqlAPIService.SetMaxSDLFetchBytes(cfg.OpenAPISpecMaxFetchBytes)
 	secretHandler := handler.NewSecretHandler(secretService, identityService, slogger)
 	webhookSecretHandler := handler.NewWebhookSecretHandler(webhookSecretService, identityService, slogger)

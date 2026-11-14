@@ -177,6 +177,78 @@ func TestSplitSQLStatements_RealSchemas(t *testing.T) {
 	}
 }
 
+// An SQLite database created by a release before subscription_plans.description gets the column
+// when this release starts on it; starting again leaves it as it is.
+func TestInitSchema_SQLiteAddsMissingColumns(t *testing.T) {
+	slogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db, err := NewConnection(&config.Database{Driver: DriverSQLite, Path: filepath.Join(t.TempDir(), "test.db"), MaxOpenConns: 1, MaxIdleConns: 1}, slogger)
+	if err != nil {
+		t.Fatalf("NewConnection() error = %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := db.InitSchema("schema.sqlite.sql", slogger); err != nil {
+		t.Fatalf("InitSchema() error = %v", err)
+	}
+	if _, err := db.Exec(`ALTER TABLE subscription_plans DROP COLUMN description`); err != nil {
+		t.Fatalf("drop the column, as an earlier release had the table: %v", err)
+	}
+	if has, err := db.HasColumn("subscription_plans", "description"); err != nil || has {
+		t.Fatalf("HasColumn after the drop = %v, %v; want false, nil", has, err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if err := db.InitSchema("schema.sqlite.sql", slogger); err != nil {
+			t.Fatalf("InitSchema() run %d error = %v", i+1, err)
+		}
+		if has, err := db.HasColumn("subscription_plans", "description"); err != nil || !has {
+			t.Fatalf("run %d: subscription_plans has no description column", i+1)
+		}
+	}
+	conditions, err1 := db.HasTable("subscription_plan_conditions")
+	legacy, err2 := db.HasTable("subscription_plan_limits")
+	if err1 != nil || err2 != nil || !conditions || legacy {
+		t.Fatal("this release creates subscription_plan_conditions and no longer subscription_plan_limits")
+	}
+}
+
+// A check that can't run returns an error, so callers don't read it as a missing table or column.
+func TestHasTableAndColumn_FailedCheckIsAnError(t *testing.T) {
+	slogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db, err := NewConnection(&config.Database{Driver: DriverSQLite, Path: filepath.Join(t.TempDir(), "test.db"), MaxOpenConns: 1, MaxIdleConns: 1}, slogger)
+	if err != nil {
+		t.Fatalf("NewConnection() error = %v", err)
+	}
+	if err := db.InitSchema("schema.sqlite.sql", slogger); err != nil {
+		t.Fatalf("InitSchema() error = %v", err)
+	}
+	if has, err := db.HasTable("no_such_table"); err != nil || has {
+		t.Fatalf("missing table: %v, %v; want false, nil", has, err)
+	}
+	db.Close()
+	if _, err := db.HasTable("subscription_plan_conditions"); err == nil {
+		t.Fatal("HasTable on a closed database returned no error")
+	}
+	if _, err := db.HasColumn("subscription_plans", "description"); err == nil {
+		t.Fatal("HasColumn on a closed database returned no error")
+	}
+}
+
+// A column that can't be added, or columns that can't be read, fail the start with the table named.
+func TestAddMissingSQLiteColumns_Failures(t *testing.T) {
+	slogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	db, err := NewConnection(&config.Database{Driver: DriverSQLite, Path: filepath.Join(t.TempDir(), "test.db"), MaxOpenConns: 1, MaxIdleConns: 1}, slogger)
+	if err != nil {
+		t.Fatalf("NewConnection() error = %v", err)
+	}
+	if err := db.addMissingSQLiteColumns(); err == nil || !strings.Contains(err.Error(), "failed to add column subscription_plans.description") {
+		t.Fatalf("no subscription_plans table: err = %v", err)
+	}
+	db.Close()
+	if err := db.addMissingSQLiteColumns(); err == nil || !strings.Contains(err.Error(), "failed to read the columns of subscription_plans") {
+		t.Fatalf("closed database: err = %v", err)
+	}
+}
+
 // closedPort returns a local TCP port with nothing listening on it, so a dial to it
 // is refused at once.
 func closedPort(t *testing.T) int {
