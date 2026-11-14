@@ -46,6 +46,7 @@ import { LoadingState } from '@/components/StateViews';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { useCan } from '@/permissions';
 import { parseGraphQLSdl } from '../apis/create/utils/graphqlSchema';
+import { attachedPlanIdsOf } from '../develop/usagePlans/usagePlans';
 import { parseSpecText } from '../apis/create/utils/specText';
 import { ApiDetailsTab } from './components/ApiDetailsTab';
 import { DocumentsTab } from './components/DocumentsTab';
@@ -912,9 +913,12 @@ export function PortalPublishPageContent({ target }: { target: PublishTarget }) 
       case 'subscriptionPlans':
         return (
           <SubscriptionPlansTab
+            // An API offers the plans attached in its Develop › Usage Plans.
+            attachedPlanIds={target.usagePlansPath ? attachedPlanIdsOf(api) : undefined}
             disabled={busy}
             onChange={handleChange}
             savedPlanIds={savedPlanIds}
+            usagePlansPath={target.usagePlansPath}
             values={values}
           />
         );

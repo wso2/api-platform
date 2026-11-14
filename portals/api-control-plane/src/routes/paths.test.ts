@@ -33,6 +33,7 @@ const PROJECT_LEVEL: [string, ProjectPathBuilder][] = [['apis', routes.apis]];
 
 const API_LEVEL: [string, ApiPathBuilder][] = [
   ['apiDevelopPolicies', routes.apiDevelopPolicies],
+  ['apiDevelopUsagePlans', routes.apiDevelopUsagePlans],
   ['apiDevelopDocuments', routes.apiDevelopDocuments],
   ['apiTest', routes.apiTest],
   ['apiDeploy', routes.apiDeploy],
@@ -177,6 +178,9 @@ describe('GraphQL API routes stay outside REST scope resolution', () => {
     expect(routes.graphqlApiDevelopDocuments(ORG, PROJECT, GRAPHQL_API)).toBe(
       `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${GRAPHQL_API}/develop/documents`
     );
+    expect(routes.graphqlApiDevelopUsagePlans(ORG, PROJECT, GRAPHQL_API)).toBe(
+      `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${GRAPHQL_API}/develop/usage-plans`
+    );
     expect(routes.graphqlApiPublish(ORG, PROJECT, GRAPHQL_API)).toBe(
       `/organizations/${ORG}/projects/${PROJECT}/graphql-apis/${GRAPHQL_API}/publish`
     );
@@ -191,6 +195,7 @@ describe('GraphQL API routes stay outside REST scope resolution', () => {
     ['graphqlApiTestConsole', routes.graphqlApiTestConsole],
     ['graphqlApiDevelopPolicies', routes.graphqlApiDevelopPolicies],
     ['graphqlApiDevelopDocuments', routes.graphqlApiDevelopDocuments],
+    ['graphqlApiDevelopUsagePlans', routes.graphqlApiDevelopUsagePlans],
     ['graphqlApiPublish', routes.graphqlApiPublish],
     ['graphqlApiEdit', routes.graphqlApiEdit],
   ] as const)(
@@ -226,6 +231,7 @@ describe('GraphQL API routes stay outside REST scope resolution', () => {
       routes.graphqlApiTestConsole(ORG, PROJECT, GRAPHQL_API),
       routes.graphqlApiDevelopPolicies(ORG, PROJECT, GRAPHQL_API),
       routes.graphqlApiDevelopDocuments(ORG, PROJECT, GRAPHQL_API),
+      routes.graphqlApiDevelopUsagePlans(ORG, PROJECT, GRAPHQL_API),
       routes.graphqlApiPublish(ORG, PROJECT, GRAPHQL_API),
       routes.graphqlApiEdit(ORG, PROJECT, GRAPHQL_API),
     ];

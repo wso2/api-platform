@@ -129,6 +129,16 @@ const DocumentsPage = lazy(() =>
     default: m.DocumentsPage,
   })),
 );
+const GraphqlUsagePlansPage = lazy(() =>
+  import('../pages/appShell/appShellPages/develop/usagePlans/UsagePlansPage').then((m) => ({
+    default: m.GraphqlUsagePlansPage,
+  })),
+);
+const UsagePlansPage = lazy(() =>
+  import('../pages/appShell/appShellPages/develop/usagePlans/UsagePlansPage').then((m) => ({
+    default: m.UsagePlansPage,
+  })),
+);
 const DefinitionPage = lazy(() =>
   import('../pages/appShell/appShellPages/develop/definition/DefinitionPage').then((m) => ({
     default: m.DefinitionPage,
@@ -542,6 +552,10 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
             path={routes.graphqlApiDevelopDocuments()}
             element={<GraphqlDevelopDocumentsPage />}
           />
+          <Route
+            path={routes.graphqlApiDevelopUsagePlans()}
+            element={<GraphqlUsagePlansPage />}
+          />
           <Route path={routes.graphqlApiPublish()} element={<GraphqlPublishPage />} />
           <Route path={routes.graphqlApiPortalPublish()} element={<GraphqlPortalPublishPage />} />
           <Route
@@ -583,6 +597,7 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
             produced and are not registered.
           */}
           {scopedRoutes(apiScopedPaths(routes.apiDevelopPolicies), <PoliciesPage />)}
+          {scopedRoutes(apiScopedPaths(routes.apiDevelopUsagePlans), <UsagePlansPage />)}
 
           {scopedRoutes(apiScopedPaths(routes.apiDevelopDocuments), <DocumentsPage />)}
           {scopedRoutes(apiScopedPaths(routes.apiTest), <TestPage />)}

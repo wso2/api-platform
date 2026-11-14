@@ -35,6 +35,7 @@ import {
   SlidersHorizontal,
   UserRoundKey,
   ShieldCheck,
+  Ticket,
   FlaskConical,
   Box,
 } from '@wso2/oxygen-ui-icons-react';
@@ -440,6 +441,14 @@ export const navigationRegistry: NavigationDefinition[] = [
         label: 'Documents',
         to: routes.apiDevelopDocuments,
         graphqlTo: routes.graphqlApiDevelopDocuments,
+      },
+      {
+        // The plans the API offers, and the policies that enforce them.
+        icon: <Ticket />,
+        id: 'develop-usage-plans',
+        label: 'Usage Plans',
+        to: routes.apiDevelopUsagePlans,
+        graphqlTo: routes.graphqlApiDevelopUsagePlans,
       },
     ]),
   },

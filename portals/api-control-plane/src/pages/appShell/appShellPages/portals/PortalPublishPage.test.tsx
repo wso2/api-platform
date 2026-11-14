@@ -89,6 +89,8 @@ const api = aRestApi({
   context: '/loans',
   upstream: { main: { url: 'https://backend.internal/loans' }, sandbox: { url: 'https://sandbox.backend.internal/loans' } },
   version: '1.0.0',
+  // The plans attached in Develop › Usage Plans: the publish page offers these only.
+  subscriptionPlans: [{ id: 'bronze' }, { id: 'gold' }, { id: 'silver' }, { id: 'retired' }, { id: 'deleted' }, { id: 'plan-0' }, { id: 'beyond' }],
 });
 
 let requests: Recorder;
@@ -515,6 +517,47 @@ describe('PortalPublishPage', () => {
     const bronzeCard = await screen.findByRole('checkbox', { name: /Bronze/ });
     expect(bronzeCard).toHaveAttribute('aria-checked', 'true');
     expect(screen.queryByRole('button', { name: 'Select all' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['has no subscription-validation', [{ name: 'jwt-auth', version: 'v1' }]],
+    ['has subscription-validation', [{ name: 'subscription-validation', version: 'v1' }]],
+  ] as const)(
+    'Subscription Plans: the cards show name and description, with no policy note (API %s): policies are checked on Usage Plans',
+    async (_case, policies) => {
+      const gold = aSubscriptionPlan({ description: 'For production traffic.', displayName: 'Gold', id: 'gold' });
+      servePublicationState({
+        draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections('gold') }),
+        plans: [gold],
+      });
+      server.use(resource('/rest-apis/:restApiId', { ...api, policies: [...policies] }));
+
+      const { user } = renderPage();
+
+      await screen.findByDisplayValue('Loan Management Service');
+      await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
+      const card = await screen.findByRole('checkbox', { name: /Gold/ });
+      expect(card).toHaveTextContent('For production traffic.');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    },
+  );
+
+  it('Subscription Plans: offers only the plans attached to the API, and links to Usage Plans when there are none', async () => {
+    const bronze = aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' });
+    const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
+    const platinum = aSubscriptionPlan({ displayName: 'Platinum', id: 'platinum' });
+    servePublicationState({
+      draft: aPublicationDraftDetails({ subscriptionPlans: publicationSelections() }),
+      plans: [bronze, gold, platinum],
+    });
+    server.use(resource('/rest-apis/:restApiId', { ...api, subscriptionPlans: [{ id: 'gold' }] }));
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
+    expect(await screen.findByRole('checkbox', { name: /Gold/ })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Bronze|Platinum/ })).not.toBeInTheDocument();
   });
 
   it('is back to no unsaved changes once the plan selection matches the saved draft again, whatever the order', async () => {

@@ -201,6 +201,7 @@ describe('submenu children also follow GraphQL API scope, for the submenus that 
     expect(item.children?.map((child) => child.id)).toEqual([
       'develop-policies',
       'develop-documents',
+      'develop-usage-plans',
     ]);
   });
 

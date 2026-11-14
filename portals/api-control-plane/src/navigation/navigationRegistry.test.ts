@@ -206,6 +206,17 @@ describe('Publish resolves to the GraphQL API-level page', () => {
   });
 });
 
+// Usage Plans serves every API kind: a GraphQL API gets its own page, not a hidden item.
+describe('Usage Plans resolves to the GraphQL API-level page', () => {
+  const usagePlans = () =>
+    definitionFor('develop').children!.find((child) => child.id === 'develop-usage-plans')!;
+
+  it('is shown in GraphQL scope and links to the GraphQL Usage Plans page', () => {
+    expect(usagePlans().isVisible?.(atGraphqlApi()) ?? true).toBe(true);
+    expect(usagePlans().to(atGraphqlApi())).toBe(`${GRAPHQL_API}/develop/usage-plans`);
+  });
+});
+
 /*
  * Test and Observability have no page of their own: in API scope they
  * open a submenu, and outside it they lead to the first child's `ScopeGate`. The
@@ -222,6 +233,7 @@ describe('submenu parents', () => {
         ['develop-policies', 'policies'],
         ['develop-definition', 'definition'],
         ['develop-documents', 'documents'],
+        ['develop-usage-plans', 'usage-plans'],
       ],
     ],
     [
