@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/wso2/api-platform/httpkit/netguard"
@@ -218,6 +217,11 @@ type SSRFConfig struct {
 	// MaxRedirects bounds redirect hops. 0 uses netguard's own default (5);
 	// a negative value is not distinguished from zero.
 	MaxRedirects int
+	// RedirectSchemes, when set, narrows the schemes a redirect hop may use
+	// below Policy.AllowedSchemes, which still governs the first request. It
+	// lets a caller combine policies whose scheme lists mean different things
+	// (one for every request, one for redirects only) without widening either.
+	RedirectSchemes []string
 }
 
 // buildState accumulates the effect of functional Options during New.
@@ -308,10 +312,11 @@ func New(cfg Config, opts ...Option) (*http.Client, error) {
 	// A forward proxy is operator configuration, so its own address is
 	// dialed under the policy's ProxyHop (only the never-legitimate address
 	// categories), while every origin dialed directly gets the full policy.
-	// In ProxyEgressManualCONNECT mode the dial only ever reaches the proxy;
-	// in the other modes proxies records which addresses Transport.Proxy
-	// handed out so the dial can tell a proxy hop from a direct origin.
-	var proxies *proxyAddrSet
+	// In ProxyEgressManualCONNECT mode the dial only ever reaches the proxy.
+	// In the other modes routing marks each request with the proxy it is
+	// routed through (see proxyRouting), and the dial treats only that
+	// request's proxy address as a proxy hop.
+	var routing *proxyRouting
 	dialFn := state.dialOverride
 	if dialFn == nil {
 		if cfg.SSRF.Enabled {
@@ -321,8 +326,12 @@ func New(cfg Config, opts ...Option) (*http.Client, error) {
 				if cfg.Proxy.Egress == ProxyEgressManualCONNECT {
 					dialFn = proxyDial
 				} else {
-					proxies = &proxyAddrSet{}
-					dialFn = proxies.dialer(proxyDial, dialFn)
+					proxyFunc, err := buildProxyFunc(cfg.Proxy)
+					if err != nil {
+						return nil, err
+					}
+					routing = &proxyRouting{proxyFunc: proxyFunc}
+					dialFn = proxyHopDialer(proxyDial, dialFn)
 				}
 			}
 		} else {
@@ -337,14 +346,14 @@ func New(cfg Config, opts ...Option) (*http.Client, error) {
 			return nil, err
 		}
 	} else {
-		rt, err = buildTransport(cfg, dialFn, originTLS, proxyTLS, proxies)
+		rt, err = buildTransport(cfg, dialFn, originTLS, proxyTLS)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	if cfg.SSRF.Enabled {
-		rt = &destinationRoundTripper{next: rt, policy: cfg.SSRF.Policy}
+		rt = &destinationRoundTripper{next: rt, policy: cfg.SSRF.Policy, routing: routing}
 	}
 
 	maxBytes := cfg.Timeouts.MaxResponseBytes
@@ -365,6 +374,9 @@ func New(cfg Config, opts ...Option) (*http.Client, error) {
 	}
 	if cfg.SSRF.Enabled {
 		redirectPolicy := cfg.SSRF.Policy
+		if len(cfg.SSRF.RedirectSchemes) > 0 {
+			redirectPolicy.AllowedSchemes = cfg.SSRF.RedirectSchemes
+		}
 		if len(redirectPolicy.AllowedSchemes) == 0 {
 			redirectPolicy.AllowedSchemes = []string{"https"}
 		}
@@ -396,8 +408,9 @@ func proxyConfigured(p ProxyConfig) bool {
 // through its Transport), and before any proxy is involved, so the host rule
 // holds in every proxy mode.
 type destinationRoundTripper struct {
-	next   http.RoundTripper
-	policy netguard.Policy
+	next    http.RoundTripper
+	policy  netguard.Policy
+	routing *proxyRouting // nil unless a forward proxy is configured (non-manual egress)
 }
 
 func (d *destinationRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -418,6 +431,14 @@ func (d *destinationRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 		closeRequestBody(req)
 		return nil, fmt.Errorf("httpclient: destination rejected: %w", err)
 	}
+	if d.routing != nil {
+		routed, err := d.routing.mark(req)
+		if err != nil {
+			closeRequestBody(req)
+			return nil, err
+		}
+		req = routed
+	}
 	return d.next.RoundTrip(req)
 }
 
@@ -429,31 +450,43 @@ func closeRequestBody(req *http.Request) {
 	}
 }
 
-// proxyAddrSet records the host:port of every proxy Transport.Proxy returns,
-// so the dial can route a proxy hop to the proxy dialer.
-type proxyAddrSet struct{ addrs sync.Map }
+// proxyRouteKey is the request-context key under which proxyRouting records
+// the host:port of the forward proxy a request is routed through.
+type proxyRouteKey struct{}
 
-func (s *proxyAddrSet) record(u *url.URL) {
-	if u != nil {
-		s.addrs.Store(canonicalAddr(u), struct{}{})
-	}
+// proxyRouting tells, per request, whether it goes through a forward proxy.
+// It evaluates the same proxy function the Transport uses (the Transport asks
+// it again for the same request, with the same answer) and records the proxy's
+// address in the request's context. The dial reads it back, so a dial counts
+// as a proxy hop only when it is the proxy of the request being dialed for —
+// never because the address happens to be a proxy some other request used. A
+// request that bypasses the proxy (NoProxy, NO_PROXY) is therefore dialed
+// under the full policy even when it targets the proxy's own address. A pooled
+// connection is shared only between requests with the same proxy route
+// (Transport keys its pool by it), so a reused connection keeps the
+// classification it was dialed with.
+type proxyRouting struct {
+	proxyFunc func(*http.Request) (*url.URL, error)
 }
 
-func (s *proxyAddrSet) dialer(proxyDial, originDial func(context.Context, string, string) (net.Conn, error)) func(context.Context, string, string) (net.Conn, error) {
+func (p *proxyRouting) mark(req *http.Request) (*http.Request, error) {
+	proxyURL, err := p.proxyFunc(req)
+	if err != nil {
+		return nil, err
+	}
+	if proxyURL == nil {
+		return req, nil
+	}
+	return req.WithContext(context.WithValue(req.Context(), proxyRouteKey{}, canonicalAddr(proxyURL))), nil
+}
+
+// proxyHopDialer dials addr under proxyDial when it is the proxy recorded for
+// this request (see proxyRouting), and under originDial otherwise.
+func proxyHopDialer(proxyDial, originDial func(context.Context, string, string) (net.Conn, error)) func(context.Context, string, string) (net.Conn, error) {
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
-		if _, ok := s.addrs.Load(addr); ok {
+		if proxyAddr, ok := ctx.Value(proxyRouteKey{}).(string); ok && proxyAddr == addr {
 			return proxyDial(ctx, network, addr)
 		}
 		return originDial(ctx, network, addr)
-	}
-}
-
-func (s *proxyAddrSet) wrap(proxyFunc func(*http.Request) (*url.URL, error)) func(*http.Request) (*url.URL, error) {
-	return func(req *http.Request) (*url.URL, error) {
-		u, err := proxyFunc(req)
-		if err == nil {
-			s.record(u)
-		}
-		return u, err
 	}
 }

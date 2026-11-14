@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package netguard
 
 import (
@@ -239,14 +257,20 @@ func (r *HostRule) Allows(host string) bool {
 }
 
 // NormalizeHost returns the form of a URL hostname that host patterns are
-// matched against: IPv6 brackets and a trailing dot removed, lowercased, and
-// an internationalized name converted to its ASCII (punycode) form. An IP
-// literal is returned in its canonical text form.
+// matched against: IPv6 brackets and trailing dots removed, lowercased, and an
+// internationalized name converted to its ASCII (punycode) form. An IP literal
+// is returned in its canonical text form.
+//
+// Trailing dots are removed after the IDNA conversion as well as before it:
+// the conversion maps Unicode label separators (U+3002, U+FF0E, U+FF61) to
+// ".", so "example.com。" would otherwise normalize to "example.com." and
+// slip past an anchored "example\.com" pattern, while still resolving to the
+// same host when dialed.
 func NormalizeHost(host string) (string, error) {
 	h := strings.TrimSpace(host)
 	h = strings.TrimPrefix(h, "[")
 	h = strings.TrimSuffix(h, "]")
-	h = strings.TrimSuffix(h, ".")
+	h = strings.TrimRight(h, ".")
 	if h == "" {
 		return "", fmt.Errorf("empty host")
 	}
@@ -256,6 +280,10 @@ func NormalizeHost(host string) (string, error) {
 	ascii, err := idna.Lookup.ToASCII(h)
 	if err != nil {
 		return "", fmt.Errorf("invalid host")
+	}
+	ascii = strings.TrimRight(ascii, ".")
+	if ascii == "" {
+		return "", fmt.Errorf("empty host")
 	}
 	return strings.ToLower(ascii), nil
 }

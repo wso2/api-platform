@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package httpclient
 
 import (
@@ -187,5 +205,67 @@ func TestNew_GuardEnabledAcceptsHostOnlyPolicy(t *testing.T) {
 	cfg.SSRF.Policy = netguard.Policy{Hosts: rule}
 	if _, err := New(cfg); err != nil {
 		t.Fatalf("a policy with only a host rule is not zero: %v", err)
+	}
+}
+
+// TestNew_DirectRequestToTheProxyAddressGetsTheOriginPolicy covers a request
+// that bypasses the proxy (NoProxy) but targets the proxy's own address, after
+// another request has used that proxy. It must be dialed under the full policy,
+// not the proxy hop's: being a proxy address elsewhere is not a reason to relax
+// the destination rules for a direct request.
+func TestNew_DirectRequestToTheProxyAddressGetsTheOriginPolicy(t *testing.T) {
+	cert := newSelfSignedCert(t, "routing-origin", []string{"localhost"}, []net.IP{net.ParseIP("127.0.0.1")})
+	origin := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	origin.TLS = &tls.Config{Certificates: []tls.Certificate{cert.tlsCert}}
+	origin.StartTLS()
+	t.Cleanup(origin.Close)
+	_, originPort, _ := net.SplitHostPort(strings.TrimPrefix(origin.URL, "https://"))
+
+	proxyAddr := startConnectProxy(t)
+	client := guardedClient(t, netguard.GuardConfig{Enabled: true, DenyPrivateNetworks: true}, func(c *Config) {
+		c.TLS.RootCAs = cert.pool
+		c.Proxy.Mode = "url"
+		c.Proxy.URL = "http://" + proxyAddr
+		c.Proxy.NoProxy = []string{"127.0.0.1"} // only "localhost" goes through the proxy
+		c.Proxy.Egress = ProxyEgressDelegated
+	})
+
+	// Through the proxy: the proxy hop is exempt, so this is reachable.
+	resp, err := client.Get("https://localhost:" + originPort + "/")
+	if err != nil {
+		t.Fatalf("request through the proxy: %v", err)
+	}
+	resp.Body.Close()
+
+	// Direct (NoProxy) to the proxy's own address: the full policy applies.
+	if _, err := client.Get("http://" + proxyAddr + "/"); !errors.Is(err, netguard.ErrDestinationNotAllowed) {
+		t.Fatalf("direct request to the proxy address = %v, want ErrDestinationNotAllowed", err)
+	}
+}
+
+// TestNew_RedirectSchemesNarrowOnlyRedirectHops: RedirectSchemes restricts the
+// scheme of a redirect hop without restricting the first request.
+func TestNew_RedirectSchemesNarrowOnlyRedirectHops(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/start" {
+			http.Redirect(w, r, "/next", http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	client := guardedClient(t, netguard.GuardConfig{Enabled: true}, func(c *Config) {
+		c.SSRF.RedirectSchemes = []string{"https"}
+	})
+	resp, err := client.Get(srv.URL + "/next")
+	if err != nil {
+		t.Fatalf("an http first request must still be allowed: %v", err)
+	}
+	resp.Body.Close()
+	if _, err := client.Get(srv.URL + "/start"); !errors.Is(err, netguard.ErrDestinationNotAllowed) {
+		t.Fatalf("an http redirect hop with https-only RedirectSchemes = %v, want ErrDestinationNotAllowed", err)
 	}
 }

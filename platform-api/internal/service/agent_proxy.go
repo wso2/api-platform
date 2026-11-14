@@ -541,6 +541,15 @@ func (s *AgentProxyService) fetchStoredAgentCard(orgUUID, handle string, noCache
 	card, err := utils.FetchAgentCard(context.Background(), upstream.URL, headerName, headerValue, s.agentCardMaxFetchBytes())
 	if err != nil {
 		failure := agentCardFetchFailure(err)
+		if apperror.DestinationNotAllowed.Is(failure) {
+			// A destination network access control refuses is a property of the
+			// configuration, like an upstream given by ref above, not a transient
+			// upstream failure: a 400 every time, never cached (a cached failure is
+			// replayed as a 503).
+			s.slogger.Warn("Agent Card display fetch refused by network access control",
+				"agentProxyUUID", m.UUID, "organizationUUID", orgUUID, "error", err)
+			return nil, failure
+		}
 		// The cause carries the upstream URL and status; it goes to the log line
 		// only. The message stored in the cache is the sterile client-facing one.
 		s.slogger.Warn("Agent Card display fetch failed",

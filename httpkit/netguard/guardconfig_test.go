@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package netguard
 
 import (
@@ -88,6 +106,13 @@ func TestHostRule(t *testing.T) {
 		{"wildcard subdomain does not cross labels", ModeAllow, []string{`[a-z0-9-]+\.svc\.cluster\.local`}, "a.b.svc.cluster.local", false},
 		{"case-insensitive", ModeAllow, []string{`api\.example\.com`}, "API.Example.COM", true},
 		{"trailing dot normalized", ModeAllow, []string{`api\.example\.com`}, "api.example.com.", true},
+		{"repeated trailing dots normalized", ModeDeny, []string{`example\.com`}, "example.com..", false},
+		{"deny: ideographic full stop separator", ModeDeny, []string{`example\.com`}, "example.com\u3002", false},
+		{"deny: fullwidth full stop separator", ModeDeny, []string{`example\.com`}, "example.com\uff0e", false},
+		{"deny: halfwidth ideographic full stop separator", ModeDeny, []string{`example\.com`}, "example.com\uff61", false},
+		{"allow: ideographic full stop separator", ModeAllow, []string{`example\.com`}, "example.com\u3002", true},
+		{"allow: unicode separator does not widen", ModeAllow, []string{`example\.com`}, "evil.example.com\u3002", false},
+		{"only dots is refused", ModeDeny, []string{`x`}, "..", false},
 		{"IPv6 literal brackets stripped", ModeDeny, []string{`::1`}, "[::1]", false},
 		{"IPv4 literal matched as text", ModeAllow, []string{`10\.0\.0\.5`}, "10.0.0.5", true},
 		{"IDN matched as punycode", ModeAllow, []string{`xn--bcher-kva\.example`}, "bücher.example", true},
