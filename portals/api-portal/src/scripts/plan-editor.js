@@ -1215,59 +1215,8 @@
     });
   });
 
-  /* ── preview: the plan as subscribers read it ── */
-  function previewLimits() {
-    var items = [];
-    condEls().forEach(function (el) {
-      // Custom conditions are for policies; subscribers don't see them.
-      if (el.dataset.type === 'custom') return;
-      var what = whatOf(el);
-      var allow = !el.querySelector('.pol-condition-on-exceed').checked;
-      windowsOf(el).forEach(function (w) {
-        items.push({ text: w.count.toLocaleString('en-US') + ' ' + what + ' / ' + per(w.amount, w.unit), allow: allow });
-      });
-    });
-    return items;
-  }
-
-  function previewPrice() {
-    // A saved plan's pricing can't change: show it as the plans list does.
-    if (plan && plan.pricingText) return plan.pricingText;
-    if (!document.getElementById('pol-paid').checked) return 'Free';
-    var period = document.getElementById('pol-period');
-    var every = period.options[period.selectedIndex] ? period.options[period.selectedIndex].text.toLowerCase() : '';
-    if (pricingType() === 'FLAT_RATE') {
-      var amount = v('pol-flat-amount');
-      return document.getElementById('pol-currency').value + ' ' + (amount || '0.00') + (every ? ' · ' + every : '');
-    }
-    return 'Usage based · ' + document.getElementById('pol-currency').value;
-  }
-
   function refresh() {
     refreshConditions();
-    document.getElementById('pln-preview-name').textContent = v('pol-display') || 'Plan name';
-    document.getElementById('pln-preview-desc').textContent = v('pol-desc');
-    var list = document.getElementById('pln-preview-limits');
-    list.innerHTML = '';
-    var items = previewLimits();
-    if (items.length === 0) {
-      var none = document.createElement('li');
-      none.className = 'pln-preview-none';
-      none.textContent = 'Unlimited';
-      list.appendChild(none);
-    }
-    items.forEach(function (item) {
-      var li = document.createElement('li');
-      li.textContent = item.text;
-      if (item.allow) {
-        var tag = document.createElement('span');
-        tag.className = 'pln-preview-tag';
-        tag.textContent = 'overage allowed';
-        li.appendChild(tag);
-      }
-      list.appendChild(li);
-    });
-    document.getElementById('pln-preview-price').textContent = previewPrice();
   }
 
   var form = document.getElementById('pol-form');

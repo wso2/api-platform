@@ -2862,9 +2862,9 @@
   white-space: nowrap;
 }
 
-/* ── Subscription plan page: details, conditions and pricing, with a live preview ── */
+/* ── Subscription plan page: details, conditions and pricing ── */
 
-.pln-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
+.pln-layout { display: grid; grid-template-columns: minmax(0, 1fr); max-width: 920px; }
 .pln-main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 
 .pln-card { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); padding: 22px 24px; }
@@ -2959,30 +2959,11 @@
 .pln-paid-toggle { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: 600; color: var(--text-strong); }
 .pln-pricing { margin-top: 14px; }
 
-.pln-side { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 12px; }
-.pln-preview-label { font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
-.pln-preview {
-  border: 1.5px solid var(--border); border-radius: 14px; padding: 18px 20px; background: var(--surface);
-  display: flex; flex-direction: column; gap: 10px;
-}
-.pln-preview-head { display: flex; align-items: center; gap: 10px; }
-.pln-preview-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--surface-sunken); color: var(--primary); display: grid; place-items: center; }
-.pln-preview-name { font-size: 1rem; font-weight: 700; color: var(--text-strong); overflow-wrap: anywhere; }
-.pln-preview-desc { margin: 0; font-size: .844rem; color: var(--text); overflow-wrap: anywhere; }
-.pln-preview-desc:empty { display: none; }
-.pln-preview-limits { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.pln-preview-limits li { font-size: .844rem; color: var(--text-strong); display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
-.pln-preview-limits li::before { content: "\2713"; color: var(--success); font-weight: 700; }
-.pln-preview-limits li.pln-preview-none { color: var(--text-muted); }
-.pln-preview-tag { font-size: .7rem; font-weight: 600; color: var(--warning); background: var(--warning-surface); border-radius: 6px; padding: 1px 6px; }
-.pln-preview-price { border-top: 1px solid var(--border); padding-top: 10px; font-size: .9rem; font-weight: 600; color: var(--primary); }
-.pln-preview-note { margin: 0; font-size: .78rem; color: var(--text-muted); }
 .pln-actions { display: flex; justify-content: flex-end; gap: 12px; }
 
 @media (max-width: 1280px) {
   .pln-layout { grid-template-columns: minmax(0, 1fr); }
-  .pln-side { position: static; }
-}
+  }
 @media (max-width: 640px) {
   .pln-card { padding: 18px 16px; }
   .pln-cond-body { padding-left: 16px; }
@@ -3232,7 +3213,7 @@
 
 /* These set their own display, so [hidden] needs saying again, whatever the layout's base styles. */
 .pln-menu[hidden], .pln-add-cond[hidden], .pln-cond-body[hidden], .pln-chooser[hidden],
-.pln-cond-empty[hidden], .pln-cond-chip[hidden], .pln-preview-price[hidden] { display: none !important; }
+.pln-cond-empty[hidden], .pln-cond-chip[hidden] { display: none !important; }
 /* The plans table's last rows open their condition cards upward, so they stay in the scroll area. */
 .cfg-table tbody tr:nth-last-child(-n+2) .cfg-cond-tip { top: auto; bottom: calc(100% + 6px); }
 
