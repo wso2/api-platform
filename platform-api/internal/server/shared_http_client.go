@@ -38,7 +38,51 @@ func InitSharedHTTPClient(cfg *config.Server) error {
 	if err := utils.InitSharedHTTPClientFromConfig(clientCfg, cfg.MCPResponseMaxBytes); err != nil {
 		return fmt.Errorf("failed to build shared outbound HTTP client: %w", err)
 	}
+
+	userCfg, enabled, err := buildAccessControlClientConfig(clientCfg, cfg.HTTPClient, cfg.Listeners.NetworkSecurity.AccessControl)
+	if err != nil {
+		return fmt.Errorf("invalid platform_api.server.network_security.access_control configuration: %w", err)
+	}
+	if enabled {
+		if err := utils.InitUserURLClientFromConfig(userCfg); err != nil {
+			return fmt.Errorf("failed to build outbound HTTP client for tenant-supplied URLs: %w", err)
+		}
+	}
 	return nil
+}
+
+// buildAccessControlClientConfig derives the client configuration for destinations taken
+// from tenant or user input. It reuses the shared client's pooling, timeout, TLS and proxy
+// settings and replaces its policy with server.network_security.access_control, combined
+// with the existing [platform_api.http_client] destination preset when that is enabled, so the existing setting can only
+// make the result stricter (netguard.Stricter). enabled is false when access control is
+// off; those destinations then keep using the shared client.
+func buildAccessControlClientConfig(shared httpclient.Config, hc config.HTTPClientConfig, ac config.AccessControl) (httpclient.Config, bool, error) {
+	if !ac.Enabled {
+		return httpclient.Config{}, false, nil
+	}
+	policy, err := ac.GuardConfig().Build()
+	if err != nil {
+		return httpclient.Config{}, false, err
+	}
+	if shared.SSRF.Enabled {
+		policy = netguard.Stricter(policy, shared.SSRF.Policy)
+	}
+
+	out := shared
+	out.SSRF = httpclient.SSRFConfig{Enabled: true, Policy: policy, MaxRedirects: ac.MaxRedirects}
+	if out.Proxy.Mode != "" && out.Proxy.Mode != "none" && out.Proxy.Egress == httpclient.ProxyEgressUnset {
+		switch hc.Proxy.Egress {
+		case "manual_connect":
+			out.Proxy.Egress = httpclient.ProxyEgressManualCONNECT
+		default:
+			// The existing destination preset is off, so egress was never required. Delegated
+			// keeps such a deployment working: the proxy's own egress controls govern the
+			// destination's address, while the host rule and schemes are still enforced here.
+			out.Proxy.Egress = httpclient.ProxyEgressDelegated
+		}
+	}
+	return out, true, nil
 }
 
 // buildSharedHTTPClientConfig translates platform-api's HTTPClientConfig (sourced from

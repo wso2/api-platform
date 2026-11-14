@@ -18,6 +18,7 @@
 package utils
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -25,6 +26,8 @@ import (
 	"time"
 
 	"github.com/wso2/api-platform/httpkit/httpclient"
+	"github.com/wso2/api-platform/httpkit/netguard"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 )
 
 // defaultMCPResponseMaxBytes bounds an MCP initialize/JSON-RPC response body when the
@@ -58,7 +61,81 @@ var (
 	// sharedHTTPClientConfig is the httpkit config sharedHTTPClient was built from, or nil when
 	// the client was set without it (InitSharedHTTPClient).
 	sharedHTTPClientConfig *httpclient.Config
+
+	// userURLClient serves destinations taken from tenant or user input, under
+	// server.network_security.access_control (see InitUserURLClientFromConfig). When it is
+	// not set, those destinations use sharedHTTPClient, as they did before access control
+	// existed.
+	userURLClient       *http.Client
+	userURLClientConfig *httpclient.Config
 )
+
+// InitUserURLClientFromConfig builds the client for destinations taken from tenant or user
+// input (spec URLs, MCP and agent-card URLs, GraphQL introspection, API portal URLs) from
+// cfg, which carries server.network_security.access_control as its destination policy, and keeps
+// cfg so clients with other timeouts can be built with the same policy.
+func InitUserURLClientFromConfig(cfg httpclient.Config) error {
+	client, err := httpclient.New(cfg)
+	if err != nil {
+		return err
+	}
+	sharedHTTPClientMu.Lock()
+	defer sharedHTTPClientMu.Unlock()
+	userURLClient = client
+	userURLClientConfig = &cfg
+	return nil
+}
+
+// NewConfiguredDestinationClient returns the shared client for a destination configured in
+// config.toml rather than taken from tenant or user input, such as the IdP JWKS URL. It
+// carries platform_api.http_client's own policy and never server.network_security.access_control.
+func NewConfiguredDestinationClient() (*http.Client, error) {
+	sharedHTTPClientMu.RLock()
+	defer sharedHTTPClientMu.RUnlock()
+	if sharedHTTPClient == nil {
+		return nil, errSharedHTTPClientNotInitialized
+	}
+	return sharedHTTPClient, nil
+}
+
+// CheckUserURL applies server.network_security.access_control to a tenant- or
+// user-supplied URL without any network activity: its scheme, its hostname, and an
+// IP-literal host's address. A hostname's resolved addresses are checked when the URL is
+// dialed. It returns apperror.DestinationNotAllowed for a refused URL and nil otherwise,
+// including when access control is off or the URL is malformed (the caller's own
+// validation reports that).
+func CheckUserURL(ctx context.Context, rawURL string) error {
+	sharedHTTPClientMu.RLock()
+	cfg := userURLClientConfig
+	sharedHTTPClientMu.RUnlock()
+	if cfg == nil {
+		return nil
+	}
+	if err := cfg.SSRF.Policy.CheckURL(ctx, rawURL, false); errors.Is(err, netguard.ErrDestinationNotAllowed) {
+		return apperror.DestinationNotAllowed.Wrap(err)
+	}
+	return nil
+}
+
+// DestinationNotAllowedError returns apperror.DestinationNotAllowed when err, from a
+// request made with one of this package's clients, is a refused destination, and nil
+// otherwise.
+func DestinationNotAllowedError(err error) error {
+	if errors.Is(err, netguard.ErrDestinationNotAllowed) {
+		return apperror.DestinationNotAllowed.Wrap(err)
+	}
+	return nil
+}
+
+// userURLClientLocked returns the client and config for tenant- or user-supplied
+// destinations: the access-control client when one was set, the shared client otherwise.
+// The caller holds sharedHTTPClientMu.
+func userURLClientLocked() (*http.Client, *httpclient.Config) {
+	if userURLClient != nil {
+		return userURLClient, userURLClientConfig
+	}
+	return sharedHTTPClient, sharedHTTPClientConfig
+}
 
 // InitSharedHTTPClient sets the single shared outbound *http.Client used by every
 // SSRF-guarded call this package makes (MCP reachability/JSON-RPC calls, OpenAPI spec
@@ -88,6 +165,10 @@ func initSharedHTTPClient(client *http.Client, cfg *httpclient.Config, mcpRespon
 	defer sharedHTTPClientMu.Unlock()
 	sharedHTTPClient = client
 	sharedHTTPClientConfig = cfg
+	// A new shared client replaces any access-control client built alongside the previous
+	// one; InitUserURLClientFromConfig sets it again when access control is enabled.
+	userURLClient = nil
+	userURLClientConfig = nil
 	if mcpResponseMaxBytes <= 0 {
 		mcpResponseMaxBytes = defaultMCPResponseMaxBytes
 	}
@@ -119,14 +200,19 @@ var errSharedHTTPClientNotInitialized = errors.New("shared outbound HTTP client 
 // enforce their real per-call budget via context.WithTimeout instead (see mcp.go and
 // common.go). A non-positive timeout is treated the same way: it has no effect on the
 // returned client.
+//
+// The returned client enforces server.network_security.access_control when it is enabled
+// (see InitUserURLClientFromConfig); a refused destination fails with an error matching
+// netguard.ErrDestinationNotAllowed.
 func NewUpstreamFetchClient(timeout time.Duration) (*http.Client, error) {
 	_ = timeout // retained for call-site compatibility; see doc comment above
 	sharedHTTPClientMu.RLock()
 	defer sharedHTTPClientMu.RUnlock()
-	if sharedHTTPClient == nil {
+	client, _ := userURLClientLocked()
+	if client == nil {
 		return nil, errSharedHTTPClientNotInitialized
 	}
-	return sharedHTTPClient, nil
+	return client, nil
 }
 
 // NewUpstreamClientWithTimeout returns a client with the shared client's policy (SSRF guard,
@@ -134,8 +220,14 @@ func NewUpstreamFetchClient(timeout time.Duration) (*http.Client, error) {
 // response headers included. It is built from the shared client's config, so the timeout applies
 // to whatever transport httpkit builds. For a shared client set without its config, only a plain
 // *http.Transport can take the response-header timeout, and any other transport is refused.
+//
+// It serves tenant- and user-supplied destinations, so it carries
+// server.network_security.access_control when that is enabled.
 func NewUpstreamClientWithTimeout(timeout time.Duration) (*http.Client, error) {
-	return newClientWithTimeout(timeout, false)
+	sharedHTTPClientMu.RLock()
+	client, cfg := userURLClientLocked()
+	sharedHTTPClientMu.RUnlock()
+	return clientWithTimeout(client, cfg, timeout, false)
 }
 
 // NewOperatorUpstreamClientWithTimeout is NewUpstreamClientWithTimeout for a destination the
@@ -146,13 +238,13 @@ func NewUpstreamClientWithTimeout(timeout time.Duration) (*http.Client, error) {
 // link-local/metadata, unspecified and multicast addresses are still refused at dial time,
 // and the schemes, redirects, TLS and pooling settings are the shared client's.
 func NewOperatorUpstreamClientWithTimeout(timeout time.Duration) (*http.Client, error) {
-	return newClientWithTimeout(timeout, true)
-}
-
-func newClientWithTimeout(timeout time.Duration, permitPrivate bool) (*http.Client, error) {
 	sharedHTTPClientMu.RLock()
 	client, cfg := sharedHTTPClient, sharedHTTPClientConfig
 	sharedHTTPClientMu.RUnlock()
+	return clientWithTimeout(client, cfg, timeout, true)
+}
+
+func clientWithTimeout(client *http.Client, cfg *httpclient.Config, timeout time.Duration, permitPrivate bool) (*http.Client, error) {
 	if client == nil {
 		return nil, errSharedHTTPClientNotInitialized
 	}

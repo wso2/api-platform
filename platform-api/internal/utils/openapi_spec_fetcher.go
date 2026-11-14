@@ -78,6 +78,10 @@ func FetchDocumentFromURL(ctx context.Context, rawURL string, maxBytes int64, do
 		return "", fmt.Errorf("%s URL must include a host", docLabel)
 	}
 
+	if err := CheckUserURL(ctx, parsed.String()); err != nil {
+		return "", err
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, openAPISpecFetchTimeout)
 	defer cancel()
 
@@ -96,6 +100,9 @@ func FetchDocumentFromURL(ctx context.Context, rawURL string, maxBytes int64, do
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if refused := DestinationNotAllowedError(err); refused != nil {
+			return "", refused
+		}
 		// Do not surface the underlying net error (it can leak resolved IPs/hosts).
 		return "", fmt.Errorf("failed to fetch %s", docLabel)
 	}

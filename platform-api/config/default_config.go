@@ -177,6 +177,20 @@ func defaultConfig() *Server {
 				Write:      120 * time.Second,
 				Idle:       120 * time.Second,
 			},
+			// Outbound access control for tenant- and user-supplied URLs. On by
+			// default with the behaviour platform-api already had for them:
+			// private and in-cluster destinations stay reachable, and only
+			// link-local/metadata, unspecified and multicast addresses are refused.
+			NetworkSecurity: NetworkSecurity{
+				AccessControl: AccessControl{
+					Enabled:             true,
+					Mode:                "deny",
+					Hostnames:           []string{},
+					DenyPrivateNetworks: false,
+					MaxRedirects:        5,
+					AllowedSchemes:      []string{"http", "https"},
+				},
+			},
 			WebSocket: WebSocket{
 				MaxConnections:     1000,
 				ConnectionTimeout:  30,

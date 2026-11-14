@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -78,6 +79,9 @@ func (c *connectRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	// the entire point of this mode. A generic error is returned; the
 	// resolved address/reason is not, so as not to leak internal topology.
 	if err := netguard.Validate(ctx, c.originPolicy, req.URL.Hostname()); err != nil {
+		if errors.Is(err, netguard.ErrDestinationNotAllowed) {
+			return nil, fmt.Errorf("httpclient: origin destination rejected: %w", netguard.ErrDestinationNotAllowed)
+		}
 		return nil, fmt.Errorf("httpclient: origin destination rejected")
 	}
 

@@ -460,6 +460,39 @@ idle        = "120s"
 allowed_origins = ""   # comma-separated, e.g. "https://workspace.example.com,https://devportal.example.com"
 
 # ---------------------------------------------------------------------------
+# Outbound access control
+# ---------------------------------------------------------------------------
+# Restricts the destinations platform-api connects to when the URL comes from
+# a tenant or user: an OpenAPI/SDL spec URL, an MCP server or agent-card URL,
+# a GraphQL introspection endpoint, an API portal URL, and gateway endpoints
+# reached through the gateway relay. URLs set in this file (the IdP JWKS URL,
+# the feature-usage collector, the proxy) are never restricted by it.
+#
+# mode                  "deny":  a host matching an entry in hostnames is refused.
+#                       "allow": only a host matching an entry is permitted
+#                                (hostnames must not be empty).
+# hostnames             RE2 regular expressions, matched case-insensitively against
+#                       the whole hostname (never the port or path), e.g.
+#                       ["api\.example\.com", "[a-z0-9-]+\.svc\.cluster\.local"].
+#                       Give them as a TOML array; at most 256, each up to 255 characters.
+# deny_private_networks Also refuse private (RFC 1918), loopback, carrier-grade NAT
+#                       and unique-local addresses. In allow mode a listed host must
+#                       pass this check too. Link-local (cloud metadata), unspecified
+#                       and multicast addresses are always refused.
+# max_redirects         Redirect hops followed; each hop is checked again and must
+#                       stay on the same host.
+# allowed_schemes       "http" and/or "https".
+#
+# A refused destination gets a generic error; the reason is logged only.
+[platform_api.server.network_security.access_control]
+enabled               = true
+mode                  = "deny"
+hostnames             = []
+deny_private_networks = false
+max_redirects         = 5
+allowed_schemes       = ["http", "https"]
+
+# ---------------------------------------------------------------------------
 # WebSocket
 # ---------------------------------------------------------------------------
 [platform_api.server.websocket]

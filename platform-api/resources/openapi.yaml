@@ -13468,7 +13468,9 @@ components:
             decryptable); the gateway does not hold the deployment, restore the secret and redeploy.
             Agent proxy deployments may also report AGENT_VALIDATION_FAILED,
             AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and
-            DEPLOYMENT_ID_MISMATCH.
+            DEPLOYMENT_ID_MISMATCH. UPSTREAM_URL_NOT_ALLOWED means the gateway's network access
+            control does not permit an upstream URL or a policy URL in the deployment; change the
+            URL, or the gateway's access control, and redeploy.
           pattern: '^[A-Z][A-Z0-9_]*$'
           maxLength: 50
         updatedAt:

@@ -15,16 +15,21 @@ import (
 // RoundTripper instead — see roundtrip_connect.go).
 //
 // dialFn is always wired as Transport.DialContext, regardless of whether a
-// proxy is configured. This is what makes the "guard only validates the
-// proxy hop when proxying" behavior (ProxyEgressDelegated) automatic rather
-// than a special case: net/http's Transport always dials
-// connectMethod.addr(), which is the proxy's address whenever Proxy is set
-// and the origin's address otherwise — dialFn sees whichever one Transport
-// asks for and applies the same policy either way.
-func buildTransport(cfg Config, dialFn func(context.Context, string, string) (net.Conn, error), originTLS, proxyTLS *tls.Config) (*http.Transport, error) {
+// proxy is configured: net/http's Transport always dials connectMethod.addr(),
+// which is the proxy's address whenever Proxy is set and the origin's address
+// otherwise. When proxies is non-nil, Transport.Proxy is wrapped to record
+// every proxy address it hands out, so dialFn (built by New with
+// proxyAddrSet.dialer) can dial a proxy hop under the policy's ProxyHop and a
+// direct origin under the full policy. In ProxyEgressDelegated mode the
+// proxied origin's address is therefore never validated here — only its
+// hostname, by New's destination round tripper.
+func buildTransport(cfg Config, dialFn func(context.Context, string, string) (net.Conn, error), originTLS, proxyTLS *tls.Config, proxies *proxyAddrSet) (*http.Transport, error) {
 	proxyFunc, err := buildProxyFunc(cfg.Proxy)
 	if err != nil {
 		return nil, err
+	}
+	if proxyFunc != nil && proxies != nil {
+		proxyFunc = proxies.wrap(proxyFunc)
 	}
 
 	t := &http.Transport{
