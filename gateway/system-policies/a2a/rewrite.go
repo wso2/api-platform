@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -294,10 +295,27 @@ func parseGatewayBase(params map[string]any) (*url.URL, error) {
 	if base.Hostname() == "" || !validAuthority(base.Host) {
 		return nil, fmt.Errorf("%s must name a host", ParamGatewayURL)
 	}
+	// url.Parse checks that a port is numeric, not that it is one a client can
+	// connect to.
+	if port := base.Port(); port != "" {
+		if number, err := strconv.Atoi(port); err != nil || number < 1 || number > 65535 {
+			return nil, fmt.Errorf("%s port must be between 1 and 65535, got %q", ParamGatewayURL, port)
+		}
+	}
 	if base.User != nil || base.RawQuery != "" || base.ForceQuery || base.Fragment != "" {
 		return nil, fmt.Errorf("%s must not carry userinfo, a query string or a fragment", ParamGatewayURL)
 	}
-	return &url.URL{Scheme: base.Scheme, Host: base.Host, Path: strings.TrimRight(base.Path, "/")}, nil
+
+	// The prefix is kept in its escaped form as well as its decoded one. An
+	// operator who wrote %2F in it meant a segment containing a slash, not two
+	// segments, and an entry point that tells the two apart would route a URL
+	// rebuilt from the decoded path somewhere else.
+	escapedPrefix := strings.TrimRight(base.EscapedPath(), "/")
+	prefix, err := url.PathUnescape(escapedPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("%s path is not validly escaped: %w", ParamGatewayURL, err)
+	}
+	return &url.URL{Scheme: base.Scheme, Host: base.Host, Path: prefix, RawPath: escapedPrefix}, nil
 }
 
 // gatewayURL builds the URL a gateway path is advertised at.
@@ -310,10 +328,14 @@ func parseGatewayBase(params map[string]any) (*url.URL, error) {
 // business reaching it unchecked.
 func (c *rewriteConfig) gatewayURL(path, scheme, authority string) (string, error) {
 	if c.gatewayBase != nil {
+		// RawPath carries the prefix exactly as the operator escaped it, followed
+		// by the gateway path in its default escaping; Path is the same thing
+		// decoded, which is what makes url.URL honour RawPath.
 		return (&url.URL{
-			Scheme: c.gatewayBase.Scheme,
-			Host:   c.gatewayBase.Host,
-			Path:   c.gatewayBase.Path + path,
+			Scheme:  c.gatewayBase.Scheme,
+			Host:    c.gatewayBase.Host,
+			Path:    c.gatewayBase.Path + path,
+			RawPath: c.gatewayBase.RawPath + (&url.URL{Path: path}).EscapedPath(),
 		}).String(), nil
 	}
 	if scheme != schemeHTTP && scheme != schemeHTTPS {

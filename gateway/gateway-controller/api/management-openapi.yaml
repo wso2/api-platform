@@ -5971,9 +5971,10 @@ components:
         Mode-specific rules are enforced at deploy time, not by this schema: `managed`
         requires `content`; `passthrough` accepts neither `content` nor `signing`, because
         the gateway does not parse or sign a proxied card, and only `passthrough` accepts
-        `rewriteUrls`. When the public Agent Card is `managed`, it must additionally
+        `rewriteUrls`. When the public Agent Card is `managed`, it should additionally
         declare `capabilities.extendedAgentCard: true`, since that is what tells a client
-        the operation exists at all.
+        the operation exists at all. The declaration is recommended and is not enforced
+        at deploy time.
       required:
         - mode
       properties:

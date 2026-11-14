@@ -1053,14 +1053,20 @@ func TestConfiguredGatewayURLKeepsItsPortAndPathPrefix(t *testing.T) {
 		"surrounding whitespace":      "  https://edge.example.com:8443/gateway  ",
 		"a plaintext public address":  "http://edge.example.com:8443/gateway",
 		"an IPv6 literal with a port": "https://[2001:db8::1]:8443/gateway",
+		"the highest port":            "https://edge.example.com:65535",
+		// %2F is a slash inside one segment, not a separator. An entry point that
+		// tells the two apart would route the decoded form somewhere else.
+		"an escaped separator in the prefix": "https://edge.example.com/team%2Fblue/",
 	}
 	want := map[string]string{
-		"a port":                      "https://edge.example.com:8443/trips/rpc",
-		"a path prefix":               "https://edge.example.com:8443/gateway/trips/rpc",
-		"a trailing slash":            "https://edge.example.com:8443/gateway/trips/rpc",
-		"surrounding whitespace":      "https://edge.example.com:8443/gateway/trips/rpc",
-		"a plaintext public address":  "http://edge.example.com:8443/gateway/trips/rpc",
-		"an IPv6 literal with a port": "https://[2001:db8::1]:8443/gateway/trips/rpc",
+		"a port":                             "https://edge.example.com:8443/trips/rpc",
+		"a path prefix":                      "https://edge.example.com:8443/gateway/trips/rpc",
+		"a trailing slash":                   "https://edge.example.com:8443/gateway/trips/rpc",
+		"surrounding whitespace":             "https://edge.example.com:8443/gateway/trips/rpc",
+		"a plaintext public address":         "http://edge.example.com:8443/gateway/trips/rpc",
+		"an IPv6 literal with a port":        "https://[2001:db8::1]:8443/gateway/trips/rpc",
+		"the highest port":                   "https://edge.example.com:65535/trips/rpc",
+		"an escaped separator in the prefix": "https://edge.example.com/team%2Fblue/trips/rpc",
 	}
 
 	for name, base := range bases {
@@ -1127,6 +1133,8 @@ func TestUnusableGatewayURLIsRejected(t *testing.T) {
 		"a query string":    "https://agents.example.com?tenant=a",
 		"a fragment":        "https://agents.example.com#top",
 		"a wildcard host":   "https://*.example.com",
+		"port zero":         "https://agents.example.com:0",
+		"a port past 65535": "https://agents.example.com:65536",
 	}
 
 	for name, value := range unusable {
