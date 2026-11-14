@@ -87,6 +87,7 @@ func TestCloudResourceURLEscapesID(t *testing.T) {
 }
 
 func TestResolveCloudDataPlaneURLRequiresHTTPSAndApproval(t *testing.T) {
+	t.Setenv(cloudDataPlaneDomainsEnv, "")
 	for _, target := range []string{
 		"", "relative/path", "http://gateway.example.com/api", "ftp://gateway.example.com/api",
 		"//gateway.example.com/api", "https://127.0.0.1/api", "https://10.0.0.1/api",
@@ -100,6 +101,62 @@ func TestResolveCloudDataPlaneURLRequiresHTTPSAndApproval(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestResolveCloudDataPlaneURLApprovesConfiguredDomains(t *testing.T) {
+	const wso2Gateway = "https://abc-gw-p1.gateway.dp.dev.cloud.wso2.com/api"
+	const stageGateway = "https://abc-gw-p1.dp1.us.stage.example/api"
+	t.Run("unset approves gateway hosts under wso2.com only", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, "")
+		_, err := resolveCloudDataPlaneURL(context.Background(), wso2Gateway)
+		require.NoError(t, err)
+		_, err = resolveCloudDataPlaneURL(context.Background(), stageGateway)
+		require.Error(t, err)
+	})
+	t.Run("blank keeps the default", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, "  ")
+		_, err := resolveCloudDataPlaneURL(context.Background(), wso2Gateway)
+		require.NoError(t, err)
+		_, err = resolveCloudDataPlaneURL(context.Background(), stageGateway)
+		require.Error(t, err)
+	})
+	t.Run("a configured domain approves one label in front of it", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, "dp1.us.stage.example")
+		got, err := resolveCloudDataPlaneURL(context.Background(), stageGateway)
+		require.NoError(t, err)
+		require.Equal(t, stageGateway, got)
+		_, err = resolveCloudDataPlaneURL(context.Background(), wso2Gateway)
+		require.Error(t, err, "a configured domain replaces the default")
+	})
+	t.Run("a configured domain approves nothing else", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, "dp1.us.stage.example")
+		for _, target := range []string{
+			"https://dp1.us.stage.example/api",
+			"https://a.abc-gw-p1.dp1.us.stage.example/api",
+			"https://abc.notdp1.us.stage.example/api",
+			"https://abc.dp1.us.stage.example.evil.test/api",
+			"https://abc.dp1.us.stage.example:8443/api",
+			"http://abc.dp1.us.stage.example/api",
+		} {
+			_, err := resolveCloudDataPlaneURL(context.Background(), target)
+			require.Error(t, err, target)
+		}
+	})
+	t.Run("several domains, case and spaces normalised", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, " Gateway.DP.dev.cloud.wso2.com , dp1.us.stage.example,")
+		for _, target := range []string{wso2Gateway, stageGateway} {
+			_, err := resolveCloudDataPlaneURL(context.Background(), target)
+			require.NoError(t, err, target)
+		}
+	})
+	t.Run("an invalid domain fails closed", func(t *testing.T) {
+		for _, value := range []string{"example", "*.stage.example", ".stage.example", "stage..example", "stage example", "https://stage.example", ","} {
+			t.Setenv(cloudDataPlaneDomainsEnv, value)
+			_, err := resolveCloudDataPlaneURL(context.Background(), stageGateway)
+			require.ErrorIs(t, err, errCloudDataPlaneDomains, value)
+			require.Contains(t, err.Error(), cloudDataPlaneDomainsEnv, value)
+		}
+	})
+}
+
 func TestFirstApprovedDataPlaneEndpointSkipsInvalidCandidates(t *testing.T) {
 	steps := &Steps{dataPlaneURLResolver: func(_ context.Context, target string) (string, error) {
 		if target == "https://unapproved.example.com" {
@@ -108,11 +165,21 @@ func TestFirstApprovedDataPlaneEndpointSkipsInvalidCandidates(t *testing.T) {
 		return target, nil
 	}}
 
-	endpoint, ok := firstApprovedDataPlaneEndpoint(context.Background(), steps, []any{
+	endpoint, ok, err := firstApprovedDataPlaneEndpoint(context.Background(), steps, []any{
 		"https://unapproved.example.com", " https://approved.example.com/// ", 42,
 	})
+	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "https://approved.example.com", endpoint)
+}
+
+func TestFirstApprovedDataPlaneEndpointReturnsAnInvalidDomainsSetting(t *testing.T) {
+	t.Setenv(cloudDataPlaneDomainsEnv, "*.stage.example")
+	_, ok, err := firstApprovedDataPlaneEndpoint(context.Background(), &Steps{}, []any{
+		"https://abc-gw-p1.dp1.us.stage.example",
+	})
+	require.False(t, ok)
+	require.ErrorIs(t, err, errCloudDataPlaneDomains)
 }
 
 func TestExpandCloudValueResolvesContextValues(t *testing.T) {
@@ -3000,6 +3067,7 @@ func TestResolveCloudDataPlaneURLApprovesLocalhostOnlyWhenEnabled(t *testing.T) 
 		require.Equal(t, local[2], got, "an invalid port is ignored")
 	})
 	t.Run("on widens nothing else", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, "")
 		t.Setenv(cloudLocalDataPlaneEnv, "true")
 		for _, target := range []string{
 			"http://127.0.0.1:19080/api", "http://[::1]:19080/api", "http://localhost:19080/api",

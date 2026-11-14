@@ -932,7 +932,10 @@ func (s *Steps) gatewayEndpoint(ctx context.Context, id string) (string, error) 
 		return "", err
 	}
 	endpoints, _ := document["endpoints"].([]any)
-	endpoint, ok := firstApprovedDataPlaneEndpoint(ctx, s, endpoints)
+	endpoint, ok, err := firstApprovedDataPlaneEndpoint(ctx, s, endpoints)
+	if err != nil {
+		return "", err
+	}
 	if !ok {
 		return "", fmt.Errorf("managed gateway %q lists no endpoint that passed the data-plane host check: %v", id, endpoints)
 	}
