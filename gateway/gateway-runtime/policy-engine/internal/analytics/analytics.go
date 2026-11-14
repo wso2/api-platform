@@ -95,6 +95,14 @@ const (
 	// AIProviderAPIVersionMetadataKey represents the AI provider API version metadata key.
 	AIProviderAPIVersionMetadataKey string = "ai:providerversion"
 
+	// ModelPropertiesMetadataKey carries the model gateway facts for a request on the
+	// model endpoint — the Model asked for, the target that served it and the provider
+	// behind that target — as a JSON object. Written by the analytics system policy
+	// (gateway/system-policies/analytics, ModelPropertiesKey), which must spell it the same.
+	ModelPropertiesMetadataKey string = "llm_model_properties"
+	// ModelAnalyticsProperty is the event property the model gateway facts are reported under.
+	ModelAnalyticsProperty = "modelAnalytics"
+
 	// RequestModelIDMetadataKey represents the model named in the request
 	// (Separate from ModelIDMetadataKey (which resolves to the response model).
 	RequestModelIDMetadataKey string = "aitoken:requestmodelid"
@@ -790,6 +798,19 @@ func (c *Analytics) prepareAnalyticEvent(logEntry *v3.HTTPAccessLogEntry) *dto.E
 	if keyValuePairsFromMetadata[APITypeKey] == string(policy.APIKindAgent) {
 		event.Properties[A2AAnalyticsProperty] = buildA2AAnalytics(
 			keyValuePairsFromMetadata, logEntry, operation.APIMethod, event.ProxyResponseCode)
+	}
+
+	// The model gateway facts are reported for every request that carries them,
+	// whatever its kind says: the model endpoint is an LlmProxy, and its requests are
+	// told apart from other proxies' by the block itself. A request without the block
+	// — every other request — is unchanged.
+	if raw, ok := keyValuePairsFromMetadata[ModelPropertiesMetadataKey]; ok && raw != "" {
+		var modelAnalytics map[string]interface{}
+		if err := json.Unmarshal([]byte(raw), &modelAnalytics); err == nil {
+			event.Properties[ModelAnalyticsProperty] = modelAnalytics
+		} else {
+			slog.Debug("Failed to unmarshal model gateway properties", "error", err)
+		}
 	}
 
 	if keyValuePairsFromMetadata[APITypeKey] == string(policy.APIKindGraphQL) {
