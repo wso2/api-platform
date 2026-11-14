@@ -98,6 +98,15 @@ import type {
 import { useAIWorkspaceSnackbar } from '../../../../hooks/aiWorkspaceSnackbar';
 import { logger } from '../../../../utils/logger';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
+import { buildApiKeyResourceName } from '../../../../utils/apiKeyNaming';
+import {
+  buildProxyContext,
+  nextProxyIdAfterFailure,
+  proxyNameError,
+  toProxyId,
+  type ProxyIdChoice,
+} from '../../../../utils/proxyIdentifier';
+import { proxyExists } from '../../../../apis/proxyApis';
 import { useAppAuth } from '../../../../contexts/AppAuthContext';
 import { NO_PERMISSION_TOOLTIP, SCOPES } from '../../../../auth/permissions';
 import { useResourceLimits } from '../../../../hooks/useResourceLimits';
@@ -173,23 +182,6 @@ const FIELD_NAME_MAP: Partial<Record<string, keyof FormState>> = {
   version: 'version',
   context: 'context',
   'provider.id': 'providerId',
-};
-
-/** Derive a URL-safe proxy id from the display name (same logic as LLM provider). */
-const toProxyId = (name: string): string =>
-  name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-
-const buildApiKeyResourceName = (displayName: string): string => {
-  const normalizedDisplayName = displayName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return normalizedDisplayName || 'api-key';
 };
 
 type LLMProxyNewContentProps = {
@@ -886,9 +878,7 @@ function LLMProxyNewContent({
   ).headerName;
   const projectSlug = getProjectSlug(effectiveProject);
   const generatedProxyId = toProxyId(formState.name);
-  const computedContext = projectSlug
-    ? `/${projectSlug}/${generatedProxyId}`
-    : `/${generatedProxyId}`;
+  const computedContext = buildProxyContext(projectSlug, generatedProxyId);
   const [contextOverride, setContextOverride] = useState<string | null>(null);
   const effectiveContext = contextOverride ?? computedContext;
 
@@ -899,12 +889,14 @@ function LLMProxyNewContent({
   const isSelectedProviderApiKeyReady =
     !selectedProviderRequiresApiKey || isGeneratedKeyReady || isManualKeyReady;
 
+  const nameIdError = proxyNameError(formState.name);
   const isCreateProxyDisabled =
     // A provider described but not yet added is not on the list Create reads.
     // Creating anyway would quietly make a proxy without it, and without
     // saying so — the entered credential and translator simply gone.
     isProviderFormOpen ||
     !formState.name.trim() ||
+    Boolean(nameIdError) ||
     !formState.providerId ||
     !effectiveProject?.id ||
     !providerDetail ||
@@ -922,6 +914,7 @@ function LLMProxyNewContent({
         : 'Finish editing the open provider before creating.';
     }
     if (!formState.name.trim()) return 'Enter a name for the proxy.';
+    if (nameIdError) return nameIdError;
     if (!formState.providerId) return 'Select an LLM provider.';
     if (!effectiveProject?.id) return 'Select a project.';
     if (!providerDetail) return 'Loading the selected provider details.';
@@ -982,13 +975,12 @@ function LLMProxyNewContent({
     providerOptions,
   ]);
 
-  const handleCreate = async () => {
+  const handleCreate = async (retry?: ProxyIdChoice, attempt = 0): Promise<void> => {
     const trimmedName = formState.name.trim();
-    const generatedId = toProxyId(trimmedName);
     const payloadProjectId = effectiveProject?.id ?? '';
     if (
       !trimmedName ||
-      !generatedId ||
+      !toProxyId(trimmedName) ||
       !formState.providerId ||
       !payloadProjectId ||
       !providerDetail ||
@@ -1003,6 +995,14 @@ function LLMProxyNewContent({
     try {
       setIsCreating(true);
       setFieldErrors({});
+
+      // Display names need not be unique, identifiers do. The first attempt
+      // uses the name's own identifier with no extra request; only when the
+      // backend reports it taken is a free one looked up and the create retried.
+      const generatedId = retry?.id ?? toProxyId(trimmedName);
+      // The default context follows the identifier, so a suffixed proxy does
+      // not collide with the first one's context. A context the user typed is kept.
+      const payloadContext = contextOverride ?? buildProxyContext(projectSlug, generatedId);
 
       // The proxy calls its provider through the gateway, which adds the
       // provider's own upstream credential, so the proxy needs a credential only
@@ -1114,7 +1114,7 @@ function LLMProxyNewContent({
           }),
         version: formState.version.trim() || 'v1.0',
         projectId: payloadProjectId,
-        context: effectiveContext,
+        context: payloadContext,
         providers: [
           {
             id: formState.providerId,
@@ -1150,6 +1150,12 @@ function LLMProxyNewContent({
       };
 
       const newProxy = await createProxy(payload);
+      if (generatedId !== toProxyId(trimmedName)) {
+        showSnackbar(
+          `A proxy named "${toProxyId(trimmedName)}" already exists, so this one was created as "${generatedId}".`,
+          'info'
+        );
+      }
       navigate(
         isProjectLevel
           ? buildProjectPath(
@@ -1181,6 +1187,21 @@ function LLMProxyNewContent({
           );
         });
       });
+      // The identifier is taken (a repeated display name, or someone else
+      // created it a moment ago). The secrets above are already being removed;
+      // pick the next free identifier and run the create again.
+      const next = await nextProxyIdAfterFailure({
+        error,
+        displayName: trimmedName,
+        failedCounter: retry?.n ?? 1,
+        attempt,
+        exists: (candidate) => proxyExists(candidate, PLATFORM_API_BASE_URL),
+        onLookupError: (lookupError) =>
+          logger.warn('Could not look up a free proxy identifier', { lookupError }),
+      });
+      if (next) {
+        return handleCreate(next, attempt + 1);
+      }
       const backendFieldErrors = getFieldErrors(error);
       const mappedErrors: Partial<Record<keyof FormState, string>> = {};
       let hasUnmapped = false;
@@ -1894,8 +1915,8 @@ function LLMProxyNewContent({
                   }));
                   setFieldErrors((prev) => ({ ...prev, name: undefined }));
                 }}
-                error={Boolean(fieldErrors.name)}
-                helperText={fieldErrors.name}
+                error={Boolean(fieldErrors.name ?? nameIdError)}
+                helperText={fieldErrors.name ?? nameIdError}
                 data-cyid="proxy-name-input"
               />
             </FormControl>
@@ -2234,7 +2255,7 @@ function LLMProxyNewContent({
             <span>
               <Button
                 variant="contained"
-                onClick={handleCreate}
+                onClick={() => handleCreate()}
                 disabled={isCreateProxyDisabled}
                 data-cyid="create-proxy-button"
               >

@@ -67,6 +67,14 @@ import ExternalServersCreateForm from './ExternalServersCreateForm';
 import ExternalServersValidationDetails from './ExternalServersValidationDetails';
 import type { EndpointValidationResponse } from './externalServersValidationTypes';
 import { getErrorMessage, getFieldErrors } from '../../../../utils/apiError';
+import { logger } from '../../../../utils/logger';
+import {
+  MCP_PROXY_ID_TAKEN_CODE,
+  buildProxyContext,
+  createWithUniqueId,
+  proxyNameError,
+  toProxyId,
+} from '../../../../utils/proxyIdentifier';
 import { useResourceLimits } from '../../../../hooks/useResourceLimits';
 
 // Backend field names (from CreateMCPServerRequest) mapped onto this form's state keys.
@@ -80,12 +88,12 @@ const FIELD_NAME_MAP: Record<string, 'name' | 'version' | 'description' | 'conte
 
 const SAMPLE_MCP_SERVER_URL = 'https://db720294-98fd-40f4-85a1-cc6a3b65bc9a-prod.e1-us-east-azure.choreoapis.dev/godzilla/mcp-everything-server/v1.0/mcp';
 
-function generateServerId(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+/** Raised when the upstream auth credential could not be stored as a secret. */
+class SecretEncryptionError extends Error {
+  constructor(cause: unknown) {
+    super('Failed to encrypt upstream auth credential', { cause });
+    this.name = 'SecretEncryptionError';
+  }
 }
 
 export const MCP_VERSION_PATTERN = /^v?\d+(\.\d+)?(\.\d+)?$/;
@@ -237,27 +245,27 @@ export default function ExternalServersNew(): JSX.Element {
   const handleCreate = async () => {
     if (!effectiveProject?.id || !MCP_VERSION_PATTERN.test(serverVersion.trim())) return;
 
-    // Encrypt the upstream auth value as a secret so the plaintext credential is
-    // never stored in the MCP server config. Skip if already a placeholder.
-    let resolvedAuthValue = authHeaderValue.trim();
-    if (authHeaderName.trim() && resolvedAuthValue && !resolvedAuthValue.includes('{{ secret ')) {
+    // The upstream auth value is stored as a secret, never as plaintext in the MCP
+    // server config. The secret is minted per create attempt: the BFF deletes every
+    // secret a failed create referenced, so an attempt retried under a new
+    // identifier must not reuse the previous attempt's secret. Skipped when the
+    // value is already a placeholder.
+    const resolveAuthValue = async (): Promise<string> => {
+      const plain = authHeaderValue.trim();
+      if (!authHeaderName.trim() || !plain || plain.includes('{{ secret ')) return plain;
       try {
-        const secretHandle = generateSecretHandle();
-        const secretResponse = await createSecret(
-          {
-            id: secretHandle,
-            displayName: `${serverName.trim()} upstream auth`,
-            description: `Auto-generated secret for MCP server ${serverName.trim()}`,
-            value: resolvedAuthValue,
-            type: 'GENERIC',
-          },
-        );
-        resolvedAuthValue = buildSecretPlaceholder(secretResponse.id);
+        const secretResponse = await createSecret({
+          id: generateSecretHandle(),
+          displayName: `${serverName.trim()} upstream auth`,
+          description: `Auto-generated secret for MCP server ${serverName.trim()}`,
+          value: plain,
+          type: 'GENERIC',
+        });
+        return buildSecretPlaceholder(secretResponse.id);
       } catch (err) {
-        showSnackbar('Failed to encrypt upstream auth credential', 'error');
-        return;
+        throw new SecretEncryptionError(err);
       }
-    }
+    };
 
     // Trimmed and de-duplicated because this is relayed verbatim from whatever the
     // upstream reported, and the API stores it without validating anything.
@@ -269,8 +277,8 @@ export default function ExternalServersNew(): JSX.Element {
       )
     );
 
-    const payload: CreateMCPServerRequest = {
-      id: generateServerId(serverName),
+    const buildPayload = (resolvedAuthValue: string): CreateMCPServerRequest => ({
+      id: toProxyId(serverName),
       displayName: serverName.trim(),
       description: serverDescription.trim() || undefined,
       version: normalizeVersion(serverVersion.trim()),
@@ -319,13 +327,37 @@ export default function ExternalServersNew(): JSX.Element {
           arguments: prompt.arguments,
         })),
       },
-    };
+    });
 
     try {
       setIsCreating(true);
       setCreateFieldErrors({});
-      const created = await mcpProxiesApis.createMCPServer(payload, PLATFORM_API_BASE_URL);
+      // Names may repeat, identifiers may not: on a clash the create is re-run
+      // under the next free identifier, and the default context follows it.
+      const { result: created, choice } = await createWithUniqueId({
+        displayName: serverName,
+        takenCode: MCP_PROXY_ID_TAKEN_CODE,
+        exists: (candidate) => mcpProxiesApis.mcpProxyExists(candidate, PLATFORM_API_BASE_URL),
+        onLookupError: (lookupError) =>
+          logger.warn('Could not look up a free MCP proxy identifier', { lookupError }),
+        create: async (attempt) =>
+          mcpProxiesApis.createMCPServer(
+            {
+              ...buildPayload(await resolveAuthValue()),
+              id: attempt.id,
+              context:
+                serverContextOverride ?? buildProxyContext(effectiveProjectSlug, attempt.id),
+            },
+            PLATFORM_API_BASE_URL
+          ),
+      });
       showSnackbar('Successfully created MCP Proxy.', 'success');
+      if (choice.id !== toProxyId(serverName)) {
+        showSnackbar(
+          `A proxy named "${toProxyId(serverName)}" already exists, so this one was created as "${choice.id}".`,
+          'info'
+        );
+      }
       navigate(
         buildProjectPath(
           currentOrganization,
@@ -334,6 +366,10 @@ export default function ExternalServersNew(): JSX.Element {
         )
       );
     } catch (err) {
+      if (err instanceof SecretEncryptionError) {
+        showSnackbar('Failed to encrypt upstream auth credential', 'error');
+        return;
+      }
       const backendFieldErrors = getFieldErrors(err);
       const mappedErrors: Record<string, string> = {};
       let hasUnmapped = false;
@@ -360,16 +396,16 @@ export default function ExternalServersNew(): JSX.Element {
   };
 
   const effectiveProjectSlug = getProjectSlug(effectiveProject);
-  const computedContext = effectiveProjectSlug
-    ? `/${effectiveProjectSlug}/${generateServerId(serverName)}`
-    : `/${generateServerId(serverName)}`;
+  const computedContext = buildProxyContext(effectiveProjectSlug, toProxyId(serverName));
   const serverContext = serverContextOverride ?? computedContext;
   const versionValidationError =
     serverVersion.trim() && !MCP_VERSION_PATTERN.test(serverVersion.trim())
       ? MCP_VERSION_ERROR
       : undefined;
+  const nameValidationError = proxyNameError(serverName);
   const formFieldErrors = {
     ...createFieldErrors,
+    name: nameValidationError ?? createFieldErrors.name,
     version: versionValidationError ?? createFieldErrors.version,
   };
 
@@ -377,6 +413,7 @@ export default function ExternalServersNew(): JSX.Element {
     isCreating ||
     !canCreateMcpProxy ||
     !serverName.trim() ||
+    Boolean(nameValidationError) ||
     !serverVersion.trim() ||
     Boolean(versionValidationError) ||
     !serverTarget.trim();

@@ -19,6 +19,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { get, post, put, del } from '../../clients/choreoApiClient';
+import { logger } from '../../utils/logger';
 import {
   createAgentProxy,
   getAgentProxies,
@@ -29,6 +30,7 @@ import {
   getAgentProxyAPIKeys,
   createAgentProxyAPIKey,
   revokeAgentProxyAPIKey,
+  agentProxyExists,
 } from './agentProxiesApis';
 
 vi.mock('../../clients/choreoApiClient', () => ({
@@ -49,6 +51,7 @@ beforeEach(() => {
   vi.mocked(post).mockReset();
   vi.mocked(put).mockReset();
   vi.mocked(del).mockReset();
+  vi.mocked(logger.error).mockReset();
 });
 
 describe('agent proxy requests', () => {
@@ -188,5 +191,37 @@ describe('transport failures', () => {
     vi.mocked(client).mockRejectedValue(failure);
 
     await expect(call()).rejects.toThrow('upstream unavailable');
+  });
+});
+
+describe('agentProxyExists', () => {
+  it('is true when the proxy can be fetched', async () => {
+    vi.mocked(get).mockResolvedValue({ id: 'trips' });
+
+    await expect(agentProxyExists('trips', BASE)).resolves.toBe(true);
+    expect(get).toHaveBeenCalledWith('/agent-proxies/trips', undefined, BASE);
+  });
+
+  it('is false on a 404 without logging it as an error', async () => {
+    vi.mocked(get).mockRejectedValue({ status: 404 });
+
+    await expect(agentProxyExists('free-id', BASE)).resolves.toBe(false);
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('rethrows and logs any other failure', async () => {
+    const failure = { status: 403 };
+    vi.mocked(get).mockRejectedValue(failure);
+
+    await expect(agentProxyExists('trips', BASE)).rejects.toBe(failure);
+    expect(logger.error).toHaveBeenCalled();
+  });
+
+  it('encodes the identifier into the path', async () => {
+    vi.mocked(get).mockResolvedValue({});
+
+    await agentProxyExists('a/b', BASE);
+
+    expect(get).toHaveBeenCalledWith('/agent-proxies/a%2Fb', undefined, BASE);
   });
 });
