@@ -1,0 +1,6 @@
+# The public base URL rewritten Agent Card interface URLs are built on, as set for a gateway
+# that sits behind a load balancer or ingress. It differs from every address the suite reaches
+# the gateway on in scheme, host, port and path prefix, so a card advertising it cannot have
+# been derived from the request.
+[policy_configurations.a2a_v1]
+gateway_url = "https://agents-public.example.test:9443/edge"

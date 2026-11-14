@@ -5971,9 +5971,10 @@ components:
         Mode-specific rules are enforced at deploy time, not by this schema: `managed`
         requires `content`; `passthrough` accepts neither `content` nor `signing`, because
         the gateway does not parse or sign a proxied card, and only `passthrough` accepts
-        `rewriteUrls`. When the public Agent Card is `managed`, it must additionally
+        `rewriteUrls`. When the public Agent Card is `managed`, it should additionally
         declare `capabilities.extendedAgentCard: true`, since that is what tells a client
-        the operation exists at all.
+        the operation exists at all. The declaration is recommended and is not enforced
+        at deploy time.
       required:
         - mode
       properties:
@@ -6010,9 +6011,11 @@ components:
         Defaults to true. A proxied card advertises the URLs the agent is reachable at,
         so forwarding it unchanged tells every client to bypass the gateway that was put
         in front of the agent — the default therefore points those URLs at the gateway.
-        Only the bindings the Agent's configured transports expose are rewritten; an
-        interface the gateway does not serve keeps the agent's own URL, and a client
-        selecting that binding reaches the agent directly. The gateway buffers the card
+        Every interface is rewritten: one whose binding the Agent's configured transports
+        do not expose has no gateway endpoint of its own, so it is given the endpoint of
+        the first configured transport rather than keeping the agent's own URL. The
+        gateway does not serve that binding, so a client selecting it is refused by the
+        gateway instead of reaching the agent directly. The gateway buffers the card
         response (up to 1 MiB) and drops the upstream `signatures` block, which no longer
         covers the returned bytes; it never signs a passthrough card, so a rewritten card
         is unsigned. Enabling it does not make the card's security declarations

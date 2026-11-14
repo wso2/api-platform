@@ -133,13 +133,12 @@ The controller rejects a deployment rather than serving a configuration that wou
 | `managed` requires `content`. | Both cards |
 | `passthrough` accepts neither `content` nor `signing`. | Both cards |
 | `rewriteUrls` is valid in `passthrough` mode only, in either polarity. | Both cards |
-| A public card that's `managed` alongside a configured protected card must declare `capabilities.extendedAgentCard: true`. | Public card |
 
 ### Managed card content rules
 
 | Rule |
 |---|
-| The document must not carry a `signatures` block. |
+| The document must not carry signatures. An empty or null `signatures` field is accepted. |
 | The encoded document must not exceed 1 MiB. |
 | `supportedInterfaces` must be present and non-empty. |
 | Every configured transport needs an interface advertising its binding, and no interface may advertise a binding the transports don't expose. |

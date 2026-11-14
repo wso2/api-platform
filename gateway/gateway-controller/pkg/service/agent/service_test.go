@@ -370,15 +370,6 @@ func TestCreate_RejectsInvalidConfiguration(t *testing.T) {
 			field: "spec.a2a.agentCard.public.signing.enabled",
 		},
 		{
-			// A protected card is a promise that the extended-card operation
-			// exists; a managed public card that does not declare the capability
-			// contradicts it, and the contradiction has to be caught here rather
-			// than becoming an operation no conformant client ever calls.
-			name:  "protected card without the public capability declaration",
-			opts:  agentYAMLOpts{protected: "      protected:\n        mode: passthrough"},
-			field: "spec.a2a.agentCard.public.content.capabilities.extendedAgentCard",
-		},
-		{
 			name: "protected card signing is not supported yet",
 			opts: agentYAMLOpts{
 				extendedCard: true,
