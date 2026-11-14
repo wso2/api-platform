@@ -1008,3 +1008,150 @@ func TestRewriteParameterNamesMatchTheControllerContract(t *testing.T) {
 		}
 	}
 }
+
+// ─── The configured gateway URL ──────────────────────────────────────────────
+
+// withGatewayURL adds the gatewayUrl system parameter the way the policy engine
+// does: resolved from configuration and merged at the top level, beside the card
+// block the controller wrote.
+func withGatewayURL(params map[string]any, gatewayURL any) map[string]any {
+	params[ParamGatewayURL] = gatewayURL
+	return params
+}
+
+// A configured gateway URL decides the whole origin, ahead of the request.
+//
+// This is the deployment the parameter exists for: the gateway sits behind
+// something else, so the request arrives over plaintext on an internal
+// authority, and neither is an address a client outside can use.
+func TestConfiguredGatewayURLTakesPrecedenceOverTheRequest(t *testing.T) {
+	params := withGatewayURL(publicRewriteParams(), "https://agents.example.com")
+	instance := rewritingPolicy(t, params)
+	mods := requireModifications(t, runResponse(t, instance, params,
+		schemeHTTP, "gateway.internal.svc:8080", "", 200, upstreamCard))
+
+	if strings.Contains(string(mods.Body), "gateway.internal.svc") {
+		t.Errorf("the internal authority was published: %s", mods.Body)
+	}
+	urls := interfaceURLs(t, decodeCard(t, mods.Body))
+	if got, want := urls[transportJSONRPC], "https://agents.example.com/trips/rpc"; got != want {
+		t.Errorf("JSONRPC url = %q, want %q", got, want)
+	}
+	if got, want := urls[transportHTTPJSON], "https://agents.example.com/trips/v1"; got != want {
+		t.Errorf("HTTP+JSON url = %q, want %q", got, want)
+	}
+}
+
+// The configured URL is used as written: a non-standard port and a path prefix
+// are both part of the address the operator published, and a trailing slash is
+// not a second separator.
+func TestConfiguredGatewayURLKeepsItsPortAndPathPrefix(t *testing.T) {
+	bases := map[string]string{
+		"a port":                      "https://edge.example.com:8443",
+		"a path prefix":               "https://edge.example.com:8443/gateway",
+		"a trailing slash":            "https://edge.example.com:8443/gateway/",
+		"surrounding whitespace":      "  https://edge.example.com:8443/gateway  ",
+		"a plaintext public address":  "http://edge.example.com:8443/gateway",
+		"an IPv6 literal with a port": "https://[2001:db8::1]:8443/gateway",
+	}
+	want := map[string]string{
+		"a port":                      "https://edge.example.com:8443/trips/rpc",
+		"a path prefix":               "https://edge.example.com:8443/gateway/trips/rpc",
+		"a trailing slash":            "https://edge.example.com:8443/gateway/trips/rpc",
+		"surrounding whitespace":      "https://edge.example.com:8443/gateway/trips/rpc",
+		"a plaintext public address":  "http://edge.example.com:8443/gateway/trips/rpc",
+		"an IPv6 literal with a port": "https://[2001:db8::1]:8443/gateway/trips/rpc",
+	}
+
+	for name, base := range bases {
+		t.Run(name, func(t *testing.T) {
+			params := withGatewayURL(publicRewriteParams(), base)
+			instance := rewritingPolicy(t, params)
+			mods := requireModifications(t, runResponse(t, instance, params,
+				schemeHTTPS, "agents.example.com", "", 200, upstreamCard))
+
+			urls := interfaceURLs(t, decodeCard(t, mods.Body))
+			if got := urls[transportJSONRPC]; got != want[name] {
+				t.Errorf("JSONRPC url = %q, want %q", got, want[name])
+			}
+		})
+	}
+}
+
+// With the origin configured, the request no longer has to supply a usable one:
+// a request with no scheme or authority, which fails closed otherwise, is
+// rewritten.
+func TestConfiguredGatewayURLNeedsNothingFromTheRequest(t *testing.T) {
+	params := withGatewayURL(publicRewriteParams(), "https://agents.example.com")
+	instance := rewritingPolicy(t, params)
+	mods := requireModifications(t, runResponse(t, instance, params,
+		"", "", "", 200, upstreamCard))
+
+	urls := interfaceURLs(t, decodeCard(t, mods.Body))
+	if got, want := urls[transportJSONRPC], "https://agents.example.com/trips/rpc"; got != want {
+		t.Errorf("JSONRPC url = %q, want %q", got, want)
+	}
+}
+
+// The parameter is optional. Absent, null or empty, the origin is derived from
+// the request as before.
+func TestAbsentGatewayURLFallsBackToTheRequest(t *testing.T) {
+	unset := map[string]any{"null": nil, "empty": "", "blank": "   "}
+
+	for name, value := range unset {
+		t.Run(name, func(t *testing.T) {
+			params := withGatewayURL(publicRewriteParams(), value)
+			instance := rewritingPolicy(t, params)
+			mods := requireModifications(t, runResponse(t, instance, params,
+				schemeHTTPS, "agents.example.com", "", 200, upstreamCard))
+
+			urls := interfaceURLs(t, decodeCard(t, mods.Body))
+			if got, want := urls[transportJSONRPC], "https://agents.example.com/trips/rpc"; got != want {
+				t.Errorf("JSONRPC url = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// A configured value that cannot be published is refused, not ignored: falling
+// back to the derived origin would advertise the very address the operator set
+// this to replace.
+func TestUnusableGatewayURLIsRejected(t *testing.T) {
+	unusable := map[string]any{
+		"not a string":      8080,
+		"no scheme":         "agents.example.com",
+		"a relative path":   "/gateway",
+		"an unusual scheme": "ftp://agents.example.com",
+		"no host":           "https:///gateway",
+		"userinfo":          "https://user:pass@agents.example.com",
+		"a query string":    "https://agents.example.com?tenant=a",
+		"a fragment":        "https://agents.example.com#top",
+		"a wildcard host":   "https://*.example.com",
+	}
+
+	for name, value := range unusable {
+		t.Run(name, func(t *testing.T) {
+			if base, err := parseGatewayBase(map[string]any{ParamGatewayURL: value}); err == nil {
+				t.Fatalf("parseGatewayBase accepted %v as %v", value, base)
+			}
+
+			instance := rewritingPolicy(t, withGatewayURL(publicRewriteParams(), value))
+			if instance.configErr == nil {
+				t.Error("the instance carries no configuration error, so it would serve")
+			}
+		})
+	}
+}
+
+// Only a rewriting instance reads the parameter. It is merged into every
+// instance of the policy, so a bad value must not break the chains that never
+// build a gateway URL — a managed card, above all.
+func TestGatewayURLIsIgnoredByAnInstanceThatDoesNotRewrite(t *testing.T) {
+	instance := rewritingPolicy(t, withGatewayURL(cardParams(), "not a url"))
+	if instance.configErr != nil {
+		t.Errorf("a managed card instance failed on gatewayUrl: %v", instance.configErr)
+	}
+	if instance.rewrite != nil {
+		t.Error("a managed card instance was given a rewrite configuration")
+	}
+}

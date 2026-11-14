@@ -88,6 +88,15 @@ const (
 	ParamPath            = "path"
 )
 
+// ParamGatewayURL is the operator-configured base URL rewritten interface URLs
+// are built on.
+//
+// It is a system parameter — resolved by the policy engine from the gateway's
+// own configuration (policy_configurations.a2a_v1.gateway_url) and merged into
+// every instance's parameters at the top level — rather than something the
+// controller writes per Agent. It is optional; see rewriteConfig.gatewayBase.
+const ParamGatewayURL = "gatewayUrl"
+
 // Agent Card field names read during a rewrite. The card is a free-form
 // document, so the two fields this touches are named once here rather than
 // spelled as literals at each use. They are the protobuf JSON names from the
@@ -174,6 +183,20 @@ type rewriteConfig struct {
 	// that claim can point at.
 	protocolVersion string
 
+	// gatewayBase is the operator-configured external base URL of the gateway, or
+	// nil when none is configured.
+	//
+	// When set it decides the whole origin of a rewritten URL — scheme, host and
+	// port — and takes precedence over both the Agent's vhost and the request.
+	// Those two describe how a client reached *this* gateway, which is the address
+	// to advertise only when the gateway is the edge. Behind a load balancer,
+	// ingress or API front door, the request carries an internal authority and
+	// often a different scheme, and the vhost is a routing match that may name
+	// nothing public; the operator is then the only one who knows the address
+	// clients use, and this is where they state it. A path on it is kept as a
+	// prefix, for an edge that publishes the gateway under one.
+	gatewayBase *url.URL
+
 	// protected reports which representation this instance rewrites. It decides
 	// the response shape, not the rewrite: a protected card on the JSON-RPC
 	// binding arrives inside a JSON-RPC result envelope, while public discovery
@@ -235,13 +258,64 @@ func parseRewriteConfig(card map[string]any, protected bool) (*rewriteConfig, er
 	return cfg, nil
 }
 
+// parseGatewayBase reads the gatewayUrl system parameter.
+//
+// It returns (nil, nil) when the parameter is absent or empty, which is the
+// ordinary case: an edge gateway derives the origin from the vhost and the
+// request. A value that is present but unusable is an error rather than a silent
+// fall back to that derivation — the operator set it because the derived origin
+// is wrong for their deployment, so falling back would publish exactly the
+// address they configured this to replace.
+//
+// The value must be an absolute http or https URL with a host. Userinfo, a query
+// string and a fragment are refused: the gateway path is appended to this value
+// to form a URL published to every client of the agent, and none of the three
+// belongs in one.
+func parseGatewayBase(params map[string]any) (*url.URL, error) {
+	raw, present := params[ParamGatewayURL]
+	if !present || raw == nil {
+		return nil, nil
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return nil, fmt.Errorf("%s must be a string", ParamGatewayURL)
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	base, err := url.Parse(value)
+	if err != nil {
+		return nil, fmt.Errorf("%s is not a valid URL: %w", ParamGatewayURL, err)
+	}
+	if base.Scheme != schemeHTTP && base.Scheme != schemeHTTPS {
+		return nil, fmt.Errorf("%s scheme must be http or https, got %q", ParamGatewayURL, base.Scheme)
+	}
+	if base.Hostname() == "" || !validAuthority(base.Host) {
+		return nil, fmt.Errorf("%s must name a host", ParamGatewayURL)
+	}
+	if base.User != nil || base.RawQuery != "" || base.ForceQuery || base.Fragment != "" {
+		return nil, fmt.Errorf("%s must not carry userinfo, a query string or a fragment", ParamGatewayURL)
+	}
+	return &url.URL{Scheme: base.Scheme, Host: base.Host, Path: strings.TrimRight(base.Path, "/")}, nil
+}
+
 // gatewayURL builds the URL a gateway path is advertised at.
 //
-// The path is the caller's, resolved from the configured transports. scheme and
-// authority come from the request, so both are validated here rather than
-// interpolated: this string is published to every client of the agent, and a
-// value that arrived on the wire has no business reaching it unchecked.
+// The path is the caller's, resolved from the configured transports. With a
+// configured gatewayBase the origin is the operator's and the request is not
+// consulted at all. Otherwise scheme and authority come from the request, so
+// both are validated here rather than interpolated: this string is published to
+// every client of the agent, and a value that arrived on the wire has no
+// business reaching it unchecked.
 func (c *rewriteConfig) gatewayURL(path, scheme, authority string) (string, error) {
+	if c.gatewayBase != nil {
+		return (&url.URL{
+			Scheme: c.gatewayBase.Scheme,
+			Host:   c.gatewayBase.Host,
+			Path:   c.gatewayBase.Path + path,
+		}).String(), nil
+	}
 	if scheme != schemeHTTP && scheme != schemeHTTPS {
 		return "", fmt.Errorf("%w: request scheme %q is not http or https", errRewriteFailed, scheme)
 	}
@@ -253,6 +327,9 @@ func (c *rewriteConfig) gatewayURL(path, scheme, authority string) (string, erro
 
 // gatewayAuthority composes the authority a rewritten interface URL advertises,
 // from the Agent's configured virtual host and the request the client made.
+//
+// This is the derivation used when no gatewayUrl is configured; a configured one
+// replaces it entirely (see rewriteConfig.gatewayBase).
 //
 // The vhost decides the *host*, because that is the name the operator published
 // the Agent under: the authority a client happened to dial may be an internal

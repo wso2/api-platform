@@ -120,6 +120,21 @@ Three consequences follow from rewriting:
 - **The `signatures` block is dropped,** because it no longer covers the bytes being returned. The gateway doesn't sign a card it didn't write, so a rewritten card is unsigned.
 - **The response is buffered,** up to 1 MiB.
 
+### Set the gateway's public URL
+
+The rewritten URLs are built from how the client reached the gateway: the request's scheme, the Agent's `vhost` (or the request's authority for a wildcard vhost), and the request's port. That's the right address when the gateway is the edge. When it sits behind a load balancer, ingress, or API front door, the request arrives on an internal address and the card would advertise it.
+
+For that deployment, set the gateway's public base URL in `config.toml`:
+
+```toml
+[policy_configurations.a2a_v1]
+gateway_url = "https://agents.example.com"
+```
+
+When `gateway_url` is set, it takes precedence over the vhost and the request, and every rewritten interface URL is this value followed by the gateway path for the transport. A port and a path prefix are kept, so `https://edge.example.com:8443/gateway` produces `https://edge.example.com:8443/gateway/trip-planner/v1`.
+
+The value must be an absolute `http` or `https` URL with no userinfo, query string, or fragment. If it's set to something else, the gateway refuses to serve rewritten cards rather than fall back to the request's address. The setting applies to every Agent on the gateway and has no effect on `managed` cards, whose URLs you write yourself.
+
 Turn rewriting off to forward the proxied response byte for byte, signatures included:
 
 ```yaml
