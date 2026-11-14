@@ -635,7 +635,14 @@ func (t *LLMProviderTransformer) providerPoliciesDownstream(spec api.LLMProxyCon
 // attachment with no per-attempt instance (FR-030r).
 //
 // Duplicated from pkg/transform rather than imported: pkg/transform already imports this package,
-// so the dependency cannot run the other way. Pinned by TestProxyAttachesFailover_MatchesTransform.
+// so the dependency cannot run the other way. Pinned by TestProxyAttachesFailover_SeesEveryAttachmentLevel.
+//
+// It must read EVERY list the transformation reads. The deprecated `policies` field is the one
+// that was missed: collectOperationLevelLLMPolicies folds it into the generated operations, so a
+// proxy attaching failover there got the retry policy while this scan said no failover — which
+// left the transformer and credential downstream, and a fallback attempt reached its provider
+// with neither. The transform side cannot catch that, because by the time it runs the deprecated
+// list has already been merged and looks identical to an operationPolicies entry.
 func proxyAttachesFailover(spec api.LLMProxyConfigData) bool {
 	if spec.GlobalPolicies != nil {
 		for _, p := range *spec.GlobalPolicies {
@@ -648,6 +655,15 @@ func proxyAttachesFailover(spec api.LLMProxyConfigData) bool {
 	// name is read directly rather than from a nested list.
 	if spec.OperationPolicies != nil {
 		for _, p := range *spec.OperationPolicies {
+			if p.Name == config.FailoverPolicyName {
+				return true
+			}
+		}
+	}
+	// DEPRECATED but still honoured: the API documents `policies` as "treated identically to
+	// operationPolicies", and the transformation merges it, so attachment through it counts.
+	if spec.Policies != nil {
+		for _, p := range *spec.Policies {
 			if p.Name == config.FailoverPolicyName {
 				return true
 			}

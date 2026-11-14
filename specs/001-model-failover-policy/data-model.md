@@ -16,7 +16,7 @@ configuration; see [contracts/model-failover-policy.yaml](./contracts/model-fail
 |---|---|---|---|---|
 | `targets` | list of `Target` | Conditional (FR-001a) | — | Required unless an adopting routing policy is attached to the same operation (FR-006a). Each entry resolvable (FR-006) |
 | `failureConditions.statusCodes` | list of int | No | `[429, 500, 502, 503, 504]` | Each in 400–599. Transport failures always trigger regardless (FR-009) |
-| `failureConditions.onTransportFailure` | bool | No | `true` | Connection failure, reset, unavailable upstream, per-attempt timeout |
+| _(removed)_ `failureConditions.onTransportFailure` | — | — | — | Withdrawn as a configurable condition. Connection failure, reset and per-attempt timeout are retried unconditionally: the generated `retry_on` carries `connect-failure` and `reset` and does not read any field. See `design-doc-reconciliation.md`. |
 | `suspension.consecutiveFailures` | int | No | `3` | `>= 0`; `0` disables suspension |
 | `suspension.durationSeconds` | int | No | `30` | `>= 0`. **Base** duration; doubles per re-suspension up to the cap |
 | `suspension.maxDurationSeconds` | int | No | `600` | `>= durationSeconds`. Ceiling for the doubled duration |
@@ -67,8 +67,15 @@ ResolvedChain = dedup( TargetPreferenceList.targets ++ FailoverConfiguration.tar
                 filtered by TargetHealth.state != suspended
 ```
 
-Order is preference-list-first, configured-targets-after (FR-024). De-duplication keeps a target's
-**first** position (FR-010). Length bounds the attempt budget.
+Order is **first ranked target, then ITS configured fallbacks, then the rest of the ranking**
+(FR-024), with any configured target outside the ranking as a last-resort tail. For ranking
+`[A, D, C]` and `A -> [B]` that is `[A, B, D, C]`, not `[A, D, C, B]`: FR-024 spends the leading
+target's own fallbacks before continuing through the ranking, because those fallbacks are what the
+publisher chose to replace A with. De-duplication keeps a target's **first** position (FR-010).
+Length bounds the attempt budget.
+
+Implemented in `resolveChain` as four appends in exactly that order — `published[:1]`, the
+configured fallbacks, `published[1:]`, then the configured target.
 
 ## 5. TargetHealth (runtime state, in-memory, per instance)
 
@@ -91,9 +98,9 @@ cross-instance implementation can be substituted without changing behavior (FR-0
 | From | Event | To | Side effect |
 |---|---|---|---|
 | `healthy` | failure, `consecutiveFailures + 1 < threshold` | `healthy` | increment |
-| `healthy` | failure, `consecutiveFailures + 1 >= threshold` | `suspended` | set `suspendedUntil`; emit suspension record naming the consecutive criterion |
-| `healthy` | failure, window rate >= `errorRatePercent` **and** window requests >= `minimumRequests` | `suspended` | set `suspendedUntil`; emit suspension record naming the rate criterion and observed rate (FR-018a/b/d) |
-| `healthy` | window p95 >= `p95LatencyMs` **and** window requests >= `minimumRequests` | `suspended` | set `suspendedUntil`; emit suspension record naming the latency criterion and observed percentile (FR-018e) |
+| `healthy` | failure, `consecutiveFailures > 0` **and** `consecutiveFailures + 1 >= threshold` | `suspended` | set `suspendedUntil`; emit suspension record naming the consecutive criterion |
+| `healthy` | failure, `errorRatePercent > 0` **and** window rate >= `errorRatePercent` **and** window requests >= `minimumRequests` | `suspended` | set `suspendedUntil`; emit suspension record naming the rate criterion and observed rate (FR-018a/b/d) |
+| `healthy` | `p95LatencyMs > 0` **and** window p95 >= `p95LatencyMs` **and** window requests >= `minimumRequests` | `suspended` | set `suspendedUntil`; emit suspension record naming the latency criterion and observed percentile (FR-018e) |
 | `healthy` | success | `healthy` | reset counter |
 | `suspended` | `now >= suspendedUntil` | `healthy` | return to **full** rotation; set `healthySince`; emit recovery record (FR-019) |
 | `healthy` | any suspension criterion re-trips | `suspended` | `currentDurationSeconds = min(currentDurationSeconds * 2, maxDurationSeconds)`; emit record naming the escalation step (FR-019a/b/d) |
@@ -112,14 +119,20 @@ first attempt; the proxy walks it across retries. See
 
 | Field | Value |
 |---|---|
-| Carrier | Request dynamic metadata, namespace `envoy.lb`, key `wso2.failover.targets` |
-| Format | Ordered `IP:Port,IP:Port,...` |
-| Contents | Resolved chain with suspended targets already removed |
+| Carrier | Request dynamic metadata, namespace `wso2.failover`, key `priority_groups` |
+| Format | Ordered list of `{ name, clusters: [ { cluster_name, weight } ] }` |
+| Contents | Resolved chain with suspended targets already removed, and unmapped members dropped |
+
+Superseded shape, for the record: this was an `envoy.lb` / `wso2.failover.targets` list of
+`IP:Port` addresses, from the override-host design (option A). The shipped design selects a
+pre-configured priority group by NAME, so the policy never constructs an address — it cannot, since
+cluster names derive from the upstream definition rather than from the provider alias the policy
+knows. See `contracts/generated-envoy-config.md`.
 
 Consequences of the ordering living in request data: the ranking is never recomputed (FR-022) because
-it is written once; at-most-once (FR-010) holds positionally because each address appears once; and
-suspended targets are skipped twice over — omitted by the policy, and skipped by the proxy if absent
-from the endpoint set (FR-025).
+it is written once; at-most-once (FR-010) holds positionally because each group appears once; and
+suspended targets are skipped twice over — omitted by the policy, and absent from the published
+groups the specifier reads (FR-025).
 
 **Security**: gateway-internal. MUST NOT be derivable from client input, and an inbound header or
 metadata of the same name MUST be rejected at ingress — an accepted client value would let a caller

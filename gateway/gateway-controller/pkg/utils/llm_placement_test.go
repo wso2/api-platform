@@ -115,7 +115,7 @@ func TestPlacement_NoFailoverKeepsProviderWorkDownstreamOnly(t *testing.T) {
 // The attachment scan must see BOTH levels, matching transform.ResolveFailoverAttachment: where
 // the policy is written decides which operations it covers, never whether the per-attempt half
 // is installed (FR-030r).
-func TestProxyAttachesFailover_SeesBothAttachmentLevels(t *testing.T) {
+func TestProxyAttachesFailover_SeesEveryAttachmentLevel(t *testing.T) {
 	require.False(t, proxyAttachesFailover(api.LLMProxyConfigData{}), "nothing attached")
 
 	require.True(t, proxyAttachesFailover(api.LLMProxyConfigData{
@@ -126,9 +126,21 @@ func TestProxyAttachesFailover_SeesBothAttachmentLevels(t *testing.T) {
 		OperationPolicies: &[]api.OperationPolicy{{Name: config.FailoverPolicyName}},
 	}), "operation-level attachment must count")
 
+	// DEPRECATED `policies`, which the API documents as "treated identically to
+	// operationPolicies" and which collectOperationLevelLLMPolicies merges into the generated
+	// operations. Missing it gave a proxy the retry policy with downstream placement, so a
+	// fallback attempt reached its provider with no transformer and no credential.
+	require.True(t, proxyAttachesFailover(api.LLMProxyConfigData{
+		Policies: &[]api.LLMPolicy{{Name: config.FailoverPolicyName}},
+	}), "attachment through the deprecated policies list must count")
+
 	require.False(t, proxyAttachesFailover(api.LLMProxyConfigData{
 		GlobalPolicies: &[]api.Policy{{Name: "model-round-robin"}},
 	}), "an unrelated policy must not count")
+
+	require.False(t, proxyAttachesFailover(api.LLMProxyConfigData{
+		Policies: &[]api.LLMPolicy{{Name: "model-round-robin"}},
+	}), "an unrelated policy in the deprecated list must not count either")
 }
 
 // FR-012h. With no failover the publisher's OWN per-provider policies move downstream too, and

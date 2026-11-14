@@ -1094,6 +1094,36 @@ review. Supersedes the flat single-chain shape this spec previously described.
   counting it as either hides a configuration error inside a runtime one. A ranking that is only
   PARTIALLY unaddressable MUST still be served against the targets that remain (FR-056a).
 
+
+- **FR-062**: The per-request attempt stores — the request baseline and the serving cluster the
+  response unwind reads — MUST be keyed by a gateway-minted token, never by `x-request-id`.
+
+  Measured 2026-11-14: a client-supplied `x-request-id` survives into the gateway and is forwarded
+  to the upstream unchanged, with no `x-forwarded-for` needed to make the request look internal.
+  The id is therefore caller-controlled and repeatable, so two concurrent requests can share one
+  store entry — and the serving cluster written by one can be read back by the other, unwinding a
+  response with a provider chain that never served it. The analytics correlation store already
+  refuses the request id as a key for exactly this reason; this applies the same refusal to the
+  stores the response path depends on.
+
+  The token MUST travel in the engine's own dynamic-metadata namespace rather than a header: the
+  upstream ext_proc position receives dynamic metadata written by the downstream request phase,
+  which is the only channel both positions see, and it adds nothing to what reaches the provider.
+  Where no token is present the system MAY fall back to the request id, so a request that never
+  passed a downstream phase keeps its baseline rather than losing it.
+
+- **FR-063**: Only members that were actually PUBLISHED may be used to grade attempts, size the
+  attempt budget, or identify the leading target. A member dropped for having no cluster cannot
+  receive an attempt, so including it describes attempts that cannot happen: the first attempt
+  would be charged to a target that never saw a request, and the budget would run one attempt past
+  the published groups, spending the surplus on the last group a second time against FR-010.
+
+- **FR-064**: Any status the generated retry policy RETRIES must also be graded. The generated
+  `retry_on` carries the `5xx` token, so every 5xx is retried whether or not it appears in
+  `statusCodes`; grading only the enumerated subset left a 501 or a 520 failing over on every
+  request while the provider returning it was never suspended. The default grading set is
+  therefore any 5xx plus 429. An explicit `statusCodes` list REPLACES it, 5xx range included.
+
 #### Upstream and downstream policy attachment
 
 Carried over from the original design document (§ "Per-provider upstream policies", § "Upstream

@@ -50,7 +50,11 @@ import (
 func (ec *PolicyExecutionContext) unwindServingUpstreamChain(
 	ctx context.Context,
 ) (*executor.ResponseHeaderExecutionResult, error) {
-	cluster, ok := ec.server.baselines.ServingCluster(ec.requestID)
+	// Keyed by the engine-minted attempt key, NOT the request id — the upstream position keys
+	// its writes the same way. A client-supplied x-request-id survives into the gateway, so
+	// keying on it let two concurrent requests share an entry and unwind one response with the
+	// other's provider chain.
+	cluster, ok := ec.server.baselines.ServingCluster(ec.attemptKey)
 	if !ok {
 		// No attempt reached the upstream position for this request: the API attaches no
 		// per-attempt work, or the entry expired. Nothing wrapped the request, so nothing
