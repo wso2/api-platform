@@ -81,6 +81,47 @@ jobs:
           echo "Running integration tests against ${PLATFORM_API_IMAGE}"
           make test-api-portal
 
+      # Every release archive is built before anything is published, so a failure here
+      # (e.g. the Platform API zip missing from its release) stops the run before the
+      # image and the tag are pushed.
+      - name: Build distribution zip
+        env:
+          PLATFORM_API_VERSION: ${{ inputs.platform_api_version }}
+          AIW_VERSION: ${{ inputs.ai_workspace_version }}
+        run: |
+          echo "Bundling platform-api configs and db-scripts from tag platform-api/v${PLATFORM_API_VERSION}"
+          echo "Pinning optional ai-workspace image to ${AIW_VERSION}"
+          make -C portals/api-portal dist \
+            PLATFORM_API_VERSION="${PLATFORM_API_VERSION}" \
+            AIW_VERSION="${AIW_VERSION}"
+
+      # The binary zip of the Platform API version this pack pins, as attached to that
+      # version's Platform API release. It goes into the product binary zip below.
+      - name: Fetch Platform API binary zip
+        id: platform_api_binary
+        env:
+          GH_TOKEN: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
+          PLATFORM_API_VERSION: ${{ inputs.platform_api_version }}
+        run: |
+          version="${PLATFORM_API_VERSION:-$(sed 's/-SNAPSHOT//' platform-api/VERSION | tr -d '[:space:]')}"
+          zip="wso2apip-platform-api-binary-${version}.zip"
+          if ! gh release download "platform-api/v${version}" --repo "${{ github.repository }}" \
+                 --pattern "${zip}" --dir portals/api-portal/target; then
+            echo "Error: ${zip} not found on the platform-api/v${version} release." >&2
+            echo "Release Platform API ${version} with the binary-zip workflow first." >&2
+            exit 1
+          fi
+          echo "zip=${zip}" >> "$GITHUB_OUTPUT"
+
+      # One zip with both components this release ships, api-portal/ next to
+      # platform-api/, written to target/product/ (the API Portal component zip in
+      # target/ has the same name and is not attached).
+      - name: Build product binary zip
+        env:
+          PLATFORM_API_ZIP: ${{ steps.platform_api_binary.outputs.zip }}
+        run: |
+          make -C portals/api-portal product-binary PLATFORM_API_BINARY_ZIP="target/${PLATFORM_API_ZIP}"
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -100,17 +141,6 @@ jobs:
           fi
           git tag -a api-portal/v${{ steps.version.outputs.version }} -m "API Portal ${{ steps.version.outputs.version }}"
           git push origin api-portal/v${{ steps.version.outputs.version }}
-
-      - name: Build distribution zip
-        env:
-          PLATFORM_API_VERSION: ${{ inputs.platform_api_version }}
-          AIW_VERSION: ${{ inputs.ai_workspace_version }}
-        run: |
-          echo "Bundling platform-api configs and db-scripts from tag platform-api/v${PLATFORM_API_VERSION}"
-          echo "Pinning optional ai-workspace image to ${AIW_VERSION}"
-          make -C portals/api-portal dist \
-            PLATFORM_API_VERSION="${PLATFORM_API_VERSION}" \
-            AIW_VERSION="${AIW_VERSION}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -132,7 +162,16 @@ jobs:
             ### Distribution
             The attached `wso2apip-api-portal-${{ steps.version.outputs.version }}.zip` contains the
             standalone API Portal + Platform API distribution (docker-compose and configs).
-          files: portals/api-portal/target/wso2apip-api-portal-${{ steps.version.outputs.version }}.zip
+
+            ### Binary zip (build your own images)
+            The attached `wso2apip-api-portal-binary-${{ steps.version.outputs.version }}.zip` holds
+            both components this release ships: `api-portal/`, the API Portal source its image is
+            built from, and `platform-api/`, the prebuilt Platform API binaries (linux/amd64,
+            linux/arm64) of the version this distribution pins, with the files they read at runtime.
+          files: |
+            portals/api-portal/target/wso2apip-api-portal-${{ steps.version.outputs.version }}.zip
+            portals/api-portal/target/product/wso2apip-api-portal-binary-${{ steps.version.outputs.version }}.zip
+          fail_on_unmatched_files: true
           draft: true
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}
           token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}

@@ -20,6 +20,7 @@ package platformapi
 
 import (
 	"path/filepath"
+	"strings"
 
 	"github.com/wso2/api-platform/tests/framework/core/builder"
 )
@@ -39,20 +40,32 @@ func BuildSpec(version string) (builder.Spec, error) {
 		Images: []builder.Image{{
 			Name:       "ghcr.io/wso2/api-platform/platform-api:" + version,
 			Dockerfile: "platform-api/Dockerfile",
-			Context:    "platform-api",
+			Context:    ".",
 		}},
+		// Builds from source with docker-bake.hcl, which compiles the binary with
+		// Dockerfile.build and builds the image Dockerfile around it in one run. With
+		// coverage, the binary is instrumented and the "coverage" target adds a
+		// writable /coverage on top of the image.
 		Plan: func(repoRoot, v string, coverage builder.CoverageSpec) ([]builder.Command, error) {
-			args := []string{"docker", "buildx", "build", "-f", "Dockerfile",
-				"--build-context", "common=../common", "--build-context", "httpkit=../httpkit",
-				"--build-arg", "VERSION=" + v, "--build-arg", "PORT=9243",
-				"--tag", "ghcr.io/wso2/api-platform/platform-api:" + v, "--load"}
+			target := "image"
+			// Bake reads its variables from the environment, so every switch is set
+			// explicitly; a value left in the caller's environment can't turn on
+			// coverage or the experimental build.
+			env := map[string]string{"VERSION": v, "PORT": "9243",
+				"ENABLE_COVERAGE": "false", "EXPERIMENTAL": "false"}
 			if coverage.Supported {
-				args = append(args, builder.CoverageBuildArgs(coverage)...)
+				target = "coverage"
+				env["ENABLE_COVERAGE"] = "true"
+				env["COVERAGE_PACKAGES"] = strings.Join(coverage.Packages, ",")
 			}
-			args = append(args, ".")
+			args := []string{"docker", "buildx", "bake", "-f", "docker-bake.hcl",
+				"--allow=fs.read=..",
+				"--set", target + ".tags=ghcr.io/wso2/api-platform/platform-api:" + v,
+				"--load", target}
 			return []builder.Command{{
 				Directory: filepath.Join(repoRoot, "platform-api"),
 				Args:      args,
+				Env:       env,
 			}}, nil
 		},
 	}, nil

@@ -5,9 +5,9 @@
 # no extra environment, no instrumented image.
 #
 # What it does is point Node's own V8 coverage at a directory on the host. The
-# portal image must have been built with ENABLE_COVERAGE=true for this to produce
-# anything useful — that build arg is what instruments the browser scripts and
-# creates /coverage inside the image (see portals/api-portal/Dockerfile). The
+# portal image must have been built with `make build ENABLE_COVERAGE=true` for this to
+# produce anything useful — that build instruments the browser scripts and creates
+# /coverage inside the image (see portals/api-portal/Dockerfile.coverage). The
 # Makefile's coverage target does both together.
 #
 # The raw V8 output lands here with container paths (file:///app/src/...), which

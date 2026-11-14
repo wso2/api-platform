@@ -111,4 +111,23 @@ function parseConfigPaths(argv) {
     return paths;
 }
 
-module.exports = { snakeToCamel, snakeToCamelDeep, mergeOver, parseConfigPaths, BLOCKED_KEYS };
+// Names the base config file. The Docker image sets it (ENV in the Dockerfile) to
+// /app/configs/config.toml; an operator may point it elsewhere.
+const CONFIG_PATH_ENV_VAR = 'APIP_AP_CONFIG_PATH';
+
+/**
+ * The config files to load, in merge order: the file named by APIP_AP_CONFIG_PATH
+ * (when set and non-empty) first, then every `--config` flag from argv. So in the
+ * image `docker run <image> --config overlay.toml` layers the overlay over the
+ * base file, as the old docker-entrypoint.sh did. Outside the image the variable
+ * is normally unset and only the `--config` flags count.
+ */
+function resolveConfigPaths(argv, env) {
+    const base = (env[CONFIG_PATH_ENV_VAR] || '').trim();
+    const fromArgs = parseConfigPaths(argv);
+    return base ? [base, ...fromArgs] : fromArgs;
+}
+
+module.exports = {
+    snakeToCamel, snakeToCamelDeep, mergeOver, parseConfigPaths, resolveConfigPaths, CONFIG_PATH_ENV_VAR, BLOCKED_KEYS,
+};
