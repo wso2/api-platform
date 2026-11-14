@@ -57,7 +57,7 @@ Feature: Each attempt carries its own provider's transformer and credential
       | version            | ${CTX:vendorYVersion}                     |
       | template           | openai                                    |
       | spec.context       | ${CTX:vendorYContext}                     |
-      | spec.upstream.url  | http://testbench:3000/vendor-y-upstream   |
+      | spec.upstream.url  | http://testbench:3008/anthropic           |
       | accessControl.mode | allow_all                                 |
     Then the response should be successful
 
@@ -87,18 +87,30 @@ Feature: Each attempt carries its own provider's transformer and credential
     Then the response status code should be 200
     And the response header "x-envoy-attempt-count" should be "2"
 
-    # The transformer rewrote the PATH for the second vendor. /chat/completions arriving at
-    # vendor Y would mean no adaptation happened.
-    And the response body should contain "/vendor-y-upstream/v1/messages"
+    # Vendor Y is the testbench's real Anthropic responder, not an echo, so this asserts the
+    # ROUND TRIP rather than the outbound leg alone. It only answers at
+    # /anthropic/v1/messages, which the transformer's request half has to produce — the
+    # client sent /chat/completions — so a 200 here already means the path was rewritten.
+    #
+    # This scenario used to point at an echo and assert the request it got back. That worked
+    # only because the transformer's RESPONSE half never ran: with failover attached the
+    # transformer sits in the per-attempt chain, which is request-only, so a cross-vendor
+    # response reached the client in the fallback vendor's shape. The serving chain is now
+    # unwound on the response too (FR-037h), so the echo is converted on the way back and is
+    # no longer readable — which is the point, and why these assertions moved.
 
-    # And the BODY: max_tokens is required by the second vendor and has no equivalent in
-    # what the client sent, so its presence cannot come from the original request being
-    # forwarded unchanged.
-    And the response body should contain "max_tokens"
+    # OpenAI shape, which the client asked in and must be answered in.
+    And the response body should contain "choices"
+    And the response body should contain "chat.completion"
+
+    # Real content carried through the conversion, so the reverse half ran on a genuine
+    # Anthropic body rather than producing an empty envelope.
+    And the response body should contain "How can I help you today"
+
+    # The model the TRANSFORMER substituted, reflected by the responder and surviving the
+    # conversion back. The client sent gpt-4o; this can only be here if the request half
+    # rewrote it for vendor Y and the response half preserved it.
     And the response body should contain "claude-sonnet-4-5-20250929"
-
-    # And the credential for THAT provider, applied on the attempt that reached it.
-    And the response body should contain "${CTX:vendorYCredential}"
 
     When I delete the LLM proxy "${CTX:proxyName}"
     Then the response should be successful
@@ -185,7 +197,7 @@ Feature: Each attempt carries its own provider's transformer and credential
       | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
       | context                  | ${CTX:proxyContext}                                                                                                                                                    |
       | provider.id              | ${CTX:vendorCName}                                                                                                                                                     |
-      | spec.providers | [{"id":"${CTX:vendorCName}","isPrimary":true},{"id":"${CTX:deadName}","alias":"dead-vendor","auth":{"type":"api-key","header":"x-dead-key","value":"${CTX:deadCredential}"}},{"id":"${CTX:vendorBName}","alias":"vendor-b","auth":{"type":"api-key","header":"x-api-key","value":"${CTX:vendorBCredential}"},"transformer":{"type":"openai-to-anthropic-transformer","version":"v0"}}] |
+      | spec.providers | [{"id":"${CTX:vendorCName}","isPrimary":true},{"id":"${CTX:deadName}","alias":"dead-vendor","auth":{"type":"api-key","header":"x-dead-key","value":"${CTX:deadCredential}"},"transformer":{"type":"openai-to-anthropic-transformer","version":"v0"}},{"id":"${CTX:vendorBName}","alias":"vendor-b","auth":{"type":"api-key","header":"x-api-key","value":"${CTX:vendorBCredential}"}}] |
       | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","provider":"dead-vendor","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"vendor-b"}]},{"model":"gpt-4o-mini"}]}}]}] |
     Then the response should be successful
 
@@ -198,13 +210,25 @@ Feature: Each attempt carries its own provider's transformer and credential
     Then the response status code should be 200
     And the response header "x-envoy-attempt-count" should be "2"
     # Anchors: vendor B's own chain did run on the attempt routed to B. Without these the
-    # absence assertion below could pass on an empty or unreported body.
-    And the response body should contain "/vendor-b-upstream/v1/messages"
+    # absence assertions below could pass on an empty or unreported body.
+    #
+    # The TRANSFORMER sits on the dead vendor here, not on B. Two reasons. B's upstream is an
+    # echo, and a transformer on B would convert that echo on the way back — the serving
+    # chain is unwound on the response now (FR-037h) — leaving nothing to read a credential
+    # out of, which is the one thing this scenario exists to check. And putting it on the
+    # attempt that FAILS makes the leak test sharper: attempt 1 is both credentialed and
+    # transformed, so if attempt 2 were built from what attempt 1 left behind it would reach
+    # B in the dead vendor's shape as well as with its key.
+    And the response body should contain "/vendor-b-upstream/chat/completions"
     And the response body should contain "${CTX:vendorBCredential}"
     # The claim. Attempt 1 had the dead vendor's key injected before its dial failed;
     # attempt 2 must be built from the downstream request, not from what attempt 1 left
     # behind. A failure here is one vendor's API key delivered to another vendor.
     And the response body should not contain "${CTX:deadCredential}"
+    # The same claim for attempt 1's BODY: max_tokens is the dead vendor's transformer's
+    # work and has no equivalent in what the client sent, so its presence at B would mean
+    # attempt 2 inherited attempt 1's transformed request.
+    And the response body should not contain "max_tokens"
 
     # Direction 2: an unselected provider's chain must not run at all.
     When I set header "Content-Type" to "application/json"
@@ -217,12 +241,13 @@ Feature: Each attempt carries its own provider's transformer and credential
     And the response should report one upstream attempt
     # Anchor: C received the request, and in the client's original shape.
     And the response body should contain "/vendor-c-upstream/chat/completions"
-    # The claim. Vendor B is configured on this same proxy with a credential and a
-    # transformer, and neither may touch an attempt routed to C. The path assertion above
-    # already fails if B's transformer ran; these name the two artefacts directly so the
-    # reason is unambiguous.
+    # The claim. Vendor B and the dead vendor are both configured on this same proxy — B with
+    # a credential, the dead vendor with a credential AND a transformer — and none of it may
+    # touch an attempt routed to C. The path assertion above already fails if any transformer
+    # ran; these name the artefacts directly so the reason is unambiguous.
     And the response body should not contain "${CTX:vendorBCredential}"
     And the response body should not contain "/v1/messages"
+    And the response body should not contain "max_tokens"
     And the response body should not contain "${CTX:deadCredential}"
 
     When I delete the LLM proxy "${CTX:proxyName}"
