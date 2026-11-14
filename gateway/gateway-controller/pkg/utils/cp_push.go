@@ -39,6 +39,16 @@ type ArtifactPusher interface {
 	SubmitArtifactPush(task func())
 }
 
+// ResourcePusher pushes gateway-created resources of a pushed kind
+// (models.SyncedResourceKinds) to the control plane, as ArtifactPusher does artifacts. It
+// is implemented by *controlplane.Client.
+type ResourcePusher interface {
+	// PushResource pushes a resource after it is created or updated.
+	PushResource(cfg *models.StoredConfig)
+	// PushResourceDeletion tells the control plane that a resource was deleted.
+	PushResourceDeletion(cfg *models.StoredConfig)
+}
+
 // cpSyncStatusForOrigin returns the initial cp_sync_status for a newly created/updated
 // artifact row in the gateway DB: "pending" for gateway-originated artifacts (those created
 // on the data plane — including via the immutable loader — which still need to be synced up to

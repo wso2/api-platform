@@ -195,7 +195,10 @@ func NewAPIServer(
 
 	server.agentService = agentService
 	server.budgetPublisher = budgets
-	server.budgetService = budget.NewService(db, budgets, eventHub, gatewayID, logger, systemConfig.Controller.ControlPlane.DeploymentSyncEnabled)
+	server.budgetService = budget.NewService(db, budgets, eventHub, gatewayID, logger, pushEnabled)
+	if controlPlaneClient != nil {
+		server.budgetService.SetResourcePusher(controlPlaneClient, pushEnabled)
+	}
 	server.AgentHandler = NewAgentHandler(agentService, logger)
 
 	server.restAPIService = restAPIService

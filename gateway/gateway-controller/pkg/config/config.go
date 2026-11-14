@@ -966,6 +966,9 @@ type ControlPlaneConfig struct {
 	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (insecure, dev/test only)
 	DeploymentSyncEnabled bool          `koanf:"deployment_sync_enabled"` // Enable two-way artifact/deployment sync with the control plane: DP->CP push and CP->DP pull (default: true)
 	SyncBatchSize         int           `koanf:"sync_batch_size"`         // Number of deployments to fetch per batch request during startup sync (default: 50)
+	// PushRetry controls how a push of gateway-created artifacts and resources to the
+	// control plane is retried when the control plane cannot be reached.
+	PushRetry PushRetryConfig `koanf:"push_retry"`
 	// Optional worker pools that cap the concurrency of DP->CP sync work
 	APIMSyncPoolSize         int `koanf:"apim_sync_pool_size"`          // Workers for on-prem APIM bottom-up sync (0/unset = unlimited)
 	APIMSyncQueueSize        int `koanf:"apim_sync_queue_size"`         // Max pending APIM sync tasks when pool size > 0 (0/unset = unbounded)
@@ -977,6 +980,17 @@ type ControlPlaneConfig struct {
 	ApimOAuth2Username     string `koanf:"apim_oauth2_username"`      // APIM resource owner username
 	ApimOAuth2Password     string `koanf:"apim_oauth2_password"`      // APIM resource owner password
 	GatewayName            string `koanf:"gateway_name"`              // Name of the gateway for deployment configuration
+}
+
+// PushRetryConfig controls the retry of a push of gateway-created artifacts and resources
+// (APIs, LLM providers, budgets, ...) to the control plane that fails to reach it. The wait
+// before each retry starts at InitialDuration and is multiplied by ProgressionFactor after
+// every attempt, up to 30s. A push that fails every attempt is marked failed and pushed
+// again on the next connect.
+type PushRetryConfig struct {
+	MaxAttempts       int           `koanf:"max_attempts"`       // Attempts per push, including the first; 1 = no retry (default: 5)
+	InitialDuration   time.Duration `koanf:"initial_duration"`   // Wait before the first retry (default: 1s)
+	ProgressionFactor float64       `koanf:"progression_factor"` // Factor the wait is multiplied by after each attempt; 1 = constant (default: 2)
 }
 
 // HTTPClientConfig configures the single shared outbound *http.Client used by every
@@ -1459,14 +1473,19 @@ func defaultConfig() *Config {
 				Port:    9091,
 			},
 			ControlPlane: ControlPlaneConfig{
-				Host:                     "",
-				Token:                    "",
-				ReconnectInitial:         1 * time.Second,
-				ReconnectMax:             5 * time.Minute,
-				PollingInterval:          15 * time.Minute,
-				InsecureSkipVerify:       true,
-				DeploymentSyncEnabled:    true,
-				SyncBatchSize:            50,
+				Host:                  "",
+				Token:                 "",
+				ReconnectInitial:      1 * time.Second,
+				ReconnectMax:          5 * time.Minute,
+				PollingInterval:       15 * time.Minute,
+				InsecureSkipVerify:    true,
+				DeploymentSyncEnabled: true,
+				SyncBatchSize:         50,
+				PushRetry: PushRetryConfig{
+					MaxAttempts:       5,
+					InitialDuration:   1 * time.Second,
+					ProgressionFactor: 2,
+				},
 				APIMSyncPoolSize:         0,
 				APIMSyncQueueSize:        0,
 				AIWorkspaceSyncPoolSize:  0,
@@ -2209,6 +2228,17 @@ func (c *Config) validateControlPlaneConfig() error {
 	if cp.ReconnectInitial > cp.ReconnectMax {
 		return fmt.Errorf("controlplane.reconnect_initial (%s) must be <= controlplane.reconnect_max (%s)",
 			cp.ReconnectInitial, cp.ReconnectMax)
+	}
+
+	// Validate the retry of pushes to the control plane
+	if cp.PushRetry.MaxAttempts < 1 {
+		return fmt.Errorf("controlplane.push_retry.max_attempts must be at least 1, got: %d", cp.PushRetry.MaxAttempts)
+	}
+	if cp.PushRetry.InitialDuration <= 0 {
+		return fmt.Errorf("controlplane.push_retry.initial_duration must be positive, got: %s", cp.PushRetry.InitialDuration)
+	}
+	if cp.PushRetry.ProgressionFactor < 1 {
+		return fmt.Errorf("controlplane.push_retry.progression_factor must be at least 1, got: %g", cp.PushRetry.ProgressionFactor)
 	}
 
 	// Validate polling interval

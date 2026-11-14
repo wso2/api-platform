@@ -79,6 +79,7 @@ func validConfig() *Config {
 				ReconnectMax:     30 * time.Second,
 				PollingInterval:  5 * time.Second,
 				SyncBatchSize:    50,
+				PushRetry:        PushRetryConfig{MaxAttempts: 5, InitialDuration: time.Second, ProgressionFactor: 2},
 			},
 			Metrics: MetricsConfig{
 				Enabled: false,
@@ -1296,6 +1297,40 @@ func TestConfig_ValidateControlPlaneConfig(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestConfig_ValidatePushRetry(t *testing.T) {
+	cfg := validConfig()
+	cfg.Controller.ControlPlane.Host = "localhost"
+	require.NoError(t, cfg.Validate(), "the defaults are valid")
+	assert.Equal(t, PushRetryConfig{MaxAttempts: 5, InitialDuration: time.Second, ProgressionFactor: 2},
+		defaultConfig().Controller.ControlPlane.PushRetry)
+
+	tests := []struct {
+		name        string
+		mutate      func(*PushRetryConfig)
+		errContains string
+	}{
+		{"no retry", func(r *PushRetryConfig) { r.MaxAttempts = 1 }, ""},
+		{"constant wait", func(r *PushRetryConfig) { r.ProgressionFactor = 1 }, ""},
+		{"zero attempts", func(r *PushRetryConfig) { r.MaxAttempts = 0 }, "controlplane.push_retry.max_attempts must be at least 1"},
+		{"zero initial duration", func(r *PushRetryConfig) { r.InitialDuration = 0 }, "controlplane.push_retry.initial_duration must be positive"},
+		{"shrinking wait", func(r *PushRetryConfig) { r.ProgressionFactor = 0.5 }, "controlplane.push_retry.progression_factor must be at least 1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := validConfig()
+			cfg.Controller.ControlPlane.Host = "localhost"
+			tt.mutate(&cfg.Controller.ControlPlane.PushRetry)
+			err := cfg.Validate()
+			if tt.errContains == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.errContains)
 		})
 	}
 }

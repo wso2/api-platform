@@ -108,6 +108,8 @@ type ControlPlaneClient interface {
 	SubmitAPIMSync(task func())
 	SubmitAPIMSyncAndWait(task func())
 	SubmitArtifactPush(task func())
+	PushResource(cfg *models.StoredConfig)
+	PushResourceDeletion(cfg *models.StoredConfig)
 }
 
 // secretSyncer is the narrow interface the sync loop needs from the secrets service.
@@ -543,6 +545,8 @@ func (c *Client) Connect() error {
 			}
 			// Push gateway-originated artifacts up to the platform-API control plane.
 			c.SubmitArtifactPush(c.PushGatewayArtifactsToControlPlane)
+			// And the gateway's own resources of every synced kind (budgets).
+			c.SubmitArtifactPush(c.PushGatewayResourcesToControlPlane)
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)
 			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
@@ -570,6 +574,8 @@ func (c *Client) Connect() error {
 			c.syncSecrets()
 			// Push gateway-originated artifacts up to the platform-API control plane.
 			c.SubmitArtifactPush(c.PushGatewayArtifactsToControlPlane)
+			// And the gateway's own resources of every synced kind (budgets).
+			c.SubmitArtifactPush(c.PushGatewayResourcesToControlPlane)
 			c.syncSubscriptionPlans(gwID)
 			c.syncSubscriptionsForExistingAPIs(gwID)
 			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
@@ -4587,14 +4593,16 @@ func (c *Client) IsConnected() bool {
 	return c.state.Current == Connected && c.state.Conn != nil
 }
 
-// DP->CP push retry policy. The push to the control plane is retried with exponential
-// backoff so a transient control-plane hiccup does not strand an artifact as unsynced until
-// the next gateway restart. After all attempts are exhausted the failure is recorded
-// (cp_sync_status=failed) and retried again on the next (re)connect.
+// DP->CP push retry policy. A push to the control plane is retried with a growing wait so a
+// transient control-plane hiccup does not strand an artifact or resource as unsynced until the
+// next gateway restart. After all attempts are exhausted the failure is recorded
+// (cp_sync_status=failed) and retried again on the next (re)connect. The attempts, first wait
+// and progression factor come from controlplane.push_retry; these defaults apply when unset.
 const (
-	pushArtifactMaxAttempts   = 5
-	pushArtifactRetryBaseWait = 1 * time.Second
-	pushArtifactRetryMaxWait  = 30 * time.Second
+	defaultPushMaxAttempts            = 5
+	defaultPushRetryInitial           = 1 * time.Second
+	defaultPushRetryProgressionFactor = 2
+	pushRetryMaxWait                  = 30 * time.Second
 )
 
 // PushArtifact pushes a gateway-created/updated artifact of any kind to the control plane.
@@ -4620,117 +4628,89 @@ func (c *Client) PushArtifact(apiID string, apiConfig *models.StoredConfig, depl
 	return err
 }
 
-// pushArtifactWithRetry performs the DP->CP push, retrying transient failures up to
-// pushArtifactMaxAttempts times with exponential backoff (capped at pushArtifactRetryMaxWait).
-// It returns the control-plane artifact UUID from the first successful attempt, or the last
-// error after all attempts are exhausted. The backoff is abandoned early if the client is
-// shutting down (c.ctx cancelled).
+// pushArtifactWithRetry performs the DP->CP push, retrying transient failures per the push
+// retry policy (retryPush). It returns the control-plane artifact UUID from the first
+// successful attempt, or the last error after all attempts are exhausted.
 func (c *Client) pushArtifactWithRetry(apiID string, apiConfig *models.StoredConfig, deploymentID string) (string, error) {
-	maxAttempts := pushArtifactMaxAttempts
+	var cpArtifactID string
+	err := c.retryPush("artifact push", func() error {
+		var err error
+		cpArtifactID, err = c.apiUtilsService.PushArtifact(apiID, apiConfig, deploymentID)
+		return err
+	}, slog.String("artifact_id", apiID), slog.String("kind", apiConfig.Kind))
+	return cpArtifactID, err
+}
+
+// pushArtifactsWithRetry performs the bulk DP->CP push, retrying transport-level failures per
+// the push retry policy (retryPush). Per-artifact import failures are reported inside the
+// returned response (Error per dpid), not as an error, and are not retried here — they are
+// reconciled by the caller and re-attempted on the next (re)connect.
+func (c *Client) pushArtifactsWithRetry(configs []*models.StoredConfig) (*utils.ImportArtifactsResponse, error) {
+	var resp *utils.ImportArtifactsResponse
+	err := c.retryPush("bulk artifact push", func() error {
+		var err error
+		resp, err = c.apiUtilsService.PushArtifacts(configs)
+		return err
+	}, slog.Int("count", len(configs)))
+	return resp, err
+}
+
+// retryPush runs a DP->CP push, retrying its failures per controlplane.push_retry: up to
+// max_attempts attempts, the first retry after initial_duration, each later wait multiplied
+// by progression_factor, capped at pushRetryMaxWait. It
+// stops early if the client is shutting down. what names the push in logs; attrs are added
+// to its log lines.
+func (c *Client) retryPush(what string, push func() error, attrs ...any) error {
+	retry := c.config.PushRetry
+	maxAttempts, wait, factor, maxWait := retry.MaxAttempts, retry.InitialDuration, retry.ProgressionFactor, pushRetryMaxWait
+	if maxAttempts < 1 {
+		maxAttempts = defaultPushMaxAttempts
+	}
+	if wait <= 0 {
+		wait = defaultPushRetryInitial
+	}
+	if factor < 1 {
+		factor = defaultPushRetryProgressionFactor
+	}
+	// Overrides for tests.
 	if c.pushMaxAttempts > 0 {
 		maxAttempts = c.pushMaxAttempts
 	}
-	wait := pushArtifactRetryBaseWait
 	if c.pushRetryBaseWait > 0 {
 		wait = c.pushRetryBaseWait
 	}
-	maxWait := pushArtifactRetryMaxWait
 	if c.pushRetryMaxWait > 0 {
 		maxWait = c.pushRetryMaxWait
 	}
 
-	var cpArtifactID string
 	var lastErr error
-
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		cpArtifactID, lastErr = c.apiUtilsService.PushArtifact(apiID, apiConfig, deploymentID)
+		lastErr = push()
 		if lastErr == nil {
 			if attempt > 1 {
-				c.logger.Info("DP->CP artifact push succeeded after retry",
-					slog.String("artifact_id", apiID), slog.Int("attempt", attempt))
+				c.logger.Info("DP->CP "+what+" succeeded after retry", append(attrs, slog.Int("attempt", attempt))...)
 			}
-			return cpArtifactID, nil
+			return nil
 		}
-
-		c.logger.Warn("DP->CP artifact push attempt failed",
-			slog.String("artifact_id", apiID),
-			slog.String("kind", apiConfig.Kind),
-			slog.Int("attempt", attempt),
-			slog.Int("max_attempts", maxAttempts),
-			slog.Any("error", lastErr))
-
+		c.logger.Warn("DP->CP "+what+" attempt failed", append(attrs, slog.Int("attempt", attempt),
+			slog.Int("max_attempts", maxAttempts), slog.Any("error", lastErr))...)
 		if attempt == maxAttempts {
 			break
 		}
-
 		// Back off before the next attempt, but bail out promptly on shutdown.
 		select {
 		case <-time.After(wait):
 		case <-c.ctx.Done():
-			c.logger.Debug("DP->CP artifact push retry abandoned: client shutting down",
-				slog.String("artifact_id", apiID))
-			return cpArtifactID, lastErr
+			c.logger.Debug("DP->CP "+what+" retry abandoned: client shutting down", attrs...)
+			return lastErr
 		}
-		if wait *= 2; wait > maxWait {
+		if wait = time.Duration(float64(wait) * factor); wait > maxWait {
 			wait = maxWait
 		}
 	}
-
-	c.logger.Error("DP->CP artifact push failed after all retries",
-		slog.String("artifact_id", apiID),
-		slog.String("kind", apiConfig.Kind),
-		slog.Int("attempts", maxAttempts),
-		slog.Any("error", lastErr))
-	return cpArtifactID, lastErr
-}
-
-// pushArtifactsWithRetry performs the bulk DP->CP push, retrying transport-level failures up to
-// pushArtifactMaxAttempts times with exponential backoff. Per-artifact import failures are
-// reported inside the returned response (Error per dpid), not as an error, and are not retried
-// here — they are reconciled by the caller and re-attempted on the next (re)connect.
-func (c *Client) pushArtifactsWithRetry(configs []*models.StoredConfig) (*utils.ImportArtifactsResponse, error) {
-	maxAttempts := pushArtifactMaxAttempts
-	if c.pushMaxAttempts > 0 {
-		maxAttempts = c.pushMaxAttempts
-	}
-	wait := pushArtifactRetryBaseWait
-	if c.pushRetryBaseWait > 0 {
-		wait = c.pushRetryBaseWait
-	}
-	maxWait := pushArtifactRetryMaxWait
-	if c.pushRetryMaxWait > 0 {
-		maxWait = c.pushRetryMaxWait
-	}
-
-	var resp *utils.ImportArtifactsResponse
-	var lastErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		resp, lastErr = c.apiUtilsService.PushArtifacts(configs)
-		if lastErr == nil {
-			if attempt > 1 {
-				c.logger.Info("DP->CP bulk artifact push succeeded after retry", slog.Int("attempt", attempt))
-			}
-			return resp, nil
-		}
-		c.logger.Warn("DP->CP bulk artifact push attempt failed",
-			slog.Int("attempt", attempt), slog.Int("max_attempts", maxAttempts),
-			slog.Int("count", len(configs)), slog.Any("error", lastErr))
-		if attempt == maxAttempts {
-			break
-		}
-		select {
-		case <-time.After(wait):
-		case <-c.ctx.Done():
-			c.logger.Debug("DP->CP bulk artifact push retry abandoned: client shutting down")
-			return resp, lastErr
-		}
-		if wait *= 2; wait > maxWait {
-			wait = maxWait
-		}
-	}
-	c.logger.Error("DP->CP bulk artifact push failed after all retries",
-		slog.Int("attempts", maxAttempts), slog.Any("error", lastErr))
-	return resp, lastErr
+	c.logger.Error("DP->CP "+what+" failed after all retries",
+		append(attrs, slog.Int("attempts", maxAttempts), slog.Any("error", lastErr))...)
+	return lastErr
 }
 
 // recordArtifactSyncStatus persists the outcome of a DP->CP push on the artifact's row

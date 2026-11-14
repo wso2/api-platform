@@ -152,7 +152,7 @@ func TestPushArtifactWithRetry_RetriesThenSucceeds(t *testing.T) {
 }
 
 // TestPushArtifactWithRetry_ExhaustsAttempts verifies the push is attempted exactly
-// pushArtifactMaxAttempts (5) times and then returns the error when the control plane stays down.
+// defaultPushMaxAttempts (5) times and then returns the error when the control plane stays down.
 func TestPushArtifactWithRetry_ExhaustsAttempts(t *testing.T) {
 	client := createTestClient(t)
 	client.pushRetryBaseWait = time.Millisecond
@@ -170,8 +170,8 @@ func TestPushArtifactWithRetry_ExhaustsAttempts(t *testing.T) {
 	if _, err := client.pushArtifactWithRetry(cfg.UUID, cfg, ""); err == nil {
 		t.Fatal("pushArtifactWithRetry() error = nil, want error after exhausting all retries")
 	}
-	if got := atomic.LoadInt32(&hits); got != pushArtifactMaxAttempts {
-		t.Errorf("control plane hit %d times, want %d (the default max attempts)", got, pushArtifactMaxAttempts)
+	if got := atomic.LoadInt32(&hits); got != defaultPushMaxAttempts {
+		t.Errorf("control plane hit %d times, want %d (the default max attempts)", got, defaultPushMaxAttempts)
 	}
 }
 

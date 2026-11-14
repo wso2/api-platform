@@ -35,6 +35,18 @@ gateway:
         polling_interval: 15m
         deployment_sync_enabled: true
         sync_batch_size: 50
+
+        # Retry of a push of gateway-created artifacts and resources (APIs, LLM providers,
+        # budgets, ...) to the control plane when it cannot be reached. The wait before
+        # each retry starts at initial_duration and is multiplied by progression_factor
+        # after every attempt, up to 30s.
+        push_retry:
+          # Attempts per push, including the first (1 = no retry)
+          max_attempts: 5
+          # Wait before the first retry
+          initial_duration: 1s
+          # Factor the wait is multiplied by after each attempt (1 = constant wait)
+          progression_factor: 2
         gateway_name: ""
         apim_oauth2_client_id: ""
         apim_oauth2_client_secret: ""

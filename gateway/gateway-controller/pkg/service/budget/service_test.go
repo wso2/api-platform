@@ -782,3 +782,55 @@ func TestCreate_ArtifactIDOfAnotherArtifactConflictsOnTheID(t *testing.T) {
 	assert.Contains(t, err.Error(), `"other-provider"`)
 	assert.NotContains(t, err.Error(), "a budget named")
 }
+
+// fakePusher records the budgets pushed and the deletions.
+type fakePusher struct{ pushed, deleted []string }
+
+func (p *fakePusher) PushResource(cfg *models.StoredConfig) {
+	p.pushed = append(p.pushed, cfg.Handle+"/"+cfg.UUID)
+}
+
+func (p *fakePusher) PushResourceDeletion(cfg *models.StoredConfig) {
+	p.deleted = append(p.deleted, cfg.Handle+"/"+cfg.UUID)
+}
+
+func TestResourcePush_CreateAndUpdatePushTheBudgetAndDeletePushesADeletion(t *testing.T) {
+	svc, _ := newTestService(t, true)
+	pusher := &fakePusher{}
+	svc.SetResourcePusher(pusher, true)
+
+	created, err := svc.Create(CreateParams{Body: []byte(validBudget)})
+	require.NoError(t, err)
+	assert.Equal(t, models.CPSyncStatusPending, created.CPSyncStatus)
+	body := strings.Replace(validBudget, `"amount": "500.00"`, `"amount": "750.00"`, 1)
+	_, err = svc.Update(UpdateParams{Name: "research-team-monthly", Body: []byte(body)})
+	require.NoError(t, err)
+	require.NoError(t, svc.Delete("research-team-monthly", "", nil))
+
+	want := "research-team-monthly/" + created.UUID
+	assert.Equal(t, []string{want, want}, pusher.pushed)
+	assert.Equal(t, []string{want}, pusher.deleted)
+}
+
+func TestResourcePush_NothingPushedWithDeploymentSyncOff(t *testing.T) {
+	svc, _ := newTestService(t, false)
+	pusher := &fakePusher{}
+	svc.SetResourcePusher(pusher, false)
+
+	created, err := svc.Create(CreateParams{Body: []byte(validBudget)})
+	require.NoError(t, err)
+	require.NoError(t, svc.Delete("research-team-monthly", "", nil))
+	assert.Empty(t, pusher.pushed)
+	assert.Empty(t, pusher.deleted)
+	assert.Empty(t, created.CPSyncStatus)
+}
+
+func TestResourcePush_FailedValidationPushesNothing(t *testing.T) {
+	svc, _ := newTestService(t, true)
+	pusher := &fakePusher{}
+	svc.SetResourcePusher(pusher, true)
+
+	_, err := svc.Create(CreateParams{Body: []byte(`{"kind": "Budget"}`)})
+	require.Error(t, err)
+	assert.Empty(t, pusher.pushed)
+}

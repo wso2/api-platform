@@ -51,6 +51,21 @@ type Service struct {
 	gatewayID   string
 	logger      *slog.Logger
 	pushEnabled bool
+	// pusher pushes this gateway's own budgets to the control plane; nil until
+	// SetResourcePusher.
+	pusher utils.ResourcePusher
+}
+
+// SetResourcePusher wires the push of gateway-created budgets to the control plane, the
+// way gateway-created artifacts are pushed: each budget after it is created or updated,
+// and a deletion when one is deleted. pushEnabled is deployment_sync_enabled.
+func (s *Service) SetResourcePusher(pusher utils.ResourcePusher, pushEnabled bool) {
+	s.pusher = pusher
+	s.pushEnabled = pushEnabled
+}
+
+func (s *Service) canPush() bool {
+	return s.pushEnabled && s.pusher != nil
 }
 
 // NewService returns a Service. pushEnabled is the gateway's deployment-sync
@@ -135,6 +150,9 @@ func (s *Service) Create(params CreateParams) (*models.StoredConfig, error) {
 	}
 
 	log.Info("Budget created", slog.String("uuid", cfg.UUID), slog.String("handle", cfg.Handle))
+	if s.canPush() {
+		s.pusher.PushResource(cfg)
+	}
 	return cfg, s.publish("CREATE", cfg.Handle, params.CorrelationID, log)
 }
 
@@ -212,6 +230,9 @@ func (s *Service) Update(params UpdateParams) (*models.StoredConfig, error) {
 	}
 
 	log.Info("Budget updated", slog.String("uuid", updated.UUID), slog.String("handle", updated.Handle))
+	if s.canPush() {
+		s.pusher.PushResource(&updated)
+	}
 	return &updated, s.publish("UPDATE", updated.Handle, params.CorrelationID, log)
 }
 
@@ -235,6 +256,9 @@ func (s *Service) Delete(name, correlationID string, log *slog.Logger) error {
 	}
 
 	log.Info("Budget deleted", slog.String("uuid", existing.UUID), slog.String("handle", name))
+	if s.canPush() {
+		s.pusher.PushResourceDeletion(existing)
+	}
 	return s.publish("DELETE", name, correlationID, log)
 }
 

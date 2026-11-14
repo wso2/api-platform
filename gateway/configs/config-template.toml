@@ -220,6 +220,19 @@ apim_oauth2_client_secret = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_APIM_OAUTH2
 # Gateway name
 gateway_name = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_GATEWAY_NAME" "default" }}'
 
+# Retry of a push of gateway-created artifacts and resources (APIs, LLM providers,
+# budgets, ...) to the control plane, when the control plane cannot be reached.
+# The wait before each retry starts at initial_duration and is multiplied by
+# progression_factor after every attempt, up to 30s. A push that fails every
+# attempt is marked failed and pushed again on the next connect.
+[controller.controlplane.push_retry]
+# Attempts per push, including the first (1 = no retry)
+max_attempts = 5
+# Wait before the first retry
+initial_duration = "1s"
+# Factor the wait is multiplied by after each attempt (1 = constant wait)
+progression_factor = 2
+
 [controller.storage]
 # Storage type: "sqlite", "postgres", "sqlserver", or "memory"
 type = '{{ env "APIP_GW_CONTROLLER_STORAGE_TYPE" "sqlite" }}'
