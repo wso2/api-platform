@@ -141,3 +141,17 @@ test('without a configured connect timeout, the pool waits longer than the drive
     assert.strictEqual(pool.acquireTimeoutMillis, 20000);
     assert.strictEqual(pool.createTimeoutMillis, 20000);
 });
+
+test('require and verify-ca are rejected for SQL Server; disable and verify-full are accepted', () => {
+    const { buildConnectionConfig } = require(ADAPTER_PATH);
+    assert.throws(
+        () => buildConnectionConfig({ database: { sslMode: 'require' } }),
+        /ssl_mode.*not supported for SQL Server/
+    );
+    assert.throws(
+        () => buildConnectionConfig({ database: { sslMode: 'verify-ca' } }),
+        /ssl_mode.*not supported for SQL Server/
+    );
+    assert.doesNotThrow(() => buildConnectionConfig({ database: { sslMode: 'disable' } }));
+    assert.doesNotThrow(() => buildConnectionConfig({ database: { sslMode: 'verify-full' } }));
+});
