@@ -46,7 +46,7 @@ const (
 //     netguard.PermitPrivateBlockMetadata(), which permits private/loopback/in-cluster
 //     upstreams (a Kubernetes ClusterIP, a service-DNS name, localhost) and refuses only
 //     link-local/metadata/unspecified/multicast addresses. See InitSharedHTTPClient /
-//     Server.HTTPClient.SSRF for the operator-configurable policy.
+//     Server.HTTPClient.DestinationGuard for the operator-configurable policy.
 //   - Redirects are bounded, may not leave the original host, and each hop is dialed
 //     through the same guarded dialer.
 //   - The response body is read through an io.LimitReader capped at maxBytes.

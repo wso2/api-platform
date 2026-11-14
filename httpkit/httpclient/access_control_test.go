@@ -39,8 +39,8 @@ func guardedClient(t *testing.T, gc netguard.GuardConfig, mutate func(*Config)) 
 		t.Fatalf("Build: %v", err)
 	}
 	cfg := DefaultConfig()
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = policy
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = policy
 	if mutate != nil {
 		mutate(&cfg)
 	}
@@ -103,8 +103,8 @@ func TestNew_ExplicitSchemesApplyToTheFirstRequest(t *testing.T) {
 func TestNew_PresetPoliciesKeepFirstRequestSchemeBehaviour(t *testing.T) {
 	srv := okServer(t)
 	cfg := DefaultConfig()
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = netguard.PermitPrivateBlockMetadata()
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = netguard.PermitPrivateBlockMetadata()
 	client, err := New(cfg)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -203,8 +203,8 @@ func TestNew_GuardEnabledAcceptsHostOnlyPolicy(t *testing.T) {
 		t.Fatalf("CompileHostRule: %v", err)
 	}
 	cfg := DefaultConfig()
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = netguard.Policy{Hosts: rule}
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = netguard.Policy{Hosts: rule}
 	if _, err := New(cfg); err != nil {
 		t.Fatalf("a policy with only a host rule is not zero: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestNew_RedirectSchemesNarrowOnlyRedirectHops(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := guardedClient(t, netguard.GuardConfig{Enabled: true}, func(c *Config) {
-		c.SSRF.RedirectSchemes = []string{"https"}
+		c.DestinationGuard.RedirectSchemes = []string{"https"}
 	})
 	resp, err := client.Get(srv.URL + "/next")
 	if err != nil {

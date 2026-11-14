@@ -284,7 +284,7 @@ url = ""
 username = ""
 password = ""
 no_proxy = []
-# Required ("delegated" or "manual_connect") only when mode != "none" AND ssrf.enabled below
+# Required ("delegated" or "manual_connect") only when mode != "none" AND destination_guard.enabled below
 # — see pkg/config.HTTPClientProxyConfig's doc comment.
 egress = ""
 
@@ -296,11 +296,11 @@ client_cert_file = ""
 client_key_file = ""
 insecure_skip_verify = false
 
-[controller.http_client.ssrf]
-# Off by default: this shared client's current callers (control plane, platform API,
-# on-prem APIM) all target a single fixed, operator-configured host, not a user/tenant-
-# supplied URL — the scenario ssrf-prevention.md targets — so there is nothing to guard
-# against today. Exposed for completeness / any future caller that fetches a tenant-supplied
+[controller.http_client.destination_guard]
+# Its previous name is still read, with a deprecation
+# warning. Off by default: this shared client's current callers (control plane, platform
+# API, on-prem APIM) all target a single fixed, operator-configured host, not a user/
+# tenant-supplied URL, so there is nothing to guard against today. Exposed for completeness / any future caller that fetches a tenant-supplied
 # URL. When enabling, preset must be "permit_private_block_metadata" or "public_only".
 enabled = false
 preset = ""
@@ -741,7 +741,7 @@ url = ""
 username = ""
 password = ""
 no_proxy = []
-# Required ("delegated" or "manual_connect") only when mode != "none" AND ssrf.enabled below
+# Required ("delegated" or "manual_connect") only when mode != "none" AND destination_guard.enabled below
 # — see internal/config.HTTPClientProxyConfig's doc comment.
 egress = ""
 
@@ -753,10 +753,11 @@ client_cert_file = ""
 client_key_file = ""
 insecure_skip_verify = false
 
-[policy_engine.http_client.ssrf]
-# Off by default. Enable (and pick a preset) when a policy's outbound target is derived
-# from tenant/request data rather than a single fixed, operator-configured backend — see
-# ssrf-prevention.md. preset must be "permit_private_block_metadata" or "public_only".
+[policy_engine.http_client.destination_guard]
+# Its previous name is still read, with a deprecation
+# warning. Off by default. Enable (and pick a preset) when a policy's outbound target is
+# derived from tenant/request data rather than a single fixed, operator-configured backend.
+# preset must be "permit_private_block_metadata" or "public_only".
 enabled = false
 preset = ""
 max_redirects = 0

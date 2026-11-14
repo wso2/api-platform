@@ -53,7 +53,7 @@ func useClusterDenyRule(t *testing.T) {
 		t.Fatalf("Build: %v", err)
 	}
 	cfg := httpclient.DefaultConfig()
-	cfg.SSRF = httpclient.SSRFConfig{Enabled: true, Policy: policy}
+	cfg.DestinationGuard = httpclient.DestinationGuardConfig{Enabled: true, Policy: policy}
 	if err := utils.InitUserURLClientFromConfig(cfg); err != nil {
 		t.Fatalf("InitUserURLClientFromConfig: %v", err)
 	}

@@ -31,7 +31,7 @@ import (
 // utils.InitSharedHTTPClient) once, before any test in this package runs. Several tests here
 // (mcp_test.go's TestFetchServerInfo*, llm_openapi_resolve_test.go's
 // TestResolveTemplateOpenAPISpec) reach utils.NewUpstreamFetchClient/FetchOpenAPISpecFromURL
-// indirectly through the service layer — an httptest loopback server, or the SSRF guard
+// indirectly through the service layer — an httptest loopback server, or the destination guard
 // itself, only exercises real behavior if the shared client is actually built, mirroring
 // production's cmd/main.go wiring rather than being left nil.
 func TestMain(m *testing.M) {
@@ -54,8 +54,8 @@ func testSharedHTTPClientConfig() httpclient.Config {
 	cfg := httpclient.DefaultConfig()
 	cfg.Pooling.DisableKeepAlives = true
 	cfg.Timeouts.MaxResponseBytes = -1
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = policy
-	cfg.SSRF.MaxRedirects = 5
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = policy
+	cfg.DestinationGuard.MaxRedirects = 5
 	return cfg
 }
