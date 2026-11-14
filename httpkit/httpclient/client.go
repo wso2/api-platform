@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/wso2/api-platform/httpkit/netguard"
@@ -303,10 +305,26 @@ func New(cfg Config, opts ...Option) (*http.Client, error) {
 		}
 	}
 
+	// A forward proxy is operator configuration, so its own address is
+	// dialed under the policy's ProxyHop (only the never-legitimate address
+	// categories), while every origin dialed directly gets the full policy.
+	// In ProxyEgressManualCONNECT mode the dial only ever reaches the proxy;
+	// in the other modes proxies records which addresses Transport.Proxy
+	// handed out so the dial can tell a proxy hop from a direct origin.
+	var proxies *proxyAddrSet
 	dialFn := state.dialOverride
 	if dialFn == nil {
 		if cfg.SSRF.Enabled {
 			dialFn = netguard.DialContext(cfg.SSRF.Policy, cfg.Timeouts.Dial)
+			if proxyConfigured(cfg.Proxy) {
+				proxyDial := netguard.DialContext(cfg.SSRF.Policy.ProxyHop(), cfg.Timeouts.Dial)
+				if cfg.Proxy.Egress == ProxyEgressManualCONNECT {
+					dialFn = proxyDial
+				} else {
+					proxies = &proxyAddrSet{}
+					dialFn = proxies.dialer(proxyDial, dialFn)
+				}
+			}
 		} else {
 			dialFn = (&net.Dialer{Timeout: cfg.Timeouts.Dial, KeepAlive: cfg.Pooling.KeepAlive}).DialContext
 		}
@@ -319,10 +337,14 @@ func New(cfg Config, opts ...Option) (*http.Client, error) {
 			return nil, err
 		}
 	} else {
-		rt, err = buildTransport(cfg, dialFn, originTLS, proxyTLS)
+		rt, err = buildTransport(cfg, dialFn, originTLS, proxyTLS, proxies)
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	if cfg.SSRF.Enabled {
+		rt = &destinationRoundTripper{next: rt, policy: cfg.SSRF.Policy}
 	}
 
 	maxBytes := cfg.Timeouts.MaxResponseBytes
@@ -359,5 +381,79 @@ func New(cfg Config, opts ...Option) (*http.Client, error) {
 func isZeroPolicy(p netguard.Policy) bool {
 	return !p.BlockPrivate && !p.BlockLoopback && !p.BlockLinkLocal && !p.BlockUnspecified &&
 		!p.BlockMulticastBroadcast && !p.BlockCGNAT &&
-		len(p.DenyCIDRs) == 0 && len(p.AllowCIDRs) == 0 && len(p.AllowedSchemes) == 0
+		len(p.DenyCIDRs) == 0 && len(p.AllowCIDRs) == 0 && len(p.AllowedSchemes) == 0 &&
+		p.Hosts == nil
+}
+
+func proxyConfigured(p ProxyConfig) bool {
+	return p.Mode != "" && p.Mode != "none"
+}
+
+// destinationRoundTripper applies the parts of the policy that concern the
+// destination URL rather than the dialed address: the host rule, and — when
+// the policy lists schemes explicitly — the scheme. It runs for the original
+// request and again for every redirect hop (the Client sends each hop
+// through its Transport), and before any proxy is involved, so the host rule
+// holds in every proxy mode.
+type destinationRoundTripper struct {
+	next   http.RoundTripper
+	policy netguard.Policy
+}
+
+func (d *destinationRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if len(d.policy.AllowedSchemes) > 0 {
+		allowed := false
+		for _, s := range d.policy.AllowedSchemes {
+			if strings.EqualFold(s, req.URL.Scheme) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			closeRequestBody(req)
+			return nil, fmt.Errorf("httpclient: destination rejected: %w", netguard.ErrDestinationNotAllowed)
+		}
+	}
+	if err := d.policy.CheckHost(req.URL.Hostname()); err != nil {
+		closeRequestBody(req)
+		return nil, fmt.Errorf("httpclient: destination rejected: %w", err)
+	}
+	return d.next.RoundTrip(req)
+}
+
+// closeRequestBody honours the RoundTripper contract that the request body
+// is closed even when RoundTrip fails before sending it.
+func closeRequestBody(req *http.Request) {
+	if req.Body != nil {
+		_ = req.Body.Close()
+	}
+}
+
+// proxyAddrSet records the host:port of every proxy Transport.Proxy returns,
+// so the dial can route a proxy hop to the proxy dialer.
+type proxyAddrSet struct{ addrs sync.Map }
+
+func (s *proxyAddrSet) record(u *url.URL) {
+	if u != nil {
+		s.addrs.Store(canonicalAddr(u), struct{}{})
+	}
+}
+
+func (s *proxyAddrSet) dialer(proxyDial, originDial func(context.Context, string, string) (net.Conn, error)) func(context.Context, string, string) (net.Conn, error) {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		if _, ok := s.addrs.Load(addr); ok {
+			return proxyDial(ctx, network, addr)
+		}
+		return originDial(ctx, network, addr)
+	}
+}
+
+func (s *proxyAddrSet) wrap(proxyFunc func(*http.Request) (*url.URL, error)) func(*http.Request) (*url.URL, error) {
+	return func(req *http.Request) (*url.URL, error) {
+		u, err := proxyFunc(req)
+		if err == nil {
+			s.record(u)
+		}
+		return u, err
+	}
 }

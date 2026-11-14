@@ -20,6 +20,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -648,7 +649,15 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 			WithLogMessage(fmt.Sprintf("invalid MCP server URL: %s", url))
 	}
 
+	// No request context reaches FetchServerInfo; this check does no I/O.
+	if err := utils.CheckUserURL(context.Background(), url); err != nil {
+		return nil, err
+	}
+
 	if err := utils.CheckURLReachability(url, 10*time.Second); err != nil {
+		if apperror.DestinationNotAllowed.Is(err) {
+			return nil, err
+		}
 		return nil, apperror.ValidationFailed.Wrap(err, "The provided URL is unreachable.").
 			WithLogMessage(fmt.Sprintf("MCP server URL is unreachable: %s", url))
 	}

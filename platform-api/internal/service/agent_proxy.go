@@ -602,6 +602,12 @@ func suppliedAgentCardAuthHeader(auth *api.UpstreamAuth) (string, string) {
 // more useful than "failed". The detail travels in the wrapped cause, for the
 // internal log line.
 func agentCardFetchFailure(err error) *apperror.Error {
+	var appErr *apperror.Error
+	if apperror.DestinationNotAllowed.Is(err) && errors.As(err, &appErr) {
+		// Refused by server.network_security.access_control: a 400 that the
+		// caller can act on, not an unreachable upstream.
+		return appErr
+	}
 	switch {
 	case errors.Is(err, utils.ErrAgentCardUnauthorized):
 		return apperror.AgentProxyUpstreamUnreachable.Wrap(err,

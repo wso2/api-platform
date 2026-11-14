@@ -54,6 +54,13 @@ const (
 	DeploymentErrorAgentConflict = "AGENT_CONFLICT"
 )
 
+// DeploymentErrorUpstreamURLNotAllowed is acked by a gateway whose network
+// access control (controller.server.network_security.access_control) refuses an
+// upstream URL or a URL-typed policy parameter of the artifact. It is the
+// gateway's configuration refusing the definition, not a gateway fault: change
+// the URL, or the gateway's access control, and redeploy.
+const DeploymentErrorUpstreamURLNotAllowed = "UPSTREAM_URL_NOT_ALLOWED"
+
 var DeploymentErrorMessages = map[string]string{
 	DeploymentErrorTimeout:                  "Deployment timed out waiting for gateway acknowledgement",
 	DeploymentErrorGatewayFailure:           "Gateway failed to process the deployment",
@@ -63,4 +70,5 @@ var DeploymentErrorMessages = map[string]string{
 	DeploymentErrorAgentValidationFailed:    "Gateway rejected the Agent definition as invalid",
 	DeploymentErrorAgentRenderFailed:        "Gateway could not resolve a template or secret reference in the Agent definition",
 	DeploymentErrorAgentConflict:            "Gateway already holds a conflicting Agent",
+	DeploymentErrorUpstreamURLNotAllowed:    "Gateway's network access control does not permit an upstream or policy URL in the deployment",
 }

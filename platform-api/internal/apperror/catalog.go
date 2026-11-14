@@ -68,6 +68,12 @@ var (
 	// *receive*.
 	UnsupportedMediaType = def(CodeCommonUnsupportedMediaType, http.StatusUnsupportedMediaType,
 		"This operation accepts application/json only.")
+	// DestinationNotAllowed is the 400 for a tenant- or user-supplied URL that
+	// server.network_security.access_control refuses. Every operation that takes
+	// such a URL already declares 400. It never says which rule refused the URL or
+	// what the host resolved to; that goes to the log only.
+	DestinationNotAllowed = def(CodeCommonDestinationNotAllowed, http.StatusBadRequest,
+		"The URL's destination is not permitted.")
 )
 
 // REST API entries.

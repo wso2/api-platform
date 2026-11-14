@@ -469,7 +469,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, identityService, apiDocumentService, slogger, cfg)
-	apiInvokeHandler, err := newAPIInvokeHandler(&cfg.GatewayRelay, apiService, slogger)
+	apiInvokeHandler, err := newAPIInvokeHandler(&cfg.GatewayRelay, cfg.Listeners.NetworkSecurity.AccessControl, apiService, slogger)
 	if err != nil {
 		return nil, err
 	}
@@ -1130,11 +1130,11 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	if len(cfg.Auth.IDP.Audience) > 0 {
 		idpCfg.Audience = &cfg.Auth.IDP.Audience
 	}
-	// JWKS fetching is an outbound request to a tenant-configured URL (auth.idp.jwks_url),
-	// so it must go through the same SSRF-guarded shared client as every other
-	// tenant/operator-configured upstream call this process makes, rather than falling
-	// back to net/http's unguarded default client.
-	sharedClient, err := utils.NewUpstreamFetchClient(0)
+	// JWKS fetching goes to auth.idp.jwks_url, a destination configured in config.toml, so it
+	// uses the shared client with platform_api.http_client's own policy rather than
+	// net/http's unguarded default client. It is deliberately not subject to
+	// server.network_security.access_control, which governs tenant- and user-supplied URLs.
+	sharedClient, err := utils.NewConfiguredDestinationClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain shared HTTP client for JWKS fetching: %w", err)
 	}
@@ -1439,8 +1439,16 @@ func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config
 
 // newAPIInvokeHandler builds the gateway relay behind the invoke route. An
 // invalid allow_hosts entry fails startup.
-func newAPIInvokeHandler(cfg *config.GatewayRelay, apiService *service.APIService, slogger *slog.Logger) (*handler.APIInvokeHandler, error) {
-	policy, err := egress.Parse(egress.Spec{AllowHosts: cfg.Egress.AllowHosts, Logger: slogger})
+func newAPIInvokeHandler(cfg *config.GatewayRelay, access config.AccessControl, apiService *service.APIService, slogger *slog.Logger) (*handler.APIInvokeHandler, error) {
+	spec := egress.Spec{AllowHosts: cfg.Egress.AllowHosts, Logger: slogger}
+	if access.Enabled {
+		accessPolicy, err := access.GuardConfig().Build()
+		if err != nil {
+			return nil, fmt.Errorf("invalid server.network_security.access_control: %w", err)
+		}
+		spec.AccessControl = &accessPolicy
+	}
+	policy, err := egress.Parse(spec)
 	if err != nil {
 		return nil, fmt.Errorf("invalid gateway_relay.egress: %w", err)
 	}

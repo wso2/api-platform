@@ -22,9 +22,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 	"github.com/wso2/api-platform/httpkit/httpclient"
 	"github.com/wso2/api-platform/httpkit/netguard"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 // TestMain initializes the package-level shared outbound *http.Client (see
@@ -45,12 +45,12 @@ func TestMain(m *testing.M) {
 	cfg.SSRF.Policy = policy
 	cfg.SSRF.MaxRedirects = 5
 
-	client, err := httpclient.New(cfg)
-	if err != nil {
+	// Installed with its config, as production does (server.InitSharedHTTPClient), so the
+	// portal publisher can derive clients with its own timeouts from it.
+	if err := utils.InitSharedHTTPClientFromConfig(cfg, 0); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to build test double for the shared HTTP client: %v\n", err)
 		os.Exit(1)
 	}
-	utils.InitSharedHTTPClient(client, 0)
 
 	os.Exit(m.Run())
 }
