@@ -95,9 +95,6 @@ yarn-debug.log*
 *.DS_Store
 
 
-# Docker
-**/.dockerignore
-
 # Go-specific patterns
 *.exe
 *.test
