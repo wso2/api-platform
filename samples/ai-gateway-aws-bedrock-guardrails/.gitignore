@@ -1,0 +1,7 @@
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars
+wso2apip-ai-gateway/
+wso2apip-ai-gateway-*/
+.tools/
