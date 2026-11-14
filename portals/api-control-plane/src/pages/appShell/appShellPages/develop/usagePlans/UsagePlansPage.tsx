@@ -77,6 +77,7 @@ import {
   policiesToAttach,
   policiesToRemove,
   withAttachedPlans,
+  keysToAttach,
   withPoliciesAdded,
   withPoliciesRemoved,
 } from './usagePlans';
@@ -501,7 +502,7 @@ function PlanAttachmentPanel({
     if (prompt.action === 'attach') {
       // subscription-validation goes before the attached policies the ticked plans rely on.
       const ticked = planIds.flatMap((id) => plansById.get(id) ?? []);
-      setPolicies(withPoliciesAdded(policies, prompt.names, requiredPolicies(ticked, kind)));
+      setPolicies(withPoliciesAdded(policies, keysToAttach(policies, prompt.names), requiredPolicies(ticked, kind)));
       notify(intl.formatMessage(messages.policiesAttached), 'success');
     } else {
       setPolicies(withPoliciesRemoved(policies, prompt.names));

@@ -16,12 +16,14 @@
  * under the License.
  */
 
+import type { Policy } from '@/api/resources/restApis';
 import { describe, expect, it } from 'vitest';
 
 import {
   attachedPlanIdsOf,
   policiesToAttach,
   policiesToRemove,
+  keysToAttach,
   withAttachedPlans,
   withPoliciesAdded,
   withPoliciesRemoved,
@@ -131,5 +133,19 @@ describe('usage plans helpers', () => {
       'cors',
       'subscription-validation',
     ]);
+  });
+
+  it('adds subscription-validation at API level, first, when it is only on operations and a plan policy is added', () => {
+    const onOps: Policy[] = [];
+    expect(keysToAttach(onOps, ['subscription-request-ratelimit'])).toEqual([
+      'subscription-validation',
+      'subscription-request-ratelimit',
+    ]);
+    const atApi: Policy[] = [{ name: 'subscription-validation', params: {}, version: 'v1' }];
+    expect(keysToAttach(atApi, ['subscription-request-ratelimit'])).toEqual(['subscription-request-ratelimit']);
+    expect(keysToAttach(onOps, ['subscription-validation'])).toEqual(['subscription-validation']);
+    expect(
+      withPoliciesAdded(onOps, keysToAttach(onOps, ['subscription-request-ratelimit'])).map((p) => p.name),
+    ).toEqual(['subscription-validation', 'subscription-request-ratelimit']);
   });
 });

@@ -155,6 +155,19 @@ export const withPoliciesAdded = (
   return [...policies.slice(0, at), validation, ...policies.slice(at), ...rest];
 };
 
+/**
+ * The keys to attach at API level for `names`. Route chains run API-level policies before
+ * operation-level ones, so when subscription-validation is only on operations, a plan policy added
+ * at API level would run before it: subscription-validation is then attached at API level too,
+ * first, so it always precedes the policies that read what it records.
+ */
+export const keysToAttach = (apiPolicies: readonly Policy[], names: readonly string[]): string[] => {
+  const atApiLevel = apiPolicies.some((policy) => policy.name === SUBSCRIPTION_VALIDATION);
+  const addsDependent = names.some((key) => parsePolicyKey(key).name !== SUBSCRIPTION_VALIDATION);
+  const hasValidation = names.some((key) => parsePolicyKey(key).name === SUBSCRIPTION_VALIDATION);
+  return !atApiLevel && addsDependent && !hasValidation ? [SUBSCRIPTION_VALIDATION, ...names] : [...names];
+};
+
 /** `policies` without any matching `keys` (a name, or `name@v<major>`). */
 export const withPoliciesRemoved = (
   policies: readonly Policy[],
