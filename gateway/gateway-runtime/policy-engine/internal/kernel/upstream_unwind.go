@@ -33,12 +33,22 @@ import (
 // message. So only its request half ever runs, and a cross-vendor fallback would answer the
 // client in the vendor's own shape.
 //
-// WHY HERE AND NOT AT THE UPSTREAM POSITION. Probe T4 measured that the upstream position CAN
-// deliver responses — including for attempts that were retried away from. That is exactly the
-// problem: when the filter sees a response there, the router has not yet decided whether to retry
-// it, so a policy cannot tell a response that will be delivered from one about to be discarded.
-// Here the question does not arise. The downstream response phase runs once, on the committed
-// response, so "which response is final" is settled by construction.
+// WHY HERE AND NOT AT THE UPSTREAM POSITION. Probes T4 and T5 measured that the upstream position
+// CAN deliver responses — including for attempts that were retried away from:
+//
+//	cluster_name = "provider_a"   RESPONSE HEADERS at upstream position: status=500  <- discarded
+//	cluster_name = "provider_b"   RESPONSE HEADERS at upstream position: status=200  <- served
+//
+// That is exactly the problem: when the filter sees a response there, the router has not yet
+// decided whether to retry it, so a policy cannot tell a response that will be delivered from one
+// about to be discarded. Here the question does not arise — the downstream response phase runs
+// once, on the committed response, so "which response is final" is settled by construction.
+//
+// T5 also measured the cost of moving the work there rather than unwinding: 4.0 ext_proc messages
+// per failover request instead of 2.0, since every attempt pays a response round trip, and the
+// position does not work at all under the 200ms default message timeout — it needs 5s, which
+// would weaken that bound for every message. The unwind adds no round trip, because it executes
+// inside the downstream response message that happens anyway.
 //
 // WHY THE WHOLE CHAIN RATHER THAN THE TRANSFORMER. Unwinding everything makes a transformer's
 // reverse translation and any future authored per-provider response policy the same mechanism,

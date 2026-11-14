@@ -194,6 +194,12 @@ func (s *attemptBaselineStore) RememberServingCluster(requestID, cluster string)
 		return
 	}
 	entry.servingCluster = cluster
+	// Each attempt RENEWS the lease. The expiry was set once, at the first attempt, and never
+	// extended — so a request whose attempts span the TTL lost its entry while it was still in
+	// flight, and the response unwind then found no serving cluster and silently ran nothing,
+	// delivering a cross-vendor body untranslated. The TTL exists to reclaim entries for
+	// requests that never finish, not to bound a request that is still going.
+	entry.expires = s.now().Add(baselineTTL)
 	s.entries[requestID] = entry
 }
 

@@ -1117,6 +1117,55 @@ still attributes attempt 1 as a failure.
   load, so earlier timing-sensitive numbers taken with concurrent or back-to-back requests should
   be treated with the same suspicion.
 
+## Probe T5 — is the unwind worth keeping? (2026-11-15)
+
+The unwind exists because the upstream filter is generated response-SKIP. If that position only
+ever saw the response that actually served the client, the response work could live there instead
+and the unwind could be deleted. T4 said otherwise; this re-ran it as the decisive check, and
+measured what the alternative would cost.
+
+### Does the upstream position see a DISCARDED attempt's response?
+
+`t4d-long-timeout.yaml` (`response_header_mode: SEND`, `message_timeout: 5s`), `A_FAIL=true` so
+attempt 1 returns a retryable 5xx and attempt 2 serves. One request:
+
+```
+attribute xds.cluster_name = "provider_a"
+PROBE *** RECEIVED RESPONSE HEADERS at upstream position: status=500 ***   <- retried away from
+attribute xds.cluster_name = "provider_b"
+PROBE *** RECEIVED RESPONSE HEADERS at upstream position: status=200 ***   <- served the client
+```
+
+Client: `HTTP 200`, `x-envoy-attempt-count: 2`. **Both** responses arrive. A policy there cannot
+tell a response that will be delivered from one about to be discarded, because at the moment it
+sees `500` the router has not decided yet.
+
+### What moving the work there would cost
+
+Same harness, same failure injection, 10 failover requests each:
+
+| Upstream response path | ext_proc messages / request | latency / request | `message_timeout` |
+|---|---|---|---|
+| `SEND` (on) | **4.0** | 94.0 ms | must be raised 200ms -> **5s** |
+| `SKIP` (shipped, + unwind) | **2.0** | 86.5 ms | stays at 200ms |
+
+The round trips DOUBLE, and the extra ones are per attempt — an exhausted three-member chain pays
+six instead of three. The unwind adds none: it executes inside the downstream response message
+that happens anyway.
+
+The timeout row matters most for production. T4 measured `SEND` at the 200ms default returning
+`504 ext_proc_error_per-message_timeout_exceeded` on a cold stream, so enabling it means raising
+that ceiling for EVERY ext_proc message — weakening the bound that stops a wedged policy engine
+from holding requests open, to buy a path that is also slower and ambiguous.
+
+### Answer: keep the unwind
+
+Not on the original FR-037a reasoning, which T4 voided, but on three measured grounds: the
+position cannot distinguish final from discarded, it doubles the round trips, and it cannot run
+at all under the default message timeout.
+
+---
+
 ## Probe T4 — does the UPSTREAM position deliver responses? (2026-11-13)
 
 FR-037a made the upstream filter request-only, reasoning that a response there carries no cluster
