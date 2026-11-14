@@ -528,8 +528,7 @@ function showSubscriptionTokenModal(token, planName) {
                 </div>
                 <div class="sub-token-label">Subscription token</div>
                 <div class="sub-token-field" id="tokenContainer"></div>
-                <p class="sub-token-hint"><i class="bi bi-info-circle"></i>
-                    Send it in the <code>Subscription-Key</code> header when you call the API. You can view it again from View subscription.</p>
+                <p class="sub-token-hint"><i class="bi bi-info-circle"></i><span>Send it in the <code>Subscription-Key</code> header when you call the API. You can view it again from View subscription.</span></p>
                 <div class="sub-token-actions"><button type="button" class="sub-token-done" id="doneTokenModal">Done</button></div>
             </div>
         `;

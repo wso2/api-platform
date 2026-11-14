@@ -1058,8 +1058,10 @@
   color: var(--text-muted);
 }
 .sub-token-hint .bi { color: var(--primary); margin-top: .125rem; }
+.sub-token-hint > span { flex: 1; min-width: 0; }
+/* The header name stays on one line inside the sentence. */
 .sub-token-hint code {
-  font-family: var(--font-family-mono); font-size: .78rem; color: var(--text-strong);
+  white-space: nowrap; font-family: var(--font-family-mono); font-size: .78rem; color: var(--text-strong);
   background: var(--surface-sunken); border: 1px solid var(--border); border-radius: .3125rem; padding: 0 .3125rem;
 }
 .sub-token-actions { display: flex; justify-content: flex-end; margin-top: 1.25rem; }
