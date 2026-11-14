@@ -2862,6 +2862,161 @@
   white-space: nowrap;
 }
 
+/* ── Subscription plan page: details, conditions and pricing ── */
+
+.pln-layout { display: grid; grid-template-columns: minmax(0, 1fr); max-width: 920px; }
+.pln-main { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+.pln-card { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); padding: 22px 24px; }
+.pln-card .cfg-form-group { margin-bottom: 16px; }
+.pln-card .cfg-form-group:last-child { margin-bottom: 0; }
+.pln-card-head { margin-bottom: 16px; }
+.pln-card-title { margin: 0 0 16px; font-size: 1.05rem; font-weight: 700; color: var(--text-strong); }
+.pln-card-head .pln-card-title { margin-bottom: 4px; }
+.pln-card-desc { margin: 0; font-size: .844rem; color: var(--text-muted); }
+.pln-optional { color: var(--text-subtle); font-weight: 400; }
+
+.pln-cond-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.pln-cond-head .pln-card-title { margin: 0; display: flex; align-items: center; gap: 8px; }
+.pln-count { font-size: .75rem; font-weight: 600; color: var(--text-muted); background: var(--surface-sunken); border-radius: 10px; padding: 1px 9px; }
+.pln-card > .pln-card-desc { margin-bottom: 16px; }
+.pln-add-wrap { position: relative; }
+.pln-add-cond { display: inline-flex; align-items: center; gap: 6px; border-radius: 20px; }
+
+.pln-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: 380px; max-width: calc(100vw - 32px);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 6px;
+  box-shadow: 0 12px 32px rgba(10, 25, 50, .16); display: flex; flex-direction: column;
+}
+.pln-menu-item {
+  display: flex; gap: 12px; align-items: flex-start; text-align: left; width: 100%;
+  background: none; border: 0; border-radius: 10px; padding: 10px 12px; cursor: pointer; color: inherit;
+}
+.pln-menu-item:hover:not(:disabled), .pln-menu-item:focus-visible { background: var(--surface-sunken); }
+.pln-menu-item:disabled { cursor: default; opacity: .6; }
+.pln-menu-text { display: flex; flex-direction: column; gap: 2px; }
+.pln-added { margin-left: 8px; font-size: .7rem; font-weight: 600; color: var(--text-muted); background: var(--surface-sunken); border-radius: 8px; padding: 1px 8px; }
+
+.pln-cond-icon {
+  flex: none; width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center;
+  background: var(--accent-surface); color: var(--accent-dark); font-size: 1rem;
+}
+.pln-type-name { font-size: .938rem; font-weight: 600; color: var(--text-strong); display: flex; align-items: center; }
+.pln-type-desc { font-size: .8rem; color: var(--text-muted); line-height: 1.45; }
+
+.pln-chooser { border: 1px solid var(--border); border-radius: 12px; background: var(--surface-sunken); padding: 16px 18px; }
+.pln-chooser-title { margin: 0 0 12px; font-size: .938rem; font-weight: 600; color: var(--text-strong); }
+.pln-chooser-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.pln-type-card {
+  display: flex; flex-direction: column; gap: 8px; text-align: left; cursor: pointer; color: inherit;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.pln-type-card:hover, .pln-type-card:focus-visible { border-color: var(--primary-light); box-shadow: 0 6px 18px rgba(10, 25, 50, .08); }
+.pln-type-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pln-chooser-foot { display: flex; justify-content: flex-end; margin-top: 12px; }
+.pln-cond-empty { margin: 0; font-size: .844rem; color: var(--text-muted); }
+
+.pln-cond-list { display: flex; flex-direction: column; gap: 10px; }
+.pln-cond { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.pln-cond--open { border-color: var(--primary-light); }
+.pln-cond-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 6px; }
+.pln-cond-toggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-align: left;
+  background: none; border: 0; padding: 4px 6px; cursor: pointer; color: inherit; border-radius: 8px;
+}
+.pln-cond-toggle > .bi { color: var(--text-muted); transition: transform .15s; }
+.pln-cond--open .pln-cond-toggle > .bi { transform: rotate(90deg); }
+.pln-cond-text { display: flex; flex-direction: column; min-width: 0; }
+.pln-cond-title { font-size: .938rem; font-weight: 600; color: var(--text-strong); }
+.pln-cond-summary { font-size: .844rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pln-cond-chip { font-size: .78rem; background: var(--surface-sunken); color: var(--text-strong); border-radius: 6px; padding: 3px 8px; white-space: nowrap; }
+.pln-cond-body { border-top: 1px solid var(--border); padding: 14px 16px 16px 60px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.pln-cond-body > .cfg-form-group { width: 100%; margin: 0; }
+.pln-cond-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+.pln-cond-controls select { width: auto; }
+.pln-windows, .pln-pairs { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.pln-window, .pln-pair { display: flex; gap: 8px; align-items: center; margin: 0 !important; }
+.pln-window .cfg-limit-count { flex: 1.5; }
+.pln-window .cfg-limit-amount { flex: .6; }
+.pln-window .cfg-limit-unit { flex: 1.1; }
+.pln-pair .pln-pair-key { flex: 1; }
+.pln-pair .pln-pair-value { flex: 1.6; }
+.pln-window-per { color: var(--text-muted); font-size: .8rem; white-space: nowrap; }
+
+/* "Block requests when quota is reached": a bordered row under the limits, the switch on the right. */
+.pln-block-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--surface-sunken);
+}
+.pln-block-title { font-weight: 600; font-size: .875rem; color: var(--text-strong); }
+.pln-block-help { font-size: .78rem; color: var(--text-muted); margin-top: 2px; }
+.pln-block-row { align-self: stretch; width: 100%; box-sizing: border-box; }
+.pln-block-row .form-check-input { width: 2.4em; height: 1.3em; cursor: pointer; }
+.pln-block-row .form-check-input:checked { background-color: var(--primary); border-color: var(--primary); }
+.pln-block-row .form-check-input:focus { box-shadow: 0 0 0 .2rem var(--primary-surface); border-color: var(--primary-light); }
+
+.pln-paid-toggle { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: 600; color: var(--text-strong); }
+.pln-pricing { margin-top: 14px; }
+
+.pln-actions { display: flex; justify-content: flex-end; gap: 12px; }
+
+@media (max-width: 1280px) {
+  .pln-layout { grid-template-columns: minmax(0, 1fr); }
+  }
+@media (max-width: 640px) {
+  .pln-card { padding: 18px 16px; }
+  .pln-cond-body { padding-left: 16px; }
+}
+
+/* ── Plans table: rows of one height; name over a one-line description; one chip per limit window,
+   two at most, and "+N" listing the rest on hover or focus ── */
+.cfg-plans-table tbody td { height: 72px; vertical-align: middle; }
+/* Fixed columns, so one-line text and chips are cut at the column edge instead of widening the table. */
+.cfg-plans-table { table-layout: fixed; width: 100%; }
+.cfg-plans-table th:nth-child(1) { width: 30%; }
+.cfg-plans-table th:nth-child(3) { width: 96px; }
+.cfg-plans-table th:nth-child(4) { width: 88px; }
+.cfg-plan-name {
+  font-size: .875rem; font-weight: 600; color: #1a2433; max-width: 100%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cfg-plan-desc {
+  font-size: .75rem; color: #637282; margin-top: 2px; max-width: 100%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cfg-cond-chips { display: flex; flex-wrap: nowrap; gap: 6px; min-width: 0; }
+/* A chip that does not fit shrinks and ends in "…"; "+N" keeps its size (and its hover card). */
+.cfg-cond-chips > .cfg-cond-chip:not(.cfg-cond-chip--more) { min-width: 0; flex: 0 1 auto; overflow: hidden; }
+.cfg-cond-chips > .cfg-cond-chip:not(.cfg-cond-chip--more) .cfg-cond-chip-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cfg-cond-chips > .cfg-cond-chip--more { flex: 0 0 auto; }
+/* While settings-plans.js measures, chips keep their size so an overflow shows. */
+.cfg-cond-chips.is-measuring > .cfg-cond-chip { flex-shrink: 0; }
+.cfg-cond-chip[hidden] { display: none; }
+.cfg-cond-chip {
+  position: relative; display: inline-flex; align-items: center; gap: 6px; cursor: default;
+  background: var(--surface-sunken); border: 1px solid var(--border); border-radius: 8px; padding: 3px 9px;
+  font-size: .78rem; white-space: nowrap;
+}
+.cfg-cond-chip--more { cursor: help; }
+.cfg-cond-chip--more:hover, .cfg-cond-chip--more:focus-visible { border-color: var(--primary-light); outline: none; }
+.cfg-cond-chip-name { font-weight: 600; color: var(--text-strong); }
+.cfg-cond-chip-value { font-family: var(--font-family-mono); color: var(--text); }
+.cfg-cond-chip-more { font-size: .7rem; font-weight: 600; color: var(--primary); background: var(--primary-surface); border-radius: 6px; padding: 0 5px; }
+.cfg-cond-tip {
+  display: none; position: absolute; left: 0; top: calc(100% + 6px); z-index: 30; min-width: 180px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+  box-shadow: 0 10px 28px rgba(10, 25, 50, .16); white-space: nowrap;
+  /* One grid for the whole card: every name in one column, every value lined up after the longest. */
+  grid-template-columns: auto auto; column-gap: 16px; row-gap: 6px; align-items: baseline;
+}
+.cfg-cond-chip--more:hover .cfg-cond-tip, .cfg-cond-chip--more:focus .cfg-cond-tip { display: grid; }
+.cfg-cond-tip-title { font-weight: 600; color: var(--text-strong); }
+.cfg-cond-tip-row { display: contents; }
+.cfg-cond-tip-line { font-family: var(--font-family-mono); color: var(--text); font-size: .78rem; }
+.cfg-cond-chip--more { padding: 3px 6px; }
+.cfg-cond-chip--more .cfg-cond-tip { left: auto; right: 0; }
+
 /* ── API wizard: Details cards, thumbnail, Spec and Assets views ── */
 
 .cfg-wizard-subtitle {
@@ -3055,3 +3210,15 @@
 #wz-content-chip.cfg-spec-chip--error { border-color: var(--danger-surface); background: var(--danger-surface); }
 #wz-content-chip.cfg-spec-chip--error .cfg-spec-sub { color: var(--danger); font-weight: 600; }
 .cfg-spec-chip .cfg-action-btn[hidden] { display: none; }
+
+/* These set their own display, so [hidden] needs saying again, whatever the layout's base styles. */
+.pln-menu[hidden], .pln-add-cond[hidden], .pln-cond-body[hidden], .pln-chooser[hidden],
+.pln-cond-empty[hidden], .pln-cond-chip[hidden] { display: none !important; }
+/* The plans table's last rows open their condition cards upward, so they stay in the scroll area. */
+.cfg-table tbody tr:nth-last-child(-n+2) .cfg-cond-tip { top: auto; bottom: calc(100% + 6px); }
+
+/* Custom condition: its optional enforcing policy, name and version side by side. */
+.pln-policy-row { display: flex; gap: 8px; }
+.pln-policy-row .pln-policy-name { flex: 2; }
+.pln-policy-row .pln-policy-version { flex: 1; max-width: 120px; }
+.pln-policy-info { color: var(--text-muted); cursor: help; font-size: .8rem; }

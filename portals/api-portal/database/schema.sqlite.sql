@@ -220,7 +220,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_api_tag_mappings_tag_api ON api_tag_mapping
 CREATE INDEX IF NOT EXISTS idx_api_tag_mappings_api_uuid ON api_tag_mappings(api_uuid, portal_id);
 
 -- Subscription Plans table (portal-scoped rate/billing plans)
--- Throttling limits live in subscription_plan_limits (one row per limit).
+-- A plan's limits are in subscription_plan_conditions.
 CREATE TABLE IF NOT EXISTS subscription_plans (
     uuid VARCHAR(40) NOT NULL,
     handle VARCHAR(255) NOT NULL,
@@ -239,25 +239,23 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_plan_org_handle ON subscription_plans(org_uuid, handle, portal_id);
 
--- Subscription Plan Limits table (throttling limits for a plan)
-CREATE TABLE IF NOT EXISTS subscription_plan_limits (
+-- Subscription Plan Conditions table: a plan's conditions in order. condition_type is request-count,
+-- tool-call-count, token-count or custom. params is JSON, for example
+-- {"limits":[{"count":100,"timeAmount":1,"timeUnit":"MINUTE"}],"onExceed":"reject"}.
+-- Replaces subscription_plan_limits. A plan with no rows here is read from that table if it exists.
+CREATE TABLE IF NOT EXISTS subscription_plan_conditions (
     uuid VARCHAR(40) NOT NULL,
     plan_uuid VARCHAR(40) NOT NULL,
     portal_id VARCHAR(255) NOT NULL DEFAULT 'portal_id',
-    limit_type VARCHAR(20) NOT NULL DEFAULT 'REQUEST_COUNT',
-    time_unit VARCHAR(20),
-    time_amount INTEGER NOT NULL DEFAULT 1,
-    limit_count BIGINT NOT NULL,
+    condition_id VARCHAR(63) NOT NULL,
+    condition_type VARCHAR(40) NOT NULL,
+    params BLOB NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (portal_id, uuid),
     FOREIGN KEY (portal_id, plan_uuid) REFERENCES subscription_plans(portal_id, uuid) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_subscription_plan_limits_plan ON subscription_plan_limits(plan_uuid);
--- Split into two filtered unique indexes because time_unit is nullable (see the
--- postgres schema for the full rationale); SQLite supports partial indexes since 3.8.0.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_plan_limits
-    ON subscription_plan_limits(plan_uuid, limit_type, time_amount, time_unit, portal_id) WHERE time_unit IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_plan_limits_null_unit
-    ON subscription_plan_limits(plan_uuid, limit_type, time_amount, portal_id) WHERE time_unit IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_subscription_plan_conditions
+    ON subscription_plan_conditions(plan_uuid, condition_id, portal_id);
 
 -- API-Subscription Plan mappings (many-to-many: which plans an API offers)
 CREATE TABLE IF NOT EXISTS api_subscription_plan_mappings (

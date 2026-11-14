@@ -2087,13 +2087,16 @@ function parseApiMetadataFromYamlRequest(req) {
     return parseApiMetadataFromYamlFile(metadataFile.originalname, metadataFile.buffer);
 }
 
+/*
+ * The YAML shorthand `requestCount` as a limit, which sets the plan's request-count condition. It names
+ * no window, and the portal has always shown it per minute, so it is a per-minute limit. Undefined when
+ * the YAML has no shorthand; `eventCount` has no condition and is not read.
+ */
 function legacyLimitsFromSpec(spec) {
     const type = (spec.type || '').toLowerCase();
     if (type === 'requestcount' && spec.requestCount != null)
-        return [{ limitType: 'REQUEST_COUNT', limitCount: spec.requestCount, timeUnit: null, timeAmount: 1 }];
-    if (type === 'eventcount' && spec.eventCount != null)
-        return [{ limitType: 'EVENT_COUNT', limitCount: spec.eventCount, timeUnit: null, timeAmount: 1 }];
-    return [];
+        return [{ limitType: 'REQUEST_COUNT', limitCount: spec.requestCount, timeUnit: 'MINUTE', timeAmount: 1 }];
+    return undefined;
 }
 
 /**
@@ -2102,14 +2105,18 @@ function legacyLimitsFromSpec(spec) {
  */
 function mapYamlToSubscriptionPlan(item) {
     const { metadata = {}, spec = {} } = item;
-    return {
+    const plan = {
         id: metadata.name,
         displayName: spec.displayName,
         description: spec.description,
         refId: spec.refId,
-        limits: Array.isArray(spec.limits) ? spec.limits : legacyLimitsFromSpec(spec),
+        conditions: spec.conditions,
         pricing: spec.pricing,
     };
+    // Only limits the YAML gives: an empty list would remove the plan's request-count condition.
+    const limits = Array.isArray(spec.limits) ? spec.limits : legacyLimitsFromSpec(spec);
+    if (limits !== undefined) plan.limits = limits;
+    return plan;
 }
 
 function parseSubscriptionPlansFromYamlFile(fileBuffer) {

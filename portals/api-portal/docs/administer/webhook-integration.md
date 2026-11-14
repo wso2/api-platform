@@ -547,12 +547,19 @@ Both events carry the plan's [`pricing`](#pricing), or `null` for a free plan. P
     "limits": [
       { "limit_type": "REQUEST_COUNT", "limit_count": 5000, "time_unit": "MINUTE", "time_amount": 1 }
     ],
+    "conditions": [
+      {
+        "id": "requests",
+        "type": "request-count",
+        "params": { "limits": [{ "count": 5000, "timeAmount": 1, "timeUnit": "MINUTE" }], "onExceed": "reject" }
+      }
+    ],
     "pricing": null
   }
 }
 ```
 
-`handle` is the plan's Platform API handle: the plan's `refId` when it has one, otherwise its portal handle, which then becomes its `refId`. `limit_count` is `-1` for an unlimited limit.
+`handle` is the plan's Platform API handle: the plan's `refId` when it has one, otherwise its portal handle, which then becomes its `refId`. `conditions` are the plan's [conditions](subscription-plans.md#conditions); a plan saved before conditions sends its request and total token limits as request-count and token-count conditions. `limits` are the windows of the request-count condition as `REQUEST_COUNT` limits, kept for subscribers that predate conditions. An unlimited plan has no conditions and no `limits`.
 
 #### Pricing
 

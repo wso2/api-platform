@@ -79,7 +79,10 @@ const helpers = {
 
     // Subscription plan limit display helpers
     limitTypeLabel: (type) => {
-        const map = { REQUEST_COUNT: 'req', EVENT_COUNT: 'events', BANDWIDTH: 'bytes', TOTAL_TOKEN_COUNT: 'tokens' };
+        const map = {
+            REQUEST_COUNT: 'req', EVENT_COUNT: 'events', BANDWIDTH: 'bytes', TOTAL_TOKEN_COUNT: 'tokens',
+            TOOL_CALL_COUNT: 'tool calls', PROMPT_TOKEN_COUNT: 'prompt tokens', COMPLETION_TOKEN_COUNT: 'completion tokens',
+        };
         return map[String(type)] || String(type || '').toLowerCase().replace(/_/g, ' ');
     },
     timeUnitLabel: (unit) => {
@@ -106,6 +109,19 @@ const helpers = {
 
     // String helpers
     lowercase: (str) => typeof str === 'string' ? str.toLowerCase() : str,
+    // The kind of artifact, as subscribers read it: MCP, REST, GraphQL and so on.
+    apiTypeLabel: (type) => {
+        const map = { mcp: 'MCP', restapi: 'REST', rest: 'REST', graphql: 'GraphQL', soap: 'SOAP', ws: 'WebSocket', websubapi: 'WebSub' };
+        if (!type) return 'Unknown';
+        return map[String(type).toLowerCase()] || String(type);
+    },
+    isMcpType: (type) => String(type || '').toLowerCase() === 'mcp',
+    // A date without its time, for "since" columns.
+    formatDate: (value) => {
+        if (value == null || value === '') return '';
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString(undefined, { dateStyle: 'medium' });
+    },
     // Display only. Used for identifiers that are lowercase by contract — driver
     // type ids, for one — so it must never be applied to a value being sent back.
     // The product name for a key manager driver `type`. Looked up rather than
@@ -160,6 +176,12 @@ const helpers = {
     isMiddle: (index, length) => index === Math.floor(length / 2),
     maskToken: (token) => (!token || token.length <= 4) ? '****' : '****' + token.slice(-4),
     isCurrentPlan: (planName, subs) => Array.isArray(subs) && !!planName && subs.some(s => (s.policyName || s.subscriptionPlanName) === planName),
+    // The plan the user is subscribed to on this API, or '' (the Subscribe / Switch plan dialog's data-current).
+    currentPlanId: (subs) => (Array.isArray(subs) && subs.length ? (subs[0].policyName || subs[0].subscriptionPlanName || '') : ''),
+    // What the Subscribe / Switch plan dialog needs of each plan: its name and description, and whether it is paid.
+    pickerPlans: (plans) => (Array.isArray(plans) ? plans : [])
+        .filter(p => p && p.id)
+        .map(p => ({ id: p.id, displayName: p.displayName || p.id, description: p.description || '', paid: !!p.paid })),
     currentYear: () => new Date().getFullYear(),
     pageHead: function(options) {
         if (this.slots) {

@@ -524,7 +524,7 @@
 
 .mc-unsub-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.875rem;
 }
 
@@ -549,7 +549,8 @@
 }
 
 .mc-unsub-desc {
-  margin: 1rem 0 0;
+  /* Lined up under the title, not under the icon. */
+  margin: 0.625rem 0 0 3.75rem;
   font-size: 0.875rem;
   line-height: 1.6;
   color: var(--text-muted);
@@ -574,6 +575,9 @@
   transition: opacity 0.15s;
 }
 .mc-unsub-confirm-btn:hover { opacity: 0.9; }
+/* A soft ring for keyboard focus only; no browser-blue outline after a click. */
+.mc-unsub-actions .dp-btn:focus { outline: none; box-shadow: none; }
+.mc-unsub-actions .dp-btn:focus-visible { outline: 2px solid var(--primary-light); outline-offset: 2px; }
 
 /* ── Plans wrap within MCP sidebar ──────────────────────────── */
 .mcp-plans-wrap .aov-plan-card { margin-bottom: 0.875rem; }

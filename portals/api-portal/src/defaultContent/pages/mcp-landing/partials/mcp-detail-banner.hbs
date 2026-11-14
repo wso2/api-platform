@@ -39,12 +39,35 @@
     </div>
     {{/if}}
     <div class="aov-hero-actions">
+      {{!-- Subscribe opens the plan dialog (plan-picker.js); once subscribed it becomes Switch plan,
+            next to View subscription. --}}
       {{#if subscriptionPlans.length}}
-        {{#unless subscriptions.length}}
-      <a class="dp-btn dp-btn--primary" href="#subscriptionPlans">
+        {{#if @root.isAuthenticated}}
+          {{#if (or @root.access.subscribe @root.access.checkout)}}
+      <button type="button" class="dp-btn dp-btn--primary" data-plan-picker
+        data-api-id="{{apiMetadata.id}}" data-org-id="{{@root.orgId}}"
+        data-api-name="{{or apiMetadata.title apiMetadata.name}}"
+        data-plans="{{jsonAttr (pickerPlans subscriptionPlans)}}"
+        data-current="{{currentPlanId subscriptions}}">
+            {{#if subscriptions.length}}
+        <i class="bi bi-arrow-left-right"></i> Switch plan
+            {{else}}
+        <i class="bi bi-bookmark-plus"></i> Subscribe
+            {{/if}}
+      </button>
+          {{/if}}
+          {{#if subscriptions.length}}
+      <button type="button" class="dp-btn dp-btn--outline" data-view-subscription="{{currentPlanId subscriptions}}">
+        <i class="bi bi-eye"></i> View subscription
+      </button>
+          {{/if}}
+        {{else}}
+      {{!-- Not signed in: Subscribe asks to sign in (disabled in design mode, where login 404s). --}}
+      <a class="dp-btn dp-btn--primary{{#if (designMode)}} design-disabled{{/if}}"
+        {{#unless (designMode)}}href="{{@root.baseUrl}}/login"{{else}}aria-disabled="true" tabindex="-1" title="Not available in design mode"{{/unless}}>
         <i class="bi bi-bookmark-plus"></i> Subscribe
       </a>
-        {{/unless}}
+        {{/if}}
       {{/if}}
       <a class="dp-btn dp-btn--outline" href="{{baseUrl}}/mcp/{{apiMetadata.id}}/docs/specification">
         <i class="bi bi-book"></i> Documentation

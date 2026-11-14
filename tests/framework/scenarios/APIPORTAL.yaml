@@ -546,3 +546,24 @@ scenarios:
       refs:
         - feature: suites/it/features/apiportal/multi-organization/webhooks.feature
           scenario: "Webhooks and rows stay within their organization and portal_id"
+  - id: APIP-056
+    title: "Subscription plan conditions: every condition type, replacing them and an unlimited plan"
+    priority: P0
+    ui:
+      status: planned
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/subscriptions/subscription_plan_conditions.feature
+          scenario: "An administrator saves a plan's conditions, changes them and makes the plan unlimited"
+  - id: APIP-057
+    title: "Subscription plan conditions: invalid conditions are refused with the reason"
+    priority: P1
+    ui:
+      status: exempt
+      reason: Request validation of the plans API; the plan editor checks its fields before sending. Pending the feature owner's approval.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/subscriptions/subscription_plan_conditions.feature
+          scenario: "A plan with an invalid condition is refused with the reason and nothing is stored"

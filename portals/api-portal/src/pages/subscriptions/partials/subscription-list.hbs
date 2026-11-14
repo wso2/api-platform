@@ -7,12 +7,14 @@
     <table class="sub-table" id="subscriptions-table">
       <thead>
         <tr>
-          <th>API</th>
-          <th>Version</th>
+          <th>Name</th>
           <th>Type</th>
+          <th>Version</th>
           <th>Plan</th>
+          <th>Subscription type</th>
           <th>Billing</th>
           <th>Status</th>
+          <th>Since</th>
           <th style="text-align:right;">Actions</th>
         </tr>
       </thead>
@@ -22,16 +24,18 @@
             data-sub-id="{{this.id}}"
             data-api-name="{{this.apiName}}"
             data-plan-name="{{this.planName}}"
+            data-mcp="{{#if (isMcpType this.apiType)}}true{{else}}false{{/if}}"
             data-status="{{this.status}}"
             data-paid="{{#if this.paid}}true{{else}}false{{/if}}">
           <td>
             <a class="sub-api-link" href="{{../baseUrl}}/{{this.pageSection}}/{{this.apiHandle}}">{{this.apiName}}</a>
           </td>
+          <td><span class="sub-kind-pill{{#if (isMcpType this.apiType)}} sub-kind-pill--mcp{{/if}}">{{apiTypeLabel this.apiType}}</span></td>
           <td>{{this.apiVersion}}</td>
+          <td>{{this.planName}}</td>
           <td>
             <span class="sub-type-pill">Token-based</span>
           </td>
-          <td>{{this.planName}}</td>
           <td class="{{#unless this.paid}}sub-billing-free{{/unless}}">{{this.billingText}}</td>
           <td>
             <span class="sub-status-pill sub-status-pill--{{this.statusTone}}">
@@ -39,6 +43,7 @@
               {{this.statusLabel}}
             </span>
           </td>
+          <td class="sub-since">{{formatDate this.createdAt}}</td>
           <td>
             <div class="sub-actions">
               <button class="sub-action-btn sub-action-btn--manage"
@@ -72,7 +77,7 @@
         <span class="mc-manage-plan-icon"><i class="bi bi-lightning-charge-fill"></i></span>
         <div>
           <h2 id="subManageApiName" class="mc-manage-plan-name"></h2>
-          <div class="mc-manage-subtitle"><span id="subManagePlanName"></span> · API subscription</div>
+          <div class="mc-manage-subtitle"><span id="subManagePlanName"></span> · <span id="subManageKind">API subscription</span></div>
         </div>
       </div>
       <button id="subManageClose" class="mc-modal-close" aria-label="Close">&times;</button>
@@ -100,7 +105,7 @@
           </button>
         </div>
       </div>
-      <p class="mc-config-note" style="margin:0.625rem 0 0;">Use this token as the <code class="mc-inline-code">Subscription-Key</code> header when calling this API.</p>
+      <p class="mc-config-note" style="margin:0.625rem 0 0;">Use this token as the <code class="mc-inline-code">Subscription-Key</code> header when calling this <span class="subManageTarget">API</span>.</p>
       <hr class="mc-manage-divider">
       <div class="mc-manage-actions">
         <button id="subManageRegenerateBtn" class="dp-btn mc-manage-action-btn mc-manage-action-btn--regenerate">
@@ -128,7 +133,7 @@
       <span class="mc-unsub-icon"><i class="bi bi-exclamation-triangle-fill"></i></span>
       <h2 id="subUnsubTitle" class="mc-unsub-title">Unsubscribe?</h2>
     </div>
-    <p id="subUnsubDesc" class="mc-unsub-desc">Your applications will lose access to this API and any tokens will stop working. You can re-subscribe at any time.</p>
+    <p id="subUnsubDesc" class="mc-unsub-desc">You'll lose access to this API, and its subscription token will stop working. You can subscribe again at any time.</p>
     <div class="mc-unsub-actions">
       <button id="subUnsubCancelBtn" class="dp-btn dp-btn--outline">Cancel</button>
       <button id="subUnsubConfirmBtn" class="dp-btn mc-unsub-confirm-btn">Unsubscribe</button>
@@ -143,7 +148,7 @@
       <span class="mc-unsub-icon"><i class="bi bi-exclamation-triangle-fill"></i></span>
       <h2 class="mc-unsub-title">Regenerate token?</h2>
     </div>
-    <p class="mc-unsub-desc">Your current token will be invalidated immediately. Any applications using it will need to be updated with the new token.</p>
+    <p class="mc-unsub-desc">Your current token stops working right away. Replace it with the new token wherever you use it.</p>
     <div class="mc-unsub-actions">
       <button id="subRegenerateCancelBtn" class="dp-btn dp-btn--outline">Cancel</button>
       <button id="subRegenerateConfirmBtn" class="dp-btn mc-unsub-confirm-btn">Regenerate</button>

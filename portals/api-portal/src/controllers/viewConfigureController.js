@@ -25,6 +25,7 @@ const viewDao = require('../dao/viewDao');
 const orgContext = require('../utils/orgContext');
 const labelDao = require('../dao/labelDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
+const planConditions = require('../utils/subscriptionPlanConditions');
 const whDao = require('../dao/webhookSubscriberDao');
 const meterDao = require('../dao/meterDao');
 const billingConfigurationService = require('../services/billing/billingConfigurationService');
@@ -54,6 +55,16 @@ const constants = require('../utils/constants');
 // almost all settings data is keyed by org. The two genuinely view-scoped panels
 // (LLM Instructions, API Workflows) render for an initial view (default, or the
 // first view) and switch client-side via the in-page view selector.
+// The plans table shows a plan's first two chips (one per limit window); a "+N" chip lists the rest
+// on hover, as the Management Portal does. Each chip carries its hover text, so a narrow table can move
+// a chip that does not fit into "+N" (settings-plans.js).
+const MAX_CHIPS = 2;
+const chipTip = (c) => ({ title: c.custom ? `${c.label} · ${c.first}` : c.label, details: c.details.join(', ') });
+const visibleChips = (chips) => ({
+    conditionChips: chips.slice(0, MAX_CHIPS).map(c => ({ ...c, tip: chipTip(c) })),
+    moreConditions: chips.slice(MAX_CHIPS).map(chipTip),
+});
+
 const loadSettingsPage = async (req, res) => {
 
     let orgId;
@@ -198,8 +209,13 @@ const loadSettingsPage = async (req, res) => {
                     timeAmount: l.time_amount,
                     limitCount: Number(l.limit_count),
                 })),
+                conditions: p.conditions || [],
                 pricing: p.pricing ? new PlanPricingDTO(p.pricing) : null,
-            })).map(p => ({ ...p, pricingText: pricingSummary(p.pricing, metersByHandle) }));
+            })).map(p => ({
+                ...p,
+                ...visibleChips(planConditions.conditionChips(p.conditions)),
+                pricingText: pricingSummary(p.pricing, metersByHandle),
+            }));
         } catch (err) {
             logger.warn('Failed to load subscription plans for settings page', { error: err.message });
         }

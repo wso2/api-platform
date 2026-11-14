@@ -12,14 +12,27 @@
 {{#if subscriptionPlans.length}}
 ## Subscription Plans
 
-| Plan | Limits | Description |
-|------|--------------|-------------|
-{{#each subscriptionPlans}}| {{displayName}} | {{#if limits.length}}{{#each limits}}{{#if (eq limitCount -1)}}Unlimited{{else}}{{limitCount}}{{/if}}{{#if timeUnit}} / {{timeAmount}} {{timeUnit}}{{/if}}{{#unless @last}}, {{/unless}}{{/each}}{{else if requestCount}}{{requestCount}}{{else}}—{{/if}} | {{description}} |
+| Plan | Conditions | Description |
+|------|------------|-------------|
+{{#each subscriptionPlans}}| {{displayName}} | {{#each limitLines}}{{text}}{{#if allow}} (overage allowed){{/if}}{{#unless @last}}, {{/unless}}{{else}}Unlimited{{/each}} | {{description}} |
 {{/each}}
 {{/if}}
 {{#unless isMCPFromRegistry}}
 ## Authentication
 
+{{#if subscriptionPlans.length}}
+### Subscription key
+
+This MCP server takes subscriptions. Every request sends the subscription's key:
+
+1. Subscribe to one of the plans above.
+2. Copy the subscription key. You can reveal it again later from View subscription.
+3. Include the key in the request header:
+   ```
+   Subscription-Key: <your-subscription-key>
+   ```
+
+{{/if}}
 {{#if showOAuth2}}
 ### OAuth2
 

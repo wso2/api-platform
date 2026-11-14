@@ -99,6 +99,55 @@ describe('subscription plans', () => {
         expect((await client.as('admin').get(`/subscription-plans/${fresh}`)).status).toBe(200);
     });
 
+    it('stores a plan\'s conditions, returns them in the list, and keeps its request limits in step', async () => {
+        const id = planId('cond');
+        track(id);
+        const conditions = [
+            { type: 'request-count', params: { limits: [{ count: 100, timeAmount: 1, timeUnit: 'MINUTE' }] } },
+            { type: 'tool-call-count', params: { limits: [{ count: 20, timeAmount: 1, timeUnit: 'HOUR' }], onExceed: 'allow' } },
+            { type: 'token-count', params: { limits: [{ count: 5000, timeAmount: 1, timeUnit: 'DAY' }], tokenType: 'completion' } },
+            { id: 'region', type: 'custom', params: { zone: 'eu' } },
+        ];
+        const res = await client.as('admin').post('/subscription-plans', { id, displayName: 'Conditions', conditions });
+        expect(res.status).toBe(201);
+        expect(res.body.conditions).toEqual([
+            { id: 'requests', type: 'request-count', params: { limits: [{ count: 100, timeAmount: 1, timeUnit: 'MINUTE' }], onExceed: 'reject' } },
+            { id: 'tool-calls', type: 'tool-call-count', params: { limits: [{ count: 20, timeAmount: 1, timeUnit: 'HOUR' }], onExceed: 'allow' } },
+            { id: 'tokens', type: 'token-count', params: { limits: [{ count: 5000, timeAmount: 1, timeUnit: 'DAY' }], onExceed: 'reject', tokenType: 'completion' } },
+            { id: 'region', type: 'custom', params: { zone: 'eu' } },
+        ]);
+        expect(res.body.limits).toEqual([{ limitType: 'REQUEST_COUNT', timeUnit: 'MINUTE', timeAmount: 1, limitCount: 100 }]);
+
+        const listed = await client.as('admin').get(`/subscription-plans?name=${id}`);
+        expect(listed.status).toBe(200);
+        expect(listed.body.list[0].conditions).toEqual(res.body.conditions);
+
+        const updated = await client.as('admin').put('/subscription-plans', plan(id, 'Conditions', 300));
+        expect(updated.status).toBe(200);
+        expect(updated.body.conditions.map((c) => c.id)).toEqual(['requests', 'tool-calls', 'tokens', 'region']);
+        expect(updated.body.conditions[0].params.limits).toEqual([{ count: 300, timeAmount: 1, timeUnit: 'MINUTE' }]);
+    });
+
+    it('shows the request limits of a plan without conditions as a request-count condition', async () => {
+        const id = planId('legacy');
+        track(id);
+        const res = await client.as('admin').post('/subscription-plans', plan(id, 'Legacy', 250));
+        expect(res.status).toBe(201);
+        expect(res.body.conditions).toEqual([
+            { id: 'requests', type: 'request-count', params: { limits: [{ count: 250, timeAmount: 1, timeUnit: 'MINUTE' }], onExceed: 'reject' } },
+        ]);
+    });
+
+    it('refuses conditions the Platform API would refuse, and saves nothing', async () => {
+        const id = planId('cond-bad');
+        const res = await client.as('admin').post('/subscription-plans', { id, displayName: 'Bad', conditions: [
+            { type: 'request-count', params: { limits: [{ count: 1, timeAmount: 60, timeUnit: 'MINUTE' }, { count: 2, timeAmount: 1, timeUnit: 'HOUR' }] } },
+        ] });
+        expect(res.status).toBe(400);
+        expect(JSON.stringify(res.body)).toContain('each limit needs a window of its own length');
+        expect((await client.as('admin').get(`/subscription-plans/${id}`)).status).toBe(404);
+    });
+
     it('rejects an empty bulk body', async () => {
         expect((await client.as('admin').post('/subscription-plans', [])).status).toBe(400);
         expect((await client.as('admin').put('/subscription-plans', [])).status).toBe(400);

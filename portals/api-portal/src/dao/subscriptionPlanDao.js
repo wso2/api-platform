@@ -20,12 +20,15 @@
 const crypto = require('crypto');
 const db = require('../db/driver');
 const { groupBy } = require('../db/rows');
-const { ValidationError } = require('../utils/errors/customErrors');
+const { CustomError, ValidationError } = require('../utils/errors/customErrors');
 const { getPortalId } = require('../utils/orgContext');
+const { bufferToUtf8 } = require('../utils/cryptoUtil');
+const planConditions = require('../utils/subscriptionPlanConditions');
 const planPricingDao = require('./planPricingDao');
 
 const SUBSCRIPTION_PLANS_TABLE = 'subscription_plans';
 const SUBSCRIPTION_PLAN_LIMITS_TABLE = 'subscription_plan_limits';
+const SUBSCRIPTION_PLAN_CONDITIONS_TABLE = 'subscription_plan_conditions';
 const API_SUBSCRIPTION_PLAN_MAPPINGS_TABLE = 'api_subscription_plan_mappings';
 
 const VALID_LIMIT_TYPES = ['REQUEST_COUNT', 'EVENT_COUNT', 'BANDWIDTH', 'TOTAL_TOKEN_COUNT'];
@@ -42,23 +45,29 @@ const buildSubscriptionPlanRow = (orgId, plan) => {
   };
 };
 
+/**
+ * Validates the `limits` older clients send; their REQUEST_COUNT limits are kept, as the request-count
+ * condition.
+ */
 const normalizeLimits = (limits) => {
   if (!Array.isArray(limits)) return [];
   return limits.map(l => {
-    if (typeof l.limitCount !== 'number' || !Number.isFinite(l.limitCount) ||
-        (l.limitCount !== -1 && l.limitCount <= 0)) {
-      throw new ValidationError('limitCount must be -1 (unlimited) or a positive number for each limit');
+    if (!Number.isSafeInteger(l.limitCount) || (l.limitCount !== -1 && l.limitCount <= 0)) {
+      throw new ValidationError('limitCount must be -1 (unlimited) or a positive whole number for each limit');
     }
     const limitType = (l.limitType || 'REQUEST_COUNT').toUpperCase();
     if (!VALID_LIMIT_TYPES.includes(limitType)) {
       throw new ValidationError(`limitType must be one of ${VALID_LIMIT_TYPES.join(', ')}`);
     }
     if (l.timeAmount !== undefined && l.timeAmount !== null &&
-        (typeof l.timeAmount !== 'number' || !Number.isFinite(l.timeAmount) || l.timeAmount <= 0)) {
-      throw new ValidationError('timeAmount must be a positive number when provided');
+        (!Number.isSafeInteger(l.timeAmount) || l.timeAmount <= 0)) {
+      throw new ValidationError('timeAmount must be a positive whole number when provided');
+    }
+    // A limit with no window can't be enforced; refusing it beats saving the plan as unlimited.
+    if (l.limitCount !== -1 && limitType === 'REQUEST_COUNT' && !l.timeUnit) {
+      throw new ValidationError('timeUnit (MINUTE, HOUR, DAY or MONTH) is required for each request limit');
     }
     return {
-      uuid: crypto.randomUUID(),
       limit_type: limitType,
       time_unit: l.timeUnit ? l.timeUnit.toUpperCase() : null,
       time_amount: l.timeAmount || 1,
@@ -67,50 +76,176 @@ const normalizeLimits = (limits) => {
   });
 };
 
-const replaceLimits = async (planId, limits, t) => {
+/*
+ * Which plan tables exist. New installs have no subscription_plan_limits; databases from earlier
+ * releases have it, and PostgreSQL and SQL Server get subscription_plan_conditions only when the
+ * operator runs this release's schema script. Checked again on each use until the conditions table
+ * is found.
+ */
+let planTables = null;
+
+const hasTable = async (name, exec) => {
+  const dialect = db.getDialect();
+  const sql = dialect === 'postgres'
+    ? 'SELECT 1 AS found FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?'
+    : dialect === 'mssql'
+      ? 'SELECT 1 AS found FROM sys.tables WHERE name = ?'
+      : "SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = ?";
+  return Boolean(await exec.queryOne(sql, [name]));
+};
+
+const planSchema = async (exec) => {
+  if (planTables) return planTables;
+  const tables = {
+    conditions: await hasTable(SUBSCRIPTION_PLAN_CONDITIONS_TABLE, exec),
+    legacyLimits: await hasTable(SUBSCRIPTION_PLAN_LIMITS_TABLE, exec),
+  };
+  if (tables.conditions) planTables = tables;
+  return tables;
+};
+
+const inPlaceholders = (n) => Array.from({ length: n }, () => '?').join(', ');
+
+const toCondition = (row) => ({
+  id: row.condition_id,
+  type: row.condition_type,
+  params: JSON.parse(bufferToUtf8(row.params) || '{}'),
+});
+
+const WINDOW_MINUTES = { MINUTE: 1, HOUR: 60, DAY: 24 * 60, MONTH: 31 * 24 * 60 };
+
+// The subscription_plan_limits rows that hold conditions. Other rows (EVENT_COUNT, BANDWIDTH) are left as they are.
+const STORED_LIMIT_TYPES = Object.values(planConditions.STORED_LIMIT_TYPES);
+const STORED_LIMIT_TYPES_SQL = STORED_LIMIT_TYPES.map((t) => `'${t}'`).join(', ');
+
+/**
+ * Reads the REQUEST_COUNT and TOTAL_TOKEN_COUNT rows of plans saved before conditions as each plan's
+ * request-count and token-count (total) conditions.
+ */
+const loadLegacyLimits = async (plans, exec) => {
+  const ids = [...new Set(plans.map((p) => p.uuid))];
+  if (ids.length === 0) return;
+  const rows = await exec.query(
+    `SELECT plan_uuid, limit_type, time_unit, time_amount, limit_count FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE}
+     WHERE limit_type IN (${STORED_LIMIT_TYPES_SQL}) AND plan_uuid IN (${inPlaceholders(ids.length)}) AND portal_id = ?`,
+    [...ids, getPortalId()]
+  );
+  const grouped = groupBy(rows, 'plan_uuid');
+  for (const plan of plans) {
+    // Old rows carry no order of their own: shortest window first.
+    const length = (l) => (WINDOW_MINUTES[String(l.time_unit).toUpperCase()] || 0) * (Number(l.time_amount) || 1);
+    const limits = [...(grouped.get(plan.uuid) || [])].sort((a, b) => length(a) - length(b));
+    plan.conditions = planConditions.conditionsFromStoredLimits(limits);
+  }
+};
+
+/**
+ * Attaches `.conditions` to each plan, and `.limits`: the REQUEST_COUNT limits of its request-count
+ * condition, for the clients and events that predate conditions. A plan saved before conditions is
+ * read from subscription_plan_limits.
+ */
+const attachConditions = async (plans, t) => {
+  if (plans.length === 0) return plans;
   const exec = t || db;
-  await exec.execute(`DELETE FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid = ?`, [planId]);
-  const rows = normalizeLimits(limits);
-  const portalId = getPortalId();
-  for (const r of rows) {
+  const schema = await planSchema(exec);
+  let grouped = new Map();
+  if (schema.conditions) {
+    const ids = [...new Set(plans.map((p) => p.uuid))];
+    grouped = groupBy(await exec.query(
+      `SELECT * FROM ${SUBSCRIPTION_PLAN_CONDITIONS_TABLE} WHERE plan_uuid IN (${inPlaceholders(ids.length)}) AND portal_id = ? ORDER BY sort_order ASC`,
+      [...ids, getPortalId()]
+    ), 'plan_uuid');
+  }
+  for (const plan of plans) {
+    plan.conditions = (grouped.get(plan.uuid) || []).map(toCondition);
+  }
+  if (schema.legacyLimits) {
+    await loadLegacyLimits(plans.filter((p) => p.conditions.length === 0), exec);
+  }
+  for (const plan of plans) {
+    plan.limits = planConditions.legacyLimitsFromConditions(plan.conditions).map((l) => ({
+      limit_type: l.limitType, time_unit: l.timeUnit, time_amount: l.timeAmount, limit_count: l.limitCount,
+    }));
+  }
+  return plans;
+};
+
+/** Deletes the plan's subscription_plan_limits rows that hold conditions, keeping any others (EVENT_COUNT, BANDWIDTH). */
+const deleteStoredLimits = (planId, exec) => exec.execute(
+  `DELETE FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid = ? AND portal_id = ? AND limit_type IN (${STORED_LIMIT_TYPES_SQL})`,
+  [planId, getPortalId()]
+);
+
+/**
+ * Stores the request-count and total token-count conditions in subscription_plan_limits, as
+ * REQUEST_COUNT and TOTAL_TOKEN_COUNT rows, for a database not upgraded yet.
+ */
+const saveLegacyLimits = async (planId, conditions, schema, exec) => {
+  // subscription_plan_limits keeps neither other condition types nor onExceed: allow.
+  const rows = planConditions.storedLimitsFromConditions(conditions);
+  if (!schema.legacyLimits || !rows) {
+    throw new CustomError(503, 'Service Unavailable',
+      'The database has no subscription_plan_conditions table; run this release\'s database schema script to store this plan\'s conditions.');
+  }
+  await deleteStoredLimits(planId, exec);
+  for (const l of rows) {
     await exec.execute(
       `INSERT INTO ${SUBSCRIPTION_PLAN_LIMITS_TABLE} (uuid, portal_id, plan_uuid, limit_type, time_unit, time_amount, limit_count)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [r.uuid, portalId, planId, r.limit_type, r.time_unit, r.time_amount, r.limit_count]
+      [crypto.randomUUID(), getPortalId(), planId, l.limitType, l.timeUnit, l.timeAmount, l.limitCount]
     );
   }
 };
 
 /**
- * App-side "eager load" of a plan's limits, mirroring the previous
- * `include: PLAN_INCLUDE, order: LIMIT_ORDER` shape: one query for all limit
- * rows belonging to the given plans, grouped and attached under `.limits`,
- * ordered by `uuid ASC` within each group.
+ * Saves the plan's conditions. `conditions` replaces them all. `limits` sent alone, by clients that
+ * predate conditions, sets the request-count condition from its REQUEST_COUNT limits and keeps the
+ * others. With neither, an update keeps them. Saving moves a plan off subscription_plan_limits.
  */
-const attachLimits = async (plans, t) => {
+const savePlanDetails = async (planId, plan, isNew, t) => {
   const exec = t || db;
-  if (plans.length === 0) return plans;
-  const planIds = plans.map(p => p.uuid);
-  const placeholders = planIds.map(() => '?').join(', ');
-  const limitRows = await exec.query(
-    `SELECT * FROM ${SUBSCRIPTION_PLAN_LIMITS_TABLE} WHERE plan_uuid IN (${placeholders}) ORDER BY uuid ASC`,
-    planIds
-  );
-  const grouped = groupBy(limitRows, 'plan_uuid');
-  for (const plan of plans) {
-    plan.limits = grouped.get(plan.uuid) || [];
+  const hasLimits = Object.prototype.hasOwnProperty.call(plan, 'limits');
+  let conditions;
+  if (plan.conditions !== undefined && plan.conditions !== null) {
+    conditions = planConditions.normalizeConditions(plan.conditions);
+  } else if (hasLimits) {
+    const current = isNew ? [] : (await attachConditions([{ uuid: planId }], t))[0].conditions;
+    // Checked again: adding the request-count condition can take a plan past its 20 conditions.
+    conditions = planConditions.normalizeConditions(
+      planConditions.conditionsFromLimits(current, normalizeLimits(plan.limits), { strict: true }));
+  } else if (isNew) {
+    conditions = [];
+  } else {
+    return;
   }
-  return plans;
+
+  const schema = await planSchema(exec);
+  if (!schema.conditions) {
+    await saveLegacyLimits(planId, conditions, schema, exec);
+    return;
+  }
+  const portalId = getPortalId();
+  await exec.execute(`DELETE FROM ${SUBSCRIPTION_PLAN_CONDITIONS_TABLE} WHERE plan_uuid = ? AND portal_id = ?`, [planId, portalId]);
+  for (const [i, c] of conditions.entries()) {
+    await exec.execute(
+      `INSERT INTO ${SUBSCRIPTION_PLAN_CONDITIONS_TABLE} (uuid, portal_id, plan_uuid, condition_id, condition_type, params, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [crypto.randomUUID(), portalId, planId, c.id, c.type, db.binaryParam(Buffer.from(JSON.stringify(c.params), 'utf8')), i]
+    );
+  }
+  if (schema.legacyLimits) {
+    await deleteStoredLimits(planId, exec);
+  }
 };
 
-/** Attaches `.limits` and `.pricing` (null for a free plan) to each plan row. */
+/** Attaches `.conditions`, `.limits` and `.pricing` (null for a free plan) to each plan row. */
 const attachDetails = async (plans, t) => {
-  await attachLimits(plans, t);
+  await attachConditions(plans, t);
   await planPricingDao.attachPricing(plans, t);
   return plans;
 };
 
-/** Fetches a single plan (scoped to its organization and portal) with `.limits` and `.pricing` attached. */
+/** Fetches a single plan (scoped to its organization and portal) with its conditions and pricing attached. */
 const findPlanByUuid = async (orgId, planId, t) => {
   const exec = t || db;
   const plan = await exec.queryOne(
@@ -134,7 +269,7 @@ const create = async (orgId, plan, createdBy, t) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [uuid, row.org_uuid, getPortalId(), row.handle, row.display_name, row.description, row.ref_id, createdBy, createdBy, now, now]
   );
-  await replaceLimits(uuid, plan.limits || [], t);
+  await savePlanDetails(uuid, plan, true, t);
   return findPlanByUuid(orgId, uuid, t);
 };
 
@@ -152,7 +287,7 @@ const createMany = async (orgId, plans, createdBy, t) => {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [uuid, row.org_uuid, portalId, row.handle, row.display_name, row.description, row.ref_id, createdBy, createdBy, now, now]
     );
-    await replaceLimits(uuid, plan.limits || [], t);
+    await savePlanDetails(uuid, plan, true, t);
     uuids.push(uuid);
   }
   if (uuids.length === 0) return [];
@@ -200,9 +335,7 @@ const update = async (orgId, planId, plan, updatedBy, t) => {
 
   if (rowCount === 0) return null;
 
-  if (Object.prototype.hasOwnProperty.call(plan, 'limits')) {
-    await replaceLimits(planId, plan.limits || [], t);
-  }
+  await savePlanDetails(planId, plan, false, t);
 
   return findPlanByUuid(orgId, planId, t);
 };
@@ -390,6 +523,7 @@ module.exports = {
     countApiSubscriptions,
     countSubscriptionsByPlan,
     list,
+    attachConditions,
     createApiMapping,
     updateApiMapping,
 };

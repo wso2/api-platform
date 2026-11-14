@@ -507,34 +507,29 @@ window.__updateSubscriptionTokenCache = function (subscriptionId, token) {
 function showSubscriptionTokenModal(token, planName) {
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
-        overlay.className = 'modal custom-modal';
-        overlay.style.display = 'flex';
+        overlay.className = 'sub-token-overlay';
 
         const safeplanName = document.createElement('span');
         safeplanName.textContent = planName;
 
         const safeToken = document.createElement('code');
         safeToken.textContent = token;
-        safeToken.className = 'flex-grow-1 p-2 bg-light border rounded';
-        safeToken.style.wordBreak = 'break-all';
+        safeToken.className = 'sub-token-value';
 
         overlay.innerHTML = `
-            <div class="modal-dialog" role="document">
-                <div class="modal-content custom-modal-content">
-                    <div class="custom-modal-header">
-                        <h2 class="custom-modal-title m-0">Subscription Created</h2>
-                        <button type="button" class="btn-close" id="closeTokenModal"></button>
+            <div class="sub-token-dialog" role="dialog" aria-modal="true" aria-labelledby="subTokenTitle">
+                <div class="sub-token-head">
+                    <span class="sub-token-icon"><i class="bi bi-check-lg"></i></span>
+                    <div class="sub-token-heading">
+                        <h2 class="sub-token-title" id="subTokenTitle">You're subscribed</h2>
+                        <p class="sub-token-sub">Plan: <strong id="planNameDisplay"></strong></p>
                     </div>
-                    <div class="custom-modal-body">
-                        <p>Your subscription to the <strong id="planNameDisplay"></strong> plan has been created successfully.</p>
-                        <p class="mb-2"><strong>Subscription Token:</strong></p>
-                        <div class="d-flex align-items-center gap-2 mb-3" id="tokenContainer"></div>
-                        <div class="alert alert-warning mb-0">
-                            <i class="bi bi-exclamation-triangle"></i>
-                            Use this token as the <code>Subscription-Key</code> header when invoking the API.
-                        </div>
-                    </div>
+                    <button type="button" class="sub-token-close" id="closeTokenModal" aria-label="Close"><i class="bi bi-x-lg"></i></button>
                 </div>
+                <div class="sub-token-label">Subscription token</div>
+                <div class="sub-token-field" id="tokenContainer"></div>
+                <p class="sub-token-hint"><i class="bi bi-info-circle"></i><span>Send it in the <code>Subscription-Key</code> header when you call the API. You can view it again from View subscription.</span></p>
+                <div class="sub-token-actions"><button type="button" class="sub-token-done" id="doneTokenModal">Done</button></div>
             </div>
         `;
 
@@ -546,7 +541,8 @@ function showSubscriptionTokenModal(token, planName) {
         tokenContainer.appendChild(safeToken);
 
         const copyBtn = document.createElement('button');
-        copyBtn.className = 'copy-btn';
+        copyBtn.type = 'button';
+        copyBtn.className = 'copy-btn sub-token-copy';
         copyBtn.title = 'Copy token';
         copyBtn.innerHTML = '<span class="copy-btn-icon"><i class="bi bi-copy"></i></span><span class="copy-btn-check"><i class="bi bi-check"></i> Copied</span>';
         copyBtn.addEventListener('click', function() {
@@ -557,7 +553,7 @@ function showSubscriptionTokenModal(token, planName) {
         });
         tokenContainer.appendChild(copyBtn);
 
-        overlay.querySelector('#closeTokenModal').addEventListener('click', () => {
+        const close = () => {
             overlay.remove();
             if (window.__subscriptionChanged) {
                 window.__subscriptionChanged = false;
@@ -568,7 +564,9 @@ function showSubscriptionTokenModal(token, planName) {
                 }
             }
             resolve();
-        });
+        };
+        overlay.querySelector('#closeTokenModal').addEventListener('click', close);
+        overlay.querySelector('#doneTokenModal').addEventListener('click', close);
     });
 }
 
@@ -583,7 +581,7 @@ function showSubscriptionTokenInModal(apiId, token, planName) {
     wrapper.className = 'p-3 mb-3 border rounded bg-light';
 
     const title = document.createElement('div');
-    title.innerHTML = `<strong>Subscription Created</strong> — ${escapeHtml(planName)}`;
+    title.innerHTML = `<strong>You're subscribed</strong> — ${escapeHtml(planName)}`;
 
     const tokenBlock = document.createElement('div');
     tokenBlock.className = 'd-flex gap-2 align-items-center mt-2';
