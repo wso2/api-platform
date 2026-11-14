@@ -270,8 +270,11 @@ test('limits from an older client: more than ten lengths is refused, and equal l
     const eleven = Array.from({ length: 10 }, (_, i) => ({ limitType: 'REQUEST_COUNT', limitCount: 100, timeUnit: 'MINUTE', timeAmount: i + 1 }))
         .concat([{ limitType: 'REQUEST_COUNT', limitCount: 1, timeUnit: 'DAY', timeAmount: 1 }]);
     assert.throws(() => conditionsFromLimits([], eleven, { strict: true }), /at most 10 request limits/);
-    // Stored rows are read as before: the first ten.
-    assert.equal(windowsFromLimits(eleven).length, 10);
+    // Stored rows are all read, so none is lost: saving the eleven back is refused, not truncated.
+    const stored = conditionsFromStoredLimits(eleven);
+    assert.equal(stored[0].params.limits.length, 11);
+    assert.deepEqual(stored[0].params.limits[10], w(1, 1, 'DAY'));
+    assert.throws(() => normalizeConditions(stored), /at most 10 limits/);
     assert.deepEqual(windowsFromLimits([
         { limitType: 'REQUEST_COUNT', limitCount: 50, timeUnit: 'MINUTE' },
         { limitType: 'REQUEST_COUNT', limitCount: 20, timeUnit: 'MINUTE' },

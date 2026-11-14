@@ -202,8 +202,10 @@ function normalizeConditions(conditions) {
 
 /**
  * The windows of a plan's limits (DAO rows or request limits) for a request-count or token-count
- * condition: its REQUEST_COUNT or TOTAL_TOKEN_COUNT limits. Unit-less limits are per minute. Unlimited,
- * unsupported and repeated-length limits are left out, and at most ten are kept.
+ * condition: its REQUEST_COUNT or TOTAL_TOKEN_COUNT limits. Unit-less limits are per minute. Unlimited
+ * and unsupported limits are left out, and limits of the same length keep the strictest count. A client's
+ * update (strict) with more than ten lengths is refused; stored rows are all kept, so a plan saved with
+ * more than ten before the limit existed loses none of them: saving it back is refused until it has ten.
  */
 function windowsFromLimits(limits, type = TYPE.REQUEST_COUNT, { strict = false } = {}) {
     const windows = [];
@@ -219,10 +221,9 @@ function windowsFromLimits(limits, type = TYPE.REQUEST_COUNT, { strict = false }
         const key = windowKey(amount, unit);
         // Two limits over the same length: the stricter one is kept.
         if (seen.has(key)) { const w = seen.get(key); w.count = Math.min(w.count, count); continue; }
-        if (windows.length === MAX_WINDOWS) {
-            // A client's update is refused rather than losing a quota; stored rows keep their first ten.
-            if (strict) throw new ValidationError(`limits: a plan can have at most ${MAX_WINDOWS} request limits of different lengths`);
-            continue;
+        // A client's update is refused rather than losing a quota.
+        if (strict && windows.length === MAX_WINDOWS) {
+            throw new ValidationError(`limits: a plan can have at most ${MAX_WINDOWS} request limits of different lengths`);
         }
         const w = { count, timeAmount: amount, timeUnit: unit };
         seen.set(key, w);
