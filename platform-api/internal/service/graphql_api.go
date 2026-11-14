@@ -713,8 +713,8 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 	if req.Id != nil && *req.Id != "" && *req.Id != handle {
 		return nil, apperror.ValidationFailed.New("The id in the request body must match the path parameter.")
 	}
-	// Unlike a REST update, a GraphQL update may change the version as well as
-	// the display name, so the pair checked is the requested one.
+	// An update may change the version as well as the display name, so the pair
+	// checked is the requested one.
 	if err := s.ensureNameVersionAvailable(req.DisplayName, req.Version, orgUUID, handle); err != nil {
 		return nil, err
 	}

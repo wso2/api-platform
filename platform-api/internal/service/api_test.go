@@ -41,6 +41,7 @@ type mockAPIRepository struct {
 
 	// Call tracking for verification
 	lastExcludeHandle string
+	lastNameVersion   string
 	created           *model.API
 	updated           *model.API
 	getByUUIDFunc     func(apiUUID, orgUUID string) (*model.API, error)
@@ -52,6 +53,7 @@ func (m *mockAPIRepository) CheckAPIExistsByHandleInOrganization(handle, orgUUID
 
 func (m *mockAPIRepository) CheckAPIExistsByNameAndVersionInOrganization(name, version, orgUUID, excludeHandle string) (bool, error) {
 	m.lastExcludeHandle = excludeHandle // Track for verification
+	m.lastNameVersion = name + "@" + version
 	return m.nameVersionExistsResult, m.nameVersionExistsError
 }
 
@@ -87,6 +89,8 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 		errContains               string
 		expectedExcludeHandle     string
 		verifyExcludeHandleCalled bool
+		// wantNameVersion is the "name@version" pair the duplicate check is asked about.
+		wantNameVersion string
 	}{
 		{
 			name: "valid update - no changes",
@@ -119,6 +123,60 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 			mockNameVersionExists: true,
 			wantErr:               true,
 			expectedErr:           apperror.RESTAPIExists,
+		},
+		{
+			name: "version update - checks the stored name with the new version",
+			existingAPI: &model.API{
+				Handle:  "my-api",
+				Name:    "Orders",
+				Version: "v1",
+			},
+			req:             &api.RESTAPI{Version: "v2"},
+			wantNameVersion: "Orders@v2",
+		},
+		{
+			name: "name and version update - checks the new pair",
+			existingAPI: &model.API{
+				Handle:  "my-api",
+				Name:    "Orders",
+				Version: "v1",
+			},
+			req:             &api.RESTAPI{DisplayName: "Orders API", Version: "v2"},
+			wantNameVersion: "Orders API@v2",
+		},
+		{
+			name: "version update - conflict with another version of the API",
+			existingAPI: &model.API{
+				Handle:  "my-api",
+				Name:    "Orders",
+				Version: "v1",
+			},
+			req:                   &api.RESTAPI{Version: "v2"},
+			mockNameVersionExists: true,
+			wantErr:               true,
+			expectedErr:           apperror.RESTAPIExists,
+		},
+		{
+			name: "invalid version",
+			existingAPI: &model.API{
+				Handle:  "my-api",
+				Version: "v1",
+			},
+			req:         &api.RESTAPI{Version: "v 2"},
+			wantErr:     true,
+			expectedErr: apperror.ValidationFailed,
+			errContains: "version",
+		},
+		{
+			name: "invalid context",
+			existingAPI: &model.API{
+				Handle:  "my-api",
+				Version: "v1",
+			},
+			req:         &api.RESTAPI{Context: "orders"},
+			wantErr:     true,
+			expectedErr: apperror.ValidationFailed,
+			errContains: "context",
 		},
 		{
 			name: "invalid lifecycle state",
@@ -249,6 +307,9 @@ func TestValidateUpdateAPIRequest(t *testing.T) {
 				if mock.lastExcludeHandle != tt.expectedExcludeHandle {
 					t.Errorf("excludeHandle = %q, want %q", mock.lastExcludeHandle, tt.expectedExcludeHandle)
 				}
+			}
+			if tt.wantNameVersion != "" && mock.lastNameVersion != tt.wantNameVersion {
+				t.Errorf("duplicate check asked about %q, want %q", mock.lastNameVersion, tt.wantNameVersion)
 			}
 		})
 	}
@@ -594,6 +655,41 @@ func TestApplyAPIUpdatesUpdatesPolicies(t *testing.T) {
 	}
 	if !reflect.DeepEqual(*updated.Policies, updatedPolicies) {
 		t.Errorf("updated policies = %v, want %v", *updated.Policies, updatedPolicies)
+	}
+}
+
+// TestApplyAPIUpdatesAppliesVersionAndContext proves an update saves a new version and
+// context, and that omitting them keeps the stored ones.
+func TestApplyAPIUpdatesAppliesVersionAndContext(t *testing.T) {
+	service := &APIService{
+		apiRepo:     &mockAPIRepository{},
+		projectRepo: &mockProjectRepository{projectByUUID: &model.Project{ID: "11111111-1111-1111-1111-111111111111", Handle: "test-project"}},
+		apiUtil:     &utils.APIUtil{},
+		identity:    newTestIdentityService(),
+	}
+	context := "/orders"
+	existing := &model.API{
+		Handle:        "orders-api",
+		Name:          "Orders",
+		ProjectID:     "11111111-1111-1111-1111-111111111111",
+		Version:       "v1",
+		Configuration: model.RestAPIConfig{Context: &context},
+	}
+
+	updated, err := service.applyAPIUpdates(existing, &api.RESTAPI{Version: "v2", Context: "/orders-v2"}, "org-1")
+	if err != nil {
+		t.Fatalf("applyAPIUpdates() error = %v", err)
+	}
+	if updated.Version != "v2" || updated.Context != "/orders-v2" {
+		t.Errorf("updated version and context = %q %q, want v2 /orders-v2", updated.Version, updated.Context)
+	}
+
+	kept, err := service.applyAPIUpdates(existing, &api.RESTAPI{Description: ptr("only the description")}, "org-1")
+	if err != nil {
+		t.Fatalf("applyAPIUpdates() error = %v", err)
+	}
+	if kept.Version != "v1" || kept.Context != "/orders" {
+		t.Errorf("kept version and context = %q %q, want v1 /orders", kept.Version, kept.Context)
 	}
 }
 
