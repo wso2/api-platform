@@ -89,3 +89,38 @@ func (ec *PolicyExecutionContext) unwindServingUpstreamChain(
 		false,
 	)
 }
+
+// unwindServingUpstreamChainBody is the body-phase half of the unwind.
+//
+// The header half alone is not enough, and for the case this feature exists for it is the less
+// important half. A provider transformer converts the vendor's JSON payload, which is a
+// response-BODY concern: headers cannot turn `content_block` into `choices[]`. The upstream
+// filter is request-only, and the downstream body phase runs ec.responsePolicies(), which is the
+// ROUTE chain — so without this the serving provider's reverse translation never runs and a
+// cross-vendor failover answers the client in the fallback vendor's shape.
+//
+// Runs on the same chain, resolved the same way, before the route's own body policies, so the
+// payload is back in the API's shape by the time they see it.
+func (ec *PolicyExecutionContext) unwindServingUpstreamChainBody(ctx context.Context) (*executor.ResponseExecutionResult, error) {
+	cluster, ok := ec.server.baselines.ServingCluster(ec.attemptKey)
+	if !ok {
+		return nil, nil
+	}
+	chain := ec.server.kernel.UpstreamChainForCluster(cluster)
+	if chain == nil || len(chain.Policies) == 0 {
+		return nil, nil
+	}
+
+	slog.DebugContext(ctx, "unwinding the serving attempt's upstream chain (body)",
+		"cluster", cluster, "policies", len(chain.Policies), "route", ec.routeKey)
+
+	return ec.server.executor.ExecuteResponsePolicies(
+		ctx,
+		chain.Policies,
+		ec.responseBodyCtx,
+		chain.PolicySpecs,
+		"",
+		UpstreamChainKey(cluster),
+		false,
+	)
+}
