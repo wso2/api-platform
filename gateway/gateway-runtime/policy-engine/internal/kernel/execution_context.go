@@ -1117,6 +1117,13 @@ func (ec *PolicyExecutionContext) needsResponseBody() bool {
 	if ec.policyChain.RequiresResponseBody {
 		return true
 	}
+	// The serving attempt's chain counts too. It is not part of the route chain, so reading
+	// only the route chain let an API whose single body policy is a provider transformer tell
+	// Envoy to skip the body -- and the body unwind that FR-037h added then had nothing to run
+	// on. See ServingUpstreamChainRequiresResponseBody for why streaming is excluded.
+	if ec.ServingUpstreamChainRequiresResponseBody() {
+		return true
+	}
 	return ec.policyChain.RequiresResponseBodyOnFault && ec.responseHeaderCtx != nil &&
 		isFaultResponse(ec.responseHeaderCtx.ResponseStatus, false)
 }
@@ -1719,6 +1726,15 @@ func (ec *PolicyExecutionContext) processResponseBody(
 			execResult.Results = append(append(
 				make([]executor.ResponsePolicyResult, 0, len(unwindBody.Results)+len(execResult.Results)),
 				unwindBody.Results...), execResult.Results...)
+		}
+		// And its short circuit, on the same terms as the header half. Merging only Results
+		// dropped it: an upstream body policy returning an ImmediateResponse had its
+		// replacement thrown away and the route's body result translated in its place.
+		// Adopted only when the route's own chain did not short-circuit, because the route
+		// runs after and its decision is the later one.
+		if unwindBody != nil && unwindBody.ShortCircuited && !execResult.ShortCircuited {
+			execResult.ShortCircuited = true
+			execResult.FinalAction = unwindBody.FinalAction
 		}
 		rejected := responseRejectedByPolicy(execResult.Results)
 		if responseStatusOverriddenByPolicy(execResult.Results) {
