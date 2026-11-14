@@ -1133,6 +1133,43 @@ review. Supersedes the flat single-chain shape this spec previously described.
   request while the provider returning it was never suspended. The default grading set is
   therefore any 5xx plus 429. An explicit `statusCodes` list REPLACES it, 5xx range included.
 
+
+- **FR-065**: Latency used to grade a target MUST be that target's OWN attempt duration, not the
+  request's elapsed time. Only the attempt that produced the response in hand has a measured
+  duration — the gateway reads it from the upstream's reported service time — so the earlier
+  attempts of a failover have none. Charging them the whole request made a fast fallback inherit a
+  slow primary's duration, and a latency threshold could then suspend a target whose own attempt
+  was quick.
+
+  The health window MUST distinguish "this attempt took no measurable time" from "this attempt was
+  never timed". An unmeasured sample MUST still count toward the error rate, because the failure
+  happened, and MUST be excluded from the latency percentile, because a duration nobody observed is
+  not evidence. Recording it as zero would drag the percentile down exactly as recording the whole
+  request dragged it up.
+
+- **FR-066**: One authored chain member MUST have exactly one health circuit, whatever model a
+  request resolves it to. A `"*"` member is resolved against the client's model for ROUTING; that
+  resolution MUST NOT change the member's identity for health.
+
+  Resolving identity as well split one member's evidence into one circuit per model a caller could
+  name: a provider failing across many models accumulated a few failures in each of many circuits
+  and reached the threshold in none, so the member the publisher configured effectively had no
+  health at all for wildcard traffic. It also made the health map grow by one entry per distinct
+  model ever seen, which is unbounded by any quantity an operator controls.
+
+  The health map MUST additionally be bounded independently of this, since a long-running gateway
+  cannot rely on the identity rule alone. Eviction MUST NOT drop a target that is suspended,
+  mid-escalation, mid-recovery, or still inside its window: reclaiming a suspended entry would
+  hand a failing provider its traffic back, which is worse than the growth it bounds.
+
+- **FR-067**: The identity of a shared health store MUST include the provider-to-cluster mapping,
+  not only the suspension settings. A redeploy that repoints an alias at a different cluster while
+  keeping those settings would otherwise inherit the previous store, and a target suspended on the
+  strength of the OLD cluster's failures would keep a healthy new upstream out of rotation until
+  that window expired — a suspension the new cluster never earned. The mapping MUST be rendered
+  deterministically, since an unstable rendering would replace the stores on every request and
+  health would never accumulate.
+
 #### Upstream and downstream policy attachment
 
 Carried over from the original design document (§ "Per-provider upstream policies", § "Upstream
