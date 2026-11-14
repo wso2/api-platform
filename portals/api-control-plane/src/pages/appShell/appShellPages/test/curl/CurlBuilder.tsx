@@ -34,7 +34,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { BodyEditor } from './components/BodyEditor';
 import { CurlCommandPanel } from './components/CurlCommandPanel';
-import { requestBodySample } from './utils/jsonSample';
+import { requestBodySample } from '@/components/ApiTestConsole/spec/jsonSample';
 import { KeyValueEditor } from './components/KeyValueEditor';
 import { STANDARD_REQUEST_HEADERS } from './components/standardHeaders';
 import { activeRows, HTTP_METHODS, type ConsoleRequest, type HttpMethod } from '../utils/types';

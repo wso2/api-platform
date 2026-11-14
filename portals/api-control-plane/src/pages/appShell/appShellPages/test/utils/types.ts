@@ -78,6 +78,8 @@ export type KeyValueRow = {
    * ever rendered in full on an explicit reveal or copy.
    */
   secret?: boolean;
+  /** A form-data row whose value is the name of a file to upload, sent with `-F name=@file`. */
+  file?: boolean;
 };
 
 /**
@@ -127,6 +129,8 @@ export type ConsoleRequest = {
    * destroy what the user typed. The serialisation happens at the point of use.
    */
   formFields: KeyValueRow[];
+  /** Name of the file sent as the whole body, with `--data-binary @file`. */
+  binaryFile?: string;
 };
 
 /** Rows that actually travel — enabled, and with a name worth sending. */

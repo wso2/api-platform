@@ -46,29 +46,39 @@ import { TestPage } from './TestPage';
  * captured and asserted on explicitly.
  */
 
-vi.mock('./console/TestConsoleSpecViewer', () => ({
-  // `callMode` is surfaced as an attribute because it is what the page hands
-  // the transport: asserting the switch's own highlight would only prove the
-  // button moved, not that the next request would travel differently.
-  //
-  // The switch itself now lives inside the viewer, beside swagger's Execute
-  // button, so the page can no longer reach it. The stand-in button below
-  // plays its part: it exercises the page's half of the wiring — callback to
-  // state to persistence — while the control's own behaviour is covered in
-  // console/ExecuteModeSwitch.test.tsx.
-  default: ({
+vi.mock('@/components/ApiTestConsole', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/ApiTestConsole')>()),
+  // The route label is surfaced as an attribute because it is what the page
+  // derives from the transport it hands the console: asserting the switch's own
+  // highlight would only prove the button moved, not that the next request
+  // would travel differently. The switch is the page's real one, passed in as
+  // `toolbar`, so clicking it exercises the whole wiring — callback to state to
+  // persistence.
+  ApiTestConsole: ({
     baseUrl,
-    callMode,
-    onCallModeChange,
+    routeLabel,
+    toolbar,
+    transport,
   }: {
     baseUrl: string;
-    callMode: string;
-    onCallModeChange: (mode: string) => void;
+    routeLabel: string;
+    toolbar?: React.ReactNode;
+    transport: (request: unknown, signal: AbortSignal) => Promise<unknown>;
   }) => (
-    <div data-callmode={callMode} data-testid="spec-viewer">
+    <div data-route={routeLabel} data-testid="spec-viewer">
       {baseUrl}
-      <button onClick={() => onCallModeChange('direct')} type="button">
-        stand-in: switch to direct
+      {toolbar}
+      {/* Sends one request through the transport the page handed over, so a test can see where it goes. */}
+      <button
+        onClick={() =>
+          void transport(
+            { baseUrl, headers: [], method: 'GET', path: '/payments', query: [] },
+            new AbortController().signal,
+          ).catch(() => undefined)
+        }
+        type="button"
+      >
+        probe send
       </button>
     </div>
   ),
@@ -553,7 +563,7 @@ describe('TestPage — proxy or direct', () => {
     const viewer = await screen.findByTestId('spec-viewer');
     // The relay is what makes a cloud-managed gateway testable at all, so a
     // first visit must not land on the mode that needs a CORS policy.
-    expect(viewer).toHaveAttribute('data-callmode', 'proxy');
+    expect(viewer).toHaveAttribute('data-route', 'via proxy');
     expectNoRenderLoop();
   });
 
@@ -563,14 +573,60 @@ describe('TestPage — proxy or direct', () => {
     const { user } = renderPage();
     await screen.findByTestId('spec-viewer');
 
-    await user.click(screen.getByRole('button', { name: /stand-in: switch to direct/i }));
+    await user.click(screen.getByRole('button', { name: /^direct$/i }));
 
     // The attribute is the whole point: the switch has to reach the transport,
     // not just repaint.
     await waitFor(() =>
-      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-callmode', 'direct'),
+      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-route', 'direct'),
     );
     expectNoRenderLoop();
+  });
+
+  it('sends through the relay in proxy mode and straight to the gateway in direct mode', async () => {
+    server.use(
+      ...happyPath(),
+      http.post(apiUrl('/gateway-relay/invoke'), () => HttpResponse.json({})),
+      http.get('https://gw.example.com/*', () => new HttpResponse('ok')),
+    );
+    // The relay goes through the portal's axios client, which MSW sees; the direct
+    // transport calls `fetch`, which is spied on because that request cannot
+    // complete in jsdom (no real gateway, no CORS). What is asserted is where each was *sent*.
+    const requested: string[] = [];
+    const record = ({ request }: { request: Request }) => {
+      requested.push(request.url);
+    };
+    server.events.on('request:start', record);
+    const realFetch = globalThis.fetch;
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      requested.push(input instanceof Request ? input.url : String(input));
+      return realFetch(input, init);
+    });
+
+    try {
+      const { user } = renderPage();
+      await screen.findByTestId('spec-viewer');
+
+      await user.click(screen.getByRole('button', { name: /probe send/i }));
+      await waitFor(() =>
+        expect(requested.some((url) => url.includes('/gateway-relay/invoke'))).toBe(true),
+      );
+      expect(requested.some((url) => url.startsWith('https://gw.example.com'))).toBe(false);
+
+      requested.length = 0;
+      await user.click(screen.getByRole('button', { name: /^direct$/i }));
+      await waitFor(() =>
+        expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-route', 'direct'),
+      );
+      await user.click(screen.getByRole('button', { name: /probe send/i }));
+      await waitFor(() =>
+        expect(requested.some((url) => url.startsWith('https://gw.example.com'))).toBe(true),
+      );
+      expect(requested.some((url) => url.includes('/gateway-relay/invoke'))).toBe(false);
+    } finally {
+      spy.mockRestore();
+      server.events.removeListener('request:start', record);
+    }
   });
 
   it('remembers the choice for the next visit', async () => {
@@ -578,9 +634,9 @@ describe('TestPage — proxy or direct', () => {
 
     const first = renderPage();
     await screen.findByTestId('spec-viewer');
-    await first.user.click(screen.getByRole('button', { name: /stand-in: switch to direct/i }));
+    await first.user.click(screen.getByRole('button', { name: /^direct$/i }));
     await waitFor(() =>
-      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-callmode', 'direct'),
+      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-route', 'direct'),
     );
     first.unmount();
 
@@ -590,7 +646,7 @@ describe('TestPage — proxy or direct', () => {
     // the gateway, which does not change between page loads. Re-picking it
     // every visit would make the escape hatch tiring to use.
     await waitFor(() =>
-      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-callmode', 'direct'),
+      expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-route', 'direct'),
     );
     expectNoRenderLoop();
   });

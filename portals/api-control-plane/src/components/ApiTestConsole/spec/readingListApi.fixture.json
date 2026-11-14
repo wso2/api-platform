@@ -14,9 +14,7 @@
   "paths": {
     "/books": {
       "get": {
-        "tags": [
-          "books"
-        ],
+        "tags": ["books"],
         "summary": "List all the reading list books",
         "responses": {
           "200": {
@@ -42,9 +40,7 @@
         "description": "Returns a list of all books currently in the reading list. Each book includes the title, author, status (to_read, reading, read), and its unique identifier."
       },
       "post": {
-        "tags": [
-          "books"
-        ],
+        "tags": ["books"],
         "summary": "Add a new book to the reading list",
         "requestBody": {
           "description": "New book details (without ID)",
@@ -108,9 +104,7 @@
     },
     "/books/{id}": {
       "get": {
-        "tags": [
-          "books"
-        ],
+        "tags": ["books"],
         "summary": "Get reading list book by id",
         "parameters": [
           {
@@ -149,9 +143,7 @@
         "description": "Fetches the details of a specific book in the reading list by its unique ID. If the book is not found, a 404 response is returned."
       },
       "put": {
-        "tags": [
-          "books"
-        ],
+        "tags": ["books"],
         "summary": "Update a reading list book by id",
         "parameters": [
           {
@@ -224,9 +216,7 @@
         "description": "Updates the reading status of an existing book identified by its ID. Only the status field (to_read, reading, read) can be updated. Returns the updated book object."
       },
       "delete": {
-        "tags": [
-          "books"
-        ],
+        "tags": ["books"],
         "summary": "Delete a reading list book by id",
         "parameters": [
           {
@@ -291,11 +281,7 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "read",
-              "to_read",
-              "reading"
-            ],
+            "enum": ["read", "to_read", "reading"],
             "example": "to_read"
           },
           "title": {
@@ -313,11 +299,7 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "read",
-              "to_read",
-              "reading"
-            ],
+            "enum": ["read", "to_read", "reading"],
             "example": "to_read"
           },
           "title": {
@@ -331,11 +313,7 @@
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "read",
-              "to_read",
-              "reading"
-            ],
+            "enum": ["read", "to_read", "reading"],
             "example": "reading"
           }
         }

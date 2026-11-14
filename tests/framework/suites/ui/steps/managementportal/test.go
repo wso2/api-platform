@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/cucumber/godog"
@@ -50,30 +51,64 @@ type echo struct {
 	Headers map[string][]string `json:"headers"`
 }
 
-// operation is the Console view's (Swagger UI) block for one operation.
-func (s *Steps) operation(ctx context.Context, method, path string) (playwright.Locator, error) {
+// operationButton is the sidebar entry of one operation in the Test page's console: the method
+// badge starts its text and the path is its secondary line.
+func (s *Steps) operationButton(ctx context.Context, method, path string) (playwright.Locator, error) {
 	page, err := s.pageGetter(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return page.Locator(".opblock").
-		Filter(playwright.LocatorFilterOptions{Has: page.Locator(".opblock-summary-method:text-is('" + method + "')")}).
-		Filter(playwright.LocatorFilterOptions{Has: page.Locator("[data-path=\"" + path + "\"]")}), nil
+	return page.Locator("aside").GetByRole("button").
+		Filter(playwright.LocatorFilterOptions{Has: page.Locator("p:text-is('" + path + "')")}).
+		Filter(playwright.LocatorFilterOptions{HasText: regexp.MustCompile(`(?i)^\s*` + regexp.QuoteMeta(method))}), nil
 }
 
-// sendFromConsole opens the operation and presses Execute. A response from an earlier send is
-// cleared first, so the checks that follow read this send's response.
-func (s *Steps) sendFromConsole(ctx context.Context, method, path string) error {
-	op, err := s.operation(ctx, method, path)
+// responseSection is the console's response card, found by its "Response" heading.
+func (s *Steps) responseSection(ctx context.Context) (playwright.Locator, error) {
+	page, err := s.pageGetter(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return page.Locator("section").Filter(playwright.LocatorFilterOptions{
+		Has: page.GetByRole("heading", playwright.PageGetByRoleOptions{Name: "Response", Exact: playwright.Bool(true)}),
+	}), nil
+}
+
+func (s *Steps) selectOperation(ctx context.Context, method, path string) error {
+	button, err := s.operationButton(ctx, method, path)
 	if err != nil {
 		return err
 	}
-	if open, _ := op.GetAttribute("class"); !strings.Contains(open, "is-open") {
-		if err := op.Locator(".opblock-summary").First().Click(); err != nil {
-			return fmt.Errorf("opening %s %s: %w", method, path, err)
-		}
+	if err := button.Click(); err != nil {
+		return fmt.Errorf("selecting %s %s in the console: %w", method, path, err)
 	}
-	clear := op.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: "Clear", Exact: playwright.Bool(true)})
+	return nil
+}
+
+// openResponseTab shows one tab of the response card (Body, Headers or Request).
+func (s *Steps) openResponseTab(ctx context.Context, name string) (playwright.Locator, error) {
+	response, err := s.responseSection(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tab := response.GetByRole("tab", playwright.LocatorGetByRoleOptions{Name: name})
+	if err := tab.Click(); err != nil {
+		return nil, fmt.Errorf("opening the response's %s tab: %w", name, err)
+	}
+	return response, nil
+}
+
+// sendFromConsole selects the operation and presses Send. A response from an earlier send is
+// cleared first, so the checks that follow read this send's response.
+func (s *Steps) sendFromConsole(ctx context.Context, method, path string) error {
+	if err := s.selectOperation(ctx, method, path); err != nil {
+		return err
+	}
+	response, err := s.responseSection(ctx)
+	if err != nil {
+		return err
+	}
+	clear := response.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: "Clear", Exact: playwright.Bool(true)})
 	if visible, _ := clear.IsVisible(); visible {
 		if err := clear.Click(); err != nil {
 			return fmt.Errorf("clearing %s %s's last response: %w", method, path, err)
@@ -89,12 +124,12 @@ func (s *Steps) sendFromConsole(ctx context.Context, method, path string) error 
 	}
 	// The browser's own request tells who sends the call: the console's relay, or the browser
 	// straight to the gateway.
-	execute := op.GetByRole("button", playwright.LocatorGetByRoleOptions{Name: "Execute", Exact: playwright.Bool(true)})
+	send := page.GetByRole("button", playwright.PageGetByRoleOptions{Name: "Send", Exact: playwright.Bool(true)})
 	request, err := page.ExpectRequest(func(r playwright.Request) bool {
 		return strings.Contains(r.URL(), relayPath) || strings.HasSuffix(strings.SplitN(r.URL(), "?", 2)[0], path)
-	}, func() error { return execute.Click() })
+	}, func() error { return send.Click() })
 	if err != nil {
-		return fmt.Errorf("executing %s %s: %w", method, path, err)
+		return fmt.Errorf("sending %s %s: %w", method, path, err)
 	}
 	sender := "from the browser"
 	if strings.Contains(request.URL(), relayPath) {
@@ -109,23 +144,34 @@ const relayPath = "/gateway-relay/invoke"
 
 func senderKey(method, path string) string { return "console-sender:" + method + " " + path }
 
+// consoleShowsRequest reads the request URL the console built for the selected operation, then the
+// cURL command shown on the response's Request tab once the call was sent.
 func (s *Steps) consoleShowsRequest(ctx context.Context, url, method, path string) error {
 	resolved, err := uivalue.Expand(ctx, url)
 	if err != nil {
 		return err
 	}
-	op, err := s.operation(ctx, method, path)
+	if err := s.selectOperation(ctx, method, path); err != nil {
+		return err
+	}
+	page, err := s.pageGetter(ctx)
 	if err != nil {
 		return err
 	}
-	if err := s.expect.Locator(op.Locator(".curl-command")).ToContainText("curl -X '" + method + "'"); err != nil {
+	field := page.GetByRole("textbox", playwright.PageGetByRoleOptions{Name: "Request URL", Exact: playwright.Bool(true)})
+	if err := s.expect.Locator(field).ToHaveValue(resolved); err != nil {
+		return fmt.Errorf("%s %s shows another request URL than %s: %w", method, path, resolved, err)
+	}
+	response, err := s.openResponseTab(ctx, "Request")
+	if err != nil {
+		return err
+	}
+	curl := response.GetByRole("region", playwright.LocatorGetByRoleOptions{Name: "cURL", Exact: playwright.Bool(true)})
+	if err := s.expect.Locator(curl).ToContainText("curl -X '" + method + "'"); err != nil {
 		return fmt.Errorf("%s %s shows no cURL command: %w", method, path, err)
 	}
-	if err := s.expect.Locator(op.Locator(".curl-command")).ToContainText("'" + resolved + "'"); err != nil {
+	if err := s.expect.Locator(curl).ToContainText("'" + resolved + "'"); err != nil {
 		return fmt.Errorf("%s %s's cURL command does not call %s: %w", method, path, resolved, err)
-	}
-	if err := s.expect.Locator(op.Locator(".request-url pre")).ToHaveText(resolved); err != nil {
-		return fmt.Errorf("%s %s shows another request URL than %s: %w", method, path, resolved, err)
 	}
 	return nil
 }
@@ -134,15 +180,19 @@ func (s *Steps) consoleShowsRequest(ctx context.Context, url, method, path strin
 // reflects, which names the method and path the gateway forwarded. The reflected User-Agent tells
 // who sent it: the relay is platform-api's Go client, a direct call is the browser.
 func (s *Steps) consoleResponseEchoes(ctx context.Context, method, path string, status int, echoMethod, echoPath, sender string) error {
-	op, err := s.operation(ctx, method, path)
+	if err := s.selectOperation(ctx, method, path); err != nil {
+		return err
+	}
+	response, err := s.openResponseTab(ctx, "Body")
 	if err != nil {
 		return err
 	}
-	live := op.Locator(".live-responses-table tbody .response")
-	if err := s.expect.Locator(live.Locator(".response-col_status")).ToHaveText(fmt.Sprint(status)); err != nil {
-		return fmt.Errorf("%s %s never answered %d in the Console view: %w", method, path, status, err)
+	chip := response.Locator(".MuiChip-label").First()
+	if err := s.expect.Locator(chip).ToHaveText(regexp.MustCompile(fmt.Sprintf(`^%d\b`, status))); err != nil {
+		return fmt.Errorf("%s %s never answered %d in the console: %w", method, path, status, err)
 	}
-	body, err := live.Locator(".response-col_description pre.microlight").First().TextContent()
+	region := response.GetByRole("region", playwright.LocatorGetByRoleOptions{Name: "Response body", Exact: playwright.Bool(true)})
+	body, err := region.TextContent()
 	if err != nil {
 		return fmt.Errorf("reading %s %s's response body: %w", method, path, err)
 	}
@@ -163,18 +213,18 @@ func (s *Steps) consoleResponseEchoes(ctx context.Context, method, path string, 
 	return nil
 }
 
-// consoleShowsFetchError expects the browser's failed fetch, which Swagger UI reports with CORS
+// consoleShowsFetchError expects the browser's failed fetch, which the console reports with CORS
 // among the possible reasons.
 func (s *Steps) consoleShowsFetchError(ctx context.Context, method, path string) error {
-	op, err := s.operation(ctx, method, path)
+	if err := s.selectOperation(ctx, method, path); err != nil {
+		return err
+	}
+	response, err := s.responseSection(ctx)
 	if err != nil {
 		return err
 	}
-	live := op.Locator(".live-responses-table tbody .response")
-	for _, text := range []string{"Failed to fetch.", "CORS"} {
-		if err := s.expect.Locator(live).ToContainText(text); err != nil {
-			return fmt.Errorf("%s %s never showed %q: %w", method, path, text, err)
-		}
+	if err := s.expect.Locator(response).ToContainText("CORS"); err != nil {
+		return fmt.Errorf("%s %s never showed a CORS or network error: %w", method, path, err)
 	}
 	return nil
 }
