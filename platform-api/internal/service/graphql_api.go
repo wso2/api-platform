@@ -235,7 +235,7 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 		return nil, fmt.Errorf("failed to check GraphQL API exists: %w", err)
 	}
 	if exists {
-		return nil, apperror.GraphQLAPIExists.New(graphQLAPIIDExistsMessage)
+		return nil, idTaken(apperror.GraphQLAPIExists.New(graphQLAPIIDExistsMessage), graphQLAPIIDExistsMessage)
 	}
 	if err := s.ensureNameVersionAvailable(req.DisplayName, req.Version, orgUUID, ""); err != nil {
 		return nil, err
@@ -302,7 +302,7 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 
 	if err := s.repo.Create(m); err != nil {
 		if isSQLiteUniqueConstraint(err) {
-			return nil, apperror.GraphQLAPIExists.Wrap(err, graphQLAPIIDExistsMessage)
+			return nil, idTaken(apperror.GraphQLAPIExists.Wrap(err, graphQLAPIIDExistsMessage), graphQLAPIIDExistsMessage)
 		}
 		return nil, fmt.Errorf("failed to create GraphQL API: %w", err)
 	}

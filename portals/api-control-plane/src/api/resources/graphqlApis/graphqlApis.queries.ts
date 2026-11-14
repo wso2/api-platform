@@ -18,6 +18,7 @@
 
 import { queryOptions } from '@tanstack/react-query';
 
+import { isApiError } from '../../core/errors';
 import { staleTimes } from '../../core/queryClient';
 import { createResourceKeys, type OrgScope } from '../../core/queryKeys';
 import {
@@ -42,6 +43,25 @@ export const graphQLApiQueries = {
     queryOptions({
       queryKey: graphQLApiKeys.detail(org, graphqlApiId),
       queryFn: ({ signal }) => getGraphQLApi(graphqlApiId, { orgId: org, signal }),
+      staleTime: staleTimes.standard,
+    }),
+
+  /**
+   * Whether `graphqlApiId` is free as a handle in the organization: `true`
+   * free, `false` taken. A 404 is the free answer — see `restApiQueries`.
+   */
+  availability: (org: OrgScope, graphqlApiId: string) =>
+    queryOptions({
+      queryKey: graphQLApiKeys.child(org, graphqlApiId, 'availability'),
+      queryFn: async ({ signal }) => {
+        try {
+          await getGraphQLApi(graphqlApiId, { orgId: org, signal });
+          return false;
+        } catch (error) {
+          if (isApiError(error) && error.isNotFound) return true;
+          throw error;
+        }
+      },
       staleTime: staleTimes.standard,
     }),
 

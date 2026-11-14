@@ -3582,7 +3582,7 @@ type Error struct {
 	// Details Optional structured metadata specific to this error condition (e.g. the resources referencing a secret that blocked its deletion). Shape varies by `code`; absent when not applicable.
 	Details *map[string]interface{} `json:"details,omitempty" yaml:"details,omitempty"`
 
-	// Errors Per-field validation failures. Present when the error is a validation failure.
+	// Errors Per-field failures. Present when the error is a validation failure, or a conflict one field caused, such as an id already in use.
 	Errors *[]FieldError `json:"errors,omitempty" yaml:"errors,omitempty"`
 
 	// Message Human-readable description of the error.

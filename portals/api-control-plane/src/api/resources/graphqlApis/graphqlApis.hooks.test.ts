@@ -19,11 +19,11 @@
 import { waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { aGraphQLApi, collection, recorder, type Recorder } from '../../../test/msw';
+import { aGraphQLApi, collection, knownIds, recorder, type Recorder } from '../../../test/msw';
 import { renderApiHook, settle } from '../../../test/renderApiHook';
 import { server } from '../../../test/server';
 import { resetHttpClient } from '../../core/http';
-import { useAllGraphQLApis } from './graphqlApis.hooks';
+import { useAllGraphQLApis, useGraphQLApiIdAvailability } from './graphqlApis.hooks';
 
 /**
  * `useAllGraphQLApis` mirrors `useAllRestApis`, which `ApiList` merges it with;
@@ -97,5 +97,26 @@ describe('useAllGraphQLApis — windowing', () => {
 
     await settle();
     expect(requests.count()).toBe(0);
+  });
+});
+
+// See `useRestApiIdAvailability`: the handle is unique across the organization.
+describe('useGraphQLApiIdAvailability', () => {
+  it('reports a handle another project uses as taken, asking the organization rather than the project', async () => {
+    server.use(knownIds('/graphql-apis/:graphqlApiId', ['films'], { record: requests }));
+
+    const { result } = renderApiHook(() => useGraphQLApiIdAvailability('films'));
+
+    await waitFor(() => expect(result.current.data).toBe(false));
+    expect(requests.last()?.url.pathname).toMatch(/\/graphql-apis\/films$/);
+    expect(requests.last()?.params.has('projectId')).toBe(false);
+  });
+
+  it('reports a handle nobody uses as free', async () => {
+    server.use(knownIds('/graphql-apis/:graphqlApiId', ['films']));
+
+    const { result } = renderApiHook(() => useGraphQLApiIdAvailability('countries'));
+
+    await waitFor(() => expect(result.current.data).toBe(true));
   });
 });

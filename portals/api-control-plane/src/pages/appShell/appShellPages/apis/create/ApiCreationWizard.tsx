@@ -408,10 +408,10 @@ const ApiCreationWizardContent = () => {
     useState<GraphqlApiCreationFormState | null>(null);
   const [graphqlCreationStarted, setGraphqlCreationStarted] = useState(false);
   const [graphqlFormErrors, setGraphqlFormErrors] = useState<CreateApiFormErrors | null>(null);
-  // The GraphQL form's live identifier check: a taken identifier blocks its
+  // The configure form's live identifier check: a taken identifier blocks its
   // submit, so the footer's Create is disabled to match rather than clicking
   // through to nothing.
-  const [graphqlSubmitBlocked, setGraphqlSubmitBlocked] = useState(false);
+  const [submitBlocked, setSubmitBlocked] = useState(false);
 
   const createGraphqlApi = (values: GraphqlApiCreationFormState) => {
     const projectId = activeScope.projectHandler;
@@ -573,7 +573,7 @@ const ApiCreationWizardContent = () => {
                       initialValues={graphqlSubmittedValues ?? graphqlPrefilledData}
                       onSubmit={onGraphqlFormSubmit}
                       onBack={() => setStep('source')}
-                      onSubmitBlockedChange={setGraphqlSubmitBlocked}
+                      onSubmitBlockedChange={setSubmitBlocked}
                       serverErrors={graphqlFormErrors ?? undefined}
                     />
                   ) : (
@@ -587,6 +587,7 @@ const ApiCreationWizardContent = () => {
                       initialValues={submittedValues ?? prefilledData}
                       onSubmit={onGeneralFormSumit}
                       onBack={() => setStep('source')}
+                      onSubmitBlockedChange={setSubmitBlocked}
                       serverErrors={serverErrors ?? undefined}
                       initialIdentifierEdited={identifierEdited}
                       onIdentifierEdited={setIdentifierEdited}
@@ -639,7 +640,7 @@ const ApiCreationWizardContent = () => {
               </Button>
               {step === 'configure' ? (
                 <Button
-                  disabled={isGraphql && graphqlSubmitBlocked}
+                  disabled={submitBlocked}
                   form={CONFIGURE_FORM_ID}
                   key="create-api"
                   type="submit"

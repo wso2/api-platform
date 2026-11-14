@@ -13220,7 +13220,9 @@ components:
           example: The requested REST API could not be found.
         errors:
           type: array
-          description: Per-field validation failures. Present when the error is a validation failure.
+          description: >-
+            Per-field failures. Present when the error is a validation failure, or a conflict one
+            field caused, such as an id already in use.
           items:
             $ref: '#/components/schemas/FieldError'
         details:

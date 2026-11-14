@@ -20,8 +20,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
+import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
-import { accepts, collection, failure, recorder } from '@/test/msw';
+import { accepts, collection, failure, knownIds, recorder } from '@/test/msw';
 import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { routes } from '@/routes/paths';
@@ -195,6 +196,40 @@ describe('ApiCreationWizard — explicit creation boundary', () => {
     expect(createRequests.count()).toBe(0);
 
     await user.type(screen.getByLabelText(/Endpoint/), 'https://orders.example.com');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    expect(createRequests.count()).toBe(1);
+  });
+});
+
+describe('ApiCreationWizard — a taken REST identifier', () => {
+  // The identifier is unique across the organization, so an API in another
+  // project takes it too: https://github.com/wso2/api-platform/issues/4139
+  it('flags it on the field and disables Create until it changes', async () => {
+    const createRequests = recorder();
+    server.use(
+      knownIds('/rest-apis/:restApiId', ['orders-api']),
+      accepts('post', '/rest-apis/import-openapi', { id: 'orders-api-v2' }, { record: createRequests }),
+    );
+    // The live check reads the API-layer scope, which `renderWithProviders` alone doesn't supply.
+    const { user } = renderWithProviders(
+      <ApiScopeProvider orgId="api-platform-demo" projectId="retail-apis">
+        <ApiCreationWizard />
+      </ApiScopeProvider>,
+      { route, scope },
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Choose REST' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Use this contract' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.type(screen.getByLabelText(/Endpoint/), 'https://orders.example.com');
+
+    expect(await screen.findByText('This identifier is already in use.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/^Identifier\s*\*/), '-v2');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled());
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(createRequests.count()).toBe(1);

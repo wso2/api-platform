@@ -380,41 +380,27 @@ export const useDeleteRestApi = (overrides: { orgId?: string } = {}) => {
 };
 
 /**
- * How many ids are inspected before deciding a handle is free. The filter below
- * is a *substring* match, so this bounds the superstring case ("orders-api"
- * also matching "orders-api-v2"), not the number of APIs in the project.
- */
-const AVAILABILITY_PROBE_LIMIT = 100;
-
-/**
- * Whether `candidateId` is still free as a REST API handle in the active
- * project: `data === true` means free, `false` means taken, `undefined` means
- * not answered yet (no scope, blank candidate, still loading, or failed).
+ * Whether `candidateId` is still free as a REST API handle: `data === true`
+ * means free, `false` means taken, `undefined` means not answered yet (no
+ * scope, blank candidate, still loading, or failed).
  *
- * Built on the list query rather than a detail probe, so a free handle is a
- * plain 200 rather than a deliberate 404 sitting in the detail cache. The
- * spec's `query` filter matches a *substring* of the handle, so the exact
- * comparison happens here: `orders` is free even when `orders-v2` exists.
+ * A handle is unique across the organization, not the project, so this reads
+ * the organization-scoped `GET /rest-apis/{id}` (`restApiQueries.availability`)
+ * rather than the list, which only lists one project.
  *
  * Debounce the candidate at the call site (`useDebouncedValue`): this hook
  * issues a request for every distinct value it is handed.
  */
 export const useRestApiIdAvailability = (
   candidateId: string | undefined,
-  overrides: { orgId?: string; projectId?: string } = {},
+  overrides: { orgId?: string } = {},
 ) => {
-  const { org, projectId } = useApiScope(overrides);
+  const { org } = useApiScope(overrides);
   const candidate = candidateId?.trim().toLowerCase() ?? '';
 
   return useQuery({
-    ...restApiQueries.list(org!, {
-      projectId: projectId!,
-      query: candidate,
-      limit: AVAILABILITY_PROBE_LIMIT,
-    }),
-    enabled: Boolean(org && projectId && candidate),
-    select: (data: RestApiListResponse) =>
-      !(data.list ?? []).some((api) => api.id?.toLowerCase() === candidate),
+    ...restApiQueries.availability(org!, candidate),
+    enabled: Boolean(org && candidate),
   });
 };
 

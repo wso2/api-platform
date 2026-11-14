@@ -6149,7 +6149,7 @@ export interface components {
              * @example The requested REST API could not be found.
              */
             message: string;
-            /** @description Per-field validation failures. Present when the error is a validation failure. */
+            /** @description Per-field failures. Present when the error is a validation failure, or a conflict one field caused, such as an id already in use. */
             errors?: components["schemas"]["FieldError"][];
             /** @description Optional structured metadata specific to this error condition (e.g. the resources referencing a secret that blocked its deletion). Shape varies by `code`; absent when not applicable. */
             details?: {
