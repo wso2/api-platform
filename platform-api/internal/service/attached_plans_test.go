@@ -19,10 +19,12 @@
 package service
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 )
 
@@ -93,4 +95,59 @@ func deref(s *string) string {
 		return "<nil>"
 	}
 	return *s
+}
+
+// handlePlanRepo answers the single-plan lookups that validateSubscriptionPlanHandles makes.
+type handlePlanRepo struct {
+	publicationPlanRepo
+}
+
+func (f *handlePlanRepo) GetByHandleAndOrg(handle, _ string) (*model.SubscriptionPlan, error) {
+	if p, ok := f.plans[handle]; ok {
+		return p, nil
+	}
+	return nil, sql.ErrNoRows
+}
+
+func TestGraphQLCreate_RefusesUnknownAndInactivePlans(t *testing.T) {
+	plans := &handlePlanRepo{publicationPlanRepo{plans: map[string]*model.SubscriptionPlan{
+		"gold":    {Handle: "gold", Name: "Gold", Status: model.SubscriptionPlanStatusActive},
+		"retired": {Handle: "retired", Name: "Retired", Status: model.SubscriptionPlanStatusInactive},
+	}}}
+	project := &model.Project{ID: "project-uuid", OrganizationID: "org-1"}
+	request := func(handles ...string) *api.CreateGraphQLAPIRequest {
+		refs := planRefsWithHandles(handles)
+		return &api.CreateGraphQLAPIRequest{
+			DisplayName:       "Countries GraphQL API",
+			Context:           graphQLStrPtr("/countries"),
+			Version:           "v1.0",
+			ProjectId:         "project-uuid",
+			Sdl:               graphQLStrPtr(validCountriesGraphQLSDL),
+			Upstream:          api.Upstream{Main: api.UpstreamDefinition{Url: graphQLStrPtr("https://countries.example.com/graphql")}},
+			SubscriptionPlans: &refs,
+		}
+	}
+	for _, handle := range []string{"missing", "retired"} {
+		repo := &mockGraphQLAPIRepo{}
+		svc := newGraphQLTestService(repo, project)
+		svc.SetSubscriptionPlanRepo(plans)
+		if _, err := svc.Create("org-1", "creator-uuid", request("gold", handle)); err == nil {
+			t.Fatalf("attaching %q: expected a validation error", handle)
+		} else if code := graphQLCatalogCode(t, err); code != apperror.CodeCommonValidationFailed {
+			t.Errorf("attaching %q: code = %s", handle, code)
+		}
+		if repo.created != nil {
+			t.Errorf("attaching %q: the API should not be stored", handle)
+		}
+	}
+
+	repo := &mockGraphQLAPIRepo{}
+	svc := newGraphQLTestService(repo, project)
+	svc.SetSubscriptionPlanRepo(plans)
+	if _, err := svc.Create("org-1", "creator-uuid", request("gold")); err != nil {
+		t.Fatalf("attaching an active plan: %v", err)
+	}
+	if got := repo.created.Configuration.SubscriptionPlans; len(got) != 1 || got[0].DisplayName != "Gold" {
+		t.Errorf("stored plans = %+v", got)
+	}
 }

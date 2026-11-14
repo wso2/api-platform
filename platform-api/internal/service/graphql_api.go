@@ -282,6 +282,10 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 			WithDetails(map[string]any{"sdlErrors": resolution.SDLErrors})
 	}
 
+	// Each plan must exist in the organization and be ACTIVE, as for REST APIs and MCP proxies.
+	if err := validateSubscriptionPlanRefs(s.subscriptionPlanRepo, req.SubscriptionPlans, orgUUID); err != nil {
+		return nil, err
+	}
 	subscriptionPlans, err := stampAttachedPlans(s.subscriptionPlanRepo, utils.PlanRefsToModel(req.SubscriptionPlans), orgUUID, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up the subscription plans: %w", err)
@@ -759,6 +763,10 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 		sdl, introspectionMode, storedSchemaSource = resolution.SDL, resolution.IntrospectionMode, resolution.SchemaSource
 	}
 
+	// Each plan must exist in the organization and be ACTIVE, as for REST APIs and MCP proxies.
+	if err := validateSubscriptionPlanRefs(s.subscriptionPlanRepo, req.SubscriptionPlans, orgUUID); err != nil {
+		return nil, err
+	}
 	subscriptionPlans, err := stampAttachedPlans(s.subscriptionPlanRepo, utils.PlanRefsToModel(req.SubscriptionPlans), orgUUID, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up the subscription plans: %w", err)

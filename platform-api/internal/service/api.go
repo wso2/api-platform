@@ -925,11 +925,17 @@ func (s *APIService) validateCreateAPIRequest(req *api.CreateRESTAPIRequest, org
 // validateSubscriptionPlans ensures each plan a request attaches exists in the organization and is
 // ACTIVE, and keeps only the plans' (trimmed) handles: displayName and sourceStatus are read-only.
 func (s *APIService) validateSubscriptionPlans(refs *[]api.SubscriptionPlanRef, orgUUID string) error {
+	return validateSubscriptionPlanRefs(s.subscriptionPlanRepo, refs, orgUUID)
+}
+
+// validateSubscriptionPlanRefs is validateSubscriptionPlans for any API kind whose request attaches
+// plans as references (REST and GraphQL APIs).
+func validateSubscriptionPlanRefs(planRepo repository.SubscriptionPlanRepository, refs *[]api.SubscriptionPlanRef, orgUUID string) error {
 	if refs == nil {
 		return nil
 	}
 	handles := utils.PlanRefHandles(refs)
-	if err := validateSubscriptionPlanHandles(s.subscriptionPlanRepo, &handles, orgUUID); err != nil {
+	if err := validateSubscriptionPlanHandles(planRepo, &handles, orgUUID); err != nil {
 		return err
 	}
 	*refs = planRefsWithHandles(handles)
