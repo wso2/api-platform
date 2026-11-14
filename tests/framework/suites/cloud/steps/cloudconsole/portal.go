@@ -26,8 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cucumber/godog"
-
 	corecatalog "github.com/wso2/api-platform/tests/framework/core/catalog/cloudconsole"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
@@ -49,6 +47,9 @@ const (
 	keyRefusedAPIPortalID = "cloudRefusedAPIPortalID"
 	// keyAbsentAPIPortalID names a portal the scenario never creates.
 	keyAbsentAPIPortalID = "cloudAbsentAPIPortalID"
+	// keyOtherEnvironment names an environment of the organisation other than the one the runner's
+	// portals sign consumers in on.
+	keyOtherEnvironment = "cloudOtherEnvironment"
 	// keyAbsentPortalEnvironment names a login environment the organisation does not have.
 	keyAbsentPortalEnvironment = "cloudAbsentPortalEnvironment"
 
@@ -111,6 +112,14 @@ var portalRequestDefects = map[string]func(handle string) (string, map[string]an
 	"no name": func(handle string) (string, map[string]any) {
 		return handle, portalRequestBody(handle, "")
 	},
+	"a name longer than 255 characters": func(handle string) (string, map[string]any) {
+		return handle, portalRequestBody(handle, strings.Repeat("n", portalNameMaxLength+1))
+	},
+	"a description longer than 1023 characters": func(handle string) (string, map[string]any) {
+		body := portalRequestBody(handle, "Synthetic "+handle)
+		body["description"] = strings.Repeat("d", portalDescriptionMaxLength+1)
+		return handle, body
+	},
 }
 
 func portalRequestDefectNames() string {
@@ -123,7 +132,7 @@ func portalRequestDefectNames() string {
 }
 
 // registerPortalSteps binds the steps that create, read, refuse and delete a managed API Portal.
-func (s *Steps) registerPortalSteps(sc *godog.ScenarioContext) {
+func (s *Steps) registerPortalSteps(sc stepRegistrar) {
 	sc.Step(`^I request a synthetic managed API Portal for the runner$`, s.requestRunnerPortal)
 	sc.Step(`^the synthetic managed API Portal should be accepted for provisioning$`, s.assertPortalAccepted)
 	sc.Step(`^the synthetic managed API Portal should become active$`, s.awaitPortalActive)
@@ -140,6 +149,9 @@ func (s *Steps) registerPortalSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I delete the synthetic managed API Portal$`, s.deleteRunnerPortal)
 	sc.Step(`^the managed API Portal deletion should be accepted$`, s.assertPortalDeletionAccepted)
 	sc.Step(`^the synthetic managed API Portal should eventually be gone$`, s.awaitPortalGone)
+	s.registerPortalManageSteps(sc)
+	s.registerPortalRuntimeSteps(sc)
+	s.registerPublicationDraftSteps(sc)
 }
 
 // portalPath is the route of one managed API Portal.

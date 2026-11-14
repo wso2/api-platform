@@ -25,6 +25,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"image/png"
 	"io"
 	"log/slog"
 	"mime"
@@ -32,6 +33,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -1738,8 +1742,8 @@ func newLeftoverStub() *leftoverStub {
 			{"id": "development-syn-gw-zzzzz222-1", "environment": "development"},
 			{"id": "development-syn-gw-ab", "displayName": "syn-gw-abcde234-12", "environment": "development"},
 		},
-		"/projects":                                   {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
-		"/rest-apis?projectId=default":                {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
+		"/projects":                    {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
+		"/rest-apis?projectId=default": {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
 		"/rest-apis?projectId=syn-project-abcde234-2": {{"id": "syn-api-abcde234-2"}},
 		"/rest-apis?projectId=ops-project":            {{"id": "syn-api-abcde234-9"}},
 		"/pipelines":                                  {{"name": "default"}, {"name": "syn-pipeline-abcde234-1"}},
@@ -3096,6 +3100,18 @@ type starterPlatform struct {
 	failsWith string
 	// absent makes a gateway lookup answer 404, as when a refused create left nothing behind.
 	absent bool
+
+	// portals are the managed API Portals the organisation holds; the zero value is an
+	// organisation with one active portal, so tests of the gateway need not mention portals.
+	portals        []map[string]any
+	noPortals      bool
+	createdPortals []map[string]any
+	portalCreateAs int
+	portalPolls    int
+	portalActiveAt int
+	portalFails    bool
+	// portalAbsent makes a portal lookup answer 404, as when a refused create left nothing behind.
+	portalAbsent bool
 }
 
 func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
@@ -3140,7 +3156,36 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 				answer["status"], answer["statusReason"] = "FAILED", p.failsWith
 			}
 			_ = json.NewEncoder(w).Encode(answer)
-		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis", "/managed-api-portals"}, r.URL.Path):
+		case r.Method == http.MethodGet && r.URL.Path == "/managed-api-portals":
+			portals := p.portals
+			if portals == nil && !p.noPortals {
+				portals = []map[string]any{{"id": "existing-portal", "status": "active"}}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"list": portals})
+		case r.Method == http.MethodPost && r.URL.Path == "/managed-api-portals":
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			p.createdPortals = append(p.createdPortals, body)
+			if p.portalCreateAs != 0 {
+				w.WriteHeader(p.portalCreateAs)
+				_, _ = w.Write([]byte(`{"error":"conflict"}`))
+				return
+			}
+			w.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": body["handle"], "status": "pending"})
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/managed-api-portals/") && p.portalAbsent:
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/managed-api-portals/"):
+			p.portalPolls++
+			status := "pending"
+			if p.portalPolls >= p.portalActiveAt {
+				status = "active"
+			}
+			if p.portalFails {
+				status = "failed"
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": strings.TrimPrefix(r.URL.Path, "/managed-api-portals/"), "status": status})
+		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis"}, r.URL.Path):
 			// What the finalizer reads: this organisation holds none of it.
 			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{}})
 		default:
@@ -4244,6 +4289,14 @@ func TestRequestDefectivePortalBreaksOneRuleAndRegistersTheHandleFirst(t *testin
 			require.Empty(t, name)
 			require.Regexp(t, `^[a-z0-9-]{3,40}$`, handle, "only the name is wrong")
 		},
+		"a name longer than 255 characters": func(handle, name string) {
+			require.Len(t, name, portalNameMaxLength+1)
+			require.Regexp(t, `^[a-z0-9-]{3,40}$`, handle, "only the name is wrong")
+		},
+		"a description longer than 1023 characters": func(handle, _ string) {
+			require.Regexp(t, `^[a-z0-9-]{3,40}$`, handle, "only the description is wrong")
+			require.Len(t, sent["description"], portalDescriptionMaxLength+1)
+		},
 	}
 	require.Len(t, checks, len(portalRequestDefects), "every defect is checked")
 	for defect, check := range checks {
@@ -4820,4 +4873,922 @@ func TestEnsureActiveRunnerPortalBuildsOneWhenNoneWasRequested(t *testing.T) {
 	require.Len(t, platform.created, 1)
 	require.Len(t, local.List(keyPortalBuilds), 1)
 	require.Equal(t, platform.created, registeredPortals(registry))
+}
+
+var stepKeyword = regexp.MustCompile(`^(Given|When|Then|And|But|\*) (.+)$`)
+
+// featureSteps returns the text of every step a feature file runs, with each Scenario Outline
+// expanded once per Examples row.
+func featureSteps(t *testing.T, path string) []string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var steps, block []string
+	var examples [][]string
+	inExamples := false
+	flush := func() {
+		if len(examples) == 0 {
+			steps = append(steps, block...)
+		}
+		for _, row := range examples[min(1, len(examples)):] {
+			for _, step := range block {
+				for i, name := range examples[0] {
+					step = strings.ReplaceAll(step, "<"+name+">", row[i])
+				}
+				steps = append(steps, step)
+			}
+		}
+		block, examples, inExamples = nil, nil, false
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "Background:"), strings.HasPrefix(line, "Scenario:"),
+			strings.HasPrefix(line, "Scenario Outline:"):
+			flush()
+		case strings.HasPrefix(line, "Examples:"):
+			inExamples = true
+		case strings.HasPrefix(line, "|") && inExamples:
+			cells := strings.Split(strings.Trim(line, "|"), "|")
+			for i := range cells {
+				cells[i] = strings.TrimSpace(cells[i])
+			}
+			examples = append(examples, cells)
+		default:
+			if match := stepKeyword.FindStringSubmatch(line); match != nil {
+				block = append(block, match[2])
+			}
+		}
+	}
+	flush()
+	return steps
+}
+
+// stepsWithoutFeature are defined and unit tested but no feature runs them yet.
+var stepsWithoutFeature = map[string]bool{
+	`^I rotate the synthetic secret$`:                               true,
+	`^I read the synthetic secret$`:                                 true,
+	`^I list the secrets$`:                                          true,
+	`^the response should not reveal the synthetic secret's value$`: true,
+	`^the synthetic secret should be described by a hash$`:          true,
+	`^a "([^"]*)" request to "([^"]*)" should echo the header "([^"]*)" with the rotated secret value$`: true,
+	`^I create synthetic APIP projects until the organisation refuses one$`:                             true,
+}
+
+func TestEveryFeatureStepMatchesExactlyOneDefinition(t *testing.T) {
+	definitions := (&Steps{}).stepDefinitions()
+	patterns := make([]*regexp.Regexp, len(definitions))
+	seen := map[string]bool{}
+	for i, definition := range definitions {
+		require.False(t, seen[definition.pattern], "duplicate step pattern %s", definition.pattern)
+		seen[definition.pattern] = true
+		patterns[i] = regexp.MustCompile(definition.pattern)
+	}
+	features, err := filepath.Glob(filepath.Join("..", "..", "features", "*.feature"))
+	require.NoError(t, err)
+	require.NotEmpty(t, features)
+	used := make([]bool, len(patterns))
+	for _, feature := range features {
+		for _, step := range featureSteps(t, feature) {
+			matches := 0
+			for i, pattern := range patterns {
+				if pattern.MatchString(step) {
+					matches++
+					used[i] = true
+				}
+			}
+			require.Equal(t, 1, matches, "%s: step %q matches %d definitions", filepath.Base(feature), step, matches)
+		}
+	}
+	for i, definition := range definitions {
+		require.True(t, used[i] || stepsWithoutFeature[definition.pattern], "step %s is used by no feature", definition.pattern)
+	}
+}
+
+func TestFeatureStepsExpandsOutlines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "outline.feature")
+	require.NoError(t, os.WriteFile(path, []byte(`Feature: f
+  Background:
+    Given a start
+  Scenario Outline: o
+    When I <action> it
+      | key | value |
+    Then it is <status>
+
+    Examples:
+      | action | status |
+      | open   | 200    |
+      | close  | 409    |
+  Scenario: s
+    * a last step
+`), 0o600))
+	require.Equal(t, []string{
+		"a start", "I open it", "it is 200", "I close it", "it is 409", "a last step",
+	}, featureSteps(t, path))
+}
+
+func TestTableValues(t *testing.T) {
+	values, err := tableValues(nil)
+	require.NoError(t, err)
+	require.Empty(t, values)
+
+	values, err = tableValues(valuesTable(t, []string{" displayName ", "Edited"}, []string{"docIds", "[]"}))
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"displayName": "Edited", "docIds": "[]"}, values)
+
+	for name, table := range map[string]*godog.Table{
+		"three cells": valuesTable(t, []string{"a", "b", "c"}),
+		"empty key":   valuesTable(t, []string{" ", "b"}),
+		"duplicate":   valuesTable(t, []string{"a", "b"}, []string{"a", "c"}),
+	} {
+		_, err := tableValues(table)
+		require.Error(t, err, name)
+	}
+}
+
+func TestRefusedCreate(t *testing.T) {
+	for status, want := range map[int]bool{
+		http.StatusCreated: false, http.StatusBadRequest: true, http.StatusConflict: true,
+		http.StatusInternalServerError: false, http.StatusBadGateway: false,
+	} {
+		require.Equal(t, want, refusedCreate(&httpx.Response{StatusCode: status}), status)
+	}
+}
+
+func TestPlanBody(t *testing.T) {
+	body := planBody("plan-1", "INACTIVE")
+	require.Equal(t, "plan-1", body["id"])
+	require.Equal(t, "Synthetic plan-1", body["displayName"])
+	require.Equal(t, "INACTIVE", body["status"])
+	require.Len(t, body["limits"], 1)
+}
+
+func TestDraftBody(t *testing.T) {
+	body, err := draftBody("api-1", "plan-1", nil)
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{
+		"displayName": "Synthetic api-1", "version": "1.0.0", "subscriptionPlanIds": []string{"plan-1"},
+	}, body)
+
+	body, err = draftBody("api-1", "plan-1", map[string]string{
+		"displayName": "Edited", "description": "d", "subscriptionPlanIds": `["a", "b"]`, "docIds": "[]",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "Edited", body["displayName"])
+	require.Equal(t, "d", body["description"])
+	require.Equal(t, []string{"a", "b"}, body["subscriptionPlanIds"])
+	require.Equal(t, []string{}, body["docIds"])
+
+	_, err = draftBody("api-1", "plan-1", map[string]string{"docIds": "doc-1"})
+	require.ErrorContains(t, err, "JSON array")
+	_, err = draftBody("api-1", "plan-1", map[string]string{"docIds": `[1]`})
+	require.ErrorContains(t, err, "JSON array")
+	_, err = draftBody("api-1", "plan-1", map[string]string{"labels": "[]"})
+	require.ErrorContains(t, err, "unsupported draft field")
+}
+
+func TestActiveAPIPortalID(t *testing.T) {
+	id, err := activeAPIPortalID([]map[string]any{
+		{"id": "pending-portal", "status": "pending"},
+		{"id": "", "status": "active"},
+		{"id": "syn-portal-abc-1", "status": "active"},
+		{"id": "live-portal", "status": "active"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "live-portal", id, "a portal a scenario created is never the one to publish to")
+
+	_, err = activeAPIPortalID(nil)
+	require.ErrorContains(t, err, "no managed API Portal")
+	_, err = activeAPIPortalID([]map[string]any{{"id": "syn-portal-abc-1", "status": "active"}})
+	require.ErrorContains(t, err, "no managed API Portal that a scenario did not create")
+	_, err = activeAPIPortalID([]map[string]any{{"id": "failed-portal", "status": "failed"}})
+	require.ErrorContains(t, err, "failed-portal: failed")
+}
+
+func TestPublicationTargetPathAndID(t *testing.T) {
+	target := publicationTarget{portal: "portal 1", apiType: "rest-api", api: "api/1"}
+	require.Equal(t, "/api-portals/portal%201/apis/rest-api/api%2F1/publish", target.path("/publish"))
+
+	target = publicationTarget{portal: "portal-1", apiType: "graphql-api", api: "api-1"}
+	parts, err := splitPublicationID(target.id())
+	require.NoError(t, err)
+	require.Equal(t, []string{"portal-1", "graphql-api", "api-1"}, parts)
+
+	for _, id := range []string{"", "a/b", "a/b/c/d", "a//c", "/b/c"} {
+		_, err := splitPublicationID(id)
+		require.Error(t, err, id)
+	}
+}
+
+func TestTargetOf(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	_, err := targetOf(ctx, "synthetic REST API")
+	require.Error(t, err)
+
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set(keyAPIPortalID, "portal-1")
+	local.Set(keyAPIID, "rest-1")
+	local.Set(keyGraphQLAPIID, "graphql-1")
+
+	target, err := targetOf(ctx, "synthetic REST API")
+	require.NoError(t, err)
+	require.Equal(t, publicationTarget{portal: "portal-1", apiType: "rest-api", api: "rest-1"}, target)
+	target, err = targetOf(ctx, "synthetic GraphQL API")
+	require.NoError(t, err)
+	require.Equal(t, publicationTarget{portal: "portal-1", apiType: "graphql-api", api: "graphql-1"}, target)
+	_, err = targetOf(ctx, "synthetic MCP server")
+	require.ErrorContains(t, err, "unsupported publication subject")
+}
+
+func TestUnpublishSettled(t *testing.T) {
+	for name, tc := range map[string]struct {
+		resp *httpx.Response
+		want bool
+	}{
+		"unpublished":       {&httpx.Response{StatusCode: http.StatusNoContent}, true},
+		"no API":            {&httpx.Response{StatusCode: http.StatusNotFound, Body: []byte(`{"code":"API_NOT_FOUND"}`)}, false},
+		"no portal":         {&httpx.Response{StatusCode: http.StatusNotFound, Body: []byte(`{"code":"API_PORTAL_NOT_FOUND"}`)}, true},
+		"unreadable 404":    {&httpx.Response{StatusCode: http.StatusNotFound, Body: []byte(`not json`)}, true},
+		"nothing published": {&httpx.Response{StatusCode: http.StatusConflict, Body: []byte(`{"code":"PUBLICATION_STATE_CONFLICT"}`)}, true},
+		"portal conflict":   {&httpx.Response{StatusCode: http.StatusConflict, Body: []byte(`{"code":"PUBLICATION_PORTAL_CONFLICT"}`)}, false},
+		"unreadable":        {&httpx.Response{StatusCode: http.StatusConflict, Body: []byte(`not json`)}, false},
+		"server error":      {&httpx.Response{StatusCode: http.StatusServiceUnavailable}, false},
+	} {
+		require.Equal(t, tc.want, unpublishSettled(tc.resp), name)
+	}
+}
+
+func TestCleanupRequests(t *testing.T) {
+	method, path, settled, err := unpublishRequest("portal-1/rest-api/api-1")
+	require.NoError(t, err)
+	require.Equal(t, http.MethodPost, method)
+	require.Equal(t, "/api-portals/portal-1/apis/rest-api/api-1/unpublish", path)
+	require.True(t, settled(&httpx.Response{StatusCode: http.StatusNoContent}))
+
+	method, path, settled, err = deleteDocumentRequest("rest-api/api-1/doc-1")
+	require.NoError(t, err)
+	require.Equal(t, http.MethodDelete, method)
+	require.Equal(t, "/apis/rest-api/api-1/docs/doc-1", path)
+	require.True(t, settled(&httpx.Response{StatusCode: http.StatusNotFound}))
+	require.False(t, settled(&httpx.Response{StatusCode: http.StatusConflict}))
+
+	_, _, _, err = unpublishRequest("malformed")
+	require.Error(t, err)
+	_, _, _, err = deleteDocumentRequest("malformed")
+	require.Error(t, err)
+}
+
+func TestSummaryStatusIs(t *testing.T) {
+	items := []map[string]any{
+		{"apiPortalId": "other", "status": "NOT_PUBLISHED"},
+		{"apiPortalId": "portal-1", "status": "PUBLISHED"},
+	}
+	require.NoError(t, summaryStatusIs(items, "portal-1", "PUBLISHED"))
+	require.ErrorContains(t, summaryStatusIs(items, "portal-1", "DEPRECATED"), "want DEPRECATED")
+	require.ErrorContains(t, summaryStatusIs(items, "missing", "PUBLISHED"), "do not list")
+	require.Error(t, summaryStatusIs(nil, "portal-1", "PUBLISHED"))
+}
+
+func TestSelectionIDs(t *testing.T) {
+	publication := map[string]any{"subscriptionPlans": []any{
+		map[string]any{"id": "plan-1"}, map[string]any{"displayName": "no id"}, "not a selection",
+		map[string]any{"id": "plan-2"},
+	}}
+	require.Equal(t, []string{"plan-1", "plan-2"}, selectionIDs(publication, "subscriptionPlans"))
+	require.Empty(t, selectionIDs(publication, "documents"))
+	require.Empty(t, selectionIDs(map[string]any{"documents": "wrong"}, "documents"))
+}
+
+func TestDefinitionFor(t *testing.T) {
+	body, contentType, err := definitionFor("valid", "graphql-api", "api-1")
+	require.NoError(t, err)
+	require.Equal(t, "application/graphql", contentType)
+	require.Equal(t, graphQLSchema, string(body))
+
+	for _, tc := range []struct{ kind, apiType string }{{"valid", "rest-api"}, {"OpenAPI", "graphql-api"}} {
+		body, contentType, err = definitionFor(tc.kind, tc.apiType, "api-1")
+		require.NoError(t, err)
+		require.Equal(t, "application/json", contentType)
+		var document map[string]any
+		require.NoError(t, json.Unmarshal(body, &document))
+		require.Equal(t, "3.0.3", document["openapi"])
+		require.Equal(t, "api-1", document["info"].(map[string]any)["title"])
+	}
+
+	body, _, err = definitionFor("invalid", "rest-api", "api-1")
+	require.NoError(t, err)
+	require.NotContains(t, string(body), "openapi")
+	_, _, err = definitionFor("missing", "rest-api", "api-1")
+	require.ErrorContains(t, err, "unsupported definition")
+}
+
+func TestForgedTokenIsAnUnsignedJWT(t *testing.T) {
+	parts := strings.Split(forgedToken(), ".")
+	require.Len(t, parts, 3)
+	header, err := base64.RawURLEncoding.DecodeString(parts[0])
+	require.NoError(t, err)
+	require.JSONEq(t, `{"alg":"RS256","typ":"JWT"}`, string(header))
+	claims, err := base64.RawURLEncoding.DecodeString(parts[1])
+	require.NoError(t, err)
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(claims, &decoded))
+	require.Greater(t, decoded["exp"], float64(time.Now().Unix()))
+	require.NotEmpty(t, parts[2])
+}
+
+func TestThumbnailFormHoldsAPNG(t *testing.T) {
+	body, contentType, err := thumbnailForm()
+	require.NoError(t, err)
+	_, params, err := mime.ParseMediaType(contentType)
+	require.NoError(t, err)
+	part, err := multipart.NewReader(bytes.NewReader(body), params["boundary"]).NextPart()
+	require.NoError(t, err)
+	require.Equal(t, "file", part.FormName())
+	require.Equal(t, "image/png", part.Header.Get("Content-Type"))
+	_, err = png.Decode(part)
+	require.NoError(t, err)
+}
+
+func TestMultipartFields(t *testing.T) {
+	body, contentType, err := multipartFields([][2]string{{"metadata", `{"id":"api-1"}`}})
+	require.NoError(t, err)
+	_, params, err := mime.ParseMediaType(contentType)
+	require.NoError(t, err)
+	form, err := multipart.NewReader(bytes.NewReader(body), params["boundary"]).ReadForm(1 << 20)
+	require.NoError(t, err)
+	require.Equal(t, []string{`{"id":"api-1"}`}, form.Value["metadata"])
+}
+
+func TestLandingPageCarriesRawHTML(t *testing.T) {
+	require.Contains(t, landingPage, "<script>")
+	require.Contains(t, landingPage, landingPageText)
+}
+
+func TestAssertCloudResponseStatusAndErrorCode(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	steps := &Steps{}
+	require.Error(t, steps.assertCloudResponseStatus(ctx, http.StatusOK))
+
+	funnel := httpx.NewFunnel(httpx.NewClient(httpx.Options{}), 0, 0)
+	require.NoError(t, funnel.Publish(ctx, &httpx.Response{
+		StatusCode: http.StatusConflict, Body: []byte(`{"code":"PUBLICATION_STATE_CONFLICT"}`),
+	}))
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusConflict))
+	require.ErrorContains(t, steps.assertCloudResponseStatus(ctx, http.StatusOK), "expected response status 200")
+	require.NoError(t, steps.assertCloudErrorCode(ctx, "PUBLICATION_STATE_CONFLICT"))
+	require.ErrorContains(t, steps.assertCloudErrorCode(ctx, "DRAFT_NOT_FOUND"), "expected error code")
+
+	require.NoError(t, funnel.Publish(ctx, &httpx.Response{StatusCode: http.StatusUnauthorized, Body: []byte(`{}`)}))
+	require.ErrorContains(t, steps.assertCloudErrorCode(ctx, "UNAUTHORIZED"), "reading the error code")
+}
+
+func ensurePortalForTest(t *testing.T, platform *starterPlatform) (portalOutcome, error) {
+	return ensureDefaultPortal(context.Background(), platform.api(t), defaultPortalName+"-abcde234", slog.Default())
+}
+
+func TestEnsureDefaultPortalLeavesAnActivePortalAlone(t *testing.T) {
+	platform := &starterPlatform{portals: []map[string]any{
+		{"id": "broken", "status": "failed"},
+		{"id": "acme-portal", "status": "active"},
+	}}
+	got, err := ensurePortalForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, portalOutcome{ID: "acme-portal"}, got)
+	require.Empty(t, platform.createdPortals, "an organisation with a portal gets no second one")
+}
+
+func TestEnsureDefaultPortalWaitsForAPortalThatIsBeingBuilt(t *testing.T) {
+	platform := &starterPlatform{noPortals: true, portalActiveAt: 3, portals: []map[string]any{
+		{"id": "building", "status": "pending"},
+	}}
+	got, err := ensurePortalForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, portalOutcome{ID: "building"}, got, "a portal that is being built is waited for, not created again")
+	require.Empty(t, platform.createdPortals)
+	require.GreaterOrEqual(t, platform.portalPolls, 3)
+}
+
+func TestEnsureDefaultPortalCreatesOneWhenTheOrganisationHasNone(t *testing.T) {
+	platform := &starterPlatform{noPortals: true, portalActiveAt: 2}
+	got, err := ensurePortalForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, portalOutcome{ID: "dap-abcde234", Created: true}, got)
+	require.Len(t, platform.createdPortals, 1)
+	require.Equal(t, "dap-abcde234", platform.createdPortals[0]["name"])
+	require.Equal(t, "dap-abcde234", platform.createdPortals[0]["handle"])
+	require.GreaterOrEqual(t, platform.portalPolls, 2, "the portal is waited for until it is active")
+}
+
+func TestEnsureDefaultPortalIgnoresPortalsThatCannotServe(t *testing.T) {
+	platform := &starterPlatform{noPortals: true, portalActiveAt: 1, portals: []map[string]any{
+		{"id": "broken", "status": "failed"},
+		{"id": "going", "status": "deleting"},
+	}}
+	got, err := ensurePortalForTest(t, platform)
+	require.NoError(t, err)
+	require.True(t, got.Created, "a failed or deleting portal is no portal to publish to")
+	require.Len(t, platform.createdPortals, 1)
+}
+
+func TestEnsureDefaultPortalStopsAtOnceWhenThePortalFails(t *testing.T) {
+	platform := &starterPlatform{noPortals: true, portalFails: true}
+	_, err := ensurePortalForTest(t, platform)
+	require.ErrorContains(t, err, "failed to provision")
+}
+
+func TestEnsureDefaultPortalDoesNotWaitForAPortalAConflictLeftNowhere(t *testing.T) {
+	platform := &starterPlatform{noPortals: true, portalCreateAs: http.StatusConflict, portalAbsent: true}
+	_, err := ensurePortalForTest(t, platform)
+	require.ErrorContains(t, err, "creating the managed API Portal")
+	require.ErrorContains(t, err, "409")
+}
+
+func TestEnsureDefaultPortalWaitsForThePortalAConflictPointsAt(t *testing.T) {
+	platform := &starterPlatform{noPortals: true, portalCreateAs: http.StatusConflict, portalActiveAt: 1}
+	got, err := ensurePortalForTest(t, platform)
+	require.NoError(t, err)
+	require.Equal(t, "dap-abcde234", got.ID)
+}
+
+func TestStarterPreparesAPortalAndHandsItToTheFinalizer(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
+	topo := cloudAPIStub(t, platform.handler(t))
+	finalizer := NewFinalizer()
+	starter, err := NewStarter(finalizer)
+	require.NoError(t, err)
+
+	require.NoError(t, starter.Start(context.Background(), topo))
+
+	require.Len(t, platform.createdPortals, 1)
+	require.Equal(t, starter.portalName(), platform.createdPortals[0]["handle"])
+	id, created := starter.Portal()
+	require.Equal(t, starter.portalName(), id)
+	require.True(t, created)
+	require.True(t, finalizer.finals.Owns([]string{starter.portalName()}),
+		"the finalizer must recognise the portal the starter created")
+}
+
+func TestStarterLeavesPortalsAloneWhenThePortalRunnerIsNotSelected(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
+	topo := cloudAPIStub(t, platform.handler(t))
+	starter, err := NewStarter(NewFinalizer())
+	require.NoError(t, err)
+	starter.SelectRunners([]string{"apip-basic", "apip-project"})
+
+	require.NoError(t, starter.Start(context.Background(), topo))
+
+	require.Empty(t, platform.createdPortals, "no selected runner needs a portal")
+	id, created := starter.Portal()
+	require.Empty(t, id)
+	require.False(t, created)
+}
+
+func TestStarterPreparesAPortalWhenThePortalRunnerIsSelected(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
+	topo := cloudAPIStub(t, platform.handler(t))
+	starter, err := NewStarter(NewFinalizer())
+	require.NoError(t, err)
+	starter.SelectRunners([]string{"apip-basic", portalRunner})
+
+	require.NoError(t, starter.Start(context.Background(), topo))
+
+	require.Len(t, platform.createdPortals, 1)
+}
+
+func TestStarterSkipsThePortalWhenTheOrganisationAlreadyHasOne(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1,
+		portals: []map[string]any{{"id": "acme-portal", "status": "active"}}}
+	topo := cloudAPIStub(t, platform.handler(t))
+	starter, err := NewStarter(NewFinalizer())
+	require.NoError(t, err)
+	starter.SelectRunners([]string{portalRunner})
+
+	require.NoError(t, starter.Start(context.Background(), topo))
+
+	require.Empty(t, platform.createdPortals)
+	id, created := starter.Portal()
+	require.Equal(t, "acme-portal", id)
+	require.False(t, created)
+}
+
+func TestStarterPortalHandleIsValid(t *testing.T) {
+	starter, err := NewStarter(nil)
+	require.NoError(t, err)
+	handle := starter.portalName()
+	require.GreaterOrEqual(t, len(handle), 3)
+	require.LessOrEqual(t, len(handle), 40)
+	require.Regexp(t, `^[a-z0-9-]+$`, handle)
+}
+
+func TestFinalizerRemovesThePortalTheStarterCreatedAndKeepsOthers(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	stub := newLeftoverStub()
+	stub.lists["/managed-api-portals"] = []map[string]any{
+		{"id": "dap-abcde234", "name": "dap-abcde234", "handle": "dap-abcde234"},
+		{"id": "acme-portal", "name": "Acme portal", "handle": "acme-portal"},
+	}
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+	finalizer := NewFinalizer()
+	finalizer.Watch(base, "abcde234")
+
+	removed, err := finalizer.Finalize(context.Background())
+	require.NoError(t, err)
+	require.Contains(t, removed, "/managed-api-portals/dap-abcde234")
+	require.NotContains(t, removed, "/managed-api-portals/acme-portal")
+}
+
+func TestSendDefectiveCreateBodyRegistersThePortalAndDropsItWhenRefused(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	for _, tc := range []struct {
+		defect string
+		check  func(t *testing.T, raw []byte)
+	}{
+		{"an unknown field", func(t *testing.T, raw []byte) {
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(raw, &body))
+			require.Equal(t, true, body["unexpected"])
+		}},
+		{"an organization field", func(t *testing.T, raw []byte) {
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(raw, &body))
+			require.Contains(t, body, "organization")
+		}},
+		{"a name that is not text", func(t *testing.T, raw []byte) {
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(raw, &body))
+			require.EqualValues(t, 42, body["name"])
+		}},
+		{"malformed JSON", func(t *testing.T, raw []byte) {
+			require.False(t, json.Valid(raw))
+		}},
+	} {
+		t.Run(tc.defect, func(t *testing.T) {
+			var registeredAtRequest []string
+			var registry *cleanup.Registry
+			status := http.StatusBadRequest
+			steps, ctx, _, reg := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+				raw, err := io.ReadAll(r.Body)
+				require.NoError(t, err)
+				tc.check(t, raw)
+				registeredAtRequest = registeredPortals(registry)
+				writeJSON(w, status, map[string]string{"code": "invalid_request"})
+			})
+			registry = reg
+			require.NoError(t, steps.sendDefectiveCreateBody(ctx, tc.defect))
+			require.Len(t, registeredAtRequest, 1, "the portal is registered before the request")
+			require.Empty(t, registeredPortals(registry), "a refused portal is dropped from cleanup")
+
+			status = http.StatusAccepted
+			require.NoError(t, steps.sendDefectiveCreateBody(ctx, tc.defect))
+			require.Len(t, registeredPortals(registry), 1, "a portal the platform took against expectation stays registered")
+		})
+	}
+	steps, ctx, _, _ := cloudSteps(t, func(http.ResponseWriter, *http.Request) {})
+	require.ErrorContains(t, steps.sendDefectiveCreateBody(ctx, "no such defect"), "the defects are")
+}
+
+func TestPortalUpdateBodyTypesTheFields(t *testing.T) {
+	body, err := portalUpdateBody(map[string]string{"name": "New", "description": "", "selfSignup": "false", "loginEnvironment": "dev"})
+	require.NoError(t, err)
+	require.Equal(t, map[string]any{"name": "New", "description": "", "selfSignup": false, "loginEnvironment": "dev"}, body)
+
+	_, err = portalUpdateBody(map[string]string{"selfSignup": "maybe"})
+	require.ErrorContains(t, err, "true or false")
+	_, err = portalUpdateBody(map[string]string{"handle": "x"})
+	require.ErrorContains(t, err, "unsupported managed API Portal update field")
+}
+
+func TestUpdateRunnerPortalPutsTheTableToThePortal(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var method, path string
+	var sent map[string]any
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		method, path = r.Method, r.URL.Path
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+		writeJSON(w, http.StatusAccepted, map[string]any{"status": portalStatusPending})
+	})
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	require.NoError(t, steps.updateRunnerPortal(ctx, valuesTable(t, []string{"selfSignup", "false"})))
+	require.Equal(t, http.MethodPut, method)
+	require.Equal(t, managedPortalsCollection+"/syn-portal-1", path)
+	require.Equal(t, map[string]any{"selfSignup": false}, sent)
+}
+
+func TestPortalUpdateDefectsBreakARule(t *testing.T) {
+	require.Len(t, portalUpdateDefects["a name longer than 255 characters"]["name"], portalNameMaxLength+1)
+	require.Len(t, portalUpdateDefects["a description longer than 1023 characters"]["description"], portalDescriptionMaxLength+1)
+	require.Empty(t, portalUpdateDefects["an empty name"]["name"])
+	require.Contains(t, portalUpdateDefects["a handle"], "handle")
+
+	_, body := portalRequestDefects["a name longer than 255 characters"]("syn-portal-1")
+	require.Len(t, body["name"], portalNameMaxLength+1)
+	_, body = portalRequestDefects["a description longer than 1023 characters"]("syn-portal-1")
+	require.Len(t, body["description"], portalDescriptionMaxLength+1)
+}
+
+func TestRequirePortalDetailsNamesWhatIsMissing(t *testing.T) {
+	complete := map[string]any{}
+	for _, field := range portalDetailFields {
+		complete[field] = "value"
+	}
+	require.NoError(t, requirePortalDetails(complete))
+
+	delete(complete, "url")
+	complete["status"] = " "
+	err := requirePortalDetails(complete)
+	require.ErrorContains(t, err, "url")
+	require.ErrorContains(t, err, "status")
+}
+
+func TestRequireNoSecretChecksFieldNamesAndNamesTheMarkerNotTheBody(t *testing.T) {
+	for _, body := range []string{
+		`{"id":"syn-portal-1","name":"Synthetic","status":"active"}`,
+		`{"name":"Secrets documentation","description":"The password policy and the shared key rules."}`,
+		`{"list":[{"id":"a","description":"client_secret is rotated yearly"}]}`,
+	} {
+		require.NoError(t, requireNoSecret([]byte(body)), body)
+	}
+	for _, body := range []string{
+		`{"sharedKey":"x"}`, `{"shared_key":"x"}`, `{"clientSecret":"x"}`, `{"dbPassword":"x"}`,
+		`{"list":[{"id":"a","sharedKey":"x"}]}`, `{"nested":{"deeper":{"client_secret":"x"}}}`,
+	} {
+		err := requireNoSecret([]byte(body))
+		require.Error(t, err, body)
+		require.NotContains(t, err.Error(), `"x"`, "the error never repeats the body")
+	}
+	require.ErrorContains(t, requireNoSecret([]byte("not json")), "not JSON")
+}
+
+func TestAssertPortalLocationNamesTheRunnerPortal(t *testing.T) {
+	steps, ctx, _, _ := cloudSteps(t, func(http.ResponseWriter, *http.Request) {})
+	local, ok := tcontext.LocalOf(ctx)
+	require.True(t, ok)
+	local.Set(keyAPIPortalID, "syn-portal-1")
+	for location, wantErr := range map[string]bool{
+		"/api/v0.9/managed-api-portals/syn-portal-1": false,
+		"/api/v0.9/managed-api-portals/other":        true,
+		"":                                           true,
+	} {
+		header := http.Header{}
+		if location != "" {
+			header.Set("Location", location)
+		}
+		require.NoError(t, steps.funnel.Publish(ctx, &httpx.Response{StatusCode: http.StatusAccepted, Headers: header}))
+		err := steps.assertPortalLocation(ctx)
+		if wantErr {
+			require.ErrorContains(t, err, "Location header", location)
+		} else {
+			require.NoError(t, err, location)
+		}
+	}
+}
+
+func TestPortalViewPathReadsTheOrganisationAndView(t *testing.T) {
+	for path, want := range map[string][2]string{
+		"/api-portal/acme/views/default":       {"acme", "default"},
+		"/api-portal/acme/views/default/":      {"acme", "default"},
+		"/api-portal/acme/views/default/login": {"acme", "default"},
+	} {
+		org, view, ok := portalViewPath(path)
+		require.True(t, ok, path)
+		require.Equal(t, want, [2]string{org, view}, path)
+	}
+	for _, path := range []string{"/api-portal/", "/api-portal/acme", "/api-portal/acme/views", "/other/acme/views/default", "/api-portal//views/default"} {
+		_, _, ok := portalViewPath(path)
+		require.False(t, ok, path)
+	}
+}
+
+func TestDraftBodyTakesObjectsAndVisibility(t *testing.T) {
+	body, err := draftBody("api-1", "plan-1", map[string]string{
+		"agentVisibility": "HIDDEN",
+		"endpoints":       `{"productionUrl":"https://prod.example.com"}`,
+		"owners":          `{"businessOwner":"Pat"}`,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "HIDDEN", body["agentVisibility"])
+	require.Equal(t, map[string]any{"productionUrl": "https://prod.example.com"}, body["endpoints"])
+	require.Equal(t, map[string]any{"businessOwner": "Pat"}, body["owners"])
+
+	_, err = draftBody("api-1", "plan-1", map[string]string{"owners": "not json"})
+	require.ErrorContains(t, err, "must be a JSON object")
+}
+
+func TestThumbnailDefectsAreRefusableContent(t *testing.T) {
+	require.NotEqual(t, pngSignature, thumbnailDefects["text declared as PNG"]()[:1])
+	large := thumbnailDefects["larger than 2 MiB"]()
+	require.Greater(t, len(large), thumbnailMaxBytes)
+	require.Equal(t, pngSignature, large[:len(pngSignature)])
+	_, err := png.Decode(bytes.NewReader(large))
+	require.NoError(t, err, "the oversized thumbnail is a real image, so only its size can refuse it")
+
+	valid, err := thumbnailPNG()
+	require.NoError(t, err)
+	require.Equal(t, pngSignature, valid[:len(pngSignature)])
+	require.Less(t, len(valid), thumbnailMaxBytes)
+}
+
+func TestTrySaveDraftWithLengthSendsTheFieldAtThatLength(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var sent map[string]any
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPut, r.Method)
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "PUBLICATION_VALIDATION_FAILED"})
+	})
+	local.Set(keyAPIPortalID, "portal-1")
+	local.Set(keyAPIID, "api-1")
+	local.Set(keyPlanID, "plan-1")
+	for field, length := range map[string]int{"displayName": 256, "version": 31, "description": 0} {
+		require.NoError(t, steps.trySaveDraftWithLength(ctx, field, length))
+		require.Len(t, sent[field], length, field)
+	}
+	require.ErrorContains(t, steps.trySaveDraftWithLength(ctx, "tags", 1), "must be a JSON array")
+}
+
+func TestSaveDefectiveThumbnailRejectsAnUnknownDefect(t *testing.T) {
+	steps, ctx, _, _ := cloudSteps(t, func(http.ResponseWriter, *http.Request) {})
+	require.ErrorContains(t, steps.saveDefectiveThumbnail(ctx, "no such defect"), "unknown thumbnail defect")
+}
+
+func TestAssertSilentSignInRedirectChecksTheAuthorizationRequest(t *testing.T) {
+	steps, ctx, local, _ := cloudSteps(t, func(http.ResponseWriter, *http.Request) {})
+	local.Set(keyAPIPortalURL, "https://abc-portal.example.com")
+	for location, want := range map[string]string{
+		"https://idp.example.com/oauth2/authorize?prompt=none&response_type=code&client_id=c": "",
+		"https://idp.example.com/oauth2/authorize?response_type=code&client_id=c":             "silent sign-in",
+		"https://idp.example.com/login?prompt=none&response_type=code":                        "not an authorization endpoint",
+		"https://abc-portal.example.com/api-portal/org/views/default/login":                   "kept the visitor on the portal",
+		"": "did not redirect",
+	} {
+		header := http.Header{}
+		if location != "" {
+			header.Set("Location", location)
+		}
+		status := http.StatusFound
+		if location == "" {
+			status = http.StatusOK
+		}
+		require.NoError(t, steps.funnel.Publish(ctx, &httpx.Response{StatusCode: status, Headers: header, URL: "https://abc-portal.example.com/api-portal/org/views/default"}))
+		err := steps.assertSilentSignInRedirect(ctx)
+		if want == "" {
+			require.NoError(t, err, location)
+		} else {
+			require.ErrorContains(t, err, want, location)
+		}
+	}
+}
+
+func TestRequestPortalUnderDeletedHandleRepeatsARefusalThatMayClear(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	fastPortalPolls(t)
+	for _, tc := range []struct {
+		name     string
+		answers  []int
+		attempts int
+		kept     bool
+	}{
+		{"a conflict and a server error clear", []int{http.StatusConflict, http.StatusInternalServerError, http.StatusAccepted}, 3, true},
+		{"a client error is final", []int{http.StatusBadRequest}, 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			attempts := 0
+			steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
+				answer := tc.answers[min(attempts, len(tc.answers)-1)]
+				attempts++
+				writeJSON(w, answer, map[string]string{"id": "syn-portal-1", "status": portalStatusPending})
+			})
+			local.Set(keyAPIPortalID, "syn-portal-1")
+			require.NoError(t, steps.requestPortalUnderDeletedHandle(ctx))
+			require.Equal(t, tc.attempts, attempts)
+			require.Equal(t, tc.kept, len(registeredPortals(registry)) == 1)
+		})
+	}
+}
+
+func startStarterAgainst(t *testing.T, platform *starterPlatform) (*Starter, error) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	topo := cloudAPIStub(t, platform.handler(t))
+	starter, err := NewStarter(nil)
+	require.NoError(t, err)
+	return starter, starter.Start(context.Background(), topo)
+}
+
+func activeGatewayList() []map[string]any {
+	return []map[string]any{{"id": "development-default", "environment": "development", "status": "ACTIVE", "isActive": true}}
+}
+
+func TestStarterSkipsThePortalRunnerWhenThePortalCannotBePrepared(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList(), noPortals: true, portalFails: true}
+	starter, err := startStarterAgainst(t, platform)
+	require.NoError(t, err, "a portal that cannot be built does not fail the run")
+	require.ErrorContains(t, starter.PortalUnavailable(), "failed to provision")
+
+	require.ErrorIs(t, starter.skipScenario("features/apip_portal.feature", "any portal scenario"), godog.ErrSkip)
+	require.ErrorIs(t, starter.skipScenario("/work/suites/cloud/features/apip_portal.feature", "any portal scenario"), godog.ErrSkip)
+	require.NoError(t, starter.skipScenario("features/apip_basic.feature", "a scenario of another runner"))
+
+	id, _ := starter.Gateway()
+	require.Equal(t, "development-default", id, "the gateway is still prepared for the other runners")
+}
+
+func TestStarterSkipsNothingWhenThePortalIsPrepared(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList()}
+	starter, err := startStarterAgainst(t, platform)
+	require.NoError(t, err)
+	require.NoError(t, starter.PortalUnavailable())
+	require.NoError(t, starter.skipScenario("features/apip_portal.feature", "a portal scenario"))
+}
+
+func TestStarterStillFailsTheRunWhenTheGatewayCannotBePrepared(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), failsWith: "no capacity"}
+	starter, err := startStarterAgainst(t, platform)
+	require.ErrorContains(t, err, "default gateway")
+	require.NoError(t, starter.PortalUnavailable(), "the portal was never attempted")
+}
+
+func TestSaveDefinitionAcceptsOnlyAnswersAContentRefusalCanGive(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var status int
+	var code string
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		if status == http.StatusNoContent {
+			w.WriteHeader(status)
+			return
+		}
+		writeJSON(w, status, map[string]string{"code": code})
+	})
+	local.Set(keyAPIPortalID, "portal-1")
+	local.Set(keyAPIID, "api-1")
+	for name, tc := range map[string]struct {
+		kind    string
+		status  int
+		code    string
+		wantErr bool
+	}{
+		"stored":                          {"invalid", http.StatusNoContent, "", false},
+		"refused for its content":         {"invalid", http.StatusBadRequest, publicationValidationFailed, false},
+		"OpenAPI refused for its content": {"OpenAPI", http.StatusBadRequest, publicationValidationFailed, false},
+		"bad request for another reason":  {"invalid", http.StatusBadRequest, "API_NOT_FOUND", true},
+		"no token":                        {"invalid", http.StatusUnauthorized, "unauthorized", true},
+		"server error":                    {"OpenAPI", http.StatusInternalServerError, "internal_error", true},
+		"a valid definition is stored":    {"valid", http.StatusNoContent, "", false},
+		"a valid definition is refused":   {"valid", http.StatusBadRequest, publicationValidationFailed, true},
+	} {
+		status, code = tc.status, tc.code
+		err := steps.saveDefinition(ctx, tc.kind, "synthetic REST API")
+		if tc.wantErr {
+			require.Error(t, err, name)
+		} else {
+			require.NoError(t, err, name)
+		}
+	}
+}
+
+func TestFindOtherEnvironmentRecordsAnEnvironmentThePortalDoesNotUse(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	environments := []map[string]any{{"name": portalLoginEnvironment, "id": portalLoginEnvironment}}
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/environments", r.URL.Path)
+		writeJSON(w, http.StatusOK, map[string]any{"list": environments})
+	})
+	require.ErrorIs(t, steps.findOtherEnvironment(ctx), godog.ErrSkip, "a single environment cannot test a change of environment")
+
+	environments = append(environments, map[string]any{"name": "staging", "id": "staging"})
+	require.NoError(t, steps.findOtherEnvironment(ctx))
+	got, err := requiredValue(ctx, keyOtherEnvironment)
+	require.NoError(t, err)
+	require.Equal(t, "staging", got)
+}
+
+func TestDeletingTheAPIDropsItsPublicationCleanup(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodDelete, r.Method)
+		w.WriteHeader(http.StatusNoContent)
+	})
+	local.Set(keyAPIPortalID, "portal-1")
+	local.Set(keyAPIID, "api-1")
+	require.NoError(t, registry.Register(cleanup.Resource{Kind: cloudPublicationKind, ID: "portal-1/rest-api/api-1", Actor: resourceActor}))
+	require.NoError(t, registry.Register(cleanup.Resource{Kind: cloudPublicationKind, ID: "portal-1/rest-api/another-api", Actor: resourceActor}))
+
+	require.NoError(t, steps.deleteAPI(ctx))
+	pending := registry.Pending()
+	require.Len(t, pending, 1, "only the deleted API's publication is dropped")
+	require.Equal(t, "portal-1/rest-api/another-api", pending[0].ID)
 }
