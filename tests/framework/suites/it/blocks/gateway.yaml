@@ -81,6 +81,11 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/core/subscription_plan_management.feature
+      # Plan conditions are new in the gateway management API.
+      - name: subscription-plan-conditions
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/subscription_plan_conditions.feature
       # The ap CLI built from this checkout, driving the gateway through its management and
       # admin APIs. The CLI follows the current contracts, so it is not run against 1.1.0.
       - name: ap-cli-gateway
