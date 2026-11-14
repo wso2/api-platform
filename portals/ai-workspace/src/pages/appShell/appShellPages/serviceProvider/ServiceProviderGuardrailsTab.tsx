@@ -51,6 +51,10 @@ import { getGuardrails, getPolicies } from '../../../../apis/policyHubApis';
 import { getGatewayCustomPolicies } from '../../../../apis/gatewayPolicyApis';
 import type { GatewayCustomPolicy } from '../../../../apis/gatewayPolicyApis';
 import { useLLMProvider } from '../../../../contexts/llmProvider';
+import {
+  collectWriteOnlyPaths,
+  promoteWriteOnlyParams,
+} from '../../../../utils/policySecrets';
 import { useGuardrails } from '../../../../contexts/GuardrailsContext';
 import useAIWorkspaceSnackbar from '../../../../hooks/aiWorkspaceSnackbar';
 import { logger } from '../../../../utils/logger';
@@ -652,8 +656,23 @@ export default function ServiceProviderGuardrailsTab() {
     };
   };
 
-  const handlePolicySubmit = async (params: ParameterValues) => {
+  const handlePolicySubmit = async (submittedParams: ParameterValues) => {
     if (!provider || !selectedGuardrailPolicy || isLoading || error) return;
+
+    // A credential typed into a parameter the policy declares write-only is
+    // stored as a secret and saved as a reference, the same way an upstream
+    // auth value is. A policy that declares none — an older gateway, or a
+    // definition predating the annotation — is saved exactly as typed.
+    const policyDefinitionSource = (selectedGuardrailPolicy.customPolicyDefinition ??
+      selectedGuardrailPolicy) as Record<string, unknown>;
+    const params: ParameterValues = await promoteWriteOnlyParams(
+      submittedParams,
+      collectWriteOnlyPaths(policyDefinitionSource),
+      {
+        artifactName: provider.displayName || provider.id,
+        policyName: selectedGuardrailPolicy.name,
+      },
+    );
 
     const {
       status,
