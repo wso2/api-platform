@@ -98,6 +98,7 @@ blocks:
       - name: subscription-plans
         features:
           - features/apiportal/subscriptions/subscription_plans.feature
+          - features/apiportal/subscriptions/subscription_plan_conditions.feature
       - name: discovery
         features:
           - features/apiportal/ai/discovery.feature
