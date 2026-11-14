@@ -96,7 +96,12 @@ func (ec *PolicyExecutionContext) unwindServingUpstreamChain(
 		chain.PolicySpecs,
 		"",
 		UpstreamChainKey(cluster),
-		false,
+		// The CHAIN's own flag, not a literal false. The executor skips every
+		// ExecutionCondition when this is false, so hard-coding it ran a provider policy
+		// whose condition said not to — on the response half only, while the request half
+		// honoured it. A condition that gates a transformer would then have wrapped
+		// nothing and unwrapped the response anyway.
+		chain.HasExecutionConditions,
 	)
 }
 
@@ -131,6 +136,37 @@ func (ec *PolicyExecutionContext) unwindServingUpstreamChainBody(ctx context.Con
 		chain.PolicySpecs,
 		"",
 		UpstreamChainKey(cluster),
-		false,
+		chain.HasExecutionConditions, // see the header half
 	)
+}
+
+// ServingUpstreamChainRequiresResponseBody reports whether the chain that wrapped this response
+// has a response-BODY policy, so the body has to be delivered even when the route's own chain
+// wants none.
+//
+// Without this the gate that decides body delivery read the route chain alone. An API whose only
+// body work is a provider transformer — the shape this feature exists for, since the route chain
+// often has no body policy at all — told Envoy to skip the response body, and the body unwind
+// then had nothing to run on: the provider's reverse translation never happened and the client
+// received the fallback vendor's payload shape.
+//
+// Streaming is excluded deliberately rather than overlooked. A reverse transform is a
+// whole-document conversion, so it cannot run chunk by chunk, and the streaming body path does
+// not unwind at all; asking Envoy for a streamed body here would buffer or forward chunks for a
+// chain that has nothing to do with them. A streamed cross-vendor response therefore still
+// reaches the client in the serving provider's shape, which is the documented streaming limit of
+// this policy, not a new one.
+func (ec *PolicyExecutionContext) ServingUpstreamChainRequiresResponseBody() bool {
+	if ec.isStreamingResponse || ec.server == nil || ec.server.baselines == nil || ec.server.kernel == nil {
+		return false
+	}
+	cluster, ok := ec.server.baselines.ServingCluster(ec.attemptKey)
+	if !ok {
+		// Before an attempt reaches the upstream position there is no serving cluster, so
+		// the request-phase mode decision never sees this; the response-header callback is
+		// where it takes effect, and Envoy honours a ModeOverride returned from there.
+		return false
+	}
+	chain := ec.server.kernel.UpstreamChainForCluster(cluster)
+	return chain != nil && chain.RequiresResponseBody
 }
