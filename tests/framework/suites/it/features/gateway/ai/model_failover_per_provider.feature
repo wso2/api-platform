@@ -233,3 +233,88 @@ Feature: Each attempt carries its own provider's transformer and credential
     Then the response should be successful
     When I delete the LLM provider "${CTX:vendorCName}"
     Then the response should be successful
+
+  # ====================================================================
+  #
+  # The scenarios above prove the REQUEST half: each attempt was shaped and credentialed for
+  # the vendor it reached. They cannot prove the response half, because every upstream here is
+  # an echo backend - what comes back is what the vendor received, so a response that was
+  # never adapted on the way out looks exactly like one that was.
+  #
+  # That is the gap this scenario closes, and it closes it without needing a vendor-shaped
+  # backend. A provider's per-attempt chain runs on the response too, by being unwound in
+  # reverse at the head of the downstream response phase (FR-037h). Any response-direction
+  # policy in that chain is therefore observable from the client: set-headers in response mode
+  # stamps a marker, and the client either sees it or the unwind did not happen.
+  #
+  # Attached to the FALLBACK provider only, so the marker also proves attribution: it must
+  # come from the chain of the provider that actually served, not the one that failed first.
+
+  @model-failover-response-unwind
+  Scenario: The serving provider's per-attempt chain runs on the response too
+    Given I generate a unique resource name from "unwind-dead" and store it as "deadName"
+    And I generate a unique API version from "unwind-dead" and store it as "deadVersion"
+    And I generate a unique API context from "/unwind-dead" and store it as "deadContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                     |
+      | name               | ${CTX:deadName}                               |
+      | displayName        | ${CTX:deadName}                               |
+      | version            | ${CTX:deadVersion}                            |
+      | template           | openai                                        |
+      | spec.context       | ${CTX:deadContext}                            |
+      | spec.upstream.url  | http://unwind-dead-nonexistent:9080/dead      |
+      | accessControl.mode | allow_all                                     |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "unwind-live" and store it as "liveName"
+    And I generate a unique API version from "unwind-live" and store it as "liveVersion"
+    And I generate a unique API context from "/unwind-live" and store it as "liveContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                  |
+      | name               | ${CTX:liveName}                            |
+      | displayName        | ${CTX:liveName}                            |
+      | version            | ${CTX:liveVersion}                         |
+      | template           | openai                                     |
+      | spec.context       | ${CTX:liveContext}                         |
+      | spec.upstream.url  | http://testbench:3000/unwind-live-upstream |
+      | accessControl.mode | allow_all                                  |
+    Then the response should be successful
+
+    # set-headers in RESPONSE mode, on the fallback provider's own policies list. It runs in
+    # that provider's per-attempt chain, which the request direction enters once per attempt -
+    # and which the response direction reaches only through the unwind.
+    Given I generate a unique resource name from "unwind" and store it as "proxyName"
+    And I generate a unique API version from "unwind" and store it as "proxyVersion"
+    And I generate a unique API context from "/unwind" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                                                                                                                                                      |
+      | name                   | ${CTX:proxyName}                                                                                                                                                                                                                               |
+      | displayName            | ${CTX:proxyName}                                                                                                                                                                                                                               |
+      | version                | ${CTX:proxyVersion}                                                                                                                                                                                                                            |
+      | context                | ${CTX:proxyContext}                                                                                                                                                                                                                            |
+      | provider.id            | ${CTX:deadName}                                                                                                                                                                                                                                |
+      | spec.providers         | [{"id":"${CTX:deadName}","isPrimary":true},{"id":"${CTX:liveName}","alias":"live-vendor","policies":[{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"x-unwound-by","value":"live-vendor"}]}}}]}]                     |
+      | spec.operationPolicies | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"gpt-4o","provider":"live-vendor"}]}]}}]}]                    |
+    Then the response should be successful
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    # Two attempts: the primary refused, the fallback served.
+    And the response header "x-envoy-attempt-count" should be "2"
+
+    # THE assertion. This header exists only if the serving provider's per-attempt chain was
+    # run in the response direction. Without the unwind the request still succeeds and the
+    # body is identical - the header is the only difference, which is precisely why a
+    # request-path assertion could never have caught this.
+    And the response header "x-unwound-by" should be "live-vendor"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:deadName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:liveName}"
+    Then the response should be successful
