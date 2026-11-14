@@ -90,7 +90,7 @@ func (s *ExternalProcessorServer) handleUpstreamRequestHeaders(
 	// request id (attempt_baseline_store.go). Not dynamic metadata: that route would rest on an
 	// assumption never measured — that an UPSTREAM ext_proc's metadata write survives into the
 	// next attempt — where process memory simply does.
-	requestID := requestIDFrom(headers)
+	requestID := attemptKeyFrom(req, headers)
 	baseline, known := s.baselines.Lookup(requestID)
 	if !known {
 		// First attempt: it IS the baseline, and every later attempt resets to it.
@@ -651,4 +651,24 @@ func upstreamModeOverride(chain *registry.PolicyChain) *extprocconfigv3.Processi
 		RequestHeaderMode: extprocconfigv3.ProcessingMode_SEND,
 		RequestBodyMode:   extprocconfigv3.ProcessingMode_BUFFERED,
 	}
+}
+
+// attemptKeyFrom returns the key for this request's attempt stores.
+//
+// Prefers the engine-minted attempt key, forwarded in the downstream phase's dynamic metadata.
+// Falls back to the request id only when the key is absent — a request that never passed through
+// a downstream phase that publishes one. The fallback is the OLD behaviour and carries its
+// hazard: Envoy preserves a client-supplied x-request-id, so two concurrent requests can share
+// one and collide in the store. Preferring the key is what removes that for every ordinary
+// request; the fallback keeps an unkeyed request working rather than losing its baseline.
+func attemptKeyFrom(req *extprocv3.ProcessingRequest, headers *corev3.HeaderMap) string {
+	ns, ok := req.GetMetadataContext().GetFilterMetadata()[constants.ExtProcFilterName]
+	if ok && ns != nil {
+		if value, present := ns.GetFields()[AttemptKeyMetadataField]; present {
+			if key := value.GetStringValue(); key != "" {
+				return key
+			}
+		}
+	}
+	return requestIDFrom(headers)
 }

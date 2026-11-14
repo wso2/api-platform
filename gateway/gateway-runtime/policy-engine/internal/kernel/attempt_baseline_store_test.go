@@ -200,3 +200,32 @@ func TestAttemptBaselineStore_ServingClusterNeedsAnEntry(t *testing.T) {
 		t.Fatal("recorded a serving cluster for a request with no baseline entry")
 	}
 }
+
+// Two requests that carry the SAME client x-request-id must not share an attempt-store entry.
+//
+// Envoy preserves a client-supplied x-request-id in this configuration — measured directly, with
+// no x-forwarded-for needed — so the id is caller-controlled and repeatable. Keying the stores on
+// it let one request's serving cluster be read back by another, which unwinds a response with the
+// wrong provider's chain. The engine-minted attempt key is what separates them.
+func TestAttemptKey_IsUniquePerRequestEvenWithARepeatedRequestID(t *testing.T) {
+	first, second := newAttemptKey(), newAttemptKey()
+	if first == second {
+		t.Fatalf("two requests got the same attempt key (%q); concurrent requests would share "+
+			"one store entry", first)
+	}
+
+	store := newAttemptBaselineStore()
+	store.Remember(first, requestBaseline{Path: "/a"})
+	store.Remember(second, requestBaseline{Path: "/b"})
+	store.RememberServingCluster(first, "cluster_openai")
+	store.RememberServingCluster(second, "cluster_anthropic")
+
+	gotFirst, _ := store.ServingCluster(first)
+	gotSecond, _ := store.ServingCluster(second)
+	if gotFirst == gotSecond {
+		t.Fatalf("both requests resolved to %q; one response would unwind the other's chain", gotFirst)
+	}
+	if gotFirst != "cluster_openai" || gotSecond != "cluster_anthropic" {
+		t.Fatalf("serving clusters crossed over: %q / %q", gotFirst, gotSecond)
+	}
+}

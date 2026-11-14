@@ -35,6 +35,7 @@ func TestUnwindServingUpstreamChain_NoAttemptRecorded(t *testing.T) {
 	server := newTestServerWithStore(t, nil)
 	ec := newPolicyExecutionContext(server, "test-route", nil)
 	ec.requestID = "req-no-attempt"
+	ec.attemptKey = "req-no-attempt"
 
 	if _, err := ec.unwindServingUpstreamChain(context.Background()); err != nil {
 		t.Fatalf("unwinding a request with no recorded attempt must be a no-op, got %v", err)
@@ -50,6 +51,7 @@ func TestUnwindServingUpstreamChain_RecordedClusterWithNoChain(t *testing.T) {
 
 	ec := newPolicyExecutionContext(server, "test-route", nil)
 	ec.requestID = "req-1"
+	ec.attemptKey = "req-1" // the stores key on the attempt key, not the request id
 
 	if _, err := ec.unwindServingUpstreamChain(context.Background()); err != nil {
 		t.Fatalf("a cluster with no published chain must unwind nothing, got %v", err)
@@ -74,6 +76,7 @@ func TestUnwindServingUpstreamChain_UsesTheServingAttemptNotTheFirst(t *testing.
 	// assertion is that it looks up the serving one and returns cleanly rather than the first.
 	ec := newPolicyExecutionContext(server, "test-route", nil)
 	ec.requestID = "req-1"
+	ec.attemptKey = "req-1" // the stores key on the attempt key, not the request id
 	if _, err := ec.unwindServingUpstreamChain(context.Background()); err != nil {
 		t.Fatalf("unwind returned %v", err)
 	}
@@ -115,6 +118,7 @@ func TestUnwindServingUpstreamChain_ReturnsTheExecutedResults(t *testing.T) {
 
 	ec := newPolicyExecutionContext(server, "test-route", nil)
 	ec.requestID = "req-1"
+	ec.attemptKey = "req-1" // the stores key on the attempt key, not the request id
 	ec.responseHeaderCtx = &policy.ResponseHeaderContext{
 		SharedContext:   ec.sharedCtx,
 		ResponseStatus:  200,

@@ -17,7 +17,9 @@
 package kernel
 
 import (
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -211,4 +213,24 @@ func (s *attemptBaselineStore) ServingCluster(requestID string) (string, bool) {
 		return "", false
 	}
 	return entry.servingCluster, true
+}
+
+// AttemptKeyMetadataField carries the attempt key to the upstream position, inside the engine's
+// own dynamic-metadata namespace. Dynamic metadata written by the downstream request phase is
+// forwarded to the upstream ext_proc stream — measured — so no header is added and nothing
+// reaches the provider.
+const AttemptKeyMetadataField = "attempt_key"
+
+// attemptKeySeq makes every attempt key unique within this process.
+var attemptKeySeq atomic.Uint64
+
+// newAttemptKey returns a collision-free key for one client request's attempt stores.
+//
+// Deliberately not the request id. Envoy preserves a client-supplied x-request-id in this
+// configuration — measured directly, and without needing an internal-looking x-forwarded-for —
+// so the id is caller-controlled and two concurrent requests can share one. The analytics
+// correlation store already refuses the request id as a key for exactly this reason; this is the
+// same refusal applied to the attempt stores, which the response unwind reads.
+func newAttemptKey() string {
+	return "ak-" + strconv.FormatUint(attemptKeySeq.Add(1), 36)
 }

@@ -100,6 +100,13 @@ type PolicyExecutionContext struct {
 
 	// Request ID for correlation
 	requestID string
+	// attemptKey keys the per-request attempt stores (baseline, serving cluster). It is NOT
+	// the request id: Envoy preserves a client-supplied x-request-id — measured, with no
+	// x-forwarded-for needed — so two concurrent requests can carry the same one and would
+	// share a store entry, unwinding one response with the other's provider chain. Minted
+	// here, published in the engine's dynamic-metadata namespace, and read back at the
+	// upstream position, which is the only channel both positions can see.
+	attemptKey string
 
 	// correlationToken keys this stream's correlation-store entry. It is unique
 	// per ext_proc stream (see newCorrelationToken) rather than the request id,
@@ -1590,6 +1597,14 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 			make([]executor.ResponseHeaderPolicyResult, 0, len(unwindResult.Results)+len(execResult.Results)),
 			unwindResult.Results...), execResult.Results...)
 	}
+	// A short circuit in the unwound chain has to carry too. Merging only Results dropped it,
+	// which is the same class of bug as discarding the whole result: the policy ran, decided to
+	// replace the response, and the decision went nowhere. Only adopted when the route's own
+	// chain did not already short-circuit — the route runs after and its decision is later.
+	if unwindResult != nil && unwindResult.ShortCircuited && !execResult.ShortCircuited {
+		execResult.ShortCircuited = true
+		execResult.FinalAction = unwindResult.FinalAction
+	}
 
 	// Propagate header mutations into the shared in-memory context so that body-phase
 	// policies (OnResponseBody / OnResponseBodyChunk) observe the post-mutation headers.
@@ -2034,6 +2049,7 @@ func (ec *PolicyExecutionContext) buildRequestContexts(headers *extprocv3.HttpHe
 
 	ec.sharedCtx = sharedCtx
 	ec.requestID = requestID
+	ec.attemptKey = newAttemptKey()
 
 	wrappedHeaders := policy.NewHeaders(headersMap)
 

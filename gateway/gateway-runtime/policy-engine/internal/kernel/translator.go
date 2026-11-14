@@ -671,6 +671,17 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 			applied = true
 		}
 	}
+	// Publish the attempt key for the upstream position. Written AFTER the policies' own
+	// metadata is merged into this map, so a policy cannot displace it.
+	if execCtx.attemptKey != "" {
+		ns, ok := dynamicMetadata[constants.ExtProcFilterName]
+		if !ok || ns == nil {
+			ns = map[string]interface{}{}
+			dynamicMetadata[constants.ExtProcFilterName] = ns
+		}
+		ns[AttemptKeyMetadataField] = execCtx.attemptKey
+	}
+
 	if !applied && execCtx.defaultUpstreamCluster != "" {
 		applyDefaultUpstream(execCtx, headerOps, dynamicMetadata)
 	}
