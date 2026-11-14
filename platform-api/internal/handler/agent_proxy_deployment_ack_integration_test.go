@@ -201,9 +201,10 @@ func TestAgentProxyDeploymentAck_StaleAckDoesNotOverwriteNewerState(t *testing.T
 	env.assertState(t, deploymentID, "UNDEPLOYING", nil)
 }
 
-// A success that arrives after the timeout job gave up does not resurrect the
-// deployment: the status resource keeps reporting the timeout.
-func TestAgentProxyDeploymentAck_LateAckAfterTimeoutIsDiscarded(t *testing.T) {
+// A success that arrives after the timeout job gave up settles the deployment:
+// the gateway applied it late (e.g. after being offline), and performed_at still
+// matches, so the status follows what the gateway serves.
+func TestAgentProxyDeploymentAck_LateAckAfterTimeoutSettlesDeployment(t *testing.T) {
 	env := setupAgentAckEnv(t)
 	deploymentID := env.deploy(t, env.gateway)
 	token := env.performedAt(t, env.gatewayUUID)
@@ -214,7 +215,47 @@ func TestAgentProxyDeploymentAck_LateAckAfterTimeoutIsDiscarded(t *testing.T) {
 	}
 
 	env.apply(t, env.gatewayAck(deploymentID, "deploy", "success", "", token))
-	env.assertState(t, deploymentID, "FAILED", model.DeploymentErrorTimeout)
+	env.assertState(t, deploymentID, "DEPLOYED", nil)
+}
+
+// A late success settles only a timeout, and only for the action the
+// deployment was waiting on; any other failure is left as it is.
+func TestAgentProxyDeploymentAck_LateAckSettlesOnlyMatchingTimeout(t *testing.T) {
+	t.Run("gateway-reported failure", func(t *testing.T) {
+		env := setupAgentAckEnv(t)
+		deploymentID := env.deploy(t, env.gateway)
+		token := env.performedAt(t, env.gatewayUUID)
+		env.apply(t, env.gatewayAck(deploymentID, "deploy", "failed", model.DeploymentErrorAgentValidationFailed, token))
+
+		env.apply(t, env.gatewayAck(deploymentID, "deploy", "success", "", token))
+		env.assertState(t, deploymentID, "FAILED", model.DeploymentErrorAgentValidationFailed)
+	})
+	t.Run("mismatched action", func(t *testing.T) {
+		env := setupAgentAckEnv(t)
+		deploymentID := env.deploy(t, env.gateway)
+		token := env.performedAt(t, env.gatewayUUID)
+		if _, err := env.deploymentRepo.UpdateStatusWithPerformedAtGuard(env.proxyUUID, agentProxyOrg, env.gatewayUUID,
+			model.DeploymentStatusFailed, model.DeploymentErrorTimeout, token,
+			[]model.DeploymentStatus{model.DeploymentStatusDeploying}); err != nil {
+			t.Fatalf("simulate timeout: %v", err)
+		}
+
+		env.apply(t, env.gatewayAck(deploymentID, "undeploy", "success", "", token))
+		env.assertState(t, deploymentID, "FAILED", model.DeploymentErrorTimeout)
+	})
+	t.Run("other deployment", func(t *testing.T) {
+		env := setupAgentAckEnv(t)
+		deploymentID := env.deploy(t, env.gateway)
+		token := env.performedAt(t, env.gatewayUUID)
+		if _, err := env.deploymentRepo.UpdateStatusWithPerformedAtGuard(env.proxyUUID, agentProxyOrg, env.gatewayUUID,
+			model.DeploymentStatusFailed, model.DeploymentErrorTimeout, token,
+			[]model.DeploymentStatus{model.DeploymentStatusDeploying}); err != nil {
+			t.Fatalf("simulate timeout: %v", err)
+		}
+
+		env.apply(t, env.gatewayAck("other-deployment", "deploy", "success", "", token))
+		env.assertState(t, deploymentID, "FAILED", model.DeploymentErrorTimeout)
+	})
 }
 
 func TestAgentProxyDeploymentAck_UndeployTransitions(t *testing.T) {
