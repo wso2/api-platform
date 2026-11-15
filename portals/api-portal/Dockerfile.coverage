@@ -1,0 +1,45 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# API Portal coverage image — integration tests only, never released or shipped.
+#
+# Built on top of the release image (see Dockerfile), adding:
+#   - the browser scripts (src/scripts) instrumented for coverage, and
+#   - a writable /coverage folder for Node's V8 coverage output (NODE_V8_COVERAGE).
+#
+# Build it through docker-bake.coverage.hcl, which supplies the two named build
+# contexts this file uses: "release" (the release image, built in the same run) and
+# "coverage-scripts" (tests/framework/tools). `make build ENABLE_COVERAGE=true` does.
+
+# Instrument the scripts taken from the release image itself, in a throwaway stage,
+# so neither npm nor istanbul-lib-instrument ends up in the coverage image (the
+# release image has npm removed). The instrumenter comes from the coverage-scripts
+# build context and istanbul from a cache mount; neither lands in an image layer.
+FROM node:24-alpine AS instrument
+WORKDIR /work
+COPY --from=release /app/src/scripts ./src/scripts
+RUN --mount=type=bind,from=coverage-scripts,source=instrument-browser-coverage.js,target=/tmp/instrument-browser-coverage.js \
+    --mount=type=cache,target=/tmp/coverage-npm-cache \
+    npm install istanbul-lib-instrument@6.0.3 --no-save --prefix /tmp/coverage-npm-cache \
+ && NODE_PATH=/tmp/coverage-npm-cache/node_modules node /tmp/instrument-browser-coverage.js src/scripts
+
+FROM release
+USER 0
+COPY --from=instrument /work/src/scripts /app/src/scripts
+RUN mkdir -p /coverage && chown 10001:0 /coverage && chmod g=u /coverage
+USER 10001:10001

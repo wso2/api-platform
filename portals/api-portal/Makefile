@@ -44,6 +44,10 @@ help: ## Show this help message
 	@echo 'Build Targets:'
 	@echo '  make build                      - Build API Portal Docker image (buildx)'
 	@echo '  make build-and-push-multiarch   - Build and push multi-arch image to GHCR'
+	@echo '  make binary                     - Build the binary zip (target/wso2apip-api-portal-binary-<VERSION>.zip)'
+	@echo '  make binary-image               - Build the binary zip as an image (PUSH=true to push it)'
+	@echo '  make product-binary PLATFORM_API_BINARY_ZIP=<zip>'
+	@echo '                                  - Build the product binary zip (API Portal + Platform API) in target/product/'
 	@echo ''
 	@echo 'Distribution Targets:'
 	@echo '  make dist                        - Build standalone distribution zip (target/wso2apip-api-portal-<VERSION>.zip)'
@@ -71,29 +75,118 @@ help: ## Show this help message
 # Build Targets
 
 .PHONY: build
-# ENABLE_COVERAGE=true instruments the browser scripts and creates /coverage in
-# the image, which is what the integration suite's coverage run needs. Off by
-# default: an instrumented image is for measuring, never for shipping.
+# ENABLE_COVERAGE=true builds the integration suite's coverage image instead: the
+# release image plus instrumented browser scripts and /coverage (Dockerfile.coverage,
+# via docker-bake.coverage.hcl), under the same tag. Off by default: an instrumented
+# image is for measuring, never for shipping.
 ENABLE_COVERAGE ?= false
 
 build: ## Build API Portal Docker image (ENABLE_COVERAGE=true to instrument it)
 	@echo "Building API Portal Docker image ($(VERSION), coverage=$(ENABLE_COVERAGE))..."
-	docker buildx build \
-		--build-context coverage-scripts=../../tests/framework/tools \
-		--build-arg ENABLE_COVERAGE=$(ENABLE_COVERAGE) \
+ifeq ($(ENABLE_COVERAGE),true)
+	docker buildx bake -f docker-bake.coverage.hcl \
+		--allow=fs.read=.. \
+		--allow=fs.read=../../tests/framework/tools \
+		--set coverage.tags=$(API_PORTAL_IMAGE):$(VERSION) \
+		--load \
+		coverage
+else
+	$(MAKE) --no-print-directory binary
+	@rm -rf target/.binary-ctx && mkdir -p target/.binary-ctx
+	@unzip -q target/$(BINARY_NAME).zip -d target/.binary-ctx
+	docker buildx build -f Dockerfile \
 		--tag $(API_PORTAL_IMAGE):$(VERSION) \
 		--load \
-		.
+		target/.binary-ctx
+	@rm -rf target/.binary-ctx
+endif
 
 .PHONY: build-and-push-multiarch
-build-and-push-multiarch: ## Build and push multi-arch API Portal image to GHCR
+build-and-push-multiarch: binary ## Build and push multi-arch API Portal image to GHCR
 	@echo "Building and pushing multi-arch API Portal Docker image ($(VERSION))..."
-	docker buildx build \
+	@rm -rf target/.binary-ctx && mkdir -p target/.binary-ctx
+	@unzip -q target/$(BINARY_NAME).zip -d target/.binary-ctx
+	docker buildx build -f Dockerfile \
 		--platform linux/amd64,linux/arm64 \
-		--build-context coverage-scripts=../../tests/framework/tools \
 		--tag $(API_PORTAL_IMAGE):$(VERSION) \
 		--push \
-		.
+		target/.binary-ctx
+	@rm -rf target/.binary-ctx
+
+# Binary zip: the API Portal files the image is built from (source, database scripts,
+# resources and package files), for customers building their own image, for example
+# on a different base image. It holds no Dockerfile; the Dockerfile is handed over
+# separately. The images above are built from this zip itself, with this directory's
+# Dockerfile: Docker can't build from a .zip, so it's unzipped into target/.binary-ctx
+# (giving target/.binary-ctx/api-portal/, the layout the Dockerfile reads) for the
+# build and removed afterwards. A published image and the zip of the same
+# version therefore always hold the same files.
+#
+# Copies the files the Dockerfile's COPY lines read: tracked files plus untracked
+# ones .gitignore doesn't exclude (so a new, not-yet-added file is built too, while
+# local *.db files, node_modules, keys and certificates stay out). The copy is the
+# working-tree content, so a version bump made before the build is included. Tests
+# (*.test.js) are left out; the image never runs them. pipefail makes a failed git
+# or tar step (e.g. a tracked file deleted on disk) fail the build instead of
+# producing a partial folder. Binary zips of other versions left in target/ by
+# earlier builds are removed first, so target/ only ever holds the current one.
+.PHONY: binary
+binary: ## Build target/$(BINARY_NAME).zip
+	@rm -rf target/.binary-stage
+	@rm -f target/wso2apip-api-portal-binary-*.zip
+	@mkdir -p target/.binary-stage/api-portal
+	@set -o pipefail; git ls-files -z --cached --others --exclude-standard -- $(SOURCE_FILES) ':(exclude)*.test.js' \
+		| tar --null -T - -cf - | tar -xf - -C target/.binary-stage/api-portal
+	@cd target/.binary-stage && zip -rq ../$(BINARY_NAME).zip api-portal
+	@rm -rf target/.binary-stage
+	@echo "✓ Built target/$(BINARY_NAME).zip"
+
+# Binary image: the binary zip's files as an image, so registries can store, copy and
+# sign them and a Dockerfile can COPY --from them (none of which works with a zip).
+# It holds only /api-portal/ (no OS, no entrypoint), so it can't be run. It's built
+# for linux/amd64 and linux/arm64 with identical files in both entries, so a plain
+# FROM works on any machine. Built from the zip itself, so the image and the zip hold
+# the same files. PUSH=true pushes it; otherwise it's only built (a check).
+BINARY_IMAGE_REGISTRY ?= $(DOCKER_REGISTRY)
+BINARY_IMAGE          := $(BINARY_IMAGE_REGISTRY)/binaries/api-portal:$(VERSION)
+PUSH                  ?= false
+
+.PHONY: binary-image
+binary-image: binary ## Build $(BINARY_IMAGE) from the binary zip (PUSH=true to push it)
+	@rm -rf target/.binary-ctx && mkdir -p target/.binary-ctx
+	@unzip -q target/$(BINARY_NAME).zip -d target/.binary-ctx
+	printf 'FROM scratch\nCOPY api-portal/ /api-portal/\n' | docker buildx build -f - \
+		--platform linux/amd64,linux/arm64 \
+		--tag $(BINARY_IMAGE) \
+		$(if $(filter true,$(PUSH)),--push,) \
+		target/.binary-ctx
+	@rm -rf target/.binary-ctx
+	@echo "✓ Built $(BINARY_IMAGE)$(if $(filter true,$(PUSH)), and pushed it,; PUSH=true pushes it)"
+
+# Product binary zip: the API Portal product's files in one zip, api-portal/ next to
+# platform-api/ (the Platform API binary zip given by PLATFORM_API_BINARY_ZIP, the
+# version this release ships with). The API Portal release attaches it. It has the
+# same file name as the component zip, so it's written to its own folder,
+# target/product/; the component zip in target/ is left as it is.
+.PHONY: product-binary
+product-binary: binary ## Build target/product/$(BINARY_NAME).zip (API Portal + PLATFORM_API_BINARY_ZIP)
+	@if [ -z "$(PLATFORM_API_BINARY_ZIP)" ] || [ ! -f "$(PLATFORM_API_BINARY_ZIP)" ]; then \
+		echo "Error: set PLATFORM_API_BINARY_ZIP to the Platform API binary zip to include." >&2; \
+		exit 1; \
+	fi
+	@rm -rf target/.product-stage target/product
+	@mkdir -p target/.product-stage target/product
+	@unzip -q target/$(BINARY_NAME).zip -d target/.product-stage
+	@unzip -qo "$(PLATFORM_API_BINARY_ZIP)" -d target/.product-stage
+	@if [ "$$(ls -A target/.product-stage | tr '\n' ' ')" != "api-portal platform-api " ]; then \
+		echo "Error: expected only api-portal/ and platform-api/ in the two zips, got: $$(ls -A target/.product-stage | tr '\n' ' ')" >&2; \
+		echo "Check that PLATFORM_API_BINARY_ZIP is a Platform API binary zip." >&2; \
+		rm -rf target/.product-stage; \
+		exit 1; \
+	fi
+	@cd target/.product-stage && zip -rq ../product/$(BINARY_NAME).zip api-portal platform-api
+	@rm -rf target/.product-stage
+	@echo "✓ Built target/product/$(BINARY_NAME).zip"
 
 # Version Management Targets
 
@@ -139,6 +232,10 @@ version-get-release: ## Get release version (strips SNAPSHOT suffix)
 DIST_VERSION := $(shell echo "$(VERSION)" | sed 's/-SNAPSHOT//')
 DIST_NAME    := wso2apip-api-portal-$(DIST_VERSION)
 DIST_DIR     := target/$(DIST_NAME)
+# Everything the Docker image build reads from its context (see the COPY lines in
+# Dockerfile), staged by `make binary`.
+SOURCE_FILES := .npmrc package.json package-lock.json src database resources
+BINARY_NAME  := wso2apip-api-portal-binary-$(VERSION)
 DIST_ZIP     := target/$(DIST_NAME).zip
 
 # Version/image used to pin the optional ai-workspace image (the profile-gated
@@ -370,13 +467,17 @@ endif
 	@echo "✓ Built $(DIST_ZIP)"
 
 .PHONY: clean-dist
-clean-dist: ## Remove distribution staging dir and zip
-	@rm -rf target/wso2apip-api-portal-*
+clean-dist: ## Remove distribution staging dir and zip (binary and product zips are left alone; their targets replace their own)
+	@find -H target -maxdepth 1 -name 'wso2apip-api-portal-*' ! -name 'wso2apip-api-portal-binary-*' -exec rm -rf {} + 2>/dev/null || true
 
 # Clean Targets
+# `clean` also removes the binary zip and the folders the binary, image and product
+# zip targets work in, including any a failed build left behind.
 
 .PHONY: clean
 clean: clean-dist ## Clean all build artifacts
+	@rm -rf target/.binary-stage target/.binary-ctx target/.product-stage target/product
+	@rm -f target/wso2apip-api-portal-binary-*.zip
 	@echo "Cleaned API Portal build artifacts"
 
 # Docs Targets

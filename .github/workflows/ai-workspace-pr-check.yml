@@ -35,6 +35,12 @@ jobs:
       # are not yet published to the registry. Build the platform-api image from
       # source and pin the compose file to that freshly built snapshot so the
       # stack runs the PR's code instead of the last published image.
+      # `make -C platform-api build` compiles the binary zip for linux/amd64 and
+      # linux/arm64 in one build, which needs a docker-container builder (the
+      # runner's default docker builder can't build several platforms at once).
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
       - name: Build Platform API image (PR changes)
         run: |
           PLATFORM_API_VERSION="$(tr -d '[:space:]' < platform-api/VERSION)"

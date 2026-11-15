@@ -21,7 +21,24 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { snakeToCamelDeep, mergeOver, parseConfigPaths } = require('./configMerge');
+const { snakeToCamelDeep, mergeOver, parseConfigPaths, resolveConfigPaths } = require('./configMerge');
+
+test('resolveConfigPaths puts APIP_AP_CONFIG_PATH first, then the --config flags', () => {
+    assert.deepEqual(
+        resolveConfigPaths(['--config', 'overlay.toml'], { APIP_AP_CONFIG_PATH: '/app/configs/config.toml' }),
+        ['/app/configs/config.toml', 'overlay.toml'],
+    );
+});
+
+test('resolveConfigPaths uses only the --config flags when APIP_AP_CONFIG_PATH is unset or blank', () => {
+    assert.deepEqual(resolveConfigPaths(['--config', 'base.toml'], {}), ['base.toml']);
+    assert.deepEqual(resolveConfigPaths(['--config', 'base.toml'], { APIP_AP_CONFIG_PATH: '  ' }), ['base.toml']);
+    assert.deepEqual(resolveConfigPaths([], {}), []);
+});
+
+test('resolveConfigPaths accepts APIP_AP_CONFIG_PATH alone', () => {
+    assert.deepEqual(resolveConfigPaths([], { APIP_AP_CONFIG_PATH: 'base.toml' }), ['base.toml']);
+});
 
 test('parseConfigPaths collects repeatable --config flags in order', () => {
     assert.deepEqual(

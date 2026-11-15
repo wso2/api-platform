@@ -1,0 +1,98 @@
+# --------------------------------------------------------------------
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# -----------------------------------------------------------------------
+
+# Platform API binary build — compiles only; produces no image.
+#
+# Compiles the Platform API binary from source for the target platform and exports
+# it with the `binary` stage at /linux-<arch>/platform-api. Two things use it:
+#   - `make binary`, which exports the binaries for linux/amd64 and linux/arm64
+#     (--target binary --output type=local) and packs them into the binary zip;
+#   - docker-bake.hcl, which feeds the binary straight into the image Dockerfile
+#     (contexts bin = "target:compile") for builds from source, such as the
+#     coverage image.
+# The image itself is defined only by ./Dockerfile.
+
+# Set EXPERIMENTAL=true to include the event-gateway plugin.
+# The resulting image should be tagged with a "-experimental" suffix.
+ARG EXPERIMENTAL=false
+
+# Build stage
+FROM --platform=$BUILDPLATFORM golang:1.26.10-bookworm AS builder
+ARG TARGETARCH
+
+# Build arguments for version information
+ARG VERSION=0.0.1-SNAPSHOT
+ARG GIT_COMMIT=unknown
+ARG EXPERIMENTAL=false
+ARG ENABLE_COVERAGE=false
+ARG COVERAGE_PACKAGES=""
+
+WORKDIR /build
+
+# CGO is required for mattn/go-sqlite3; install cross-compile toolchains.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libc6-dev \
+    libsqlite3-dev \
+    && if [ "$TARGETARCH" = "amd64" ]; then \
+           apt-get install -y --no-install-recommends gcc-x86-64-linux-gnu libc6-dev-amd64-cross; \
+       elif [ "$TARGETARCH" = "arm64" ]; then \
+           apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross; \
+       fi \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy go mod files for dependencies (needed for go.mod replace directives)
+COPY --from=common go.mod go.sum /common/
+COPY --from=httpkit go.mod go.sum /httpkit/
+
+# Fetch dependencies before copying full source for better layer caching.
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY --from=common . /common
+COPY --from=httpkit . /httpkit
+COPY . ./
+
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+        export CC=x86_64-linux-gnu-gcc; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+        export CC=aarch64-linux-gnu-gcc; \
+    else \
+        export CC=gcc; \
+    fi && \
+    BUILD_TAGS="" && \
+    if [ "$EXPERIMENTAL" = "true" ]; then BUILD_TAGS="-tags experimental"; fi && \
+    COVER_FLAGS="" && \
+    if [ "$ENABLE_COVERAGE" = "true" ]; then \
+        COVER_FLAGS="-cover -covermode=atomic"; \
+        if [ -n "$COVERAGE_PACKAGES" ]; then COVER_FLAGS="$COVER_FLAGS -coverpkg=$COVERAGE_PACKAGES"; fi; \
+    fi && \
+    CGO_ENABLED=1 \
+    GOOS=linux \
+    GOARCH=${TARGETARCH} \
+    go build -a $COVER_FLAGS \
+        ${BUILD_TAGS} \
+        -ldflags "-X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT}" \
+        -o platform-api ./cmd
+
+###########################
+# Binary Export Stage     #
+###########################
+# The compiled binary alone, at the path the image Dockerfile copies it from.
+FROM scratch AS binary
+ARG TARGETARCH
+COPY --from=builder /build/platform-api /linux-${TARGETARCH}/platform-api
