@@ -13,22 +13,6 @@
         "path": "/*",
         "policies": [
           {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'claude'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "X-Key",
-                    "value": "k"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
-          {
             "name": "set-headers",
             "params": {
               "request": {
@@ -48,22 +32,6 @@
         "method": "GET",
         "path": "/*",
         "policies": [
-          {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'claude'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "X-Key",
-                    "value": "k"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
           {
             "name": "set-headers",
             "params": {
@@ -85,22 +53,6 @@
         "path": "/*",
         "policies": [
           {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'claude'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "X-Key",
-                    "value": "k"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
-          {
             "name": "set-headers",
             "params": {
               "request": {
@@ -120,22 +72,6 @@
         "method": "PATCH",
         "path": "/*",
         "policies": [
-          {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'claude'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "X-Key",
-                    "value": "k"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
           {
             "name": "set-headers",
             "params": {
@@ -157,22 +93,6 @@
         "path": "/*",
         "policies": [
           {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'claude'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "X-Key",
-                    "value": "k"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
-          {
             "name": "set-headers",
             "params": {
               "request": {
@@ -192,22 +112,6 @@
         "method": "PUT",
         "path": "/*",
         "policies": [
-          {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'claude'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "X-Key",
-                    "value": "k"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
           {
             "name": "set-headers",
             "params": {

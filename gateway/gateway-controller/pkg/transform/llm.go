@@ -129,12 +129,7 @@ func (t *LLMTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeDep
 	rdc.SensitiveValues = cfg.SensitiveValues
 
 	// Step 5: Compile the per-attempt chains, keyed by the provider alias an attempt is
-	// routed to.
-	//
-	// Carried on the RDC but NOT yet consumed: the transformer and credential still run
-	// downstream, gated on the selected provider, exactly as before. Moving them is a
-	// behaviour change that only becomes safe once the runtime dispatches these chains
-	// (T024d/T024e), and doing both at once would leave no working state in between.
+	// routed to. Whether they are compiled at all is buildsUpstreamChains, below.
 	if proxy, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration); ok {
 		// Point the empty alias at the PRIMARY PROVIDER'S OWN cluster, not the API's main
 		// upstream slot.
@@ -164,11 +159,10 @@ func (t *LLMTransformer) Transform(cfg *models.StoredConfig) (*models.RuntimeDep
 			}
 		}
 
-		// Only when something actually runs per attempt (FR-012h). A proxy with no failover
-		// makes one attempt, so every per-provider policy was placed downstream instead and
-		// there is nothing here to build — generating an empty-but-present chain would put an
-		// ext_proc filter on the cluster and charge a gRPC round trip per request for it.
-		if perAttempt := perAttemptPolicies(restAPI.Spec.Policies, &restAPI.Spec.Operations); len(perAttempt) > 0 {
+		// Only when something actually runs per attempt (FR-012h, FR-012i); buildsUpstreamChains
+		// carries the reasoning, including why it must not be restated here.
+		perAttempt := perAttemptPolicies(restAPI.Spec.Policies, &restAPI.Spec.Operations)
+		if buildsUpstreamChains(proxy.Spec, perAttempt) {
 			rdc.UpstreamPolicyChains = buildUpstreamPolicyChains(&proxy.Spec, rdc.ProviderClusters,
 				transformerFor(upstreamProviderPolicies),
 				authFor(upstreamProviderPolicies),

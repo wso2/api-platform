@@ -81,6 +81,61 @@ func placementFixture(t *testing.T, withFailover bool) (api.RestAPI, map[string]
 	return out, perProvider
 }
 
+// singleProviderPlacementFixture builds a ONE-provider proxy carrying the same transformer,
+// credential and authored policy. One provider is the shape that still places that work
+// downstream: there is nothing to choose between, so the execution condition is true for every
+// request that reaches the proxy and the placement is exact without a per-attempt chain.
+//
+// Canonical `providers` shape, not the legacy pair: the legacy primary type carries no
+// `policies` field at all, so a single-provider legacy proxy cannot express the authored case.
+func singleProviderPlacementFixture(t *testing.T) (api.RestAPI, map[string]ProviderPolicies) {
+	t.Helper()
+	store := storage.NewConfigStore()
+	db := newTestMockDB()
+	require.NoError(t, db.SaveLLMProviderTemplate(&models.StoredLLMProviderTemplate{
+		UUID: "tmpl-1",
+		Configuration: api.LLMProviderTemplate{
+			Metadata: api.Metadata{Name: "openai"},
+			Spec:     api.LLMProviderTemplateData{DisplayName: "openai"},
+		},
+	}))
+	require.NoError(t, db.SaveConfig(&models.StoredConfig{
+		UUID: "openai-provider-uuid", Kind: string(api.LLMProviderConfigurationKindLlmProvider),
+		Handle: "openai-provider", DisplayName: "openai-provider", Version: "v1.0",
+		DesiredState: models.StateDeployed,
+		SourceConfiguration: api.LLMProviderConfiguration{
+			Metadata: api.Metadata{Name: "openai-provider"},
+			Spec: api.LLMProviderConfigData{
+				DisplayName: "openai-provider", Version: "v1.0",
+				Context: stringPtr("/openai-provider"), Template: "openai",
+				Upstream:      api.LLMProviderConfigData_Upstream{Url: stringPtr("https://example.com")},
+				AccessControl: api.LLMAccessControl{Mode: api.AllowAll},
+			},
+		},
+	}))
+
+	tr := NewLLMProviderTransformer(store, db,
+		&config.RouterConfig{ListenerPort: 8080}, newTestPolicyVersionResolver())
+
+	key, hdr := "sk-secret", "x-api-key"
+	spec := api.LLMProxyConfigData{
+		DisplayName: "p", Version: "v1.0",
+		Providers: &[]api.LLMProxyProviderEntry{{
+			Id:          "openai-provider",
+			IsPrimary:   true,
+			Transformer: &api.LLMProxyTransformer{Type: "openai-to-anthropic", Version: "v1"},
+			Auth:        &api.LLMUpstreamAuth{Type: api.LLMUpstreamAuthTypeApiKey, Value: &key, Header: &hdr},
+			Policies:    &[]api.Policy{{Name: "add-header", Version: "v1"}},
+		}},
+	}
+
+	var out api.RestAPI
+	_, perProvider, err := tr.TransformWithUpstreamPolicies(
+		&api.LLMProxyConfiguration{Metadata: api.Metadata{Name: "p"}, Spec: spec}, &out)
+	require.NoError(t, err)
+	return out, perProvider
+}
+
 func countDownstream(out api.RestAPI, name string) int {
 	n := 0
 	if out.Spec.Policies != nil {
@@ -115,17 +170,40 @@ func TestPlacement_FailoverAttachedMovesProviderWorkPerAttempt(t *testing.T) {
 	require.NotNil(t, pp.Auth, "per-attempt chain must carry the credential")
 }
 
-// FR-012h. No failover: exactly one attempt, so per-attempt and per-request are the same thing.
-// The work stays downstream and NO per-attempt chain is generated for it — otherwise the cluster
-// gets an ext_proc filter, and a round trip per request, for nothing.
-func TestPlacement_NoFailoverKeepsProviderWorkDownstreamOnly(t *testing.T) {
-	out, perProvider := placementFixture(t, false)
+// FR-012i. ONE provider, no failover: nothing to choose between, so the downstream condition is
+// true for every request that reaches the proxy and the placement is exact. The work stays
+// downstream and NO per-attempt chain is generated for it — otherwise the cluster gets an
+// ext_proc filter, and a round trip per request, buying correctness it already had. Probe E3
+// measured that filter at ~0.6ms warm and 17ms on a cold stream.
+func TestPlacement_SingleProviderKeepsProviderWorkDownstreamOnly(t *testing.T) {
+	out, perProvider := singleProviderPlacementFixture(t)
 
 	require.NotZero(t, countDownstream(out, "openai-to-anthropic"),
-		"without failover the transformer must remain on the downstream chain")
+		"with one provider the transformer must remain on the downstream chain")
+	pp := perProvider["openai-provider"]
+	require.Nil(t, pp.Transformer, "one provider means no per-attempt transformer")
+	require.Nil(t, pp.Auth, "one provider means no per-attempt credential")
+}
+
+// FR-012i. TWO providers and no failover: the work moves per attempt anyway. Downstream, scoping
+// it to one provider needs a condition on the provider selected so far, and that condition is
+// evaluated in the request-header phase — before a policy that selects from the request body has
+// run. Failover is not what makes the downstream gate a guess; a second provider is.
+func TestPlacement_MultiProviderMovesProviderWorkPerAttemptWithoutFailover(t *testing.T) {
+	out, perProvider := placementFixture(t, false)
+
+	require.Zero(t, countDownstream(out, "openai-to-anthropic"),
+		"with two providers the downstream copy runs on a prediction and must be gone")
+	require.Zero(t, countDownstream(out, "add-header"),
+		"an authored per-provider policy must not run on a prediction either")
+
 	pp := perProvider["anthropic-provider"]
-	require.Nil(t, pp.Transformer, "no failover means no per-attempt transformer")
-	require.Nil(t, pp.Auth, "no failover means no per-attempt credential")
+	require.NotNil(t, pp.Transformer, "the per-attempt chain must carry the transformer")
+	require.NotNil(t, pp.Auth, "the per-attempt chain must carry the credential")
+	require.Nil(t, pp.Transformer.ExecutionCondition,
+		"per attempt the cluster decides, so no provider gate belongs on the transformer")
+	require.Nil(t, pp.Auth.ExecutionCondition,
+		"per attempt the cluster decides, so no provider gate belongs on the credential")
 }
 
 // The attachment scan must see BOTH levels, matching transform.ResolveFailoverAttachment: where
@@ -159,17 +237,17 @@ func TestProxyAttachesFailover_SeesEveryAttachmentLevel(t *testing.T) {
 	}), "an unrelated policy in the deprecated list must not count either")
 }
 
-// FR-012h. With no failover the publisher's OWN per-provider policies move downstream too, and
+// FR-012i. With ONE provider the publisher's own per-provider policies move downstream too, and
 // the proxy generates no per-attempt chain at all — so no cluster carries an ext_proc filter.
 //
 // "Once per upstream attempt" still holds: there is one attempt, so it is the same statement as
 // once per request. "Only on attempts routed to this provider" holds through the execution
-// condition, the same gate the transformer and credential already use downstream.
-func TestPlacement_NoFailoverMovesAuthoredProviderPoliciesDownstreamToo(t *testing.T) {
-	out, _ := placementFixture(t, false)
+// condition, which cannot be wrong when there is only one provider to route to.
+func TestPlacement_SingleProviderMovesAuthoredProviderPoliciesDownstreamToo(t *testing.T) {
+	out, _ := singleProviderPlacementFixture(t)
 
 	require.NotZero(t, countDownstream(out, "add-header"),
-		"an authored per-provider policy must run downstream when there is no failover")
+		"an authored per-provider policy must run downstream on a single-provider proxy")
 
 	// Gated, not global: it must not run for requests routed to a different provider.
 	var found *api.Policy
@@ -191,8 +269,8 @@ func TestPlacement_NoFailoverMovesAuthoredProviderPoliciesDownstreamToo(t *testi
 
 // FR-039 in the downstream placement: the credential is appended LAST, so an authored policy
 // cannot be positioned after it and read the key out of the request headers.
-func TestPlacement_NoFailoverKeepsAuthoredPoliciesBeforeTheCredential(t *testing.T) {
-	out, _ := placementFixture(t, false)
+func TestPlacement_SingleProviderKeepsAuthoredPoliciesBeforeTheCredential(t *testing.T) {
+	out, _ := singleProviderPlacementFixture(t)
 
 	indexOf := func(ops []api.Operation, name string) int {
 		for _, op := range ops {
@@ -274,3 +352,78 @@ func TestProviderPoliciesDownstream_KeepsTheAuthoredExecutionCondition(t *testin
 }
 
 func strPtrPlacement(s string) *string { return &s }
+
+// FR-012h and FR-012i are two independent reasons for the same placement, and either alone is
+// enough. Read as one predicate because pkg/transform reads it too, to decide whether to build
+// the chains the placement assumes exist.
+func TestProxyUsesPerAttemptPlacement_EitherReasonAlone(t *testing.T) {
+	failover := &[]api.Policy{{Name: config.FailoverPolicyName, Version: "v0"}}
+
+	cases := []struct {
+		name string
+		spec api.LLMProxyConfigData
+		want bool
+		why  string
+	}{
+		{
+			name: "one provider, no failover",
+			spec: api.LLMProxyConfigData{Provider: &api.LLMProxyProvider{Id: "openai"}},
+			want: false,
+			why:  "nothing to choose between, so the downstream condition cannot be wrong",
+		},
+		{
+			name: "one provider, canonical shape",
+			spec: api.LLMProxyConfigData{Providers: &[]api.LLMProxyProviderEntry{
+				{Id: "openai", IsPrimary: true}}},
+			want: false,
+			why:  "the shape must not change the answer",
+		},
+		{
+			name: "one provider plus failover",
+			spec: api.LLMProxyConfigData{
+				Provider: &api.LLMProxyProvider{Id: "openai"}, GlobalPolicies: failover},
+			want: true,
+			why:  "attempts can reach different targets even with one provider configured",
+		},
+		{
+			name: "two providers, no failover",
+			spec: api.LLMProxyConfigData{
+				Provider: &api.LLMProxyProvider{Id: "openai"},
+				AdditionalProviders: &[]api.LLMProxyAdditionalProvider{
+					{Id: "anthropic"}}},
+			want: true,
+			why:  "the downstream gate would have to predict the provider before the body is read",
+		},
+		{
+			name: "two providers, canonical shape",
+			spec: api.LLMProxyConfigData{Providers: &[]api.LLMProxyProviderEntry{
+				{Id: "openai", IsPrimary: true}, {Id: "anthropic"}}},
+			want: true,
+			why:  "the shape must not change the answer",
+		},
+		{
+			name: "two providers plus failover",
+			spec: api.LLMProxyConfigData{
+				Provider: &api.LLMProxyProvider{Id: "openai"},
+				AdditionalProviders: &[]api.LLMProxyAdditionalProvider{
+					{Id: "anthropic"}},
+				GlobalPolicies: failover},
+			want: true,
+			why:  "both reasons at once must not cancel out",
+		},
+		{
+			name: "a shape that does not normalise",
+			spec: api.LLMProxyConfigData{},
+			want: false,
+			why: "validation rejects this before translation; downstream is where the work ran " +
+				"before this rule existed, so an unreadable shape degrades to that rather than " +
+				"to no provider work at all",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, ProxyUsesPerAttemptPlacement(tc.spec), tc.why)
+		})
+	}
+}

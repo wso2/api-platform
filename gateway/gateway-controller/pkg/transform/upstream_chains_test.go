@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
@@ -507,5 +508,76 @@ func TestBuildUpstreamPolicyChains_PrimaryKeepsItsTransformerAndCredential(t *te
 		if names[i] != n {
 			t.Fatalf("position %d = %q, want %q", i, names[i], n)
 		}
+	}
+}
+
+// FR-012i. The chain-building decision must agree with the PLACEMENT decision, in the direction
+// that matters.
+//
+// Placement (utils.ProxyUsesPerAttemptPlacement) takes a provider's work off the downstream
+// chain. This decides whether anything is built to receive it. Agreeing in one direction costs a
+// dead chain; disagreeing in the other costs the work itself — removed from downstream, never
+// compiled per attempt, and so absent from every request, with a successful deployment and no
+// error to read. That is why the two read ONE predicate instead of two spellings of one rule.
+func TestBuildsUpstreamChains_AgreesWithPlacementWhereverPlacementMovesTheWork(t *testing.T) {
+	cases := []struct {
+		name string
+		spec *api.LLMProxyConfigData
+	}{
+		{"one provider, legacy", proxyWithProviders()},
+		{"one provider, canonical", canonicalProxy(
+			api.LLMProxyProviderEntry{Id: "primary-provider", IsPrimary: true})},
+		{"two providers, legacy", proxyWithProviders(
+			api.LLMProxyAdditionalProvider{Id: "anthropic-provider", As: strPtr("anthropic")})},
+		{"two providers, canonical", canonicalProxy(
+			api.LLMProxyProviderEntry{Id: "primary-provider", IsPrimary: true},
+			api.LLMProxyProviderEntry{Id: "anthropic-provider", Alias: strPtr("anthropic")})},
+		{"no provider at all", &api.LLMProxyConfigData{}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if utils.ProxyUsesPerAttemptPlacement(*tc.spec) && !buildsUpstreamChains(*tc.spec, nil) {
+				t.Fatalf("placement moves this proxy's provider work off the downstream chain, " +
+					"but no per-attempt chain would be built to receive it — the work would " +
+					"vanish from every request")
+			}
+		})
+	}
+}
+
+// FR-012i, the case the rule was added for: two providers and NO failover still compiles chains.
+// Before this rule only failover did, so a two-provider proxy kept its provider work downstream
+// behind an execution condition evaluated in the request-header phase — a prediction made before
+// any body-phase router had chosen.
+func TestBuildsUpstreamChains_TwoProvidersWithoutFailover(t *testing.T) {
+	spec := proxyWithProviders(api.LLMProxyAdditionalProvider{
+		Id: "anthropic-provider", As: strPtr("anthropic"),
+	})
+	if !buildsUpstreamChains(*spec, nil) {
+		t.Fatal("a two-provider proxy must compile per-attempt chains even with no failover attached")
+	}
+}
+
+// And ONE provider still does not. There is nothing to choose between, so the downstream
+// condition cannot be wrong, and the upstream filter would be a gRPC round trip per request for
+// correctness the proxy already had (Probe E3: ~0.6ms warm, 17ms on a cold stream).
+func TestBuildsUpstreamChains_SingleProviderStaysDownstream(t *testing.T) {
+	if buildsUpstreamChains(*proxyWithProviders(), nil) {
+		t.Fatal("a single-provider proxy with no failover must compile no per-attempt chain")
+	}
+}
+
+// The perAttempt floor. It reads the DERIVED api's policy lists while the predicate reads the
+// proxy spec, and the two have diverged before — a proxy attaching failover through the
+// deprecated `policies` field was folded into the derived operations while the proxy-side scan
+// still said no failover. Either saying so must be enough.
+func TestBuildsUpstreamChains_PerAttemptPolicyAloneIsEnough(t *testing.T) {
+	spec := proxyWithProviders() // one provider: the predicate alone says no
+	if buildsUpstreamChains(*spec, nil) {
+		t.Fatal("precondition: this spec must not build chains on the predicate alone")
+	}
+	if !buildsUpstreamChains(*spec, []models.Policy{{Name: config.FailoverPolicyName}}) {
+		t.Fatal("a per-attempt policy found on the derived api must build chains by itself")
 	}
 }
