@@ -872,6 +872,35 @@ though the routing policy keeps nominating it, and that load spreads across the 
   grading it twice suspends a target at half the configured threshold. The verdict MUST also carry
   the attempt's real duration where a latency criterion exists: a zero sample is not neutral, it
   reads as an unusually fast response and moves a percentile the wrong way.
+- **FR-030s** *(added 2026-11-15)*: The verdict MUST carry the **attempt count** the gateway
+  recorded, and a policy grading by it MUST select the chain member at that position rather than by
+  cluster.
+
+  FR-030q established that the target is recorded in flight and read back, which is necessary but
+  not sufficient: what the verdict presents for the read is a **cluster**, and a cluster names a
+  provider. Two members on one provider differ only by model, so a cluster-keyed read charges a
+  post-commitment failure on the later member to the earlier one — suspending a model that was
+  never contacted, while the model that actually failed keeps its clean window and all of the
+  traffic. Note the two consumers of the published chain disagreed in **opposite** directions,
+  FR-057b's map keeping the last member and this one the first, so in a chain with a repeated
+  provider the model that was used was never the model that was graded.
+
+  The identity is not a new capability. The gateway's access-log entry has always carried
+  `upstream_request_attempt_count` — *"number of times the request is attempted upstream"* — and
+  the decoder simply did not read it. It MUST be read, surfaced on the policy-facing completion
+  context, and used to index the recorded chain, with the cluster retained as a cross-check.
+
+  A request-scoped count is sufficient to name a position because the gateway stops retrying the
+  instant an attempt commits its response: a post-commitment verdict therefore always describes the
+  LAST attempt, so the total equals that member's position. This is the same correspondence the
+  in-flight response phase already relies on, with the commitment test filtering out the
+  pre-commitment attempts that would break it.
+
+  **Zero MUST be treated as a sentinel, not a position.** The field is omitted when the request
+  never reached an upstream at all, and is absent entirely when an older gateway is paired with a
+  newer policy. In both cases the policy MUST fall back to the cluster-keyed behaviour rather than
+  index with it; the recorded chain MUST therefore keep both the ordered members and the
+  cluster-keyed index.
 - **FR-030p** *(added 2026-11-05)*: Where the outcome of an attempt cannot be verified, the system
   MUST record **nothing** rather than a success. Verified-only accounting is what removes the
   immunity described in FR-030n, and it holds whether or not FR-030o's signal is available.
@@ -914,15 +943,57 @@ though the routing policy keeps nominating it, and that load spreads across the 
   It MUST run **first** in the per-attempt chain. Everything after it — the publisher's own
   policies, the provider's transformer — reads the payload it leaves behind, and a transformer
   translating before the substitution would faithfully translate the wrong request.
-- **FR-057b**: The published ranking MUST carry each member's model keyed by **cluster**, as a
-  sibling of the priority groups rather than a field inside them (the cluster specifier parses the
-  groups, and nothing is gained by handing it a shape it did not ask for). Keying by cluster rather
-  than by position is required for the same reason as FR-037f: an index into the ranking goes wrong
-  the moment a member is suspended or skipped.
+- **FR-057b** *(amended 2026-11-15, superseded in part by FR-057d)*: The published ranking MUST
+  carry each member's model as a sibling of the priority groups rather than a field inside them
+  (the cluster specifier parses the groups, and nothing is gained by handing it a shape it did not
+  ask for).
+
+  This requirement originally said **keyed by cluster**, reasoning from FR-037f that an index into
+  the ranking goes wrong the moment a member is suspended or skipped. That reasoning was sound
+  about suspension and wrong about identity. A cluster names a **provider**; a chain member is a
+  provider *and* a model. The moment two members share a provider — `gpt-4o` then `gpt-4o-mini` on
+  one vendor, an ordinary cost-control chain — they collapse onto one key, the later overwrites
+  the earlier, and the map holds one entry for two positions. Attempt 1 then asks for the LAST
+  member's model: the first model is never requested, the caller is billed at a rate the
+  configuration does not describe, and attempt 2 repeats attempt 1 byte for byte against the
+  identical upstream, which is not a failover. FR-057d replaces the key.
 
   The `wso2.failover` namespace MUST therefore be forwarded to the upstream filter position. Only
   the analytics namespace was forwarded previously, which would have tied per-attempt behaviour to
   an unrelated serialisation format.
+- **FR-057d** *(added 2026-11-15)*: The published models MUST be an **ordered list, positionally
+  parallel to the priority groups** — entry N describes the member attempt N is routed to — and the
+  per-attempt instance MUST select its entry by the attempt number the engine publishes in
+  `wso2.attempt.number`, not by cluster.
+
+  The position cannot be keyed by `(provider, model)` instead, because the model is the value being
+  looked up and a lookup cannot be keyed by its own output. The attempt number is the only
+  identifier available at that position that distinguishes two members on one provider, and it has
+  been published on every attempt since the position existed.
+
+  Indexing is sound here rather than a guess, and the FR-037f objection does not apply: the
+  correspondence *attempt N ↔ published position N* is already load-bearing elsewhere in this
+  feature — the response phase grades `chain[attempts-1]` by exactly it — and unresolvable members
+  are dropped **before** publication, with their groups carrying their clusters inline, so Probe
+  G's group substitution cannot make an index right about position and wrong about target.
+
+  Three properties are required for the index to mean anything, each of which breaks it if missed:
+
+  1. The list MUST be built in the **same pass** as the priority groups, so a member dropped for
+     having no cluster leaves neither list rather than shifting one of them.
+  2. A **wildcard member** (one carrying no model, whose model is whatever the client asked for)
+     MUST occupy a hole in the list rather than be omitted. An omission shifts every later member
+     up one, so the attempt after it substitutes its neighbour's model — a wrong model sent to a
+     real provider, which is worse than not substituting.
+  3. Each entry MUST carry its **cluster as a cross-check**, compared against `wso2.attempt.cluster`.
+     Where they disagree the correspondence has broken, and the policy MUST decline to substitute
+     and say so rather than rewrite the payload for a target it cannot identify.
+
+  The predicate deciding whether a member is servable MUST be stated **once** and shared by the
+  group builder, the servable filter and the correlation store. Three near-identical spellings
+  agreed only because the controller never emits an empty cluster string; once the list is
+  positional, any disagreement between them makes every later index name a different member in
+  each.
 - **FR-057c**: The per-attempt instance MUST be attached only to APIs that actually configure
   failover. A chain containing it declares `RequiresRequestBody`, so attaching it unconditionally
   would make every provider on every LlmProxy buffer request bodies — and pay a gRPC round trip per

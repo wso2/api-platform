@@ -597,6 +597,24 @@ type AttemptCompletionContext struct {
 	// the request SUCCEEDED and the failure happened afterwards — the case no in-flight hook
 	// can observe. See CommittedBeforeFailing.
 	ResponseCode uint32
+
+	// AttemptCount is how many times the request was attempted upstream, 1-based.
+	//
+	// This is what identifies WHICH attempt the verdict describes, and it is the answer to the
+	// caveat on UpstreamCluster above: a policy that keys state more finely than "cluster" —
+	// two destinations on one provider differing only by model — can correlate by RequestID and
+	// then select within that request by this count, rather than inferring identity from a name
+	// that does not carry it.
+	//
+	// The gateway stops retrying the instant an attempt commits its response, so a verdict with
+	// CommittedBeforeFailing true always describes the LAST attempt, and this count is therefore
+	// that attempt's position.
+	//
+	// ZERO MEANS NO ATTEMPT IDENTITY, and is a value to branch on rather than a number to use:
+	// it is reported when the request never reached an upstream at all, and also when an older
+	// gateway is paired with a newer policy. A policy must fall back to whatever it did before
+	// rather than treat 0 as a position.
+	AttemptCount uint32
 }
 
 // CommittedBeforeFailing reports whether the client had already been told the request succeeded

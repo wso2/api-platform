@@ -162,3 +162,21 @@ func TestPolicyDeliverySink_ContainsAPanickingPolicy(t *testing.T) {
 	require.NotPanics(t, func() { sink.RecordAttemptVerdict(upeVerdict("GET:/orders")) })
 	assert.Len(t, good.calls, 1, "a later policy must still receive the verdict")
 }
+
+// The attempt count has to survive the hand-off, not just the decode. It is the only thing in the
+// context that can tell two chain members on one provider apart, so a policy that correlates by
+// request id and then selects by position reads it from here.
+func TestPolicyDeliverySink_CarriesTheAttemptCountToThePolicy(t *testing.T) {
+	spy := &completionSpy{}
+	sink := NewPolicyDeliverySink(func(route string) *registry.PolicyChain {
+		return chainWith(spy)
+	}, &LoggingSink{})
+
+	v := upeVerdict("GET:/orders")
+	v.AttemptCount = 3
+	sink.RecordAttemptVerdict(v)
+
+	require.Len(t, spy.calls, 1)
+	assert.Equal(t, uint32(3), spy.calls[0].AttemptCount,
+		"without this the policy can only name the cluster, which does not identify a member")
+}
