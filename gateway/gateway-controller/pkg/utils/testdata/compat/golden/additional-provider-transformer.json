@@ -13,15 +13,6 @@
         "path": "/*",
         "policies": [
           {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'anthropic-provider'",
-            "name": "openai-to-anthropic-transformer",
-            "params": {
-              "model": "claude-sonnet-4-20250514",
-              "providerId": "anthropic-provider"
-            },
-            "version": "v0"
-          },
-          {
             "name": "set-headers",
             "params": {
               "request": {
@@ -41,15 +32,6 @@
         "method": "GET",
         "path": "/*",
         "policies": [
-          {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'anthropic-provider'",
-            "name": "openai-to-anthropic-transformer",
-            "params": {
-              "model": "claude-sonnet-4-20250514",
-              "providerId": "anthropic-provider"
-            },
-            "version": "v0"
-          },
           {
             "name": "set-headers",
             "params": {
@@ -71,15 +53,6 @@
         "path": "/*",
         "policies": [
           {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'anthropic-provider'",
-            "name": "openai-to-anthropic-transformer",
-            "params": {
-              "model": "claude-sonnet-4-20250514",
-              "providerId": "anthropic-provider"
-            },
-            "version": "v0"
-          },
-          {
             "name": "set-headers",
             "params": {
               "request": {
@@ -99,15 +72,6 @@
         "method": "PATCH",
         "path": "/*",
         "policies": [
-          {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'anthropic-provider'",
-            "name": "openai-to-anthropic-transformer",
-            "params": {
-              "model": "claude-sonnet-4-20250514",
-              "providerId": "anthropic-provider"
-            },
-            "version": "v0"
-          },
           {
             "name": "set-headers",
             "params": {
@@ -129,15 +93,6 @@
         "path": "/*",
         "policies": [
           {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'anthropic-provider'",
-            "name": "openai-to-anthropic-transformer",
-            "params": {
-              "model": "claude-sonnet-4-20250514",
-              "providerId": "anthropic-provider"
-            },
-            "version": "v0"
-          },
-          {
             "name": "set-headers",
             "params": {
               "request": {
@@ -157,15 +112,6 @@
         "method": "PUT",
         "path": "/*",
         "policies": [
-          {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'anthropic-provider'",
-            "name": "openai-to-anthropic-transformer",
-            "params": {
-              "model": "claude-sonnet-4-20250514",
-              "providerId": "anthropic-provider"
-            },
-            "version": "v0"
-          },
           {
             "name": "set-headers",
             "params": {

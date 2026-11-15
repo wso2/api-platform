@@ -6814,12 +6814,17 @@ components:
             after these policies, so a policy listed here never observes the credential.
 
             WHERE these run follows what the API attaches, and the distinction is only
-            observable to a policy that inspects it. When `model-failover` is attached the
-            gateway runs them in this provider's per-attempt chain, where the reserved
-            `wso2.attempt` namespace names the attempt and its target. With no failover the
-            request makes exactly one attempt, so they run on the ordinary request chain,
-            still only for requests routed to this provider, and `wso2.attempt` is absent —
-            that namespace marks the per-attempt position, and the position is not in use.
+            observable to a policy that inspects it. On a proxy with more than one provider,
+            or with `model-failover` attached, the gateway runs them in this provider's
+            per-attempt chain, where the reserved `wso2.attempt` namespace names the attempt
+            and its target. Which provider an attempt reaches is then decided by routing, not
+            by an expression evaluated before the request body has been read.
+
+            On a proxy with exactly ONE provider and no failover they run on the ordinary
+            request chain instead, and `wso2.attempt` is absent — that namespace marks the
+            per-attempt position, and the position is not in use. There is one attempt and
+            one possible target, so the two placements are the same statement and the cheaper
+            one is used.
 
             `model-failover` must NOT be listed here. It is attached once — in
             operationPolicies, or at the API level — and the gateway adds whatever per-attempt
@@ -6874,12 +6879,17 @@ components:
             after these policies, so a policy listed here never observes the credential.
 
             WHERE these run follows what the API attaches, and the distinction is only
-            observable to a policy that inspects it. When `model-failover` is attached the
-            gateway runs them in this provider's per-attempt chain, where the reserved
-            `wso2.attempt` namespace names the attempt and its target. With no failover the
-            request makes exactly one attempt, so they run on the ordinary request chain,
-            still only for requests routed to this provider, and `wso2.attempt` is absent —
-            that namespace marks the per-attempt position, and the position is not in use.
+            observable to a policy that inspects it. On a proxy with more than one provider,
+            or with `model-failover` attached, the gateway runs them in this provider's
+            per-attempt chain, where the reserved `wso2.attempt` namespace names the attempt
+            and its target. Which provider an attempt reaches is then decided by routing, not
+            by an expression evaluated before the request body has been read.
+
+            On a proxy with exactly ONE provider and no failover they run on the ordinary
+            request chain instead, and `wso2.attempt` is absent — that namespace marks the
+            per-attempt position, and the position is not in use. There is one attempt and
+            one possible target, so the two placements are the same statement and the cheaper
+            one is used.
 
             `model-failover` must NOT be listed here. It is attached once — in
             operationPolicies, or at the API level — and the gateway adds whatever per-attempt

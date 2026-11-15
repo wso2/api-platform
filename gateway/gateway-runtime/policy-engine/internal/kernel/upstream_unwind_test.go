@@ -353,12 +353,16 @@ func TestNeedsResponseBody_CountsTheServingUpstreamChain(t *testing.T) {
 			"skipping it leaves the provider's reverse translation with nothing to convert")
 	}
 
-	// Streaming is excluded deliberately: a reverse transform is a whole-document conversion
-	// and the streaming body path does not unwind at all, so asking for the body there would
-	// buffer chunks for a chain that cannot use them.
+	// AND a streamed response too (FR-037i). This assertion was the exact opposite until the
+	// streaming unwind existed: the body was withheld from streams on the grounds that a
+	// reverse transform is a whole-document conversion. openai-to-anthropic-transformer
+	// declares ResponseBodyMode: BodyModeStream and implements OnResponseBodyChunk, so that
+	// was never true of it — and withholding the body meant Envoy skipped it entirely and the
+	// client received raw upstream SSE.
 	ec.isStreamingResponse = true
-	if ec.needsResponseBody() {
-		t.Fatal("a streamed response must not be buffered for an unwind that cannot run on it")
+	if !ec.needsResponseBody() {
+		t.Fatal("a streamed response must still deliver the body: the serving chain unwinds " +
+			"it chunk by chunk, and skipping it sends the provider's own format to the client")
 	}
 }
 
@@ -549,22 +553,25 @@ func TestResponseEncodingGate_ExcludesTheUnwindForAStream(t *testing.T) {
 
 	ec.isStreamingResponse = true
 
-	if ec.responseEncodingBlocksBodyPolicies() {
-		t.Fatal("a streamed response was rejected for an encoding the only interested chain " +
-			"is excluded from reading; the gate was asked before the streaming decision")
+	// FR-037i makes streaming no different here. The serving chain reads the body either way,
+	// so an encoding the engine cannot decode blocks it either way — the alternative is
+	// handing a transformer compressed bytes it cannot parse and streaming whatever it makes
+	// of them.
+	if !ec.responseEncodingBlocksBodyPolicies() {
+		t.Fatal("a streamed response whose serving chain reads the body must be blocked by " +
+			"an encoding the engine cannot decode, exactly as a buffered one is")
 	}
 }
 
-// The gate has to be ASKED after the streaming decision, not merely to answer correctly once
-// isStreamingResponse is set.
+// The same rule through the REAL phase handler rather than the predicate.
 //
-// processResponseHeaders used to reject an unsupported encoding before deciding whether the
-// response streams. With the serving upstream chain now counted in needsResponseBody(), that
-// order turned an SSE response carrying an exotic encoding into a 502 — on behalf of an unwind
-// that is excluded from streams and would never have read the body. The predicate test above
-// passes either way, because it sets isStreamingResponse by hand; only driving the real phase
-// catches the order.
-func TestProcessResponseHeaders_AsksTheEncodingGateAfterTheStreamingDecision(t *testing.T) {
+// This test used to assert the opposite — that an SSE response carrying an undecodable encoding
+// passed — because the unwind was excluded from streams and so would never have read the body.
+// FR-037i removed that exclusion, and with it the ordering constraint this test was built for:
+// needsResponseBody() no longer varies with isStreamingResponse, so asking the encoding gate
+// before or after the streaming decision now yields the same answer. What remains worth pinning
+// is the end-to-end outcome, which is what this asserts.
+func TestProcessResponseHeaders_BlocksAStreamTheServingChainCannotDecode(t *testing.T) {
 	const cluster = "upstream_LlmProxy_abc_live-vendor"
 
 	server := newTestServerWithStore(t, nil)
@@ -607,10 +614,14 @@ func TestProcessResponseHeaders_AsksTheEncodingGateAfterTheStreamingDecision(t *
 	if err != nil {
 		t.Fatalf("processResponseHeaders returned %v", err)
 	}
-	if immediate := resp.GetImmediateResponse(); immediate != nil {
-		t.Fatalf("the stream was rejected with %d for an encoding the only interested chain is "+
-			"excluded from reading; the encoding gate was asked before the streaming decision",
-			immediate.GetStatus().GetCode())
+	immediate := resp.GetImmediateResponse()
+	if immediate == nil {
+		t.Fatal("a streamed response whose serving chain must read the body was allowed " +
+			"through with an encoding the engine cannot decode; the transformer would have " +
+			"been handed bytes it cannot parse and the client sent whatever it produced")
+	}
+	if got := immediate.GetStatus().GetCode(); got != 502 {
+		t.Fatalf("rejected with %d, want 502", got)
 	}
 }
 

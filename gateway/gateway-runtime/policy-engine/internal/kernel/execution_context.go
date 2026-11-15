@@ -1930,6 +1930,34 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 	)
 	ec.streamAccumulator = nil
 
+	// Unwind the serving attempt's chain FIRST, so a provider's reverse translation has
+	// converted this chunk before the route's own streaming policies see it — the same
+	// ordering the header and body halves already use (FR-037h, FR-037i).
+	unwindStream, err := ec.unwindServingUpstreamChainStreaming(ctx, flushChunk)
+	if err != nil {
+		ec.streamAccumulator = nil
+		ec.handleFault(ctx, faultFromStream(err, nil))
+		return ec.handlePolicyError(ctx, err, "response_body_streaming_upstream_unwind"), nil
+	}
+	if unwindStream != nil {
+		// The TRANSLATED chunk is what the route chain must run on, not the bytes the
+		// provider sent. Dropping this is the streaming equivalent of discarding the header
+		// half's Results: every policy runs, every log line says so, and the output is
+		// thrown away.
+		if unwindStream.FinalChunk != nil {
+			flushChunk = unwindStream.FinalChunk
+		}
+		// A terminating unwind policy ends the stream here; the route chain must not then
+		// run on a chunk the provider's own chain decided to withhold.
+		if unwindStream.StreamTerminated {
+			ec.streamTerminated = true
+			if isFault, declared := streamTerminationIsFault(unwindStream.FinalAction); isFault {
+				ec.handleFault(ctx, faultFromStream(nil, declared))
+			}
+			return TranslateStreamingResponseChunkAction(unwindStream, flushChunk, ec)
+		}
+	}
+
 	execResult, err := ec.server.executor.ExecuteStreamingResponsePolicies(
 		ctx,
 		ec.policyChain.Policies,
@@ -1958,6 +1986,13 @@ func (ec *PolicyExecutionContext) processStreamingResponseBody(
 			ec.handleFault(ctx, faultFromStream(nil, declared))
 		}
 	}
+	// The unwind's Results are deliberately NOT merged in, unlike the header and body halves.
+	// There they are load-bearing: TranslateResponseHeaderActions builds its mutation list from
+	// them alone, so dropping them ran the chain and discarded the outcome. The streaming
+	// translator reads result.FinalChunk and never Results, and the executor has already
+	// emitted this chain's spans and metrics from inside the unwind call — so merging here
+	// would be code that looks load-bearing and changes nothing. A mutation deleting it kills
+	// no test, which is how it was found.
 	return TranslateStreamingResponseChunkAction(execResult, flushChunk, ec)
 }
 
@@ -2322,7 +2357,14 @@ func isServerSentEventResponse(headers *policy.Headers) bool {
 // (processResponseBody), so the two can never disagree. Callable only once
 // responseHeaderCtx has been populated (i.e. from processResponseHeaders).
 func (ec *PolicyExecutionContext) responseStreamingEnabled(endOfStream bool) bool {
-	if !ec.policyChain.SupportsResponseStreaming || endOfStream {
+	if endOfStream {
+		return false
+	}
+	// Both chains that could read this response body get a veto, and only a chain that
+	// actually reads it has one (FR-037i). See chainBlocksResponseStreaming for why the flag
+	// cannot be read directly: it is cleared for a chain with no body policy at all, which
+	// would turn "nothing here reads the body" into "this must be buffered".
+	if chainBlocksResponseStreaming(ec.policyChain) || ec.servingUpstreamChainBlocksResponseStreaming() {
 		return false
 	}
 	if !isStreamingUpstreamResponse(ec.responseHeaderCtx.ResponseHeaders) {
@@ -2493,14 +2535,31 @@ func (ec *PolicyExecutionContext) anyPolicyNeedsMoreRequestData(accumulated []by
 // would actually execute (enabled and condition met) is not yet ready to process
 // the accumulated bytes.
 func (ec *PolicyExecutionContext) anyPolicyNeedsMoreResponseData(accumulated []byte) bool {
-	specs := ec.policyChain.PolicySpecs
+	if ec.chainNeedsMoreResponseData(ec.policyChain, accumulated) {
+		return true
+	}
+	// The serving attempt's chain is asked as well (FR-037i), and this is not a nicety: a
+	// provider transformer holds back a PARTIAL SSE event here, so that OnResponseBodyChunk
+	// never receives a fragment of one. Flushing on the route chain's answer alone would hand
+	// it exactly the fragment its own NeedsMoreResponseData exists to prevent.
+	if chain, _, ok := ec.servingUpstreamChain(); ok {
+		return ec.chainNeedsMoreResponseData(chain, accumulated)
+	}
+	return false
+}
+
+// chainNeedsMoreResponseData is anyPolicyNeedsMoreResponseData for ONE chain.
+func (ec *PolicyExecutionContext) chainNeedsMoreResponseData(
+	chain *registry.PolicyChain, accumulated []byte,
+) bool {
+	specs := chain.PolicySpecs
 	celEval := ec.server.executor.GetCELEvaluator()
-	for i, pol := range ec.policyChain.Policies {
+	for i, pol := range chain.Policies {
 		spec := specs[i]
 		if !spec.Enabled {
 			continue
 		}
-		if ec.policyChain.HasExecutionConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
+		if chain.HasExecutionConditions && spec.ExecutionCondition != nil && *spec.ExecutionCondition != "" {
 			if celEval != nil {
 				conditionMet, err := celEval.EvaluateStreamingResponseCondition(*spec.ExecutionCondition, ec.responseStreamContext)
 				if err == nil && !conditionMet {

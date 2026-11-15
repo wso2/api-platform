@@ -20,38 +20,6 @@
             "version": "v1"
           },
           {
-            "executionCondition": "!('selected_provider' in request.Metadata) || request.Metadata['selected_provider'] == 'openai-provider'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "Authorization",
-                    "value": "Bearer primary"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
-          {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'anthropic-provider'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "X-Provider-Key",
-                    "value": "anthropic-loopback"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
-          {
             "name": "set-headers",
             "params": {
               "request": {
@@ -71,38 +39,6 @@
         "method": "DELETE",
         "path": "/*",
         "policies": [
-          {
-            "executionCondition": "!('selected_provider' in request.Metadata) || request.Metadata['selected_provider'] == 'openai-provider'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "Authorization",
-                    "value": "Bearer primary"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
-          {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'anthropic-provider'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "X-Provider-Key",
-                    "value": "anthropic-loopback"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
           {
             "name": "set-headers",
             "params": {
@@ -124,38 +60,6 @@
         "path": "/*",
         "policies": [
           {
-            "executionCondition": "!('selected_provider' in request.Metadata) || request.Metadata['selected_provider'] == 'openai-provider'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "Authorization",
-                    "value": "Bearer primary"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
-          {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'anthropic-provider'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "X-Provider-Key",
-                    "value": "anthropic-loopback"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
-          {
             "name": "set-headers",
             "params": {
               "request": {
@@ -175,38 +79,6 @@
         "method": "OPTIONS",
         "path": "/*",
         "policies": [
-          {
-            "executionCondition": "!('selected_provider' in request.Metadata) || request.Metadata['selected_provider'] == 'openai-provider'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "Authorization",
-                    "value": "Bearer primary"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
-          {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'anthropic-provider'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "X-Provider-Key",
-                    "value": "anthropic-loopback"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
           {
             "name": "set-headers",
             "params": {
@@ -228,38 +100,6 @@
         "path": "/*",
         "policies": [
           {
-            "executionCondition": "!('selected_provider' in request.Metadata) || request.Metadata['selected_provider'] == 'openai-provider'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "Authorization",
-                    "value": "Bearer primary"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
-          {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'anthropic-provider'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "X-Provider-Key",
-                    "value": "anthropic-loopback"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
-          {
             "name": "set-headers",
             "params": {
               "request": {
@@ -280,38 +120,6 @@
         "path": "/*",
         "policies": [
           {
-            "executionCondition": "!('selected_provider' in request.Metadata) || request.Metadata['selected_provider'] == 'openai-provider'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "Authorization",
-                    "value": "Bearer primary"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
-          {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'anthropic-provider'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "X-Provider-Key",
-                    "value": "anthropic-loopback"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
-          {
             "name": "set-headers",
             "params": {
               "request": {
@@ -331,38 +139,6 @@
         "method": "PUT",
         "path": "/*",
         "policies": [
-          {
-            "executionCondition": "!('selected_provider' in request.Metadata) || request.Metadata['selected_provider'] == 'openai-provider'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "Authorization",
-                    "value": "Bearer primary"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
-          {
-            "executionCondition": "'selected_provider' in request.Metadata \u0026\u0026 request.Metadata['selected_provider'] == 'anthropic-provider'",
-            "name": "set-headers",
-            "params": {
-              "request": {
-                "headers": [
-                  {
-                    "name": "X-Provider-Key",
-                    "value": "anthropic-loopback"
-                  }
-                ],
-                "phase": "body"
-              }
-            },
-            "version": "v9.9.9"
-          },
           {
             "name": "set-headers",
             "params": {

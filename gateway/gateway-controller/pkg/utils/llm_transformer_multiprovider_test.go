@@ -33,7 +33,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
 
-func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsConditional(t *testing.T) {
+func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsPerAttempt(t *testing.T) {
 	store := storage.NewConfigStore()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db := newTestSQLiteStorage(t, logger)
@@ -115,7 +115,8 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsCondition
 		},
 	}
 
-	result, err := transformer.Transform(proxy, &api.RestAPI{})
+	var result api.RestAPI
+	_, perProvider, err := transformer.TransformWithUpstreamPolicies(proxy, &result)
 	require.NoError(t, err)
 	// Every attached provider is addressable by name, primary first, so a policy
 	// that selects one can route to it.
@@ -155,23 +156,41 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderAuthIsCondition
 			authPolicies = append(authPolicies, pol)
 		}
 	}
-	require.Len(t, authPolicies, 2)
-	require.NotNil(t, authPolicies[0].ExecutionCondition)
-	require.NotNil(t, authPolicies[1].ExecutionCondition)
-	assert.Contains(t, *authPolicies[0].ExecutionCondition, "openai-provider")
-	assert.Contains(t, *authPolicies[1].ExecutionCondition, "anthropic-provider")
-	assert.Equal(t, "Bearer primary", firstRequestHeaderValue(t, authPolicies[0].Params))
-	assert.Equal(t, "anthropic-loopback", firstRequestHeaderValue(t, authPolicies[1].Params))
-
-	// A router may select while processing the request body, so on a proxy that can
-	// route, every provider credential is applied in the request-body phase.
-	assert.Equal(t, constants.SET_HEADERS_REQUEST_PHASE_BODY, requestPhase(t, authPolicies[0].Params))
-	assert.Equal(t, constants.SET_HEADERS_REQUEST_PHASE_BODY, requestPhase(t, authPolicies[1].Params))
-	require.Len(t, markerPolicies, 1)
+	// FR-012i. More than one provider, so every provider credential belongs to that provider's
+	// PER-ATTEMPT chain and must not remain downstream. Downstream, the only way to scope it to
+	// one provider is a condition on the provider selected so far, evaluated in the
+	// request-header phase — before any policy that selects from the request body has run. The
+	// primary's spelling of that condition is true when nothing has been selected, so the
+	// failure is not a miss but an OVER-RUN: its credential went out on requests a body-phase
+	// router then sent somewhere else.
+	require.Empty(t, authPolicies,
+		"a provider credential left downstream runs on a prediction made before the body was read")
+	require.Len(t, markerPolicies, 1, "the unconditional loopback marker is not per-provider work")
 	assert.Empty(t, requestPhase(t, markerPolicies[0].Params), "the loopback marker stays in the header phase")
+
+	// And it must actually BE somewhere. A credential removed from the downstream chain with
+	// nothing built to receive it is indistinguishable, from the assertion above alone, from
+	// the over-run being fixed — so the per-attempt side is asserted here rather than left to
+	// the chain builder's own tests.
+	for alias, want := range map[string]string{
+		"openai-provider":    "Bearer primary",
+		"anthropic-provider": "anthropic-loopback",
+	} {
+		entry, ok := perProvider[alias]
+		require.True(t, ok, "no per-attempt policies for %q", alias)
+		require.NotNil(t, entry.Auth, "%q lost its credential entirely", alias)
+		assert.Equal(t, want, firstRequestHeaderValue(t, entry.Auth.Params))
+
+		// No gate, and no body-phase workaround for one. Envoy picking the cluster is what
+		// picks the chain, and it has already picked by the time the filter fires.
+		assert.Nil(t, entry.Auth.ExecutionCondition,
+			"a per-attempt credential must carry no provider gate; the cluster already decided")
+		assert.Empty(t, requestPhase(t, entry.Auth.Params),
+			"a per-attempt credential needs no body-phase deferral; there is nothing to wait for")
+	}
 }
 
-func TestLLMProviderTransformer_TransformProxy_AdditionalProviderTransformerIsConditional(t *testing.T) {
+func TestLLMProviderTransformer_TransformProxy_AdditionalProviderTransformerIsPerAttempt(t *testing.T) {
 	store := storage.NewConfigStore()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	db := newTestSQLiteStorage(t, logger)
@@ -237,34 +256,35 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderTransformerIsCo
 		},
 	}
 
-	result, err := transformer.Transform(proxy, &api.RestAPI{})
+	var result api.RestAPI
+	_, perProvider, err := transformer.TransformWithUpstreamPolicies(proxy, &result)
 	require.NoError(t, err)
 
-	// The translator is attached conditionally to every operation, so locate it
-	// wherever it lands rather than assuming a specific route.
-	var transformerPolicy *api.Policy
+	// FR-012i. Two providers, so the translator runs per attempt and must not also be left
+	// downstream. Downstream it would reshape the request into THIS provider's wire format on
+	// a request the router later sends to the other one — and because the primary's gate is
+	// true by default, that is the ordinary case rather than an edge one.
 	for i := range result.Spec.Operations {
 		op := result.Spec.Operations[i]
 		if op.Policies == nil {
 			continue
 		}
 		for j := range *op.Policies {
-			if (*op.Policies)[j].Name == "openai-to-anthropic" {
-				transformerPolicy = &(*op.Policies)[j]
-				break
-			}
-		}
-		if transformerPolicy != nil {
-			break
+			require.NotEqual(t, "openai-to-anthropic", (*op.Policies)[j].Name,
+				"the translator must not remain on the downstream chain")
 		}
 	}
-	require.NotNil(t, transformerPolicy)
-	assert.Equal(t, "v1", transformerPolicy.Version)
-	require.NotNil(t, transformerPolicy.ExecutionCondition)
-	assert.Contains(t, *transformerPolicy.ExecutionCondition, "anthropic-provider")
-	require.NotNil(t, transformerPolicy.Params)
-	assert.Equal(t, "anthropic-provider", (*transformerPolicy.Params)["providerId"])
-	assert.Equal(t, "claude-sonnet-4-5-20250929", (*transformerPolicy.Params)["model"])
+
+	entry, ok := perProvider["anthropic-provider"]
+	require.True(t, ok, "no per-attempt policies for the additional provider")
+	require.NotNil(t, entry.Transformer, "the additional provider lost its translator entirely")
+	assert.Equal(t, "openai-to-anthropic", entry.Transformer.Name)
+	assert.Equal(t, "v1", entry.Transformer.Version)
+	assert.Nil(t, entry.Transformer.ExecutionCondition,
+		"a per-attempt translator must carry no provider gate; the cluster already decided")
+	require.NotNil(t, entry.Transformer.Params)
+	assert.Equal(t, "anthropic-provider", (*entry.Transformer.Params)["providerId"])
+	assert.Equal(t, "claude-sonnet-4-5-20250929", (*entry.Transformer.Params)["model"])
 }
 
 func TestLLMProviderTransformer_TransformProxy_RejectsInvalidAdditionalProviderSourceConfiguration(t *testing.T) {
@@ -429,12 +449,13 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderOAuth2AuthIsIso
 		},
 	}
 
-	result, err := transformer.Transform(proxy, &api.RestAPI{})
+	var result api.RestAPI
+	_, perProvider, err := transformer.TransformWithUpstreamPolicies(proxy, &result)
 	require.NoError(t, err)
 
 	// No operationPolicies attached, so the transformer only generates
-	// wildcard catch-all routes - any POST operation carries both oauth2
-	// attachments.
+	// wildcard catch-all routes - any POST operation would carry both oauth2
+	// attachments were they still placed downstream.
 	var postOp *api.Operation
 	for i := range result.Spec.Operations {
 		if result.Spec.Operations[i].Method != nil && *result.Spec.Operations[i].Method == api.OperationMethod("POST") {
@@ -451,18 +472,28 @@ func TestLLMProviderTransformer_TransformProxy_AdditionalProviderOAuth2AuthIsIso
 			oauth2Policies = append(oauth2Policies, pol)
 		}
 	}
-	// Two separate oauth2 attachments on the same operation - the shape that
-	// collided under the old API-identity-keyed cache.
-	require.Len(t, oauth2Policies, 2)
-	require.NotNil(t, oauth2Policies[0].ExecutionCondition)
-	require.NotNil(t, oauth2Policies[1].ExecutionCondition)
-	assert.Contains(t, *oauth2Policies[0].ExecutionCondition, "provider-a")
-	assert.Contains(t, *oauth2Policies[1].ExecutionCondition, "provider-b")
+	// FR-012i. oauth2 is the auth type that MADE the downstream placement unsafe, so this is
+	// the regression guard for it. oauth2-generator is not a set-headers policy and has no
+	// phase parameter at all, so withRequestBodyPhase could not defer it and nothing else
+	// could either: it minted a token in the request-header phase, on the primary's
+	// default-true gate, and that token went upstream on requests a body-phase router then
+	// sent to the OTHER provider — which also received none of its own.
+	require.Empty(t, oauth2Policies,
+		"an oauth2 credential left downstream mints on a prediction and cannot be deferred")
 
-	require.NotNil(t, oauth2Policies[0].Params)
-	require.NotNil(t, oauth2Policies[1].Params)
-	paramsA := *oauth2Policies[0].Params
-	paramsB := *oauth2Policies[1].Params
+	entryA, okA := perProvider["provider-a"]
+	entryB, okB := perProvider["provider-b"]
+	require.True(t, okA, "no per-attempt policies for provider-a")
+	require.True(t, okB, "no per-attempt policies for provider-b")
+	require.NotNil(t, entryA.Auth, "provider-a lost its oauth2 credential entirely")
+	require.NotNil(t, entryB.Auth, "provider-b lost its oauth2 credential entirely")
+	assert.Nil(t, entryA.Auth.ExecutionCondition, "the cluster decides; no gate belongs here")
+	assert.Nil(t, entryB.Auth.ExecutionCondition, "the cluster decides; no gate belongs here")
+
+	require.NotNil(t, entryA.Auth.Params)
+	require.NotNil(t, entryB.Auth.Params)
+	paramsA := *entryA.Auth.Params
+	paramsB := *entryB.Auth.Params
 
 	// Every field oauth2ConfigDiscriminator keys on must actually differ, or
 	// the two would collide on the same Redis key regardless.
@@ -662,7 +693,7 @@ func TestLLMProviderTransformer_PrimaryIdentityAndDefaultAlias(t *testing.T) {
 // primary's own execution condition — true when no provider was selected or
 // when the primary was selected by name, false when another provider was
 // conditions.
-func TestLLMProviderTransformer_PrimaryTransformerIsConditional(t *testing.T) {
+func TestLLMProviderTransformer_PrimaryTransformerIsPerAttempt(t *testing.T) {
 	transformerTransformer, _ := newCompatEnvironment(t)
 
 	proxy := &api.LLMProxyConfiguration{
@@ -688,42 +719,39 @@ func TestLLMProviderTransformer_PrimaryTransformerIsConditional(t *testing.T) {
 		},
 	}
 
-	result, err := transformerTransformer.Transform(proxy, &api.RestAPI{})
+	var result api.RestAPI
+	_, perProvider, err := transformerTransformer.TransformWithUpstreamPolicies(proxy, &result)
 	require.NoError(t, err)
 
-	conditions := map[string]string{}
+	// FR-012i. BEING PRIMARY STOPS MATTERING, and that is the point of this test.
+	//
+	// Downstream, the primary's gate had to answer "what if nothing selected a provider?", so
+	// it was written true in that case. That default is what made the primary's transformer
+	// the one that over-ran: on a request a body-phase router sent to the additional provider,
+	// the primary's translator had already reshaped it into the primary's wire format, and the
+	// additional provider's had stood down. Per attempt there is no default to encode — an
+	// unrouted request lands on the primary's own cluster, so the primary's chain runs because
+	// Envoy sent it there, not because an expression guessed it would.
 	for _, op := range result.Spec.Operations {
 		if op.Policies == nil {
 			continue
 		}
 		for _, pol := range *op.Policies {
-			if pol.Name != "openai-to-anthropic-transformer" || pol.Params == nil {
-				continue
-			}
-			providerID, _ := (*pol.Params)["providerId"].(string)
-			require.NotNil(t, pol.ExecutionCondition, "a transformer must always be conditional")
-			conditions[providerID] = *pol.ExecutionCondition
+			require.NotEqual(t, "openai-to-anthropic-transformer", pol.Name,
+				"no provider's translator may remain downstream once there are two of them")
 		}
 	}
 
-	primaryCondition, attached := conditions["anthropic-provider"]
-	require.True(t, attached, "the primary provider's transformer must be attached")
-
-	// Runs when nothing was selected, and when the primary was selected by name.
-	assert.Contains(t, primaryCondition, "!('selected_provider' in request.Metadata)",
-		"the primary's transformer must run when no provider was selected")
-	assert.Contains(t, primaryCondition, "request.Metadata['selected_provider'] == 'anthropic-provider'",
-		"the primary's transformer must run when the primary was selected by name")
-	assert.Equal(t, selectedProviderExecutionCondition("anthropic-provider", true), primaryCondition,
-		"the primary's transformer must reuse the condition its credential already uses")
-
-	// An additional provider's transformer keeps the stricter condition, so
-	// selecting it means the primary's transformer does not run.
-	additionalCondition, attached := conditions["gemini-provider"]
-	require.True(t, attached, "the additional provider's transformer must be attached")
-	assert.NotContains(t, additionalCondition, "!('selected_provider' in request.Metadata)",
-		"an additional provider's transformer must not run by default")
-	assert.Equal(t, selectedProviderExecutionCondition("gemini-provider", false), additionalCondition)
+	for _, alias := range []string{"anthropic-provider", "gemini-provider"} {
+		entry, ok := perProvider[alias]
+		require.True(t, ok, "no per-attempt policies for %q", alias)
+		require.NotNil(t, entry.Transformer, "%q lost its translator entirely", alias)
+		require.NotNil(t, entry.Transformer.Params)
+		assert.Equal(t, alias, (*entry.Transformer.Params)["providerId"],
+			"each chain must carry its OWN provider's translator")
+		assert.Nil(t, entry.Transformer.ExecutionCondition,
+			"the primary and the rest are spelled identically per attempt: no gate at all")
+	}
 }
 
 // newInboundTemplateEnvironment builds two templates whose extraction fields

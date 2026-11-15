@@ -349,3 +349,190 @@ Feature: Each attempt carries its own provider's transformer and credential
     Then the response should be successful
     When I delete the LLM provider "${CTX:liveName}"
     Then the response should be successful
+
+  Scenario: With two providers and no failover, the routed provider's chain still runs
+    # FR-012i. Everything above attaches model-failover. This does NOT: a second provider is
+    # enough on its own to move per-provider work to the per-attempt position.
+    #
+    # WHAT THIS SCENARIO DOES AND DOES NOT SHOW. It is a regression guard for a genuinely new
+    # runtime path, not a demonstration of the bug FR-012i fixes. Before FR-012i a proxy with
+    # no failover never had an upstream ext_proc filter on any cluster, so this is the first
+    # configuration in which the filter is attached, the chain dispatched, and the serving
+    # chain unwound with no retry policy on the route at all — and the response assertions
+    # below are what prove the unwind reaches that configuration.
+    #
+    # It cannot show the misfire itself. That needs a policy selecting the provider in the
+    # request-BODY phase, after the header sweep that evaluated the old gate. No shipped
+    # policy does: model-round-robin selects in OnRequestHeaders for every requestModel
+    # location, payload included, so the old downstream gate was already correct here. The
+    # proof of the fix is the controller's mutation set, not this scenario.
+    Given I generate a unique resource name from "nf-primary" and store it as "nfPrimaryName"
+    And I generate a unique API version from "nf-primary" and store it as "nfPrimaryVersion"
+    And I generate a unique API context from "/nf-primary" and store it as "nfPrimaryContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}       |
+      | name               | ${CTX:nfPrimaryName}            |
+      | displayName        | ${CTX:nfPrimaryName}            |
+      | version            | ${CTX:nfPrimaryVersion}         |
+      | template           | openai                          |
+      | spec.context       | ${CTX:nfPrimaryContext}         |
+      | spec.upstream.url  | http://testbench:3008/openai    |
+      | accessControl.mode | allow_all                       |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "nf-second" and store it as "nfSecondName"
+    And I generate a unique API version from "nf-second" and store it as "nfSecondVersion"
+    And I generate a unique API context from "/nf-second" and store it as "nfSecondContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}       |
+      | name               | ${CTX:nfSecondName}             |
+      | displayName        | ${CTX:nfSecondName}             |
+      | version            | ${CTX:nfSecondVersion}          |
+      | template           | openai                          |
+      | spec.context       | ${CTX:nfSecondContext}          |
+      | spec.upstream.url  | http://testbench:3008/anthropic |
+      | accessControl.mode | allow_all                       |
+    Then the response should be successful
+
+    # model-round-robin, NOT model-failover, is what routes here. One entry, so it always
+    # selects the second provider — this scenario is about where per-provider work runs, not
+    # about rotation.
+    #
+    # Both providers carry a response-header policy naming themselves, and the second carries
+    # a credential and a transformer. A header is used rather than a body assertion because
+    # the request still succeeds either way; the header is the only difference.
+    Given I generate a unique resource name from "nf-proxy" and store it as "nfProxyName"
+    And I generate a unique API version from "nf-proxy" and store it as "nfProxyVersion"
+    And I generate a unique API context from "/nf-proxy" and store it as "nfProxyContext"
+    And I generate a unique value from "nf-credential" and store it as "nfCredential"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                   | ${CTX:nfProxyName}                                                                                                                                                     |
+      | displayName            | ${CTX:nfProxyName}                                                                                                                                                     |
+      | version                | ${CTX:nfProxyVersion}                                                                                                                                                  |
+      | context                | ${CTX:nfProxyContext}                                                                                                                                                  |
+      | provider.id            | ${CTX:nfPrimaryName}                                                                                                                                                   |
+      | spec.providers         | [{"id":"${CTX:nfPrimaryName}","isPrimary":true,"policies":[{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"x-ran-for","value":"primary"}]}}}]},{"id":"${CTX:nfSecondName}","alias":"nf-second","auth":{"type":"api-key","header":"x-api-key","value":"${CTX:nfCredential}"},"transformer":{"type":"openai-to-anthropic-transformer","version":"v0"},"policies":[{"name":"set-headers","version":"v1","params":{"response":{"headers":[{"name":"x-ran-for","value":"nf-second"}]}}}]}] |
+      | spec.operationPolicies | [{"name":"model-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"models":[{"model":"claude-sonnet-4-5-20250929","provider":"nf-second"}]}}]}] |
+    Then the response should be successful
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:nfProxyContext}/chat/completions" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # NOTHING is asserted about x-envoy-attempt-count here, deliberately, and it must stay
+    # that way. IncludeAttemptCountInResponse is set per VIRTUAL HOST, true when any route on
+    # that vhost has a failover cluster specifier (translator.go, vhostHasFailover) — and APIs
+    # share a vhost. So whether this proxy's response carries the header depends on which
+    # OTHER apis happen to be deployed alongside it: absent when this file runs alone, "1"
+    # when a sibling failover scenario is live concurrently. Both were observed. An assertion
+    # either way passes or fails on test scheduling rather than on anything this scenario
+    # configures. That this proxy attaches no failover is established by its operationPolicies
+    # below, not by a header.
+
+    # The second provider's own policy ran, in the RESPONSE direction, which means its
+    # per-attempt chain was both dispatched and unwound on a proxy with no retry policy at
+    # all. The serving cluster is recorded on every attempt including the first, so the
+    # unwind has something to find.
+    And the response header "x-ran-for" should be "nf-second"
+
+    # And the PRIMARY's policy did not run — its chain was never dialled. Downstream this
+    # also held HERE, because the router selected in the header phase and so the primary's
+    # gate was already false by the time it was read; it is the body-phase selector, which
+    # nothing shipped implements, that made that gate's default-true spelling over-run.
+    And the response header "x-ran-for" should not be "primary"
+
+    # The transformer ran too: the client asked in OpenAI's shape and is answered in it,
+    # while the upstream that served was the Anthropic responder.
+    And the response body should contain "chat.completion"
+    And the response body should contain "How can I help you today"
+
+    # And the credential reached the provider it belongs to.
+    And the response header "x-testbench-received-x-api-key" should be "${CTX:nfCredential}"
+
+    When I delete the LLM proxy "${CTX:nfProxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:nfPrimaryName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:nfSecondName}"
+    Then the response should be successful
+
+  Scenario: A streamed cross-vendor response is translated on the way back
+    # FR-037i. The unwind had three phases and the response body of a STREAM was not one of
+    # them, so a streamed cross-vendor answer reached the client as raw upstream SSE. The
+    # exclusion was justified by "a reverse transform is a whole-document conversion, so it
+    # cannot run chunk by chunk" — which is not true of this transformer:
+    # openai-to-anthropic-transformer declares ResponseBodyMode: BodyModeStream and implements
+    # OnResponseBodyChunk, parsing Anthropic's SSE events incrementally.
+    #
+    # No failover is attached, so this also guards FR-012i: per-attempt placement for a
+    # multi-provider proxy must not cost a streamed response its translation. The buffered
+    # scenario above cannot catch that — it is the one phase that was never excluded.
+    Given I generate a unique resource name from "sse-primary" and store it as "ssePrimaryName"
+    And I generate a unique API version from "sse-primary" and store it as "ssePrimaryVersion"
+    And I generate a unique API context from "/sse-primary" and store it as "ssePrimaryContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}       |
+      | name               | ${CTX:ssePrimaryName}           |
+      | displayName        | ${CTX:ssePrimaryName}           |
+      | version            | ${CTX:ssePrimaryVersion}        |
+      | template           | openai                          |
+      | spec.context       | ${CTX:ssePrimaryContext}        |
+      | spec.upstream.url  | http://testbench:3008/openai    |
+      | accessControl.mode | allow_all                       |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "sse-second" and store it as "sseSecondName"
+    And I generate a unique API version from "sse-second" and store it as "sseSecondVersion"
+    And I generate a unique API context from "/sse-second" and store it as "sseSecondContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}       |
+      | name               | ${CTX:sseSecondName}            |
+      | displayName        | ${CTX:sseSecondName}            |
+      | version            | ${CTX:sseSecondVersion}         |
+      | template           | openai                          |
+      | spec.context       | ${CTX:sseSecondContext}         |
+      | spec.upstream.url  | http://testbench:3008/anthropic |
+      | accessControl.mode | allow_all                       |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "sse-proxy" and store it as "sseProxyName"
+    And I generate a unique API version from "sse-proxy" and store it as "sseProxyVersion"
+    And I generate a unique API context from "/sse-proxy" and store it as "sseProxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                   | ${CTX:sseProxyName}                                                                                                                                                    |
+      | displayName            | ${CTX:sseProxyName}                                                                                                                                                    |
+      | version                | ${CTX:sseProxyVersion}                                                                                                                                                 |
+      | context                | ${CTX:sseProxyContext}                                                                                                                                                 |
+      | provider.id            | ${CTX:ssePrimaryName}                                                                                                                                                  |
+      | spec.providers         | [{"id":"${CTX:ssePrimaryName}","isPrimary":true},{"id":"${CTX:sseSecondName}","alias":"sse-second","transformer":{"type":"openai-to-anthropic-transformer","version":"v0"}}] |
+      | spec.operationPolicies | [{"name":"model-round-robin","version":"v1","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"models":[{"model":"claude-sonnet-4-5-20250929","provider":"sse-second"}]}}]}] |
+    Then the response should be successful
+
+    # The client asks in OpenAI's dialect AND asks for a stream. The testbench answers
+    # /anthropic/* streaming requests in ANTHROPIC's SSE dialect, so what comes back is only
+    # OpenAI-shaped if the reverse translation ran chunk by chunk.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:sseProxyContext}/chat/completions" until status 200 with body:
+      """
+      {"model": "gpt-4o", "stream": true, "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Translated: OpenAI's streaming envelope.
+    And the response body should contain "chat.completion.chunk"
+
+    # And NOT Anthropic's. This is the assertion that fails without the streaming unwind —
+    # the request still succeeds and still streams, so only the dialect distinguishes them.
+    And the response body should not contain "content_block_delta"
+
+    When I delete the LLM proxy "${CTX:sseProxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:ssePrimaryName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:sseSecondName}"
+    Then the response should be successful

@@ -497,26 +497,33 @@ func (t *LLMProviderTransformer) transformProxyWithUpstreamPolicies(proxy *api.L
 	// reaches a DIFFERENT provider carrying the first one's shape and key (FR-042).
 	//
 	// So: failover attached means they belong in each provider's PER-ATTEMPT chain and must not
-	// also remain downstream, or both copies run and the transformer is applied twice. No
-	// failover means exactly one attempt, where per-attempt and per-request are the same thing,
-	// so they stay downstream and the proxy generates no per-attempt chain for them at all.
+	// also remain downstream, or both copies run and the transformer is applied twice.
 	//
 	// A flag could not express this: the right answer differs per API, and everything needed to
 	// decide it is already here. The flag that used to live here never enabled per-attempt
 	// placement either — the chains were built unconditionally, so it only deleted the
 	// downstream copy, and with it off the shipped default applied both.
-	// A proxy with no failover makes exactly one attempt, so EVERY per-provider policy —
-	// the publisher's own included — can run downstream and the upstream filter is not needed
-	// at all. "Once per upstream attempt" and "once per request" are the same statement when
-	// there is one attempt, and "only on attempts routed to this provider" is the execution
-	// condition these already carry. Probe E3 measured the filter at ~0.6ms warm and 17ms on a
-	// cold stream, per request, which is what that equivalence buys back.
+	//
+	// MORE THAN ONE PROVIDER IS THE SECOND REASON, and it does not need failover (FR-012i).
+	// Downstream, the only way to run a provider's work for that provider alone is an execution
+	// condition on the provider selected so far — and the request-header phase, where such a
+	// condition is evaluated, runs before any policy that selects from the request body has.
+	// The gate is therefore a PREDICTION, and the primary's spelling of it is true when nothing
+	// has been selected, so it over-runs rather than merely missing: on a request a body-phase
+	// router later sends elsewhere, the primary's policies, transformer and credential all run
+	// anyway. Per-attempt placement has no gate at all — Envoy picking the cluster is what picks
+	// the chain, and it has already picked by the time the filter fires.
+	//
+	// ONE provider needs neither mechanism. There is nothing to choose between, the condition is
+	// true for every request that reaches the proxy, and the downstream placement is exact — so
+	// it keeps the cheaper position. Probe E3 measured the upstream filter at ~0.6ms warm and
+	// 17ms on a cold stream, per request, and that is what a single-provider proxy keeps.
 	//
 	// Nothing synthesises a wso2.attempt namespace for the downstream chain. Its PRESENCE is
 	// how a policy detects that it is at the per-attempt position, so writing it where that is
 	// untrue would make every policy branching on it take the wrong branch — the failover
 	// policy does exactly that. Its absence downstream is accurate.
-	if !proxyAttachesFailover(proxy.Spec) {
+	if !ProxyUsesPerAttemptPlacement(proxy.Spec) {
 		authored, err := t.providerPoliciesDownstream(proxy.Spec)
 		if err != nil {
 			return nil, nil, err
@@ -634,6 +641,40 @@ func (t *LLMProviderTransformer) providerPoliciesDownstream(spec api.LLMProxyCon
 		}
 	}
 	return out, nil
+}
+
+// ProxyUsesPerAttemptPlacement reports whether a proxy's per-provider work — the publisher's
+// own policies, the provider transformer and the provider credential — belongs in the
+// per-attempt chains rather than on the downstream chain (FR-012h, FR-012i).
+//
+// TWO call sites must agree on this exactly. This package decides WHERE that work is placed;
+// pkg/transform decides WHETHER the per-attempt chains are built at all. A disagreement does
+// not degrade, it DELETES: work placed per-attempt with no chain built reaches no position at
+// all, so a provider's credential would silently vanish from every request. One exported
+// predicate, read by both, is what makes that disagreement unrepresentable — the alternative is
+// two spellings of the same rule drifting apart, which is exactly how a canonically-authored
+// proxy once lost its per-attempt chain entirely.
+//
+// Two conditions, either sufficient:
+//
+//   - FAILOVER ATTACHED. Attempts can reach different providers, so once-per-request placement
+//     would hand a later attempt the first provider's shape and key (FR-042).
+//   - MORE THAN ONE PROVIDER. The downstream gate has to predict which provider a request will
+//     reach, in a phase that runs before a body-phase router has chosen (FR-012i). One provider
+//     needs no prediction, so it keeps the cheaper downstream position.
+func ProxyUsesPerAttemptPlacement(spec api.LLMProxyConfigData) bool {
+	if proxyAttachesFailover(spec) {
+		return true
+	}
+	attachments, err := models.NormaliseLLMProxyAttachments(spec)
+	if err != nil {
+		// Validation rejects a shape this malformed before translation. Should one reach here,
+		// the downstream placement is the safe answer: it is where the work ran before this
+		// rule existed, so a half-understood shape degrades to the previous behaviour rather
+		// than to no provider work at all.
+		return false
+	}
+	return len(attachments) > 1
 }
 
 // proxyAttachesFailover reports whether this proxy attaches model-failover anywhere, which is

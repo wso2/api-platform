@@ -21,7 +21,32 @@ import (
 	"log/slog"
 
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/executor"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
+	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
 )
+
+// servingUpstreamChain resolves the chain that wrapped this response: the per-attempt chain of
+// whichever attempt ended up serving.
+//
+// One lookup for every caller. There are now five — three unwind phases, the body-delivery gate
+// and the streaming-capability gate — and each one spelling the two-step lookup itself is how
+// they drift. The streaming phase was missing for exactly that reason: the header and body
+// halves each resolved the chain locally, so nothing made it obvious that a third phase existed
+// and resolved nothing.
+func (ec *PolicyExecutionContext) servingUpstreamChain() (*registry.PolicyChain, string, bool) {
+	if ec.server == nil || ec.server.baselines == nil || ec.server.kernel == nil {
+		return nil, "", false
+	}
+	cluster, ok := ec.server.baselines.ServingCluster(ec.attemptKey)
+	if !ok {
+		return nil, "", false
+	}
+	chain := ec.server.kernel.UpstreamChainForCluster(cluster)
+	if chain == nil || len(chain.Policies) == 0 {
+		return nil, "", false
+	}
+	return chain, cluster, true
+}
 
 // unwindServingUpstreamChain runs the serving attempt's upstream chain in REVERSE at the head of
 // the downstream response phase, before the route's own response policies (FR-037h).
@@ -64,16 +89,11 @@ func (ec *PolicyExecutionContext) unwindServingUpstreamChain(
 	// its writes the same way. A client-supplied x-request-id survives into the gateway, so
 	// keying on it let two concurrent requests share an entry and unwind one response with the
 	// other's provider chain.
-	cluster, ok := ec.server.baselines.ServingCluster(ec.attemptKey)
+	// No attempt reached the upstream position for this request: the API attaches no
+	// per-attempt work, or the entry expired. Nothing wrapped the request, so nothing
+	// needs unwrapping — the ordinary case for every API without failover.
+	chain, cluster, ok := ec.servingUpstreamChain()
 	if !ok {
-		// No attempt reached the upstream position for this request: the API attaches no
-		// per-attempt work, or the entry expired. Nothing wrapped the request, so nothing
-		// needs unwrapping — the ordinary case for every API without failover.
-		return nil, nil
-	}
-
-	chain := ec.server.kernel.UpstreamChainForCluster(cluster)
-	if chain == nil || len(chain.Policies) == 0 {
 		return nil, nil
 	}
 
@@ -117,12 +137,8 @@ func (ec *PolicyExecutionContext) unwindServingUpstreamChain(
 // Runs on the same chain, resolved the same way, before the route's own body policies, so the
 // payload is back in the API's shape by the time they see it.
 func (ec *PolicyExecutionContext) unwindServingUpstreamChainBody(ctx context.Context) (*executor.ResponseExecutionResult, error) {
-	cluster, ok := ec.server.baselines.ServingCluster(ec.attemptKey)
+	chain, cluster, ok := ec.servingUpstreamChain()
 	if !ok {
-		return nil, nil
-	}
-	chain := ec.server.kernel.UpstreamChainForCluster(cluster)
-	if chain == nil || len(chain.Policies) == 0 {
 		return nil, nil
 	}
 
@@ -150,23 +166,88 @@ func (ec *PolicyExecutionContext) unwindServingUpstreamChainBody(ctx context.Con
 // then had nothing to run on: the provider's reverse translation never happened and the client
 // received the fallback vendor's payload shape.
 //
-// Streaming is excluded deliberately rather than overlooked. A reverse transform is a
-// whole-document conversion, so it cannot run chunk by chunk, and the streaming body path does
-// not unwind at all; asking Envoy for a streamed body here would buffer or forward chunks for a
-// chain that has nothing to do with them. A streamed cross-vendor response therefore still
-// reaches the client in the serving provider's shape, which is the documented streaming limit of
-// this policy, not a new one.
+// STREAMING IS NOT EXCLUDED, and used to be. The exclusion rested on "a reverse transform is a
+// whole-document conversion, so it cannot run chunk by chunk" — which is not true of the
+// transformers this feature ships. openai-to-anthropic-transformer declares
+// ResponseBodyMode: BodyModeStream and implements OnResponseBodyChunk, parsing Anthropic's SSE
+// events incrementally and holding back partial ones. It was built to run chunk by chunk.
+//
+// With the exclusion in place this gate returned false for a streamed response, so Envoy was
+// told to skip the response body entirely and a streamed cross-vendor answer reached the client
+// as raw upstream SSE. That was recorded as a documented limit; it was a gate contradicting the
+// policy's own Mode() (FR-037i).
 func (ec *PolicyExecutionContext) servingUpstreamChainRequiresResponseBody() bool {
-	if ec.isStreamingResponse || ec.server == nil || ec.server.baselines == nil || ec.server.kernel == nil {
+	// Before an attempt reaches the upstream position there is no serving cluster, so the
+	// request-phase mode decision never sees this; the response-header callback is where it
+	// takes effect, and Envoy honours a ModeOverride returned from there.
+	chain, _, ok := ec.servingUpstreamChain()
+	return ok && chain.RequiresResponseBody
+}
+
+// chainBlocksResponseStreaming reports whether a chain forces the response to be buffered.
+//
+// A chain objects only when it READS the response body and cannot read it chunk by chunk.
+// Reading SupportsResponseStreaming alone is wrong, and dangerously so: both chain builders
+// (body_mode.go and xds.go) clear that flag when a chain has NO response-body policy at all —
+// "there is nothing to stream" — so a serving chain carrying only a credential reports false and
+// would force every streamed response through a buffer. Same-vendor failover, where no provider
+// has a transformer, is exactly that shape.
+//
+// It is also why the ROUTE chain is read through this predicate rather than its flag directly.
+// Once a provider's transformer moves to the per-attempt position (FR-012i), the route chain is
+// frequently left with no response-body policy at all, so its flag goes false and the response
+// is buffered — the translation still happens, but the client loses incremental delivery for a
+// reason that has nothing to do with it. "Nothing on this chain reads the body" is not an
+// objection to streaming.
+func chainBlocksResponseStreaming(chain *registry.PolicyChain) bool {
+	if chain == nil || chain.SupportsResponseStreaming {
 		return false
 	}
-	cluster, ok := ec.server.baselines.ServingCluster(ec.attemptKey)
+	// RequiresResponseBodyOnFault counts as reading it. A fault-only chain reads the body only
+	// when the response is an error, and an error framed as SSE must still be buffered whole —
+	// the fault policies cannot act on a fragment of one. Omitting this clause streamed those
+	// errors past them, which is what TestFaultOnlyChain_RequestsResponseBodyOnlyForErrors
+	// caught the moment the predicate changed.
+	return chain.RequiresResponseBody || chain.RequiresResponseBodyOnFault
+}
+
+// servingUpstreamChainBlocksResponseStreaming is chainBlocksResponseStreaming for the chain that
+// wrapped this response. A serving chain holding a buffered-only response-body policy must force
+// the response to be buffered, exactly as the same policy would have done from the route chain —
+// otherwise the engine streams past it and that policy never runs at all.
+func (ec *PolicyExecutionContext) servingUpstreamChainBlocksResponseStreaming() bool {
+	chain, _, ok := ec.servingUpstreamChain()
+	return ok && chainBlocksResponseStreaming(chain)
+}
+
+// unwindServingUpstreamChainStreaming is the streaming half of the unwind: it runs the serving
+// attempt's chain over one response-body CHUNK, before the route's own streaming policies see it.
+//
+// The chunk is THREADED, not shared. ExecuteStreamingResponsePolicies returns the chunk as its
+// last policy left it, and that output is what the route chain must receive — the whole point of
+// unwinding first is that the route's own policies see the payload already back in the API's
+// shape. Passing the original chunk to both would run the route chain on untranslated bytes and
+// then discard the translation.
+func (ec *PolicyExecutionContext) unwindServingUpstreamChainStreaming(
+	ctx context.Context, chunk *policy.StreamBody,
+) (*executor.StreamingResponseExecutionResult, error) {
+	chain, cluster, ok := ec.servingUpstreamChain()
 	if !ok {
-		// Before an attempt reaches the upstream position there is no serving cluster, so
-		// the request-phase mode decision never sees this; the response-header callback is
-		// where it takes effect, and Envoy honours a ModeOverride returned from there.
-		return false
+		return nil, nil
 	}
-	chain := ec.server.kernel.UpstreamChainForCluster(cluster)
-	return chain != nil && chain.RequiresResponseBody
+
+	slog.DebugContext(ctx, "unwinding the serving attempt's upstream chain (stream)",
+		"cluster", cluster, "policies", len(chain.Policies), "route", ec.routeKey,
+		"chunk_bytes", len(chunk.Chunk), "end_of_stream", chunk.EndOfStream)
+
+	return ec.server.executor.ExecuteStreamingResponsePolicies(
+		ctx,
+		chain.Policies,
+		ec.responseStreamContext,
+		chunk,
+		chain.PolicySpecs,
+		"",
+		UpstreamChainKey(cluster),
+		chain.HasExecutionConditions, // see the header half
+	)
 }

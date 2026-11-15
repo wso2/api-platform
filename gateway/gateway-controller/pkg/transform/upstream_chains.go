@@ -103,6 +103,26 @@ func buildUpstreamPolicyChains(spec *api.LLMProxyConfigData, clusters map[string
 	return chains
 }
 
+// buildsUpstreamChains reports whether this proxy's per-attempt chains must be compiled.
+//
+// It exists as a named decision rather than an inline condition because it has to agree with
+// utils.ProxyUsesPerAttemptPlacement, which decides the other half: where the per-provider work
+// is PLACED. Both directions of disagreement are bugs, with different shapes. Building a chain
+// for work that also ran downstream DUPLICATES it: a provider's authored policies are read
+// straight from the spec here rather than from the per-provider map the placement side clears,
+// so they would run once downstream and once per attempt. Not building one for work the
+// placement side removed DELETES it: off the downstream chain with nothing to receive it, so a
+// provider's credential is absent from every request while the deployment reports success.
+//
+// So the predicate is read, not restated. perAttempt stays in front of it as a FLOOR rather than
+// a duplicate: it reads the DERIVED api's policy lists while the predicate reads the proxy spec,
+// and those two have diverged before — the deprecated `policies` field was folded into the
+// derived operations while the proxy-side scan still reported no failover. Building when either
+// says so keeps that disagreement on the harmless side.
+func buildsUpstreamChains(spec api.LLMProxyConfigData, perAttempt []models.Policy) bool {
+	return len(perAttempt) > 0 || utils.ProxyUsesPerAttemptPlacement(spec)
+}
+
 // addChain assembles one provider's chain in the fixed order and records it only when it has
 // something to run — an upstream with no per-attempt work should generate no chain at all, so
 // an attempt routed there pays nothing (FR-043).
