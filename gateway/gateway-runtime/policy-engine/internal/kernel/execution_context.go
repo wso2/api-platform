@@ -1535,14 +1535,6 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 	}
 	ec.buildResponseContexts(headers)
 
-	// Reject here, at the last point an HTTP status can still be chosen: response
-	// headers have not been forwarded downstream yet, so this becomes a clean 502
-	// rather than a mid-stream reset. As on the request side, this only applies
-	// when the chain actually inspects the response body.
-	if ec.responseEncodingBlocksBodyPolicies() {
-		return ec.rejectUnsupportedResponseEncoding(ctx), nil
-	}
-
 	// Detect streaming response: upgrade when chain supports streaming AND
 	// upstream signals chunked/SSE AND body is coming (not EndOfStream).
 	slog.Debug("[mode] response headers received — streaming detection",
@@ -1571,6 +1563,20 @@ func (ec *PolicyExecutionContext) processResponseHeaders(
 			"request_id", ec.requestID, "route_key", ec.routeKey,
 			"status", ec.responseHeaderCtx.ResponseStatus,
 			"code_details", ec.responseCodeDetails)
+	}
+
+	// Reject here, at the last point an HTTP status can still be chosen: response headers
+	// have not been forwarded downstream yet, so this becomes a clean 502 rather than a
+	// mid-stream reset. As on the request side, this only applies when the chain actually
+	// inspects the response body.
+	//
+	// AFTER the streaming decision above, not before it. needsResponseBody() excludes the
+	// serving upstream chain for a streamed response -- the unwind cannot run chunk by chunk
+	// -- so asking it while isStreamingResponse is still false answers for a buffered
+	// response that will never happen, and an SSE body with an encoding no policy will read
+	// is rejected with a 502 on behalf of a chain that was never going to inspect it.
+	if ec.responseEncodingBlocksBodyPolicies() {
+		return ec.rejectUnsupportedResponseEncoding(ctx), nil
 	}
 
 	// Unwind the serving attempt's upstream chain FIRST, so a provider's reverse translation

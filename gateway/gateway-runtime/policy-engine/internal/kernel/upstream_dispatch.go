@@ -174,7 +174,11 @@ func (s *ExternalProcessorServer) handleUpstreamRequestHeaders(
 
 	result, err := s.executor.ExecuteRequestHeaderPolicies(
 		ctx, chain.Policies, reqCtx, chain.PolicySpecs,
-		"", UpstreamChainKey(cluster), false)
+		// The chain's own flag. Both directions must read it or they disagree: a policy
+		// whose condition refuses it would wrap the request and then have its response
+		// half unwound anyway, or the reverse — and the client receives a payload in a
+		// shape nothing agreed on.
+		"", UpstreamChainKey(cluster), chain.HasExecutionConditions)
 	if err != nil {
 		// Fail closed. The router is configured with failure_mode_allow:false, so returning
 		// an error stops the attempt rather than letting it reach the provider
@@ -539,7 +543,7 @@ func (s *ExternalProcessorServer) handleUpstreamRequestBody(
 
 	result, err := s.executor.ExecuteRequestPolicies(
 		ctx, chain.Policies, reqCtx, chain.PolicySpecs,
-		"", UpstreamChainKey(cluster), false)
+		"", UpstreamChainKey(cluster), chain.HasExecutionConditions) // see the header half
 	if err != nil {
 		return nil, err
 	}
