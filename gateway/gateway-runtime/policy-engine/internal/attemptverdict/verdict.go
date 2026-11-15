@@ -64,6 +64,22 @@ type Verdict struct {
 	// a `200` here means the failure happened after the response was already committed, and so
 	// is invisible to every phase the policy runs in.
 	ResponseCode uint32
+
+	// AttemptCount is how many times the request was attempted upstream, 1-based, as Envoy
+	// counted it. It is what lets a policy identify WHICH member of its chain this verdict
+	// describes, where UpstreamCluster can only name the provider: two chain members on one
+	// vendor share a cluster and differ only by model, so a cluster-keyed lookup cannot tell
+	// them apart and charges the failure to whichever one it happens to find.
+	//
+	// Request-scoped, and that is sufficient here. Envoy stops retrying the instant an attempt
+	// commits its response, so a post-commitment verdict always describes the LAST attempt --
+	// which makes the total count equal that member's position in the chain. This is the same
+	// correspondence the in-flight response phase already relies on.
+	//
+	// ZERO IS A REAL SENTINEL, not a missing value to default: the proto omits the field when
+	// the request was never attempted upstream at all. A consumer must treat 0 as "no attempt
+	// identity" rather than indexing with it.
+	AttemptCount uint32
 }
 
 // flagReaders maps each shared flag name to the proto accessor that reports it.
@@ -112,6 +128,7 @@ func FromAccessLogEntry(entry *accesslogv3.HTTPAccessLogEntry) (Verdict, bool) {
 		Duration:        entry.GetCommonProperties().GetDuration().AsDuration(),
 		Flags:           set,
 		ResponseCode:    entry.GetResponse().GetResponseCode().GetValue(),
+		AttemptCount:    entry.GetCommonProperties().GetUpstreamRequestAttemptCount(),
 	}, true
 }
 

@@ -84,6 +84,7 @@ func (s *PolicyDeliverySink) RecordAttemptVerdict(v Verdict) {
 		ResponseFlags:   v.Flags,
 		ResponseCode:    v.ResponseCode,
 		Duration:        v.Duration,
+		AttemptCount:    v.AttemptCount,
 	}
 
 	delivered := 0

@@ -171,3 +171,35 @@ func TestNewConsumer_NilSinkStillRuns(t *testing.T) {
 type recordingSink struct{ got []Verdict }
 
 func (s *recordingSink) RecordAttemptVerdict(v Verdict) { s.got = append(s.got, v) }
+
+// The attempt count is what identifies WHICH chain member a verdict describes. UpstreamCluster
+// names a provider, and two chain members on one provider differ only by model, so without this
+// a post-commitment failure is charged to whichever of them a cluster-keyed lookup finds first.
+//
+// Envoy has carried upstream_request_attempt_count on AccessLogCommon all along; this package
+// simply never read it.
+func TestFromAccessLogEntry_CarriesTheAttemptCount(t *testing.T) {
+	e := entry(200, &accesslogv3.ResponseFlags{UpstreamConnectionTermination: true})
+	e.CommonProperties.UpstreamRequestAttemptCount = 3
+
+	v, ok := FromAccessLogEntry(e)
+	if !ok {
+		t.Fatal("entry with an upstream flag was not decoded as a verdict")
+	}
+	if v.AttemptCount != 3 {
+		t.Fatalf("AttemptCount = %d, want 3", v.AttemptCount)
+	}
+}
+
+// Zero is a real sentinel, not a missing value: the proto omits the field when the request was
+// never attempted upstream. A consumer must be able to tell that apart from attempt 1, because
+// indexing a chain with it would select the member BEFORE the first one.
+func TestFromAccessLogEntry_AbsentAttemptCountIsZero(t *testing.T) {
+	v, ok := FromAccessLogEntry(entry(200, &accesslogv3.ResponseFlags{UpstreamRemoteReset: true}))
+	if !ok {
+		t.Fatal("entry with an upstream flag was not decoded as a verdict")
+	}
+	if v.AttemptCount != 0 {
+		t.Fatalf("AttemptCount = %d, want 0 for an entry that never reached an upstream", v.AttemptCount)
+	}
+}
