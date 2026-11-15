@@ -98,3 +98,38 @@ Feature: In allow mode the control plane reaches only the hosts the operator lis
       """
     Then the response status code should be 200
     And the JSON response should have field "serverInfo"
+
+  @NETAC-PA-019 @type:negative
+  Scenario: A REST API upstream must be on a listed host, matched against the whole hostname in any case
+    Given I generate a unique resource name from "netac-allow-rest" and store it as "unlistedApi"
+    And I generate a unique resource name from "netac-allow-prefix" and store it as "prefixApi"
+    And I generate a unique resource name from "netac-allow-listed" and store it as "listedApi"
+    And I generate a unique API context from "/netac-allow-rest" and store it as "unlistedContext"
+    And I generate a unique API context from "/netac-allow-prefix" and store it as "prefixContext"
+    And I generate a unique API context from "/netac-allow-listed" and store it as "listedContext"
+    When I create a REST API via the control plane from "resources/templates/rest-api-cp.yaml" with values:
+      | id          | ${CTX:unlistedApi}             |
+      | displayName | Unlisted Host REST API         |
+      | projectId   | ${CTX:project}                 |
+      | context     | ${CTX:unlistedContext}         |
+      | upstreamUrl | https://backend.unlisted.example |
+    Then the response status code should be 400
+    And the JSON response field "code" should be "DESTINATION_NOT_ALLOWED"
+    And the JSON response field "errors[0].field" should be "upstream.main.url"
+    And the response body should not contain "unlisted.example"
+    When I create a REST API via the control plane from "resources/templates/rest-api-cp.yaml" with values:
+      | id          | ${CTX:prefixApi}                  |
+      | displayName | Prefix Host REST API              |
+      | projectId   | ${CTX:project}                    |
+      | context     | ${CTX:prefixContext}              |
+      | upstreamUrl | http://testbench.unlisted.example |
+    Then the response status code should be 400
+    And the JSON response field "code" should be "DESTINATION_NOT_ALLOWED"
+    When I create a REST API via the control plane from "resources/templates/rest-api-cp.yaml" with values:
+      | id          | ${CTX:listedApi}      |
+      | displayName | Listed Host REST API  |
+      | projectId   | ${CTX:project}        |
+      | context     | ${CTX:listedContext}  |
+      | upstreamUrl | http://TESTBENCH:3000 |
+    Then the response status code should be 201
+

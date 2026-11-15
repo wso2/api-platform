@@ -22,6 +22,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -100,5 +101,24 @@ func TestURLNamesThePortOfItsScheme(t *testing.T) {
 		if got := URL(scheme, "petstore-v1.yaml"); got != want {
 			t.Errorf("URL(%q) = %q, want %q", scheme, got, want)
 		}
+	}
+}
+
+// hello.graphql is GraphQL SDL, for a schema fetched by URL rather than an OpenAPI document.
+func TestGraphQLSDLFixtureIsServed(t *testing.T) {
+	server := httptest.NewServer(New().Handler())
+	t.Cleanup(server.Close)
+	want, err := Fixture("hello.graphql")
+	if err != nil {
+		t.Fatalf("Fixture: %v", err)
+	}
+	resp, err := http.Get(server.URL + "/specs/hello.graphql")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	got, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || string(got) != string(want) || !strings.Contains(string(got), "type Query") {
+		t.Fatalf("GET /specs/hello.graphql = %d %q, want 200 with the SDL fixture", resp.StatusCode, got)
 	}
 }

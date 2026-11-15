@@ -177,6 +177,61 @@ scenarios:
       refs:
         - feature: suites/it/features/management-portal/network-access-control/destination_refusal.feature
           scenario: "Registering an API portal at an address access control refuses succeeds, while a REST API upstream at that address is refused"
+  - id: NETAC-PA-016
+    title: "Create a GraphQL API whose sdlUrl is the cloud metadata address; 400 DESTINATION_NOT_ALLOWED naming sdlUrl before the SDL is fetched, and no API is created, while one with an inline SDL and a testbench upstream is created with 201."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Refusing a destination is the control plane's URL guard, checked at the API; the console only shows the error it returns."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/network-access-control/destination_refusal.feature
+          scenario: "A GraphQL API whose SDL URL is the cloud metadata address is refused before the SDL is fetched, while one with an inline SDL is created"
+  - id: NETAC-PA-017
+    title: "Create an MCP proxy whose associatedGateways endpoint override is the cloud metadata address; 400 DESTINATION_NOT_ALLOWED naming associatedGateways[0].configurations.endpointUrl and no proxy is created, while one with a testbench override is created with 201."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Refusing a destination is the control plane's URL guard, checked at the API; the console only shows the error it returns."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/network-access-control/destination_refusal.feature
+          scenario: "An MCP proxy whose per-gateway endpoint override is the cloud metadata address is refused, while a permitted override is created"
+  - id: NETAC-PA-018
+    title: "With access control in deny mode denying 203.0.113.7 and deny_private_networks on, create REST APIs whose upstreams are 203.0.113.7, the private address 10.20.30.40 and the hostname testbench; 400 DESTINATION_NOT_ALLOWED naming upstream.main.url for the first two and nothing is created, while testbench, checked by name without a DNS lookup, is created with 201."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "Access control is an operator setting enforced at the API; the console has no control for it."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/network-access-control/deny_mode.feature
+          scenario: "A REST API upstream on a denied host or a private address is refused, while a hostname is checked by name only"
+  - id: NETAC-PA-019
+    title: "With access control in allow mode listing testbench, create REST APIs whose upstreams are an unlisted host, a host that only starts with testbench, and TESTBENCH in upper case; 400 DESTINATION_NOT_ALLOWED for the first two, 201 for the listed host."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "Access control is an operator setting enforced at the API; the console has no control for it."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/network-access-control/allow_mode.feature
+          scenario: "A REST API upstream must be on a listed host, matched against the whole hostname in any case"
+  - id: NETAC-PA-020
+    title: "Validate a GraphQL schema whose sdlUrl, and one whose introspection upstream, is the cloud metadata address; 400 DESTINATION_NOT_ALLOWED naming sdlUrl and upstream.main.url, not 200 with resolved false, while a testbench SDL URL validates with 200 and resolved true."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Refusing a destination is the control plane's URL guard, checked at the API; the console only shows the error it returns."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/network-access-control/destination_refusal.feature
+          scenario: "Validating a GraphQL schema from a refused SDL URL or introspection endpoint is refused, while a permitted SDL URL resolves"
   - id: NETAC-GW-001
     title: "Deploy a REST API through the gateway management API whose upstream is the cloud metadata address; 400 naming the refused field (spec.upstream.main.url) and no route, while the same API pointed at the sample backend deploys and serves."
     priority: P0

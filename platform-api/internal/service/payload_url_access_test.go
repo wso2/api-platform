@@ -20,6 +20,9 @@ package service
 import (
 	"context"
 	"errors"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -239,5 +242,72 @@ func TestAPIService_RefusesUpstreamsAccessControlRefuses(t *testing.T) {
 	update.Upstream = upstreamOf("https://backend.example.com", "https://sandbox.example.com")
 	if _, err := apiSvc.UpdateAPI(apiUUID, &update, apiSecretITOrgUUID, "alice"); err != nil {
 		t.Fatalf("UpdateAPI with a permitted sandbox: %v", err)
+	}
+}
+
+func validateSchemaRequest(source api.ValidateGraphQLSchemaRequestSchemaSource, sdlURL, upstreamURL string) api.ValidateGraphQLSchemaRequest {
+	req := api.ValidateGraphQLSchemaRequest{SchemaSource: &source}
+	if sdlURL != "" {
+		req.SdlUrl = &sdlURL
+	}
+	if upstreamURL != "" {
+		up := upstreamOf(upstreamURL, "")
+		req.Upstream = &up
+	}
+	return req
+}
+
+// A refused schema source is the request's error, naming the field, rather than the
+// best-effort "could not resolve" outcome; it reaches validate-schema, create and update
+// alike through resolveSchema.
+func TestGraphQLSchemaResolution_RefusedDestinationIsTheRequestsError(t *testing.T) {
+	useRequestAccessControl(t, clusterDenyRule)
+	svc := newGraphQLTestService(&mockGraphQLAPIRepo{}, nil)
+
+	_, err := svc.ValidateSchema(validateSchemaRequest(api.ValidateGraphQLSchemaRequestSchemaSourceUrl,
+		"http://schema.default.svc.cluster.local/schema.graphql", ""))
+	assertRefusedField(t, err, "sdlUrl")
+
+	_, err = svc.ValidateSchema(validateSchemaRequest(api.ValidateGraphQLSchemaRequestSchemaSourceIntrospection,
+		"", "http://gql.default.svc.cluster.local/graphql"))
+	assertRefusedField(t, err, "upstream.main.url")
+}
+
+// A hostname the request-time check accepts by name is still refused when it is dialed
+// and resolves to a refused address, and that refusal is reported the same way.
+func TestGraphQLSchemaResolution_RefusedAtDialTime(t *testing.T) {
+	sdl := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("type Query { hello: String }"))
+	}))
+	t.Cleanup(sdl.Close)
+	_, port, _ := net.SplitHostPort(strings.TrimPrefix(sdl.URL, "http://"))
+	byName := "http://localhost:" + port + "/schema.graphql"
+
+	useRequestAccessControl(t, netguard.GuardConfig{Enabled: true, Mode: "deny", DenyPrivateNetworks: true})
+	if err := CheckRequestURLs(context.Background(), "org-1", &api.CreateGraphQLAPIRequest{SdlUrl: &byName}); err != nil {
+		t.Fatalf("the request-time check resolves no names: err = %v, want nil", err)
+	}
+	svc := newGraphQLTestService(&mockGraphQLAPIRepo{}, nil)
+	_, err := svc.ValidateSchema(validateSchemaRequest(api.ValidateGraphQLSchemaRequestSchemaSourceUrl, byName, ""))
+	assertRefusedField(t, err, "sdlUrl")
+}
+
+// Positive controls: without a refusal, an unreachable source stays best-effort and a
+// served SDL resolves.
+func TestGraphQLSchemaResolution_UnrefusedSourcesKeepTheirOutcome(t *testing.T) {
+	sdl := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("type Query { hello: String }"))
+	}))
+	t.Cleanup(sdl.Close)
+	useRequestAccessControl(t, clusterDenyRule)
+	svc := newGraphQLTestService(&mockGraphQLAPIRepo{}, nil)
+
+	got, err := svc.ValidateSchema(validateSchemaRequest(api.ValidateGraphQLSchemaRequestSchemaSourceUrl, "http://127.0.0.1:1/schema.graphql", ""))
+	if err != nil || got.Resolved {
+		t.Fatalf("an unreachable sdlUrl: resolved=%v err=%v, want unresolved and no error", got.Resolved, err)
+	}
+	got, err = svc.ValidateSchema(validateSchemaRequest(api.ValidateGraphQLSchemaRequestSchemaSourceUrl, sdl.URL+"/schema.graphql", ""))
+	if err != nil || !got.Resolved {
+		t.Fatalf("a served SDL: resolved=%v err=%v, want resolved", got.Resolved, err)
 	}
 }
