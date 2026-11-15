@@ -112,6 +112,12 @@ Feature: Each attempt carries its own provider's transformer and credential
     # rewrote it for vendor Y and the response half preserved it.
     And the response body should contain "claude-sonnet-4-5-20250929"
 
+    # And the CREDENTIAL, which the scenario's title claims and nothing above checks. The
+    # Anthropic responder answers identically for any credential, including none, so a
+    # dropped or misaddressed x-api-key would still have satisfied every assertion so far.
+    # The testbench reports what actually arrived.
+    And the response header "x-testbench-received-x-api-key" should be "${CTX:vendorYCredential}"
+
     When I delete the LLM proxy "${CTX:proxyName}"
     Then the response should be successful
     When I delete the LLM provider "${CTX:vendorXName}"

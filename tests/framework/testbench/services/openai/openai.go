@@ -85,6 +85,31 @@ func presentedKey(r *http.Request) string {
 	return key
 }
 
+// credentialHeaders are the request headers a provider credential can arrive in: Anthropic's
+// native x-api-key, Azure OpenAI's api-key, and OpenAI's bearer Authorization.
+var credentialHeaders = []string{"x-api-key", "api-key", "authorization"}
+
+// ReceivedCredentialHeaderPrefix prefixes the response headers that report which credential
+// reached this upstream.
+//
+// A scripted responder answers the same way whatever credential it is sent, including none, so
+// a scenario asserting only the response body cannot tell a correctly credentialed request from
+// one whose credential was dropped or misaddressed. Reflecting what arrived is what makes that
+// assertable, and it belongs here rather than in one scenario's fixture: every per-provider
+// credential test needs it.
+const ReceivedCredentialHeaderPrefix = "x-testbench-received-"
+
+// reflectPresentedCredentials copies the credential headers this request carried onto the
+// response, prefixed. Absent headers are not reported, so a request that presented nothing
+// produces no header rather than an empty one a scenario could mistake for a match.
+func reflectPresentedCredentials(w http.ResponseWriter, r *http.Request) {
+	for _, name := range credentialHeaders {
+		if value := r.Header.Get(name); value != "" {
+			w.Header().Set(ReceivedCredentialHeaderPrefix+name, value)
+		}
+	}
+}
+
 // Handler returns the HTTP handler for the service.
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -94,6 +119,9 @@ func (s *Service) Handler() http.Handler {
 
 // route selects a response by request path. Unknown paths use the default chat completion.
 func (s *Service) route(w http.ResponseWriter, r *http.Request) {
+	// Set before anything can write a status: a header added after WriteHeader is dropped.
+	reflectPresentedCredentials(w, r)
+
 	body, err := io.ReadAll(r.Body)
 	defer func() { _ = r.Body.Close() }()
 	if err != nil {

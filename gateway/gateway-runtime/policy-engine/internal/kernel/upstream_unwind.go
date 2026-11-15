@@ -140,7 +140,7 @@ func (ec *PolicyExecutionContext) unwindServingUpstreamChainBody(ctx context.Con
 	)
 }
 
-// ServingUpstreamChainRequiresResponseBody reports whether the chain that wrapped this response
+// servingUpstreamChainRequiresResponseBody reports whether the chain that wrapped this response
 // has a response-BODY policy, so the body has to be delivered even when the route's own chain
 // wants none.
 //
@@ -156,7 +156,7 @@ func (ec *PolicyExecutionContext) unwindServingUpstreamChainBody(ctx context.Con
 // chain that has nothing to do with them. A streamed cross-vendor response therefore still
 // reaches the client in the serving provider's shape, which is the documented streaming limit of
 // this policy, not a new one.
-func (ec *PolicyExecutionContext) ServingUpstreamChainRequiresResponseBody() bool {
+func (ec *PolicyExecutionContext) servingUpstreamChainRequiresResponseBody() bool {
 	if ec.isStreamingResponse || ec.server == nil || ec.server.baselines == nil || ec.server.kernel == nil {
 		return false
 	}

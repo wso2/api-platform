@@ -431,3 +431,32 @@ func TestScriptedRepliesAreIndependentUnderConcurrentUse(t *testing.T) {
 		require.NoError(t, <-errs)
 	}
 }
+
+// A scripted responder answers the same way for any credential, including none, so a scenario
+// that only reads the response body cannot tell a correctly credentialed request from one whose
+// credential was dropped on the way. Reflecting what arrived is what makes that assertable.
+func TestRoute_ReflectsThePresentedCredential(t *testing.T) {
+	svc := New()
+
+	req := httptest.NewRequest(http.MethodPost, "/anthropic/v1/messages",
+		strings.NewReader(`{"model":"claude-sonnet-4-5-20250929","messages":[]}`))
+	req.Header.Set("x-api-key", "vendor-y-secret")
+	rec := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got := rec.Header().Get(ReceivedCredentialHeaderPrefix + "x-api-key"); got != "vendor-y-secret" {
+		t.Fatalf("reflected credential = %q, want %q", got, "vendor-y-secret")
+	}
+	// A header that is always present cannot distinguish anything: a request with no
+	// credential must produce none, or an assertion would match an empty value.
+	bare := httptest.NewRequest(http.MethodPost, "/anthropic/v1/messages",
+		strings.NewReader(`{"model":"claude-sonnet-4-5-20250929","messages":[]}`))
+	bareRec := httptest.NewRecorder()
+	svc.Handler().ServeHTTP(bareRec, bare)
+	if _, present := bareRec.Header()[http.CanonicalHeaderKey(ReceivedCredentialHeaderPrefix+"x-api-key")]; present {
+		t.Fatal("an uncredentialed request reported a credential header")
+	}
+}
