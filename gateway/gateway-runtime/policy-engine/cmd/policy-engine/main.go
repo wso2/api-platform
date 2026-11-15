@@ -198,6 +198,27 @@ func main() {
 	sdkutils.SetSharedHTTPClient(sharedHTTPClient)
 	slog.InfoContext(ctx, "Shared outbound HTTP client built for policies")
 
+	// Policies dial URLs that come from tenant or user input (API-level parameters,
+	// URLs found in payloads) through sdkutils.NewUserURLHTTPClient, which applies
+	// controller.server.network_security.access_control. The shared client above keeps
+	// serving destinations set in config.toml.
+	accessControl := cfg.Controller.Server.NetworkSecurity.AccessControl
+	userURLClientCfg, err := config.BuildUserURLClientConfig(cfg.PolicyEngine.HTTPClient, accessControl)
+	if err != nil {
+		slog.ErrorContext(ctx, "Invalid network access control configuration", "error", err)
+		os.Exit(1)
+	}
+	if _, err := httpclient.New(userURLClientCfg); err != nil {
+		slog.ErrorContext(ctx, "Failed to build outbound HTTP client for tenant-supplied URLs", "error", err)
+		os.Exit(1)
+	}
+	sdkutils.SetUserURLClientFactory(config.NewUserURLClientFactory(userURLClientCfg))
+	slog.InfoContext(ctx, "Outbound HTTP client for tenant-supplied URLs ready",
+		"network_access_control", accessControl.Enabled,
+		"mode", accessControl.Mode,
+		"hostname_patterns", len(accessControl.Hostnames),
+		"deny_private_networks", accessControl.DenyPrivateNetworks)
+
 	// Install the gateway signing keys every signing policy uses through
 	// sdk/core/signing, and that the gateway JWKS endpoint publishes. Installed
 	// before the registry builds any policy instance, and never replaced. With

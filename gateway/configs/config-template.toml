@@ -85,6 +85,10 @@ ecdh_curves = "X25519,P-256"
 # with UPSTREAM_URL_NOT_ALLOWED), and after a change to this section and a restart,
 # a stored artifact that now breaks it is undeployed.
 #
+# The policy engine reads this section too. A policy that dials a URL from an
+# API-level parameter or from a request payload checks it again at request time,
+# on every redirect hop and on each resolved address.
+#
 # mode                  "deny":  a host matching an entry in hostnames is refused.
 #                       "allow": only a host matching an entry is permitted
 #                                (hostnames must not be empty).

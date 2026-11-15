@@ -39,6 +39,7 @@ import (
 	"github.com/wso2/api-platform/common/collector"
 	"github.com/wso2/api-platform/common/configcompat"
 	"github.com/wso2/api-platform/common/configinterpolate"
+	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
 const (
@@ -101,7 +102,11 @@ var defaultFileSourceAllowlist = []string{
 }
 
 type Config struct {
-	PolicyEngine         PolicyEngine           `koanf:"policy_engine"`
+	PolicyEngine PolicyEngine `koanf:"policy_engine"`
+	// Controller holds the controller settings the policy engine applies too.
+	// Only controller.server.network_security is read; the rest of the
+	// controller section belongs to the gateway-controller.
+	Controller           ControllerSection      `koanf:"controller"`
 	GatewayController    map[string]interface{} `koanf:"gateway_controller"`
 	PolicyConfigurations map[string]interface{} `koanf:"policy_configurations"`
 	Collector            CollectorConfig        `koanf:"collector"`
@@ -109,6 +114,50 @@ type Config struct {
 	TrafficLogging       TrafficLoggingConfig   `koanf:"traffic_logging"`
 	TracingConfig        TracingConfig          `koanf:"tracing"`
 	Signing              SigningConfig          `koanf:"signing"`
+}
+
+// ControllerSection is the part of the shared [controller] table the policy
+// engine reads.
+type ControllerSection struct {
+	Server ControllerServerSection `koanf:"server"`
+}
+
+// ControllerServerSection is the part of [controller.server] the policy engine
+// reads.
+type ControllerServerSection struct {
+	NetworkSecurity NetworkSecurityConfig `koanf:"network_security"`
+}
+
+// NetworkSecurityConfig groups outbound network controls.
+type NetworkSecurityConfig struct {
+	AccessControl AccessControlConfig `koanf:"access_control"`
+}
+
+// AccessControlConfig is controller.server.network_security.access_control.
+// The controller enforces it on artifact URLs when they are deployed; the
+// policy engine enforces it when a policy dials a URL that came from tenant or
+// user input (an API-level policy parameter, a URL in a payload) through
+// sdkutils.NewUserURLHTTPClient. Destinations set in config.toml (policy system
+// parameters, collectors) are never subject to it.
+type AccessControlConfig struct {
+	Enabled             bool     `koanf:"enabled"`
+	Mode                string   `koanf:"mode"`
+	Hostnames           []string `koanf:"hostnames"`
+	DenyPrivateNetworks bool     `koanf:"deny_private_networks"`
+	MaxRedirects        int      `koanf:"max_redirects"`
+	AllowedSchemes      []string `koanf:"allowed_schemes"`
+}
+
+// GuardConfig returns the shared netguard representation of a.
+func (a AccessControlConfig) GuardConfig() netguard.GuardConfig {
+	return netguard.GuardConfig{
+		Enabled:             a.Enabled,
+		Mode:                a.Mode,
+		Hostnames:           a.Hostnames,
+		DenyPrivateNetworks: a.DenyPrivateNetworks,
+		MaxRedirects:        a.MaxRedirects,
+		AllowedSchemes:      a.AllowedSchemes,
+	}
 }
 
 // CollectorConfig holds the data-collection ("collector") configuration. The
@@ -1289,6 +1338,18 @@ func defaultCorrelationStoreConfig() CorrelationStoreConfig {
 // defaultConfig returns a Config struct with default configuration values
 func defaultConfig() *Config {
 	return &Config{
+		// Mirrors the gateway-controller default, so both processes apply the same
+		// policy when config.toml has no access_control section.
+		Controller: ControllerSection{Server: ControllerServerSection{NetworkSecurity: NetworkSecurityConfig{
+			AccessControl: AccessControlConfig{
+				Enabled:             true,
+				Mode:                netguard.ModeDeny,
+				Hostnames:           []string{},
+				DenyPrivateNetworks: false,
+				MaxRedirects:        5,
+				AllowedSchemes:      []string{"http", "https"},
+			},
+		}}},
 		PolicyEngine: PolicyEngine{
 			Server: ServerConfig{
 				Mode:        "",
@@ -1470,6 +1531,10 @@ func defaultConfig() *Config {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
+	if err := c.Controller.Server.NetworkSecurity.AccessControl.GuardConfig().Validate(); err != nil {
+		return fmt.Errorf("controller.server.network_security.access_control: %w", err)
+	}
+
 	// Validate policy engine connection mode
 	switch c.PolicyEngine.Server.Mode {
 	case "uds", "":
