@@ -19,6 +19,7 @@
 package configcompat
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -79,5 +80,33 @@ func TestMigrateDestinationGuard_BothNamesIsAnError(t *testing.T) {
 	_, err := MigrateDestinationGuard(raw)
 	if err == nil || !strings.Contains(err.Error(), "both set") {
 		t.Fatalf("err = %v, want a both-set error", err)
+	}
+}
+
+func TestAliasLegacyDestinationGuard_ResolvesTheOldPath(t *testing.T) {
+	guard := map[string]any{"max_redirects": 3}
+	raw := map[string]any{"policy_engine": map[string]any{"http_client": map[string]any{DestinationGuardKey: guard}}}
+	AliasLegacyDestinationGuard(raw, "policy_engine")
+	hc := raw["policy_engine"].(map[string]any)["http_client"].(map[string]any)
+	if !reflect.DeepEqual(hc[LegacyDestinationGuardKey], guard) {
+		t.Fatalf("%s = %v, want the destination_guard table", LegacyDestinationGuardKey, hc[LegacyDestinationGuardKey])
+	}
+	if !reflect.DeepEqual(hc[DestinationGuardKey], guard) {
+		t.Fatal("the destination_guard table must stay where it is")
+	}
+}
+
+func TestAliasLegacyDestinationGuard_NoOpWithoutTheTableOrWhenTaken(t *testing.T) {
+	taken := map[string]any{"enabled": false}
+	for _, raw := range []map[string]any{
+		{},
+		{"http_client": map[string]any{"timeouts": map[string]any{}}},
+		{"http_client": map[string]any{DestinationGuardKey: map[string]any{"enabled": true}, LegacyDestinationGuardKey: taken}},
+	} {
+		before := fmt.Sprint(raw)
+		AliasLegacyDestinationGuard(raw)
+		if after := fmt.Sprint(raw); after != before {
+			t.Fatalf("raw changed from %s to %s, want a no-op", before, after)
+		}
 	}
 }

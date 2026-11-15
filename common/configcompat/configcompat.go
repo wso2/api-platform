@@ -50,6 +50,32 @@ func MigrateDestinationGuard(raw map[string]any, parent ...string) (deprecatedPa
 	return strings.Join(append(path, LegacyDestinationGuardKey), "."), nil
 }
 
+// AliasLegacyDestinationGuard makes <parent>.http_client.<legacy name> name the
+// same table as <parent>.http_client.destination_guard in raw, so a path written
+// against the old name (a policy's ${config...} reference, for example) still
+// resolves after MigrateDestinationGuard has moved the table. Apply it only to a
+// map that paths are looked up in, never to one that is unmarshalled or migrated
+// again: there both names would be set. It does nothing when there is no
+// destination_guard table or the legacy name is already taken.
+func AliasLegacyDestinationGuard(raw map[string]any, parent ...string) {
+	table := raw
+	for _, seg := range append(append([]string{}, parent...), "http_client") {
+		next, ok := table[seg].(map[string]any)
+		if !ok {
+			return
+		}
+		table = next
+	}
+	guard, ok := table[DestinationGuardKey]
+	if !ok {
+		return
+	}
+	if _, taken := table[LegacyDestinationGuardKey]; taken {
+		return
+	}
+	table[LegacyDestinationGuardKey] = guard
+}
+
 // RenameKey moves raw[path...][oldKey] to raw[path...][newKey]. It is a no-op
 // when the old key is absent, and an error when both keys are set.
 func RenameKey(raw map[string]any, path []string, oldKey, newKey string) (bool, error) {

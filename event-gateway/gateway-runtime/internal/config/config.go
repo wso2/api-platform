@@ -349,6 +349,11 @@ func Load(path string) (*Config, map[string]interface{}, error) {
 		if mapped == "" {
 			return "", nil
 		}
+		if renamed, ok := migrateLegacyEnvKey(mapped); ok {
+			slog.Warn("Deprecated environment variable; it sets the previous name of http_client.destination_guard",
+				"variable", key, "key", renamed)
+			mapped = renamed
+		}
 		return mapped, mapEnvValue(mapped, value)
 	}), nil); err != nil {
 		return nil, nil, fmt.Errorf("failed to load env vars: %w", err)
@@ -382,6 +387,23 @@ func Load(path string) (*Config, map[string]interface{}, error) {
 	)
 
 	return cfg, rawConfig, nil
+}
+
+// legacyDestinationGuardPrefix is where an environment variable written before
+// http_client.destination_guard was renamed maps to, for example
+// APIP_EGW_HTTP__CLIENT_SSRF_MAX__REDIRECTS -> http_client.ssrf.max_redirects.
+var legacyDestinationGuardPrefix = "http_client." + configcompat.LegacyDestinationGuardKey + "."
+
+// migrateLegacyEnvKey moves a key under the destination guard's previous name to
+// its current one. Environment variables are loaded after the file's keys are
+// migrated, so without this an override set under the old name would no longer
+// reach the config.
+func migrateLegacyEnvKey(path string) (string, bool) {
+	rest, ok := strings.CutPrefix(path, legacyDestinationGuardPrefix)
+	if !ok {
+		return path, false
+	}
+	return "http_client." + configcompat.DestinationGuardKey + "." + rest, true
 }
 
 func mapEnvKey(key string) string {

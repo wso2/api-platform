@@ -69,3 +69,42 @@ func TestLoad_DestinationGuardUnderBothNamesFails(t *testing.T) {
 		t.Fatalf("err = %v, want a both-set error", err)
 	}
 }
+
+// An environment override written before the rename keeps working. Environment
+// variables are loaded after the file's keys are migrated, so the loader has to
+// rename the override's key itself.
+func TestLoad_DestinationGuardEnvOverrideUnderItsPreviousName(t *testing.T) {
+	t.Setenv("APIP_EGW_HTTP__CLIENT_SSRF_MAX__REDIRECTS", "7")
+	cfg, err := loadEGWithDestinationGuard(t)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.HTTPClient.DestinationGuard.MaxRedirects != 7 {
+		t.Fatalf("max_redirects = %d, want 7 from the environment", cfg.HTTPClient.DestinationGuard.MaxRedirects)
+	}
+}
+
+// A file already using the new name and an override still using the old one are
+// not a conflict: the override names a leaf, and it overrides the file as any
+// environment variable does.
+func TestLoad_DestinationGuardEnvOverrideUnderItsPreviousNameOverridesTheFile(t *testing.T) {
+	t.Setenv("APIP_EGW_HTTP__CLIENT_SSRF_MAX__REDIRECTS", "7")
+	cfg, err := loadEGWithDestinationGuard(t, configcompat.DestinationGuardKey)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.HTTPClient.DestinationGuard.MaxRedirects != 7 {
+		t.Fatalf("max_redirects = %d, want 7 from the environment over the file's 3", cfg.HTTPClient.DestinationGuard.MaxRedirects)
+	}
+}
+
+func TestLoad_DestinationGuardEnvOverride(t *testing.T) {
+	t.Setenv("APIP_EGW_HTTP__CLIENT_DESTINATION__GUARD_MAX__REDIRECTS", "7")
+	cfg, err := loadEGWithDestinationGuard(t)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.HTTPClient.DestinationGuard.MaxRedirects != 7 {
+		t.Fatalf("max_redirects = %d, want 7", cfg.HTTPClient.DestinationGuard.MaxRedirects)
+	}
+}

@@ -56,3 +56,22 @@ func TestLoad_DestinationGuardUnderBothNamesFails(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "both set")
 }
+
+// A policy parameter written against the previous name (for example
+// ${config.policy_engine.http_client.ssrf.preset}) keeps resolving: the ${config}
+// map holds the table under both names, whichever one the file used.
+func TestLoad_DestinationGuardStaysResolvableUnderItsPreviousName(t *testing.T) {
+	for _, name := range []string{configcompat.LegacyDestinationGuardKey, configcompat.DestinationGuardKey} {
+		t.Run(name, func(t *testing.T) {
+			cfg, err := loadPEWithDestinationGuard(t, name)
+			require.NoError(t, err)
+			hc, ok := cfg.PolicyEngine.RawConfig["policy_engine"].(map[string]interface{})["http_client"].(map[string]interface{})
+			require.True(t, ok, "RawConfig has no policy_engine.http_client table")
+			for _, key := range []string{configcompat.LegacyDestinationGuardKey, configcompat.DestinationGuardKey} {
+				guard, ok := hc[key].(map[string]interface{})
+				require.True(t, ok, "RawConfig has no policy_engine.http_client.%s table", key)
+				assert.Equal(t, "public_only", guard["preset"], "policy_engine.http_client.%s.preset", key)
+			}
+		})
+	}
+}
