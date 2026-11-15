@@ -5708,7 +5708,7 @@ func TestFindOtherEnvironmentRecordsAnEnvironmentThePortalDoesNotUse(t *testing.
 	require.Equal(t, "staging", got)
 }
 
-func TestDeletingTheAPIDropsItsPublicationCleanup(t *testing.T) {
+func TestDroppingThePublicationCleanupIsAnExplicitStep(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
 	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodDelete, r.Method)
@@ -5720,6 +5720,9 @@ func TestDeletingTheAPIDropsItsPublicationCleanup(t *testing.T) {
 	require.NoError(t, registry.Register(cleanup.Resource{Kind: cloudPublicationKind, ID: "portal-1/rest-api/another-api", Actor: resourceActor}))
 
 	require.NoError(t, steps.deleteAPI(ctx))
+	require.Len(t, registry.Pending(), 2, "deleting the API alone keeps the publication cleanup registered")
+
+	require.NoError(t, steps.dropPublicationCleanup(ctx))
 	pending := registry.Pending()
 	require.Len(t, pending, 1, "only the deleted API's publication is dropped")
 	require.Equal(t, "portal-1/rest-api/another-api", pending[0].ID)

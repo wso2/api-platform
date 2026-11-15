@@ -765,6 +765,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     When I delete the synthetic REST API
     Then the synthetic REST API should not be published on the managed API Portal
     And I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}.md" from the synthetic managed API Portal until status 404
+    And the publication cleanup of the synthetic REST API is no longer needed
 
   @ID_APIP_PORTAL_045 @layer:cloud-owned
   Scenario Outline: Managed API Portal routes refuse a request <credential>

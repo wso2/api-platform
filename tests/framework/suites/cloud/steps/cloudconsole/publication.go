@@ -100,6 +100,7 @@ func (s *Steps) publicationStepDefinitions() []stepDefinition {
 		{`^I send a "([^"]*)" request (without a token|with a forged token) to the publication path "([^"]*)"$`, s.sendWithoutValidToken},
 		{`^the ` + subjectPattern + ` should be (PUBLISHED|DEPRECATED) on the managed API Portal$`, s.assertPublicationStatus},
 		{`^the ` + subjectPattern + ` should not be published on the managed API Portal$`, s.assertNotPublished},
+		{`^the publication cleanup of the synthetic REST API is no longer needed$`, s.dropPublicationCleanup},
 		{`^the API publications of the ` + subjectPattern + ` should show the managed API Portal as (PUBLISHED|DEPRECATED|NOT_PUBLISHED)$`, s.assertPublicationSummary},
 		{`^the publication of the ` + subjectPattern + ` should offer (the synthetic subscription plan|both synthetic subscription plans)$`, s.assertPublicationPlans},
 		{`^the publication of the ` + subjectPattern + ` should have the display name "([^"]*)"$`, s.assertPublicationDisplayName},
@@ -700,6 +701,20 @@ func unpublishSettled(resp *httpx.Response) bool {
 		return err == nil && code == publicationStateConflict
 	}
 	return false
+}
+
+// dropPublicationCleanup deregisters the cleanup of the synthetic REST API's publication. A
+// scenario that deleted the API uses it only after it has seen the portal stop serving the API:
+// the platform answers an unpublish for a missing API with 404 API_NOT_FOUND before it asks the
+// portal to remove the listing, so the cleanup could not remove one that was left behind. When
+// an earlier step fails, the cleanup stays registered and reports the listing as unsettled.
+func (s *Steps) dropPublicationCleanup(ctx context.Context) error {
+	target, err := targetOf(ctx, "synthetic REST API")
+	if err != nil {
+		return err
+	}
+	deregister(ctx, cloudPublicationKind, target.id())
+	return nil
 }
 
 // forgedToken is shaped like a console token but signed by no key the cloud trusts.
