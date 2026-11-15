@@ -183,15 +183,37 @@ export type EditableField = {
   path: string;
   type: ConfigFieldType;
   label?: string;
+  /** The full explanation, shown on demand. */
   description?: string;
+  /** One short line under the control, before the default. */
+  hint?: string;
+  /** Heading of the form section this setting is shown under. */
+  group?: string;
   /** Permitted values, present when `type` is `enum`. */
   values?: string[];
+  /**
+   * Display text for enum values, keyed by value; a value without one shows as
+   * itself. Display only: a write always takes the value.
+   */
+  labels?: Record<string, string>;
+  /**
+   * What a `string` holds: `text` is one line in any script, `header-value`
+   * one HTTP header value. `toml` (or no format) is gateway.config_toml from a
+   * platform that still offers it; the console no longer edits raw TOML.
+   */
+  format?: 'text' | 'header-value' | 'toml';
   /**
    * Inclusive bounds. STRINGS for every type — `Number('50m')` is `NaN`. For
    * `string`, `max` is a length in characters and `min` is absent.
    */
   min?: string;
   max?: string;
+  /**
+   * What the gateway runs with while the path is absent from `values`, in the
+   * type a write takes. Display only: it is never part of `values` and is never
+   * sent back. Absent where the platform publishes none.
+   */
+  default?: string | number | boolean;
 };
 
 /**
@@ -208,6 +230,36 @@ export type ConfigConstraint = {
 
 export type ConfigValues = Record<string, unknown>;
 
+/**
+ * One identity provider whose JWTs a managed gateway accepts. Exactly one of
+ * `jwksUri` and `publicKey` is set.
+ */
+export type GatewayKeyManager = {
+  /** What an API's JWT policy names it by in `issuers`. */
+  name: string;
+  /** The `iss` claim of the tokens it issues. */
+  issuer: string;
+  jwksUri?: string;
+  /** A PEM public key or certificate, for an IdP with no JWKS endpoint. */
+  publicKey?: string;
+};
+
+/** What an issuer's OpenID discovery document says about it. */
+export type KeyManagerDiscovery = {
+  /** The document's own issuer, which tokens carry. */
+  issuer: string;
+  wellKnownUrl: string;
+  jwksUri: string;
+};
+
+
+/** A form section the editable settings name in `group`. */
+export type ConfigGroup = {
+  name: string;
+  /** One line describing what the section's settings control. */
+  description?: string;
+};
+
 export type GatewayConfiguration = {
   id: string;
   name?: string;
@@ -215,6 +267,10 @@ export type GatewayConfiguration = {
   /** Current value of every editable setting, keyed exactly as a request body is. */
   values: ConfigValues;
   editable: EditableField[];
+  /** The sections `editable` names, with their descriptions. Absent on an older platform. */
+  groups?: ConfigGroup[];
+  /** What the gateway trusts, read and written with the settings. */
+  keyManagers?: GatewayKeyManager[];
   constraints?: ConfigConstraint[];
   status: ConfigStatus;
 };
