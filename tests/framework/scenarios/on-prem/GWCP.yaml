@@ -1,0 +1,127 @@
+# Scenario list: Gateway Custom Policies (GWCP).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: GWCP
+title: Gateway Custom Policies
+scenarios:
+  - id: GWCP-001
+    title: Read a gateway's policy manifest; a policy its build manifest lists is marked custom with its definition, and an unlisted one is marked built in.
+    priority: P0
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/gateway_custom_policies.feature
+          scenario: "Journey: an administrator syncs a gateway's custom policy and its next minor version, and attaches it to an API"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/gateway-policies/custom_policy_sync.feature
+          scenario: "The gateway manifest marks the policies its build manifest lists as custom and the others as built in"
+  - id: GWCP-002
+    title: Sync a custom policy from a gateway's manifest; the organization holds it with its version, display name and definition.
+    priority: P0
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/gateway_custom_policies.feature
+          scenario: "Journey: an administrator syncs a gateway's custom policy and its next minor version, and attaches it to an API"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/gateway-policies/custom_policy_sync.feature
+          scenario: "Syncing a custom policy adds it to the organization with its display name and definition"
+  - id: GWCP-003
+    title: Sync a version of a custom policy the organization already holds; the sync is refused with 409 POLICY_VERSION_CONFLICT and the record is unchanged.
+    priority: P1
+    ui:
+      status: exempt
+      reason: The console offers Sync only for a version it can add or replace, so it cannot send this request.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/gateway-policies/custom_policy_sync.feature
+          scenario: "Syncing a version the organization already holds is a conflict and keeps the record"
+  - id: GWCP-004
+    title: Sync a higher minor version of a custom policy; the organization's record of that major version is replaced, keeping its ID.
+    priority: P0
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/gateway_custom_policies.feature
+          scenario: "Journey: an administrator syncs a gateway's custom policy and its next minor version, and attaches it to an API"
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/gateway-policies/custom_policy_sync.feature
+          scenario: "Syncing a higher minor version replaces the organization's record of that major version"
+  - id: GWCP-005
+    title: Sync a lower minor version than the organization holds; the sync is refused with 409 POLICY_VERSION_CONFLICT and the record keeps the higher version.
+    priority: P1
+    ui:
+      status: exempt
+      reason: The console offers Sync only for a version it can add or replace, so it cannot send this request.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/gateway-policies/custom_policy_sync.feature
+          scenario: "Syncing a lower minor version than the organization holds is refused"
+  - id: GWCP-006
+    title: Sync a version that differs only in the patch number from the one the organization holds; the sync is refused with 409 POLICY_VERSION_CONFLICT.
+    priority: P1
+    ui:
+      status: exempt
+      reason: The console offers Sync only for a version it can add or replace, so it cannot send this request.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/gateway-policies/custom_policy_sync.feature
+          scenario: "Syncing a version that changes only the patch number is refused"
+  - id: GWCP-007
+    title: Sync two major versions of a custom policy; the organization holds one record for each.
+    priority: P0
+    ui:
+      status: planned
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/gateway-policies/custom_policy_sync.feature
+          scenario: "Two major versions of a custom policy are kept as two records"
+  - id: GWCP-008
+    title: Sync a policy the gateway does not report as custom; the sync is refused with 409 POLICY_INVALID_STATE and nothing is added.
+    priority: P1
+    ui:
+      status: exempt
+      reason: The console offers Sync only for the gateway's custom policies.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/gateway-policies/custom_policy_sync.feature
+          scenario: "Syncing a policy the gateway does not report as custom is refused"
+  - id: GWCP-009
+    title: Sync a policy version the gateway's manifest does not hold; the sync is refused with 404 CUSTOM_POLICY_VERSION_NOT_FOUND.
+    priority: P2
+    ui:
+      status: exempt
+      reason: The console offers Sync only for the policies the gateway's manifest lists.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/gateway-policies/custom_policy_sync.feature
+          scenario: "Syncing a policy version the gateway does not report is refused"
+  - id: GWCP-010
+    title: Attach a synced custom policy to an API from its Policies page; the policy is listed as Custom by its display name, its form is built from its definition, and it is saved on the API.
+    priority: P0
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/gateway_custom_policies.feature
+          scenario: "Journey: an administrator syncs a gateway's custom policy and its next minor version, and attaches it to an API"
+    it:
+      status: exempt
+      reason: The form is built by the console; the API-level contract it reads, the organization's custom policy list, is covered by GWCP-002.

@@ -479,6 +479,68 @@ func TestTrackControlPlaneResourceDeregistersDeletedPlatformResources(t *testing
 	require.Equal(t, []string{"b"}, pendingIDs(reg, platformRESTAPIKind))
 }
 
+func synced(uuid, version string) *httpx.Response {
+	return &httpx.Response{
+		StatusCode: http.StatusOK,
+		URL:        "https://cp:9243/api/v0.9/gateway-custom-policies/sync?gatewayId=it-gateway&policyName=p&policyVersion=" + version,
+		Body:       []byte(`{"uuid":"` + uuid + `","name":"p","version":"` + version + `"}`),
+	}
+}
+
+func TestTrackControlPlaneResourceRegistersSyncedCustomPolicies(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, synced("u1", "v1.0.0")))
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, synced("u10", "v1.0.0")))
+	require.ElementsMatch(t, []string{"u1/versions/v1.0.0", "u10/versions/v1.0.0"}, pendingIDs(reg, platformCustomPolicyKind))
+
+	// A higher minor version updates the record in place, so only its new version is deleted.
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, synced("u1", "v1.1.0")))
+	require.ElementsMatch(t, []string{"u1/versions/v1.1.0", "u10/versions/v1.0.0"}, pendingIDs(reg, platformCustomPolicyKind),
+		"a record whose uuid shares the prefix is kept")
+
+	// A refused sync, or a 200 from another path, records nothing.
+	refused := synced("u2", "v1.0.0")
+	refused.StatusCode = http.StatusConflict
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, refused))
+	other := synced("u3", "v1.0.0")
+	other.URL = "https://cp:9243/api/v0.9/gateway-custom-policies"
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, other))
+	require.Len(t, pendingIDs(reg, platformCustomPolicyKind), 2)
+
+	// Deleted after the APIs that may use it.
+	for _, api := range []cleanup.Kind{platformRESTAPIKind, platformGraphQLAPIKind, platformMCPKind, platformSecuredAPIKind} {
+		require.Less(t, api.Order, platformCustomPolicyKind.Order, api.Name)
+	}
+}
+
+func TestTrackControlPlaneResourceRequiresTheSyncedCustomPolicy(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+	for _, body := range []string{``, `{`, `{}`, `{"uuid":"u1"}`, `{"version":"v1.0.0"}`, `{"uuid":" ","version":"v1.0.0"}`} {
+		resp := synced("u1", "v1.0.0")
+		resp.Body = []byte(body)
+		require.Error(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, resp), body)
+	}
+	require.Empty(t, reg.Pending())
+}
+
+func TestTrackControlPlaneResourceDeregistersDeletedCustomPolicies(t *testing.T) {
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, synced("u1", "v1.0.0")))
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, synced("u2", "v2.0.0")))
+
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
+		&httpx.Response{StatusCode: http.StatusConflict, URL: "https://cp/api/v0.9/gateway-custom-policies/u1/versions/v1.0.0"}))
+	require.Len(t, pendingIDs(reg, platformCustomPolicyKind), 2, "a failed delete leaves the record in place")
+
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodDelete, nil,
+		&httpx.Response{StatusCode: http.StatusNoContent, URL: "https://cp:9243/api/v0.9/gateway-custom-policies/u1/versions/v1.0.0"}))
+	require.Equal(t, []string{"u2/versions/v2.0.0"}, pendingIDs(reg, platformCustomPolicyKind))
+}
+
 func TestIsDeploymentNotActive(t *testing.T) {
 	notActive := []byte(`{"code":"DEPLOYMENT_NOT_ACTIVE","message":"No active deployment"}`)
 	require.True(t, isDeploymentNotActive(&httpx.Response{StatusCode: http.StatusConflict, Body: notActive}))
@@ -601,6 +663,24 @@ func TestJSONFieldEquals(t *testing.T) {
 	require.False(t, jsonFieldEquals(&httpx.Response{StatusCode: http.StatusNotFound, Body: ok.Body}, "status", "DEPLOYED"))
 	require.False(t, jsonFieldEquals(&httpx.Response{StatusCode: http.StatusOK, Body: []byte(`{`)}, "status", "DEPLOYED"))
 	require.False(t, jsonFieldEquals(nil, "status", "DEPLOYED"))
+}
+
+func TestJSONArrayHasItem(t *testing.T) {
+	ok := &httpx.Response{StatusCode: http.StatusOK, Body: []byte(
+		`{"policies":[{"name":"set-headers","isCustomPolicy":false},{"name":"it-custom-basic","isCustomPolicy":true}],"count":2}`)}
+	require.True(t, jsonArrayHasItem(ok, "policies", "name", "it-custom-basic"))
+	require.True(t, jsonArrayHasItem(ok, "policies", "isCustomPolicy", "true"))
+	require.False(t, jsonArrayHasItem(ok, "policies", "name", "it-custom"), "the value must match exactly")
+	require.False(t, jsonArrayHasItem(ok, "policies", "version", "v1.0.0"))
+	require.False(t, jsonArrayHasItem(ok, "missing", "name", "it-custom-basic"))
+	require.False(t, jsonArrayHasItem(ok, "count", "name", "it-custom-basic"), "a field that is not an array")
+	require.False(t, jsonArrayHasItem(&httpx.Response{StatusCode: http.StatusOK, Body: []byte(`{"policies":[]}`)},
+		"policies", "name", "it-custom-basic"))
+	require.False(t, jsonArrayHasItem(&httpx.Response{StatusCode: http.StatusOK, Body: []byte(`{"policies":["it-custom-basic"]}`)},
+		"policies", "name", "it-custom-basic"))
+	require.False(t, jsonArrayHasItem(&httpx.Response{StatusCode: http.StatusNotFound, Body: ok.Body}, "policies", "name", "it-custom-basic"))
+	require.False(t, jsonArrayHasItem(&httpx.Response{StatusCode: http.StatusOK, Body: []byte(`{`)}, "policies", "name", "it-custom-basic"))
+	require.False(t, jsonArrayHasItem(nil, "policies", "name", "it-custom-basic"))
 }
 
 func TestErrorCode(t *testing.T) {

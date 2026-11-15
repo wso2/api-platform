@@ -323,6 +323,7 @@ func registerUIDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) 
 	reg.RegisterDeleter(cleanup.KindAPI, platformAPIDeleter(auth, "/api/v0.9/rest-apis"))
 	reg.RegisterDeleter(managementportal.KindGraphQLAPI, platformAPIDeleter(auth, "/api/v0.9/graphql-apis"))
 	reg.RegisterDeleter(managementportal.KindAPIPortal, platformAPIDeleter(auth, "/api/v0.9/api-portals"))
+	reg.RegisterDeleter(managementportal.KindCustomPolicy, customPolicyDeleter(auth))
 	secondOrganization := &platformAPIAuth{topo: topo, client: client, secondOrganization: true}
 	reg.RegisterDeleter(managementportal.KindSecondOrganizationRESTAPI,
 		platformAPIDeleter(secondOrganization, "/api/v0.9/rest-apis"))
@@ -444,6 +445,57 @@ func platformAPIDeleter(auth *platformAPIAuth, collection string) cleanup.Delete
 			return nil
 		}
 		return fmt.Errorf("cleanup: %s", resp.Describe())
+	}
+}
+
+// customPolicyDeleter deletes every version of the custom policy named by the resource ID that
+// the organization holds. One synced from the console is known only by name.
+func customPolicyDeleter(auth *platformAPIAuth) cleanup.Deleter {
+	return func(ctx context.Context, res cleanup.Resource) error {
+		base, err := auth.baseURL()
+		if err != nil {
+			return err
+		}
+		authHeader, err := auth.authHeader(ctx)
+		if err != nil {
+			return err
+		}
+		headers := map[string]string{"Authorization": authHeader}
+		listed, err := auth.client.Do(ctx, httpx.Request{
+			Method: http.MethodGet, URL: base + "/api/v0.9/gateway-custom-policies?limit=100", Headers: headers,
+		}, 1, 0)
+		if err != nil {
+			return err
+		}
+		if !listed.Succeeded() {
+			return fmt.Errorf("cleanup: listing custom policies: %s", listed.Describe())
+		}
+		var page struct {
+			List []struct {
+				UUID    string `json:"uuid"`
+				Name    string `json:"name"`
+				Version string `json:"version"`
+			} `json:"list"`
+		}
+		if err := json.Unmarshal(listed.Body, &page); err != nil {
+			return fmt.Errorf("cleanup: decoding the custom policy list: %w", err)
+		}
+		for _, policy := range page.List {
+			if policy.Name != res.ID {
+				continue
+			}
+			resp, err := auth.client.Do(ctx, httpx.Request{
+				Method: http.MethodDelete, Headers: headers,
+				URL: base + "/api/v0.9/gateway-custom-policies/" + url.PathEscape(policy.UUID) + "/versions/" + url.PathEscape(policy.Version),
+			}, 1, 0)
+			if err != nil {
+				return err
+			}
+			if resp.StatusCode != http.StatusNotFound && !resp.Succeeded() {
+				return fmt.Errorf("cleanup: %s", resp.Describe())
+			}
+		}
+		return nil
 	}
 }
 
