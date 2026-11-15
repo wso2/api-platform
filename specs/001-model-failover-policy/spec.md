@@ -1383,21 +1383,22 @@ platform capability; model failover is its first consumer, not its only one.
     transformer and credential in that provider's **per-attempt** chain, and MUST NOT also leave
     them on the downstream chain. Attempts can reach different providers, so once-per-request
     placement would send a later attempt the first provider's shape and key (FR-042).
-  - An API that attaches no failover MUST place them **downstream** only, and generates no
-    per-attempt chain and no upstream filter for them. Exactly one attempt occurs, so
-    once-per-attempt and once-per-request are the same thing, and the filter would be a gRPC
-    round trip for nothing.
+  - An API that attaches no failover and fronts exactly **one** provider MUST place them
+    **downstream** only, and generates no per-attempt chain and no upstream filter for them.
+    Exactly one attempt occurs and exactly one target exists, so once-per-attempt and
+    once-per-request are the same thing, and the filter would be a gRPC round trip for nothing.
+  - An API that attaches no failover but fronts **more than one** provider MUST place them
+    per-attempt as well (FR-012i, added 2026-11-15). Failover is not the only thing that makes
+    the downstream placement a guess.
 
   **Load-bearing invariant:** "no failover implies one attempt" holds because the failover
   specifier is the only generator of a route retry policy. A future feature that adds another
   MUST revisit this rule, or per-provider work silently becomes once-per-request.
 
-  This extends to the publisher's own `providers[].policies`. Those are documented as running
-  once per upstream attempt, and with one attempt that is the same statement as once per request;
-  "only on attempts routed to this provider" is the execution condition they already carry
-  downstream. So a proxy with no failover places them downstream too and generates no upstream
-  filter at all — one condition for the filter rather than two. Probe E3 measured the filter at
-  ~0.6ms warm and 17ms on a cold stream, per request, which is what the equivalence buys back.
+  This extends to the publisher's own `providers[].policies`, with the same split: a
+  single-provider proxy with no failover places them downstream and generates no upstream filter
+  at all. Probe E3 measured the filter at ~0.6ms warm and 17ms on a cold stream, per request,
+  which is what that equivalence buys back for the proxies that can keep it.
 
   Where they are placed downstream they MUST precede the transformer and the credential, so no
   policy in the chain sits after the key and can read it (FR-039).
@@ -1406,6 +1407,53 @@ platform capability; model failover is its first consumer, not its only one.
   PRESENCE is how a policy detects that it is at the per-attempt position — the failover policy
   branches on exactly that — so writing it where the position is not in use would make every
   such policy take the wrong branch. Its absence downstream is accurate information.
+- **FR-012i** *(added 2026-11-15)*: A proxy fronting **more than one provider** MUST place every
+  provider's per-attempt work — the publisher's own `providers[].policies`, the provider
+  transformer and the provider credential — in that provider's per-attempt chain, whether or not
+  `model-failover` is attached. It MUST NOT scope that work with an execution condition on the
+  selected provider.
+
+  **The downstream gate is a prediction, and it is evaluated before the information exists.** The
+  only way to run a provider's work for that provider alone on a single shared chain is a
+  condition on the provider selected so far. That condition is evaluated in the **request-header**
+  phase, at the position of the gated policy. A routing policy is free to select from the request
+  **body** — `UpstreamRequestModifications.UpstreamName` is a documented SDK capability, and
+  `model-failover` itself selects there — and the header sweep is never revisited. So the gate
+  answers "which provider will this request reach?" at a moment when nothing has decided.
+
+  **It over-runs rather than merely missing, and that is the damaging half.** The primary's gate
+  is written `!('selected_provider' in request.Metadata) || … == '<primary>'`, true when nothing
+  has been selected, because a downstream gate must also answer "what if no router runs at all?".
+  On a request a body-phase router later sends elsewhere, the primary's policies, transformer and
+  credential therefore all run anyway:
+
+  - an `oauth2` credential is minted and attached, and travels upstream to a **different**
+    provider's endpoint, which also receives none of its own — `oauth2-generator` is not a
+    `set-headers` policy and exposes no phase parameter, so the `withRequestBodyPhase` deferral
+    that rescues an `apiKey` credential cannot reach it;
+  - the primary's transformer reshapes the request into the primary's wire format and the
+    intended provider's stands down, so the request arrives in the wrong shape;
+  - an authored policy runs for a provider it was not authored under.
+
+  **Per attempt there is no gate to be wrong.** Envoy picking the cluster is what picks the chain,
+  and it has already picked by the time the upstream filter fires. This also removes the
+  `includeDefault` asymmetry entirely: an unrouted request lands on the primary's own cluster
+  (`ProviderClusters[""]`), so the primary's chain runs because it was routed there, not because
+  an expression guessed it would. The primary and the rest are then spelled identically.
+
+  **One provider keeps the downstream placement.** There is nothing to choose between, the
+  condition is true for every request that reaches the proxy, and the placement is exact — so it
+  does not pay Probe E3's filter for correctness it already had.
+
+  **The two halves MUST read one predicate.** Where the work is placed and whether the per-attempt
+  chains are compiled are decided in different packages. Disagreement in one direction costs a
+  dead chain; in the other it DELETES the work — removed from the downstream chain with nothing
+  built to receive it, so a provider's credential is absent from every request while the
+  deployment reports success and the generated output shows only an absence.
+
+  **Scope:** this changes a shipped configuration — a multi-provider LlmProxy without failover —
+  from downstream to per-attempt placement. It is a behaviour change for those APIs and nothing
+  else; single-provider proxies are byte-identical, which the compat goldens assert.
 - **FR-037h** *(supersedes FR-037a's reasoning, 2026-11-13)*: A provider's response work MUST be
   performed by **unwinding the serving attempt's upstream chain at the head of the downstream
   response chain**, in reverse order, before the route's own response policies run.
@@ -1421,10 +1469,49 @@ platform capability; model failover is its first consumer, not its only one.
   general: a transformer's reverse translation and any future authored per-provider response
   policy are the same mechanism, with no further change.
 
+  *(Amended 2026-11-15: this rule originally excluded streaming on the grounds that a reverse
+  transform is a whole-document conversion. That premise was wrong — see FR-037i.)*
+
   The serving cluster MUST be **recorded** by the engine as each attempt runs, never inferred by
   indexing the published ranking: Probe G showed Envoy substitutes the configured group at a
   position when a name does not resolve, so an index can be right about position and wrong about
   target, silently.
+- **FR-037i** *(added 2026-11-15, correcting FR-037h)*: The unwind MUST cover the **streaming**
+  response phase as well as the header and buffered-body phases, and the serving chain MUST be
+  counted in the decisions that precede it.
+
+  **The exclusion rested on a false premise.** FR-037h excluded streaming because "a reverse
+  transform is a whole-document conversion, so it cannot run chunk by chunk". That is not true of
+  the transformers this product ships: `openai-to-anthropic-transformer` declares
+  `ResponseBodyMode: BodyModeStream` and implements `OnResponseBodyChunk`, parsing Anthropic's SSE
+  events incrementally and holding partial ones back. It was built to run chunk by chunk.
+
+  **What the exclusion cost.** `servingUpstreamChainRequiresResponseBody()` returned false for a
+  streamed response, so the engine told Envoy to skip the response body entirely and a streamed
+  cross-vendor answer reached the client as raw upstream SSE. Recorded as a documented limit of
+  the policy; it was a gate contradicting the policy's own `Mode()`.
+
+  Four things follow, and all four are required — three of them are the decisions *around* the
+  unwind rather than the unwind itself, which is why adding only the fourth would change nothing:
+
+  1. The body-delivery gate MUST stop excluding streams, or no chunks are delivered to unwind.
+  2. The streaming decision MUST also consult the serving chain's `SupportsResponseStreaming`. A
+     serving chain holding a buffered-only response-body policy MUST force the response to be
+     buffered, exactly as the same policy would have done from the route chain — otherwise the
+     engine streams past it and that policy never runs. No serving chain at all MUST be neutral.
+  3. The flush decision MUST ask the serving chain's `NeedsMoreResponseData`. A transformer holds
+     back a partial SSE event precisely so its chunk hook never sees a fragment of one; asking the
+     route chain alone hands it exactly that fragment.
+  4. The serving chain MUST run on each chunk **before** the route's own streaming policies, and
+     the chunk it returns MUST be what they receive. The translated chunk is the point; running
+     the route chain on the untranslated bytes and discarding the translation is the streaming
+     form of the result-dropping bug FR-037h's header half already had.
+
+  **Scope.** This also governs FR-012i: with per-attempt placement extended to every multi-provider
+  proxy, a shipped streaming cross-vendor LlmProxy would otherwise have regressed from translated
+  to untranslated. Unlike the header and body halves, the unwind's `Results` are NOT merged into
+  the route chain's — the streaming translator reads `FinalChunk` alone — and that asymmetry MUST
+  be stated where it is, or it reads as an omission.
 - **FR-018i** *(decision recorded 2026-11-13)*: Target health MUST remain scoped to the
   attachment — this API, this operation — and MUST NOT be shared across APIs.
 
