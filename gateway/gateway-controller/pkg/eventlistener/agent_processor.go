@@ -26,7 +26,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/upstreamguard"
 )
 
 // processAgentEvent dispatches Agent (A2A) events by action.
@@ -86,9 +86,10 @@ func (l *EventListener) handleAgentCreateOrUpdate(event eventhub.Event) {
 	// unmarshalSourceConfig). Only rendering stands between the row and the
 	// stores.
 	if err := templateengine.RenderSpec(storedConfig, l.secretResolver, l.logger); err != nil {
-		if funcs.IsEnvAccessError(err) {
-			l.logger.Warn("Undeploying Agent: its spec reads an environment variable outside policy_engine.env_access.allow_list",
+		if upstreamguard.IsArtifactRefusal(err) {
+			l.logger.Warn("Undeploying Agent: refused by the gateway configuration",
 				slog.String("agent_id", entityID),
+				slog.String("refused_by", upstreamguard.RefusalReason(err)),
 				slog.String("event_id", event.EventID))
 			storedConfig.DesiredState = models.StateUndeployed
 			l.handleAgentUndeployed(storedConfig, event)
