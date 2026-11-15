@@ -22,10 +22,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -44,6 +47,11 @@ type Response struct {
 
 	// TLS is the negotiated handshake of a request that carried ClientTLS, else nil.
 	TLS *TLSState
+
+	// BodyTruncated reports that the body ended before the upstream said it would. Only ever
+	// true for a request that set AllowTruncatedBody; Body then holds the bytes that did
+	// arrive.
+	BodyTruncated bool
 }
 
 const maxResponseBodyBytes int64 = 10 << 20
@@ -226,6 +234,13 @@ type Request struct {
 
 	// TLS, when set, runs the request on its own connection with this client TLS.
 	TLS *ClientTLS
+
+	// AllowTruncatedBody keeps a response whose body ends before the upstream said it would,
+	// recording the fact on Response.BodyTruncated instead of failing the call. Off by
+	// default: for every other caller a body that stops early is a transport error and must
+	// stay one. An upstream that commits a 200 and then dies mid-body is a real failure
+	// shape, and the only way to assert on it is to hold the partial response.
+	AllowTruncatedBody bool
 }
 
 // Do issues a request and retries only responses recognized as transient.
@@ -310,9 +325,14 @@ func (c *Client) once(ctx context.Context, req Request) (*Response, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes+1))
-	if err != nil {
-		return nil, fmt.Errorf("httpx: reading the body of %s %s: %w", req.Method, req.URL, err)
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes+1))
+	truncated := false
+	switch {
+	case readErr == nil:
+	case req.AllowTruncatedBody && isTruncatedBody(readErr):
+		truncated = true
+	default:
+		return nil, fmt.Errorf("httpx: reading the body of %s %s: %w", req.Method, req.URL, readErr)
 	}
 	if int64(len(raw)) > maxResponseBodyBytes {
 		return nil, fmt.Errorf("httpx: response body of %s %s exceeds the %d-byte limit",
@@ -320,17 +340,31 @@ func (c *Client) once(ctx context.Context, req Request) (*Response, error) {
 	}
 
 	out := &Response{
-		StatusCode: resp.StatusCode,
-		Body:       raw,
-		Headers:    resp.Header.Clone(),
-		Method:     req.Method,
-		URL:        req.URL,
-		Elapsed:    time.Since(started),
+		StatusCode:    resp.StatusCode,
+		Body:          raw,
+		Headers:       resp.Header.Clone(),
+		Method:        req.Method,
+		URL:           req.URL,
+		Elapsed:       time.Since(started),
+		BodyTruncated: truncated,
 	}
 	if exchange != nil {
 		out.TLS = exchange.state(resp.TLS)
 	}
 	return out, nil
+}
+
+// isTruncatedBody reports whether a body read failed because the upstream stopped sending
+// mid-body rather than because the read itself went wrong. A chunked response cut short
+// surfaces as an unexpected EOF, and a connection reset by a process that died surfaces as
+// ECONNRESET; both are the same event seen from different layers.
+func isTruncatedBody(err error) bool {
+	if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) ||
+		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	return strings.Contains(err.Error(), "unexpected EOF") ||
+		strings.Contains(err.Error(), "connection reset by peer")
 }
 
 func (c *Client) isTransient(resp *Response) bool {

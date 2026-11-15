@@ -1,0 +1,38 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+# A FRAGMENT, not a config: layered on top of test-config.toml by passing both to
+# the policy engine (-config base -config this, koanf-merged last-wins), which is
+# why it carries one stanza instead of a copy of the whole file. The vhosts and
+# postgres variants duplicate their config wholesale and have to be kept in sync
+# by hand; nothing here can drift from the base, because nothing here repeats it.
+#
+# What it turns on, and why that is worth a dedicated run: with
+# handle_upstream_faults enabled the gateway runs a failing response through the
+# fault chain INSTEAD of the response flow. For model-failover that is exactly the
+# set of responses it grades, so a regression leaves the policy not degraded but
+# inert — no health recorded, no target suspended, the upstream's own error
+# reaching the client — while every existing scenario still passes. The failure
+# mode is silence, which is precisely what a test posture has to exist for.
+#
+# Deliberately NOT the default for the suite: this is a process-level setting that
+# changes error handling for every API and every policy, so adopting it everywhere
+# is a platform decision rather than a failover one (T030t).
+
+[policy_engine.fault_policies]
+handle_upstream_faults = true

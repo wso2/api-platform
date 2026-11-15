@@ -19,12 +19,14 @@
 package testbench
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"runtime/debug"
 	"strings"
@@ -159,6 +161,24 @@ func (r *responseRecorder) Flush() {
 	if f, ok := r.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// Hijack forwards to the underlying writer when it supports taking over the connection,
+// which the stream-fault service relies on to end a committed response abruptly; without it,
+// wrapping would turn a deliberate cut-off into an ordinary 500. The access line reports
+// what was written up to the hijack, since nothing after it passes through this recorder.
+func (r *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("testbench: the underlying writer does not support hijacking")
+	}
+	if !r.wroteHeader {
+		// A hijacked response writes its own status line, so record the 200 it will carry
+		// rather than leaving the access line reporting nothing.
+		r.status = http.StatusOK
+		r.wroteHeader = true
+	}
+	return hijacker.Hijack()
 }
 
 // Unwrap lets net/http and httptest reach the original writer, keeping

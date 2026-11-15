@@ -1149,6 +1149,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		`^I create (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent) with configuration:$`,
 		g.createResource)
 	sc.Step(`^I create API with JSON configuration:$`, g.createJSONAPI)
+	sc.Step(`^the response should report one upstream attempt$`, g.responseReportsOneUpstreamAttempt)
 	g.registerResourceTemplateSteps(sc)
 	sc.Step(`^I get the (API|LLM provider|LLM provider template|MCP proxy|LLM proxy|Agent|GraphQL API) "([^"]*)"$`,
 		g.getResource)
@@ -1164,6 +1165,8 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.serviceRequestUntilBodyNotContains)
 	sc.Step(`^I resolve the "([^"]*)" service( host)? URL at "([^"]*)" and store it as "([^"]*)"$`,
 		g.resolveServiceURLAndStore)
+	sc.Step(`^I resolve the "([^"]*)" service path at "([^"]*)" and store it as "([^"]*)"$`,
+		g.resolveServicePathAndStore)
 	sc.Step(`^I register the "([^"]*)" "([^"]*)" for cleanup$`, g.registerAdminResourceForCleanup)
 	sc.Step(`^the "([^"]*)" service logs should contain "([^"]*)"$`, g.serviceLogsContain)
 	sc.Step(`^the "([^"]*)" service logs should not contain "([^"]*)"$`, g.serviceLogsNotContain)
@@ -1181,6 +1184,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 	sc.Step(`^I wait for the analytics collector to settle$`, g.waitForAnalyticsToSettle)
 	sc.Step(`^I wait for an analytics event for path "([^"]*)" with response status (\d+)$`, g.waitForAnalyticsEvent)
 	sc.Step(`^the analytics collector should have received at least (\d+) events?$`, g.analyticsEventCountAtLeast)
+	sc.Step(`^the analytics collector should have no event for path "([^"]*)"$`, g.analyticsNoEventForPath)
 	sc.Step(`^the analytics collector should have received (\d+) events?$`, g.analyticsEventCountExactly)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have request method "([^"]*)"$`,
 		g.analyticsRequestMethod)
@@ -1667,8 +1671,16 @@ var serviceEndpoints = map[string]struct {
 	"mcp-scripted": {component: "testbench", endpoint: "mcp-scripted"},
 	// The Stripe and Moesif services the API Portal bills through; their /test endpoints act
 	// as the customer and as the provider.
-	"stripe": {component: "testbench", endpoint: "stripe", partitioned: true},
-	"moesif": {component: "testbench", endpoint: "moesif", partitioned: true},
+	// The gateway's own data-plane listener, as another container in the block reaches it.
+	// A route whose upstream is this gateway lets a scenario observe what a second API
+	// recorded, which is the only evidence left when the caller itself has gone away.
+	"gateway-router": {component: "platform-gateway", endpoint: "http"},
+	// The scripted fault injector an upstream sits behind: a scenario stores a sequence of
+	// statuses and delays, then points a route at it. Block-partitioned, so the address a
+	// route must name is resolved rather than written into a feature.
+	"fault-injection": {component: "testbench", endpoint: "fault-injection", partitioned: true},
+	"stripe":          {component: "testbench", endpoint: "stripe", partitioned: true},
+	"moesif":          {component: "testbench", endpoint: "moesif", partitioned: true},
 	// The streamable-HTTP MCP server, addressed directly by clients that discover its tools.
 	"mcp": {component: "testbench", endpoint: "mcp"},
 	// Metrics live on a DIFFERENT compose service from the one tests normally address —
@@ -1692,20 +1704,11 @@ func (g *Gateway) serviceURL(ctx context.Context, service, path string) (string,
 	if err != nil {
 		return "", err
 	}
-	resolved, err := stepscommon.Expand(ctx, path)
+	suffix, err := g.servicePath(ctx, service, path)
 	if err != nil {
 		return "", err
 	}
-	if resolved != "" && !strings.HasPrefix(resolved, "/") {
-		resolved = "/" + resolved
-	}
-	if spec.partitioned {
-		if g.topo.Block == nil {
-			return "", fmt.Errorf("service %q requires a block partition, but the topology has no block", service)
-		}
-		resolved = "/" + g.topo.Block.PartitionKey() + resolved
-	}
-	return base + g.serviceBasePath(service, spec.basePath) + resolved, nil
+	return base + suffix, nil
 }
 
 // serviceUpstreamURL resolves a service address for a request originating inside the
@@ -1724,6 +1727,20 @@ func (g *Gateway) serviceUpstreamURL(ctx context.Context, service, path string) 
 	if err != nil {
 		return "", err
 	}
+	suffix, err := g.servicePath(ctx, service, path)
+	if err != nil {
+		return "", err
+	}
+	return base + suffix, nil
+}
+
+// servicePath resolves the path a service is addressed on: its API base path and, for a
+// block-partitioned service, the partition segment a feature cannot know in advance.
+func (g *Gateway) servicePath(ctx context.Context, service, path string) (string, error) {
+	spec, ok := serviceEndpoints[service]
+	if !ok {
+		return "", fmt.Errorf("unknown service %q: this suite addresses %v", service, sortedServiceNames())
+	}
 	resolved, err := stepscommon.Expand(ctx, path)
 	if err != nil {
 		return "", err
@@ -1737,7 +1754,7 @@ func (g *Gateway) serviceUpstreamURL(ctx context.Context, service, path string) 
 		}
 		resolved = "/" + g.topo.Block.PartitionKey() + resolved
 	}
-	return base + g.serviceBasePath(service, spec.basePath) + resolved, nil
+	return g.serviceBasePath(service, spec.basePath) + resolved, nil
 }
 
 func (g *Gateway) serviceBasePath(service, defaultPath string) string {
@@ -1770,6 +1787,22 @@ func (g *Gateway) resolveServiceURLAndStore(ctx context.Context, service, host, 
 		return fmt.Errorf("cannot store a resolved service URL with an empty key")
 	}
 	return tcontext.Set(ctx, key, url)
+}
+
+// resolveServicePathAndStore stores a service's PATH rather than its full URL, for a product
+// field that rejects a URL carrying one. An upstream definition takes the host in its url and
+// the path in its basePath, so a route pointed at a block-partitioned service needs the
+// partition segment on its own.
+func (g *Gateway) resolveServicePathAndStore(ctx context.Context, service, path, key string) error {
+	resolved, err := g.servicePath(ctx, service, path)
+	if err != nil {
+		return err
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return fmt.Errorf("cannot store a resolved service path with an empty key")
+	}
+	return tcontext.Set(ctx, key, resolved)
 }
 
 // adminResourceKinds maps the resource-kind names features use for the generic cleanup
@@ -2424,6 +2457,21 @@ func (g *Gateway) waitForAnalyticsEvent(ctx context.Context, path string, status
 // finds for it. Filtering by the path a scenario already knows it requested is what makes this
 // robust: the events array's arrival order at the collector doesn't necessarily match request
 // chronology, so picking "the last element" can return an unrelated event.
+// analyticsNoEventForPath asserts that nothing was recorded for a path. The negative
+// companion to analyticsEventForPath, for a claim whose only evidence is an absence: a
+// request the gateway never made leaves no event behind, and there is no response to read
+// because the caller that would have read it has gone.
+func (g *Gateway) analyticsNoEventForPath(ctx context.Context, path string) error {
+	event, err := g.analyticsEventForPath(ctx, path)
+	if err != nil {
+		// No event for the path is exactly the expected outcome.
+		return nil
+	}
+	resolved, _ := stepscommon.Expand(ctx, path)
+	return fmt.Errorf("expected no analytics event for path %q, but one was recorded with status %d",
+		resolved, event.Response.Status)
+}
+
 func (g *Gateway) analyticsEventForPath(ctx context.Context, path string) (*analyticsEvent, error) {
 	resolved, err := stepscommon.Expand(ctx, path)
 	if err != nil {

@@ -1,0 +1,420 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# --------------------------------------------------------------------
+
+@model-failover-error-surface
+Feature: What the client sees when a chain cannot serve the request
+  A chain that runs out, and a chain already withdrawn, both end the same way: one
+  consistent gateway error, with nothing of the upstream's own reply in it. And a status the
+  publisher never nominated is not a failure at all - it comes back untouched and costs the
+  target nothing.
+
+  Every upstream here is the testbench echo on a path under /status/ that names no valid
+  code, so it answers 400 with a body of its own. That shape is what these scenarios need:
+  a chain of unresolvable hosts fails at transport level and Envoy answers those itself
+  without ever calling the policy, leaving nothing for the policy to replace. A real error
+  from a reachable upstream is a response the policy actually sees, and its body is the
+  thing that must not survive.
+
+  Background:
+    Given the gateway services are running
+    And I authenticate using basic auth as "admin"
+
+  Scenario: An exhausted chain returns the gateway's own error, not the last provider's
+    # The two base paths differ so the attempts are distinguishable; neither names a valid
+    # status code, so both answer 400 and the chain is spent. statusCodes nominates 400 for
+    # the same reason the old fixture nominated 404: the parameter exists precisely so a
+    # publisher can say what counts as a failure.
+    Given I generate a unique resource name from "exhaust" and store it as "apiName"
+    And I generate a unique API version from "exhaust" and store it as "apiVersion"
+    And I generate a unique API context from "/exhaust" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                     | ${CTX:apiName}                                                                                                                                                         |
+      | spec.displayName         | ${CTX:apiName}                                                                                                                                                         |
+      | spec.version             | ${CTX:apiVersion}                                                                                                                                                      |
+      | spec.context             | ${CTX:apiContext}/$version                                                                                                                                             |
+      | spec.upstreamDefinitions | [{"name":"primary","basePath":"/status/exhaust-primary","upstreams":[{"url":"http://testbench:3002"}]},{"name":"secondary","basePath":"/status/exhaust-secondary","upstreams":[{"url":"http://testbench:3002"}]}] |
+      | spec.upstream.main.ref   | primary                                                                                                                                                                |
+      | spec.operations          | [{"method":"POST","path":"/chat/completions","policies":[{"name":"model-failover","version":"v0","params":{"suspendDuration":0,"statusCodes":[400],"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"secondary"}]}]}}]}] |
+    Then the response should be successful
+
+    # Polled on the body as well as the status: a cold-start 503 on the way to readiness
+    # carries no body, and a status-only poll would stop on one and then assert against a
+    # response the policy never produced.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat/completions" until status 503 and the response body contains "failover_exhausted" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    # One consistent status for exhaustion, NOT the 400 the last target answered. A chain
+    # that ends on the upstream's own error is not that error - the resource is there, the
+    # gateway simply had nowhere left to send the request.
+    Then the response status code should be 503
+    And the response body should contain "failover_exhausted"
+    # THE assertion this scenario exists for. Anything the upstream wrote must be gone:
+    # here the echo's own complaint, standing in for the provider error that in production
+    # names the account, region or key that was refused.
+    And the response body should not contain "status code must be 200-599"
+    # And the body says nothing about the chain either. Which models a publisher configured
+    # is not something the caller was ever shown.
+    And the response body should not contain "gpt-4o"
+    And the response body should not contain "claude"
+    And the response body should not contain "exhaust-secondary"
+
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+
+  Scenario: Once every target is suspended the next request is refused without an attempt
+    # Suspension that still sends traffic to the suspended target is not suspension. With
+    # every member out of rotation the policy used to publish no ranking and go inert, which
+    # handed the request to the route's configured upstream - the primary, the very target
+    # health had just withdrawn.
+    Given I generate a unique resource name from "allsusp" and store it as "apiName"
+    And I generate a unique API version from "allsusp" and store it as "apiVersion"
+    And I generate a unique API context from "/allsusp" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                     | ${CTX:apiName}                                                                                                                                                         |
+      | spec.displayName         | ${CTX:apiName}                                                                                                                                                         |
+      | spec.version             | ${CTX:apiVersion}                                                                                                                                                      |
+      | spec.context             | ${CTX:apiContext}/$version                                                                                                                                             |
+      | spec.upstreamDefinitions | [{"name":"allsusp-lead","basePath":"/status/allsusp-primary","upstreams":[{"url":"http://testbench:3002"}]},{"name":"allsusp-next","basePath":"/status/allsusp-secondary","upstreams":[{"url":"http://testbench:3002"}]}] |
+      | spec.upstream.main.ref   | allsusp-lead                                                                                                                                                           |
+      | spec.operations          | [{"method":"POST","path":"/chat/completions","policies":[{"name":"model-failover","version":"v0","params":{"suspendAfterFailures":1,"suspendDuration":120,"statusCodes":[400],"targets":[{"model":"gpt-4o","provider":"allsusp-lead","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"allsusp-next"}]}]}}]}] |
+    Then the response should be successful
+
+    # The first request walks the whole chain and fails it. Both members are graded - the
+    # first from the attempt count, the second from the response in hand - so one request is
+    # enough to put the entire chain out of rotation.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat/completions" until status 503 and the response body contains "failover_exhausted" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 503
+    And the response body should contain "failover_exhausted"
+
+    # The next request never leaves the gateway. The suspension window is far longer than
+    # the scenario, so a pass here cannot be a window quietly expiring.
+    #
+    # The response ALONE cannot prove that: refusing before any attempt and exhausting a
+    # chain of attempts return byte-identical responses, which is the design - one
+    # consistent error, whatever the reason. So the client-side assertions establish only
+    # that the request was refused, and the log assertions after them establish that it was
+    # refused WITHOUT being tried, which is the actual subject here.
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/chat/completions" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 503
+    And the response body should contain "failover_exhausted"
+    # Had the request been dispatched to the suspended primary, this is the body that would
+    # have come back.
+    And the response body should not contain "status code must be 200-599"
+    # THE discriminator, read off the record's target lists rather than its message. A
+    # refusal skips every member and attempts none; a walked chain fails them instead. Both
+    # strings carry this scenario's own provider names, which matters because the runtime log
+    # is shared by every runner on this gateway and a message alone is not attributable.
+    And the "gateway-runtime" log since the latest request should contain "skipped_targets=allsusp-lead:gpt-4o,allsusp-next:claude-sonnet-4-5-20250929"
+    And the "gateway-runtime" log since the latest request should not contain "failed_targets=allsusp-lead:gpt-4o"
+
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+
+  Scenario: A status outside the failure conditions is returned unchanged and fails over to nothing
+    # Retrying a validation error on another provider fails the same way, or worse, bills a
+    # second inference call to mask a client bug - so the status has to come back as-is and
+    # the target must not be penalised for it.
+    #
+    # Two operations, ONE policy configuration, differing only in what the upstream answers.
+    # The 503 operation is a positive control and is the point: "no failover occurred" is
+    # satisfied just as well by a policy that never fails over at all, so without a sibling
+    # operation proving the same configuration DOES fail over, this scenario would pass
+    # against a completely broken policy.
+    Given I generate a unique resource name from "passthru" and store it as "apiName"
+    And I generate a unique API version from "passthru" and store it as "apiVersion"
+    And I generate a unique API context from "/passthru" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                     | ${CTX:apiName}                                                                                                                                                         |
+      | spec.displayName         | ${CTX:apiName}                                                                                                                                                         |
+      | spec.version             | ${CTX:apiVersion}                                                                                                                                                      |
+      | spec.context             | ${CTX:apiContext}/$version                                                                                                                                             |
+      | spec.upstreamDefinitions | [{"name":"primary","upstreams":[{"url":"http://testbench:3002"}]},{"name":"alive","basePath":"/passthru-alive","upstreams":[{"url":"http://testbench:3000"}]}]         |
+      | spec.upstream.main.ref   | primary                                                                                                                                                                |
+      | spec.operations          | [{"method":"POST","path":"/status/422","policies":[{"name":"model-failover","version":"v0","params":{"suspendAfterFailures":1,"suspendDuration":120,"statusCodes":[503],"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]},{"method":"POST","path":"/status/503","policies":[{"name":"model-failover","version":"v0","params":{"suspendAfterFailures":1,"suspendDuration":120,"statusCodes":[503],"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
+    Then the response should be successful
+
+    # The control first, so a failure here reads as "failover is broken" rather than as a
+    # finding about pass-through.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/status/503" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "2"
+    And the response body should contain "/passthru-alive"
+
+    # The subject. Same policy, same chain, a status the publisher did not nominate: one
+    # attempt, and the upstream's own status reaches the client.
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/status/422" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 422
+    And the response header "x-envoy-attempt-count" should be "1"
+    And the response body should not contain "/passthru-alive"
+
+    # And the target was not penalised for the client's mistake. A second request still
+    # reaches it, which it would not if the 422 had counted towards suspension.
+    When I send a "POST" request to "${CTX:apiContext}/${CTX:apiVersion}/status/422" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 422
+    And the response body should not contain "/passthru-alive"
+
+    When I delete the API "${CTX:apiName}"
+    Then the response should be successful
+
+  Scenario: However the primary fails, a healthy fallback means the client never sees a 5xx
+    # The property the whole feature exists for, asserted as its own subject rather than as a
+    # side effect of scenarios testing something else.
+    #
+    # Two failure modes, because they reach the guarantee by different routes and only one of
+    # them involves this policy at all. An error status is graded by the policy; an attempt
+    # cut off at perTryTimeout is a local reply Envoy never calls the policy for, so the
+    # rescue there is Envoy's retry policy alone. A guarantee that holds for the path the
+    # policy drives says nothing about the path it never sees.
+    #
+    # They sit on two APIs rather than one because an operation cannot name its own upstream,
+    # and the two modes need different ones: a status the echo returns outright, and a delay
+    # only the fault injector can produce. A refused connection is the third mode and is
+    # deliberately elsewhere - it is the subject of the RestApi parity scenario, which turns
+    # on refusal being retriable on both API kinds.
+    Given I generate a unique resource name from "no5xx-graded" and store it as "gradedName"
+    And I generate a unique API version from "no5xx-graded" and store it as "gradedVersion"
+    And I generate a unique API context from "/no5xx-graded" and store it as "gradedContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                     | ${CTX:gradedName}                                                                                                                                                      |
+      | spec.displayName         | ${CTX:gradedName}                                                                                                                                                      |
+      | spec.version             | ${CTX:gradedVersion}                                                                                                                                                   |
+      | spec.context             | ${CTX:gradedContext}/$version                                                                                                                                          |
+      | spec.upstreamDefinitions | [{"name":"primary","upstreams":[{"url":"http://testbench:3002"}]},{"name":"alive","basePath":"/no5xx-graded-alive","upstreams":[{"url":"http://testbench:3000"}]}]     |
+      | spec.upstream.main.ref   | primary                                                                                                                                                                |
+      | spec.operations          | [{"method":"POST","path":"/status/503","policies":[{"name":"model-failover","version":"v0","params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
+    Then the response should be successful
+
+    # The primary answers with an error status. The policy grades it, and the retry lands on
+    # the fallback.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:gradedContext}/${CTX:gradedVersion}/status/503" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/no5xx-graded-alive"
+
+    # Every step of the script delays, so the readiness poll below can consume as many as it
+    # needs without changing what the next request meets.
+    Given I generate a unique resource name from "no5xx-cutoff-script" and store it as "scriptId"
+    When I send a "PUT" request to the "fault-injection" service at "/test/scripts/${CTX:scriptId}" with body:
+      """
+      {"forwardPort": 3000, "steps": [
+        {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000},
+        {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000},
+        {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000},
+        {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000}, {"delayMs": 5000}
+      ]}
+      """
+    Then the response should be successful
+    And I resolve the "fault-injection" service path at "/${CTX:scriptId}" and store it as "cutoffPath"
+
+    Given I generate a unique resource name from "no5xx-cutoff" and store it as "cutoffName"
+    And I generate a unique API version from "no5xx-cutoff" and store it as "cutoffVersion"
+    And I generate a unique API context from "/no5xx-cutoff" and store it as "cutoffContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                     | ${CTX:cutoffName}                                                                                                                                                      |
+      | spec.displayName         | ${CTX:cutoffName}                                                                                                                                                      |
+      | spec.version             | ${CTX:cutoffVersion}                                                                                                                                                   |
+      | spec.context             | ${CTX:cutoffContext}/$version                                                                                                                                          |
+      | spec.upstreamDefinitions | [{"name":"primary","basePath":"${CTX:cutoffPath}","upstreams":[{"url":"http://testbench:3026"}]},{"name":"alive","basePath":"/no5xx-cutoff-alive","upstreams":[{"url":"http://testbench:3000"}]}] |
+      | spec.upstream.main.ref   | primary                                                                                                                                                                |
+      | spec.operations          | [{"method":"POST","path":"/chat/completions","policies":[{"name":"model-failover","version":"v0","params":{"suspendDuration":0,"perTryTimeout":1,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"alive"}]}]}}]}] |
+    Then the response should be successful
+
+    # The primary hangs five seconds against a one-second per-try bound. No response ever
+    # reaches the policy, so nothing here is graded; the client is still served, and still
+    # never sees a 5xx.
+    When I send a "POST" request to "${CTX:cutoffContext}/${CTX:cutoffVersion}/chat/completions" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should contain "/no5xx-cutoff-alive"
+
+    When I delete the API "${CTX:gradedName}"
+    Then the response should be successful
+    When I delete the API "${CTX:cutoffName}"
+    Then the response should be successful
+
+  Scenario: The record names the target that failed and the one that served
+    # The client got a 200, so from its side nothing happened. This record is the ONLY place the
+    # failure is visible at all, which is why it is logged at INFO rather than DEBUG - an
+    # operator has no other signal that a provider is degrading underneath a healthy-looking
+    # API. It has to carry three things to be worth reading: what was asked for, which target
+    # failed, and which one answered instead.
+    Given I generate a unique resource name from "record-dead" and store it as "deadName"
+    And I generate a unique API version from "record-dead" and store it as "deadVersion"
+    And I generate a unique API context from "/record-dead" and store it as "deadContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                 |
+      | name               | ${CTX:deadName}                           |
+      | displayName        | ${CTX:deadName}                           |
+      | version            | ${CTX:deadVersion}                        |
+      | template           | openai                                    |
+      | spec.context       | ${CTX:deadContext}                        |
+      | spec.upstream.url  | http://record-nonexistent-host:9080/gone  |
+      | accessControl.mode | allow_all                                 |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "record-alive" and store it as "aliveName"
+    And I generate a unique API version from "record-alive" and store it as "aliveVersion"
+    And I generate a unique API context from "/record-alive" and store it as "aliveContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}             |
+      | name               | ${CTX:aliveName}                      |
+      | displayName        | ${CTX:aliveName}                      |
+      | version            | ${CTX:aliveVersion}                   |
+      | template           | openai                                |
+      | spec.context       | ${CTX:aliveContext}                   |
+      | spec.upstream.url  | http://testbench:3000/record-upstream |
+      | accessControl.mode | allow_all                             |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "record-proxy" and store it as "proxyName"
+    And I generate a unique API version from "record-proxy" and store it as "proxyVersion"
+    And I generate a unique API context from "/record-proxy" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                   |
+      | name                   | ${CTX:proxyName}                                                                                            |
+      | displayName            | ${CTX:proxyName}                                                                                            |
+      | version                | ${CTX:proxyVersion}                                                                                         |
+      | context                | ${CTX:proxyContext}                                                                                         |
+      | provider.id            | ${CTX:deadName}                                                                                             |
+      | spec.providers         | [{"id":"${CTX:deadName}","alias":"record-dead","isPrimary":true},{"id":"${CTX:aliveName}","alias":"record-alive"}] |
+      | spec.operationPolicies | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","provider":"record-dead","fallbacks":[{"model":"claude-sonnet-4-5-20250929","provider":"record-alive"}]}]}}]}] |
+    Then the response should be successful
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until header "x-envoy-attempt-count" is "2" with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+
+    # Asserted as one contiguous run rather than field by field, so the serving target cannot be
+    # satisfied by a different line than the attempt count. `ranking_source` is deliberately
+    # outside the run: its value depends on whether a routing policy published an order, which
+    # this scenario does not configure and should not pin.
+    And the "gateway-runtime" log since the latest request should contain "attempts=2 chain_length=2 serving_model=claude-sonnet-4-5-20250929 serving_provider=record-alive"
+    # The failed target, labelled provider:model. This is the half an operator acts on.
+    And the "gateway-runtime" log since the latest request should contain "failed_targets=record-dead:gpt-4o"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:deadName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:aliveName}"
+    Then the response should be successful
+
+  Scenario: An exhausted chain records every target it actually walked
+    # The sibling scenario above covers a chain that was never attempted - every target already
+    # suspended, so the record carries skipped_targets and nothing else. This is the other
+    # exhaustion: both targets were tried and both failed, so the record must carry
+    # failed_targets naming BOTH, in the order they were attempted.
+    #
+    # Both upstreams REFUSE rather than fail to resolve. A non-resolving host is answered
+    # locally before any upstream request exists, and a local answer is not retriable, so the
+    # chain would stop at the first member and never walk far enough to record two.
+    Given I generate a unique resource name from "walked-a" and store it as "firstName"
+    And I generate a unique API version from "walked-a" and store it as "firstVersion"
+    And I generate a unique API context from "/walked-a" and store it as "firstContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
+      | name               | ${CTX:firstName}          |
+      | displayName        | ${CTX:firstName}          |
+      | version            | ${CTX:firstVersion}       |
+      | template           | openai                    |
+      | spec.context       | ${CTX:firstContext}       |
+      | spec.upstream.url  | http://testbench:9097     |
+      | accessControl.mode | allow_all                 |
+    Then the response should be successful
+
+    Given I generate a unique resource name from "walked-b" and store it as "secondName"
+    And I generate a unique API version from "walked-b" and store it as "secondVersion"
+    And I generate a unique API context from "/walked-b" and store it as "secondContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion} |
+      | name               | ${CTX:secondName}         |
+      | displayName        | ${CTX:secondName}         |
+      | version            | ${CTX:secondVersion}      |
+      | template           | openai                    |
+      | spec.context       | ${CTX:secondContext}      |
+      | spec.upstream.url  | http://testbench:9096     |
+      | accessControl.mode | allow_all                 |
+    Then the response should be successful
+
+    # suspendDuration 0 so neither target is withdrawn: a skipped target would land in
+    # skipped_targets, which is the OTHER scenario's claim, and this one would stop measuring
+    # a walked chain.
+    Given I generate a unique resource name from "walked-proxy" and store it as "proxyName"
+    And I generate a unique API version from "walked-proxy" and store it as "proxyVersion"
+    And I generate a unique API context from "/walked-proxy" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}                                                                                     |
+      | name                   | ${CTX:proxyName}                                                                                              |
+      | displayName            | ${CTX:proxyName}                                                                                              |
+      | version                | ${CTX:proxyVersion}                                                                                           |
+      | context                | ${CTX:proxyContext}                                                                                           |
+      | provider.id            | ${CTX:firstName}                                                                                              |
+      | spec.providers         | [{"id":"${CTX:firstName}","alias":"walked-a","isPrimary":true},{"id":"${CTX:secondName}","alias":"walked-b"}] |
+      | spec.operationPolicies | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","provider":"walked-a","fallbacks":[{"model":"gpt-4o-mini","provider":"walked-b"}]}]}}]}] |
+    Then the response should be successful
+
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until status 503 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 503
+    And the response body should contain "failover_exhausted"
+
+    # BOTH targets, in attempted order. One name would mean the chain stopped early; the order
+    # is what says which was the head and which the fallback.
+    And the "gateway-runtime" log since the latest request should contain "failed_targets=walked-a:gpt-4o,walked-b:gpt-4o-mini"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:firstName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:secondName}"
+    Then the response should be successful
