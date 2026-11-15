@@ -63,7 +63,34 @@ func NewGatewayHandler(gatewayService *service.GatewayService, identity *service
 
 // manifestSyncResponse is the response body for manifest-sync endpoints
 type manifestSyncResponse struct {
-	Policies json.RawMessage `json:"policies,omitempty"`
+	Policies any `json:"policies,omitempty"`
+}
+
+// manifestPolicyResponse is a stored manifest entry with the isCustomPolicy flag the API spec declares.
+type manifestPolicyResponse struct {
+	service.GatewayPolicyDefinition
+	IsCustomPolicy bool `json:"isCustomPolicy"`
+}
+
+// manifestPoliciesForResponse adds isCustomPolicy to each stored entry.
+// A manifest that does not decode is returned unchanged.
+func manifestPoliciesForResponse(raw json.RawMessage) any {
+	if len(raw) == 0 {
+		return nil
+	}
+	var stored []service.GatewayPolicyDefinition
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return raw
+	}
+	policies := make([]manifestPolicyResponse, 0, len(stored))
+	for _, policy := range stored {
+		policies = append(policies, manifestPolicyResponse{
+			GatewayPolicyDefinition: policy,
+			IsCustomPolicy: policy.ManagedBy == constants.PolicyManagedByOrganization ||
+				policy.ManagedBy == constants.PolicyManagedByLegacyCustomer,
+		})
+	}
+	return policies
 }
 
 // CreateGateway handles POST /api/v0.9/gateways
@@ -390,7 +417,7 @@ func (h *GatewayHandler) GetGatewayManifest(w http.ResponseWriter, r *http.Reque
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, manifestSyncResponse{
-		Policies: dataFromDb.Policies,
+		Policies: manifestPoliciesForResponse(dataFromDb.Policies),
 	})
 	return nil
 }

@@ -28,6 +28,7 @@ import {
 } from '@wso2-enterprise/apip-cloud-ui-entitlements';
 import type { BrandLogo } from '../../../../api-control-plane/src/branding/BrandLogoProvider';
 import { AppPage } from '../../../../api-control-plane/src/components/AppPage';
+import { GatewayPoliciesPanel } from '../../../../api-control-plane/src/pages/appShell/appShellPages/gateways/components/GatewayPoliciesPanel';
 import {
   APP_GATE_SLOT,
   HEADER_ACTIONS_SLOT,
@@ -131,7 +132,8 @@ function CloudDeployPage({ port }: { port: CloudHostPort }) {
  * sidebar item — the native nav entry and route stay in place; only what renders
  * there changes. Data flows through `apiFetch` to `/managed-gateways`. This
  * console manages API and event gateways; AI gateways belong to the AI
- * workspace host, which registers the same feature with only that type.
+ * workspace host, which registers the same feature with only that type. The
+ * Policies tab shows the console's own `GatewayPoliciesPanel`.
  *
  * `deploy` overrides the built-in API Deploy page via the `page.apiDeploy` slot,
  * and the GraphQL API Deploy page via `page.graphqlApiDeploy` with the same feature,
@@ -300,6 +302,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         render: (port) => (
           <GatewaysFeature
             gatewayTypes={API_GATEWAY_TYPES}
+            renderPolicies={(gatewayId) => (
+              <GatewayPoliciesPanel gatewayId={gatewayId} variant="embedded" />
+            )}
             // Map the environment-specific gateway host expected by the plugin.
             port={{
               ...port,

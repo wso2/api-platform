@@ -36,6 +36,7 @@ export type { CustomPolicyListFilters } from './gatewayCustomPolicies.hooks';
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export {
+  useAllGatewayCustomPolicies,
   useDeleteGatewayCustomPolicy,
   useGatewayCustomPolicies,
   useGatewayCustomPolicy,
