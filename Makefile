@@ -147,15 +147,16 @@ package-event-gateway: ## Package event gateway as a self-contained zip (wso2api
 	 mkdir -p \
 	   "$$DIST/configs/gateway-controller" \
 	   "$$DIST/configs/event-gateway" \
-	   "$$DIST/certificates" \
-	   "$$DIST/listener-certs" && \
+	   "$$DIST/certificates" && \
 	 cp gateway/configs/config.toml "$$DIST/configs/gateway-controller/config.toml" && \
 	 cp event-gateway/gateway-runtime/configs/config.toml "$$DIST/configs/event-gateway/config.toml" && \
 	 cp event-gateway/gateway-runtime/configs/channels.yaml "$$DIST/configs/event-gateway/channels.yaml" && \
 	 cp gateway/gateway-controller/certificates/default-listener.crt "$$DIST/certificates/" && \
-	 cp gateway/gateway-controller/listener-certs/default-listener.crt "$$DIST/listener-certs/" && \
-	 cp gateway/gateway-controller/listener-certs/default-listener.key "$$DIST/listener-certs/" && \
 	 cp event-gateway/docker-compose.yaml "$$DIST/docker-compose.yaml" && \
+	 mkdir -p "$$DIST/scripts" && \
+	 cp event-gateway/scripts/setup.sh "$$DIST/scripts/setup.sh" && \
+	 chmod +x "$$DIST/scripts/setup.sh" && \
+	 rm -f "$(CURDIR)/wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION).zip" && \
 	 cd "$$STAGE" && zip -r "$(CURDIR)/wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION).zip" wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION)/ && \
 	 rm -rf "$$STAGE"
 	@echo "Created: wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION).zip"
