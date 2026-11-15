@@ -1,0 +1,203 @@
+# Scenario list: Outbound Network Access Control (NETAC).
+#
+# server.network_security.access_control restricts the destinations a product connects to when
+# the URL comes from a tenant or user (a spec URL, an MCP or agent URL, an API portal URL, an
+# artifact's upstream, a webhook target). Prefixes: NETAC-PA (Platform API), NETAC-GW (gateway),
+# NETAC-AP (API Portal).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: NETAC
+title: Outbound Network Access Control
+scenarios:
+  - id: NETAC-PA-001
+    title: "Fetch MCP server info for a URL at the cloud metadata address; 400 DESTINATION_NOT_ALLOWED with a message that names no host or address, while the same call for the testbench MCP server returns its info."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "Refusing a destination is the control plane's URL-fetch guard, checked at the API; the console only shows the error it returns."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/network-access-control/destination_refusal.feature
+          scenario: "Fetching MCP server info from the cloud metadata address is refused, while the testbench MCP server answers"
+  - id: NETAC-PA-002
+    title: "Preview the Agent Card of a URL at the cloud metadata address; 400 DESTINATION_NOT_ALLOWED with a message that names no host or address, while a reachable agent's card previews with 200."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "Refusing a destination is the control plane's URL-fetch guard, checked at the API; the console only shows the error it returns."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/network-access-control/destination_refusal.feature
+          scenario: "Previewing an Agent Card from the cloud metadata address is refused, while a reachable agent's card previews"
+  - id: NETAC-PA-003
+    title: "Fetch the Agent Card of a stored Agent proxy whose upstream is the cloud metadata address twice; both 400 DESTINATION_NOT_ALLOWED, the second not replayed from the card cache as a 503, while a proxy whose upstream serves a card returns it with 200."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Refusing a destination is the control plane's URL-fetch guard, checked at the API; the console only shows the error it returns."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/network-access-control/destination_refusal.feature
+          scenario: "A stored Agent proxy whose upstream is refused gets the same 400 on every fetch, never a cached 503"
+  - id: NETAC-PA-004
+    title: "Register an API portal whose URL is the cloud metadata address; 400 DESTINATION_NOT_ALLOWED and no portal is created, while registering one at a permitted URL returns 201."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Refusing a destination is the control plane's URL guard, checked at the API; the console only shows the error it returns."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/network-access-control/destination_refusal.feature
+          scenario: "Registering an API portal at the cloud metadata address is refused and creates nothing, while a permitted URL registers"
+  - id: NETAC-PA-005
+    title: "Create, and update, an LLM provider template whose metadata.openapiSpecUrl is the cloud metadata address; 400 DESTINATION_NOT_ALLOWED each time and no template is created or changed, while one with a permitted spec URL is created with 201."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Refusing a destination is the control plane's URL guard, checked at the API; the console only shows the error it returns."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/network-access-control/destination_refusal.feature
+          scenario: "An LLM provider template whose spec URL is the cloud metadata address is refused on create and on update"
+  - id: NETAC-PA-006
+    title: "With access control in allow mode listing testbench, import an OpenAPI definition from a testbench URL, from TESTBENCH in upper case, from an unlisted host and from a host that only starts with the listed name; 201 for testbench in either case, 400 DESTINATION_NOT_ALLOWED for the other two and no API is created for them."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "Access control is an operator setting enforced at the API; the console has no control for it."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/network-access-control/allow_mode.feature
+          scenario: "Only a listed host can be imported from, matched against the whole hostname in any case"
+  - id: NETAC-PA-007
+    title: "With access control in allow mode listing testbench, fetch MCP server info for the testbench MCP server and for an unlisted host; 200 with the server's info for testbench, 400 DESTINATION_NOT_ALLOWED for the unlisted host."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Access control is an operator setting enforced at the API; the console has no control for it."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/network-access-control/allow_mode.feature
+          scenario: "MCP server info is fetched only from a listed host"
+  - id: NETAC-PA-008
+    title: "With access control in deny mode denying 203.0.113.7, create an LLM provider template whose spec URL is on 203.0.113.7 and one whose spec URL is on 198.51.100.9; 400 DESTINATION_NOT_ALLOWED for the denied host, 201 for the other."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Access control is an operator setting enforced at the API; the console has no control for it."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/network-access-control/deny_mode.feature
+          scenario: "A host matching a deny pattern is refused, while another public host is accepted"
+  - id: NETAC-PA-009
+    title: "With deny_private_networks on, create an LLM provider template whose spec URL is on the private address 10.20.30.40, and import an OpenAPI definition from testbench, which resolves into the container network; 400 DESTINATION_NOT_ALLOWED for both and nothing is created, while a template with a public spec URL and the same definition imported as a file are created."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "Access control is an operator setting enforced at the API; the console has no control for it."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/network-access-control/deny_mode.feature
+          scenario: "Private destinations are refused, as an address and as a hostname that resolves to one"
+  - id: NETAC-PA-010
+    title: "Invoke a REST API through the gateway relay on a gateway whose endpoint is refused by access control though allow_hosts permits it; 403 REST_API_INVOKE_TARGET_NOT_ALLOWED, while a gateway whose endpoint both permit answers."
+    priority: P2
+    ui:
+      status: exempt
+      reason: "Access control is an operator setting enforced at the API; the console has no control for it."
+    it:
+      status: planned
+  - id: NETAC-GW-001
+    title: "Deploy a REST API through the gateway management API whose upstream is the cloud metadata address; 400 naming the refused field (spec.upstream.main.url) and no route, while the same API pointed at the sample backend deploys and serves."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The gateway has no console; the check runs on deploy."
+    it:
+      status: planned
+  - id: NETAC-GW-002
+    title: "With gateway access control in allow mode, deploy APIs whose upstreams are an unlisted host and a listed one; 400 for the unlisted host, the listed one deploys and serves."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The gateway has no console; the check runs on deploy."
+    it:
+      status: planned
+  - id: NETAC-GW-003
+    title: "With gateway deny_private_networks on, deploy an API whose allow-listed upstream resolves to a private address; 400, because a listed host must also pass the address rules."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The gateway has no console; the check runs on deploy."
+    it:
+      status: planned
+  - id: NETAC-GW-004
+    title: "Deploy an API, then restart the gateway with access control refusing its upstream; the API is undeployed, its route returns 404 and its stored state is undeployed."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The gateway has no console; the check runs on startup."
+    it:
+      status: planned
+  - id: NETAC-GW-005
+    title: "Deploy from the control plane an API whose upstream the gateway's access control refuses; the deployment fails with status reason UPSTREAM_URL_NOT_ALLOWED, while a permitted upstream deploys."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The console only shows the deployment status the control plane reports."
+    it:
+      status: planned
+  - id: NETAC-GW-006
+    title: "Deploy an API with an interceptor-service policy whose endpoint parameter is the cloud metadata address; 400 naming the parameter, while an endpoint on the sample backend deploys."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The gateway has no console; the check runs on deploy."
+    it:
+      status: planned
+  - id: NETAC-AP-001
+    title: "Call a registered endpoint through the API Portal try-it proxy when access control refuses its host; 422 and nothing is sent upstream, while a permitted endpoint answers."
+    priority: P0
+    ui:
+      status: planned
+    it:
+      status: planned
+  - id: NETAC-AP-002
+    title: "Create a webhook subscriber whose target URL access control refuses; 400 and no subscriber, while a permitted target is created and receives a delivery."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Refusing a target is the portal's URL guard, checked at the API; the page only shows the error."
+    it:
+      status: planned
+  - id: NETAC-AP-003
+    title: "Create a key manager through the API whose token endpoint access control refuses; 422 and none is created, while a permitted endpoint is created."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Refusing an endpoint is the portal's URL guard, checked at the API; the page only shows the error."
+    it:
+      status: planned
+  - id: NETAC-AP-004
+    title: "Generate a token through the developer token proxy for a key manager whose token endpoint access control refuses; 422 and the client secret is sent nowhere, while a permitted endpoint issues a token."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "Refusing an endpoint is the portal's URL guard, checked at the API; the page only shows the error."
+    it:
+      status: planned
