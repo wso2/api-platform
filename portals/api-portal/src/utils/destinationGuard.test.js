@@ -19,7 +19,7 @@
 'use strict';
 
 /*
- * Regression coverage for the SSRF guard. Uses node:test (Node's built-in
+ * Regression coverage for the destination guard. Uses node:test (Node's built-in
  * runner) rather than adding a test dependency — these are pure functions with
  * no server, DB, or fixture needs, so they do not belong in it/rest-api, whose
  * jest suite boots a live portal via globalSetup.
@@ -30,7 +30,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { isDenied, createGuardedLookup, assertAllowedScheme, assertAllowedHost } = require('./ssrfGuard');
+const { isDenied, createGuardedLookup, assertAllowedScheme, assertAllowedHost } = require('./destinationGuard');
 
 test('assertAllowedHost: IP literals are checked (dns.lookup never runs for them)', async (t) => {
     // Node skips DNS resolution when the host is already a literal, so the Agent
@@ -205,4 +205,122 @@ test('assertAllowedScheme: only http(s), and http only when opted in', () => {
 
     assert.doesNotThrow(() => assertAllowedScheme('http://gw.example.com/x', { allowHttp: true }));
     assert.throws(() => assertAllowedScheme('file:///etc/passwd', { allowHttp: true }));
+});
+
+/*
+ * Network access control: [api_portal.server.network_security.access_control].
+ */
+const {
+    compileAccessControl,
+    isHostAllowed,
+    effectiveAllowPrivate,
+    assertUserUrl,
+    normalizeHost,
+} = require('./destinationGuard');
+
+test('compileAccessControl: refuses invalid configuration', () => {
+    const tooMany = Array.from({ length: 257 }, () => 'a');
+    const invalid = [
+        [{ enabled: true, mode: 'block' }, /mode must be/],
+        [{ enabled: true, mode: 'allow' }, /requires at least one entry/],
+        [{ enabled: true, hostnames: ['api.(example'] }, /not a valid regular expression/],
+        [{ enabled: true, hostnames: ['(?!internal).*'] }, /not a valid regular expression/], // lookahead is not RE2
+        [{ enabled: true, hostnames: ['(?<=a)b'] }, /not a valid regular expression/],       // nor is lookbehind
+        [{ enabled: true, hostnames: ['  '] }, /is empty/],
+        [{ enabled: true, hostnames: ['a'.repeat(256)] }, /longer than/],
+        [{ enabled: true, hostnames: tooMany }, /at most/],
+        [{ enabled: true, allowedSchemes: ['ftp'] }, /allowed_schemes/],
+        [{ enabled: true, hostnames: 'api\\.example\\.com' }, /must be an array/],
+    ];
+    for (const [cfg, message] of invalid) {
+        assert.throws(() => compileAccessControl(cfg), message, JSON.stringify(cfg));
+    }
+    // A disabled section is never validated and permits everything.
+    const off = compileAccessControl({ enabled: false, mode: 'nonsense' });
+    assert.equal(off.enabled, false);
+    assert.equal(isHostAllowed('anything.example', off), true);
+});
+
+test('isHostAllowed: patterns are anchored, case-insensitive and match the hostname only', () => {
+    const allow = compileAccessControl({
+        enabled: true,
+        mode: 'allow',
+        hostnames: ['api\\.example\\.com', '[a-z0-9-]+\\.svc\\.cluster\\.local', 'a\\.com|b\\.com'],
+    });
+    const cases = [
+        ['api.example.com', true],
+        ['API.Example.COM', true],
+        ['api.example.com.', true],                // trailing dot normalized
+        ['api.example.com.evil.com', false],       // no suffix extension
+        ['evil-api.example.com', false],           // no prefix extension
+        ['orders.svc.cluster.local', true],
+        ['a.b.svc.cluster.local', false],          // a label class does not cross dots
+        ['b.com.evil', false],                     // alternation is grouped before anchoring
+        ['api.example.com\u3002', true],           // Unicode label separator, after IDNA
+        ['api.example.com\uff0e', true],
+        ['evil.example.com\u3002', false],
+        ['api.example.com..', true],                // repeated trailing dots
+        ['', false],
+    ];
+    for (const [host, want] of cases) {
+        assert.equal(isHostAllowed(host, allow), want, host);
+    }
+
+    const deny = compileAccessControl({ enabled: true, mode: 'deny', hostnames: ['[a-z]+\\.internal\\.example'] });
+    assert.equal(isHostAllowed('billing.internal.example', deny), false);
+    assert.equal(isHostAllowed('billing.internal.example\u3002', deny), false, 'a Unicode separator must not bypass deny');
+    assert.equal(isHostAllowed('billing.internal.example\uff61', deny), false);
+    assert.equal(isHostAllowed('api.example.com', deny), true);
+});
+
+test('normalizeHost: brackets, trailing dot, case and IDN', () => {
+    assert.equal(normalizeHost('[::1]'), '::1');
+    assert.equal(normalizeHost('API.Example.COM.'), 'api.example.com');
+    assert.equal(normalizeHost('bücher.example'), 'xn--bcher-kva.example');
+    const idn = compileAccessControl({ enabled: true, mode: 'allow', hostnames: ['xn--bcher-kva\\.example'] });
+    assert.equal(isHostAllowed('bücher.example', idn), true);
+});
+
+test('effectiveAllowPrivate: access control only tightens a feature flag', () => {
+    const permit = compileAccessControl({ enabled: true });
+    const deny = compileAccessControl({ enabled: true, denyPrivateNetworks: true });
+    assert.equal(effectiveAllowPrivate(true, permit), true);
+    assert.equal(effectiveAllowPrivate(false, permit), false, 'never widens a feature that denies private addresses');
+    assert.equal(effectiveAllowPrivate(true, deny), false);
+    assert.equal(effectiveAllowPrivate(undefined, permit), false, 'an unset flag denies');
+});
+
+test('isDenied: 6to4 and NAT64 addresses are judged by the IPv4 address they carry', () => {
+    assert.equal(isDenied('2002:a9fe:a9fe::', { allowPrivate: true }), true, '6to4 of 169.254.169.254');
+    assert.equal(isDenied('64:ff9b::a9fe:a9fe', { allowPrivate: true }), true, 'NAT64 of 169.254.169.254');
+    assert.equal(isDenied('2002:0a00:0005::', { allowPrivate: false }), true, '6to4 of 10.0.0.5');
+    assert.equal(isDenied('2002:0a00:0005::', { allowPrivate: true }), false);
+    assert.equal(isDenied('64:ff9b::808:808'), false, 'NAT64 of a public address');
+});
+
+test('assertUserUrl: scheme, host rule and literal ranges, with a generic error', () => {
+    const ac = compileAccessControl({ enabled: true, mode: 'deny', hostnames: ['blocked\\.example'], allowedSchemes: ['https'] });
+    const refused = [
+        'http://api.example/',            // scheme outside allowed_schemes
+        'https://blocked.example/x',      // host rule
+        'https://169.254.169.254/latest', // always-refused literal
+    ];
+    for (const raw of refused) {
+        assert.throws(() => assertUserUrl(raw, { accessControl: ac }), (err) => {
+            assert.equal(err.statusCode, 422);
+            assert.doesNotMatch(err.message, /169\.254|blocked/);
+            return true;
+        }, raw);
+    }
+    assert.doesNotThrow(() => assertUserUrl('https://10.0.0.5:8443/hook', { accessControl: ac }), 'private permitted by default');
+
+    const denyPrivate = compileAccessControl({ enabled: true, denyPrivateNetworks: true });
+    assert.throws(() => assertUserUrl('http://10.0.0.5/', { accessControl: denyPrivate }), { code: 'DESTINATION_NOT_ALLOWED' });
+});
+
+test('createGuardedLookup: the host rule is applied before any DNS lookup', async () => {
+    const ac = compileAccessControl({ enabled: true, mode: 'allow', hostnames: ['ok\\.example'] });
+    const lookup = createGuardedLookup({ allowPrivate: true, accessControl: ac });
+    const err = await new Promise((resolve) => lookup('evil.example', {}, (e) => resolve(e)));
+    assert.equal(err.code, 'DESTINATION_NOT_ALLOWED');
 });

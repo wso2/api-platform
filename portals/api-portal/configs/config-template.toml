@@ -79,12 +79,42 @@ ciphers = ""
 # classical entry in this same list, so enabling it never breaks a legacy peer.
 ecdh_curves = "X25519,P-256"
 
+[api_portal.server.network_security.access_control]
+# Restricts the destinations the portal connects to when the URL comes from a
+# tenant or user: "Try It" targets, key managers created through the API (and
+# their discovery URLs), webhook subscriber URLs, and the developer token proxy.
+# URLs set in this file -- the IdP, Platform API, billing providers and
+# [[api_portal.key_manager]] entries -- are never restricted by it.
+#
+# mode                  "deny":  a host matching an entry in hostnames is refused.
+#                       "allow": only a host matching an entry is permitted
+#                                (hostnames must not be empty).
+# hostnames             RE2 regular expressions, matched case-insensitively against
+#                       the whole hostname (never the port or path), e.g.
+#                       ['api\.example\.com', '[a-z0-9-]+\.svc\.cluster\.local'].
+#                       A TOML array; at most 256 entries, each up to 255 characters.
+# deny_private_networks Also refuse private (RFC 1918), loopback, carrier-grade NAT
+#                       and unique-local addresses. It can only tighten a feature's
+#                       own allow_private_endpoints (tryout, key_manager_provisioning),
+#                       never relax it. In allow mode a listed host must pass this
+#                       check too. Link-local (cloud metadata), unspecified and
+#                       multicast addresses are always refused.
+# allowed_schemes       "http" and/or "https".
+#
+# A refused destination gets a generic error; the reason is logged only.
+enabled = true
+mode = "deny"
+hostnames = []
+deny_private_networks = false
+max_redirects = 0
+allowed_schemes = ["http", "https"]
+
 # =============================================================================
 # OUTBOUND HTTP CLIENT CONFIGURATION
 # =============================================================================
 # Settings for this portal's own server-side outbound calls to other services:
 # Platform API login, IDP/key-manager token endpoints, and webhook delivery. The
-# "Try It" proxy (api_portal.tryout below) keeps its own SSRF-guarded client but
+# "Try It" proxy (api_portal.tryout below) keeps its own destination-guarded client but
 # layers the tls block below on top of it too.
 
 [api_portal.http_client]
