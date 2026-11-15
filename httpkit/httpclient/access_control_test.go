@@ -19,11 +19,13 @@
 package httpclient
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -267,5 +269,89 @@ func TestNew_RedirectSchemesNarrowOnlyRedirectHops(t *testing.T) {
 	resp.Body.Close()
 	if _, err := client.Get(srv.URL + "/start"); !errors.Is(err, netguard.ErrDestinationNotAllowed) {
 		t.Fatalf("an http redirect hop with https-only RedirectSchemes = %v, want ErrDestinationNotAllowed", err)
+	}
+}
+
+// TestProxyRouting_FollowUpRequestDoesNotInheritAProxyRoute: a request built from an
+// earlier, proxied request's context (as Response.Request is reused) and routed
+// directly must be dialed under the origin policy, even at the proxy's own address.
+func TestProxyRouting_FollowUpRequestDoesNotInheritAProxyRoute(t *testing.T) {
+	proxyURL, _ := url.Parse("http://proxy.internal:3128")
+	routing := &proxyRouting{proxyFunc: func(req *http.Request) (*url.URL, error) {
+		if req.URL.Hostname() == "proxy.internal" { // bypassed, as by NoProxy
+			return nil, nil
+		}
+		return proxyURL, nil
+	}}
+
+	var dialed []string
+	dial := proxyHopDialer(
+		func(context.Context, string, string) (net.Conn, error) {
+			dialed = append(dialed, "proxy")
+			return nil, errors.New("stop")
+		},
+		func(context.Context, string, string) (net.Conn, error) {
+			dialed = append(dialed, "origin")
+			return nil, errors.New("stop")
+		},
+	)
+
+	first, _ := http.NewRequest(http.MethodGet, "https://api.example.com/", nil)
+	first, err := routing.mark(first)
+	if err != nil {
+		t.Fatalf("mark: %v", err)
+	}
+	_, _ = dial(first.Context(), "tcp", "proxy.internal:3128")
+
+	followUp, _ := http.NewRequestWithContext(first.Context(), http.MethodGet, "http://proxy.internal:3128/", nil)
+	followUp, err = routing.mark(followUp)
+	if err != nil {
+		t.Fatalf("mark: %v", err)
+	}
+	_, _ = dial(followUp.Context(), "tcp", "proxy.internal:3128")
+
+	if len(dialed) != 2 || dialed[0] != "proxy" || dialed[1] != "origin" {
+		t.Fatalf("dialers used = %v, want [proxy origin]", dialed)
+	}
+}
+
+// TestTransportProxyAddr_MatchesWhatTheTransportDials compares the proxy address
+// proxyRouting records for a request with the address net/http's Transport actually
+// dials for that proxy.
+func TestTransportProxyAddr_MatchesWhatTheTransportDials(t *testing.T) {
+	for _, raw := range []string{
+		"http://proxy.internal",
+		"https://proxy.internal",
+		"http://proxy.internal:3128",
+		"socks5://127.0.0.1",
+		"socks5h://proxy.internal:9050",
+		"http://bücher.example:3128",
+		"http://PROXY.Example:3128",
+		"http://[::1]:8080",
+	} {
+		proxyURL, err := url.Parse(raw)
+		if err != nil {
+			t.Fatalf("parse %q: %v", raw, err)
+		}
+		var got string
+		transport := &http.Transport{
+			Proxy: func(*http.Request) (*url.URL, error) { return proxyURL, nil },
+			DialContext: func(_ context.Context, _, addr string) (net.Conn, error) {
+				got = addr
+				return nil, errors.New("stop")
+			},
+		}
+		req, _ := http.NewRequest(http.MethodGet, "http://origin.example/", nil)
+		_, _ = transport.RoundTrip(req)
+		if got == "" {
+			t.Fatalf("%s: the Transport dialed nothing", raw)
+		}
+		marked, err := (&proxyRouting{proxyFunc: transport.Proxy}).mark(req)
+		if err != nil {
+			t.Fatalf("%s: mark: %v", raw, err)
+		}
+		if recorded, _ := marked.Context().Value(proxyRouteKey{}).(string); recorded != got {
+			t.Errorf("%s: recorded %q, Transport dialed %q", raw, recorded, got)
+		}
 	}
 }
