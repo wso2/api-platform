@@ -11,6 +11,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/upstreamguard"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
@@ -113,12 +114,13 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 
 		if secretResolver != nil {
 			if err := templateengine.RenderSpec(apiConfig, secretResolver, log); err != nil {
-				// A stored artifact that reads an environment variable outside the
-				// env access allow list is undeployed rather than failing startup or
-				// being left with a route but no policy chain, whatever
-				// skipInvalidDeployments says. Other artifacts keep loading.
-				if funcs.IsEnvAccessError(err) {
-					utils.UndeployEnvRefusedAtStartup(apiConfig, onEnvRefused, log)
+				// A stored artifact the gateway configuration now refuses — it reads
+				// an environment variable outside the env access allow list, or names
+				// a URL network access control does not permit — is undeployed rather
+				// than failing startup or being left with a route but no policy chain,
+				// whatever skipInvalidDeployments says. Other artifacts keep loading.
+				if upstreamguard.IsArtifactRefusal(err) {
+					utils.UndeployRefusedAtStartup(apiConfig, onEnvRefused, upstreamguard.RefusalReason(err), log)
 					continue
 				}
 				if log != nil {

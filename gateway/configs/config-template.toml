@@ -73,6 +73,42 @@ maximum_protocol_version = "TLS1_3"
 ciphers = ""
 ecdh_curves = "X25519,P-256"
 
+[controller.server.network_security.access_control]
+# Restricts the destinations an artifact may point the gateway at: its upstream
+# URLs (spec.upstream, spec.upstreamDefinitions), which the router dials, and the
+# URL parameters of the policies attached to it, which the policy engine dials.
+# URLs set in this file -- the control plane, the IdP, collectors, policy system
+# parameters -- are never restricted by it.
+#
+# Enforced like policy_engine.env_access: a deployment through the management API
+# or from the control plane that breaks it is refused (400 / a failed deployment
+# with UPSTREAM_URL_NOT_ALLOWED), and after a change to this section and a restart,
+# a stored artifact that now breaks it is undeployed.
+#
+# mode                  "deny":  a host matching an entry in hostnames is refused.
+#                       "allow": only a host matching an entry is permitted
+#                                (hostnames must not be empty).
+# hostnames             RE2 regular expressions, matched case-insensitively against
+#                       the whole hostname (never the port or path), e.g.
+#                       ['api\.example\.com', '[a-z0-9-]+\.svc\.cluster\.local'].
+#                       A TOML array; at most 256 entries, each up to 255 characters.
+# deny_private_networks Also refuse private (RFC 1918), loopback, carrier-grade NAT
+#                       and unique-local addresses. In allow mode a listed host must
+#                       pass this check too. Link-local (cloud metadata), unspecified
+#                       and multicast addresses are always refused.
+# max_redirects         Redirect hops a policy follows; each hop is checked again.
+# allowed_schemes       "http" and/or "https".
+#
+# Limitation: the router keeps re-resolving upstream hostnames. Their addresses are
+# checked when an artifact is deployed and on every restart, not in between, and a
+# hostname the controller cannot resolve at deploy time is not refused.
+enabled = true
+mode = "deny"
+hostnames = []
+deny_private_networks = false
+max_redirects = 5
+allowed_schemes = ["http", "https"]
+
 [controller.admin_server]
 # Dedicated admin/debug HTTP server for config dump and xDS sync endpoints.
 # Kept enabled by default because it also serves /health, used by Kubernetes

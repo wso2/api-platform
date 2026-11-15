@@ -42,7 +42,9 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/restapi"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/upstreamguard"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
@@ -355,6 +357,11 @@ func main() {
 
 	// Built early so the startup rehydration below can use it too.
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
+
+	// Install network access control for artifact URLs before anything renders an
+	// artifact: every render (startup load, REST handlers, control-plane events, replica
+	// sync) then refuses an upstream or policy URL it does not permit.
+	installArtifactAccessControl(cfg, policyDefinitions, log)
 
 	// MCP proxies and LLM artifacts are stored in source form and need to be
 	// rehydrated into their derived RestAPI representations before startup
@@ -1289,4 +1296,27 @@ func deprecatedManagementPathMiddleware(newBasePath string) api.MiddlewareFunc {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// installArtifactAccessControl installs controller.server.network_security.access_control
+// as RenderSpec's post-render check. It exits on an invalid configuration, which
+// cfg.Validate has normally rejected already.
+func installArtifactAccessControl(cfg *config.Config, policyDefinitions map[string]models.PolicyDefinition, log *slog.Logger) {
+	policy, enabled, err := cfg.ArtifactAccessControlPolicy()
+	if err != nil {
+		log.Error("Invalid network access control configuration", slog.Any("error", err))
+		os.Exit(1)
+	}
+	if !enabled {
+		templateengine.SetPostRenderCheck(nil)
+		log.Info("Network access control for artifact URLs is disabled")
+		return
+	}
+	guard := upstreamguard.New(policy, policyDefinitions, log)
+	templateengine.SetPostRenderCheck(guard.Check)
+	ac := cfg.Controller.Server.NetworkSecurity.AccessControl
+	log.Info("Network access control for artifact URLs is enabled",
+		slog.String("mode", ac.Mode),
+		slog.Int("hostname_patterns", len(ac.Hostnames)),
+		slog.Bool("deny_private_networks", ac.DenyPrivateNetworks))
 }
