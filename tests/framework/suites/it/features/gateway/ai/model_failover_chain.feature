@@ -358,3 +358,157 @@ Feature: Walking a failover chain
     Then the response should be successful
     When I delete the LLM provider "${CTX:wellName}"
     Then the response should be successful
+
+  Scenario: Two models under one provider are each sent their own model name
+    # The mirror of the two scenarios above, and the shape this suite never had. They cover
+    # one model under two providers; this is two models under ONE provider - a cost-control
+    # chain, the most ordinary reason to list a second target at all.
+    #
+    # It is the shape in which a map keyed by CLUSTER stops working, because a cluster names
+    # a provider and both members are behind the same one. Keyed that way the two members
+    # collapse onto a single entry and the last one written wins, so attempt 1 asks for the
+    # SECOND member's model: the first model is never requested, the caller is billed at the
+    # wrong rate while the configuration says otherwise, and attempt 2 would repeat attempt 1
+    # byte for byte against the identical upstream - no failover at all. Every other scenario
+    # in this suite gives each member its own provider, which is exactly the arrangement in
+    # which a cluster-keyed map is indistinguishable from a correct one.
+    #
+    # The fallback names no provider, so it inherits the chain's. That is also uncovered
+    # anywhere else: every other fallback in the suite names one.
+    Given I generate a unique resource name from "one-vendor" and store it as "vendorName"
+    And I generate a unique API version from "one-vendor" and store it as "vendorVersion"
+    And I generate a unique API context from "/one-vendor" and store it as "vendorContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}                  |
+      | name               | ${CTX:vendorName}                          |
+      | displayName        | ${CTX:vendorName}                          |
+      | version            | ${CTX:vendorVersion}                       |
+      | template           | openai                                     |
+      | spec.context       | ${CTX:vendorContext}                       |
+      | spec.upstream.url  | http://testbench:3000/one-vendor-upstream  |
+      | accessControl.mode | allow_all                                  |
+    Then the response should be successful
+
+    # Two targets, one provider. Only the model differs.
+    Given I generate a unique resource name from "chain-two-models" and store it as "proxyName"
+    And I generate a unique API version from "chain-two-models" and store it as "proxyVersion"
+    And I generate a unique API context from "/chain-two-models" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                     | ${CTX:proxyName}                                                                                                                                                       |
+      | displayName              | ${CTX:proxyName}                                                                                                                                                       |
+      | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
+      | context                  | ${CTX:proxyContext}                                                                                                                                                    |
+      | provider.id              | ${CTX:vendorName}                                                                                                                                                      |
+      | spec.providers | [{"id":"${CTX:vendorName}","isPrimary":true}]                                                                                                                          |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":0,"targets":[{"model":"gpt-4o","fallbacks":[{"model":"gpt-3.5-turbo"}]}]}}]}] |
+    Then the response should be successful
+
+    # One attempt, which succeeds, so what the echo reports IS what the FIRST member was
+    # sent. The two model names are deliberately not substrings of one another, or the
+    # positive assertion would hold for either of them.
+    When I set header "Content-Type" to "application/json"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until status 200 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response header "x-envoy-attempt-count" should be "1"
+
+    # The discriminating assertion. With the members collapsed onto one cluster key the
+    # fallback's model is what arrives here instead.
+    And the response body should not contain "gpt-3.5-turbo"
+    And the response body should contain "gpt-4o"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:vendorName}"
+    Then the response should be successful
+
+  Scenario: A post-commitment failure on the second model is charged to that model
+    # The health-side half of the scenario above, and the mirror of "Suspending one
+    # provider's copy of a model leaves the other provider's untouched": that one proves two
+    # providers are kept distinct for HEALTH, this one proves two MODELS on one provider are.
+    #
+    # It is the harder half, because a post-commitment failure is reported long after the
+    # request, by an access-log verdict that names only a CLUSTER - and both members are
+    # behind one. Keyed by cluster the verdict lands on whichever member the chain reached
+    # first, so the model that actually truncated keeps its clean window and all the traffic
+    # while a model that only ever returned a retriable 503 absorbs its failure too.
+    #
+    # The chain is driven by a fault-injection script, because one upstream has to answer
+    # attempt 1 and attempt 2 differently and the stream-fault service is deliberately
+    # stateless - it reads its mode from a request header, which every attempt of one request
+    # carries identically. The script supplies the per-attempt divergence and forwards the
+    # attempt it does not answer itself to stream-fault, which supplies the truncation.
+    Given I generate a unique resource name from "verdict-script" and store it as "scriptId"
+    When I send a "PUT" request to the "fault-injection" service at "/test/scripts/${CTX:scriptId}" with body:
+      """
+      {"forwardPort": 3027, "steps": [{"status": 503}]}
+      """
+    Then the response should be successful
+    And I resolve the "fault-injection" service path at "/${CTX:scriptId}" and store it as "verdictPath"
+
+    Given I generate a unique resource name from "verdict-vendor" and store it as "vendorName"
+    And I generate a unique API version from "verdict-vendor" and store it as "vendorVersion"
+    And I generate a unique API context from "/verdict-vendor" and store it as "vendorContext"
+    When I create LLM provider from "resources/templates/llm-provider.yaml" with values:
+      | apiVersion         | ${CTX:gatewaySpecVersion}              |
+      | name               | ${CTX:vendorName}                      |
+      | displayName        | ${CTX:vendorName}                      |
+      | version            | ${CTX:vendorVersion}                   |
+      | template           | openai                                 |
+      | spec.context       | ${CTX:vendorContext}                   |
+      | spec.upstream.url  | http://testbench:3026${CTX:verdictPath} |
+      | accessControl.mode | allow_all                              |
+    Then the response should be successful
+
+    # One failure suspends, so each member's fate is decided by the single failure charged to
+    # it and nothing else. suspendDuration is long enough that neither returns during the
+    # scenario.
+    Given I generate a unique resource name from "chain-verdict" and store it as "proxyName"
+    And I generate a unique API version from "chain-verdict" and store it as "proxyVersion"
+    And I generate a unique API context from "/chain-verdict" and store it as "proxyContext"
+    When I create LLM proxy from "resources/templates/llm-proxy.yaml" with values:
+      | apiVersion               | ${CTX:gatewaySpecVersion}                                                                                                                                              |
+      | name                     | ${CTX:proxyName}                                                                                                                                                       |
+      | displayName              | ${CTX:proxyName}                                                                                                                                                       |
+      | version                  | ${CTX:proxyVersion}                                                                                                                                                    |
+      | context                  | ${CTX:proxyContext}                                                                                                                                                    |
+      | provider.id              | ${CTX:vendorName}                                                                                                                                                      |
+      | spec.providers | [{"id":"${CTX:vendorName}","isPrimary":true}]                                                                                                                          |
+      | spec.operationPolicies            | [{"name":"model-failover","version":"v0","paths":[{"path":"/chat/completions","methods":["POST"],"params":{"suspendDuration":300,"suspendAfterFailures":1,"statusCodes":[503],"targets":[{"model":"gpt-4o","fallbacks":[{"model":"gpt-3.5-turbo"}]}]}}]}] |
+    Then the response should be successful
+
+    # Attempt 1 takes the script's 503 and is graded a failure by the response phase, which
+    # suspends gpt-4o. Attempt 2 exhausts the script, forwards to stream-fault, commits a 200
+    # and then dies mid-body - the failure no in-flight phase can see.
+    When I set header "Content-Type" to "application/json"
+    And I set header "x-stream-fault" to "truncate"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until the response body is cut off with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 200
+    And the response body should have been cut off
+    And the response header "x-envoy-attempt-count" should be "2"
+
+    # The verdict arrives off the access log a moment later, so this polls. Once it has been
+    # charged to gpt-3.5-turbo BOTH members are suspended and the policy answers without
+    # attempting anything - the one observable that separates the two outcomes.
+    #
+    # Charged by cluster instead, it lands a second time on gpt-4o, which is already out, and
+    # gpt-3.5-turbo stays healthy and keeps serving every one of these polls with a 200 until
+    # the step gives up.
+    When I set header "x-stream-fault" to "plain"
+    And I send a "POST" request to "${CTX:proxyContext}/chat/completions" until status 503 with body:
+      """
+      {"model": "gpt-4o", "messages": [{"role": "user", "content": "Hello"}]}
+      """
+    Then the response status code should be 503
+    And the response body should contain "960100"
+
+    When I delete the LLM proxy "${CTX:proxyName}"
+    Then the response should be successful
+    When I delete the LLM provider "${CTX:vendorName}"
+    Then the response should be successful
