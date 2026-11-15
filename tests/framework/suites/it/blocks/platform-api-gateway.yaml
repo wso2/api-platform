@@ -148,6 +148,9 @@ blocks:
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_cards.feature
         tags: "gateway-version>1.2.0"
+      - name: network-access-control
+        features:
+          - features/management-portal/network-access-control/destination_refusal.feature
       - name: agent-proxy-deployment
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_deployment.feature
