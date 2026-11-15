@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
+	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
@@ -47,13 +48,35 @@ const refusedFieldMessage = "The URL's destination is not permitted."
 //   - URLs that are only shown to people: a template's logo, a publication's
 //     endpoints, agent card content;
 //   - policy parameters;
-//   - a URL built from a {{ secret }} or {{ env }} placeholder: the gateway checks
-//     the resolved value when it deploys the artifact;
+//   - a URL whose scheme or host is a template placeholder ({{ secret }}, {{ env }}):
+//     only the gateway can resolve it. A placeholder elsewhere in the URL does not
+//     exempt its host (see destinationOf);
 //   - artifacts a gateway imports, which the gateway already checked.
 //
 // The checks do no network I/O: scheme, hostname rule and IP literal (see
 // utils.CheckUserURL).
 func CheckRequestURLs(ctx context.Context, orgID string, payload any) error {
+	return checkRequestURLs(ctx, orgID, payload, nil)
+}
+
+// CheckRequestURLsForUpdate is CheckRequestURLs for an update of a stored artifact of
+// the given origin. A DP-originated artifact's runtime configuration belongs to its
+// gateway, which applied its own access control when it accepted it: an update keeps
+// the stored copy, or must leave it unchanged, so the request's upstream URLs are not
+// what the artifact will use and are not checked. Its per-gateway endpoint overrides
+// are still stored by the control plane, so those are.
+func CheckRequestURLsForUpdate(ctx context.Context, orgID, origin string, payload any) error {
+	if origin != constants.OriginDP {
+		return CheckRequestURLs(ctx, orgID, payload)
+	}
+	return checkRequestURLs(ctx, orgID, payload, func(path string) bool {
+		return strings.HasPrefix(path, associatedGatewaysField)
+	})
+}
+
+// checkRequestURLs checks the URL fields of payload that keep accepts (all of them when
+// keep is nil).
+func checkRequestURLs(ctx context.Context, orgID string, payload any, keep func(path string) bool) error {
 	if payload == nil {
 		return nil
 	}
@@ -68,6 +91,9 @@ func CheckRequestURLs(ctx context.Context, orgID string, payload any) error {
 	}
 
 	for _, t := range collectRequestURLs(doc) {
+		if keep != nil && !keep(t.path) {
+			continue
+		}
 		if err := checkURLField(ctx, orgID, t.path, t.url); err != nil {
 			return err
 		}
@@ -94,24 +120,57 @@ func checkURLField(ctx context.Context, orgID, field, rawURL string) error {
 	return appErr.WithFieldErrors([]apperror.FieldError{{Field: field, Message: refusedFieldMessage}})
 }
 
+// associatedGatewaysField prefixes the path of a per-gateway endpoint override.
+const associatedGatewaysField = "associatedGateways["
+
 // urlTarget is one URL found in a request, with the JSON path of its field.
 type urlTarget struct {
 	path string
 	url  string
 }
 
-// addURL records value at path when it is a URL that can be judged here: a non-empty
-// string not built from a template placeholder.
+// addURL records value at path when it is a non-empty string URL whose destination can
+// be judged here (see destinationOf).
 func addURL(out *[]urlTarget, path string, value any) {
 	s, ok := value.(string)
 	if !ok {
 		return
 	}
-	s = strings.TrimSpace(s)
-	if s == "" || strings.Contains(s, "{{") {
-		return
+	if dest, ok := destinationOf(strings.TrimSpace(s)); ok {
+		*out = append(*out, urlTarget{path: path, url: dest})
 	}
-	*out = append(*out, urlTarget{path: path, url: s})
+}
+
+// destinationOf returns the URL to check for raw, and false when there is nothing to
+// check. A URL without a template placeholder is checked as it is. One with a
+// placeholder ({{ secret }}, {{ env }} or any other expression the gateway renders) is
+// skipped only when the placeholder is in its scheme or host, which only the gateway can
+// resolve; otherwise its literal scheme and host are checked as scheme://host[:port], so
+// a placeholder in the userinfo, path or query neither hides a refused host nor stops
+// the URL from parsing.
+func destinationOf(raw string) (string, bool) {
+	if raw == "" {
+		return "", false
+	}
+	if !strings.Contains(raw, "{{") {
+		return raw, true
+	}
+	scheme, rest, found := strings.Cut(raw, "://")
+	if !found || strings.Contains(scheme, "{{") {
+		return "", false
+	}
+	authority := rest
+	if end := strings.IndexAny(authority, "/?#"); end >= 0 {
+		authority = authority[:end]
+	}
+	// The host follows any userinfo, which may itself be a placeholder.
+	if at := strings.LastIndex(authority, "@"); at >= 0 {
+		authority = authority[at+1:]
+	}
+	if authority == "" || strings.Contains(authority, "{{") {
+		return "", false
+	}
+	return scheme + "://" + authority, true
 }
 
 // collectRequestURLs gathers the URL fields of a request, in a stable order.
@@ -140,7 +199,7 @@ func collectRequestURLs(doc map[string]any) []urlTarget {
 				continue
 			}
 			if conf, ok := entry["configurations"].(map[string]any); ok {
-				addURL(&out, fmt.Sprintf("associatedGateways[%d].configurations.endpointUrl", i), conf["endpointUrl"])
+				addURL(&out, fmt.Sprintf("%s%d].configurations.endpointUrl", associatedGatewaysField, i), conf["endpointUrl"])
 			}
 		}
 	}

@@ -439,8 +439,8 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 	}
 
 	// Apply server.network_security.access_control to the URLs in the request
-	// (see CheckRequestURLs).
-	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+	// (see CheckRequestURLsForUpdate).
+	if err := CheckRequestURLsForUpdate(context.Background(), orgUUID, existingAPIModel.Origin, req); err != nil {
 		return nil, err
 	}
 

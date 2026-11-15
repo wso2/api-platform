@@ -232,6 +232,8 @@ Feature: The control plane never connects to a destination its network access co
       | upstreamUrl | ${CTX:okUrl}                                     |
       | transports  | [{"protocolBinding":"JSONRPC","pathPrefix":"/"}] |
     Then the response status code should be 201
+    When I send a "GET" request to the control plane at "/agent-proxies/${CTX:allowedAgent}"
+    Then the response status code should be 200
 
   @NETAC-PA-014 @type:negative
   Scenario: Deploying a REST API with an endpoint override at the cloud metadata address is refused, while a permitted override deploys
@@ -297,6 +299,8 @@ Feature: The control plane never connects to a destination its network access co
     When I send a multipart "POST" request to the control plane at "/graphql-apis" with fields:
       | metadata | {"id": "${CTX:allowedApi}", "displayName": "${CTX:allowedApi}", "context": "${CTX:allowedContext}", "version": "v1", "projectId": "${CTX:projectHandle}", "upstream": {"main": {"url": "http://testbench:3017/graphql"}}, "schemaSource": "inline", "sdl": "type Query { hello: String }"} |
     Then the response status code should be 201
+    When I send a "GET" request to the control plane at "/graphql-apis/${CTX:allowedApi}"
+    Then the response status code should be 200
 
   @NETAC-PA-017 @type:negative
   Scenario: An MCP proxy whose per-gateway endpoint override is the cloud metadata address is refused, while a permitted override is created
@@ -320,6 +324,8 @@ Feature: The control plane never connects to a destination its network access co
       {"id": "${CTX:allowedProxy}", "displayName": "${CTX:allowedProxy}", "version": "v1.0", "context": "${CTX:allowedContext}", "projectId": "${CTX:projectHandle}", "mcpSpecVersions": ["2025-06-18"], "upstream": {"main": {"url": "http://testbench:3009/mcp"}}, "associatedGateways": [{"id": "${CTX:gatewayId}", "configurations": {"endpointUrl": "http://testbench:3009/mcp"}}]}
       """
     Then the response status code should be 201
+    When I send a "GET" request to the control plane at "/mcp-proxies/${CTX:allowedProxy}"
+    Then the response status code should be 200
 
   # Schema validation is a dry run, but a refused source is still an error the caller must
   # correct, not the "could not derive a schema" outcome an unreachable source gets.
