@@ -30,13 +30,13 @@
  * same-origin.
  *
  * That makes this module an outbound-request sink driven by a browser-supplied
- * URL, i.e. an SSRF surface. Two independent controls apply:
+ * URL, so its destination must be controlled. Two independent controls apply:
  *
  *   1. The target must match one of the endpoints registered for *that* API in
  *      the portal's own database (production/sandbox). The caller cannot name a
  *      host — it can only pick among URLs the portal already publishes in the
  *      spec's `servers` block. This is the primary control.
- *   2. Dial-time IP checking via ssrfGuard, as defense in depth against an API
+ *   2. Dial-time IP checking via destinationGuard, as defense in depth against an API
  *      registered (or later re-resolving) to a metadata/link-local address.
  */
 
@@ -49,7 +49,13 @@ const logger = require('../config/logger');
 const orgDao = require('../dao/organizationDao');
 const apiDao = require('../dao/apiDao');
 const apiMetadataService = require('./apiMetadataService');
-const { createGuardedLookup, assertAllowedScheme, assertAllowedHost } = require('../utils/ssrfGuard');
+const {
+    createGuardedLookup,
+    assertAllowedScheme,
+    assertAllowedHost,
+    getAccessControl,
+    effectiveAllowPrivate,
+} = require('../utils/destinationGuard');
 const { buildOutboundAgents } = require('../config/httpClientOptions');
 
 function tryoutConfig() {
@@ -95,9 +101,15 @@ function getClient() {
     if (cachedClient) return cachedClient;
 
     const cfg = tryoutConfig();
-    const lookup = createGuardedLookup({ allowPrivate: cfg.allowPrivateEndpoints !== false });
+    // allow_private_endpoints is opt-in (=== true): an unset value must deny, not
+    // permit. Network access control can tighten it further and adds its host rule.
+    const accessControl = getAccessControl();
+    const lookup = createGuardedLookup({
+        allowPrivate: effectiveAllowPrivate(cfg.allowPrivateEndpoints === true, accessControl),
+        accessControl,
+    });
     // Same cipher/curve/version tuning as this portal's other outbound clients
-    // (see httpClientOptions.js); rejectUnauthorized and the SSRF-guarded lookup
+    // (see httpClientOptions.js); rejectUnauthorized and the destination-guarded lookup
     // stay specific to this client, so it keeps building its own Agent rather
     // than reusing the shared one.
     const { tlsOptions } = buildOutboundAgents(config);
@@ -163,14 +175,19 @@ function pathContains(basePath, targetPath) {
  */
 function selectAllowedTarget(rawTarget, allowedEndpoints) {
     const cfg = tryoutConfig();
-    assertAllowedScheme(rawTarget, { allowHttp: cfg.allowHttpEndpoints !== false });
+    const accessControl = getAccessControl();
+    assertAllowedScheme(rawTarget, { allowHttp: cfg.allowHttpEndpoints !== false, accessControl });
 
     const target = new URL(rawTarget);
 
     // An IP-literal host never reaches the Agent's lookup hook — Node skips DNS
     // resolution for literals — so the denylist has to be applied here or a
-    // target like "http://169.254.169.254/" would connect unchecked.
-    assertAllowedHost(target.hostname, { allowPrivate: cfg.allowPrivateEndpoints !== false });
+    // target like "http://169.254.169.254/" would connect unchecked. Network
+    // access control's host rule is applied here too, to every host.
+    assertAllowedHost(target.hostname, {
+        allowPrivate: effectiveAllowPrivate(cfg.allowPrivateEndpoints === true, accessControl),
+        accessControl,
+    });
 
     // No legitimate try-it target carries credentials, and userinfo is exactly
     // the shape that makes "https://gateway.example.com@attacker.example" read

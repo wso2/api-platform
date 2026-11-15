@@ -25,10 +25,10 @@
  * dependency-free. Inside the portal that would be a second, unguarded HTTP
  * stack alongside the one every other outbound call already goes through, so it
  * is replaced here by the portal's own: axios, the shared TLS tuning and
- * connection pooling from config/httpClientOptions.js, and the SSRF guard from
- * utils/ssrfGuard.js.
+ * connection pooling from config/httpClientOptions.js, and the destination guard from
+ * utils/destinationGuard.js.
  *
- * Why the SSRF guard applies to an operator-configured endpoint
+ * Why the destination guard applies to an operator-configured endpoint
  * (js-ssrf-prevention.md, directive 1 — "any admin-configurable endpoint"): a
  * key manager URL is not attacker-supplied, but it is the portal dialling an
  * arbitrary host on behalf of a request, and a mistyped or copy-pasted endpoint
@@ -53,7 +53,10 @@ const {
     assertAllowedHost,
     assertAllowedScheme,
     isDenied,
-} = require('../../utils/ssrfGuard');
+    getAccessControl,
+    effectiveAllowPrivate,
+    isHostAllowed,
+} = require('../../utils/destinationGuard');
 
 /*
  * configLoader is required lazily, inside the functions below, rather than at
@@ -84,19 +87,28 @@ function clientConfig() {
  * @property {boolean} [insecureSkipVerify]     skip TLS verification for this key manager
  * @property {boolean} [allowPrivateEndpoints]  permit a private/loopback address
  * @property {boolean} [allowHttpEndpoints]     permit plain http://
+ * @property {boolean} [userSupplied]           the endpoints come from tenant or user input
+ *     (a key manager created through the API), so
+ *     [api_portal.server.network_security.access_control] applies to them. Never set
+ *     for a [[api_portal.key_manager]] entry in config.toml.
  */
 
 /** Normalize a policy, applying the deny-by-default posture for anything unset. */
 function resolvePolicy(policy) {
     const p = policy || {};
+    const accessControl = p.userSupplied === true ? getAccessControl() : null;
     return {
         insecureSkipVerify: p.insecureSkipVerify === true,
         // Deny by default: an operator opts a specific key manager into a
-        // private address, and never gets it implicitly.
-        allowPrivate: p.allowPrivateEndpoints === true,
+        // private address, and never gets it implicitly. Network access control
+        // can only tighten this, for a user-supplied key manager.
+        allowPrivate: accessControl
+            ? effectiveAllowPrivate(p.allowPrivateEndpoints === true, accessControl)
+            : p.allowPrivateEndpoints === true,
         // Permitted by default: an identity server commonly sits behind a
         // TLS-terminating ingress, and these endpoints are operator-supplied.
         allowHttp: p.allowHttpEndpoints !== false,
+        accessControl,
     };
 }
 
@@ -121,9 +133,9 @@ function resolvePolicy(policy) {
  * @param {ClientPolicy} policy   the key manager's own client policy
  */
 function assertDialable(rawUrl, fieldPath, policy) {
-    const { allowHttp, allowPrivate } = resolvePolicy(policy);
+    const { allowHttp, allowPrivate, accessControl } = resolvePolicy(policy);
     try {
-        assertAllowedScheme(rawUrl, { allowHttp });
+        assertAllowedScheme(rawUrl, { allowHttp, accessControl });
     } catch (err) {
         const remedy = allowHttp
             ? 'http and https are permitted'
@@ -137,6 +149,11 @@ function assertDialable(rawUrl, fieldPath, policy) {
     // the Agent — which is also what closes the DNS-rebinding window. So this
     // catches "https://127.0.0.1:8090" at startup but not "https://localhost:8090".
     const { hostname } = new URL(rawUrl);
+    if (accessControl && !isHostAllowed(hostname, accessControl)) {
+        // Generic: which rule refused the host stays out of the response.
+        throw Object.assign(new Error(`${fieldPath}: the destination is not permitted by network access control`),
+            { statusCode: 422, code: 'DESTINATION_NOT_ALLOWED' });
+    }
     try {
         assertAllowedHost(hostname, { allowPrivate });
     } catch (err) {
@@ -174,10 +191,10 @@ function stripBrackets(hostname) {
  * @returns {import('axios').AxiosInstance}
  */
 function buildClient(policy = {}) {
-    const { insecureSkipVerify, allowPrivate } = resolvePolicy(policy);
+    const { insecureSkipVerify, allowPrivate, accessControl } = resolvePolicy(policy);
     const clientCert = policy.clientCert || null;
     const cfg = policy.limits || clientConfig();
-    const lookup = createGuardedLookup({ allowPrivate });
+    const lookup = createGuardedLookup({ allowPrivate, accessControl });
     // Same cipher/curve/version tuning as every other outbound client in this
     // portal; rejectUnauthorized and the guarded lookup are specific to this
     // client, so it builds its own Agent rather than reusing the shared pair.
