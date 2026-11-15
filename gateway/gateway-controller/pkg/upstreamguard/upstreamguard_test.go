@@ -169,6 +169,29 @@ func TestCheck_HostRuleModes(t *testing.T) {
 	}
 }
 
+// TestCheck_SchemesThatAreNeverDialedAreLeftToTheValidators: a non-http(s)
+// scheme is not refused here, so the validators' specific message reaches the
+// caller, while allowed_schemes still narrows http and https.
+func TestCheck_SchemesThatAreNeverDialedAreLeftToTheValidators(t *testing.T) {
+	g := guard(t, netguard.GuardConfig{Enabled: true, DenyPrivateNetworks: true})
+	for _, raw := range []string{"ftp://169.254.169.254/x", "file://localhost/etc/passwd", "gopher://10.0.0.1/"} {
+		if err := g.Check(restAPI(raw)); err != nil {
+			t.Fatalf("%q must be left to the validators, got %v", raw, err)
+		}
+	}
+	if refusedField(t, g.Check(restAPI("http://169.254.169.254/x"))) == "" {
+		t.Fatal("positive control: an http URL to the metadata address must be refused")
+	}
+
+	httpsOnly := guard(t, netguard.GuardConfig{Enabled: true, AllowedSchemes: []string{"https"}})
+	if refusedField(t, httpsOnly.Check(restAPI("http://api.example.com/v1"))) == "" {
+		t.Fatal("allowed_schemes = [\"https\"] must refuse an http upstream")
+	}
+	if err := httpsOnly.Check(restAPI("https://api.example.com/v1")); err != nil {
+		t.Fatalf("positive control: allowed_schemes = [\"https\"] permits https: %v", err)
+	}
+}
+
 // TestCheck_AllowedHostMustAlsoPassAddressRules: with deny_private_networks an
 // allow-listed hostname that resolves to loopback is still refused.
 func TestCheck_AllowedHostMustAlsoPassAddressRules(t *testing.T) {
