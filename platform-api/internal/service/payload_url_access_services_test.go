@@ -309,6 +309,12 @@ func TestCheckRequestURLs_InputsWithoutURLFields(t *testing.T) {
 			t.Errorf("%s: err = %v, want nil", name, err)
 		}
 	}
+	if err := CheckRequestURLs(context.Background(), "org-1", nil); err != nil {
+		t.Errorf("a nil payload: err = %v, want nil", err)
+	}
+	if got := hostOf("http://[::1"); got != "" {
+		t.Errorf("hostOf of a URL that does not parse = %q, want empty", got)
+	}
 	if err := CheckRequestURLs(context.Background(), "org-1", map[string]any{"upstream": make(chan int)}); err == nil {
 		t.Error("a payload that does not marshal: err = nil, want an error")
 	}

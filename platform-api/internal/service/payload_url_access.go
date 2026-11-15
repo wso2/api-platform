@@ -20,7 +20,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -105,19 +104,17 @@ func checkRequestURLs(ctx context.Context, orgID string, payload any, keep func(
 // from field of a request. A refusal is apperror.DestinationNotAllowed naming field;
 // the host and the rule that refused it are logged, never returned.
 func checkURLField(ctx context.Context, orgID, field, rawURL string) error {
+	// CheckUserURL returns nil or a refusal, never another error: it does no I/O.
 	err := utils.CheckUserURL(ctx, rawURL)
 	if err == nil {
 		return nil
-	}
-	var appErr *apperror.Error
-	if !apperror.DestinationNotAllowed.Is(err) || !errors.As(err, &appErr) {
-		return err
 	}
 	slog.Warn("Request URL refused by network access control",
 		slog.String("organization_id", orgID),
 		slog.String("field", field),
 		slog.String("host", hostOf(rawURL)))
-	return appErr.WithFieldErrors([]apperror.FieldError{{Field: field, Message: refusedFieldMessage}})
+	return apperror.DestinationNotAllowed.Wrap(err).
+		WithFieldErrors([]apperror.FieldError{{Field: field, Message: refusedFieldMessage}})
 }
 
 // associatedGatewaysField prefixes the path of a per-gateway endpoint override.
