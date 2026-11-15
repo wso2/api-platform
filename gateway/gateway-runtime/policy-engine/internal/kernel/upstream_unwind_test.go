@@ -443,3 +443,220 @@ func TestProcessResponseBody_CarriesTheUpstreamChainsShortCircuit(t *testing.T) 
 		t.Fatalf("immediate response status = %d, want 451 — the provider chain's own replacement", got)
 	}
 }
+
+// wrappingUpstreamRequestPolicy is the request half of a provider transformer: it marks the
+// request on its way out.
+type wrappingUpstreamRequestPolicy struct{}
+
+func (wrappingUpstreamRequestPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{RequestHeaderMode: policy.HeaderModeProcess}
+}
+
+func (wrappingUpstreamRequestPolicy) OnRequestHeaders(_ context.Context, _ *policy.RequestHeaderContext,
+	_ map[string]interface{}) policy.RequestHeaderAction {
+	return policy.UpstreamRequestHeaderModifications{HeadersToSet: map[string]string{"x-wrapped-by": "provider"}}
+}
+
+// The two directions of a per-attempt chain must read the SAME execution-condition flag.
+//
+// Fixing only the response halves made it worse than leaving both wrong: a conditional
+// transformer would wrap the request and then have its response half correctly skipped, or the
+// reverse, and the client receives a payload in a shape neither end agreed on. Consistently
+// ignoring conditions is at least symmetric; this asserts they are consistently honoured.
+func TestHandleUpstreamRequestHeaders_HonoursTheChainsExecutionConditions(t *testing.T) {
+	const cluster = "upstream_LlmProxy_abc_live-vendor"
+
+	server := newTestServerWithStore(t, nil)
+	server.executor = executor.NewChainExecutor(nil, refusingCELEvaluator{},
+		noop.NewTracerProvider().Tracer("test"))
+	server.kernel.RegisterRoute(UpstreamChainKey(cluster), &registry.PolicyChain{
+		Policies:               []policy.Policy{wrappingUpstreamRequestPolicy{}},
+		PolicySpecs:            []policy.PolicySpec{refusedSpec("openai-to-anthropic-transformer", "v0")},
+		HasExecutionConditions: true,
+	})
+
+	req := requestWithClusterAttribute(cluster)
+	req.Request = &extprocv3.ProcessingRequest_RequestHeaders{
+		RequestHeaders: &extprocv3.HttpHeaders{
+			Headers: &corev3.HeaderMap{
+				Headers: []*corev3.HeaderValue{
+					{Key: ":path", RawValue: []byte("/v1/chat/completions")},
+					{Key: ":method", RawValue: []byte("POST")},
+					{Key: "x-request-id", RawValue: []byte("req-1")},
+				},
+			},
+		},
+	}
+
+	resp, err := server.handleUpstreamRequestHeaders(context.Background(), req, &upstreamAttemptState{})
+	if err != nil {
+		t.Fatalf("handleUpstreamRequestHeaders returned %v", err)
+	}
+	for _, h := range resp.GetRequestHeaders().GetResponse().GetHeaderMutation().GetSetHeaders() {
+		if h.GetHeader().GetKey() == "x-wrapped-by" {
+			t.Fatal("the request half ran although its execution condition refused it; the " +
+				"response half honours the same condition, so the two directions disagree")
+		}
+	}
+}
+
+// bodyOnlyUpstreamPolicy wants the response body and nothing else — a provider transformer's
+// shape, and the configuration that made the body gate matter at all.
+type bodyOnlyUpstreamPolicy struct{ bodyUnwindPolicy }
+
+// The encoding gate's own exclusion, at the predicate level. The ORDER it is asked in is what
+// TestProcessResponseHeaders_AsksTheEncodingGateAfterTheStreamingDecision pins.
+func TestResponseEncodingGate_ExcludesTheUnwindForAStream(t *testing.T) {
+	const cluster = "upstream_LlmProxy_abc_live-vendor"
+
+	server := newTestServerWithStore(t, nil)
+	server.kernel.RegisterRoute(UpstreamChainKey(cluster), &registry.PolicyChain{
+		Policies:             []policy.Policy{bodyOnlyUpstreamPolicy{}},
+		PolicySpecs:          []policy.PolicySpec{{Name: "openai-to-anthropic-transformer", Version: "v0", Enabled: true}},
+		RequiresResponseBody: true,
+	})
+	server.baselines.Remember("req-1", requestBaseline{Path: "/v1/chat"})
+	server.baselines.RememberServingCluster("req-1", cluster)
+
+	ec := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{})
+	// responseHasNoBody reads the request method, so the request phase has to have run.
+	ec.buildRequestContexts(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/v1/chat")},
+				{Key: ":method", RawValue: []byte("POST")},
+			},
+		},
+	}, RouteMetadata{})
+	ec.requestID = "req-1"
+	ec.attemptKey = "req-1"
+	ec.responseEncodingUnsupported = true
+	ec.responseHeaderCtx = &policy.ResponseHeaderContext{
+		SharedContext:  ec.sharedCtx,
+		ResponseStatus: 200,
+		ResponseHeaders: policy.NewHeaders(map[string][]string{
+			"content-type":     {"text/event-stream"},
+			"content-encoding": {"exotic"},
+		}),
+	}
+
+	// Control: for a buffered response the upstream chain does claim the body, and an
+	// unsupported encoding on it is a real 502 — the gate is not simply off.
+	if !ec.responseEncodingBlocksBodyPolicies() {
+		t.Fatal("precondition: a buffered response whose serving chain needs the body must " +
+			"still be blocked by an unsupported encoding")
+	}
+
+	ec.isStreamingResponse = true
+
+	if ec.responseEncodingBlocksBodyPolicies() {
+		t.Fatal("a streamed response was rejected for an encoding the only interested chain " +
+			"is excluded from reading; the gate was asked before the streaming decision")
+	}
+}
+
+// The gate has to be ASKED after the streaming decision, not merely to answer correctly once
+// isStreamingResponse is set.
+//
+// processResponseHeaders used to reject an unsupported encoding before deciding whether the
+// response streams. With the serving upstream chain now counted in needsResponseBody(), that
+// order turned an SSE response carrying an exotic encoding into a 502 — on behalf of an unwind
+// that is excluded from streams and would never have read the body. The predicate test above
+// passes either way, because it sets isStreamingResponse by hand; only driving the real phase
+// catches the order.
+func TestProcessResponseHeaders_AsksTheEncodingGateAfterTheStreamingDecision(t *testing.T) {
+	const cluster = "upstream_LlmProxy_abc_live-vendor"
+
+	server := newTestServerWithStore(t, nil)
+	server.executor = executor.NewChainExecutor(nil, nil, noop.NewTracerProvider().Tracer("test"))
+	server.kernel.RegisterRoute(UpstreamChainKey(cluster), &registry.PolicyChain{
+		Policies:             []policy.Policy{bodyUnwindPolicy{}},
+		PolicySpecs:          []policy.PolicySpec{{Name: "openai-to-anthropic-transformer", Version: "v0", Enabled: true}},
+		RequiresResponseBody: true,
+	})
+	server.baselines.Remember("req-1", requestBaseline{Path: "/v1/chat"})
+	server.baselines.RememberServingCluster("req-1", cluster)
+
+	// The route chain supports streaming and wants no body of its own: the configuration in
+	// which the serving chain is the only thing that could claim it.
+	ec := newPolicyExecutionContext(server, "test-route", &registry.PolicyChain{
+		SupportsResponseStreaming: true,
+	})
+	ec.buildRequestContexts(&extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":path", RawValue: []byte("/v1/chat")},
+				{Key: ":method", RawValue: []byte("POST")},
+			},
+		},
+	}, RouteMetadata{})
+	ec.requestID = "req-1"
+	ec.attemptKey = "req-1"
+	ec.responseEncodingUnsupported = true
+
+	resp, err := ec.processResponseHeaders(context.Background(), &extprocv3.HttpHeaders{
+		Headers: &corev3.HeaderMap{
+			Headers: []*corev3.HeaderValue{
+				{Key: ":status", RawValue: []byte("200")},
+				{Key: "content-type", RawValue: []byte("text/event-stream")},
+				{Key: "content-encoding", RawValue: []byte("exotic")},
+			},
+		},
+		EndOfStream: false,
+	})
+	if err != nil {
+		t.Fatalf("processResponseHeaders returned %v", err)
+	}
+	if immediate := resp.GetImmediateResponse(); immediate != nil {
+		t.Fatalf("the stream was rejected with %d for an encoding the only interested chain is "+
+			"excluded from reading; the encoding gate was asked before the streaming decision",
+			immediate.GetStatus().GetCode())
+	}
+}
+
+// wrappingUpstreamBodyPolicy is the body half of the same transformer: it rewrites the payload
+// on its way out.
+type wrappingUpstreamBodyPolicy struct{}
+
+func (wrappingUpstreamBodyPolicy) Mode() policy.ProcessingMode {
+	return policy.ProcessingMode{RequestBodyMode: policy.BodyModeBuffer}
+}
+
+func (wrappingUpstreamBodyPolicy) OnRequestBody(_ context.Context, _ *policy.RequestContext,
+	_ map[string]interface{}) policy.RequestAction {
+	return policy.UpstreamRequestModifications{Body: []byte(`{"wrapped":true}`)}
+}
+
+// The request BODY half, same rule, listed separately for the same reason the response halves
+// are: the two calls are in different functions and the first fix shipped without the second.
+func TestHandleUpstreamRequestBody_HonoursTheChainsExecutionConditions(t *testing.T) {
+	const cluster = "upstream_LlmProxy_abc_live-vendor"
+
+	server := newTestServerWithStore(t, nil)
+	server.executor = executor.NewChainExecutor(nil, refusingCELEvaluator{},
+		noop.NewTracerProvider().Tracer("test"))
+	server.kernel.RegisterRoute(UpstreamChainKey(cluster), &registry.PolicyChain{
+		Policies:               []policy.Policy{wrappingUpstreamBodyPolicy{}},
+		PolicySpecs:            []policy.PolicySpec{refusedSpec("openai-to-anthropic-transformer", "v0")},
+		RequiresRequestBody:    true,
+		HasExecutionConditions: true,
+	})
+
+	original := []byte(`{"model":"gpt-4o"}`)
+	req := &extprocv3.ProcessingRequest{
+		Request: &extprocv3.ProcessingRequest_RequestBody{
+			RequestBody: &extprocv3.HttpBody{Body: original, EndOfStream: true},
+		},
+	}
+	state := &upstreamAttemptState{cluster: cluster, headers: map[string][]string{}}
+
+	resp, err := server.handleUpstreamRequestBody(context.Background(), req, state)
+	if err != nil {
+		t.Fatalf("handleUpstreamRequestBody returned %v", err)
+	}
+	mutation := resp.GetRequestBody().GetResponse().GetBodyMutation()
+	if body := mutation.GetBody(); len(body) != 0 {
+		t.Fatalf("the body half ran although its execution condition refused it: payload "+
+			"rewritten to %q", body)
+	}
+}
