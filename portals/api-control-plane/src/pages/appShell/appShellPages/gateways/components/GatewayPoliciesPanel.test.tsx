@@ -162,6 +162,26 @@ describe('GatewayPoliciesPanel — custom policy sync', () => {
     expect(organizationReads.count()).toBe(2);
   });
 
+  it('says the sync status is unknown when the organization’s policies run past the page limit', async () => {
+    const tooMany = Array.from({ length: 5001 }, (_unused, index) =>
+      organizationPolicy('v1.0.0', `policy-${String(index).padStart(4, '0')}`),
+    );
+    server.use(
+      resource('/gateways/:gatewayId/manifest', {
+        policies: [customPolicy('v1.0.0', 'policy-5000')],
+      }),
+      collection('/gateway-custom-policies', tooMany, { record: organizationReads }),
+    );
+
+    renderPanel();
+    const row = await rowOf('policy-5000');
+
+    // 50 pages of 100 end one short of policy-5000.
+    expect(await within(row).findByText('Unknown', {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(organizationReads.count()).toBe(50);
+    expect(within(row).queryByRole('button', { name: 'Sync' })).not.toBeInTheDocument();
+  });
+
   it('leaves the sync status column out, and reads nothing, for a gateway with no custom policy', async () => {
     server.use(
       resource('/gateways/:gatewayId/manifest', { policies: [hubPolicy] }),

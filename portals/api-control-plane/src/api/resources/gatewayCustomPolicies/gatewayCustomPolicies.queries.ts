@@ -32,10 +32,13 @@ export const gatewayCustomPolicyKeys = createResourceKeys('gatewayCustomPolicies
 
 /** The server's maximum page size. */
 const POLICIES_PAGE_SIZE = 100;
-/** Stops the loop if `pagination.total` is wrong. */
+/** Caps the requests if `pagination.total` is wrong. */
 const POLICIES_MAX_PAGES = 50;
 
-/** Reads every page of the organization's custom policies, skipping records already read. */
+/**
+ * Reads every page of the organization's custom policies, skipping records already read.
+ * Fails rather than return a partial list when the page cap is reached first.
+ */
 const fetchAllGatewayCustomPolicies = async (
   org: OrgScope,
   signal: AbortSignal
@@ -43,8 +46,9 @@ const fetchAllGatewayCustomPolicies = async (
   const byUuid = new Map<string, CustomPolicy>();
   let received = 0;
   let total = 0;
+  let complete = false;
 
-  for (let page = 0; page < POLICIES_MAX_PAGES; page += 1) {
+  for (let page = 0; page < POLICIES_MAX_PAGES && !complete; page += 1) {
     const response = await listGatewayCustomPolicies({
       orgId: org,
       signal,
@@ -55,7 +59,11 @@ const fetchAllGatewayCustomPolicies = async (
     received += items.length;
     total = response.pagination?.total ?? 0;
     items.forEach((policy) => byUuid.set(policy.uuid, policy));
-    if (items.length === 0 || received >= total) break;
+    complete = items.length === 0 || received >= total;
+  }
+
+  if (!complete) {
+    throw new Error(`Read ${received} of ${total} custom policies before the page limit.`);
   }
 
   const list = [...byUuid.values()];
