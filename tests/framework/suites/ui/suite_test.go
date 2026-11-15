@@ -340,6 +340,36 @@ func TestPortalOrganizationRestorerRejectsAPayloadWithoutHandle(t *testing.T) {
 	}
 }
 
+// TestWebhooksNamedPicksTheNamedSubscribersAndPages checks that a list page yields the ids of the
+// subscribers with the name, an exact match, and the offset of the next page until the last.
+func TestWebhooksNamedPicksTheNamedSubscribersAndPages(t *testing.T) {
+	body := `{"count":3,"list":[{"id":"a","displayName":"IT Webhook x"},{"id":"b","displayName":"IT Webhook x Edited"},` +
+		`{"id":"c","displayName":"IT Webhook x"}],"pagination":{"limit":3,"offset":0,"total":5}}`
+	ids, next, err := webhooksNamed([]byte(body), "IT Webhook x")
+	if err != nil || strings.Join(ids, ",") != "a,c" || next != 3 {
+		t.Fatalf("webhooksNamed() = %v, %d, %v, want [a c], 3", ids, next, err)
+	}
+	last := `{"count":2,"list":[{"id":"d","displayName":"other"},{"id":"e","displayName":"IT Webhook x"}],"pagination":{"limit":3,"offset":3,"total":5}}`
+	if ids, next, err := webhooksNamed([]byte(last), "IT Webhook x"); err != nil || strings.Join(ids, ",") != "e" || next != -1 {
+		t.Fatalf("webhooksNamed() on the last page = %v, %d, %v, want [e], -1", ids, next, err)
+	}
+	empty := `{"count":0,"list":[],"pagination":{"limit":100,"offset":0,"total":0}}`
+	if ids, next, err := webhooksNamed([]byte(empty), "IT Webhook x"); err != nil || len(ids) != 0 || next != -1 {
+		t.Fatalf("webhooksNamed() on an empty list = %v, %d, %v, want none, -1", ids, next, err)
+	}
+	if _, _, err := webhooksNamed([]byte("not json"), "x"); err == nil {
+		t.Fatal("webhooksNamed() accepted a body that is not JSON")
+	}
+}
+
+// TestPortalWebhookByNameDeleterRejectsAnEmptyName checks that an empty name is refused before any
+// request is sent, so a sweep never deletes every webhook that has no name.
+func TestPortalWebhookByNameDeleterRejectsAnEmptyName(t *testing.T) {
+	if err := portalWebhookByNameDeleter(&apiPortalAuth{})(context.Background(), cleanup.Resource{}); err == nil {
+		t.Fatal("portalWebhookByNameDeleter() accepted an empty name")
+	}
+}
+
 func TestRepoRootFindsWorkspaceRoot(t *testing.T) {
 	root := repoRoot(t)
 
@@ -409,7 +439,87 @@ func registerUIDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) 
 		}))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalAPIKey, portalDeleterAsActor(byActor, developerAuth, portalAPIKeyRevoker))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalWebhook, portalAPIDeleter(portalAuth, "webhook-subscribers"))
+	reg.RegisterDeleter(apiportalsteps.KindAPIPortalWebhookByName, portalWebhookByNameDeleter(portalAuth))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalOrganization, portalOrganizationRestorer(portalAuth))
+}
+
+// portalWebhookByNameDeleter deletes every webhook subscriber whose display name is the resource
+// id, reading every page of the list. No webhook with that name means the click that would have
+// created it created nothing, or the webhook is already gone: both count as deleted, and so does a
+// 404 on the delete.
+func portalWebhookByNameDeleter(auth *apiPortalAuth) cleanup.Deleter {
+	return func(ctx context.Context, res cleanup.Resource) error {
+		if res.ID == "" {
+			return fmt.Errorf("cleanup: API Portal webhook name is empty")
+		}
+		base, err := auth.baseURL()
+		if err != nil {
+			return err
+		}
+		headers, err := auth.authHeaders(ctx)
+		if err != nil {
+			return err
+		}
+		var ids []string
+		for offset := 0; offset >= 0; {
+			resp, err := auth.client.Do(ctx, httpx.Request{
+				Method:  http.MethodGet,
+				URL:     fmt.Sprintf("%s/api-portal/api/v0.9/webhook-subscribers?limit=100&offset=%d", base, offset),
+				Headers: headers,
+			}, 1, 0)
+			if err != nil {
+				return err
+			}
+			if !resp.Succeeded() {
+				return fmt.Errorf("cleanup: %s", resp.Describe())
+			}
+			named, next, err := webhooksNamed(resp.Body, res.ID)
+			if err != nil {
+				return err
+			}
+			if next >= 0 && next <= offset {
+				return fmt.Errorf("cleanup: the API Portal webhook list did not advance past offset %d", offset)
+			}
+			ids = append(ids, named...)
+			offset = next
+		}
+		for _, id := range ids {
+			if err := portalMutation(ctx, auth, http.MethodDelete, "/webhook-subscribers/"+url.PathEscape(id), nil, http.StatusNotFound); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+// webhooksNamed reads one page of the webhook subscriber list and returns the ids of the
+// subscribers whose display name is name, and the offset of the next page, or -1 after the last.
+func webhooksNamed(body []byte, name string) ([]string, int, error) {
+	var page struct {
+		List []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"displayName"`
+		} `json:"list"`
+		Pagination struct {
+			Limit  int `json:"limit"`
+			Offset int `json:"offset"`
+			Total  int `json:"total"`
+		} `json:"pagination"`
+	}
+	if err := json.Unmarshal(body, &page); err != nil {
+		return nil, -1, fmt.Errorf("cleanup: decoding the API Portal webhook list: %w", err)
+	}
+	var ids []string
+	for _, subscriber := range page.List {
+		if subscriber.DisplayName == name && subscriber.ID != "" {
+			ids = append(ids, subscriber.ID)
+		}
+	}
+	next := page.Pagination.Offset + len(page.List)
+	if len(page.List) == 0 || next >= page.Pagination.Total {
+		return ids, -1, nil
+	}
+	return ids, next, nil
 }
 
 func platformAPITLSConfig() *tls.Config {

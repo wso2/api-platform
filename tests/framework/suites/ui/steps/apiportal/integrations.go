@@ -39,6 +39,12 @@ import (
 // KindAPIPortalWebhook identifies a webhook subscriber an administrator added.
 var KindAPIPortalWebhook = cleanup.Kind{Name: "api-portal-webhook", Order: 32}
 
+// KindAPIPortalWebhookByName identifies a webhook subscriber by its display name, for the moment
+// between the click that creates it and the portal's answer with its id: the server generates the
+// id, so only the name the journey generated is known before the click. Its deleter deletes every
+// webhook with that name, and finds none when the click created nothing.
+var KindAPIPortalWebhookByName = cleanup.Kind{Name: "api-portal-webhook-by-name", Order: 32}
+
 // KindAPIPortalOrganization restores the organization's details. Its ID is the JSON restore
 // payload, which carries the organization handle as "id".
 var KindAPIPortalOrganization = cleanup.Kind{Name: "api-portal-organization", Order: 90}
@@ -382,8 +388,12 @@ func (u *Steps) addWebhook(ctx context.Context) error {
 	); err != nil {
 		return err
 	}
-	// The webhook is registered as soon as the portal answers the create, inside the wait for the
-	// reload, so it is cleaned up even if the reload or the row checks below fail.
+	// The webhook is registered by its generated name before the click, so it is cleaned up even
+	// if the portal's answer cannot be read. Once the answer gives its id, it is registered by id,
+	// which still finds it after the journey renames it, and the name registration is dropped.
+	if err := cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalWebhookByName, ID: name, Actor: u.topo.Admin.Username}); err != nil {
+		return fmt.Errorf("registering webhook %q for cleanup: %w", name, err)
+	}
 	var id string
 	if _, err := page.ExpectNavigation(func() error {
 		created, err := createdBy(page, http.MethodPost, portalPath("/webhook-subscribers"), "id",
@@ -392,7 +402,15 @@ func (u *Steps) addWebhook(ctx context.Context) error {
 			return err
 		}
 		id = created
-		return u.registerWebhook(ctx, page, id)
+		if err := u.registerWebhook(ctx, page, id); err != nil {
+			return err
+		}
+		registry, err := cleanup.Of(ctx)
+		if err != nil {
+			return err
+		}
+		registry.Deregister(KindAPIPortalWebhookByName, name)
+		return nil
 	}, playwright.PageExpectNavigationOptions{WaitUntil: playwright.WaitUntilStateDomcontentloaded}); err != nil {
 		return fmt.Errorf("saving the webhook: %w", err)
 	}
