@@ -288,6 +288,13 @@ func collectURLParams(path string, value any, schema map[string]any, out *[]targ
 	}
 }
 
+// dialableScheme reports whether Envoy or a policy's HTTP client would dial a
+// URL with this scheme.
+func dialableScheme(scheme string) bool {
+	s := strings.ToLower(scheme)
+	return s == "http" || s == "https"
+}
+
 // checkURL refuses a URL whose scheme, hostname or address access control does
 // not permit. A hostname that does not resolve here is not refused: the
 // controller's DNS view need not match the router's, and a backend often comes
@@ -297,6 +304,12 @@ func (g *Guard) checkURL(path, raw string) error {
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Host == "" {
 		// Malformed URLs are the validators' to report.
+		return nil
+	}
+	if !dialableScheme(parsed.Scheme) {
+		// Nothing dials a scheme other than http or https, and the validators
+		// refuse it with a message that names the problem. allowed_schemes can
+		// still narrow http and https below.
 		return nil
 	}
 	host := parsed.Hostname()
