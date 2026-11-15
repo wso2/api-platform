@@ -71,7 +71,7 @@ var (
 )
 
 // InitUserURLClientFromConfig builds the client for destinations taken from tenant or user
-// input (spec URLs, MCP and agent-card URLs, GraphQL introspection, API portal URLs) from
+// input (spec URLs, MCP and agent-card URLs, GraphQL introspection) from
 // cfg, which carries server.network_security.access_control as its destination policy, and keeps
 // cfg so clients with other timeouts can be built with the same policy.
 func InitUserURLClientFromConfig(cfg httpclient.Config) error {
@@ -226,6 +226,17 @@ func NewUpstreamFetchClient(timeout time.Duration) (*http.Client, error) {
 func NewUpstreamClientWithTimeout(timeout time.Duration) (*http.Client, error) {
 	sharedHTTPClientMu.RLock()
 	client, cfg := userURLClientLocked()
+	sharedHTTPClientMu.RUnlock()
+	return clientWithTimeout(client, cfg, timeout, false)
+}
+
+// NewConfiguredDestinationClientWithTimeout is NewConfiguredDestinationClient with a per-call
+// timeout, built as NewUpstreamClientWithTimeout is. It serves a destination that is deployment
+// configuration rather than a tenant destination, such as a registered API portal, so it keeps
+// platform_api.http_client's own policy and never carries server.network_security.access_control.
+func NewConfiguredDestinationClientWithTimeout(timeout time.Duration) (*http.Client, error) {
+	sharedHTTPClientMu.RLock()
+	client, cfg := sharedHTTPClient, sharedHTTPClientConfig
 	sharedHTTPClientMu.RUnlock()
 	return clientWithTimeout(client, cfg, timeout, false)
 }

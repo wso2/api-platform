@@ -199,6 +199,12 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 		}
 	}
 
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
+	}
+
 	// Resolve the project by handle (req.ProjectId is actually the project's
 	// user-facing handle, e.g. "default-project", not its internal UUID —
 	// mirrors internal/service/api.go's CreateAPI). GO-AUTH-005: org scoping
@@ -697,6 +703,12 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
 		}
+	}
+
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
 	}
 
 	existing, err := s.repo.GetByHandle(handle, orgUUID)

@@ -281,6 +281,11 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	if err := checkTemplateSpecURL(req.Metadata.OpenapiSpecUrl); err != nil {
 		return nil, err
 	}
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
+	}
 
 	baseHandle, err := utils.GenerateHandle(req.DisplayName, nil)
 	if err != nil || baseHandle == "" {
@@ -429,6 +434,11 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 		if err := checkTemplateSpecURL(req.Metadata.OpenapiSpecUrl); err != nil {
 			return nil, err
 		}
+	}
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
 	}
 
 	managedBy := existing.ManagedBy
@@ -586,6 +596,11 @@ func (s *LLMProviderTemplateService) CreateVersion(orgUUID, groupID, createdBy s
 	if !ok || !templateVersionCreatable(version) {
 		return nil, apperror.ValidationFailed.New("The version must match the v<major>.<minor> pattern starting from v1.0 (e.g. v1.0).")
 	}
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
+	}
 
 	managedBy := defaultTemplateManagedBy(req.ManagedBy)
 	if managedBy == constants.PolicyManagedByWSO2 {
@@ -660,6 +675,11 @@ func (s *LLMProviderTemplateService) CopyVersion(orgUUID, fromTemplateID, toTemp
 	version, ok := normalizeTemplateVersion(toVersion)
 	if !ok || !templateVersionCreatable(version) {
 		return nil, apperror.ValidationFailed.New("The target version must match the v<major>.<minor> pattern starting from v1.0 (e.g. v1.0).")
+	}
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
 	}
 
 	source, err := s.repo.GetByID(fromTemplateID, orgUUID)
@@ -994,6 +1014,12 @@ func (s *LLMProviderService) Create(orgUUID, createdBy string, req *api.LLMProvi
 		}
 	}
 
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
+	}
+
 	openapiSpec := utils.ValueOrEmpty(req.Openapi)
 	if openapiSpec == "" {
 		openapiSpec = resolveTemplateOpenAPISpec(context.Background(), tpl, openAPISpecFetchLimit(s.cfg), s.slogger)
@@ -1211,6 +1237,12 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
 		}
+	}
+
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
 	}
 
 	contextValue := strings.TrimSpace(utils.DefaultStringPtr(req.Context, "/"))
@@ -1883,6 +1915,12 @@ func (s *LLMProxyService) Create(orgUUID, createdBy string, req *api.LLMProxy) (
 		}
 	}
 
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
+	}
+
 	// Resolve any associated gateways up-front so they can be persisted within the
 	// same transaction as the proxy create.
 	associatedGateways, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
@@ -2203,6 +2241,12 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
 		}
+	}
+
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
 	}
 
 	// Validate every attachment exists and has a unique, well-formed upstream name

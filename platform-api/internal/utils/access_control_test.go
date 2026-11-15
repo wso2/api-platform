@@ -65,7 +65,7 @@ func loopbackBackend(t *testing.T) *httptest.Server {
 // TestAccessControl_AppliesOnlyToTenantURLs is the scope guarantee: with private networks
 // denied, the client for tenant- and user-supplied URLs refuses a loopback backend, while
 // the clients for destinations configured in config.toml (the IdP JWKS URL, the
-// feature-usage collector) still reach it.
+// feature-usage collector) and for registered API portals still reach it.
 func TestAccessControl_AppliesOnlyToTenantURLs(t *testing.T) {
 	srv := loopbackBackend(t)
 	useAccessControl(t, netguard.GuardConfig{Enabled: true, DenyPrivateNetworks: true})
@@ -92,6 +92,18 @@ func TestAccessControl_AppliesOnlyToTenantURLs(t *testing.T) {
 	resp, err := configured.Get(srv.URL)
 	if err != nil {
 		t.Fatalf("config.toml destination client must still reach a private backend: %v", err)
+	}
+	resp.Body.Close() //nolint:errcheck
+
+	// A registered API portal is deployment configuration: the portal publisher's client
+	// keeps the shared policy and is never subject to access control.
+	portal, err := NewConfiguredDestinationClientWithTimeout(5 * time.Second)
+	if err != nil {
+		t.Fatalf("NewConfiguredDestinationClientWithTimeout: %v", err)
+	}
+	resp, err = portal.Get(srv.URL)
+	if err != nil {
+		t.Fatalf("configured destination client with timeout must still reach a private backend: %v", err)
 	}
 	resp.Body.Close() //nolint:errcheck
 

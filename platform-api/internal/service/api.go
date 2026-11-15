@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -117,6 +118,12 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, "", err
 		}
+	}
+
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, "", err
 	}
 
 	projectHandle := strings.TrimSpace(req.ProjectId)
@@ -429,6 +436,12 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
 		}
+	}
+
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
 	}
 
 	// Apply updates using shared helper

@@ -55,11 +55,6 @@ type Spec struct {
 	// Logger receives the refusals, with the address and reason the caller is
 	// never told. Nil uses slog.Default().
 	Logger *slog.Logger
-	// AccessControl, when set, is server.network_security.access_control. Gateway
-	// endpoints are registered by tenants, so a target must pass it as well as
-	// allow_hosts: its host rule and schemes apply in CheckTarget, and its address
-	// rules are combined with the relay's own at dial time (netguard.Stricter).
-	AccessControl *netguard.Policy
 }
 
 // Policy is a parsed, validated Spec.
@@ -69,9 +64,6 @@ type Policy struct {
 	netguardPolicy netguard.Policy
 	allow          []targetPattern
 	logger         *slog.Logger
-	// access holds the access-control host rule and schemes, applied to the
-	// target URL by CheckTarget. nil when access control is off.
-	access *netguard.Policy
 }
 
 // targetPattern is one allow_hosts entry: a host glob, and a scheme and port that
@@ -131,19 +123,6 @@ func Parse(spec Spec) (*Policy, error) {
 	// (2002:a9fe:a9fe:: reaches 169.254.169.254), so they are denied explicitly.
 	policy.netguardPolicy.DenyCIDRs = append(policy.netguardPolicy.DenyCIDRs, translatedIPv4Ranges()...)
 
-	if spec.AccessControl != nil {
-		access := *spec.AccessControl
-		policy.access = &access
-		// Address rules only: the dial validates resolved IPs, which a host rule
-		// would never match, so the host rule stays in CheckTarget. The relay's
-		// http and https remain the schemes it dials; access control narrows them
-		// in CheckTarget.
-		merged := netguard.Stricter(access, policy.netguardPolicy)
-		merged.Hosts = nil
-		merged.AllowedSchemes = policy.netguardPolicy.AllowedSchemes
-		policy.netguardPolicy = merged
-	}
-
 	allow, err := parseAllowHosts(spec.AllowHosts)
 	if err != nil {
 		return nil, err
@@ -151,10 +130,6 @@ func Parse(spec Spec) (*Policy, error) {
 	policy.allow = allow
 	return policy, nil
 }
-
-// ErrTargetRefusedByAccessControl indicates a target allow_hosts permits but
-// server.network_security.access_control refuses.
-var ErrTargetRefusedByAccessControl = errors.New("gateway target is refused by network access control")
 
 // translatedIPv4Ranges are 6to4 (RFC 3056) and the NAT64 prefix (RFC 6052),
 // which reach an IPv4 address without matching an IPv4 denylist entry. Mapped
@@ -253,23 +228,10 @@ func (p *Policy) CheckTarget(u *url.URL) error {
 			continue
 		}
 		if pattern.matchesHost(host) {
-			return p.checkAccessControl(u)
+			return nil
 		}
 	}
 	return fmt.Errorf("%w: %s://%s:%d", ErrTargetNotAllowed, scheme, host, port)
-}
-
-// checkAccessControl applies access control's scheme list, host rule and
-// IP-literal check to a target allow_hosts already permits. Hostnames are not
-// resolved here; their addresses are checked at dial time.
-func (p *Policy) checkAccessControl(u *url.URL) error {
-	if p.access == nil {
-		return nil
-	}
-	if err := p.access.CheckURL(context.Background(), u.String(), false); err != nil {
-		return fmt.Errorf("%w: %s://%s", ErrTargetRefusedByAccessControl, strings.ToLower(u.Scheme), u.Host)
-	}
-	return nil
 }
 
 // Describe renders the policy for the startup log.

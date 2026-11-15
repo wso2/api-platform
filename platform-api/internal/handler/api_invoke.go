@@ -181,8 +181,7 @@ func relayError(err error, apiID, gatewayID string) error {
 	switch {
 	case errors.Is(err, egress.ErrTargetNotAllowed),
 		errors.Is(err, egress.ErrNoTargetHost),
-		errors.Is(err, egress.ErrAddressNotAllowed),
-		errors.Is(err, egress.ErrTargetRefusedByAccessControl):
+		errors.Is(err, egress.ErrAddressNotAllowed):
 		return apperror.RESTAPIInvokeTargetNotAllowed.Wrap(err).
 			WithLogMessage("gateway relay egress policy refused the target while " + logCtx)
 	case errors.Is(err, gatewayrelay.ErrBusy):

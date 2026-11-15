@@ -214,6 +214,12 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		}
 	}
 
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
+	}
+
 	// Resolve any associated gateways up-front so they can be persisted within the
 	// same transaction as the MCP proxy create.
 	associatedGateways, err := resolveAssociatedGateways(s.gatewayRepo, orgUUID, req.AssociatedGateways)
@@ -419,6 +425,12 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
 		}
+	}
+
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
 	}
 
 	// Store existing upstream config for auth preservation
