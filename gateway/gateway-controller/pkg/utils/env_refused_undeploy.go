@@ -34,24 +34,34 @@ import (
 // to the runtime store, so it has no policy chain either. An artifact that is
 // already undeployed needs no further change.
 func UndeployEnvRefusedAtStartup(cfg *models.StoredConfig, onEnvRefused func(*models.StoredConfig) error, log *slog.Logger) {
+	UndeployRefusedAtStartup(cfg, onEnvRefused, "policy_engine.env_access.allow_list", log)
+}
+
+// UndeployRefusedAtStartup is UndeployEnvRefusedAtStartup for any configuration
+// that refuses a stored artifact: reason names it in the log (for example
+// "controller.server.network_security.access_control" for an upstream or policy
+// URL that access control does not permit).
+func UndeployRefusedAtStartup(cfg *models.StoredConfig, onRefused func(*models.StoredConfig) error, reason string, log *slog.Logger) {
 	if cfg.DesiredState == models.StateUndeployed {
 		return
 	}
 	if log != nil {
-		log.Warn("Undeploying artifact: its spec reads an environment variable outside policy_engine.env_access.allow_list",
-			slog.String("id", cfg.UUID),
-			slog.String("kind", cfg.Kind),
-			slog.String("handle", cfg.Handle))
-	}
-	cfg.DesiredState = models.StateUndeployed
-	if onEnvRefused == nil {
-		return
-	}
-	if err := onEnvRefused(cfg); err != nil && log != nil {
-		log.Error("Failed to persist undeploy of artifact that reads a refused environment variable; it stays undeployed for this run only",
+		log.Warn("Undeploying artifact: refused by the gateway configuration",
 			slog.String("id", cfg.UUID),
 			slog.String("kind", cfg.Kind),
 			slog.String("handle", cfg.Handle),
+			slog.String("refused_by", reason))
+	}
+	cfg.DesiredState = models.StateUndeployed
+	if onRefused == nil {
+		return
+	}
+	if err := onRefused(cfg); err != nil && log != nil {
+		log.Error("Failed to persist undeploy of a refused artifact; it stays undeployed for this run only",
+			slog.String("id", cfg.UUID),
+			slog.String("kind", cfg.Kind),
+			slog.String("handle", cfg.Handle),
+			slog.String("refused_by", reason),
 			slog.Any("error", err))
 	}
 }

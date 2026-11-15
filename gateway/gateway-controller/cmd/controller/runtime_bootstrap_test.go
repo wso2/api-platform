@@ -13,8 +13,11 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/upstreamguard"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
+	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
 type fakeSecretResolver struct {
@@ -422,4 +425,45 @@ func TestStartup_PersistsUndeployOfEnvRefusedAPI(t *testing.T) {
 	persisted, err = db.GetConfig(refused.UUID)
 	require.NoError(t, err)
 	assert.Equal(t, models.StateUndeployed, persisted.DesiredState)
+}
+
+// A stored artifact whose upstream URL network access control now refuses (the
+// configuration changed and the controller restarted) is undeployed and handed to
+// the persist callback, like an env-refused one; the other artifacts still load.
+func TestLoadRuntimeConfigsFromExistingAPIConfigurations_UndeploysAccessControlRefusedArtifact(t *testing.T) {
+	policy, err := netguard.GuardConfig{Enabled: true}.Build()
+	require.NoError(t, err)
+	templateengine.SetPostRenderCheck(upstreamguard.New(policy, nil, newDiscardLogger()).Check)
+	t.Cleanup(func() { templateengine.SetPostRenderCheck(nil) })
+
+	upstream := func(u string) configWithTemplateSpec {
+		return configWithTemplateSpec{Spec: map[string]any{"upstream": map[string]any{"main": map[string]any{"url": u}}}}
+	}
+	refused := &models.StoredConfig{UUID: "rest-metadata", Kind: models.KindRestApi, Handle: "metadata-api", DisplayName: "M", Version: "v1",
+		DesiredState: models.StateDeployed, Configuration: upstream("http://169.254.169.254/latest")}
+	valid := &models.StoredConfig{UUID: "rest-private", Kind: models.KindRestApi, Handle: "private-api", DisplayName: "P", Version: "v1",
+		DesiredState: models.StateDeployed, Configuration: upstream("http://10.0.0.5:8080")}
+
+	runtimeStore := storage.NewRuntimeConfigStore()
+	var undeployed []string
+	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
+		[]*models.StoredConfig{refused, valid},
+		runtimeStore,
+		&fakeSecretResolver{},
+		&fakeRuntimeTransformer{},
+		newDiscardLogger(),
+		false,
+		func(cfg *models.StoredConfig) error {
+			undeployed = append(undeployed, cfg.UUID)
+			return nil
+		},
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, loadedCount)
+	assert.Equal(t, []string{"rest-metadata"}, undeployed)
+	assert.Equal(t, models.StateUndeployed, refused.DesiredState)
+	assert.Equal(t, models.StateDeployed, valid.DesiredState)
+	_, ok := runtimeStore.Get(storage.Key(models.KindRestApi, "metadata-api"))
+	assert.False(t, ok, "a refused artifact must not get a policy chain")
 }

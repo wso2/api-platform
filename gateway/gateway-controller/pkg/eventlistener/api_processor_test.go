@@ -257,7 +257,7 @@ func TestUndeployAfterEnvRefusal_WebSubApiRefreshesEventChannel(t *testing.T) {
 
 	listener := &EventListener{store: store, policyManager: policyManager, logger: logger}
 	refused := *cfg
-	listener.undeployAfterEnvRefusal(&refused, "corr-websub-env-refused")
+	listener.undeployAfterRefusal(&refused, "corr-websub-env-refused", &funcs.EnvAccessError{})
 
 	stored, err := store.Get(cfg.UUID)
 	require.NoError(t, err)
