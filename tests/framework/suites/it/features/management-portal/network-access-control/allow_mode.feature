@@ -71,6 +71,8 @@ Feature: In allow mode the control plane reaches only the hosts the operator lis
       | upstream    | {"main": {"url": "http://testbench:3000"}}       |
       | url         | http://testbench:3024/specs/petstore-v1.yaml     |
     Then the response status code should be 201
+    When I send a "GET" request to the control plane at "/rest-apis/${CTX:api}"
+    Then the response status code should be 200
     When I send a multipart "POST" request to the control plane at "/rest-apis/import-openapi" with fields:
       | id          | ${CTX:upperApi}                                  |
       | displayName | ${CTX:upperApi}                                  |

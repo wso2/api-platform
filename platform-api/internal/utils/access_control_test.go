@@ -184,3 +184,30 @@ func TestFetchMCPServerInfo_RefusedDestination(t *testing.T) {
 		t.Fatalf("FetchMCPServerInfo = %v, want DestinationNotAllowed", err)
 	}
 }
+
+// TestFetchMCPServerInfo_DiscoveryRefusalIsDestinationNotAllowed: a refusal on the discovery
+// POST, whether of the URL itself or of a redirect hop, reaches the caller as
+// DESTINATION_NOT_ALLOWED rather than as a generic discovery failure.
+func TestFetchMCPServerInfo_DiscoveryRefusalIsDestinationNotAllowed(t *testing.T) {
+	srv := loopbackBackend(t)
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://localhost"+srv.URL[len("http://127.0.0.1"):]+"/mcp", http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(redirector.Close)
+
+	// Positive control: with the loopback address permitted, discovery reaches the server and
+	// fails for a reason that is not access control.
+	useAccessControl(t, netguard.GuardConfig{Enabled: true, Mode: netguard.ModeAllow, Hostnames: []string{`127\.0\.0\.1`}, MaxRedirects: 5})
+	if _, err := FetchMCPServerInfo(srv.URL, "", ""); err == nil || apperror.DestinationNotAllowed.Is(err) {
+		t.Fatalf("permitted discovery = %v, want a non-access-control failure", err)
+	}
+
+	if _, err := FetchMCPServerInfo(redirector.URL, "", ""); !apperror.DestinationNotAllowed.Is(err) {
+		t.Fatalf("discovery redirected to an unlisted host = %v, want DestinationNotAllowed", err)
+	}
+
+	useAccessControl(t, netguard.GuardConfig{Enabled: true, DenyPrivateNetworks: true})
+	if _, err := FetchMCPServerInfo(srv.URL, "", ""); !apperror.DestinationNotAllowed.Is(err) {
+		t.Fatalf("discovery of a refused address = %v, want DestinationNotAllowed", err)
+	}
+}
