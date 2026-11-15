@@ -3455,6 +3455,9 @@ type CustomPolicyResponse struct {
 	// Description Human-readable description of the policy
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable policy name, from the policy definition
+	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
 	// Name Policy name
 	Name string `json:"name" yaml:"name"`
 

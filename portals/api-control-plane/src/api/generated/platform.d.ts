@@ -4720,6 +4720,11 @@ export interface components {
              */
             name: string;
             /**
+             * @description Human-readable policy name, from the policy definition
+             * @example Custom Rate Limit
+             */
+            displayName?: string;
+            /**
              * @description Policy version
              * @example 1.0.0
              */
