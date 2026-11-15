@@ -526,6 +526,13 @@ func TestTrackControlPlaneResourceRequiresTheSyncedCustomPolicy(t *testing.T) {
 	require.Empty(t, reg.Pending())
 }
 
+func TestTrackControlPlaneResourceDeletesASyncedCustomPolicyItCannotRegister(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	err := (&Steps{}).trackControlPlaneResource(ctx, http.MethodPost, nil, synced("u1", "v1.0.0"))
+	require.ErrorContains(t, err, "no registry")
+	require.ErrorContains(t, err, "compensating delete failed", "the delete is attempted, and its failure reported")
+}
+
 func TestTrackControlPlaneResourceDeregistersDeletedCustomPolicies(t *testing.T) {
 	ctx, reg := trackingContext(t)
 	s := &Steps{}

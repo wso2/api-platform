@@ -24,7 +24,8 @@ Feature: Gateway custom policies are synced into the organization by version
 
   # The block's gateway loads the integration-test definitions under
   # core/catalog/platformgateway/resources/custom-policies, and reports each one its build
-  # manifest lists as custom; it-builtin is not listed.
+  # manifest lists as custom; it-builtin is not listed. Each scenario that syncs uses policies
+  # no other scenario syncs.
   Background:
     Given I store the registered gateway id as "gateway"
     And I send a "GET" request to the control plane at "/gateways/${CTX:gateway}/manifest" until the JSON array "policies" contains an item with "name" equal to "it-custom-basic"
@@ -58,14 +59,14 @@ Feature: Gateway custom policies are synced into the organization by version
 
   @GWCP-003 @type:negative
   Scenario: Syncing a version the organization already holds is a conflict and keeps the record
-    When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-custom-basic&policyVersion=v1.0.0"
+    When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-custom-repeat&policyVersion=v1.0.0"
     Then the response status code should be 200
     And I store the JSON response field "uuid" as "policyId"
-    When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-custom-basic&policyVersion=v1.0.0"
+    When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-custom-repeat&policyVersion=v1.0.0"
     Then the response status code should be 409
     And the JSON response field "code" should be "POLICY_VERSION_CONFLICT"
     When I send a "GET" request to the control plane at "/gateway-custom-policies?limit=100"
-    Then the JSON response array "list" item with "name" equal to "it-custom-basic" should have "uuid" equal to "${CTX:policyId}"
+    Then the JSON response array "list" item with "name" equal to "it-custom-repeat" should have "uuid" equal to "${CTX:policyId}"
 
   @GWCP-004
   Scenario: Syncing a higher minor version replaces the organization's record of that major version
@@ -79,18 +80,20 @@ Feature: Gateway custom policies are synced into the organization by version
     And the JSON response field "policyDefinition.parameters.properties.headerName.type" should be "string"
     When I send a "GET" request to the control plane at "/gateway-custom-policies?limit=100"
     Then the JSON response array "list" item with "name" equal to "it-custom-minor" should have "version" equal to "v1.1.0"
+    When I send a "GET" request to the control plane at "/gateway-custom-policies/${CTX:policyId}/versions/v1.1.0"
+    Then the response status code should be 200
     When I send a "GET" request to the control plane at "/gateway-custom-policies/${CTX:policyId}/versions/v1.0.0"
     Then the response status code should be 404
 
   @GWCP-005 @type:negative
   Scenario: Syncing a lower minor version than the organization holds is refused
-    When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-custom-minor&policyVersion=v1.1.0"
+    When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-custom-downgrade&policyVersion=v1.1.0"
     Then the response status code should be 200
-    When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-custom-minor&policyVersion=v1.0.0"
+    When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-custom-downgrade&policyVersion=v1.0.0"
     Then the response status code should be 409
     And the JSON response field "code" should be "POLICY_VERSION_CONFLICT"
     When I send a "GET" request to the control plane at "/gateway-custom-policies?limit=100"
-    Then the JSON response array "list" item with "name" equal to "it-custom-minor" should have "version" equal to "v1.1.0"
+    Then the JSON response array "list" item with "name" equal to "it-custom-downgrade" should have "version" equal to "v1.1.0"
 
   @GWCP-006 @type:negative
   Scenario: Syncing a version that changes only the patch number is refused
@@ -121,18 +124,18 @@ Feature: Gateway custom policies are synced into the organization by version
     When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-builtin&policyVersion=v1.0.0"
     Then the response status code should be 409
     And the JSON response field "code" should be "POLICY_INVALID_STATE"
-    When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-custom-basic&policyVersion=v1.0.0"
+    When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-custom-control&policyVersion=v1.0.0"
     Then the response status code should be 200
     When I send a "GET" request to the control plane at "/gateway-custom-policies?limit=100"
-    Then the JSON response array "list" should contain an item with "name" equal to "it-custom-basic"
+    Then the JSON response array "list" should contain an item with "name" equal to "it-custom-control"
     And the JSON response array "list" should not contain an item with "name" equal to "it-builtin"
 
   @GWCP-009 @type:negative
   Scenario: Syncing a policy version the gateway does not report is refused
-    When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-custom-basic&policyVersion=v1.0.9"
+    When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-custom-versioned&policyVersion=v1.0.9"
     Then the response status code should be 404
     And the JSON response field "code" should be "CUSTOM_POLICY_VERSION_NOT_FOUND"
-    When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-custom-basic&policyVersion=v1.0.0"
+    When I send a "POST" request to the control plane at "/gateway-custom-policies/sync?gatewayId=${CTX:gateway}&policyName=it-custom-versioned&policyVersion=v1.0.0"
     Then the response status code should be 200
     When I send a "GET" request to the control plane at "/gateway-custom-policies?limit=100"
-    Then the JSON response array "list" item with "name" equal to "it-custom-basic" should have "version" equal to "v1.0.0"
+    Then the JSON response array "list" item with "name" equal to "it-custom-versioned" should have "version" equal to "v1.0.0"

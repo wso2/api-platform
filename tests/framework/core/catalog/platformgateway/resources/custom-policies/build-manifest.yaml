@@ -23,3 +23,18 @@ policies:
   - name: it-custom-major
     version: v2.0.0
     filePath: ./policies/it-custom-major
+  - name: it-custom-repeat
+    version: v1.0.0
+    filePath: ./policies/it-custom-repeat
+  - name: it-custom-downgrade
+    version: v1.0.0
+    filePath: ./policies/it-custom-downgrade
+  - name: it-custom-downgrade
+    version: v1.1.0
+    filePath: ./policies/it-custom-downgrade
+  - name: it-custom-control
+    version: v1.0.0
+    filePath: ./policies/it-custom-control
+  - name: it-custom-versioned
+    version: v1.0.0
+    filePath: ./policies/it-custom-versioned

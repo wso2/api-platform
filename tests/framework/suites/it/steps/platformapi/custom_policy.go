@@ -59,15 +59,11 @@ func (s *Steps) trackSyncedCustomPolicy(ctx context.Context, resp *httpx.Respons
 		return fmt.Errorf("recording the synced custom policy for cleanup: the response names no uuid and version: %s",
 			resp.Describe())
 	}
-	reg, err := cleanup.Of(ctx)
-	if err != nil {
-		return err
-	}
-	deregisterCustomPolicy(reg, policy.UUID)
 	id := policy.UUID + customPolicyVersionSep + policy.Version
 	return s.registerTracked(ctx, platformCustomPolicyKind, id, func(ctx context.Context) error {
 		return s.deletePlatformResource(ctx, platformCustomPolicyKind, customPolicyCollection, id)
 	}, func(reg *cleanup.Registry) error {
+		deregisterCustomPolicy(reg, policy.UUID)
 		return s.installPlatformDeleter(reg, platformCustomPolicyKind, customPolicyCollection)
 	})
 }

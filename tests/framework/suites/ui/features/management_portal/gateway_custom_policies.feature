@@ -24,7 +24,7 @@ Feature: The Management Portal syncs a gateway's custom policies and attaches th
 
   # The block's gateway reports the integration-test definitions under
   # core/catalog/platformgateway/resources/custom-policies; it-builtin is not listed as custom.
-  @GWCP-001 @GWCP-002 @GWCP-004 @GWCP-010
+  @GWCP-001 @GWCP-002 @GWCP-010 @GWCP-011
   Scenario: Journey: an administrator syncs a gateway's custom policy and its next minor version, and attaches it to an API
     Given I generate a unique handle from "console-gwcp-project" and store it as "project"
     And I generate a unique handle from "console-gwcp" and store it as "api"
@@ -48,7 +48,8 @@ Feature: The Management Portal syncs a gateway's custom policies and attaches th
     And gateway policy "it-custom-minor" version "v1.1.0" in the Management Portal shows "Synced"
     And gateway policy "it-custom-minor" version "v1.0.0" in the Management Portal shows "Organization version: v1.1.0"
     When the user opens the Management Portal page "/organizations/default/projects/${CTX:project}/apis/${CTX:api}/develop/policies"
-    And the user chooses "IT Custom Minor" in the Management Portal
+    Then the policy catalog's "IT Custom Minor" entry in the Management Portal shows "Custom"
+    When the user chooses "IT Custom Minor" in the Management Portal
     Then the Management Portal shows "Applies to Global policies"
     And the Management Portal's "Attach policy" button is disabled
     When the user enters "console" as the "Header value" in the Management Portal

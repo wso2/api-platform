@@ -11,7 +11,7 @@ code: GWCP
 title: Gateway Custom Policies
 scenarios:
   - id: GWCP-001
-    title: Read a gateway's policy manifest; a policy its build manifest lists is marked custom with its definition, and an unlisted one is marked built in.
+    title: Read a gateway's policy manifest; the policies its build manifest lists are marked custom, and the others built in.
     priority: P0
     ui:
       status: automated
@@ -51,10 +51,8 @@ scenarios:
     title: Sync a higher minor version of a custom policy; the organization's record of that major version is replaced, keeping its ID.
     priority: P0
     ui:
-      status: automated
-      refs:
-        - feature: suites/ui/features/management_portal/gateway_custom_policies.feature
-          scenario: "Journey: an administrator syncs a gateway's custom policy and its next minor version, and attaches it to an API"
+      status: exempt
+      reason: The console does not show a policy record's ID, so it cannot show that the ID is kept. How the gateway's Policies tab shows the replacement is GWCP-011.
     it:
       status: automated
       refs:
@@ -125,3 +123,14 @@ scenarios:
     it:
       status: exempt
       reason: The form is built by the console; the API-level contract it reads, the organization's custom policy list, is covered by GWCP-002.
+  - id: GWCP-011
+    title: On a gateway's Policies tab, sync a custom policy and then its next minor version; before the second sync the higher version shows that it replaces the synced one, and after it the lower version shows the organization's version.
+    priority: P1
+    ui:
+      status: automated
+      refs:
+        - feature: suites/ui/features/management_portal/gateway_custom_policies.feature
+          scenario: "Journey: an administrator syncs a gateway's custom policy and its next minor version, and attaches it to an API"
+    it:
+      status: exempt
+      reason: The console works out each row's sync state from the manifest and the organization's list; the API-level rules behind it are GWCP-004 to GWCP-006.

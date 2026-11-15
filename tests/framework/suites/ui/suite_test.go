@@ -449,8 +449,10 @@ func platformAPIDeleter(auth *platformAPIAuth, collection string) cleanup.Delete
 }
 
 // customPolicyDeleter deletes every version of the custom policy named by the resource ID that
-// the organization holds. One synced from the console is known only by name.
+// the organization holds. One synced from the console is known only by name. Every page is read
+// before anything is deleted, so a delete cannot shift a later page.
 func customPolicyDeleter(auth *platformAPIAuth) cleanup.Deleter {
+	type policyVersion struct{ uuid, version string }
 	return func(ctx context.Context, res cleanup.Resource) error {
 		base, err := auth.baseURL()
 		if err != nil {
@@ -461,32 +463,46 @@ func customPolicyDeleter(auth *platformAPIAuth) cleanup.Deleter {
 			return err
 		}
 		headers := map[string]string{"Authorization": authHeader}
-		listed, err := auth.client.Do(ctx, httpx.Request{
-			Method: http.MethodGet, URL: base + "/api/v0.9/gateway-custom-policies?limit=100", Headers: headers,
-		}, 1, 0)
-		if err != nil {
-			return err
-		}
-		if !listed.Succeeded() {
-			return fmt.Errorf("cleanup: listing custom policies: %s", listed.Describe())
-		}
-		var page struct {
-			List []struct {
-				UUID    string `json:"uuid"`
-				Name    string `json:"name"`
-				Version string `json:"version"`
-			} `json:"list"`
-		}
-		if err := json.Unmarshal(listed.Body, &page); err != nil {
-			return fmt.Errorf("cleanup: decoding the custom policy list: %w", err)
-		}
-		for _, policy := range page.List {
-			if policy.Name != res.ID {
-				continue
+		var matched []policyVersion
+		for offset := 0; ; {
+			listed, err := auth.client.Do(ctx, httpx.Request{
+				Method:  http.MethodGet,
+				URL:     fmt.Sprintf("%s/api/v0.9/gateway-custom-policies?limit=100&offset=%d", base, offset),
+				Headers: headers,
+			}, 1, 0)
+			if err != nil {
+				return err
 			}
+			if !listed.Succeeded() {
+				return fmt.Errorf("cleanup: listing custom policies: %s", listed.Describe())
+			}
+			var page struct {
+				List []struct {
+					UUID    string `json:"uuid"`
+					Name    string `json:"name"`
+					Version string `json:"version"`
+				} `json:"list"`
+				Pagination struct {
+					Total int `json:"total"`
+				} `json:"pagination"`
+			}
+			if err := json.Unmarshal(listed.Body, &page); err != nil {
+				return fmt.Errorf("cleanup: decoding the custom policy list: %w", err)
+			}
+			for _, policy := range page.List {
+				if policy.Name == res.ID {
+					matched = append(matched, policyVersion{policy.UUID, policy.Version})
+				}
+			}
+			offset += len(page.List)
+			if len(page.List) == 0 || offset >= page.Pagination.Total {
+				break
+			}
+		}
+		for _, policy := range matched {
 			resp, err := auth.client.Do(ctx, httpx.Request{
 				Method: http.MethodDelete, Headers: headers,
-				URL: base + "/api/v0.9/gateway-custom-policies/" + url.PathEscape(policy.UUID) + "/versions/" + url.PathEscape(policy.Version),
+				URL: base + "/api/v0.9/gateway-custom-policies/" + url.PathEscape(policy.uuid) + "/versions/" + url.PathEscape(policy.version),
 			}, 1, 0)
 			if err != nil {
 				return err
