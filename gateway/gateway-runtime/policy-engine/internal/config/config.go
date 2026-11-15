@@ -1148,6 +1148,10 @@ func Load(configPaths ...string) (*Config, error) {
 	// Uses the interpolated instance so ${config} expressions resolve to the
 	// materialized values, not the literal {{ ... }} tokens.
 	cfg.PolicyEngine.RawConfig = k.Raw()
+	// A policy parameter may still reference the destination guard under its
+	// previous name (${config.policy_engine.http_client.ssrf...}); keep that path
+	// resolving to the migrated table. Raw() is a copy, so k is unaffected.
+	configcompat.AliasLegacyDestinationGuard(cfg.PolicyEngine.RawConfig, "policy_engine")
 
 	// Validate
 	if err := cfg.Validate(); err != nil {
