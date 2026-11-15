@@ -126,6 +126,11 @@ func (s *AgentProxyService) Create(orgUUID, createdBy string, req *api.A2AAgentP
 	if err := validateAgentProxyRequest(req); err != nil {
 		return nil, err
 	}
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
+	}
 
 	projectUUID, err := s.resolveProjectUUID(orgUUID, req.ProjectId)
 	if err != nil {
@@ -259,6 +264,11 @@ func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A
 		return nil, apperror.ValidationFailed.New("A request body is required.")
 	}
 	if err := validateAgentProxyRequest(req); err != nil {
+		return nil, err
+	}
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
 		return nil, err
 	}
 

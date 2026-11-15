@@ -99,9 +99,9 @@ func RegisterAgentProxy(sc *godog.ScenarioContext, s *Steps) {
 		s.pollControlPlaneJSONField)
 	sc.Step(`^I send a "([^"]*)" request to the control plane at "([^"]*)" until the response header "([^"]*)" matches "([^"]*)" with body:$`,
 		s.pollControlPlaneHeader)
-	sc.Step(`^I create an? (Agent proxy|LLM provider template|LLM provider) via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
+	sc.Step(`^I create an? (Agent proxy|LLM provider template|LLM provider|REST API) via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
 		s.createFromTemplate)
-	sc.Step(`^I update the (Agent proxy|LLM provider template|LLM provider) "([^"]*)" via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
+	sc.Step(`^I update the (Agent proxy|LLM provider template|LLM provider|REST API) "([^"]*)" via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
 		s.updateFromTemplate)
 	sc.Step(`^I deploy the Agent proxy "([^"]*)" to the gateway via the control plane and store the deployment id as "([^"]*)"$`,
 		s.deployAgentProxy)
@@ -630,6 +630,7 @@ var templateCollections = map[string]string{
 	"Agent proxy":           "/agent-proxies",
 	"LLM provider":          "/llm-providers",
 	"LLM provider template": "/llm-provider-templates",
+	"REST API":              "/rest-apis",
 }
 
 // createFromTemplate renders a control-plane resource template and POSTs it to the resource's

@@ -469,7 +469,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)
 	projectHandler := handler.NewProjectHandler(projectService, identityService, slogger)
 	apiHandler := handler.NewAPIHandler(apiService, identityService, apiDocumentService, slogger, cfg)
-	apiInvokeHandler, err := newAPIInvokeHandler(&cfg.GatewayRelay, cfg.Listeners.NetworkSecurity.AccessControl, apiService, slogger)
+	apiInvokeHandler, err := newAPIInvokeHandler(&cfg.GatewayRelay, apiService, slogger)
 	if err != nil {
 		return nil, err
 	}
@@ -1438,17 +1438,11 @@ func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config
 }
 
 // newAPIInvokeHandler builds the gateway relay behind the invoke route. An
-// invalid allow_hosts entry fails startup.
-func newAPIInvokeHandler(cfg *config.GatewayRelay, access config.AccessControl, apiService *service.APIService, slogger *slog.Logger) (*handler.APIInvokeHandler, error) {
-	spec := egress.Spec{AllowHosts: cfg.Egress.AllowHosts, Logger: slogger}
-	if access.Enabled {
-		accessPolicy, err := access.GuardConfig().Build()
-		if err != nil {
-			return nil, fmt.Errorf("invalid server.network_security.access_control: %w", err)
-		}
-		spec.AccessControl = &accessPolicy
-	}
-	policy, err := egress.Parse(spec)
+// invalid allow_hosts entry fails startup. A gateway's endpoints are deployment
+// configuration, so server.network_security.access_control does not apply to the
+// relay; gateway_relay.egress.allow_hosts and the relay's own dial guard do.
+func newAPIInvokeHandler(cfg *config.GatewayRelay, apiService *service.APIService, slogger *slog.Logger) (*handler.APIInvokeHandler, error) {
+	policy, err := egress.Parse(egress.Spec{AllowHosts: cfg.Egress.AllowHosts, Logger: slogger})
 	if err != nil {
 		return nil, fmt.Errorf("invalid gateway_relay.egress: %w", err)
 	}

@@ -54,12 +54,6 @@ func validateAPIPortalURL(raw string) (string, error) {
 	if u.Scheme != "https" {
 		return "", apperror.ValidationFailed.New("The url field must use the https scheme.")
 	}
-	// The portal URL is tenant-supplied and platform-api calls it, so it must pass
-	// server.network_security.access_control. No request context reaches here; the
-	// check does no I/O.
-	if err := utils.CheckUserURL(context.Background(), u.String()); err != nil {
-		return "", err
-	}
 	return u.String(), nil
 }
 

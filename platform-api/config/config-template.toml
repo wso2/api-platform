@@ -464,8 +464,13 @@ allowed_origins = ""   # comma-separated, e.g. "https://workspace.example.com,ht
 # ---------------------------------------------------------------------------
 # Restricts the destinations platform-api connects to when the URL comes from
 # a tenant or user: an OpenAPI/SDL spec URL, an MCP server or agent-card URL,
-# a GraphQL introspection endpoint, an API portal URL, and gateway endpoints
-# reached through the gateway relay. URLs set in this file (the IdP JWKS URL,
+# and a GraphQL introspection endpoint. The same rules refuse, on create,
+# update and deploy, an artifact whose upstream URL, per-gateway endpoint
+# override or LLM provider template endpoint names a refused destination; that
+# check reads the URL itself and does no DNS lookup. Not covered, as deployment
+# configuration rather than tenant destinations: API portal URLs, gateway
+# endpoints (the gateway relay uses gateway_relay.egress.allow_hosts) and
+# vhosts; nor are policy parameters. URLs set in this file (the IdP JWKS URL,
 # the feature-usage collector, the proxy) are never restricted by it.
 #
 # mode                  "deny":  a host matching an entry in hostnames is refused.
