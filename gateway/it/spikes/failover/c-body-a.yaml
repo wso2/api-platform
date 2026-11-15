@@ -1,0 +1,74 @@
+# PROBE A1/A2/A3 — Override Host: does Envoy follow a per-request ordered list?
+# The list arrives in the x-failover-targets header (a probe shortcut; in the real
+# design the policy writes it to dynamic metadata, which the LB prefers over headers).
+admin: { address: { socket_address: { address: 0.0.0.0, port_value: 9901 } } }
+static_resources:
+  listeners:
+  - name: main
+    address: { socket_address: { address: 0.0.0.0, port_value: 10000 } }
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: probe
+          route_config:
+            virtual_hosts:
+            - name: vh
+              domains: ["*"]
+              routes:
+              - match: { prefix: "/" }
+                route:
+                  cluster: failover
+                  retry_policy:
+                    retry_on: "5xx,connect-failure,reset,retriable-status-codes"
+                    retriable_status_codes: [429, 500, 503]
+                    num_retries: 2
+                    per_try_timeout: 5s
+                    retry_host_predicate:
+                    - name: envoy.retry_host_predicates.previous_hosts
+                      typed_config:
+                        "@type": type.googleapis.com/envoy.extensions.retry.host.previous_hosts.v3.PreviousHostsPredicate
+                    host_selection_retry_max_attempts: 5
+          http_filters:
+          - name: envoy.filters.http.lua
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+              default_source_code:
+                inline_string: |
+                  function envoy_on_request(handle)
+                    local b = handle:body()
+                    if b ~= nil then
+                      local s = tostring(b:getBytes(0, b:length()))
+                      local masked = string.gsub(s, "SECRET%-%d+", "[MASKED]")
+                      b:setBytes(masked)
+                    end
+                  end
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+  - name: failover
+    connect_timeout: 2s
+    type: STATIC
+    load_balancing_policy:
+      policies:
+      - typed_extension_config:
+          name: envoy.load_balancing_policies.override_host
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.load_balancing_policies.override_host.v3.OverrideHost
+            override_host_sources:
+            - header: x-failover-targets
+            fallback_policy:
+              policies:
+              - typed_extension_config:
+                  name: envoy.load_balancing_policies.round_robin
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.load_balancing_policies.round_robin.v3.RoundRobin
+    load_assignment:
+      cluster_name: failover
+      endpoints:
+      - lb_endpoints:
+        - endpoint: { address: { socket_address: { address: 172.28.0.11, port_value: 8080 } } }
+        - endpoint: { address: { socket_address: { address: 172.28.0.12, port_value: 8080 } } }
+        - endpoint: { address: { socket_address: { address: 172.28.0.13, port_value: 8080 } } }
