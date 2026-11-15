@@ -266,14 +266,13 @@ func (s *AgentProxyService) Update(orgUUID, handle, updatedBy string, req *api.A
 	if err := validateAgentProxyRequest(req); err != nil {
 		return nil, err
 	}
-	// Apply server.network_security.access_control to the URLs in the request
-	// (see CheckRequestURLs).
-	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
-		return nil, err
-	}
-
 	existing, err := s.load(orgUUID, handle)
 	if err != nil {
+		return nil, err
+	}
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLsForUpdate).
+	if err := CheckRequestURLsForUpdate(context.Background(), orgUUID, existing.Origin, req); err != nil {
 		return nil, err
 	}
 

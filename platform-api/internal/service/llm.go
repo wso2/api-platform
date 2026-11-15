@@ -278,11 +278,8 @@ func (s *LLMProviderTemplateService) Create(orgUUID, createdBy string, req *api.
 	if err := utils.ValidateExternalURL(context.Background(), strings.TrimSpace(utils.ValueOrEmpty(req.Metadata.EndpointUrl))); err != nil {
 		return nil, apperror.ValidationFailed.New("The metadata endpointUrl must be a valid, publicly reachable URL.")
 	}
-	if err := checkTemplateSpecURL(req.Metadata.OpenapiSpecUrl); err != nil {
-		return nil, err
-	}
-	// Apply server.network_security.access_control to the URLs in the request
-	// (see CheckRequestURLs).
+	// Apply server.network_security.access_control to the URLs in the request,
+	// metadata.openapiSpecUrl included (see CheckRequestURLs).
 	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
 		return nil, err
 	}
@@ -431,12 +428,9 @@ func (s *LLMProviderTemplateService) Update(orgUUID, handle, updatedBy string, r
 				return nil, apperror.ValidationFailed.New("The metadata endpointUrl must be a valid, publicly reachable URL.")
 			}
 		}
-		if err := checkTemplateSpecURL(req.Metadata.OpenapiSpecUrl); err != nil {
-			return nil, err
-		}
 	}
-	// Apply server.network_security.access_control to the URLs in the request
-	// (see CheckRequestURLs).
+	// Apply server.network_security.access_control to the URLs in the request,
+	// metadata.openapiSpecUrl included (see CheckRequestURLs).
 	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
 		return nil, err
 	}
@@ -1240,8 +1234,8 @@ func (s *LLMProviderService) Update(orgUUID, handle, updatedBy string, req *api.
 	}
 
 	// Apply server.network_security.access_control to the URLs in the request
-	// (see CheckRequestURLs).
-	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+	// (see CheckRequestURLsForUpdate).
+	if err := CheckRequestURLsForUpdate(context.Background(), orgUUID, existing.Origin, req); err != nil {
 		return nil, err
 	}
 
@@ -2244,8 +2238,8 @@ func (s *LLMProxyService) Update(orgUUID, handle, updatedBy string, req *api.LLM
 	}
 
 	// Apply server.network_security.access_control to the URLs in the request
-	// (see CheckRequestURLs).
-	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+	// (see CheckRequestURLsForUpdate).
+	if err := CheckRequestURLsForUpdate(context.Background(), orgUUID, existing.Origin, req); err != nil {
 		return nil, err
 	}
 
@@ -3307,17 +3301,6 @@ func mapTemplateMetadataAPI(in *api.LLMProviderTemplateMetadata) *model.LLMProvi
 		return nil
 	}
 	return out
-}
-
-// checkTemplateSpecURL applies server.network_security.access_control to a template's
-// metadata.openapiSpecUrl when it is set. platform-api fetches that URL later (when a
-// provider is created from the template), so a refused one is rejected when it is saved.
-func checkTemplateSpecURL(raw *string) error {
-	specURL := strings.TrimSpace(utils.ValueOrEmpty(raw))
-	if specURL == "" {
-		return nil
-	}
-	return utils.CheckUserURL(context.Background(), specURL)
 }
 
 func mapTemplateMetadataModelToAPI(in *model.LLMProviderTemplateMetadata) *api.LLMProviderTemplateMetadata {

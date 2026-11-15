@@ -133,4 +133,6 @@ Feature: In deny mode the control plane refuses denied hosts and, when asked to,
       | context     | ${CTX:namedContext}   |
       | upstreamUrl | http://testbench:3000 |
     Then the response status code should be 201
+    When I send a "GET" request to the control plane at "/rest-apis/${CTX:namedApi}"
+    Then the response status code should be 200
 

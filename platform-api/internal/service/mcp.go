@@ -428,8 +428,8 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 	}
 
 	// Apply server.network_security.access_control to the URLs in the request
-	// (see CheckRequestURLs).
-	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+	// (see CheckRequestURLsForUpdate).
+	if err := CheckRequestURLsForUpdate(context.Background(), orgUUID, existing.Origin, req); err != nil {
 		return nil, err
 	}
 
