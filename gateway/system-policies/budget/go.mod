@@ -8,6 +8,7 @@ go 1.26.10
 require (
 	cel.dev/cel-go v0.33.1
 	github.com/google/uuid v1.6.0
+	github.com/wso2/api-platform/common v0.0.0-20260326194347-3d85c50eae71
 	github.com/wso2/api-platform/sdk/core v0.5.0
 )
 
@@ -24,3 +25,7 @@ require (
 // TEMPORARY: sdk/core/counters is not in a released sdk/core yet. Inside the gateway build
 // the policy engine's own replace applies; this one lets the module build on its own.
 replace github.com/wso2/api-platform/sdk/core => ../../../sdk/core
+
+// TEMPORARY: common/apikey's GetAPIKeyByHash is not in a released common yet. Inside the
+// gateway build the policy engine's own replace applies.
+replace github.com/wso2/api-platform/common => ../../../common

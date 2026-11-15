@@ -6544,22 +6544,31 @@ components:
 
     BudgetConsumer:
       type: object
-      description: Who the budget applies to. Only token-claim attributes for now.
+      description: >-
+        Who the budget applies to; consumers combine with AND. attribute is a CEL expression
+        over the request (token claims); project and agent are the project and agent of an
+        agent's LLM proxy (its gateway.api-platform.wso2.com/project-name and agent-name
+        annotations); apiKey is the name of the API key the request authenticated with.
       additionalProperties: false
       required:
         - type
         - allocation
-        - expression
       properties:
         type:
           type: string
           enum:
             - attribute
+            - project
+            - agent
+            - apiKey
           x-enum-varnames:
             - BudgetConsumerTypeAttribute
+            - BudgetConsumerTypeProject
+            - BudgetConsumerTypeAgent
+            - BudgetConsumerTypeApiKey
         allocation:
           type: string
-          description: shared is one allowance; separate is one allowance per value of the expression.
+          description: shared is one allowance; separate is one allowance per value (each user, project, agent or API key).
           enum:
             - shared
             - separate
@@ -6568,26 +6577,47 @@ components:
             - BudgetConsumerAllocationSeparate
         expression:
           type: string
-          description: CEL over the request. A condition when shared; the value to allocate by when separate.
+          description: attribute only. CEL over the request. A condition when shared; the value to allocate by when separate.
+          minLength: 1
+        id:
+          type: string
+          description: The project, agent or API key name. Required when shared; omitted when separate.
+          minLength: 1
+        project:
+          type: string
+          description: agent only, with id. The agent's project; agent names are unique only per project.
           minLength: 1
 
     BudgetExemption:
       type: object
-      description: Traffic left out of the budget. Only token-claim attributes for now.
+      description: >-
+        Traffic left out of the budget: an attribute condition (expression), a project (id),
+        or an agent (id and its project).
       additionalProperties: false
       required:
         - type
-        - expression
       properties:
         type:
           type: string
           enum:
             - attribute
+            - project
+            - agent
           x-enum-varnames:
             - BudgetExemptionTypeAttribute
+            - BudgetExemptionTypeProject
+            - BudgetExemptionTypeAgent
         expression:
           type: string
-          description: CEL condition over the request.
+          description: attribute only. CEL condition over the request.
+          minLength: 1
+        id:
+          type: string
+          description: The project or agent name.
+          minLength: 1
+        project:
+          type: string
+          description: agent only. The agent's project.
           minLength: 1
 
     LLMProviderTemplateRequest:

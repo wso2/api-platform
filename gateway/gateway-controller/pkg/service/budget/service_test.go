@@ -211,7 +211,8 @@ func TestCreate_RejectsInvalidBudgets(t *testing.T) {
 		{"no resource allocation", `"allocation": "shared", "id": "openai"`, `"id": "openai"`, "spec.resource.allocation"},
 		{"separate resource with id", `"allocation": "shared", "id": "openai"`, `"allocation": "separate", "id": "openai"`, "spec.resource.id"},
 		{"environments", `"resource":`, `"environments": {"ids": ["production"]}, "resource":`, "spec"},
-		{"agent consumer", consumer, `{"type": "agent", "allocation": "shared", "expression": "true"}`, "spec.consumers[0].type"},
+		{"agent consumer with an expression", consumer, `{"type": "agent", "allocation": "shared", "expression": "true"}`, "spec.consumers[0].expression"},
+		{"unknown consumer type", consumer, `{"type": "team", "allocation": "shared", "id": "x"}`, "spec.consumers[0].type"},
 		{"consumer without allocation", consumer, `{"type": "attribute", "expression": "true"}`, "spec.consumers[0].allocation"},
 		{"consumer without expression", consumer, `{"type": "attribute", "allocation": "shared"}`, "spec.consumers[0].expression"},
 		{"consumer with id", consumer, `{"type": "attribute", "allocation": "shared", "expression": "true", "id": "x"}`, "spec.consumers[0]"},
@@ -592,10 +593,20 @@ func TestBudgetShapes_RejectsUnsupported(t *testing.T) {
 		spec  map[string]any
 		field string
 	}{
-		{"agent consumer", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders, "consumers": consumerOf("agent")}, "spec.consumers[0].type"},
-		{"project consumer", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders, "consumers": consumerOf("project")}, "spec.consumers[0].type"},
-		{"API key consumer", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders, "consumers": consumerOf("apiKey")}, "spec.consumers[0].type"},
-		{"LLM proxy consumer", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders, "consumers": consumerOf("llmProxy")}, "spec.consumers[0].type"},
+		{"shared agent without its project", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders,
+			"consumers": []any{map[string]any{"type": "agent", "allocation": "shared", "id": "support-agent"}}}, "spec.consumers[0].project"},
+		{"shared project without id", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders,
+			"consumers": []any{map[string]any{"type": "project", "allocation": "shared"}}}, "spec.consumers[0].id"},
+		{"API key with an expression", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders,
+			"consumers": consumerOf("apiKey")}, "spec.consumers[0].expression"},
+		{"separate project naming one", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders,
+			"consumers": []any{map[string]any{"type": "project", "allocation": "separate", "id": "api-platform"}}}, "spec.consumers[0]"},
+		{"attribute without expression", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders,
+			"consumers": []any{map[string]any{"type": "attribute", "allocation": "shared"}}}, "spec.consumers[0].expression"},
+		{"project used twice", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders,
+			"consumers": []any{map[string]any{"type": "project", "allocation": "shared", "id": "a"}, map[string]any{"type": "project", "allocation": "separate"}}}, "spec.consumers[1].type"},
+		{"agent exemption without its project", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders,
+			"exemptions": []any{map[string]any{"type": "agent", "id": "hotel-booking"}}}, "spec.exemptions[0]"},
 		{"environments", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders, "environments": map[string]any{"ids": []any{"production"}}}, "spec"},
 		{"separate provider with id", map[string]any{"limit": limit("10", "day", "block"), "resource": map[string]any{"type": "llmProvider", "allocation": "separate", "id": "openai"}}, "spec.resource.id"},
 		{"too many consumers", map[string]any{"limit": limit("10", "day", "block"), "resource": allProviders, "consumers": attributeConsumers(21, "shared")}, "spec.consumers"},
@@ -625,6 +636,31 @@ func TestBudgetShapes_RejectsUnsupported(t *testing.T) {
 			assert.Empty(t, stored, "a rejected budget was stored")
 		})
 	}
+}
+
+func TestBudgetShapes_AcceptsProjectAgentAndAPIKeyConsumers(t *testing.T) {
+	svc, _ := newTestService(t, false)
+	body, err := json.Marshal(map[string]any{
+		"apiVersion": "gateway.api-platform.wso2.com/v1", "kind": "Budget",
+		"metadata": map[string]any{"name": "per-agent"},
+		"spec": map[string]any{
+			"limit":    limit("10", "day", "block"),
+			"resource": map[string]any{"type": "llmProvider", "allocation": "shared"},
+			"consumers": []any{
+				map[string]any{"type": "project", "allocation": "shared", "id": "api-platform"},
+				map[string]any{"type": "agent", "allocation": "separate"},
+				map[string]any{"type": "apiKey", "allocation": "shared", "id": "support-agent-prod"},
+			},
+			"exemptions": []any{map[string]any{"type": "agent", "project": "api-platform", "id": "hotel-booking"}},
+		},
+	})
+	require.NoError(t, err)
+	created, err := svc.Create(CreateParams{Body: body})
+	require.NoError(t, err)
+	consumers := *created.Configuration.(api.BudgetRequest).Spec.Consumers
+	require.Len(t, consumers, 3)
+	assert.Equal(t, "api-platform", *consumers[0].Id)
+	assert.Equal(t, api.BudgetConsumerTypeAgent, consumers[1].Type)
 }
 
 func TestService_PublishesActiveBudgetsToThePolicyEngine(t *testing.T) {
@@ -833,4 +869,82 @@ func TestResourcePush_FailedValidationPushesNothing(t *testing.T) {
 	_, err := svc.Create(CreateParams{Body: []byte(`{"kind": "Budget"}`)})
 	require.Error(t, err)
 	assert.Empty(t, pusher.pushed)
+}
+
+// controlPlaneBudget is validBudget as the control plane sends it.
+func controlPlaneBudget(t *testing.T, id string, updatedAt time.Time, amount string) utils.ControlPlaneBudget {
+	t.Helper()
+	body := strings.Replace(validBudget, `"amount": "500.00"`, `"amount": "`+amount+`"`, 1)
+	body = strings.Replace(body, `"research-team-monthly"`, `"cp-research-monthly"`, 1)
+	return utils.ControlPlaneBudget{BudgetID: id, UpdatedAt: updatedAt, Budget: json.RawMessage(body)}
+}
+
+func TestApplyControlPlaneBudget_CreatesUpdatesAndIgnoresOlder(t *testing.T) {
+	svc, db := newTestService(t, true)
+	pusher := &fakePusher{}
+	svc.SetResourcePusher(pusher, true)
+	id := "0193f1c2-0000-7000-8000-0000000000b1"
+	t0 := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
+
+	require.NoError(t, svc.ApplyControlPlaneBudget(controlPlaneBudget(t, id, t0, "500.00"), "c1", nil))
+	stored, err := db.GetConfig(id)
+	require.NoError(t, err)
+	assert.Equal(t, models.OriginControlPlane, stored.Origin)
+	assert.Equal(t, "cp-research-monthly", stored.Handle)
+	require.NotNil(t, stored.DeployedAt)
+	assert.True(t, stored.DeployedAt.Equal(t0), "the control plane's change time")
+	assert.Empty(t, stored.CPSyncStatus, "control-plane budgets are not pushed back")
+
+	require.NoError(t, svc.ApplyControlPlaneBudget(controlPlaneBudget(t, id, t0.Add(time.Minute), "750.00"), "c2", nil))
+	stored, err = db.GetConfig(id)
+	require.NoError(t, err)
+	assert.Equal(t, "750.00", stored.Configuration.(api.BudgetRequest).Spec.Limit.Amount)
+
+	require.NoError(t, svc.ApplyControlPlaneBudget(controlPlaneBudget(t, id, t0, "1.00"), "late", nil))
+	stored, err = db.GetConfig(id)
+	require.NoError(t, err)
+	assert.Equal(t, "750.00", stored.Configuration.(api.BudgetRequest).Spec.Limit.Amount, "an older copy is ignored")
+
+	assert.Empty(t, pusher.pushed, "never pushed to the control plane")
+	ids, err := svc.ControlPlaneBudgetIDs()
+	require.NoError(t, err)
+	assert.Equal(t, []string{id}, ids)
+}
+
+func TestApplyControlPlaneBudget_LeavesTheGatewaysOwnBudgetsAlone(t *testing.T) {
+	svc, db := newTestService(t, false)
+	own, err := svc.Create(CreateParams{Body: []byte(strings.Replace(validBudget, `"research-team-monthly"`, `"cp-research-monthly"`, 1))})
+	require.NoError(t, err)
+
+	err = svc.ApplyControlPlaneBudget(controlPlaneBudget(t, "0193f1c2-0000-7000-8000-0000000000b2", time.Now(), "1.00"), "c", nil)
+	assert.True(t, storage.IsConflictError(err), "the name is the gateway's own budget: %v", err)
+
+	err = svc.ApplyControlPlaneBudget(controlPlaneBudget(t, own.UUID, time.Now().Add(time.Hour), "1.00"), "c", nil)
+	assert.True(t, storage.IsConflictError(err), "the ID is the gateway's own budget: %v", err)
+
+	require.NoError(t, svc.DeleteControlPlaneBudget(own.UUID, "c", nil))
+	_, err = db.GetConfig(own.UUID)
+	assert.NoError(t, err, "a control-plane delete never removes the gateway's own budget")
+	ids, err := svc.ControlPlaneBudgetIDs()
+	require.NoError(t, err)
+	assert.Empty(t, ids)
+}
+
+func TestDeleteControlPlaneBudget(t *testing.T) {
+	svc, db := newTestService(t, false)
+	id := "0193f1c2-0000-7000-8000-0000000000b3"
+	require.NoError(t, svc.ApplyControlPlaneBudget(controlPlaneBudget(t, id, time.Now(), "500.00"), "c", nil))
+	require.NoError(t, svc.DeleteControlPlaneBudget(id, "c", nil))
+	_, err := db.GetConfig(id)
+	assert.True(t, storage.IsNotFoundError(err))
+	require.NoError(t, svc.DeleteControlPlaneBudget(id, "c", nil), "an unknown ID is ignored")
+}
+
+func TestApplyControlPlaneBudget_RefusesAnInvalidBudget(t *testing.T) {
+	svc, _ := newTestService(t, false)
+	err := svc.ApplyControlPlaneBudget(utils.ControlPlaneBudget{
+		BudgetID: "0193f1c2-0000-7000-8000-0000000000b4", UpdatedAt: time.Now(), Budget: json.RawMessage(`{"kind":"Budget"}`),
+	}, "c", nil)
+	assert.Error(t, err)
+	assert.Error(t, svc.ApplyControlPlaneBudget(utils.ControlPlaneBudget{Budget: json.RawMessage(`{}`)}, "c", nil))
 }

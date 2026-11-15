@@ -163,3 +163,29 @@ func TestAPIKeyHashedRevocation(t *testing.T) {
 		t.Error("API key should be invalid after revocation")
 	}
 }
+
+func TestGetAPIKeyByHash(t *testing.T) {
+	store := NewAPIkeyStore()
+	plain := "apip_0b2f6c1e9d4a7b3c5e8f1a2d4c6b8e0f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b"
+	hash := ComputeAPIKeyHash(plain)
+	if err := store.StoreAPIKey("api-1", &APIKey{
+		ID: "key-1", Name: "support-agent-key", Source: "local", APIKey: hash, APIId: "api-1",
+		Operations: "[\"*\"]", Status: Active, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("store: %v", err)
+	}
+
+	got, err := store.GetAPIKeyByHash("api-1", hash)
+	if err != nil || got.Name != "support-agent-key" || got.ID != "key-1" {
+		t.Fatalf("GetAPIKeyByHash = %+v, %v", got, err)
+	}
+	got.Name = "changed"
+	if again, _ := store.GetAPIKeyByHash("api-1", hash); again.Name != "support-agent-key" {
+		t.Fatalf("the store's key was changed through the returned copy")
+	}
+	for _, c := range []struct{ apiID, hash string }{{"api-2", hash}, {"api-1", ComputeAPIKeyHash("other")}, {"api-1", ""}} {
+		if _, err := store.GetAPIKeyByHash(c.apiID, c.hash); err != ErrNotFound {
+			t.Errorf("GetAPIKeyByHash(%q, %q) error = %v, want ErrNotFound", c.apiID, c.hash, err)
+		}
+	}
+}

@@ -96,7 +96,77 @@ func decode(body []byte) (*api.BudgetRequest, error) {
 			Message: "must be omitted for separate allocation, which gives each provider its own allowance",
 		}}}
 	}
+	if errs := consumerShapes(budget.Spec); len(errs) > 0 {
+		return nil, &ValidationError{Errors: errs}
+	}
 	return &budget, nil
+}
+
+// consumerShapes checks what the schema cannot say about each consumer and exemption type:
+// an attribute takes an expression; a project or API key its name (id) when shared; an
+// agent its name and project when shared; each type but attribute is used once.
+func consumerShapes(spec api.BudgetSpec) []FieldError {
+	var errs []FieldError
+	set := func(p *string) bool { return p != nil && *p != "" }
+	add := func(field, message string) { errs = append(errs, FieldError{Field: field, Message: message}) }
+	if spec.Consumers != nil {
+		seen := map[api.BudgetConsumerType]bool{}
+		for i, c := range *spec.Consumers {
+			field := fmt.Sprintf("spec.consumers[%d]", i)
+			shared := c.Allocation == api.BudgetConsumerAllocationShared
+			if c.Type != api.BudgetConsumerTypeAttribute {
+				if seen[c.Type] {
+					add(field+".type", "each consumer type except attribute can be used once")
+				}
+				seen[c.Type] = true
+			}
+			switch c.Type {
+			case api.BudgetConsumerTypeAttribute:
+				if !set(c.Expression) {
+					add(field+".expression", "is required for an attribute")
+				}
+				if c.Id != nil || c.Project != nil {
+					add(field, "an attribute takes an expression, not id or project")
+				}
+			default:
+				if c.Expression != nil {
+					add(field+".expression", "applies only to an attribute")
+				}
+				if shared && !set(c.Id) {
+					add(field+".id", "is required when shared")
+				}
+				if !shared && (c.Id != nil || c.Project != nil) {
+					add(field, "a separate consumer names no id or project: each value gets its own allowance")
+				}
+				if c.Type == api.BudgetConsumerTypeAgent && shared && !set(c.Project) {
+					add(field+".project", "is required for a shared agent: agent names are unique only per project")
+				}
+				if c.Type != api.BudgetConsumerTypeAgent && c.Project != nil {
+					add(field+".project", "applies only to an agent")
+				}
+			}
+		}
+	}
+	if spec.Exemptions != nil {
+		for i, e := range *spec.Exemptions {
+			field := fmt.Sprintf("spec.exemptions[%d]", i)
+			switch e.Type {
+			case api.BudgetExemptionTypeAttribute:
+				if !set(e.Expression) || e.Id != nil || e.Project != nil {
+					add(field, "an attribute exemption takes only an expression")
+				}
+			case api.BudgetExemptionTypeProject:
+				if !set(e.Id) || e.Expression != nil || e.Project != nil {
+					add(field, "a project exemption takes only its id")
+				}
+			case api.BudgetExemptionTypeAgent:
+				if !set(e.Id) || !set(e.Project) || e.Expression != nil {
+					add(field, "an agent exemption takes its id and project")
+				}
+			}
+		}
+	}
+	return errs
 }
 
 // schemaErrors flattens the validator's errors into field paths such as

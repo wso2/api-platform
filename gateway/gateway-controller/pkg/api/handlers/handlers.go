@@ -198,6 +198,7 @@ func NewAPIServer(
 	server.budgetService = budget.NewService(db, budgets, eventHub, gatewayID, logger, pushEnabled)
 	if controlPlaneClient != nil {
 		server.budgetService.SetResourcePusher(controlPlaneClient, pushEnabled)
+		controlPlaneClient.SetBudgetApplier(server.budgetService)
 	}
 	server.AgentHandler = NewAgentHandler(agentService, logger)
 

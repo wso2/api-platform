@@ -110,6 +110,7 @@ type ControlPlaneClient interface {
 	SubmitArtifactPush(task func())
 	PushResource(cfg *models.StoredConfig)
 	PushResourceDeletion(cfg *models.StoredConfig)
+	SetBudgetApplier(applier utils.ControlPlaneBudgetApplier)
 }
 
 // secretSyncer is the narrow interface the sync loop needs from the secrets service.
@@ -161,6 +162,10 @@ type Client struct {
 	gatewayPath                 string      // cached gateway path from well-known discovery
 	syncOnce                    sync.Once   // ensures deployment sync runs only on first connect
 	isFirstConnect              atomic.Bool // true on first connect, flipped to false after
+
+	// budgetApplier stores the budgets the control plane sends; nil until SetBudgetApplier.
+	budgetApplierMu sync.RWMutex
+	budgetApplier   utils.ControlPlaneBudgetApplier
 
 	// httpClient is the single shared outbound *http.Client for this entire process (built
 	// once in cmd/controller/main.go and injected here), used for every plain (non-WebSocket)
@@ -548,6 +553,7 @@ func (c *Client) Connect() error {
 			// And the gateway's own resources of every synced kind (budgets).
 			c.SubmitArtifactPush(c.PushGatewayResourcesToControlPlane)
 			c.syncSubscriptionPlans(gwID)
+			c.syncBudgets()
 			c.syncSubscriptionsForExistingAPIs(gwID)
 			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
 			c.syncAPIKeysForExistingArtifacts(gwID)
@@ -577,6 +583,7 @@ func (c *Client) Connect() error {
 			// And the gateway's own resources of every synced kind (budgets).
 			c.SubmitArtifactPush(c.PushGatewayResourcesToControlPlane)
 			c.syncSubscriptionPlans(gwID)
+			c.syncBudgets()
 			c.syncSubscriptionsForExistingAPIs(gwID)
 			// Sync API keys for LlmProvider, LlmProxy, and RestApi artifacts.
 			c.syncAPIKeysForExistingArtifacts(gwID)
@@ -1505,6 +1512,10 @@ func (c *Client) handleMessage(messageType int, message []byte) {
 		c.handleSubscriptionPlanUpdatedEvent(event)
 	case "subscriptionPlan.deleted":
 		c.handleSubscriptionPlanDeletedEvent(event)
+	case "budget.created", "budget.updated":
+		c.handleBudgetEvent(event)
+	case "budget.deleted":
+		c.handleBudgetDeletedEvent(event)
 	case "mcpproxy.deployed":
 		c.handleMCPProxyDeploymentEvent(event)
 	case "mcpproxy.undeployed":

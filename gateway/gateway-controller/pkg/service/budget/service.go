@@ -187,7 +187,8 @@ type UpdateParams struct {
 
 // Update changes a gateway-created budget. Only status, the limit's amount,
 // action and blockAt, and the exemptions can change; any other difference is
-// a *ValidationError.
+// a *ValidationError. A budget from the control plane is managed there and is
+// read-only here (ErrReadOnly).
 func (s *Service) Update(params UpdateParams) (*models.StoredConfig, error) {
 	log := params.Logger
 	if log == nil {
@@ -236,7 +237,8 @@ func (s *Service) Update(params UpdateParams) (*models.StoredConfig, error) {
 	return &updated, s.publish("UPDATE", updated.Handle, params.CorrelationID, log)
 }
 
-// Delete removes a gateway-created budget.
+// Delete removes a gateway-created budget. A budget from the control plane is
+// managed there and is read-only here (ErrReadOnly).
 func (s *Service) Delete(name, correlationID string, log *slog.Logger) error {
 	if log == nil {
 		log = s.logger
@@ -366,4 +368,114 @@ func (s *Service) checkProviderExists(resource api.BudgetResource) error {
 	default:
 		return fmt.Errorf("failed to look up LLM provider %q: %w", *resource.Id, err)
 	}
+}
+
+// ApplyControlPlaneBudget stores a budget the control plane sent (budget.created,
+// budget.updated, or the sync on connect) as a control-plane budget: read-only here and
+// never pushed back. One whose updatedAt is not newer than the stored copy's (kept in
+// DeployedAt) is ignored, so a late or replayed event never undoes a newer change.
+func (s *Service) ApplyControlPlaneBudget(in utils.ControlPlaneBudget, correlationID string, log *slog.Logger) error {
+	if log == nil {
+		log = s.logger
+	}
+	if in.BudgetID == "" {
+		return fmt.Errorf("control-plane budget has no budgetId")
+	}
+	budget, err := decode(in.Budget)
+	if err != nil {
+		return fmt.Errorf("control-plane budget %s is not valid here: %w", in.BudgetID, err)
+	}
+	log = log.With(slog.String("uuid", in.BudgetID), slog.String("handle", budget.Metadata.Name))
+	changedAt := in.UpdatedAt.UTC()
+
+	existing, err := s.db.GetConfig(in.BudgetID)
+	if err != nil && !storage.IsNotFoundError(err) {
+		return fmt.Errorf("failed to read budget %s: %w", in.BudgetID, err)
+	}
+	if existing != nil && err == nil {
+		if existing.Kind != models.KindBudget || existing.Origin != models.OriginControlPlane {
+			return fmt.Errorf("%w: %s is this gateway's own %s", storage.ErrConflict, in.BudgetID, existing.Kind)
+		}
+		// The control plane's change time is kept in DeployedAt, as for the artifacts it
+		// deploys: the database stamps updated_at itself.
+		if existing.DeployedAt != nil && !in.UpdatedAt.After(*existing.DeployedAt) {
+			log.Debug("Ignoring a control-plane budget no newer than the stored copy")
+			return nil
+		}
+		updated := *existing
+		updated.Configuration = *budget
+		updated.SourceConfiguration = *budget
+		updated.UpdatedAt = time.Now()
+		updated.DeployedAt = &changedAt
+		if err := s.db.UpdateConfig(&updated); err != nil {
+			return fmt.Errorf("failed to update control-plane budget: %w", err)
+		}
+		log.Info("Control-plane budget updated")
+		return s.publish("UPDATE", updated.Handle, correlationID, log)
+	}
+
+	cfg := &models.StoredConfig{
+		UUID:                in.BudgetID,
+		Kind:                models.KindBudget,
+		Handle:              budget.Metadata.Name,
+		DisplayName:         budget.Metadata.Name,
+		Version:             budgetVersion,
+		Configuration:       *budget,
+		SourceConfiguration: *budget,
+		DesiredState:        models.StateDeployed,
+		Origin:              models.OriginControlPlane,
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
+		DeployedAt:          &changedAt,
+	}
+	if err := s.db.SaveConfig(cfg); err != nil {
+		if storage.IsConflictError(err) {
+			// The gateway has its own budget of that name: the control plane refused it
+			// (BUDGET_ALREADY_EXISTS), so the two cannot both be here.
+			return fmt.Errorf("%w: this gateway already has a budget named %q", storage.ErrConflict, cfg.Handle)
+		}
+		return fmt.Errorf("failed to save control-plane budget: %w", err)
+	}
+	log.Info("Control-plane budget created")
+	return s.publish("CREATE", cfg.Handle, correlationID, log)
+}
+
+// DeleteControlPlaneBudget deletes a control-plane budget (budget.deleted, or one the
+// sync on connect no longer lists). An unknown ID, or one of the gateway's own budgets,
+// is left alone.
+func (s *Service) DeleteControlPlaneBudget(budgetID, correlationID string, log *slog.Logger) error {
+	if log == nil {
+		log = s.logger
+	}
+	existing, err := s.db.GetConfig(budgetID)
+	if err != nil {
+		if storage.IsNotFoundError(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to read budget %s: %w", budgetID, err)
+	}
+	if existing.Kind != models.KindBudget || existing.Origin != models.OriginControlPlane {
+		log.Warn("Not deleting: not a control-plane budget", slog.String("uuid", budgetID))
+		return nil
+	}
+	if err := s.db.DeleteConfig(budgetID); err != nil && !storage.IsNotFoundError(err) {
+		return fmt.Errorf("failed to delete control-plane budget: %w", err)
+	}
+	log.Info("Control-plane budget deleted", slog.String("uuid", budgetID), slog.String("handle", existing.Handle))
+	return s.publish("DELETE", existing.Handle, correlationID, log)
+}
+
+// ControlPlaneBudgetIDs lists the stored control-plane budgets.
+func (s *Service) ControlPlaneBudgetIDs() ([]string, error) {
+	configs, err := s.db.GetAllConfigsByKind(models.KindBudget)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list budgets: %w", err)
+	}
+	ids := []string{}
+	for _, cfg := range configs {
+		if cfg.Origin == models.OriginControlPlane {
+			ids = append(ids, cfg.UUID)
+		}
+	}
+	return ids, nil
 }

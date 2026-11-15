@@ -120,15 +120,22 @@ type call struct {
 	subject  string
 	claims   map[string]any
 	headers  map[string][]string
+	params   map[string]any // the route's policy parameters
+	project  string         // the route's project ID
+	apiKey   string         // the hash of the API key the request authenticated with
 }
 
 func (c call) context() *policy.RequestHeaderContext {
-	shared := &policy.SharedContext{Metadata: map[string]any{}}
+	shared := &policy.SharedContext{Metadata: map[string]any{}, ProjectID: c.project}
 	if c.provider != "" {
 		shared.Metadata[metadataProviderName] = c.provider
 	}
 	if c.subject != "" || c.claims != nil {
 		shared.AuthContext = &policy.AuthContext{Authenticated: true, AuthType: "jwt", Subject: c.subject, TypedProperties: c.claims}
+	}
+	if c.apiKey != "" {
+		shared.APIId = "route-1"
+		shared.AuthContext = &policy.AuthContext{Authenticated: true, AuthType: "apikey", TokenId: c.apiKey}
 	}
 	return &policy.RequestHeaderContext{SharedContext: shared, Headers: policy.NewHeaders(c.headers), Path: "/chat/completions", Method: http.MethodPost}
 }
@@ -138,7 +145,7 @@ func (c call) context() *policy.RequestHeaderContext {
 func send(t *testing.T, p *BudgetSystemPolicy, c call, cost string) *policy.ImmediateResponse {
 	t.Helper()
 	req := c.context()
-	action := p.OnRequestHeaders(context.Background(), req, nil)
+	action := p.OnRequestHeaders(context.Background(), req, c.params)
 	if refused, ok := action.(policy.ImmediateResponse); ok {
 		return &refused
 	}
@@ -535,7 +542,7 @@ func TestSpendIsSharedByNameNotUUID(t *testing.T) {
 	other, _, _ := testPolicy(t, budgetBody("team", otherUUID, "1", "day", "block", allProviders, nil))
 	renamed, _, _ := testPolicy(t, budgetBody("team-2", testBudgetUUID, "1", "day", "block", allProviders, nil))
 	ids := func(p *BudgetSystemPolicy) []string {
-		names, _ := p.catalog.current()[0].matches("openai", activation(nil, "", "", nil, nil))
+		names, _ := p.catalog.current()[0].matches("openai", caller{}, func() map[string]any { return activation(nil, "", "", nil, nil) })
 		return names
 	}
 
@@ -544,5 +551,122 @@ func TestSpendIsSharedByNameNotUUID(t *testing.T) {
 	}
 	if a, c := ids(one), ids(renamed); a[0] == c[0] {
 		t.Fatal("different names share an allowance")
+	}
+}
+
+// agentRoute is the policy's parameters on an agent's hidden LLM proxy route.
+func agentRoute(agent string) map[string]any {
+	return map[string]any{paramAgent: agent, paramRole: roleProxy, paramAdmittedToken: "secret-1"}
+}
+
+func TestProjectAgentAndAPIKeyConsumers(t *testing.T) {
+	p, _, _ := testPolicy(t,
+		budgetBody("platform", testBudgetUUID, "1", "day", "block", allProviders,
+			consumers(map[string]any{"type": "project", "allocation": "shared", "id": "api-platform"})),
+		budgetBody("support", otherUUID, "1", "day", "block", allProviders,
+			consumers(map[string]any{"type": "agent", "allocation": "shared", "project": "api-platform", "id": "support-agent"})),
+		budgetBody("prod-key", "0193f1c2-0000-7000-8000-0000000000d3", "1", "day", "block", allProviders,
+			consumers(map[string]any{"type": "apiKey", "allocation": "shared", "id": "support-agent-prod"})),
+	)
+	p.apiKeyName = func(apiID, hash string) string {
+		if apiID == "route-1" && hash == "hash-of-prod-key" {
+			return "support-agent-prod"
+		}
+		return ""
+	}
+	matched := func(c call) []any {
+		req := c.context()
+		action := p.OnRequestHeaders(context.Background(), req, c.params)
+		mods, _ := action.(policy.UpstreamRequestHeaderModifications)
+		names, _ := mods.AnalyticsMetadata[analyticsBudgetNames].([]any)
+		return names
+	}
+
+	if got := matched(call{provider: "openai", project: "api-platform", params: agentRoute("support-agent"), apiKey: "hash-of-prod-key"}); !equalAny(got, []any{"platform", "prod-key", "support"}) {
+		t.Errorf("the agent's own call matched %v", got)
+	}
+	if got := matched(call{provider: "openai", project: "other-project", params: agentRoute("support-agent")}); len(got) != 0 {
+		t.Errorf("an agent of the same name in another project matched %v", got)
+	}
+	if got := matched(call{provider: "openai", project: "api-platform", params: agentRoute("hotel-booking")}); !equalAny(got, []any{"platform"}) {
+		t.Errorf("another agent of the project matched %v", got)
+	}
+	if got := matched(call{provider: "openai", apiKey: "hash-of-another-key"}); len(got) != 0 {
+		t.Errorf("a call with no project, agent or known key matched %v", got)
+	}
+}
+
+func TestSeparateByAgentAndAgentExemption(t *testing.T) {
+	p, _, _ := testPolicy(t, budgetBody("per-agent", testBudgetUUID, "1", "day", "block", allProviders, map[string]any{
+		"consumers":  []any{map[string]any{"type": "agent", "allocation": "separate"}},
+		"exemptions": []any{map[string]any{"type": "agent", "project": "api-platform", "id": "hotel-booking"}},
+	}))
+	support := call{provider: "openai", project: "api-platform", params: agentRoute("support-agent")}
+	other := call{provider: "openai", project: "api-platform", params: agentRoute("research-agent")}
+	send(t, p, support, "2")
+	if send(t, p, support, "") == nil {
+		t.Fatal("the agent's own allowance was not used up")
+	}
+	if send(t, p, other, "") != nil {
+		t.Fatal("another agent shares the allowance")
+	}
+	if send(t, p, call{provider: "openai", project: "api-platform", params: agentRoute("hotel-booking")}, "5") != nil {
+		t.Fatal("an exempt agent was counted")
+	}
+	if send(t, p, call{provider: "openai"}, "") != nil {
+		t.Fatal("a call with no agent was matched by a separate agent consumer")
+	}
+}
+
+func TestProxyRouteStampsAndProviderRouteCountsOnce(t *testing.T) {
+	p, _, _ := testPolicy(t, budgetBody("all", testBudgetUUID, "1", "day", "block", allProviders, nil))
+	providerRoute := map[string]any{paramRole: roleProvider, paramAdmittedToken: "secret-1"}
+
+	req := call{provider: "openai", project: "api-platform", params: agentRoute("support-agent")}.context()
+	action := p.OnRequestHeaders(context.Background(), req, agentRoute("support-agent"))
+	mods, _ := action.(policy.UpstreamRequestHeaderModifications)
+	if mods.HeadersToSet[headerAdmitted] != "secret-1" {
+		t.Fatalf("the proxy route did not stamp the request: %+v", mods.HeadersToSet)
+	}
+
+	// The provider route skips the stamped request and removes the stamp.
+	forwarded := call{provider: "openai", params: providerRoute, headers: map[string][]string{headerAdmitted: {"secret-1"}}}
+	if send(t, p, forwarded, "5") != nil {
+		t.Fatal("the stamped request was refused")
+	}
+	fwd := forwarded.context()
+	skipped, _ := p.OnRequestHeaders(context.Background(), fwd, providerRoute).(policy.UpstreamRequestHeaderModifications)
+	if len(skipped.HeadersToRemove) != 1 || skipped.AnalyticsMetadata != nil {
+		t.Fatalf("the provider route did not skip the stamped request: %+v", skipped)
+	}
+
+	// A forged stamp is counted, and the stamp never reaches the provider.
+	forged := call{provider: "openai", params: providerRoute, headers: map[string][]string{headerAdmitted: {"guess"}}}
+	send(t, p, forged, "1")
+	if send(t, p, forged, "") == nil {
+		t.Fatal("a forged stamp skipped the budget")
+	}
+	empty, _, _ := testPolicy(t)
+	noBudgets, _ := empty.OnRequestHeaders(context.Background(), forged.context(), providerRoute).(policy.UpstreamRequestHeaderModifications)
+	if len(noBudgets.HeadersToRemove) != 1 {
+		t.Fatal("the stamp is not removed when no budget applies")
+	}
+}
+
+func TestAnUnknownConsumerTypeSkipsTheBudget(t *testing.T) {
+	p, _, _ := testPolicy(t, budgetBody("bad", testBudgetUUID, "1", "day", "block", allProviders,
+		consumers(map[string]any{"type": "team", "allocation": "shared", "id": "x"})))
+	if len(p.catalog.current()) != 0 {
+		t.Fatal("a budget with an unknown consumer type was applied")
+	}
+}
+
+func TestAProviderRouteNamesNoProject(t *testing.T) {
+	p, _, _ := testPolicy(t, budgetBody("platform", testBudgetUUID, "1", "day", "block", allProviders,
+		consumers(map[string]any{"type": "project", "allocation": "shared", "id": "api-platform"})))
+	direct := call{provider: "openai", project: "api-platform", params: map[string]any{paramRole: roleProvider, paramAdmittedToken: "secret-1"}}
+	send(t, p, direct, "5")
+	if send(t, p, direct, "") != nil {
+		t.Fatal("a provider route's own project ID was charged as the caller's project")
 	}
 }

@@ -66,7 +66,7 @@ func budgetRow(name, amount string, status api.BudgetSpecStatus) *models.StoredC
 	provider := "openai"
 	consumers := []api.BudgetConsumer{{
 		Type: api.BudgetConsumerTypeAttribute, Allocation: api.BudgetConsumerAllocationSeparate,
-		Expression: `request.Auth.Claims["sub"] != ""`,
+		Expression: func() *string { e := `request.Auth.Claims["sub"] != ""`; return &e }(),
 	}}
 	budget := api.BudgetRequest{
 		ApiVersion: api.BudgetRequestApiVersionV1,

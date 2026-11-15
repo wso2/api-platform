@@ -35,6 +35,7 @@ package budget
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"log/slog"
 	"math"
@@ -42,7 +43,29 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/wso2/api-platform/common/apikey"
 	policy "github.com/wso2/api-platform/sdk/core/policy/v1alpha2"
+)
+
+// Parameters the gateway controller sets on each route it places the policy on.
+const (
+	// paramAgent names the agent of an agent's hidden LLM proxy route, from the annotation
+	// the control plane sets on it. The route's project is the request's project ID, from
+	// the route's existing project-id annotation.
+	paramAgent = "agent"
+	// paramRole is roleProxy on an LLM proxy route and roleProvider on a provider route.
+	paramRole = "role"
+	// paramAdmittedToken is the controller's secret the proxy route stamps a request with,
+	// so the provider route the proxy forwards it to does not count it again.
+	paramAdmittedToken = "admittedToken"
+
+	roleProxy    = "proxy"
+	roleProvider = "provider"
+
+	// headerAdmitted carries the stamp from the proxy route to the provider route.
+	headerAdmitted = "x-wso2-budget-admitted"
+	// authTypeAPIKey is the auth type api-key-auth records.
+	authTypeAPIKey = "apikey"
 )
 
 // Metadata keys read from, and written to, the request's shared metadata.
@@ -79,6 +102,9 @@ type BudgetSystemPolicy struct {
 	catalog *catalog
 	tracker *tracker
 	now     func() time.Time
+	// apiKeyName returns the name of an API's key from the hash of its value: the token ID
+	// api-key-auth records. Empty when unknown.
+	apiKeyName func(apiID, hash string) string
 }
 
 var ins = newPolicy(policy.GetLazyResourceStoreInstance())
@@ -89,10 +115,63 @@ func newPolicy(source resourceSource) *BudgetSystemPolicy {
 		// The environment declares one variable; it cannot fail at run time.
 		panic("budget: creating the CEL environment: " + err.Error())
 	}
-	return &BudgetSystemPolicy{catalog: c, tracker: newTracker(installedCounters{}), now: time.Now}
+	return &BudgetSystemPolicy{catalog: c, tracker: newTracker(installedCounters{}), now: time.Now, apiKeyName: storedAPIKeyName}
 }
 
-// GetPolicy returns the shared instance. The policy takes no parameters.
+// storedAPIKeyName reads the key's name from the policy engine's API key store.
+func storedAPIKeyName(apiID, hash string) string {
+	key, err := apikey.GetAPIkeyStoreInstance().GetAPIKeyByHash(apiID, hash)
+	if err != nil {
+		return ""
+	}
+	return key.Name
+}
+
+// routeParams are the policy's parameters on one route.
+type routeParams struct {
+	agent, role, admittedToken string
+}
+
+func readParams(params map[string]any) routeParams {
+	get := func(k string) string { v, _ := params[k].(string); return v }
+	return routeParams{agent: get(paramAgent), role: get(paramRole), admittedToken: get(paramAdmittedToken)}
+}
+
+// stampedByProxy reports whether the proxy route already evaluated the request: it carries
+// this controller's token. A forged or missing value is not.
+func stampedByProxy(headers map[string][]string, token string) bool {
+	if token == "" {
+		return false
+	}
+	for name, values := range headers {
+		if len(name) == len(headerAdmitted) && http.CanonicalHeaderKey(name) == http.CanonicalHeaderKey(headerAdmitted) {
+			for _, v := range values {
+				if subtle.ConstantTimeCompare([]byte(v), []byte(token)) == 1 {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// callerOf names the request's caller: on a proxy route, its project (the route's project
+// ID) and agent; and the API key it authenticated with. A provider route names no project:
+// its project ID is the provider's, not the caller's.
+func (p *BudgetSystemPolicy) callerOf(reqCtx *policy.RequestHeaderContext, rp routeParams) caller {
+	who := caller{}
+	if rp.role == roleProxy {
+		who.project, who.agent = reqCtx.SharedContext.ProjectID, rp.agent
+	}
+	auth := reqCtx.AuthContext
+	if auth != nil && auth.Authenticated && auth.AuthType == authTypeAPIKey && auth.TokenId != "" && p.apiKeyName != nil {
+		who.apiKey = p.apiKeyName(reqCtx.SharedContext.APIId, auth.TokenId)
+	}
+	return who
+}
+
+// GetPolicy returns the shared instance. Route parameters (project, agent, role, admitted
+// token) arrive with each request.
 func GetPolicy(_ policy.PolicyMetadata, _ map[string]any) (policy.Policy, error) {
 	return ins, nil
 }
@@ -119,30 +198,53 @@ type admitted = spendKey
 
 // OnRequestHeaders finds the budgets that cover the request and refuses it when a Block
 // budget's allowance has spent its block point.
-func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.RequestHeaderContext, _ map[string]any) policy.RequestHeaderAction {
+func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.RequestHeaderContext, params map[string]any) policy.RequestHeaderAction {
 	if reqCtx == nil || reqCtx.SharedContext == nil {
 		return policy.UpstreamRequestHeaderModifications{}
 	}
+	rp := readParams(params)
 	var headers map[string][]string
 	if reqCtx.Headers != nil {
 		headers = reqCtx.Headers.GetAll()
 	}
+	// pass is what the request goes on with when no budget refuses it. A proxy route stamps
+	// it for the provider route it forwards to; a provider route always removes the stamp,
+	// so the token never reaches the LLM provider.
+	pass := policy.UpstreamRequestHeaderModifications{}
+	switch rp.role {
+	case roleProxy:
+		if rp.admittedToken != "" {
+			pass.HeadersToSet = map[string]string{headerAdmitted: rp.admittedToken}
+		}
+	case roleProvider:
+		pass.HeadersToRemove = []string{headerAdmitted}
+		if stampedByProxy(headers, rp.admittedToken) {
+			return pass // counted on the proxy route, once
+		}
+	}
 	provider, _ := reqCtx.Metadata[metadataProviderName].(string)
 	if provider == "" {
-		return policy.UpstreamRequestHeaderModifications{}
+		return pass
 	}
 	budgets := p.catalog.current()
 	if len(budgets) == 0 {
-		return policy.UpstreamRequestHeaderModifications{}
+		return pass
 	}
 
 	now := p.now().UTC()
-	vars := activation(headers, reqCtx.Path, reqCtx.Method, reqCtx.Metadata, reqCtx.AuthContext)
+	who := p.callerOf(reqCtx, rp)
+	var vars map[string]any
+	lazyVars := func() map[string]any {
+		if vars == nil {
+			vars = activation(headers, reqCtx.Path, reqCtx.Method, reqCtx.Metadata, reqCtx.AuthContext)
+		}
+		return vars
+	}
 	var keys []admitted
 	var exhausted []*budget
 	var names []any
 	for _, b := range budgets {
-		allowances, ok := b.matches(provider, vars)
+		allowances, ok := b.matches(provider, who, lazyVars)
 		if !ok {
 			continue
 		}
@@ -161,7 +263,7 @@ func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.
 		}
 	}
 	if len(names) == 0 {
-		return policy.UpstreamRequestHeaderModifications{}
+		return pass
 	}
 	analytics := map[string]any{analyticsBudgetNames: names}
 	if len(exhausted) > 0 {
@@ -173,7 +275,8 @@ func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.
 		reqCtx.Metadata = map[string]any{}
 	}
 	reqCtx.Metadata[metadataAllowances] = keys
-	return policy.UpstreamRequestHeaderModifications{AnalyticsMetadata: analytics}
+	pass.AnalyticsMetadata = analytics
+	return pass
 }
 
 // NeedsMoreResponseData is false: the cost is read from metadata, not the body.

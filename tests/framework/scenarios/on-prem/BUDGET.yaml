@@ -285,3 +285,14 @@ scenarios:
       refs:
         - feature: suites/it/features/gateway/core/budget_jwt.feature
           scenario: "A per-user budget on a jwt-auth route charges each token subject and runs after authentication"
+  - id: BUDGET-026
+    title: "On an agent's LLM proxy (project-id and agent-id annotations, api-key-auth) over one provider, project, agent and API key budgets each charge a call once and refuse together once spent; another agent's budget is not charged, and a direct call to the provider is charged by none of them."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The gateway has no UI; budgets are managed through its management API.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/budget_agent.feature
+          scenario: "Project, agent and API key budgets charge an agent's proxy calls once and leave direct provider calls alone"

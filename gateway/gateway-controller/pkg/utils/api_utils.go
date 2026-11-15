@@ -475,6 +475,45 @@ func (s *APIUtilsService) FetchSubscriptionPlans() ([]models.SubscriptionPlan, e
 	return plans, nil
 }
 
+// ControlPlaneBudget is a budget created in the control plane, as budget.created and
+// budget.updated events and GET /budgets carry it: the Budget kind, with the control
+// plane's ID for it and when it last changed.
+type ControlPlaneBudget struct {
+	BudgetID  string          `json:"budgetId"`
+	UpdatedAt time.Time       `json:"updatedAt"`
+	Budget    json.RawMessage `json:"budget"`
+}
+
+// FetchBudgets fetches the control-plane budgets this gateway enforces, for the sync on
+// connect.
+func (s *APIUtilsService) FetchBudgets() ([]ControlPlaneBudget, error) {
+	budgetsURL := s.getBaseURL() + "/budgets"
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", budgetsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create budgets request: %w", err)
+	}
+	req.Header.Add("api-key", s.config.Token)
+	req.Header.Add("Accept", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch budgets: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("budgets request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+	var budgets []ControlPlaneBudget
+	if err := json.NewDecoder(resp.Body).Decode(&budgets); err != nil {
+		return nil, fmt.Errorf("failed to decode budgets response: %w", err)
+	}
+	s.logger.Info("Fetched control-plane budgets", slog.Int("count", len(budgets)))
+	return budgets, nil
+}
+
 // maxZipEntries caps how many entries an inbound API definition archive may
 // contain, before any entry is opened — a bound independent of the
 // decompressed-size guard below, since a zip bomb can also be built from many

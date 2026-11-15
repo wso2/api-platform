@@ -44,11 +44,41 @@ const (
 	actionBlock        = "block"
 )
 
-// Allocated value types, used in allowance names.
+// Consumer and exemption types, as in the Budget kind; they also name allocated values
+// in allowance names.
 const (
 	valueTypeAttribute   = "attribute"
+	valueTypeProject     = "project"
+	valueTypeAgent       = "agent"
+	valueTypeAPIKey      = "apiKey"
 	valueTypeLLMProvider = "llmProvider"
 )
+
+// caller is who sent a request, as far as budgets can name them: the project and agent of
+// the route (set by the control plane on an agent's hidden LLM proxy) and the name of the
+// API key the request authenticated with. Each is empty when unknown.
+type caller struct {
+	project string
+	agent   string
+	apiKey  string
+}
+
+// value returns the caller's value for a consumer type. An agent is named within its
+// project, as agent names are unique only per project.
+func (c caller) value(valueType string) string {
+	switch valueType {
+	case valueTypeProject:
+		return c.project
+	case valueTypeAgent:
+		if c.project == "" || c.agent == "" {
+			return ""
+		}
+		return c.project + "/" + c.agent
+	case valueTypeAPIKey:
+		return c.apiKey
+	}
+	return ""
+}
 
 // spendNamespace roots the IDs spend is counted under. Never change it: every gateway
 // must derive the same IDs for the same budget.
@@ -85,14 +115,37 @@ type budget struct {
 	providerSeparate bool
 
 	consumers  []consumer
-	exemptions []cel.Program
+	exemptions []consumer
 }
 
-// consumer is one consumer expression: a condition when shared, the value to allocate
-// by when separate.
+// consumer is one consumer or exemption. An attribute is a CEL expression: a condition
+// when shared, the value to allocate by when separate. A project, agent or API key is
+// compared with the caller: the named one when shared (id; an agent also names its
+// project), each one its own allowance when separate.
 type consumer struct {
-	separate bool
-	program  cel.Program
+	valueType string
+	separate  bool
+	program   cel.Program // attribute only
+	id        string      // shared project, agent or API key; for an agent "<project>/<agent>"
+}
+
+// is reports whether a shared consumer, or an exemption, covers the request.
+func (c consumer) is(who caller, activation func() map[string]any) bool {
+	if c.valueType == valueTypeAttribute {
+		ok, _ := evalBool(c.program, activation())
+		return ok
+	}
+	v := who.value(c.valueType)
+	return v != "" && v == c.id
+}
+
+// values returns a separate consumer's values for the request; false when it has none.
+func (c consumer) values(who caller, activation func() map[string]any) ([]string, bool) {
+	if c.valueType == valueTypeAttribute {
+		return evalValues(c.program, activation())
+	}
+	v := who.value(c.valueType)
+	return []string{v}, v != ""
 }
 
 // blockPoint is the spend at which a Block budget refuses: amount x blockAt %.
@@ -108,12 +161,12 @@ type allocated struct {
 
 // matches reports whether the budget covers the request, and the allowance names it
 // charges: one when nothing is separate, otherwise one per combination of separate values.
-func (b *budget) matches(provider string, activation map[string]any) ([]string, bool) {
+func (b *budget) matches(provider string, who caller, activation func() map[string]any) ([]string, bool) {
 	if b.providerID != "" && b.providerID != provider {
 		return nil, false
 	}
 	for _, exemption := range b.exemptions {
-		if ok, _ := evalBool(exemption, activation); ok {
+		if exemption.is(who, activation) {
 			return nil, false
 		}
 	}
@@ -121,12 +174,12 @@ func (b *budget) matches(provider string, activation map[string]any) ([]string, 
 	combinations := [][]allocated{nil}
 	for _, c := range b.consumers {
 		if !c.separate {
-			if ok, _ := evalBool(c.program, activation); !ok {
+			if !c.is(who, activation) {
 				return nil, false
 			}
 			continue
 		}
-		values, ok := evalValues(c.program, activation)
+		values, ok := c.values(who, activation)
 		if !ok {
 			return nil, false
 		}
@@ -138,7 +191,7 @@ func (b *budget) matches(provider string, activation map[string]any) ([]string, 
 		next := make([][]allocated, 0, len(combinations)*len(values))
 		for _, combination := range combinations {
 			for _, value := range values {
-				extended := append(append([]allocated{}, combination...), allocated{valueTypeAttribute, value})
+				extended := append(append([]allocated{}, combination...), allocated{c.valueType, value})
 				next = append(next, extended)
 			}
 		}
@@ -316,23 +369,56 @@ func (c *catalog) compile(body map[string]any) (*budget, error) {
 	consumers, _ := body["consumers"].([]any)
 	for i, raw := range consumers {
 		entry, _ := raw.(map[string]any)
-		separate := str(entry["allocation"]) == allocationSeparate
-		program, err := c.program(str(entry["expression"]), separate)
+		cons, err := c.consumer(entry, str(entry["allocation"]) == allocationSeparate)
 		if err != nil {
 			return nil, fmt.Errorf("consumers[%d]: %w", i, err)
 		}
-		b.consumers = append(b.consumers, consumer{separate: separate, program: program})
+		b.consumers = append(b.consumers, cons)
 	}
 	exemptions, _ := body["exemptions"].([]any)
 	for i, raw := range exemptions {
 		entry, _ := raw.(map[string]any)
-		program, err := c.program(str(entry["expression"]), false)
+		cons, err := c.consumer(entry, false)
 		if err != nil {
 			return nil, fmt.Errorf("exemptions[%d]: %w", i, err)
 		}
-		b.exemptions = append(b.exemptions, program)
+		b.exemptions = append(b.exemptions, cons)
 	}
 	return b, nil
+}
+
+// consumer compiles one consumer or exemption. A type left out is an attribute, as budgets
+// published before typed consumers were.
+func (c *catalog) consumer(entry map[string]any, separate bool) (consumer, error) {
+	valueType := str(entry["type"])
+	if valueType == "" {
+		valueType = valueTypeAttribute
+	}
+	cons := consumer{valueType: valueType, separate: separate}
+	switch valueType {
+	case valueTypeAttribute:
+		program, err := c.program(str(entry["expression"]), separate)
+		if err != nil {
+			return consumer{}, err
+		}
+		cons.program = program
+	case valueTypeProject, valueTypeAPIKey:
+		cons.id = str(entry["id"])
+	case valueTypeAgent:
+		project, agent := str(entry["project"]), str(entry["id"])
+		if !separate && (project == "" || agent == "") {
+			return consumer{}, fmt.Errorf("an agent needs its id and project")
+		}
+		if agent != "" {
+			cons.id = project + "/" + agent
+		}
+	default:
+		return consumer{}, fmt.Errorf("type %q is not attribute, project, agent or apiKey", valueType)
+	}
+	if !separate && valueType != valueTypeAttribute && cons.id == "" {
+		return consumer{}, fmt.Errorf("a %s needs its id", valueType)
+	}
+	return cons, nil
 }
 
 // program compiles an expression and checks its declared result type where CEL knows it:

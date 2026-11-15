@@ -19,6 +19,8 @@
 package transform
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -142,26 +144,76 @@ func (t *LLMTransformer) extractLLMMetadata(cfg *models.StoredConfig) *models.LL
 	return meta
 }
 
-// withBudgetEnforcement places the budget system policy on an LLM provider route the way
+// budgetAdmittedToken is this controller's secret: the budget policy on an LLM proxy route
+// stamps the requests it evaluated with it, and the policy on the provider route they are
+// forwarded to skips them, so each request is counted once. A forged stamp does not match.
+var budgetAdmittedToken = newBudgetAdmittedToken()
+
+func newBudgetAdmittedToken() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		panic("budget: generating the admitted token: " + err.Error())
+	}
+	return hex.EncodeToString(b)
+}
+
+// budgetPlacement returns the budget policy's parameters for a route, or false when it does
+// not run there. It runs at the first hop a request enters: every LLM provider route, and
+// every LLM proxy route with one provider, which knows the caller (an agent's hidden proxy
+// carries its project-id and agent-id annotations). A proxy with several providers picks one
+// per request, after admission, so its calls are counted on the provider route instead.
+func budgetPlacement(cfg *models.StoredConfig) (map[string]interface{}, bool) {
+	if cfg == nil {
+		return nil, false
+	}
+	params := map[string]interface{}{"admittedToken": budgetAdmittedToken}
+	switch cfg.Kind {
+	case models.KindLlmProvider:
+		params["role"] = "provider"
+		return params, true
+	case models.KindLlmProxy:
+		proxy, ok := cfg.SourceConfiguration.(api.LLMProxyConfiguration)
+		if !ok {
+			return nil, false
+		}
+		attachments, err := models.NormaliseLLMProxyAttachments(proxy.Spec)
+		if err != nil || len(attachments) != 1 {
+			return nil, false
+		}
+		params["role"] = "proxy"
+		// The project is the route's project ID (the project-id annotation), which the
+		// policy reads from the request.
+		if annotations := cfg.GetAnnotations(); annotations != nil {
+			if v := (*annotations)[constants.AnnotationAgentID]; v != "" {
+				params["agent"] = v
+			}
+		}
+		return params, true
+	}
+	return nil, false
+}
+
+// withBudgetEnforcement places the budget system policy where budgetPlacement says, the way
 // llm-cost-based-ratelimit sits: after the route's authentication, so its request-header
 // phase sees the caller, and just before the policy that prices the response, so in the
 // reverse-order response phase it reads the cost that policy published. A route that does
 // not price its responses (llm-cost or azure-llm-cost) gets llm-cost appended after it; a
 // gateway build without llm-cost gets the budget policy alone, which then charges $0.
 func withBudgetEnforcement(
-	kind string,
+	cfg *models.StoredConfig,
 	chain []policyenginev1.PolicyInstance,
 	definitions map[string]models.PolicyDefinition,
 	latestVersions map[string]string,
 ) []policyenginev1.PolicyInstance {
-	if kind != models.KindLlmProvider {
+	params, ok := budgetPlacement(cfg)
+	if !ok {
 		return chain
 	}
 	budget := policyenginev1.PolicyInstance{
 		Name:       constants.BUDGET_SYSTEM_POLICY_NAME,
 		Version:    constants.BUDGET_SYSTEM_POLICY_VERSION,
 		Enabled:    true,
-		Parameters: map[string]interface{}{},
+		Parameters: params,
 	}
 	out := make([]policyenginev1.PolicyInstance, 0, len(chain)+2)
 	for i, p := range chain {

@@ -23,7 +23,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
+	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	policyenginev1 "github.com/wso2/api-platform/sdk/core/policyengine"
 )
@@ -44,30 +47,46 @@ func TestWithBudgetEnforcement(t *testing.T) {
 	costLimit := policyenginev1.PolicyInstance{Name: "llm-cost-based-ratelimit", Version: "v1"}
 	const budget = "wso2_apip_sys_budget@v1"
 
+	provider := &models.StoredConfig{Kind: models.KindLlmProvider}
+	oneProviderProxy := &models.StoredConfig{
+		Kind:                models.KindLlmProxy,
+		SourceConfiguration: api.LLMProxyConfiguration{Spec: api.LLMProxyConfigData{Provider: &api.LLMProxyProvider{Id: "openai"}}},
+	}
+	twoProviderProxy := &models.StoredConfig{
+		Kind: models.KindLlmProxy,
+		SourceConfiguration: api.LLMProxyConfiguration{Spec: api.LLMProxyConfigData{
+			Provider:            &api.LLMProxyProvider{Id: "openai"},
+			AdditionalProviders: &[]api.LLMProxyAdditionalProvider{{Id: "anthropic"}},
+		}},
+	}
+	restAPI := &models.StoredConfig{Kind: models.KindRestApi}
+
 	cases := []struct {
 		name  string
-		kind  string
+		kind  *models.StoredConfig
 		chain []policyenginev1.PolicyInstance
 		defs  map[string]models.PolicyDefinition
 		want  []string
 	}{
-		{"an unpriced provider gets the budget policy, then llm-cost, after its own policies", models.KindLlmProvider,
+		{"an unpriced provider gets the budget policy, then llm-cost, after its own policies", provider,
 			[]policyenginev1.PolicyInstance{auth, guardrail}, withCost,
 			[]string{"api-key-auth@v1", "pii-masking@v1", budget, "llm-cost@v1"}},
-		{"a priced provider gets the budget policy just before its llm-cost, as the cost rate limit sits", models.KindLlmProvider,
+		{"a priced provider gets the budget policy just before its llm-cost, as the cost rate limit sits", provider,
 			[]policyenginev1.PolicyInstance{auth, costLimit, {Name: "llm-cost", Version: "v1"}, guardrail}, withCost,
 			[]string{"api-key-auth@v1", "llm-cost-based-ratelimit@v1", budget, "llm-cost@v1", "pii-masking@v1"}},
-		{"azure pricing counts as priced", models.KindLlmProvider,
+		{"azure pricing counts as priced", provider,
 			[]policyenginev1.PolicyInstance{auth, {Name: "azure-llm-cost", Version: "v1"}}, withCost,
 			[]string{"api-key-auth@v1", budget, "azure-llm-cost@v1"}},
-		{"a build without llm-cost gets the budget policy alone", models.KindLlmProvider,
+		{"a build without llm-cost gets the budget policy alone", provider,
 			[]policyenginev1.PolicyInstance{auth}, map[string]models.PolicyDefinition{},
 			[]string{"api-key-auth@v1", budget}},
-		{"an empty provider chain", models.KindLlmProvider,
+		{"an empty provider chain", provider,
 			nil, withCost, []string{budget, "llm-cost@v1"}},
-		{"proxies are left alone: their calls are counted on the provider route", models.KindLlmProxy,
+		{"a one-provider proxy gets the budget policy, then llm-cost: it is the first hop", oneProviderProxy,
+			[]policyenginev1.PolicyInstance{auth, guardrail}, withCost, []string{"api-key-auth@v1", "pii-masking@v1", budget, "llm-cost@v1"}},
+		{"a proxy with several providers is left alone: it is counted on the provider route", twoProviderProxy,
 			[]policyenginev1.PolicyInstance{auth, guardrail}, withCost, []string{"api-key-auth@v1", "pii-masking@v1"}},
-		{"REST APIs are left alone", models.KindRestApi,
+		{"REST APIs are left alone", restAPI,
 			[]policyenginev1.PolicyInstance{auth}, withCost, []string{"api-key-auth@v1"}},
 	}
 	for _, tc := range cases {
@@ -76,4 +95,28 @@ func TestWithBudgetEnforcement(t *testing.T) {
 			assert.Equal(t, tc.want, names(got))
 		})
 	}
+}
+
+func TestBudgetPlacementParameters(t *testing.T) {
+	annotations := map[string]string{
+		commonconstants.AnnotationProjectID: "api-platform",
+		constants.AnnotationAgentID:         "support-agent",
+	}
+	proxy := &models.StoredConfig{
+		Kind:                models.KindLlmProxy,
+		Configuration:       api.RestAPI{Metadata: api.Metadata{Annotations: &annotations}},
+		SourceConfiguration: api.LLMProxyConfiguration{Spec: api.LLMProxyConfigData{Provider: &api.LLMProxyProvider{Id: "openai"}}},
+	}
+	params, ok := budgetPlacement(proxy)
+	assert.True(t, ok)
+	assert.Equal(t, "proxy", params["role"])
+	assert.Equal(t, "support-agent", params["agent"])
+	assert.NotContains(t, params, "project", "the policy reads the project from the route's project ID")
+	assert.Len(t, params["admittedToken"], 64)
+
+	params, ok = budgetPlacement(&models.StoredConfig{Kind: models.KindLlmProvider})
+	assert.True(t, ok)
+	assert.Equal(t, "provider", params["role"])
+	assert.Equal(t, budgetAdmittedToken, params["admittedToken"], "both hops share the controller's token")
+	assert.NotContains(t, params, "project")
 }

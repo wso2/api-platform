@@ -274,6 +274,25 @@ func (aks *APIkeyStore) GetAPIKeyByID(apiId, keyID string) (*APIKey, error) {
 	return nil, ErrNotFound
 }
 
+// GetAPIKeyByHash retrieves an API key of an API by the hex SHA-256 of its plain-text
+// value (ComputeAPIKeyHash), such as the token ID an authentication policy records. It is
+// read-only: it neither validates nor changes the key.
+func (aks *APIkeyStore) GetAPIKeyByHash(apiId, hash string) (*APIKey, error) {
+	hash = strings.TrimSpace(hash)
+	if hash == "" {
+		return nil, ErrNotFound
+	}
+
+	aks.mu.RLock()
+	defer aks.mu.RUnlock()
+
+	apiKey, ok := aks.apiKeysByAPI[apiId][hash]
+	if !ok || apiKey == nil {
+		return nil, ErrNotFound
+	}
+	return cloneAPIKey(apiKey), nil
+}
+
 // RevokeAPIKey revokes a specific API key by plain text API key value
 // Supports both local and external keys using unified hash-based lookup
 func (aks *APIkeyStore) RevokeAPIKey(apiId, providedAPIKey string) error {

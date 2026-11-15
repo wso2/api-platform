@@ -124,3 +124,15 @@ func waitForDeploymentAndPush(store *storage.ConfigStore, pusher ArtifactPusher,
 		}
 	}
 }
+
+// ControlPlaneBudgetApplier stores the budgets the control plane sends this gateway. It is
+// implemented by the budget service.
+type ControlPlaneBudgetApplier interface {
+	// ApplyControlPlaneBudget stores a created or updated budget; one older than the
+	// stored copy is ignored.
+	ApplyControlPlaneBudget(budget ControlPlaneBudget, correlationID string, log *slog.Logger) error
+	// DeleteControlPlaneBudget deletes a control-plane budget; an unknown ID is ignored.
+	DeleteControlPlaneBudget(budgetID, correlationID string, log *slog.Logger) error
+	// ControlPlaneBudgetIDs lists the stored control-plane budgets.
+	ControlPlaneBudgetIDs() ([]string, error)
+}

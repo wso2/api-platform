@@ -94,7 +94,7 @@ func TestCreateBudget_Created(t *testing.T) {
 
 func TestCreateBudget_ValidationErrorsListFields(t *testing.T) {
 	server := newBudgetTestServer(t)
-	body := strings.Replace(testBudgetBody, `"type": "attribute"`, `"type": "agent"`, 1)
+	body := strings.Replace(testBudgetBody, `"type": "attribute"`, `"type": "team"`, 1)
 
 	rec := postBudget(server, body)
 

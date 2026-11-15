@@ -293,6 +293,11 @@ const (
 	BUDGET_SYSTEM_POLICY_NAME    = "wso2_apip_sys_budget"
 	BUDGET_SYSTEM_POLICY_VERSION = "v1"
 
+	// AnnotationAgentID names the agent of an agent's hidden LLM proxy, set by the control
+	// plane beside the proxy's project-id annotation. The budget system policy on that
+	// route matches agent budget consumers by it.
+	AnnotationAgentID = "gateway.api-platform.wso2.com/agent-id"
+
 	// LLM_COST_POLICY_NAME prices LLM responses for budgets. Every LLM provider
 	// route gets it unless the route already has it or AZURE_LLM_COST_POLICY_NAME.
 	LLM_COST_POLICY_NAME       = "llm-cost"

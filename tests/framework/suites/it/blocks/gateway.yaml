@@ -152,6 +152,7 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/core/budget_management.feature
+          - features/gateway/core/budget_agent.feature
       - name: llm-provider-management
         features:
           - features/ai-workspace-gateway/llm/llm_provider.feature
