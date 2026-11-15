@@ -2082,6 +2082,13 @@
     "defaultMessage": "{count} categories",
     "description": "Shown in the category dropdown when several categories are selected. {count} is a number."
   },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.custom": {
+    "defaultMessage": "Custom",
+    "description": "Chip on a catalog entry that is one of the organization’s custom policies, synced from a gateway. Adjective."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.customLoadError": {
+    "defaultMessage": "Unable to load the organization’s custom policies."
+  },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.emptyDescription": {
     "defaultMessage": "No policies match the filter."
   },

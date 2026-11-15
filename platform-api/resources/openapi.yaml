@@ -11227,6 +11227,10 @@ components:
           type: string
           description: Policy name
           example: "rate-limit-custom"
+        displayName:
+          type: string
+          description: Human-readable policy name, from the policy definition
+          example: "Custom Rate Limit"
         version:
           type: string
           description: Policy version
