@@ -1120,8 +1120,8 @@ func (ec *PolicyExecutionContext) needsResponseBody() bool {
 	// The serving attempt's chain counts too. It is not part of the route chain, so reading
 	// only the route chain let an API whose single body policy is a provider transformer tell
 	// Envoy to skip the body -- and the body unwind that FR-037h added then had nothing to run
-	// on. See ServingUpstreamChainRequiresResponseBody for why streaming is excluded.
-	if ec.ServingUpstreamChainRequiresResponseBody() {
+	// on. See servingUpstreamChainRequiresResponseBody for why streaming is excluded.
+	if ec.servingUpstreamChainRequiresResponseBody() {
 		return true
 	}
 	return ec.policyChain.RequiresResponseBodyOnFault && ec.responseHeaderCtx != nil &&
