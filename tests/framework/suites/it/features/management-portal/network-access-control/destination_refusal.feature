@@ -279,3 +279,65 @@ Feature: The control plane never connects to a destination its network access co
       | upstreamUrl | https://169.254.169.254/portal |
     Then the response status code should be 400
     And the JSON response field "code" should be "DESTINATION_NOT_ALLOWED"
+
+  @NETAC-PA-016 @type:negative
+  Scenario: A GraphQL API whose SDL URL is the cloud metadata address is refused before the SDL is fetched, while one with an inline SDL is created
+    Given I generate a unique resource name from "netac-gql" and store it as "refusedApi"
+    And I generate a unique resource name from "netac-gql-ok" and store it as "allowedApi"
+    And I generate a unique API context from "/netac-gql" and store it as "refusedContext"
+    And I generate a unique API context from "/netac-gql-ok" and store it as "allowedContext"
+    When I send a multipart "POST" request to the control plane at "/graphql-apis" with fields:
+      | metadata | {"id": "${CTX:refusedApi}", "displayName": "${CTX:refusedApi}", "context": "${CTX:refusedContext}", "version": "v1", "projectId": "${CTX:projectHandle}", "upstream": {"main": {"url": "http://testbench:3017/graphql"}}, "schemaSource": "url", "sdlUrl": "http://169.254.169.254/schema.graphql"} |
+    Then the response status code should be 400
+    And the JSON response field "code" should be "DESTINATION_NOT_ALLOWED"
+    And the JSON response field "errors[0].field" should be "sdlUrl"
+    And the response body should not contain "169.254"
+    When I send a "GET" request to the control plane at "/graphql-apis/${CTX:refusedApi}"
+    Then the response status code should be 404
+    When I send a multipart "POST" request to the control plane at "/graphql-apis" with fields:
+      | metadata | {"id": "${CTX:allowedApi}", "displayName": "${CTX:allowedApi}", "context": "${CTX:allowedContext}", "version": "v1", "projectId": "${CTX:projectHandle}", "upstream": {"main": {"url": "http://testbench:3017/graphql"}}, "schemaSource": "inline", "sdl": "type Query { hello: String }"} |
+    Then the response status code should be 201
+
+  @NETAC-PA-017 @type:negative
+  Scenario: An MCP proxy whose per-gateway endpoint override is the cloud metadata address is refused, while a permitted override is created
+    Given I generate a unique resource name from "netac-mcp" and store it as "refusedProxy"
+    And I generate a unique resource name from "netac-mcp-ok" and store it as "allowedProxy"
+    And I generate a unique API context from "/netac-mcp" and store it as "refusedContext"
+    And I generate a unique API context from "/netac-mcp-ok" and store it as "allowedContext"
+    And I store the registered gateway id as "gatewayId"
+    When I send a "POST" request to the control plane at "/mcp-proxies" with body:
+      """
+      {"id": "${CTX:refusedProxy}", "displayName": "${CTX:refusedProxy}", "version": "v1.0", "context": "${CTX:refusedContext}", "projectId": "${CTX:projectHandle}", "mcpSpecVersions": ["2025-06-18"], "upstream": {"main": {"url": "http://testbench:3009/mcp"}}, "associatedGateways": [{"id": "${CTX:gatewayId}", "configurations": {"endpointUrl": "http://169.254.169.254/mcp"}}]}
+      """
+    Then the response status code should be 400
+    And the JSON response field "code" should be "DESTINATION_NOT_ALLOWED"
+    And the JSON response field "errors[0].field" should be "associatedGateways[0].configurations.endpointUrl"
+    And the response body should not contain "169.254"
+    When I send a "GET" request to the control plane at "/mcp-proxies/${CTX:refusedProxy}"
+    Then the response status code should be 404
+    When I send a "POST" request to the control plane at "/mcp-proxies" with body:
+      """
+      {"id": "${CTX:allowedProxy}", "displayName": "${CTX:allowedProxy}", "version": "v1.0", "context": "${CTX:allowedContext}", "projectId": "${CTX:projectHandle}", "mcpSpecVersions": ["2025-06-18"], "upstream": {"main": {"url": "http://testbench:3009/mcp"}}, "associatedGateways": [{"id": "${CTX:gatewayId}", "configurations": {"endpointUrl": "http://testbench:3009/mcp"}}]}
+      """
+    Then the response status code should be 201
+
+  # Schema validation is a dry run, but a refused source is still an error the caller must
+  # correct, not the "could not derive a schema" outcome an unreachable source gets.
+  @NETAC-PA-020 @type:negative
+  Scenario: Validating a GraphQL schema from a refused SDL URL or introspection endpoint is refused, while a permitted SDL URL resolves
+    When I send a multipart "POST" request to the control plane at "/graphql-apis/validate-schema" with fields:
+      | metadata | {"schemaSource": "url", "sdlUrl": "http://169.254.169.254/schema.graphql"} |
+    Then the response status code should be 400
+    And the JSON response field "code" should be "DESTINATION_NOT_ALLOWED"
+    And the JSON response field "errors[0].field" should be "sdlUrl"
+    And the response body should not contain "169.254"
+    When I send a multipart "POST" request to the control plane at "/graphql-apis/validate-schema" with fields:
+      | metadata | {"schemaSource": "introspection", "upstream": {"main": {"url": "http://169.254.169.254/graphql"}}} |
+    Then the response status code should be 400
+    And the JSON response field "code" should be "DESTINATION_NOT_ALLOWED"
+    And the JSON response field "errors[0].field" should be "upstream.main.url"
+    When I send a multipart "POST" request to the control plane at "/graphql-apis/validate-schema" with fields:
+      | metadata | {"schemaSource": "url", "sdlUrl": "http://testbench:3024/specs/hello.graphql"} |
+    Then the response status code should be 200
+    And the JSON response field "resolved" should be "true"
+

@@ -91,3 +91,46 @@ Feature: In deny mode the control plane refuses denied hosts and, when asked to,
     Then the response status code should be 201
     When I send a "GET" request to the control plane at "/rest-apis/${CTX:api}"
     Then the response status code should be 200
+
+  # An upstream URL is checked when it is saved, from the URL alone: the hostname rule and an
+  # address written as a literal. A hostname is not resolved there, so testbench, which resolves
+  # into the container network, is accepted; the gateway dials it, not the control plane.
+  @NETAC-PA-018 @type:negative
+  Scenario: A REST API upstream on a denied host or a private address is refused, while a hostname is checked by name only
+    Given I generate a unique resource name from "netac-deny-rest" and store it as "deniedApi"
+    And I generate a unique resource name from "netac-deny-private" and store it as "privateApi"
+    And I generate a unique resource name from "netac-deny-named" and store it as "namedApi"
+    And I generate a unique API context from "/netac-deny-rest" and store it as "deniedContext"
+    And I generate a unique API context from "/netac-deny-private" and store it as "privateContext"
+    And I generate a unique API context from "/netac-deny-named" and store it as "namedContext"
+    When I create a REST API via the control plane from "resources/templates/rest-api-cp.yaml" with values:
+      | id          | ${CTX:deniedApi}      |
+      | displayName | Denied Host REST API  |
+      | projectId   | ${CTX:project}        |
+      | context     | ${CTX:deniedContext}  |
+      | upstreamUrl | https://203.0.113.7   |
+    Then the response status code should be 400
+    And the JSON response field "code" should be "DESTINATION_NOT_ALLOWED"
+    And the JSON response field "errors[0].field" should be "upstream.main.url"
+    And the response body should not contain "203.0.113.7"
+    When I create a REST API via the control plane from "resources/templates/rest-api-cp.yaml" with values:
+      | id          | ${CTX:privateApi}       |
+      | displayName | Private Address REST API |
+      | projectId   | ${CTX:project}          |
+      | context     | ${CTX:privateContext}   |
+      | upstreamUrl | http://10.20.30.40:8080 |
+    Then the response status code should be 400
+    And the JSON response field "code" should be "DESTINATION_NOT_ALLOWED"
+    And the JSON response field "errors[0].field" should be "upstream.main.url"
+    When I send a "GET" request to the control plane at "/rest-apis/${CTX:deniedApi}"
+    Then the response status code should be 404
+    When I send a "GET" request to the control plane at "/rest-apis/${CTX:privateApi}"
+    Then the response status code should be 404
+    When I create a REST API via the control plane from "resources/templates/rest-api-cp.yaml" with values:
+      | id          | ${CTX:namedApi}       |
+      | displayName | Named Host REST API   |
+      | projectId   | ${CTX:project}        |
+      | context     | ${CTX:namedContext}   |
+      | upstreamUrl | http://testbench:3000 |
+    Then the response status code should be 201
+
