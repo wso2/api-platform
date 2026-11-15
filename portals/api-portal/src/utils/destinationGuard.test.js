@@ -21,8 +21,8 @@
 /*
  * Regression coverage for the destination guard. Uses node:test (Node's built-in
  * runner) rather than adding a test dependency — these are pure functions with
- * no server, DB, or fixture needs, so they do not belong in it/rest-api, whose
- * jest suite boots a live portal via globalSetup.
+ * no server, DB, or fixture needs, so they do not belong in the integration
+ * suite (tests/framework), which boots a live portal.
  *
  * Run with: npm test
  */
