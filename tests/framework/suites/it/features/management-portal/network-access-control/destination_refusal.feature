@@ -131,6 +131,8 @@ Feature: The control plane never connects to a destination its network access co
       {"name": "${CTX:allowedPortal}", "handle": "${CTX:allowedPortal}", "url": "https://portal.example.com", "sharedKey": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
       """
     Then the response status code should be 201
+    When I send a "GET" request to the control plane at "/api-portals/${CTX:allowedPortal}"
+    Then the response status code should be 200
 
   @NETAC-PA-005 @type:negative
   Scenario: An LLM provider template whose spec URL is the cloud metadata address is refused on create and on update

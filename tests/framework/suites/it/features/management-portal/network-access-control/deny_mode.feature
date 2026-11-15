@@ -89,3 +89,5 @@ Feature: In deny mode the control plane refuses denied hosts and, when asked to,
       | upstream    | {"main": {"url": "http://testbench:3000"}} |
       | file        | @spec:petstore-v1.yaml                     |
     Then the response status code should be 201
+    When I send a "GET" request to the control plane at "/rest-apis/${CTX:api}"
+    Then the response status code should be 200
