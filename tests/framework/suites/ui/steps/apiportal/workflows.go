@@ -343,7 +343,9 @@ func (u *Steps) workflowRowStatus(page playwright.Page, name, status string) err
 	return u.expect.Locator(workflowRow(page, name).Locator(".cfg-status-badge")).ToHaveText(status)
 }
 
-// galleryCount checks how many gallery cards carry a workflow's name.
+// galleryCount checks how many gallery cards carry a workflow's name. Before an absence check it
+// requires the journey's published Arazzo fixture on the same page, so an empty or broken gallery
+// cannot pass for one that leaves the workflow out.
 func (u *Steps) galleryCount(ctx context.Context, name string, want int) error {
 	if err := u.openPortalPage(ctx, "/api-workflows"); err != nil {
 		return err
@@ -351,6 +353,19 @@ func (u *Steps) galleryCount(ctx context.Context, name string, want int) error {
 	page, err := u.page(ctx)
 	if err != nil {
 		return err
+	}
+	if want == 0 {
+		workflows, err := galleryWorkflows(ctx)
+		if err != nil {
+			return err
+		}
+		fixture := workflows["arazzo"].Name
+		if fixture == "" {
+			return fmt.Errorf("the journey has no published Arazzo fixture to check the gallery against")
+		}
+		if err := u.expect.Locator(galleryCard(page, fixture)).ToHaveCount(1); err != nil {
+			return fmt.Errorf("the gallery does not list the published Arazzo fixture: %w", err)
+		}
 	}
 	return u.expect.Locator(galleryCard(page, name)).ToHaveCount(want)
 }

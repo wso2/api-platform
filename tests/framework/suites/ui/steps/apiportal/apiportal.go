@@ -1205,11 +1205,13 @@ func (u *Steps) seedApplicationFixture(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	nameID, err := unique.Unique(ctx, "api-portal-application")
+	// The page derives the application's handle from its name and cuts it to 40 characters, so the
+	// name is kept short enough for the handle to keep the whole unique suffix.
+	nameID, err := unique.Unique(ctx, "app")
 	if err != nil {
 		return err
 	}
-	name := "IT Detail App " + nameID
+	name := "IT App " + nameID
 	if err := u.openAPIPortalPath(ctx, "/applications"); err != nil {
 		return err
 	}
@@ -1225,31 +1227,26 @@ func (u *Steps) seedApplicationFixture(ctx context.Context) error {
 	if err := page.Locator("#app-desc-input").Fill("Created by the API Portal UI suite."); err != nil {
 		return fmt.Errorf("entering application description: %w", err)
 	}
-	if err := page.Locator("#app-create-confirm").Click(); err != nil {
-		return fmt.Errorf("creating application: %w", err)
-	}
-	card := page.Locator(".app-card").Filter(playwright.LocatorFilterOptions{
-		HasText: regexp.MustCompile(regexp.QuoteMeta(name)),
-	})
-	if err := u.expect.Locator(card).ToBeVisible(); err != nil {
-		return fmt.Errorf("waiting for created application: %w", err)
-	}
-	id, err := card.GetAttribute("data-id")
-	if err != nil {
-		return fmt.Errorf("reading created application: %w", err)
-	}
-	if id == "" {
-		return fmt.Errorf("created application has no identifier")
-	}
-	applicationID := id
-	// Applications are owned by the developer that creates them, who alone can delete them.
+	// Applications are owned by the developer that creates them, who alone can delete them. The
+	// owner is resolved before the create, so a created application always has its cleanup owner.
 	owner, _, err := u.credentials(ctx, "developer")
 	if err != nil {
 		return err
 	}
+	applicationID, err := createdAs(page, http.MethodPost, portalPath("/applications"), "id",
+		func() error { return page.Locator("#app-create-confirm").Click() })
+	if err != nil {
+		return fmt.Errorf("creating application: %w", err)
+	}
 	if err := cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalApplication, ID: applicationID, Actor: owner}); err != nil {
 		_ = u.deletePortalArtifact(ctx, "applications", applicationID)
 		return fmt.Errorf("registering API Portal application for cleanup: %w", err)
+	}
+	card := page.Locator(".app-card").Filter(playwright.LocatorFilterOptions{
+		HasText: regexp.MustCompile(regexp.QuoteMeta(name)),
+	})
+	if err := u.expect.Locator(card).ToHaveAttribute("data-id", applicationID); err != nil {
+		return fmt.Errorf("waiting for created application: %w", err)
 	}
 	if err := tcontext.Set(ctx, keyAPIPortalApplication, applicationID); err != nil {
 		_ = u.deletePortalArtifact(ctx, "applications", applicationID)

@@ -25,6 +25,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"maps"
 	"net/http"
 	"net/url"
@@ -83,10 +86,9 @@ const (
 	wizardSpecDesc       = "#wz-spec-desc"
 	wizardStepLabels     = "#cfg-apis-wizard .cfg-step-label"
 
-	wizardPNGHex  = "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c63606060f80f00010401005fe5c34b0000000049454e44ae426082"
-	wizardJPEGHex = "ffd8ffe000104a46494600010100000100010000ffd9"
-	wizardSpec    = `{"openapi":"3.0.3","info":{"title":"Wizard","version":"1.0.0"},"paths":{}}`
-	wizardTools   = `[{"type":"TOOL","name":"ping","description":"Ping.","inputSchema":{"type":"object","properties":{}}},` +
+	wizardPNGHex = "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c63606060f80f00010401005fe5c34b0000000049454e44ae426082"
+	wizardSpec   = `{"openapi":"3.0.3","info":{"title":"Wizard","version":"1.0.0"},"paths":{}}`
+	wizardTools  = `[{"type":"TOOL","name":"ping","description":"Ping.","inputSchema":{"type":"object","properties":{}}},` +
 		`{"type":"RESOURCE","name":"status","description":"Server status.","uri":"status://now","mimeType":"application/json"},` +
 		`{"type":"PROMPT","name":"summarize","description":"Summarize a text.","arguments":[{"name":"text","required":true}]}]`
 
@@ -163,9 +165,22 @@ func wizardPNG() playwright.InputFile {
 	return wizardFile("logo.png", "image/png", wizardImage(wizardPNGHex))
 }
 
-// wizardJPEG builds a JPEG thumbnail upload.
+// wizardJPEG builds a JPEG thumbnail upload: a complete, decodable 1×1 image, so a browser that
+// renders the thumbnail can load it.
 func wizardJPEG() playwright.InputFile {
-	return wizardFile("photo.jpg", "image/jpeg", wizardImage(wizardJPEGHex))
+	return wizardFile("photo.jpg", "image/jpeg", wizardJPEGImage())
+}
+
+// wizardJPEGImage encodes a 1×1 JPEG; encoding an in-memory image cannot fail, so an error is a
+// programming error and panics.
+func wizardJPEGImage() []byte {
+	pixel := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	pixel.Set(0, 0, color.RGBA{R: 0x12, G: 0x34, B: 0x56, A: 0xff})
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, pixel, nil); err != nil {
+		panic(fmt.Sprintf("wizard JPEG fixture: %v", err))
+	}
+	return buf.Bytes()
 }
 
 // wizardZip builds a content package from entry names and contents, written in name order so
@@ -347,7 +362,9 @@ func wizardSaveFromDetails(page playwright.Page) func() error {
 	}
 }
 
-// assertWizardAssets reads each expected asset through the signed-in session.
+// assertWizardAssets reads each expected asset through the signed-in session and asserts it at
+// once. Like portalCall, it is the browser-session exception to the funnel rule: it publishes
+// nothing for later steps.
 func (u *Steps) assertWizardAssets(page playwright.Page, collection, id string, expected ...wizardAsset) error {
 	base, err := u.apiPortalURL()
 	if err != nil {
@@ -377,7 +394,8 @@ func (u *Steps) assertWizardAssets(page playwright.Page, collection, id string, 
 	return nil
 }
 
-// wizardStoredAPI reads the API's stored metadata through the signed-in session.
+// wizardStoredAPI reads the API's stored metadata through the signed-in session for the calling
+// step to assert. Like portalCall, it is the browser-session exception to the funnel rule.
 func (u *Steps) wizardStoredAPI(page playwright.Page, id string) (playwright.APIResponse, error) {
 	base, err := u.apiPortalURL()
 	if err != nil {

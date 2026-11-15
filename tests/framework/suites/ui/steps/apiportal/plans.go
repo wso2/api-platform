@@ -21,13 +21,16 @@ package apiportal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 
 	"github.com/cucumber/godog"
 	playwright "github.com/mxschmitt/playwright-go"
 
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 	"github.com/wso2/api-platform/tests/framework/core/util/unique"
 )
@@ -91,13 +94,42 @@ func (u *Steps) addFreePlan(ctx context.Context) error {
 	if err := limits.Nth(0).Locator(".cfg-limit-count").Fill(freePlanMinuteLimit); err != nil {
 		return err
 	}
-	if err := u.saveAndReload(page, page.Locator("#cfg-plan-modal-save"), "Plan created."); err != nil {
+	// The plan is registered as soon as the portal answers the create, inside the wait for the
+	// reload, so it is cleaned up even if the toast or the reload then fails.
+	var planID string
+	if _, err := page.ExpectNavigation(func() error {
+		created, err := createdBy(page, http.MethodPost, portalPath("/subscription-plans"), "id",
+			func() error { return page.Locator("#cfg-plan-modal-save").Click() })
+		if err != nil {
+			return err
+		}
+		planID = created
+		if err := u.registerCreatedPlan(ctx, page, planID, name); err != nil {
+			return err
+		}
+		return u.expectToast(page, "Plan created.")
+	}, playwright.PageExpectNavigationOptions{WaitUntil: playwright.WaitUntilStateLoad}); err != nil {
+		return fmt.Errorf("saving should say %q and reload the page: %w", "Plan created.", err)
+	}
+	return u.expect.Locator(planRow(page, name)).ToHaveAttribute("id", "cfg-plan-row-"+planID)
+}
+
+// registerCreatedPlan registers a plan the administrator created for cleanup and stores its id and
+// name for later steps. If registration fails, it deletes the plan through the administrator's
+// session and returns the registration error, together with any deletion error.
+func (u *Steps) registerCreatedPlan(ctx context.Context, page playwright.Page, planID, name string) error {
+	if err := cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalSubscriptionPlan, ID: planID, Actor: u.topo.Admin.Username}); err != nil {
+		err = fmt.Errorf("registering plan %q for cleanup: %w", planID, err)
+		status, _, deleteErr := u.portalCall(page, http.MethodDelete, "/subscription-plans/"+url.PathEscape(planID), nil)
+		if deleteErr == nil && status >= http.StatusBadRequest {
+			deleteErr = fmt.Errorf("deleting plan %q: status %d", planID, status)
+		}
+		return errors.Join(err, deleteErr)
+	}
+	if err := tcontext.Set(ctx, keyBillingPlan, planID); err != nil {
 		return err
 	}
-	if err := u.registerPlan(ctx, page, name); err != nil {
-		return err
-	}
-	return u.expect.Locator(planRow(page, name)).ToBeVisible()
+	return tcontext.Set(ctx, keyBillingPlanName, name)
 }
 
 // editFreePlanLimit raises the plan's per-minute limit and checks the stored plan.

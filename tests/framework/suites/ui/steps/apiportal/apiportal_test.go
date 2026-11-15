@@ -21,8 +21,12 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"errors"
+	"image/jpeg"
 	"strings"
 	"testing"
+
+	playwright "github.com/mxschmitt/playwright-go"
 
 	catalogapiportal "github.com/wso2/api-platform/tests/framework/core/catalog/apiportal"
 	"github.com/wso2/api-platform/tests/framework/core/components"
@@ -244,5 +248,101 @@ func TestRegexpHelpersMatchWholeValues(t *testing.T) {
 	}
 	if !regexpEscapedSuffix("/a.b").MatchString("https://host/x/a.b") || regexpEscapedSuffix("/a.b").MatchString("https://host/x/aXb") {
 		t.Fatal("regexpEscapedSuffix() does not escape its suffix")
+	}
+}
+
+// fetchPage is a page whose Evaluate returns a canned fetch result and records its argument. Every
+// other Page method is the embedded nil interface and panics if called.
+type fetchPage struct {
+	playwright.Page
+	result any
+	err    error
+	arg    any
+}
+
+// Evaluate records the argument portalCall passes to its fetch script and returns the canned result.
+func (p *fetchPage) Evaluate(_ string, arg ...any) (any, error) {
+	if len(arg) > 0 {
+		p.arg = arg[0]
+	}
+	return p.result, p.err
+}
+
+// TestPortalCallReturnsThePageResponse covers the browser-session exception to the funnel rule:
+// portalCall hands the page the method, path and JSON payload, and returns the status and body the
+// page's fetch produced, whether the status arrives as a float or an int.
+func TestPortalCallReturnsThePageResponse(t *testing.T) {
+	steps := &Steps{}
+	for _, tc := range []struct {
+		status any
+		want   int
+	}{{float64(201), 201}, {404, 404}} {
+		page := &fetchPage{result: map[string]any{"status": tc.status, "body": `{"id":"x"}`}}
+		got, body, err := steps.portalCall(page, "POST", "/subscriptions", map[string]string{"artifactId": "api"})
+		if err != nil {
+			t.Fatalf("portalCall() with status %v returned an error: %v", tc.status, err)
+		}
+		if got != tc.want || body != `{"id":"x"}` {
+			t.Fatalf("portalCall() = %d %q, want %d and the page's body", got, body, tc.want)
+		}
+		arg, _ := page.arg.(map[string]any)
+		if arg["method"] != "POST" || arg["path"] != "/subscriptions" || arg["payload"] != `{"artifactId":"api"}` {
+			t.Fatalf("portalCall() passed %v to the page", page.arg)
+		}
+	}
+	page := &fetchPage{err: errors.New("page closed")}
+	if _, _, err := steps.portalCall(page, "GET", "/apis", nil); err == nil || !strings.Contains(err.Error(), "page closed") {
+		t.Fatalf("portalCall() error = %v, want the page's error", err)
+	}
+	if arg, _ := page.arg.(map[string]any); arg["payload"] != "" {
+		t.Fatalf("portalCall() without a body sent payload %v", arg["payload"])
+	}
+}
+
+// TestCreatedIDNeedsTheNamedField checks that a create response yields its id only when the named
+// field holds a non-empty string.
+func TestCreatedIDNeedsTheNamedField(t *testing.T) {
+	if id, err := createdID([]byte(`{"id":"plan-1","other":"x"}`), "id"); err != nil || id != "plan-1" {
+		t.Fatalf("createdID() = %q, %v, want plan-1", id, err)
+	}
+	for _, body := range []string{`{"subscriptionId":"s"}`, `{"id":""}`, `{"id":7}`, `{"id":null}`, `not json`, `null`} {
+		if id, err := createdID([]byte(body), "id"); err == nil {
+			t.Fatalf("createdID(%s) = %q, want an error", body, id)
+		}
+	}
+}
+
+// TestPortalPathMatchesOnlyTheCollection checks that a create matcher matches the collection, with
+// or without a query, and not a member of it.
+func TestPortalPathMatchesOnlyTheCollection(t *testing.T) {
+	path := portalPath("/subscriptions")
+	for _, target := range []string{"https://h/api-portal/api/v0.9/subscriptions", "https://h/api-portal/api/v0.9/subscriptions?x=1"} {
+		if !path.MatchString(target) {
+			t.Fatalf("portalPath(/subscriptions) does not match %s", target)
+		}
+	}
+	for _, target := range []string{"https://h/api-portal/api/v0.9/subscriptions/s1", "https://h/api-portal/api/v0x9/subscriptions"} {
+		if path.MatchString(target) {
+			t.Fatalf("portalPath(/subscriptions) matches %s", target)
+		}
+	}
+}
+
+// TestWizardJPEGIsADecodableImage checks that the JPEG thumbnail fixture is a complete image the
+// portal's magic-byte check accepts.
+func TestWizardJPEGIsADecodableImage(t *testing.T) {
+	file := wizardJPEG()
+	if file.Name != "photo.jpg" || file.MimeType != "image/jpeg" {
+		t.Fatalf("wizardJPEG() = %s %s", file.Name, file.MimeType)
+	}
+	if !bytes.HasPrefix(file.Buffer, []byte{0xFF, 0xD8, 0xFF}) {
+		t.Fatalf("wizardJPEG() does not start with the JPEG magic bytes: % x", file.Buffer[:3])
+	}
+	decoded, err := jpeg.Decode(bytes.NewReader(file.Buffer))
+	if err != nil {
+		t.Fatalf("wizardJPEG() is not a decodable JPEG: %v", err)
+	}
+	if bounds := decoded.Bounds(); bounds.Dx() != 1 || bounds.Dy() != 1 {
+		t.Fatalf("wizardJPEG() is %dx%d, want 1x1", bounds.Dx(), bounds.Dy())
 	}
 }

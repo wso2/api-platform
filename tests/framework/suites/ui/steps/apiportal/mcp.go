@@ -168,6 +168,15 @@ func (u *Steps) deleteWizardMCP(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// The positive control for the 404 below: the same request, as the same user, finds the server
+	// before the delete.
+	status, _, err := u.portalCall(page, http.MethodGet, "/mcp-servers/"+id, nil)
+	if err != nil {
+		return err
+	}
+	if status != http.StatusOK {
+		return fmt.Errorf("GET /mcp-servers/%s = %d before the delete, want 200", id, status)
+	}
 	row := wizardRow(page, id)
 	if err := u.revealOnPage(page, row); err != nil {
 		return err
@@ -187,7 +196,7 @@ func (u *Steps) deleteWizardMCP(ctx context.Context) error {
 	if err := u.expect.Locator(wizardRow(page, id)).ToHaveCount(0); err != nil {
 		return err
 	}
-	status, _, err := u.portalCall(page, http.MethodGet, "/mcp-servers/"+id, nil)
+	status, _, err = u.portalCall(page, http.MethodGet, "/mcp-servers/"+id, nil)
 	if err != nil {
 		return err
 	}

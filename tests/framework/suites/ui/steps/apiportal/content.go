@@ -531,7 +531,8 @@ func (u *Steps) applyTheme(ctx context.Context) error {
 	)
 }
 
-// bodyColour opens a view's home page and returns the computed body colour.
+// bodyColour opens a view's home page and returns the computed body colour. The page must answer
+// 200: a 404 page has a colour of its own, which must not count as the view's look.
 func (u *Steps) bodyColour(ctx context.Context, view string) (string, error) {
 	base, err := u.apiPortalURL()
 	if err != nil {
@@ -539,6 +540,13 @@ func (u *Steps) bodyColour(ctx context.Context, view string) (string, error) {
 	}
 	if err := u.navigate(ctx, base+"/api-portal/default/views/"+view); err != nil {
 		return "", err
+	}
+	status, err := navigationStatus(ctx)
+	if err != nil {
+		return "", err
+	}
+	if status != http.StatusOK {
+		return "", fmt.Errorf("view %q answered %d, want 200", view, status)
 	}
 	page, err := u.page(ctx)
 	if err != nil {

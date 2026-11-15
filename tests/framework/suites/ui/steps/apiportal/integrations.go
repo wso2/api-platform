@@ -21,8 +21,10 @@ package apiportal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 
 	"github.com/cucumber/godog"
@@ -380,28 +382,46 @@ func (u *Steps) addWebhook(ctx context.Context) error {
 	); err != nil {
 		return err
 	}
-	if _, err := page.ExpectNavigation(func() error { return page.Locator("#wh-form-save").Click() },
-		playwright.PageExpectNavigationOptions{WaitUntil: playwright.WaitUntilStateDomcontentloaded}); err != nil {
+	// The webhook is registered as soon as the portal answers the create, inside the wait for the
+	// reload, so it is cleaned up even if the reload or the row checks below fail.
+	var id string
+	if _, err := page.ExpectNavigation(func() error {
+		created, err := createdBy(page, http.MethodPost, portalPath("/webhook-subscribers"), "id",
+			func() error { return page.Locator("#wh-form-save").Click() })
+		if err != nil {
+			return err
+		}
+		id = created
+		return u.registerWebhook(ctx, page, id)
+	}, playwright.PageExpectNavigationOptions{WaitUntil: playwright.WaitUntilStateDomcontentloaded}); err != nil {
 		return fmt.Errorf("saving the webhook: %w", err)
 	}
 	if _, err := u.openSettingsPanel(ctx, "cfg-webhooks"); err != nil {
 		return err
 	}
-	row := webhookRow(page, name)
-	if err := u.expect.Locator(row).ToHaveCount(1); err != nil {
-		return err
-	}
-	id, err := row.GetAttribute("data-id")
-	if err != nil || id == "" {
-		return fmt.Errorf("reading the webhook id: %v", err)
-	}
-	if err := cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalWebhook, ID: id, Actor: u.topo.Admin.Username}); err != nil {
+	if err := u.expect.Locator(webhookRow(page, name)).ToHaveAttribute("data-id", id); err != nil {
 		return err
 	}
 	if err := tcontext.Set(ctx, keyWebhook, id); err != nil {
 		return err
 	}
 	return tcontext.Set(ctx, keyWebhookName, name)
+}
+
+// registerWebhook registers a webhook subscriber for deletion at cleanup. If it cannot, it deletes
+// the webhook through the administrator's session and returns the registration error, together
+// with any deletion error.
+func (u *Steps) registerWebhook(ctx context.Context, page playwright.Page, id string) error {
+	err := cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalWebhook, ID: id, Actor: u.topo.Admin.Username})
+	if err == nil {
+		return nil
+	}
+	err = fmt.Errorf("registering webhook %q for cleanup: %w", id, err)
+	status, _, deleteErr := u.portalCall(page, http.MethodDelete, "/webhook-subscribers/"+url.PathEscape(id), nil)
+	if deleteErr == nil && status >= http.StatusBadRequest {
+		deleteErr = fmt.Errorf("deleting webhook %q: status %d", id, status)
+	}
+	return errors.Join(err, deleteErr)
 }
 
 // webhookListed checks the webhook's row and its stored timeout.
@@ -441,6 +461,7 @@ func (u *Steps) webhookState(ctx context.Context, enabled bool) error {
 	var stored struct {
 		TimeoutMs int  `json:"timeoutMs"`
 		Enabled   bool `json:"enabled"`
+		HasSecret bool `json:"hasSecret"`
 	}
 	if err := json.Unmarshal([]byte(body), &stored); err != nil {
 		return err
@@ -448,8 +469,13 @@ func (u *Steps) webhookState(ctx context.Context, enabled bool) error {
 	if stored.Enabled != enabled {
 		return fmt.Errorf("webhook %q is stored with enabled=%t, want %t", id, stored.Enabled, enabled)
 	}
-	if stored.TimeoutMs != 0 && stored.TimeoutMs != 4000 {
+	if stored.TimeoutMs != 4000 {
 		return fmt.Errorf("webhook %q is stored with timeout %d, want 4000", id, stored.TimeoutMs)
+	}
+	// The API never returns the secret, only whether one is stored. That the kept secret is the
+	// original one is proven by a signed delivery in the IT suite (webhook_subscribers.feature).
+	if !stored.HasSecret {
+		return fmt.Errorf("webhook %q is stored without a secret", id)
 	}
 	return nil
 }

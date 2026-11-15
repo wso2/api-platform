@@ -21,8 +21,10 @@ package apiportal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -165,19 +167,48 @@ func (u *Steps) generateKeyByAPI(ctx context.Context, page playwright.Page, apiI
 	if err := json.Unmarshal([]byte(body), &created); err != nil || created.ID == "" {
 		created.ID = name
 	}
-	if err := u.registerAPIKey(ctx, apiID, created.ID); err != nil {
+	if err := u.registerAPIKey(ctx, page, apiID, created.ID); err != nil {
 		return "", err
 	}
 	return created.ID, nil
 }
 
-// registerAPIKey registers a developer's API key for revocation at cleanup.
-func (u *Steps) registerAPIKey(ctx context.Context, apiID, keyID string) error {
+// registerAPIKey registers a developer's API key for revocation at cleanup. If it cannot, it
+// revokes the key through the developer's session and returns the registration error, together
+// with any revocation error.
+func (u *Steps) registerAPIKey(ctx context.Context, page playwright.Page, apiID, keyID string) error {
 	username, _, err := u.credentials(ctx, "developer")
-	if err != nil {
-		return err
+	if err == nil {
+		err = cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalAPIKey, ID: apiID + "/" + keyID, Actor: username})
 	}
-	return cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalAPIKey, ID: apiID + "/" + keyID, Actor: username})
+	if err == nil {
+		return nil
+	}
+	err = fmt.Errorf("registering API key %q for cleanup: %w", keyID, err)
+	status, _, revokeErr := u.portalCall(page, http.MethodPost, "/apis/"+url.PathEscape(apiID)+"/api-keys/revoke", map[string]string{"keyId": keyID})
+	if revokeErr == nil && status >= http.StatusBadRequest {
+		revokeErr = fmt.Errorf("revoking API key %q: status %d", keyID, status)
+	}
+	return errors.Join(err, revokeErr)
+}
+
+// registerSubscription registers a developer's subscription for deletion at cleanup. If it
+// cannot, it deletes the subscription through the developer's session and returns the
+// registration error, together with any deletion error.
+func (u *Steps) registerSubscription(ctx context.Context, page playwright.Page, subscriptionID string) error {
+	username, _, err := u.credentials(ctx, "developer")
+	if err == nil {
+		err = cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalSubscription, ID: subscriptionID, Actor: username})
+	}
+	if err == nil {
+		return nil
+	}
+	err = fmt.Errorf("registering subscription %q for cleanup: %w", subscriptionID, err)
+	status, _, deleteErr := u.portalCall(page, http.MethodDelete, "/subscriptions/"+url.PathEscape(subscriptionID)+"?immediate=true", nil)
+	if deleteErr == nil && status >= http.StatusBadRequest {
+		deleteErr = fmt.Errorf("deleting subscription %q: status %d", subscriptionID, status)
+	}
+	return errors.Join(err, deleteErr)
 }
 
 // seedDeveloperAPIKey generates an API key for the developer's API.
@@ -333,8 +364,13 @@ func (u *Steps) subscribeOnAPIPage(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := page.Locator("#subscribe-btn-Bronze").Click(); err != nil {
+	subscription, err := createdBy(page, http.MethodPost, portalPath("/subscriptions"), "subscriptionId",
+		func() error { return page.Locator("#subscribe-btn-Bronze").Click() })
+	if err != nil {
 		return fmt.Errorf("subscribing to Bronze: %w", err)
+	}
+	if err := u.registerSubscription(ctx, page, subscription); err != nil {
+		return err
 	}
 	modal := page.Locator("#apiTokenModal")
 	if err := u.expect.Locator(modal).ToBeVisible(); err != nil {
@@ -350,19 +386,15 @@ func (u *Steps) subscribeOnAPIPage(ctx context.Context) error {
 	if strings.TrimSpace(token) == "" {
 		return fmt.Errorf("the token dialog shows no token")
 	}
-	subscription, stored, err := u.currentSubscription(page, api.ID)
+	listed, stored, err := u.currentSubscription(page, api.ID)
 	if err != nil {
 		return err
+	}
+	if listed != subscription {
+		return fmt.Errorf("the developer's subscription to %q is %q, want the created %q", api.ID, listed, subscription)
 	}
 	if stored != strings.TrimSpace(token) {
 		return fmt.Errorf("the token dialog does not show the subscription's token")
-	}
-	username, _, err := u.credentials(ctx, "developer")
-	if err != nil {
-		return err
-	}
-	if err := cleanup.Register(ctx, cleanup.Resource{Kind: KindAPIPortalSubscription, ID: subscription, Actor: username}); err != nil {
-		return err
 	}
 	if err := tcontext.Set(ctx, keySubscription, subscription); err != nil {
 		return err
@@ -665,7 +697,18 @@ func (u *Steps) generateAPIKey(ctx context.Context) error {
 		},
 		wizardFill(page, "#api-key-name", name),
 		wizardFill(page, "#api-key-expires", "2099-12-31T23:59"),
-		wizardClick(page, "#btn-submit-generate-api-key"),
+	); err != nil {
+		return err
+	}
+	keyID, err := createdBy(page, http.MethodPost, portalPath("/apis/"+regexp.QuoteMeta(api.ID)+"/api-keys/generate"), "id",
+		func() error { return page.Locator("#btn-submit-generate-api-key").Click() })
+	if err != nil {
+		return fmt.Errorf("generating API key %q: %w", name, err)
+	}
+	if err := u.registerAPIKey(ctx, page, api.ID, keyID); err != nil {
+		return err
+	}
+	if err := wizardAll(
 		u.wizardVisible(page, "#showApiKeySecretModal"),
 		u.wizardHasText(page, "#ak-secret-key-name", name),
 	); err != nil {
@@ -678,12 +721,12 @@ func (u *Steps) generateAPIKey(ctx context.Context) error {
 	if strings.TrimSpace(secret) == "" {
 		return fmt.Errorf("the secret dialog shows no key")
 	}
-	keyID, err := u.apiKeyID(page, api.ID, name)
+	listed, err := u.apiKeyID(page, api.ID, name)
 	if err != nil {
 		return err
 	}
-	if err := u.registerAPIKey(ctx, api.ID, keyID); err != nil {
-		return err
+	if listed != keyID {
+		return fmt.Errorf("API key %q is listed as %q, want the generated %q", name, listed, keyID)
 	}
 	for key, value := range map[string]string{keyAPIKeyName: name, keyAPIKeyID: keyID, keyAPIKeySecret: strings.TrimSpace(secret)} {
 		if err := tcontext.Set(ctx, key, value); err != nil {
