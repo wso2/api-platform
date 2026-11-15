@@ -6332,7 +6332,7 @@ export interface components {
              * @description Timestamp when the deployment artifact was created
              */
             createdAt: string;
-            /** @description Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. SECRET_RESOLUTION_FAILED means a gateway that needs secrets inlined fetched this deployment and a referenced secret could not be resolved (missing, deprecated or not decryptable); the gateway does not hold the deployment, restore the secret and redeploy. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH. */
+            /** @description Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. SECRET_RESOLUTION_FAILED means a gateway that needs secrets inlined fetched this deployment and a referenced secret could not be resolved (missing, deprecated or not decryptable); the gateway does not hold the deployment, restore the secret and redeploy. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH. UPSTREAM_URL_NOT_ALLOWED means the gateway's network access control does not permit an upstream URL or a policy URL in the deployment; change the URL, or the gateway's access control, and redeploy. */
             statusReason?: string | null;
             /**
              * Format: date-time

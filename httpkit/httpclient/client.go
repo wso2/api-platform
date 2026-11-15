@@ -10,8 +10,10 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/wso2/api-platform/httpkit/netguard"
+	"golang.org/x/net/idna"
 )
 
 // Config describes how to build an outbound *http.Client. Use DefaultConfig
@@ -474,10 +476,38 @@ func (p *proxyRouting) mark(req *http.Request) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
-	if proxyURL == nil {
-		return req, nil
+	// Always overwrite the marker: a request built from an earlier one (Response.Request
+	// reuses its context) may carry a proxy address it is not routed through. An empty
+	// marker never equals a dialed address, so an unproxied request gets the full policy.
+	proxyAddr := ""
+	if proxyURL != nil {
+		proxyAddr = transportProxyAddr(proxyURL)
 	}
-	return req.WithContext(context.WithValue(req.Context(), proxyRouteKey{}, canonicalAddr(proxyURL))), nil
+	return req.WithContext(context.WithValue(req.Context(), proxyRouteKey{}, proxyAddr)), nil
+}
+
+// transportProxyPorts are the default ports net/http's Transport dials a proxy on, by
+// proxy URL scheme.
+var transportProxyPorts = map[string]string{"http": "80", "https": "443", "socks5": "1080", "socks5h": "1080"}
+
+// transportProxyAddr returns the host:port net/http's Transport dials for proxyURL: the
+// URL's port or its scheme's default (including 1080 for SOCKS5), and an
+// internationalized hostname in its ASCII (punycode) form. proxyHopDialer compares it
+// with the address being dialed, so it must be computed the way the Transport does.
+func transportProxyAddr(proxyURL *url.URL) string {
+	host := proxyURL.Hostname()
+	// Like the Transport, convert only a non-ASCII name: idna's lookup profile would
+	// also lowercase an ASCII one, which the Transport leaves as written.
+	if !isASCII(host) {
+		if ascii, err := idna.Lookup.ToASCII(host); err == nil {
+			host = ascii
+		}
+	}
+	port := proxyURL.Port()
+	if port == "" {
+		port = transportProxyPorts[strings.ToLower(proxyURL.Scheme)]
+	}
+	return net.JoinHostPort(host, port)
 }
 
 // proxyHopDialer dials addr under proxyDial when it is the proxy recorded for
@@ -489,4 +519,13 @@ func proxyHopDialer(proxyDial, originDial func(context.Context, string, string) 
 		}
 		return originDial(ctx, network, addr)
 	}
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
 }
