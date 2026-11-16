@@ -39,6 +39,14 @@ func testDefinitions() map[string]models.PolicyDefinition {
 			"endpoint": map[string]any{"type": "string", "format": "uri"},
 			"header":   map[string]any{"type": "string"},
 			"proxyURL": map[string]any{"type": "string", "x-wso2-url": true, "default": ""},
+			// A URL declared through a composed schema.
+			"callbackUrl": map[string]any{"allOf": []any{map[string]any{"type": "string"}, map[string]any{"format": "uri"}}},
+			"mirrorUrl":   map[string]any{"anyOf": []any{map[string]any{"type": "null"}, map[string]any{"type": "string", "x-wso2-url": true}}},
+			"label":       map[string]any{"oneOf": []any{map[string]any{"type": "string", "maxLength": 8}, "not-a-schema"}},
+			// Object values checked through additionalProperties, and an array
+			// whose schema declares no items (its values cannot be typed).
+			"mirrors": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string", "format": "uri"}},
+			"tags":    map[string]any{"type": "array"},
 			"keyManagers": map[string]any{
 				"type": "array",
 				"items": map[string]any{
@@ -58,6 +66,7 @@ func testDefinitions() map[string]models.PolicyDefinition {
 	}
 	return map[string]models.PolicyDefinition{
 		"interceptor|v1.0.0": {Name: "interceptor", Version: "v1.0.0", Parameters: &params, SystemParameters: &system},
+		"noparams|v1.0.0":    {Name: "noparams", Version: "v1.0.0"},
 	}
 }
 
@@ -253,7 +262,7 @@ func TestCheck_SystemParametersAreNeverRead(t *testing.T) {
 
 func TestRenderSpecHookRefusesAndLeavesConfigurationUnchanged(t *testing.T) {
 	g := guard(t, netguard.GuardConfig{Enabled: true})
-	templateengine.SetPostRenderCheck(g.Check)
+	templateengine.SetPostRenderCheck(g.CheckArtifact)
 	t.Cleanup(func() { templateengine.SetPostRenderCheck(nil) })
 
 	original := restAPI("http://169.254.169.254/")
@@ -302,5 +311,138 @@ func TestCheck_URLMarkerWithoutFormat(t *testing.T) {
 	}
 	if err := g.Check(restAPI("http://ok.example.com", interceptor(map[string]any{"proxyURL": ""}))); err != nil {
 		t.Fatalf("an unset optional URL must not be checked: %v", err)
+	}
+}
+
+// TestCheck_ComposedURLSchemas covers a URL parameter declared through allOf,
+// anyOf or oneOf rather than at the top level of its schema.
+func TestCheck_ComposedURLSchemas(t *testing.T) {
+	g := guard(t, netguard.GuardConfig{Enabled: true})
+	for _, param := range []string{"callbackUrl", "mirrorUrl"} {
+		err := g.Check(restAPI("http://ok.example.com", interceptor(map[string]any{param: "http://169.254.169.254/"})))
+		if got := refusedField(t, err); got != "spec.operations[0].policies[0].params."+param {
+			t.Fatalf("%s: refused field = %q", param, got)
+		}
+		if err := g.Check(restAPI("http://ok.example.com", interceptor(map[string]any{param: "https://hooks.example.com/"}))); err != nil {
+			t.Fatalf("%s: positive control: %v", param, err)
+		}
+	}
+	// A composed schema with no URL subschema is not a URL.
+	if err := g.Check(restAPI("http://ok.example.com", interceptor(map[string]any{"label": "http://169.254.169.254/"}))); err != nil {
+		t.Fatalf("a composed non-URL parameter must not be checked: %v", err)
+	}
+}
+
+// TestCheckArtifact_LlmProxyRoutingIsNotChecked covers the RestAPI derived from
+// an LlmProxy: its upstreams are the gateway's own loopback listener, generated
+// by the controller, so they are not refused even when private networks are
+// denied. The proxy's policy parameters are still checked, and the same
+// upstream on any other kind is refused.
+func TestCheckArtifact_LlmProxyRoutingIsNotChecked(t *testing.T) {
+	g := guard(t, netguard.GuardConfig{Enabled: true, DenyPrivateNetworks: true})
+	derived := func(policies ...map[string]any) map[string]any {
+		cfg := restAPI("http://127.0.0.1:8080/provider-ctx", policies...)
+		cfg["spec"].(map[string]any)["upstreamDefinitions"] = []any{
+			map[string]any{"name": "primary", "upstreams": []any{map[string]any{"url": "http://127.0.0.1:8080"}}},
+		}
+		return cfg
+	}
+
+	if err := g.CheckArtifact(string(models.KindLlmProxy), derived()); err != nil {
+		t.Fatalf("generated loopback routing of an LlmProxy must not be refused: %v", err)
+	}
+	if refusedField(t, g.CheckArtifact(string(models.KindRestApi), derived())) != "spec.upstream.main.url" {
+		t.Fatal("control: the same loopback upstream on a RestApi must be refused")
+	}
+	err := g.CheckArtifact(string(models.KindLlmProxy), derived(interceptor(map[string]any{"endpoint": "http://10.0.0.5/"})))
+	if got := refusedField(t, err); got != "spec.operations[0].policies[0].params.endpoint" {
+		t.Fatalf("an LlmProxy's policy URL must still be checked, refused field = %q", got)
+	}
+}
+
+// TestRenderSpecPassesTheStoredKind checks that RenderSpec hands the stored
+// artifact's kind to the post-render check, so a hydrated LlmProxy is
+// recognised although it renders as a RestAPI.
+func TestRenderSpecPassesTheStoredKind(t *testing.T) {
+	g := guard(t, netguard.GuardConfig{Enabled: true, DenyPrivateNetworks: true})
+	templateengine.SetPostRenderCheck(g.CheckArtifact)
+	t.Cleanup(func() { templateengine.SetPostRenderCheck(nil) })
+
+	proxy := &models.StoredConfig{Handle: "p", Kind: string(models.KindLlmProxy), Configuration: restAPI("http://127.0.0.1:8080/ctx")}
+	if err := templateengine.RenderSpec(proxy, nil, nil); err != nil {
+		t.Fatalf("hydrated LlmProxy: %v", err)
+	}
+	api := &models.StoredConfig{Handle: "a", Kind: string(models.KindRestApi), Configuration: restAPI("http://127.0.0.1:8080/ctx")}
+	if err := templateengine.RenderSpec(api, nil, nil); !IsRefused(err) {
+		t.Fatalf("control: RestApi with a loopback upstream = %v, want a refusal", err)
+	}
+}
+
+// TestCheck_InputsItCannotOrNeedNotInspect covers rendered values the guard
+// cannot read and specs with nothing to check.
+func TestCheck_InputsItCannotOrNeedNotInspect(t *testing.T) {
+	g := guard(t, netguard.GuardConfig{Enabled: true})
+
+	if err := g.Check(make(chan int)); err == nil || IsRefused(err) {
+		t.Fatalf("an unmarshalable value = %v, want an inspection error", err)
+	}
+	if err := g.Check("not an object"); err == nil || IsRefused(err) {
+		t.Fatalf("a non-object value = %v, want an inspection error", err)
+	}
+	if err := g.Check(map[string]any{"kind": "RestApi"}); err != nil {
+		t.Fatalf("a config without a spec has nothing to check: %v", err)
+	}
+	if RefusedFieldPath(errors.New("boom")) != "" {
+		t.Fatal("RefusedFieldPath of a non-refusal must be empty")
+	}
+
+	// A malformed or host-less URL is the validators' to report.
+	for _, raw := range []string{"http://[::1", "/relative/path", "http://"} {
+		if err := g.Check(restAPI(raw)); err != nil {
+			t.Fatalf("%q: %v", raw, err)
+		}
+	}
+}
+
+func TestCheck_UpstreamDefinitions(t *testing.T) {
+	g := guard(t, netguard.GuardConfig{Enabled: true})
+	cfg := restAPI("http://ok.example.com")
+	cfg["spec"].(map[string]any)["upstreamDefinitions"] = []any{
+		"not-an-object",
+		map[string]any{"name": "a", "upstreams": []any{map[string]any{"url": "https://a.example.com"}}},
+		map[string]any{"name": "b", "upstreams": []any{map[string]any{"url": "https://b.example.com"}, map[string]any{"url": "http://169.254.169.254"}}},
+	}
+	if got := refusedField(t, g.Check(cfg)); got != "spec.upstreamDefinitions[2].upstreams[1].url" {
+		t.Fatalf("refused field = %q", got)
+	}
+	cfg["spec"].(map[string]any)["upstreamDefinitions"] = []any{
+		map[string]any{"name": "a", "upstreams": []any{map[string]any{"url": "https://a.example.com"}}},
+	}
+	if err := g.Check(cfg); err != nil {
+		t.Fatalf("positive control: %v", err)
+	}
+}
+
+func TestCheck_ParameterSchemaShapes(t *testing.T) {
+	g := guard(t, netguard.GuardConfig{Enabled: true})
+
+	err := g.Check(restAPI("http://ok.example.com", interceptor(map[string]any{
+		"mirrors": map[string]any{"eu": "https://eu.example.com", "us": "http://169.254.169.254"},
+	})))
+	if got := refusedField(t, err); got != "spec.operations[0].policies[0].params.mirrors.us" {
+		t.Fatalf("additionalProperties refused field = %q", got)
+	}
+	ok := interceptor(map[string]any{"mirrors": map[string]any{"eu": "https://eu.example.com"}})
+	if err := g.Check(restAPI("http://ok.example.com", ok)); err != nil {
+		t.Fatalf("positive control: %v", err)
+	}
+
+	untyped := interceptor(map[string]any{"tags": []any{"http://169.254.169.254"}})
+	if err := g.Check(restAPI("http://ok.example.com", untyped)); err != nil {
+		t.Fatalf("array values without an items schema are not URLs: %v", err)
+	}
+	noParams := map[string]any{"name": "noparams", "version": "v1", "params": map[string]any{"endpoint": "http://169.254.169.254"}}
+	if err := g.Check(restAPI("http://ok.example.com", noParams)); err != nil {
+		t.Fatalf("a policy that declares no parameters has no URL parameters: %v", err)
 	}
 }

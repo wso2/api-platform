@@ -127,9 +127,20 @@ func New(policy netguard.Policy, definitions map[string]models.PolicyDefinition,
 	}
 }
 
-// Check is a templateengine.PostRenderCheck: it returns a *RefusedError for the
-// first refused URL in rendered, and nil otherwise.
+// Check returns a *RefusedError for the first refused URL in rendered, and nil
+// otherwise. It is CheckArtifact for an artifact whose kind adds no exemption.
 func (g *Guard) Check(rendered any) error {
+	return g.CheckArtifact("", rendered)
+}
+
+// CheckArtifact is a templateengine.PostRenderCheck. kind is the stored
+// artifact's kind. For an LlmProxy, the upstream fields are not checked: a
+// user's LlmProxy spec has none, and the RestAPI derived from it routes to its
+// providers through the gateway's own listener (http://127.0.0.1:<port>),
+// hops the controller generates rather than destinations a user chose. The
+// providers' own upstream URLs are checked when the providers are deployed.
+// The proxy's policy parameters are still checked.
+func (g *Guard) CheckArtifact(kind string, rendered any) error {
 	raw, err := json.Marshal(rendered)
 	if err != nil {
 		return fmt.Errorf("failed to inspect rendered configuration: %w", err)
@@ -143,7 +154,7 @@ func (g *Guard) Check(rendered any) error {
 		return nil
 	}
 
-	for _, target := range g.collect(spec) {
+	for _, target := range g.collect(spec, kind != string(models.KindLlmProxy)) {
 		if err := g.checkURL(target.path, target.url); err != nil {
 			return err
 		}
@@ -157,8 +168,9 @@ type target struct {
 	url  string
 }
 
-// collect gathers every upstream URL and URL-typed policy parameter in spec.
-func (g *Guard) collect(spec map[string]any) []target {
+// collect gathers every URL-typed policy parameter in spec, and every upstream
+// URL when upstreams is true.
+func (g *Guard) collect(spec map[string]any, upstreams bool) []target {
 	var out []target
 	add := func(path string, v any) {
 		if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
@@ -166,6 +178,15 @@ func (g *Guard) collect(spec map[string]any) []target {
 		}
 	}
 
+	if upstreams {
+		g.collectUpstreams(spec, add)
+	}
+	g.collectPolicyURLs("spec", spec, &out)
+	return out
+}
+
+// collectUpstreams passes add every upstream URL in spec.
+func (g *Guard) collectUpstreams(spec map[string]any, add func(path string, v any)) {
 	// spec.upstream: {url} (Mcp, LlmProvider, Agent) or {main: {url}, sandbox: {url}}
 	// (RestApi, GraphQLApi).
 	if upstream, ok := spec["upstream"].(map[string]any); ok {
@@ -191,9 +212,6 @@ func (g *Guard) collect(spec map[string]any) []target {
 			}
 		}
 	}
-
-	g.collectPolicyURLs("spec", spec, &out)
-	return out
 }
 
 // collectPolicyURLs walks v for policy attachments — objects carrying a
@@ -246,13 +264,25 @@ var urlFormats = map[string]bool{"uri": true, "url": true, "iri": true}
 // means "not set" (format: uri would reject the empty string).
 const urlMarker = "x-wso2-url"
 
-// isURLSchema reports whether a parameter schema declares a URL the policy dials.
+// isURLSchema reports whether a parameter schema declares a URL the policy
+// dials, directly or through one of its allOf, anyOf or oneOf subschemas.
 func isURLSchema(schema map[string]any) bool {
 	if marked, _ := schema[urlMarker].(bool); marked {
 		return true
 	}
 	format, _ := schema["format"].(string)
-	return urlFormats[strings.ToLower(format)]
+	if urlFormats[strings.ToLower(format)] {
+		return true
+	}
+	for _, keyword := range []string{"allOf", "anyOf", "oneOf"} {
+		subschemas, _ := schema[keyword].([]any)
+		for _, s := range subschemas {
+			if sub, ok := s.(map[string]any); ok && isURLSchema(sub) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // collectURLParams walks a parameter value alongside its JSON Schema and adds
@@ -314,13 +344,11 @@ func (g *Guard) checkURL(path, raw string) error {
 	}
 	host := parsed.Hostname()
 
-	if err := g.policy.CheckURL(context.Background(), raw, false); err != nil {
-		if errors.Is(err, netguard.ErrDestinationNotAllowed) {
-			g.logger.Warn("Artifact URL refused by network access control",
-				slog.String("field", path), slog.String("host", host), slog.String("reason", err.Error()))
-			return &RefusedError{FieldPath: path}
-		}
-		return nil
+	// raw has parsed with a host, so any error CheckURL returns is a refusal.
+	if err := g.policy.CheckURL(context.Background(), raw, false); errors.Is(err, netguard.ErrDestinationNotAllowed) {
+		g.logger.Warn("Artifact URL refused by network access control",
+			slog.String("field", path), slog.String("host", host), slog.String("reason", err.Error()))
+		return &RefusedError{FieldPath: path}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), g.lookupTimeout)

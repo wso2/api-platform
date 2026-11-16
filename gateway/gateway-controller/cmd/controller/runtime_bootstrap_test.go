@@ -433,7 +433,7 @@ func TestStartup_PersistsUndeployOfEnvRefusedAPI(t *testing.T) {
 func TestLoadRuntimeConfigsFromExistingAPIConfigurations_UndeploysAccessControlRefusedArtifact(t *testing.T) {
 	policy, err := netguard.GuardConfig{Enabled: true}.Build()
 	require.NoError(t, err)
-	templateengine.SetPostRenderCheck(upstreamguard.New(policy, nil, newDiscardLogger()).Check)
+	templateengine.SetPostRenderCheck(upstreamguard.New(policy, nil, newDiscardLogger()).CheckArtifact)
 	t.Cleanup(func() { templateengine.SetPostRenderCheck(nil) })
 
 	upstream := func(u string) configWithTemplateSpec {

@@ -61,3 +61,17 @@ func TestArtifactAccessControlPolicy_DisabledIsNotApplied(t *testing.T) {
 		t.Fatalf("got enabled=%v err=%v, want a disabled, valid configuration", enabled, err)
 	}
 }
+
+// Validate refuses to start on an invalid access-control section, and accepts
+// the same configuration once the section is valid.
+func TestValidate_RejectsInvalidAccessControl(t *testing.T) {
+	cfg := validConfig()
+	cfg.Controller.Server.NetworkSecurity.AccessControl = AccessControlConfig{Enabled: true, Mode: "allow"}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "controller.server.network_security.access_control") {
+		t.Fatalf("Validate = %v, want an access-control error", err)
+	}
+	cfg.Controller.Server.NetworkSecurity.AccessControl = AccessControlConfig{Enabled: true, Mode: "allow", Hostnames: []string{`api\.example\.com`}}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("positive control: %v", err)
+	}
+}

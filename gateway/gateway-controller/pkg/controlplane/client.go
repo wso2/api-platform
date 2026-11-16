@@ -2426,7 +2426,7 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, deployFailureCode(err))
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -2438,7 +2438,7 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, deployFailureCode(err))
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -2538,7 +2538,7 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, deployFailureCode(err))
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -2550,7 +2550,7 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, deployFailureCode(err))
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -3074,7 +3074,7 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, deployFailureCode(err))
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 
@@ -3086,7 +3086,7 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, deployFailureCode(err))
+			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
 		return
 	}
 

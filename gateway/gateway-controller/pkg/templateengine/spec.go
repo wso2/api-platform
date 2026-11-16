@@ -56,8 +56,10 @@ func (e *RenderError) Unwrap() error {
 
 // PostRenderCheck inspects a rendered artifact configuration (the same concrete
 // type RenderSpec was given, with every template resolved) and returns an error
-// to refuse it.
-type PostRenderCheck func(rendered any) error
+// to refuse it. kind is the stored artifact's kind, which can differ from the
+// rendered value's: an LLM artifact hydrated by the event listener or at startup
+// is rendered as its derived RestAPI.
+type PostRenderCheck func(kind string, rendered any) error
 
 var postRenderCheck atomic.Pointer[PostRenderCheck]
 
@@ -95,7 +97,7 @@ func RenderSpec(cfg *models.StoredConfig, secretResolver funcs.SecretResolver, l
 	}
 
 	if check := postRenderCheck.Load(); check != nil {
-		if err := (*check)(renderResult.Config); err != nil {
+		if err := (*check)(cfg.Kind, renderResult.Config); err != nil {
 			return &RenderError{Cause: fmt.Errorf("config %q (kind=%s) was refused: %w", cfg.Handle, cfg.Kind, err)}
 		}
 	}

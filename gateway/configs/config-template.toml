@@ -102,6 +102,12 @@ ecdh_curves = "X25519,P-256"
 # Limitation: the router keeps re-resolving upstream hostnames. Their addresses are
 # checked when an artifact is deployed and on every restart, not in between, and a
 # hostname the controller cannot resolve at deploy time is not refused.
+#
+# Enabled by default with no hostnames and deny_private_networks = false, which
+# refuses only the always-refused addresses above. On upgrade, a stored artifact
+# whose upstream or policy URL is one of them (for example the cloud metadata
+# address 169.254.169.254) is undeployed at the first start; set enabled = false
+# to keep the previous behaviour.
 enabled = true
 mode = "deny"
 hostnames = []
