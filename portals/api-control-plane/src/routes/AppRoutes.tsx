@@ -49,6 +49,7 @@ import {
 } from '@/extensions';
 import type { NavigationLevel } from '@/navigation/navigationTypes';
 import { usePort } from '@/hostPort';
+import { ExtensionPageFrame } from '@/components/ExtensionPageFrame';
 import { Hideable, useSlot } from '@/slots';
 import { ProtectedRoute } from './ProtectedRoute';
 import { usePermissions } from '@/permissions/PermissionContext';
@@ -298,7 +299,7 @@ const scopedRoutes = (paths: string[], element: ReactNode) =>
  */
 function ExtensionRoute({ render }: { render: RenderableExtension['render'] }) {
   const port = usePort();
-  return <>{render(port)}</>;
+  return <ExtensionPageFrame>{render(port)}</ExtensionPageFrame>;
 }
 
 /** Strips a trailing `/*` descendant marker off an extension `routePath`. */
@@ -369,7 +370,7 @@ function OverridablePage({
 }) {
   const port = usePort();
   const [override] = useSlot<ApiControlPlaneExtension>(slot).filter(hasRender);
-  if (override) return <>{override.render(port, artifactHandle)}</>;
+  if (override) return <ExtensionPageFrame>{override.render(port, artifactHandle)}</ExtensionPageFrame>;
   return <Hideable name={slot}>{children}</Hideable>;
 }
 
@@ -416,7 +417,7 @@ function GatewaysRoute() {
     // the list at a URL claiming to be a create or detail page.
     return (
       <Routes>
-        <Route index element={<>{override.render(port)}</>} />
+        <Route index element={<ExtensionPageFrame>{override.render(port)}</ExtensionPageFrame>} />
         <Route element={<Navigate replace to={indexPath} />} path="*" />
       </Routes>
     );

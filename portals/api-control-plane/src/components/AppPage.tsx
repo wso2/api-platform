@@ -19,6 +19,9 @@
 import { PageContent, Stack } from '@wso2/oxygen-ui';
 import type { PageContentProps } from '@wso2/oxygen-ui';
 
+import { AppFooter } from './AppFooter';
+import { useFooterProvided } from './ExtensionPageFrame';
+
 export type AppPageProps = PageContentProps;
 
 /**
@@ -27,7 +30,9 @@ export type AppPageProps = PageContentProps;
  *
  * Each page renders this itself; the shell adds no container of its own, so a
  * page decides its width and padding. Defaults match the console's standard
- * layout (full width, `py: 5`); any `PageContent` prop overrides them.
+ * layout (full width, `py: 5`, the console footer); any `PageContent` prop
+ * overrides them, so `footer={null}` leaves the footer off. Inside an
+ * `ExtensionPageFrame` the footer is already there, so none is added.
  */
 export function AppPage({
   children,
@@ -35,10 +40,13 @@ export function AppPage({
   sx,
   ...pageContentProps
 }: AppPageProps) {
+  // An extension's frame already puts the footer under this page.
+  const footerProvided = useFooterProvided();
 
   return (
     <PageContent
       fullWidth={fullWidth}
+      footer={footerProvided ? null : <AppFooter />}
       sx={[{ py: 5 }, ...(sx === undefined ? [] : Array.isArray(sx) ? sx : [sx])]}
       {...pageContentProps}
     >

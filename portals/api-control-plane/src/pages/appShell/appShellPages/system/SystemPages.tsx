@@ -22,6 +22,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { useOrganizations } from '@/api/resources/organizations';
+import { AppFooter } from '@/components/AppFooter';
 import { AppPage } from '@/components/AppPage';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
@@ -231,7 +232,7 @@ export function UnauthorizedPage() {
   useDocumentTitle(intl.formatMessage(unauthorizedMessages.title));
 
   return (
-    <PageContent>
+    <PageContent footer={<AppFooter />}>
       <PageTitle>
         <PageTitle.Header>
           <FormattedMessage {...unauthorizedMessages.title} />
@@ -261,7 +262,7 @@ export function SessionExpiredPage() {
   useDocumentTitle(intl.formatMessage(sessionExpiredMessages.title));
 
   return (
-    <PageContent>
+    <PageContent footer={<AppFooter />}>
       <PageTitle>
         <PageTitle.Header>
           <FormattedMessage {...sessionExpiredMessages.title} />
@@ -289,7 +290,7 @@ export function ServerErrorPage() {
   useDocumentTitle(intl.formatMessage(serverErrorMessages.title));
 
   return (
-    <PageContent>
+    <PageContent footer={<AppFooter />}>
       <ErrorState
         title={intl.formatMessage(serverErrorMessages.title)}
         message={intl.formatMessage(serverErrorMessages.message)}

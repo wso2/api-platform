@@ -18,10 +18,7 @@
 
 import { Box, Button, Card, CardContent, Typography } from '@wso2/oxygen-ui';
 import { Circle } from '@wso2/oxygen-ui-icons-react';
-import { useEffect, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-
-import { APP_FOOTER_ID } from '../../appLayoutConstants';
 
 const messages = defineMessages({
   cancel: {
@@ -66,29 +63,11 @@ type SaveBarProps = {
   label?: string;
 };
 
-/** Gap between the bar and whatever sits beneath it (the app footer, or the viewport edge). */
+/** Gap between the bar and the viewport edge. The footer scrolls with the page, so it is not beneath the bar. */
 const BAR_GAP = 3;
 
 /** Room kept at the end of the page so the floating bar never covers its last row. */
 const SPACER_HEIGHT = 96;
-
-/**
- * Height of the app footer, so the bar can float above it instead of over it. The
- * footer is measured because it changes with the viewport width.
- */
-function useFooterHeight(active: boolean): number {
-  const [height, setHeight] = useState(0);
-  useEffect(() => {
-    if (!active) return undefined;
-    const footer = document.getElementById(APP_FOOTER_ID);
-    if (!footer) return undefined;
-    const measure = () => setHeight(footer.offsetHeight);
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, [active]);
-  return height;
-}
 
 /**
  * Floating action bar for a develop tab: it appears, pinned to the bottom of the
@@ -107,7 +86,6 @@ export function SaveBar({
 }: SaveBarProps) {
   const intl = useIntl();
   const visible = dirty || Boolean(saving);
-  const footerHeight = useFooterHeight(visible);
   if (!visible) return null;
 
   // Defaulted here rather than in the signature: a default parameter is
@@ -119,7 +97,7 @@ export function SaveBar({
       <Card
         role="region"
         sx={(theme) => ({
-          bottom: `calc(${footerHeight}px + ${theme.spacing(BAR_GAP)})`,
+          bottom: theme.spacing(BAR_GAP),
           left: '50%',
           maxWidth: `calc(100vw - ${theme.spacing(4)})`,
           position: 'fixed',

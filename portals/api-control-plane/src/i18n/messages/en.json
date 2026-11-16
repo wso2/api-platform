@@ -5598,9 +5598,17 @@
   "appLayout.breadcrumb.home": {
     "defaultMessage": "Home"
   },
+  "appLayout.footer.documentation": {
+    "defaultMessage": "Documentation",
+    "description": "Footer link to the product documentation"
+  },
   "appLayout.footer.privacyPolicy": {
     "defaultMessage": "Privacy Policy",
     "description": "Footer link to the Privacy Policy page"
+  },
+  "appLayout.footer.support": {
+    "defaultMessage": "Support",
+    "description": "Footer link to the community support channel"
   },
   "appLayout.footer.termsOfUse": {
     "defaultMessage": "Terms of Use",
