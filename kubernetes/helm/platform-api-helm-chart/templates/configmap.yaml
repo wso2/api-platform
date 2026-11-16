@@ -224,7 +224,7 @@ data:
 
     [platform_api.server.websocket]
     max_connections = {{ $srv.websocket.maxConnections | int }}
-    max_connections_per_gateway = {{ $srv.websocket.maxConnectionsPerGateway | default 0 | int }}
+    max_connections_per_gateway = {{ if kindIs "invalid" $srv.websocket.maxConnectionsPerGateway }}-1{{ else }}{{ $srv.websocket.maxConnectionsPerGateway | int }}{{ end }}
     connection_timeout = {{ $srv.websocket.connectionTimeout | int }}
     rate_limit_per_min = {{ $srv.websocket.rateLimitPerMin | int }}
     metrics_log_enabled = {{ $srv.websocket.metricsLogEnabled }}

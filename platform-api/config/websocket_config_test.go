@@ -22,8 +22,8 @@ import (
 )
 
 func TestWebSocketMaxConnectionsPerGatewayDefaultsToUnlimited(t *testing.T) {
-	if got := defaultConfig().Listeners.WebSocket.MaxConnectionsPerGateway; got != 0 {
-		t.Fatalf("default max_connections_per_gateway = %d, want 0 (unlimited)", got)
+	if got := defaultConfig().Listeners.WebSocket.MaxConnectionsPerGateway; got != -1 {
+		t.Fatalf("default max_connections_per_gateway = %d, want -1 (unlimited)", got)
 	}
 }
 
@@ -33,9 +33,10 @@ func TestValidateListenersConfigWebSocketMaxConnectionsPerGateway(t *testing.T) 
 		limit   int
 		wantErr bool
 	}{
-		{name: "unlimited", limit: 0},
+		{name: "unlimited", limit: -1},
 		{name: "positive", limit: 4},
-		{name: "negative", limit: -1, wantErr: true},
+		{name: "zero would block every gateway", limit: 0, wantErr: true},
+		{name: "below minus one", limit: -2, wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := validateListenersConfig(&ServerListeners{WebSocket: WebSocket{MaxConnectionsPerGateway: tc.limit}})

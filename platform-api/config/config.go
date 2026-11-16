@@ -844,7 +844,8 @@ func (j *JWT) LoadPrivateKey() (*rsa.PrivateKey, error) {
 type WebSocket struct {
 	MaxConnections int `koanf:"max_connections"`
 	// MaxConnectionsPerGateway caps the concurrent WebSocket connections one
-	// gateway may hold across all of its registration tokens. 0 means unlimited.
+	// gateway may hold across all of its registration tokens. -1 means unlimited
+	// (the default); otherwise it must be a positive number.
 	MaxConnectionsPerGateway int  `koanf:"max_connections_per_gateway"`
 	ConnectionTimeout        int  `koanf:"connection_timeout"`
 	RateLimitPerMin          int  `koanf:"rate_limit_per_min"`
@@ -1666,8 +1667,8 @@ func validateListenersConfig(l *ServerListeners) error {
 	if err := l.NetworkSecurity.AccessControl.GuardConfig().Validate(); err != nil {
 		return fmt.Errorf("server.network_security.access_control: %w", err)
 	}
-	if l.WebSocket.MaxConnectionsPerGateway < 0 {
-		return fmt.Errorf("server.websocket.max_connections_per_gateway must be 0 (unlimited) or positive (got %d)", l.WebSocket.MaxConnectionsPerGateway)
+	if l.WebSocket.MaxConnectionsPerGateway == 0 || l.WebSocket.MaxConnectionsPerGateway < -1 {
+		return fmt.Errorf("server.websocket.max_connections_per_gateway must be -1 (unlimited) or positive (got %d)", l.WebSocket.MaxConnectionsPerGateway)
 	}
 	return nil
 }
