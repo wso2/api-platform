@@ -161,6 +161,41 @@ type Storage interface {
 	GetGatewayOriginArtifactsForSync() ([]*models.StoredConfig, error)
 
 	// ========================================
+	// Endpoint Methods
+	// ========================================
+
+	// SaveEndpoint persists a new gateway-wide Endpoint, together with its
+	// artifacts tracking row, atomically.
+	//
+	// Returns ErrConflict if an Endpoint with the same name already exists.
+	SaveEndpoint(endpoint *models.StoredEndpoint) error
+
+	// UpdateEndpoint replaces the configuration of an existing Endpoint.
+	//
+	// Returns ErrNotFound if the Endpoint does not exist.
+	UpdateEndpoint(endpoint *models.StoredEndpoint) error
+
+	// DeleteEndpoint removes an Endpoint and its artifacts tracking row by ID.
+	//
+	// Returns ErrNotFound if the Endpoint does not exist.
+	DeleteEndpoint(id string) error
+
+	// GetEndpoint retrieves an Endpoint by ID.
+	//
+	// Returns ErrNotFound if the Endpoint does not exist.
+	GetEndpoint(id string) (*models.StoredEndpoint, error)
+
+	// GetEndpointByHandle retrieves an Endpoint by name (metadata.name).
+	//
+	// Returns ErrNotFound if the Endpoint does not exist.
+	GetEndpointByHandle(handle string) (*models.StoredEndpoint, error)
+
+	// GetAllEndpoints retrieves every Endpoint of this gateway.
+	//
+	// Returns an empty slice if there are none.
+	GetAllEndpoints() ([]*models.StoredEndpoint, error)
+
+	// ========================================
 	// LLM Provider Template Methods
 	// ========================================
 

@@ -30,6 +30,7 @@ import (
 type testMockDB struct {
 	configs   map[string]*models.StoredConfig
 	templates map[string]*models.StoredLLMProviderTemplate
+	endpoints map[string]*models.StoredEndpoint
 }
 
 func newTestMockDB() *testMockDB {
@@ -308,3 +309,56 @@ func (m *testMockDB) GetWebhookSecretByUUID(uuid string) (*models.WebhookSecret,
 func (m *testMockDB) UpdateWebhookSecret(secret *models.WebhookSecret) error { return nil }
 func (m *testMockDB) DeleteWebhookSecret(artifactUUID, name string) error    { return nil }
 func (m *testMockDB) GetAllWebhookSecrets() ([]*models.WebhookSecret, error) { return nil, nil }
+
+func (m *testMockDB) SaveEndpoint(endpoint *models.StoredEndpoint) error {
+	if m.endpoints == nil {
+		m.endpoints = make(map[string]*models.StoredEndpoint)
+	}
+	for _, existing := range m.endpoints {
+		if existing.GetHandle() == endpoint.GetHandle() {
+			return storage.ErrConflict
+		}
+	}
+	m.endpoints[endpoint.UUID] = endpoint
+	return nil
+}
+
+func (m *testMockDB) UpdateEndpoint(endpoint *models.StoredEndpoint) error {
+	if _, ok := m.endpoints[endpoint.UUID]; !ok {
+		return storage.ErrNotFound
+	}
+	m.endpoints[endpoint.UUID] = endpoint
+	return nil
+}
+
+func (m *testMockDB) DeleteEndpoint(id string) error {
+	if _, ok := m.endpoints[id]; !ok {
+		return storage.ErrNotFound
+	}
+	delete(m.endpoints, id)
+	return nil
+}
+
+func (m *testMockDB) GetEndpoint(id string) (*models.StoredEndpoint, error) {
+	if endpoint, ok := m.endpoints[id]; ok {
+		return endpoint, nil
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *testMockDB) GetEndpointByHandle(handle string) (*models.StoredEndpoint, error) {
+	for _, endpoint := range m.endpoints {
+		if endpoint.GetHandle() == handle {
+			return endpoint, nil
+		}
+	}
+	return nil, storage.ErrNotFound
+}
+
+func (m *testMockDB) GetAllEndpoints() ([]*models.StoredEndpoint, error) {
+	endpoints := make([]*models.StoredEndpoint, 0, len(m.endpoints))
+	for _, endpoint := range m.endpoints {
+		endpoints = append(endpoints, endpoint)
+	}
+	return endpoints, nil
+}

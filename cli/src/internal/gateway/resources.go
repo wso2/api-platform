@@ -31,6 +31,7 @@ const (
 	ResourceKindLLMProvider = "LlmProvider"
 	ResourceKindLLMProxy    = "LlmProxy"
 	ResourceKindGraphQLAPI  = "GraphQLApi"
+	ResourceKindEndpoint    = "Endpoint"
 )
 
 // Resource represents a parsed gateway resource
@@ -127,6 +128,22 @@ func (h *GraphQLAPIHandler) UpdateEndpoint(handle string) string {
 	return fmt.Sprintf(utils.GatewayGraphQLAPIByIDPath, handle)
 }
 
+// EndpointHandler handles Endpoint kind resources: gateway-wide backends that
+// the dynamic-endpoint policy routes requests to.
+type EndpointHandler struct{}
+
+func (h *EndpointHandler) GetEndpoint(handle string) string {
+	return fmt.Sprintf(utils.GatewayEndpointByIDPath, handle)
+}
+
+func (h *EndpointHandler) CreateEndpoint() string {
+	return utils.GatewayEndpointsPath
+}
+
+func (h *EndpointHandler) UpdateEndpoint(handle string) string {
+	return fmt.Sprintf(utils.GatewayEndpointByIDPath, handle)
+}
+
 // GetResourceHandler returns the appropriate handler for a resource kind
 func GetResourceHandler(kind string) ResourceHandler {
 	switch kind {
@@ -140,6 +157,8 @@ func GetResourceHandler(kind string) ResourceHandler {
 		return &LLMProxyHandler{}
 	case ResourceKindGraphQLAPI:
 		return &GraphQLAPIHandler{}
+	case ResourceKindEndpoint:
+		return &EndpointHandler{}
 	default:
 		return nil
 	}

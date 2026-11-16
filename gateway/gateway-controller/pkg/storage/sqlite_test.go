@@ -95,6 +95,7 @@ func TestSQLiteStorage_SchemaInitialization(t *testing.T) {
 		"graphql_apis",
 		"certificates",
 		"llm_provider_templates",
+		"endpoints",
 		"agents",
 		"api_keys",
 		"subscriptions",

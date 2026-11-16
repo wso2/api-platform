@@ -82,6 +82,34 @@ type APIDeploymentService struct {
 	eventHub        eventhub.EventHub
 	gatewayID       string
 	secretResolver  funcs.SecretResolver
+
+	// endpointRouting reads which gateway-wide Endpoints an API names as fixed
+	// targets, to warn at deploy time about one that does not exist yet. Nil
+	// disables the warning.
+	endpointRouting *config.EndpointRouting
+}
+
+// SetEndpointRouting enables the deploy-time warning for an API that names a
+// gateway-wide Endpoint the gateway does not have.
+func (s *APIDeploymentService) SetEndpointRouting(routing *config.EndpointRouting) {
+	s.endpointRouting = routing
+}
+
+// warnMissingEndpointTargets logs the fixed-target Endpoints of restAPI that do
+// not exist. The deployment is accepted regardless: those routes answer 503
+// until the Endpoint is created and then recover with no redeploy, which is
+// what lets Endpoints and APIs be applied in any order.
+func (s *APIDeploymentService) warnMissingEndpointTargets(logger *slog.Logger, handle string, restAPI api.RestAPI) {
+	missing := MissingStaticTargets(s.endpointRouting, s.store, restAPI)
+	if len(missing) == 0 {
+		return
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Warn("API names endpoints that do not exist on this gateway; requests routed to them get 503 until they are created",
+		slog.String("api", handle),
+		slog.Any("missing_endpoints", missing))
 }
 
 func (s *APIDeploymentService) validateArtifactConflicts(kind, currentID, displayName, version, handle string) error {
@@ -337,6 +365,7 @@ func (s *APIDeploymentService) DeployAPIConfiguration(params APIDeploymentParams
 		// switch above copies c from storedCfg.Configuration, and Validate(&c) mutates
 		// through the pointer, so the mutations stay in c but not in storedCfg yet.
 		storedCfg.Configuration = c
+		s.warnMissingEndpointTargets(params.Logger, storedCfg.Handle, c)
 	default:
 		if fn, ok := kindConfigValidators[kind]; ok {
 			var validationErrors []config.ValidationError

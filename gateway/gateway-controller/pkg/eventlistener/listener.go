@@ -75,6 +75,7 @@ type EventListener struct {
 	secretResolver        funcs.SecretResolver
 	policyVersionResolver utils.PolicyVersionResolver
 	webhookSecretHandler  WebhookSecretEventHandler
+	endpoints             EndpointSyncer
 
 	eventCh <-chan eventhub.Event
 	ctx     context.Context
@@ -252,6 +253,8 @@ func (l *EventListener) handleEvent(event eventhub.Event) {
 		l.processMCPProxyEvent(event)
 	case eventhub.EventTypeAgent:
 		l.processAgentEvent(event)
+	case eventhub.EventTypeEndpoint:
+		l.processEndpointEvent(event)
 	case eventhub.EventTypeWebhookSecret:
 		if l.webhookSecretHandler != nil {
 			l.webhookSecretHandler.HandleEvent(event)

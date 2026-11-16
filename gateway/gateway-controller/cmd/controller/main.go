@@ -275,7 +275,14 @@ func main() {
 		log.Error("Failed to load llm provider template configurations from database", slog.Any("error", err))
 		os.Exit(1)
 	}
-	log.Info("Loaded configurations", slog.Int("count", len(configStore.GetAll())))
+	// Gateway-wide Endpoints are loaded before the first xDS snapshot and the
+	// first lazy-resource push, so both already contain every Endpoint.
+	if err := storage.LoadEndpointsFromDatabase(db, configStore); err != nil {
+		log.Error("Failed to load endpoints from database", slog.Any("error", err))
+		os.Exit(1)
+	}
+	log.Info("Loaded configurations", slog.Int("count", len(configStore.GetAll())),
+		slog.Int("endpoints", len(configStore.GetAllEndpoints())))
 
 	// Load API keys from database into both in-memory stores
 	log.Info("Loading API keys from database")
@@ -480,6 +487,8 @@ func main() {
 			envoyTransformers[kind] = transformerRegistry
 		}
 		translator.SetTransformers(envoyTransformers)
+		// One cluster per gateway-wide Endpoint, from the first snapshot on.
+		translator.SetEndpointSource(transform.NewEndpointClusterSource(configStore, log))
 	}
 
 	// Generate initial xDS snapshot
@@ -489,6 +498,14 @@ func main() {
 		log.Warn("Failed to generate initial xDS snapshot", slog.Any("error", err))
 	}
 	cancel()
+
+	// Publish every Endpoint to the policy engine, now that the snapshot that
+	// carries their clusters is set. The same publisher applies every later
+	// Endpoint change, on this replica and from the others.
+	endpointPublisher := utils.NewEndpointPublisher(db, configStore, snapshotManager, lazyResourceXDSManager)
+	if err := endpointPublisher.Publish(""); err != nil {
+		log.Error("Failed to publish endpoints to the policy engine", slog.Any("error", err))
+	}
 
 	// Create channels to detect when router and policy engine first connect
 	routerConnected := make(chan struct{})
@@ -730,7 +747,17 @@ func main() {
 	)
 	agentSvc.SetControlPlanePusher(cpClient, cfg.Controller.ControlPlane.DeploymentSyncEnabled)
 
+	endpointRouting := config.NewEndpointRouting(policyDefinitions)
+	apiSvc.SetEndpointRouting(endpointRouting)
+	endpointSvc := utils.NewEndpointService(
+		db, configStore, endpointPublisher, eventHubInstance, gatewayID,
+		config.NewEndpointValidator(upstreamTLSValidator),
+		endpointRouting,
+		log,
+	)
+
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc, agentSvc)
+	igw.SetEndpointService(endpointSvc)
 
 	authConfig, err := generateAuthConfig(cfg)
 	if err != nil {
@@ -774,6 +801,7 @@ func main() {
 		secretsService,
 		policyVersionResolver,
 	)
+	evtListener.SetEndpointSyncer(endpointPublisher)
 	if err := evtListener.Start(); err != nil {
 		log.Error("Failed to start event listener", slog.Any("error", err))
 		os.Exit(1)
@@ -808,6 +836,7 @@ func main() {
 	}
 	// Without an encryption provider, gateway identity uploads are refused.
 	apiServer.SetEncryptionManager(encryptionProviderManager)
+	apiServer.SetEndpointService(endpointSvc)
 
 	// Recompute certificate metrics and expiry warnings at startup and then
 	// every 24h.
@@ -1101,6 +1130,15 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"GET /graphql-apis/{id}":    {"admin", "developer"},
 		"PUT /graphql-apis/{id}":    {"admin", "developer"},
 		"DELETE /graphql-apis/{id}": {"admin", "developer"},
+
+		// Endpoints are gateway-wide and shared by every API, so only an admin
+		// changes them. A developer reads them, to see the names and labels an
+		// API can route to.
+		"POST /endpoints":        {"admin"},
+		"GET /endpoints":         {"admin", "developer"},
+		"GET /endpoints/{id}":    {"admin", "developer"},
+		"PUT /endpoints/{id}":    {"admin"},
+		"DELETE /endpoints/{id}": {"admin"},
 
 		"POST /llm-provider-templates":        {"admin"},
 		"GET /llm-provider-templates":         {"admin"},

@@ -83,6 +83,14 @@ Base URLs:
 - [Delete a certificate](certificate-management.md#delete-a-certificate)
 - [Manually reload certificates](certificate-management.md#manually-reload-certificates)
 
+### [Endpoint Management](endpoint-management.md)
+
+- [Create a new endpoint](endpoint-management.md#create-a-new-endpoint)
+- [List all endpoints](endpoint-management.md#list-all-endpoints)
+- [Get endpoint by id](endpoint-management.md#get-endpoint-by-id)
+- [Update an existing endpoint](endpoint-management.md#update-an-existing-endpoint)
+- [Delete an endpoint](endpoint-management.md#delete-an-endpoint)
+
 ### [LLM Provider Template Management](llm-provider-template-management.md)
 
 - [Create a new LLM provider template](llm-provider-template-management.md#create-a-new-llm-provider-template)
@@ -185,6 +193,9 @@ Base URLs:
 - [A2ACardSigning](schemas.md#a2acardsigning)
 - [ErrorResponse](schemas.md#errorresponse)
 - [ValidationError](schemas.md#validationerror)
+- [EndpointConfigurationRequest](schemas.md#endpointconfigurationrequest)
+- [EndpointConfiguration](schemas.md#endpointconfiguration)
+- [EndpointConfigurationData](schemas.md#endpointconfigurationdata)
 - [LLMProviderTemplateRequest](schemas.md#llmprovidertemplaterequest)
 - [LLMProviderTemplate](schemas.md#llmprovidertemplate)
 - [LLMProviderTemplateData](schemas.md#llmprovidertemplatedata)

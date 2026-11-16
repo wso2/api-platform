@@ -46,6 +46,8 @@ const (
 	EventTypeMCPProxy EventType = "MCP_PROXY"
 	// EventTypeAgent represents an Agent (A2A) change event
 	EventTypeAgent EventType = "AGENT"
+	// EventTypeEndpoint represents a gateway-wide Endpoint change event
+	EventTypeEndpoint EventType = "ENDPOINT"
 	// EventTypeWebhookSecret represents a webhook HMAC secret lifecycle event
 	EventTypeWebhookSecret EventType = "WEBHOOK_SECRET"
 

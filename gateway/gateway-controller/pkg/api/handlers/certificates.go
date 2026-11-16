@@ -30,6 +30,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -1163,7 +1164,8 @@ func (s *APIServer) checkClientAuthorityDeletable(cert *models.StoredCertificate
 
 // checkUpstreamCertificateDeletable reports whether a usage: upstream
 // certificate can be removed. It refuses while a deployed API names it in
-// upstreamDefinitions[].tls.trustedCAs, and refuses with a 500 on a failed read.
+// upstreamDefinitions[].tls.trustedCAs or a gateway-wide Endpoint names it in
+// tls.trustedCAs, and refuses with a 500 on a failed read.
 func (s *APIServer) checkUpstreamCertificateDeletable(cert *models.StoredCertificate) (api.ErrorResponse, int, bool) {
 	deployed, err := s.deployedUpstreamTLSConfigs()
 	if err != nil {
@@ -1181,24 +1183,114 @@ func (s *APIServer) checkUpstreamCertificateDeletable(cert *models.StoredCertifi
 		}
 		refs = append(refs, clientAuthorityReference{apiHandle: cfg.Handle, fieldPath: paths[0]})
 	}
-	if len(refs) == 0 {
+
+	// A gateway-wide Endpoint's tls block trusts certificates the same way.
+	endpointRefs, err := s.endpointTLSReferences(cert.Name, config.NamedTLSTrustedCAFieldPaths)
+	if err != nil {
+		s.logger.Error("Failed to read endpoints for upstream-certificate referential-integrity check",
+			slog.String("certificate", cert.Name), slog.Any("error", err))
+		return api.ErrorResponse{Status: "error", Message: "Failed to verify certificate references"},
+			http.StatusInternalServerError, true
+	}
+	if len(refs) == 0 && len(endpointRefs) == 0 {
 		return api.ErrorResponse{}, 0, false
 	}
 
-	errs := make([]api.ValidationError, len(refs))
-	for i, ref := range refs {
-		errs[i] = api.ValidationError{
-			Field:   stringPtr(ref.fieldPath),
-			Message: stringPtr(fmt.Sprintf("referenced by API '%s'", ref.apiHandle)),
-		}
-	}
+	errs := tlsReferenceErrors(refs, endpointRefs)
 	message := fmt.Sprintf("certificate '%s' is named by %s; remove those references first",
-		cert.Name, pluralDeployedAPIs(len(refs)))
+		cert.Name, pluralTLSReferrers(len(refs), len(endpointRefs)))
 	return api.ErrorResponse{Status: "error", Message: message, Errors: &errs}, http.StatusConflict, true
 }
 
+// endpointTLSReference is one gateway-wide Endpoint whose tls block names a
+// certificate or gateway identity.
+type endpointTLSReference struct {
+	endpointName string
+	fieldPath    string
+}
+
+// endpointTLSReferences returns, sorted by Endpoint name, the Endpoints whose
+// tls block names certName, as found by one of the Named*FieldPaths functions.
+// Like deployedConfigs it reads both the database and the in-memory store, and
+// counts a reference found in either.
+func (s *APIServer) endpointTLSReferences(
+	certName string,
+	fieldPaths func(defs *[]api.UpstreamDefinition, name string) []string,
+) ([]endpointTLSReference, error) {
+	endpoints := make(map[string]*models.StoredEndpoint)
+	if s.db != nil {
+		stored, err := s.db.GetAllEndpoints()
+		if err != nil {
+			return nil, err
+		}
+		for _, endpoint := range stored {
+			endpoints[endpoint.UUID] = endpoint
+		}
+	}
+	if s.store != nil {
+		for _, endpoint := range s.store.GetAllEndpoints() {
+			if _, ok := endpoints[endpoint.UUID]; !ok {
+				endpoints[endpoint.UUID] = endpoint
+			}
+		}
+	}
+
+	var refs []endpointTLSReference
+	for _, endpoint := range endpoints {
+		defs := []api.UpstreamDefinition{endpoint.UpstreamDefinition()}
+		paths := fieldPaths(&defs, certName)
+		if len(paths) == 0 {
+			continue
+		}
+		// The shared helpers report an upstreamDefinitions path; an Endpoint's
+		// tls block sits directly under its spec.
+		refs = append(refs, endpointTLSReference{
+			endpointName: endpoint.GetHandle(),
+			fieldPath:    strings.Replace(paths[0], "spec.upstreamDefinitions[0].", "spec.", 1),
+		})
+	}
+	sort.Slice(refs, func(i, j int) bool { return refs[i].endpointName < refs[j].endpointName })
+	return refs, nil
+}
+
+// tlsReferenceErrors lists the APIs, then the Endpoints, that hold a reference.
+func tlsReferenceErrors(apiRefs []clientAuthorityReference, endpointRefs []endpointTLSReference) []api.ValidationError {
+	errs := make([]api.ValidationError, 0, len(apiRefs)+len(endpointRefs))
+	for _, ref := range apiRefs {
+		errs = append(errs, api.ValidationError{
+			Field:   stringPtr(ref.fieldPath),
+			Message: stringPtr(fmt.Sprintf("referenced by API '%s'", ref.apiHandle)),
+		})
+	}
+	for _, ref := range endpointRefs {
+		errs = append(errs, api.ValidationError{
+			Field:   stringPtr(ref.fieldPath),
+			Message: stringPtr(fmt.Sprintf("referenced by Endpoint '%s'", ref.endpointName)),
+		})
+	}
+	return errs
+}
+
+// pluralTLSReferrers words who holds the references: deployed APIs, Endpoints,
+// or both. With no Endpoints it reads exactly as pluralDeployedAPIs does.
+func pluralTLSReferrers(apis, endpoints int) string {
+	endpointWords := fmt.Sprintf("%d endpoints", endpoints)
+	if endpoints == 1 {
+		endpointWords = "1 endpoint"
+	}
+	switch {
+	case endpoints == 0:
+		return pluralDeployedAPIs(apis)
+	case apis == 0:
+		return endpointWords
+	default:
+		return pluralDeployedAPIs(apis) + " and " + endpointWords
+	}
+}
+
 // countGatewayIdentityReferences counts the deployed configurations whose
-// upstreamDefinitions[].tls.identity explicitly names identityName.
+// upstreamDefinitions[].tls.identity explicitly names identityName, plus the
+// gateway-wide Endpoints whose tls.identity does.
 func (s *APIServer) countGatewayIdentityReferences(identityName string) (int, error) {
 	deployed, err := s.deployedUpstreamTLSConfigs()
 	if err != nil {
@@ -1210,12 +1302,17 @@ func (s *APIServer) countGatewayIdentityReferences(identityName string) (int, er
 			count++
 		}
 	}
-	return count, nil
+	endpointRefs, err := s.endpointTLSReferences(identityName, config.NamedTLSIdentityFieldPaths)
+	if err != nil {
+		return 0, err
+	}
+	return count + len(endpointRefs), nil
 }
 
 // checkGatewayIdentityDeletable reports whether a usage: identity certificate
 // can be removed. It refuses while a deployed API names it in
-// upstreamDefinitions[].tls.identity, and refuses with a 500 on a failed read.
+// upstreamDefinitions[].tls.identity or a gateway-wide Endpoint names it in
+// tls.identity, and refuses with a 500 on a failed read.
 func (s *APIServer) checkGatewayIdentityDeletable(cert *models.StoredCertificate) (api.ErrorResponse, int, bool) {
 	deployed, err := s.deployedUpstreamTLSConfigs()
 	if err != nil {
@@ -1233,19 +1330,22 @@ func (s *APIServer) checkGatewayIdentityDeletable(cert *models.StoredCertificate
 		}
 		refs = append(refs, clientAuthorityReference{apiHandle: cfg.Handle, fieldPath: paths[0]})
 	}
-	if len(refs) == 0 {
+
+	// A gateway-wide Endpoint's tls block presents an identity the same way.
+	endpointRefs, err := s.endpointTLSReferences(cert.Name, config.NamedTLSIdentityFieldPaths)
+	if err != nil {
+		s.logger.Error("Failed to read endpoints for gateway-identity referential-integrity check",
+			slog.String("identity", cert.Name), slog.Any("error", err))
+		return api.ErrorResponse{Status: "error", Message: "Failed to verify gateway identity references"},
+			http.StatusInternalServerError, true
+	}
+	if len(refs) == 0 && len(endpointRefs) == 0 {
 		return api.ErrorResponse{}, 0, false
 	}
 
-	errs := make([]api.ValidationError, len(refs))
-	for i, ref := range refs {
-		errs[i] = api.ValidationError{
-			Field:   stringPtr(ref.fieldPath),
-			Message: stringPtr(fmt.Sprintf("referenced by API '%s'", ref.apiHandle)),
-		}
-	}
+	errs := tlsReferenceErrors(refs, endpointRefs)
 	message := fmt.Sprintf("gateway identity '%s' is named by %s; remove those references first",
-		cert.Name, pluralDeployedAPIs(len(refs)))
+		cert.Name, pluralTLSReferrers(len(refs), len(endpointRefs)))
 	return api.ErrorResponse{Status: "error", Message: message, Errors: &errs}, http.StatusConflict, true
 }
 

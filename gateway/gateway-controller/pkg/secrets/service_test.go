@@ -975,3 +975,14 @@ func TestSecretParams(t *testing.T) {
 	assert.Equal(t, "corr-123", params.CorrelationID)
 	assert.NotNil(t, params.Logger)
 }
+
+func (m *minimalStorage) SaveEndpoint(endpoint *models.StoredEndpoint) error   { return nil }
+func (m *minimalStorage) UpdateEndpoint(endpoint *models.StoredEndpoint) error { return nil }
+func (m *minimalStorage) DeleteEndpoint(id string) error                       { return nil }
+func (m *minimalStorage) GetEndpoint(id string) (*models.StoredEndpoint, error) {
+	return nil, storage.ErrNotFound
+}
+func (m *minimalStorage) GetEndpointByHandle(handle string) (*models.StoredEndpoint, error) {
+	return nil, storage.ErrNotFound
+}
+func (m *minimalStorage) GetAllEndpoints() ([]*models.StoredEndpoint, error) { return nil, nil }

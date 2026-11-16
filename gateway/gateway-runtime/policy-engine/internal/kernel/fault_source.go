@@ -172,6 +172,9 @@ const (
 	codeResolutionBadRequest = policy.FaultCodeResolutionBadRequest // 905006
 	// codeResolutionUnsupportedEncoding is a content coding the gateway cannot decode.
 	codeResolutionUnsupportedEncoding = policy.FaultCodeResolutionUnsupportedEncoding // 905007
+	// codeEndpointUnavailable is a request a policy routed to a gateway-wide Endpoint the
+	// gateway does not have. No upstream was contacted, so it is not an upstream failure.
+	codeEndpointUnavailable = policy.FaultCodeEndpointUnavailable // 905008
 )
 
 // routerErrorFor describes a router-generated failure, or returns nil when the error was not

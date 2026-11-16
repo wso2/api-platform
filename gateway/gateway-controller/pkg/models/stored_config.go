@@ -41,6 +41,10 @@ const (
 	KindLlmProviderTemplate ArtifactKind = "LlmProviderTemplate"
 	KindAgent               ArtifactKind = "Agent"
 	KindGraphQLApi          ArtifactKind = "GraphQLApi"
+	// KindEndpoint is a gateway-wide Endpoint. It is not an API: it has no
+	// routes of its own and is never transformed, so it stays out of the
+	// transformer registry and the runtime bootstrap.
+	KindEndpoint ArtifactKind = "Endpoint"
 )
 
 // DesiredState represents the intended deployment state of an API configuration.

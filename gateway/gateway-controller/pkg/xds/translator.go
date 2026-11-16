@@ -134,6 +134,33 @@ type Translator struct {
 	// transform.GatewayJWKSRuntimeConfig), so Envoy never routes to a chain the
 	// policy engine does not have.
 	gatewayJWKSRoute bool
+
+	// endpoints lists the gateway-wide Endpoints. Each becomes one cluster in
+	// every snapshot, whether or not an API can reach it yet. Nil when the
+	// gateway has no Endpoint support wired (tests, event gateway).
+	endpoints EndpointClusterSource
+}
+
+// EndpointCluster is one gateway-wide Endpoint in the form the translator
+// builds a cluster from.
+type EndpointCluster struct {
+	// Name is the Endpoint's name (metadata.name).
+	Name string
+	// Cluster is the Endpoint's backend, converted by the same code that
+	// converts an API's upstreamDefinitions entry.
+	Cluster *models.UpstreamCluster
+}
+
+// EndpointClusterSource lists the gateway-wide Endpoints to emit clusters for,
+// in a stable order.
+type EndpointClusterSource interface {
+	EndpointClusters() []EndpointCluster
+}
+
+// SetEndpointSource sets where TranslateConfigs reads gateway-wide Endpoints
+// from. Set once at startup, before the first snapshot.
+func (t *Translator) SetEndpointSource(source EndpointClusterSource) {
+	t.endpoints = source
 }
 
 // SetGatewayJWKSRoute enables the gateway JWKS route on every virtual host. Set
@@ -166,6 +193,72 @@ func (t *Translator) collectUpstreamTLSSecretRefs(rdc *models.RuntimeDeployConfi
 			TrustedCANames: uc.TLS.TrustedCANames,
 		})
 	}
+}
+
+// translateEndpointClusters builds one cluster per gateway-wide Endpoint, named
+// "endpoint_<name>", and records the TLS secrets those clusters reference.
+//
+// The name is stable for the life of the Endpoint, so a change to its targets,
+// weights, TLS or timeout only replaces this cluster: no route and no API
+// changes. An Endpoint whose cluster cannot be built is skipped with an error
+// log, so one bad Endpoint never costs the others, or any API, their snapshot.
+func (t *Translator) translateEndpointClusters(log *slog.Logger) []*cluster.Cluster {
+	if t.endpoints == nil {
+		return nil
+	}
+	var clusters []*cluster.Cluster
+	for _, endpoint := range t.endpoints.EndpointClusters() {
+		uc := endpoint.Cluster
+		if uc == nil || len(uc.Endpoints) == 0 || !models.IsValidEndpointName(endpoint.Name) {
+			log.Error("Skipping endpoint with no usable upstream targets", slog.String("endpoint", endpoint.Name))
+			continue
+		}
+		var validationSecretName string
+		if uc.TLS != nil && uc.TLS.HasTLSBlock && len(uc.TLS.TrustedCANames) > 0 {
+			validationSecretName = EndpointCAValidationContextSecretName(endpoint.Name)
+		}
+		c, err := t.buildUpstreamCluster(models.EndpointClusterName(endpoint.Name), uc, validationSecretName)
+		if err != nil {
+			log.Error("Failed to build cluster for endpoint; skipping it",
+				slog.String("endpoint", endpoint.Name), slog.Any("error", err))
+			continue
+		}
+		clusters = append(clusters, c)
+
+		if uc.TLS != nil && uc.TLS.HasTLSBlock && (uc.TLS.IdentityName != "" || len(uc.TLS.TrustedCANames) > 0) {
+			t.tlsSecretRefs = append(t.tlsSecretRefs, UpstreamTLSSecretRef{
+				IdentityName:   uc.TLS.IdentityName,
+				TrustedCANames: uc.TLS.TrustedCANames,
+				SecretName:     validationSecretName,
+			})
+		}
+	}
+	return clusters
+}
+
+// buildUpstreamCluster builds the Envoy cluster for one upstream cluster model:
+// a single-target cluster, or a weighted one when it has several targets.
+// validationSecretName is the SDS secret holding the cluster's own trust
+// bundle, or "" for the gateway-wide bundle.
+func (t *Translator) buildUpstreamCluster(clusterName string, uc *models.UpstreamCluster, validationSecretName string) (*cluster.Cluster, error) {
+	// Per-upstream connect timeout resolved by the transformer from
+	// timeout.connect; nil falls back to the router default inside
+	// createCluster/createWeightedCluster.
+	connectTimeout := uc.ConnectTimeout
+
+	if len(uc.Endpoints) == 1 {
+		ep := uc.Endpoints[0]
+		parsedURL := &url.URL{
+			Scheme: "http",
+			Host:   net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port)),
+			Path:   uc.BasePath,
+		}
+		if uc.TLS != nil && uc.TLS.Enabled {
+			parsedURL.Scheme = "https"
+		}
+		return t.createCluster(clusterName, parsedURL, nil, connectTimeout, uc.TLS, validationSecretName)
+	}
+	return t.createWeightedCluster(clusterName, uc.Endpoints, uc.TLS, connectTimeout, validationSecretName)
 }
 
 // resolvedTimeout represents parsed timeout values for an upstream.
@@ -310,35 +403,13 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 		if len(uc.Endpoints) == 0 {
 			continue
 		}
-		// Per-upstream connect timeout resolved by the transformer from
-		// upstreamDefinitions.timeout.connect; nil falls back to the router default
-		// inside createCluster/createWeightedCluster.
-		connectTimeout := uc.ConnectTimeout
-
 		// "" means the definition uses the gateway-wide trust bundle.
 		var validationSecretName string
 		if uc.TLS != nil && uc.TLS.HasTLSBlock && len(uc.TLS.TrustedCANames) > 0 {
 			validationSecretName = UpstreamCAValidationContextSecretName(rdc.Metadata.Handle, uc.Name)
 		}
 
-		if len(uc.Endpoints) == 1 {
-			ep := uc.Endpoints[0]
-			parsedURL := &url.URL{
-				Scheme: "http",
-				Host:   net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port)),
-				Path:   uc.BasePath,
-			}
-			if uc.TLS != nil && uc.TLS.Enabled {
-				parsedURL.Scheme = "https"
-			}
-			c, err := t.createCluster(clusterName, parsedURL, nil, connectTimeout, uc.TLS, validationSecretName)
-			if err != nil {
-				return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
-			}
-			clusters = append(clusters, c)
-			continue
-		}
-		c, err := t.createWeightedCluster(clusterName, uc.Endpoints, uc.TLS, connectTimeout, validationSecretName)
+		c, err := t.buildUpstreamCluster(clusterName, uc, validationSecretName)
 		if err != nil {
 			return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
 		}
@@ -949,6 +1020,19 @@ func (t *Translator) TranslateConfigs(
 		for _, c := range clusterList {
 			clusterMap[c.Name] = c
 		}
+	}
+
+	// Gateway-wide Endpoints: one cluster each, emitted after every API so an
+	// Endpoint is routable the moment a policy names it, with no API change.
+	// The "endpoint_" prefix is reserved, so these can only collide with a
+	// cluster by a construction mistake; an API's cluster is kept if one does.
+	for _, c := range t.translateEndpointClusters(log) {
+		if _, exists := clusterMap[c.Name]; exists {
+			log.Error("Endpoint cluster name collides with an existing cluster; skipping the endpoint",
+				slog.String("cluster", c.Name))
+			continue
+		}
+		clusterMap[c.Name] = c
 	}
 
 	// Group routes by vhost. Pre-seed the wildcard vhost so no-api-found is
