@@ -27,7 +27,7 @@ func TestAccessControlDefaults(t *testing.T) {
 	if !ac.Enabled || ac.Mode != "deny" || ac.DenyPrivateNetworks || len(ac.Hostnames) != 0 {
 		t.Fatalf("default access control = %+v, want enabled deny mode, no hostnames, private networks permitted", ac)
 	}
-	if err := validateListenersConfig(&ServerListeners{NetworkSecurity: NetworkSecurity{AccessControl: ac}}); err != nil {
+	if err := validateListenersConfig(&ServerListeners{WebSocket: WebSocket{MaxConnectionsPerGateway: -1}, NetworkSecurity: NetworkSecurity{AccessControl: ac}}); err != nil {
 		t.Fatalf("the defaults must validate: %v", err)
 	}
 }
@@ -41,7 +41,7 @@ func TestAccessControlValidation(t *testing.T) {
 	}
 	for name, ac := range cases {
 		t.Run(name, func(t *testing.T) {
-			err := validateListenersConfig(&ServerListeners{NetworkSecurity: NetworkSecurity{AccessControl: ac}})
+			err := validateListenersConfig(&ServerListeners{WebSocket: WebSocket{MaxConnectionsPerGateway: -1}, NetworkSecurity: NetworkSecurity{AccessControl: ac}})
 			if err == nil || !strings.Contains(err.Error(), "server.network_security.access_control") {
 				t.Fatalf("validateListenersConfig = %v, want an error naming the section", err)
 			}
