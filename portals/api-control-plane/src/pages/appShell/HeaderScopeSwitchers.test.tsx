@@ -439,6 +439,35 @@ describe('HeaderScopeSwitchers — API menu', () => {
     expect(screen.getByTestId('state')).toHaveTextContent('header-breadcrumb');
   });
 
+  it('keeps the APIs that loaded selectable when the other kind fails to load', async () => {
+    vi.mocked(useAllGraphQLApis).mockReturnValue({
+      ...graphqlApisResult([]),
+      error: new Error('graphql down'),
+    } as ReturnType<typeof useAllGraphQLApis>);
+    const { user } = renderTrail(scopeInApi());
+
+    await user.click(trigger('Switch api'));
+
+    expect(await screen.findByRole('menuitemradio', { name: /Orders API/ })).toBeInTheDocument();
+    expect(screen.queryByText('Failed to load APIs')).not.toBeInTheDocument();
+    expect(screen.getByText('APIs (some failed to load)')).toBeInTheDocument();
+  });
+
+  it('shows the blocking error only when no API loaded at all', async () => {
+    vi.mocked(useAllRestApis).mockReturnValue({
+      ...restApisResult([]),
+      error: new Error('rest down'),
+    } as ReturnType<typeof useAllRestApis>);
+    vi.mocked(useAllGraphQLApis).mockReturnValue(graphqlApisResult([]));
+    const { user } = renderTrail(
+      makeConsoleScope({ project: PROJECT, projects: [PROJECT], params: { orgHandle: ORG, projectHandler: PROJECT_ID } }),
+    );
+
+    await user.click(trigger('Select API'));
+
+    expect(await screen.findByText('Failed to load APIs')).toBeInTheDocument();
+  });
+
   it('leaves out New API for a user who can create neither kind', async () => {
     const { user } = renderTrail(scopeInApi(), { permissionMode: 'enforce', scopes: [] });
 

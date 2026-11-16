@@ -1063,6 +1063,10 @@
   "apiControlPlane.pages.appShell.HeaderScopeSwitchers.apisFailed": {
     "defaultMessage": "Failed to load APIs"
   },
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.apisPartial": {
+    "defaultMessage": "APIs (some failed to load)",
+    "description": "Title of the header API menu when one kind of API (REST or GraphQL) could not be loaded but the other could."
+  },
   "apiControlPlane.pages.appShell.HeaderScopeSwitchers.breadcrumbAria": {
     "defaultMessage": "Organization, project and API",
     "description": "Accessible name of the header breadcrumb trail that switches organization, project and API."

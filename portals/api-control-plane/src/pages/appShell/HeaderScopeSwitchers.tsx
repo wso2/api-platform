@@ -115,6 +115,11 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.HeaderScopeSwitchers.projectsFailed',
     defaultMessage: 'Failed to load projects',
   },
+  apisPartial: {
+    id: 'apiControlPlane.pages.appShell.HeaderScopeSwitchers.apisPartial',
+    defaultMessage: 'APIs (some failed to load)',
+    description: 'Title of the header API menu when one kind of API (REST or GraphQL) could not be loaded but the other could.',
+  },
   apisFailed: {
     id: 'apiControlPlane.pages.appShell.HeaderScopeSwitchers.apisFailed',
     defaultMessage: 'Failed to load APIs',
@@ -327,7 +332,9 @@ export function HeaderScopeSwitchers() {
         ? { label: intl.formatMessage(messages.newProject), onClick: () => navigate(routes.newProject(params.orgHandle)) }
         : false,
       loading: isLoading && projectsError === undefined,
-      error: projectsError ? intl.formatMessage(messages.projectsFailed) : undefined,
+      // Oxygen shows `error` in place of the whole list, so raise it only when
+      // there is nothing usable to pick; a partial failure is flagged in the title.
+      error: projectsError && projects.length === 0 ? intl.formatMessage(messages.projectsFailed) : undefined,
       openLabel: intl.formatMessage(messages.projectOpen),
       menuTitle: intl.formatMessage(messages.projectMenuTitle),
       searchPlaceholder: intl.formatMessage(messages.projectSearch),
@@ -365,9 +372,14 @@ export function HeaderScopeSwitchers() {
             }
           : false,
       loading: apisLoading,
-      error: apisErrorValue ? intl.formatMessage(messages.apisFailed) : undefined,
+      // As for projects: REST loading while GraphQL fails (or the reverse) must
+      // leave the APIs that did load selectable, so the blocking error is for
+      // when none loaded, and a partial failure is flagged in the menu title.
+      error: apisErrorValue && loadedApiOptions.length === 0 ? intl.formatMessage(messages.apisFailed) : undefined,
       openLabel: intl.formatMessage(messages.apiOpen),
-      menuTitle: intl.formatMessage(messages.apiMenuTitle),
+      menuTitle: intl.formatMessage(
+        apisErrorValue && loadedApiOptions.length > 0 ? messages.apisPartial : messages.apiMenuTitle,
+      ),
       searchPlaceholder: intl.formatMessage(messages.apiSearch),
       emptyText: intl.formatMessage(messages.apiEmpty),
     },
