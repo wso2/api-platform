@@ -999,6 +999,16 @@ type XDSConfig struct {
 	// MaxReconnectDelay is the maximum delay between reconnection attempts
 	MaxReconnectDelay time.Duration `koanf:"max_reconnect_delay"`
 
+	// KeepaliveTime is how long the connection to the xDS server may be idle
+	// before the client sends an HTTP/2 PING. Without it a connection that
+	// dies silently leaves the client blocked in Recv and it stops receiving
+	// config. Must be at least gateway-controller's keepalive MinTime (5s).
+	KeepaliveTime time.Duration `koanf:"keepalive_time"`
+
+	// KeepaliveTimeout is how long the client waits for the PING ack before
+	// closing the connection and reconnecting.
+	KeepaliveTimeout time.Duration `koanf:"keepalive_timeout"`
+
 	// TLS configuration
 	TLS XDSTLSConfig `koanf:"tls"`
 }
@@ -1322,6 +1332,8 @@ func defaultConfig() *Config {
 				RequestTimeout:        5 * time.Second,
 				InitialReconnectDelay: 1 * time.Second,
 				MaxReconnectDelay:     60 * time.Second,
+				KeepaliveTime:         30 * time.Second,
+				KeepaliveTimeout:      10 * time.Second,
 				TLS: XDSTLSConfig{
 					Enabled:    false,
 					EcdhCurves: "X25519MLKEM768,X25519,P-256",
@@ -1687,6 +1699,11 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// MinXDSKeepaliveTime is gateway-controller's xDS keepalive
+// EnforcementPolicy.MinTime. A client pinging more often than this is sent
+// GOAWAY "too_many_pings" and loses its connection.
+const MinXDSKeepaliveTime = 5 * time.Second
+
 // validateXDSConfig validates xDS configuration
 func (c *Config) validateXDSConfig() error {
 	if c.PolicyEngine.XDS.ConnectTimeout <= 0 {
@@ -1703,6 +1720,14 @@ func (c *Config) validateXDSConfig() error {
 
 	if c.PolicyEngine.XDS.MaxReconnectDelay <= 0 {
 		return fmt.Errorf("xds.max_reconnect_delay must be positive")
+	}
+
+	if c.PolicyEngine.XDS.KeepaliveTime < MinXDSKeepaliveTime {
+		return fmt.Errorf("xds.keepalive_time must be at least %s", MinXDSKeepaliveTime)
+	}
+
+	if c.PolicyEngine.XDS.KeepaliveTimeout <= 0 {
+		return fmt.Errorf("xds.keepalive_timeout must be positive")
 	}
 
 	if c.PolicyEngine.XDS.TLS.Enabled {

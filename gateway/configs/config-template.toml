@@ -629,6 +629,12 @@ connect_timeout = "10s"
 request_timeout = "5s"
 initial_reconnect_delay = "1s"
 max_reconnect_delay = "60s"
+# HTTP/2 PING on the xDS connection so a connection that dies silently is
+# detected and reconnected instead of leaving the engine without config
+# updates. keepalive_time must be at least 5s (gateway-controller rejects
+# more frequent pings); gRPC raises values below 10s to 10s.
+keepalive_time = "30s"
+keepalive_timeout = "10s"
 
 [policy_engine.xds.tls]
 # Mutual TLS for this policy-engine's connection to gateway-controller's
