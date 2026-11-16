@@ -80,9 +80,12 @@ Feature: Subscription plans stored before plan conditions keep their rate limit 
     And the JSON response field "conditions[0].params.onExceed" should be "reject"
     # Reading the plan as a condition stores nothing new
     And the gateway database should store subscription plan "${CTX:planName}" without conditions, as gateways before plan conditions stored every plan
+    # The restart starts the counters afresh: the first request and the next two pass, the 4th is throttled
     When I set header "Subscription-Key" to "${CTX:subToken}"
     And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 200
-    And I send 3 "GET" requests to "${CTX:apiContext}/v1.0/health"
+    And I send 2 "GET" requests to "${CTX:apiContext}/v1.0/health"
+    Then the response status code should be 200
+    When I send a "GET" request to "${CTX:apiContext}/v1.0/health"
     Then the response status code should be 429
 
     # A control plane before plan conditions updates only the throttle limit; the plan stays without conditions
@@ -102,7 +105,21 @@ Feature: Subscription plans stored before plan conditions keep their rate limit 
     Then the response status should be 200
     And the JSON response field "throttleLimitCount" should be 2
     And the gateway database should store 1 condition for subscription plan "${CTX:planName}"
-    When I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 429
+    # A new subscription has a counter of its own: 2 requests pass, the 3rd is throttled
+    Given I generate a unique value from "gw-upg-sub2" and store it as "subRef2"
+    And I generate a unique value from "gw-upg-token2" and store it as "subToken2"
+    When I send a "POST" request to the "gateway-controller" service at "/subscriptions" with body:
+      """
+      {"externalRefId":"${CTX:subRef2}","apiId":"${CTX:apiName}","subscriptionPlanId":"${CTX:planId}","subscriptionToken":"${CTX:subToken2}"}
+      """
+    Then the response status should be 201
+    And I register the "subscription" "${CTX:subRef2}" for cleanup
+    When I set header "Subscription-Key" to "${CTX:subToken2}"
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 200
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health"
+    Then the response status code should be 200
+    When I send a "GET" request to "${CTX:apiContext}/v1.0/health"
+    Then the response status code should be 429
 
     # The stored conditions are what a restarted gateway loads
     When I restart the "gateway-controller" service
