@@ -154,6 +154,10 @@ type Identity interface {
 type APIPortals interface {
 	CreateAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy string) (*api.ApiPortalResponse, error)
 	CreateAPIPortalWithStatus(req *api.CreateApiPortalRequest, orgID, createdBy, status string) (*api.ApiPortalResponse, error)
+	// CreateAPIPortalWithStatusAndID is CreateAPIPortalWithStatus with the row's
+	// UUID chosen by the caller, for a caller that gives the portal it provisions
+	// the same id before the row exists. id must be a UUID.
+	CreateAPIPortalWithStatusAndID(req *api.CreateApiPortalRequest, orgID, createdBy, status, id string) (*api.ApiPortalResponse, error)
 	GetAPIPortal(handle, orgID string) (*api.ApiPortalResponse, error)
 	GetAPIPortalStatus(handle, orgID string) (string, error)
 	ListAPIPortals(orgID string, limit, offset int, sortBy, sortOrder, search string) (*api.ApiPortalListResponse, error)
