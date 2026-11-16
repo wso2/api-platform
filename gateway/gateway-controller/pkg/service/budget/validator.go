@@ -29,6 +29,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"gopkg.in/yaml.v3"
 
+	commonconstants "github.com/wso2/api-platform/common/constants"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 )
 
@@ -99,7 +100,63 @@ func decode(body []byte) (*api.BudgetRequest, error) {
 	if errs := consumerShapes(budget.Spec); len(errs) > 0 {
 		return nil, &ValidationError{Errors: errs}
 	}
+	if errs := projectOwner(budget); len(errs) > 0 {
+		return nil, &ValidationError{Errors: errs}
+	}
 	return &budget, nil
+}
+
+// projectOwner checks a budget owned by a project (the project-id annotation) is that
+// project's own, as the control plane checks it: it lists the project as a shared
+// consumer, so the kind means the same wherever it is applied, and exempts only that
+// project's agents. The annotation itself scopes nothing.
+func projectOwner(budget api.BudgetRequest) []FieldError {
+	if budget.Metadata.Annotations == nil {
+		return nil
+	}
+	project, ok := (*budget.Metadata.Annotations)[commonconstants.AnnotationProjectID]
+	if !ok {
+		return nil
+	}
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return []FieldError{{Field: "metadata.annotations", Message: commonconstants.AnnotationProjectID + " must name a project"}}
+	}
+	var errs []FieldError
+	listed := false
+	if budget.Spec.Consumers != nil {
+		for i, c := range *budget.Spec.Consumers {
+			if c.Type != api.BudgetConsumerTypeProject {
+				continue
+			}
+			if c.Allocation != api.BudgetConsumerAllocationShared || c.Id == nil || *c.Id != project {
+				errs = append(errs, FieldError{
+					Field:   fmt.Sprintf("spec.consumers[%d]", i),
+					Message: fmt.Sprintf("a budget of project %s counts only that project: its only project consumer is that project, shared", project),
+				})
+				continue
+			}
+			listed = true
+		}
+	}
+	if !listed && len(errs) == 0 {
+		errs = append(errs, FieldError{
+			Field:   "spec.consumers",
+			Message: fmt.Sprintf("a budget of project %s must list that project as a consumer: {type: project, id: %s}", project, project),
+		})
+	}
+	if budget.Spec.Exemptions != nil {
+		for i, e := range *budget.Spec.Exemptions {
+			field := fmt.Sprintf("spec.exemptions[%d]", i)
+			switch {
+			case e.Type == api.BudgetExemptionTypeProject:
+				errs = append(errs, FieldError{Field: field + ".type", Message: fmt.Sprintf("a budget of project %s cannot exempt a project", project)})
+			case e.Type == api.BudgetExemptionTypeAgent && (e.Project == nil || *e.Project != project):
+				errs = append(errs, FieldError{Field: field + ".project", Message: fmt.Sprintf("a budget of project %s can exempt only its agents", project)})
+			}
+		}
+	}
+	return errs
 }
 
 // consumerShapes checks what the schema cannot say about each consumer and exemption type:

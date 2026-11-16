@@ -238,6 +238,45 @@ func TestCreate_RejectsInvalidBudgets(t *testing.T) {
 	}
 }
 
+func TestCreate_AProjectBudgetListsItsProject(t *testing.T) {
+	const owned = `"metadata": {"name": "research-team-monthly", "annotations": {"gateway.api-platform.wso2.com/project-id": "api-platform"}}`
+	const project = `{"type": "project", "allocation": "shared", "id": "api-platform"}`
+	const attribute = `{"type": "attribute", "allocation": "shared", "expression": "'research' in request.Auth.Claims[\"groups\"]"}`
+	cases := []struct {
+		name, consumers, exemptions, field string
+	}{
+		{"its project listed", project + ", " + attribute, "", ""},
+		{"no project consumer", attribute, "", "spec.consumers"},
+		{"another project", `{"type": "project", "allocation": "shared", "id": "support"}`, "", "spec.consumers[0]"},
+		{"exempting a project", project, `{"type": "project", "id": "support"}`, "spec.exemptions[0].type"},
+		{"exempting another project's agent", project, `{"type": "agent", "project": "support", "id": "triage-bot"}`, "spec.exemptions[0].project"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _ := newTestService(t, false)
+			body := strings.Replace(validBudget, `"metadata": {"name": "research-team-monthly"}`, owned, 1)
+			body = strings.Replace(body, `"consumers": [`+attribute+`]`, `"consumers": [`+tc.consumers+`]`, 1)
+			if tc.exemptions != "" {
+				body = strings.Replace(body, `"consumers":`, `"exemptions": [`+tc.exemptions+`], "consumers":`, 1)
+			}
+
+			_, err := svc.Create(CreateParams{Body: []byte(body)})
+
+			if tc.field == "" {
+				require.NoError(t, err, "the annotation names the owner; the listed consumer scopes it")
+				return
+			}
+			var invalid *ValidationError
+			require.True(t, errors.As(err, &invalid), "got %v", err)
+			fields := make([]string, 0, len(invalid.Errors))
+			for _, fe := range invalid.Errors {
+				fields = append(fields, fe.Field)
+			}
+			assert.Contains(t, fields, tc.field, "errors: %v", invalid.Errors)
+		})
+	}
+}
+
 func TestCreate_ReportsEveryError(t *testing.T) {
 	svc, _ := newTestService(t, false)
 	body := strings.NewReplacer(`"blockAt": 95`, `"blockAt": 0`, `"period": "month"`, `"period": "year"`).Replace(validBudget)

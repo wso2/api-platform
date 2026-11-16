@@ -233,7 +233,7 @@ Status Code **200**
 |»»» kind|string|true|none|none|
 |»»» metadata|[BudgetMetadata](schemas.md#schemabudgetmetadata)|true|none|none|
 |»»»» name|string|true|none|The budget's handle, unique on the gateway. Lowercase letters, digits, '-' and '.'.|
-|»»»» annotations|object|false|none|Non-identifying metadata, as on the gateway's other kinds. gateway.api-platform.wso2.com/artifact-id sets the budget's UUID, which cannot change afterwards; without it the gateway assigns one. gateway.api-platform.wso2.com/project-id names the project that owns the budget in the control plane; without it, the organization owns it.|
+|»»»» annotations|object|false|none|Non-identifying metadata, as on the gateway's other kinds. gateway.api-platform.wso2.com/artifact-id sets the budget's UUID, which cannot change afterwards; without it the gateway assigns one. gateway.api-platform.wso2.com/project-id names the project that owns the budget in the control plane; without it, the organization owns it. A project budget must list that project as a shared consumer, and exempts only that project's agents; the annotation itself scopes nothing.|
 |»»»»» **additionalProperties**|string|false|none|none|
 |»»» spec|[BudgetSpec](schemas.md#schemabudgetspec)|true|none|none|
 |»»»» status|string|false|none|An inactive budget is kept but matches no traffic.|
