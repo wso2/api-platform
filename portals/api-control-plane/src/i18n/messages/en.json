@@ -5546,13 +5546,17 @@
     "description": "Fallback toast when the server gives no reason for a failure."
   },
   "apiListPage.delete.message": {
-    "defaultMessage": "This permanently deletes the API \"{name}\" and all related details. This action is irreversible."
+    "defaultMessage": "This permanently deletes the API \"{name}\" and all related details, and removes it from every gateway it is deployed on. This action is irreversible."
   },
   "apiListPage.delete.succeeded": {
     "defaultMessage": "Deleted \"{name}\"."
   },
   "apiListPage.delete.title": {
     "defaultMessage": "Delete API"
+  },
+  "apiListPage.delete.unpublished": {
+    "defaultMessage": "It is also unpublished from {count, plural, one {# API Portal} other {# API Portals}}, and consumers there lose access to it.",
+    "description": "Shown in the delete-API dialog when the API is live on one or more API Portals."
   },
   "apiListPage.empty.action": {
     "defaultMessage": "Create API"

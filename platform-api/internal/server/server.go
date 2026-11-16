@@ -465,6 +465,11 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	monetizationAdminService := service.NewMonetizationAdminService(meterRepo, subscriptionPlanPricingRepo,
 		subscriptionPlanRepo, slogger)
 	publicationService := service.NewPublicationService(artifactRepo, apiPortalRepo, documentRepo, subscriptionPlanRepo, publicationRepo, portalPublisher, cfg.APIPortalPublication.OverallTimeout, cfg.PublicationArchiveMaxBytes, slogger)
+	// Deleting a published API, GraphQL API or MCP proxy unpublishes it from every
+	// API Portal first, so no portal keeps serving an API that no longer exists.
+	apiService.SetArtifactUnpublisher(publicationService)
+	graphqlAPIService.SetArtifactUnpublisher(publicationService)
+	mcpProxyService.SetArtifactUnpublisher(publicationService)
 
 	// Initialize handlers
 	orgHandler := handler.NewOrganizationHandler(orgService, identityService, slogger)

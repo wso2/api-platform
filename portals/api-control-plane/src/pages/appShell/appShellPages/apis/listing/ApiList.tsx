@@ -35,6 +35,7 @@ import { useAllRestApis, useDeleteRestApi } from '@/api/resources/restApis';
 import { toGraphQLListableApi, toRestListableApi, type ListableApi } from './apiListItem';
 import { ApiGridView } from './ApiGridView';
 import { ApiListView } from './ApiListView';
+import { DeleteApiImpact } from './DeleteApiImpact';
 import { EmptyResults } from '@/components/common/EmptyResults';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ImportApiIllustration } from '@/components/illustrations/ImportApiIllustration';
@@ -85,7 +86,7 @@ const messages = defineMessages({
   deleteMessage: {
     id: 'apiListPage.delete.message',
     defaultMessage:
-      'This permanently deletes the API "{name}" and all related details. This action is irreversible.',
+      'This permanently deletes the API "{name}" and all related details, and removes it from every gateway it is deployed on. This action is irreversible.',
   },
   deleteSucceeded: {
     id: 'apiListPage.delete.succeeded',
@@ -470,7 +471,9 @@ export function ApiList({
         onConfirm={confirmDelete}
         open={toDelete !== null}
         title={intl.formatMessage(messages.deleteTitle)}
-      />
+      >
+        {toDelete && <DeleteApiImpact api={toDelete} />}
+      </ConfirmDialog>
     </>
   );
 }
