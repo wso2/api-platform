@@ -83,7 +83,9 @@ Feature: Subscription plans stored before plan conditions keep their rate limit 
     # The restart starts the counters afresh: the first request and the next two pass, the 4th is throttled
     When I set header "Subscription-Key" to "${CTX:subToken}"
     And I send a "GET" request to "${CTX:apiContext}/v1.0/health" until status 200
-    And I send 2 "GET" requests to "${CTX:apiContext}/v1.0/health"
+    And I send a "GET" request to "${CTX:apiContext}/v1.0/health"
+    Then the response status code should be 200
+    When I send a "GET" request to "${CTX:apiContext}/v1.0/health"
     Then the response status code should be 200
     When I send a "GET" request to "${CTX:apiContext}/v1.0/health"
     Then the response status code should be 429
