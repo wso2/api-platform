@@ -24,6 +24,7 @@ const kmConfigDao = require('../dao/keyManagerConfigurationDao');
 const oauth2KeyDao = require('../dao/oauth2ConsumerKeyDao');
 const { registeredTypes, getDriver } = require('../keymanagers/core/registry');
 const { assertDialable, buildClient } = require('../keymanagers/core/httpClient');
+const { assertAllowedScheme } = require('../utils/destinationGuard');
 const { DB_CLIENT_POLICY } = require('./keyManagerDriverBuilder');
 const { KeyManagerDTO, KeyManagerPublicDTO } = require('../dto/keyManagerDto');
 const userIdpReferenceDao = require('../dao/userIdpReferenceDao');
@@ -236,21 +237,26 @@ function _validateProvisioning(provisioning, { isUpdate = false, existing = null
         return { error: `auth.method must be one of: ${PROVISIONING_AUTH_METHODS.join(', ')}.` };
     }
 
-    const endpoints = [
-        ['provisioning.registrationEndpoint', provisioning.registrationEndpoint, true],
-        ['provisioning.authorizeEndpoint', provisioning.authorizeEndpoint, false],
-    ];
-    for (const [field, value, required] of endpoints) {
-        if (!value) {
-            if (required) return { error: `${field} is required.` };
-            continue;
-        }
+    if (!provisioning.registrationEndpoint) {
+        return { error: 'provisioning.registrationEndpoint is required.' };
+    }
+    try {
+        // The driver dials the registration endpoint, so it is held to the same policy
+        // the driver will be built with (address ranges and network access control):
+        // what passes here is exactly what will be dialable later.
+        assertDialable(provisioning.registrationEndpoint, 'provisioning.registrationEndpoint', DB_CLIENT_POLICY);
+    } catch (err) {
+        return { error: err.message };
+    }
+    if (provisioning.authorizeEndpoint) {
+        // The portal never dials the authorize endpoint: it is published in the key
+        // manager's metadata as where a user's browser is sent to log in. So it is not
+        // subject to the address ranges or network access control, only to being a URL
+        // with a permitted scheme.
         try {
-            // The same policy the driver will be built with, so what passes here
-            // is exactly what will be dialable later — not a looser pre-check.
-            assertDialable(value, field, DB_CLIENT_POLICY);
+            assertAllowedScheme(provisioning.authorizeEndpoint, { allowHttp: DB_CLIENT_POLICY.allowHttpEndpoints === true });
         } catch (err) {
-            return { error: err.message };
+            return { error: `provisioning.authorizeEndpoint: ${err.message}` };
         }
     }
 
