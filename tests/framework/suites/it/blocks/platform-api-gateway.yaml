@@ -269,6 +269,25 @@ blocks:
         features:
           - features/management-portal/api-definitions/update_read_only.feature
 
+  # Plans stored before plan conditions: every scenario writes a plan into platform-api's database
+  # as an earlier release did and restarts platform-api, as an upgrade does, so the feature runs
+  # alone here. A step can write only to a database server, not to the embedded SQLite store.
+  - name: subscription-plan-upgrade
+    parallel: 1
+    components:
+      - name: platform-api
+        db:
+          matrix: [postgres, sqlserver]
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: subscription-plan-upgrade
+        features:
+          - features/management-portal/resources/subscription_plan_upgrade.feature
+        tags: "~@known-issue"
+
   # Agent proxy recovery isolation: every scenario stops or restarts gateway-controller,
   # gateway-runtime or platform-api mid-scenario, so the feature runs alone here, as the
   # gateway-restart block does for its own restart runners.

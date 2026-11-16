@@ -72,3 +72,36 @@ scenarios:
       refs:
         - feature: suites/it/features/management-portal/subscriptions/plan_conditions_enforcement.feature
           scenario: "A plan's request-count condition throttles a subscription on the gateway"
+  - id: SUBPLAN-007
+    title: "A plan an earlier release stored with a request limit (rejecting or allowing requests past it) is read after an upgrade as a request-count condition with the same window and onExceed; reading changes nothing stored."
+    priority: P0
+    ui:
+      status: exempt
+      reason: Upgrade of stored data; covered where the database can be prepared as an earlier release left it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/resources/subscription_plan_upgrade.feature
+          scenario: "A plan's earlier request limit is read as its request-count condition after an upgrade"
+  - id: SUBPLAN-008
+    title: "Editing a plan stored before conditions: a rename keeps its limit and moves it to conditions, limits from older clients replace the request limit, conditions can be added, a restart reads the new storage, and empty limits remove only the request limit."
+    priority: P0
+    ui:
+      status: exempt
+      reason: Upgrade of stored data; covered where the database can be prepared as an earlier release left it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/resources/subscription_plan_upgrade.feature
+          scenario: "Editing a plan stored before plan conditions keeps its limit and moves it to conditions"
+  - id: SUBPLAN-009
+    title: "A plan stored before conditions with 3 requests a minute is deployed with a secured REST API after an upgrade; a subscription is throttled at the 4th request in a minute on current and released gateways."
+    priority: P0
+    ui:
+      status: exempt
+      reason: Upgrade of stored data; covered where the database can be prepared as an earlier release left it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/resources/subscription_plan_upgrade.feature
+          scenario: "A plan stored before plan conditions throttles its subscribers on the gateway after an upgrade"
