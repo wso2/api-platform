@@ -16,12 +16,13 @@
  * under the License.
  */
 
-import { Button, PageContent, PageTitle, Stack, Typography } from '@wso2/oxygen-ui';
+import { Button, PageTitle, Stack, Typography } from '@wso2/oxygen-ui';
 import { useEffect, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { useOrganizations } from '@/api/resources/organizations';
+import { AppPageContent } from '@/components/AppPageContent';
 import { AppPage } from '@/components/AppPage';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
@@ -231,7 +232,7 @@ export function UnauthorizedPage() {
   useDocumentTitle(intl.formatMessage(unauthorizedMessages.title));
 
   return (
-    <PageContent>
+    <AppPageContent>
       <PageTitle>
         <PageTitle.Header>
           <FormattedMessage {...unauthorizedMessages.title} />
@@ -248,7 +249,7 @@ export function UnauthorizedPage() {
           <FormattedMessage {...unauthorizedMessages.clearSession} />
         </Button>
       </Stack>
-    </PageContent>
+    </AppPageContent>
   );
 }
 
@@ -261,7 +262,7 @@ export function SessionExpiredPage() {
   useDocumentTitle(intl.formatMessage(sessionExpiredMessages.title));
 
   return (
-    <PageContent>
+    <AppPageContent>
       <PageTitle>
         <PageTitle.Header>
           <FormattedMessage {...sessionExpiredMessages.title} />
@@ -279,7 +280,7 @@ export function SessionExpiredPage() {
       >
         <FormattedMessage {...sessionExpiredMessages.signIn} />
       </Button>
-    </PageContent>
+    </AppPageContent>
   );
 }
 
@@ -289,12 +290,12 @@ export function ServerErrorPage() {
   useDocumentTitle(intl.formatMessage(serverErrorMessages.title));
 
   return (
-    <PageContent>
+    <AppPageContent>
       <ErrorState
         title={intl.formatMessage(serverErrorMessages.title)}
         message={intl.formatMessage(serverErrorMessages.message)}
       />
-    </PageContent>
+    </AppPageContent>
   );
 }
 

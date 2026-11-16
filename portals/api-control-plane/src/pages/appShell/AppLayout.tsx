@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { AppShell, Box, Footer, NotificationPanel } from '@wso2/oxygen-ui';
+import { AppShell, Box, NotificationPanel } from '@wso2/oxygen-ui';
 import { Bell } from '@wso2/oxygen-ui-icons-react';
 import { Fragment, Suspense, useMemo } from 'react';
 
@@ -47,7 +47,6 @@ import {
 import { useSlot } from '../../slots';
 import { usePermissions } from '../../permissions';
 import { AppHeader } from './AppHeader';
-import { APP_FOOTER_ID } from './appLayoutConstants';
 import { AppSidebar } from './AppSidebar';
 import { FormattedMessage } from 'react-intl';
 
@@ -198,7 +197,13 @@ export default function AppLayout() {
             directly), so the shell adds none and a page owns its width and
             padding. The fallbacks stand in for a page, so they bring one of
             their own. */}
-            <Box sx={{ flex: 1, minWidth: 0, width: '100%', p: 1 }}>
+            {/* No bottom or side padding: the footer is the last thing in the page,
+              and Oxygen's `plain` footer puts its divider one sidebar-footer row
+              up from its own bottom edge and insets it by its own padding, so it
+              only lines up with the sidebar's divider (and with Oxygen's
+              `PageContent` footer story) when it spans the shell flush with its
+              bottom. Pages keep their own padding through `PageContent`. */}
+            <Box sx={{ flex: 1, minWidth: 0, width: '100%', pt: 1, px: 0, pb: 0 }}>
               {/* Error boundary scoped to routed page only; resets on pathname change */}
               <ErrorBoundary
                 fallback={(error, reset) => <PageErrorFallback error={error} reset={reset} />}
@@ -217,34 +222,6 @@ export default function AppLayout() {
             </Box>
           </Box>
         </AppShell.Main>
-
-        <AppShell.Footer>
-          {/* id is an anchor for measuring the footer height so sticky action
-            bars (develop tabs' SaveBar) can offset above it — see SaveBar. */}
-          <Box id={APP_FOOTER_ID}>
-            <Footer>
-              <Footer.Copyright>© {new Date().getFullYear()} WSO2 LLC.</Footer.Copyright>
-              {/* Show the environment label only for pinned on-prem builds. */}
-              {runtimeConfig.deploymentMode === 'onprem' && (
-                <Footer.Version>{runtimeConfig.environmentName}</Footer.Version>
-              )}
-              <Footer.Link href={runtimeConfig.termsOfUseLink}>
-                <FormattedMessage
-                  id="appLayout.footer.termsOfUse"
-                  defaultMessage="Terms of Use"
-                  description="Footer link to the Terms of Use page"
-                />
-              </Footer.Link>
-              <Footer.Link href={runtimeConfig.privacyPolicyLink}>
-                <FormattedMessage
-                  id="appLayout.footer.privacyPolicy"
-                  defaultMessage="Privacy Policy"
-                  description="Footer link to the Privacy Policy page"
-                />
-              </Footer.Link>
-            </Footer>
-          </Box>
-        </AppShell.Footer>
 
         <AppShell.NotificationPanel>
           <NotificationPanel>
