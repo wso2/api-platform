@@ -41,9 +41,9 @@ type ConnectionConfig struct {
 	TLSKeyFile    string
 	TLSServerName string
 
-	// The PEM fields carry certificate material inline, as the Choreo console supplies it:
-	// there is no filesystem on the gateway to place a file on, so the material travels in the
-	// broker properties themselves. Each takes precedence over its file counterpart.
+	// The PEM fields carry certificate material inline, for the callers that supply it that
+	// way: there is no filesystem on the gateway to place a file on, so the material travels
+	// in the broker properties themselves. Each takes precedence over its file counterpart.
 	TLSCAPEM      string
 	TLSCertPEM    string
 	TLSKeyPEM     string
@@ -66,8 +66,8 @@ func ResolveConnectionConfig(global config.KafkaConfig, overrides map[string]int
 		SASLPassword:  global.SASLPassword,
 	}
 
-	// Translate the Kafka client property names the console writes into this driver's option
-	// names before anything reads them. See config_properties.go.
+	// Translate Kafka client property names into this driver's option names before anything
+	// reads them. See config_properties.go.
 	overrides, err := canonicalizeOverrides(overrides)
 	if err != nil {
 		return ConnectionConfig{}, err

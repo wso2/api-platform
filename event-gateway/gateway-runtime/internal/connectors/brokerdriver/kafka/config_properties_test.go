@@ -39,10 +39,10 @@ func globalKafkaConfig() config.KafkaConfig {
 	}
 }
 
-// consoleSASLPlaintext is what the Choreo console writes for the most common connection: a
-// SASL/PLAIN login over an unencrypted transport. Every value is a one-element list, and every
-// name is the Kafka client property name rather than this driver's option name.
-func consoleSASLPlaintext() map[string]interface{} {
+// clientPropertySASLPlaintext is the most common connection written in Kafka client property
+// names: a SASL/PLAIN login over an unencrypted transport. Every value is a one-element list,
+// and every name is the client property name rather than this driver's option name.
+func clientPropertySASLPlaintext() map[string]interface{} {
 	return map[string]interface{}{
 		"brokers":           []interface{}{"tenant-broker:9092"},
 		"security.protocol": []interface{}{"SASL_PLAINTEXT"},
@@ -52,9 +52,9 @@ func consoleSASLPlaintext() map[string]interface{} {
 	}
 }
 
-func TestResolveConnectionConfig_AcceptsTheConsoleSASLProperties(t *testing.T) {
+func TestResolveConnectionConfig_AcceptsClientPropertyNamesForSASL(t *testing.T) {
 
-	resolved, err := ResolveConnectionConfig(globalKafkaConfig(), consoleSASLPlaintext())
+	resolved, err := ResolveConnectionConfig(globalKafkaConfig(), clientPropertySASLPlaintext())
 	if err != nil {
 		t.Fatalf("ResolveConnectionConfig returned error: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestResolveConnectionConfig_PlaintextProtocolTurnsOffGlobalTLS(t *testing.T
 	global := globalKafkaConfig()
 	global.TLS = true
 
-	resolved, err := ResolveConnectionConfig(global, consoleSASLPlaintext())
+	resolved, err := ResolveConnectionConfig(global, clientPropertySASLPlaintext())
 	if err != nil {
 		t.Fatalf("ResolveConnectionConfig returned error: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestResolveConnectionConfig_PlaintextProtocolTurnsOffGlobalTLS(t *testing.T
 
 func TestResolveConnectionConfig_AcceptsInlineTrustStoreCertificates(t *testing.T) {
 
-	overrides := consoleSASLPlaintext()
+	overrides := clientPropertySASLPlaintext()
 	overrides["security.protocol"] = []interface{}{"SASL_SSL"}
 	overrides["ssl.truststore.type"] = []interface{}{"PEM"}
 	overrides["ssl.truststore.certificates"] = []interface{}{"-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"}
@@ -114,8 +114,8 @@ func TestResolveConnectionConfig_AcceptsInlineTrustStoreCertificates(t *testing.
 	}
 }
 
-// A binding written against this driver's own option names predates the console and must keep
-// working untouched, including when a console-spelled key sits alongside it.
+// A binding written against this driver's own option names must keep working untouched,
+// including when a client-property spelling sits alongside it.
 func TestResolveConnectionConfig_DriverOptionNamesWin(t *testing.T) {
 
 	resolved, err := ResolveConnectionConfig(globalKafkaConfig(), map[string]interface{}{
@@ -123,8 +123,8 @@ func TestResolveConnectionConfig_DriverOptionNamesWin(t *testing.T) {
 		"sasl_mechanism": "plain",
 		"sasl_username":  "driver-user",
 		"sasl_password":  "driver-secret",
-		"sasl.username":  []interface{}{"console-user"},
-		"sasl.password":  []interface{}{"console-secret"},
+		"sasl.username":  []interface{}{"client-property-user"},
+		"sasl.password":  []interface{}{"client-property-secret"},
 	})
 	if err != nil {
 		t.Fatalf("ResolveConnectionConfig returned error: %v", err)
@@ -146,7 +146,7 @@ func TestResolveConnectionConfig_RejectsPropertiesItCannotHonour(t *testing.T) {
 	}
 	for property, want := range cases {
 		t.Run(property, func(t *testing.T) {
-			overrides := consoleSASLPlaintext()
+			overrides := clientPropertySASLPlaintext()
 			overrides[property] = []interface{}{"a-value"}
 
 			_, err := ResolveConnectionConfig(globalKafkaConfig(), overrides)
@@ -164,7 +164,7 @@ func TestResolveConnectionConfig_RejectsPropertiesItCannotHonour(t *testing.T) {
 // configured value and must not be read as one.
 func TestResolveConnectionConfig_IgnoresAnEmptyUnsupportedProperty(t *testing.T) {
 
-	overrides := consoleSASLPlaintext()
+	overrides := clientPropertySASLPlaintext()
 	overrides["ssl.key.password"] = []interface{}{""}
 
 	if _, err := ResolveConnectionConfig(globalKafkaConfig(), overrides); err != nil {
@@ -174,7 +174,7 @@ func TestResolveConnectionConfig_IgnoresAnEmptyUnsupportedProperty(t *testing.T)
 
 func TestResolveConnectionConfig_RejectsAMultiValuedScalarProperty(t *testing.T) {
 
-	overrides := consoleSASLPlaintext()
+	overrides := clientPropertySASLPlaintext()
 	overrides["sasl.username"] = []interface{}{"one", "two"}
 
 	_, err := ResolveConnectionConfig(globalKafkaConfig(), overrides)
@@ -185,7 +185,7 @@ func TestResolveConnectionConfig_RejectsAMultiValuedScalarProperty(t *testing.T)
 
 func TestResolveConnectionConfig_RejectsAnUnknownSecurityProtocol(t *testing.T) {
 
-	overrides := consoleSASLPlaintext()
+	overrides := clientPropertySASLPlaintext()
 	overrides["security.protocol"] = []interface{}{"SASL_WHATEVER"}
 
 	_, err := ResolveConnectionConfig(globalKafkaConfig(), overrides)
@@ -194,13 +194,13 @@ func TestResolveConnectionConfig_RejectsAnUnknownSecurityProtocol(t *testing.T) 
 	}
 }
 
-// A PEM keystore file holds the client certificate and its key together, so the one path the
-// console supplies fills both of this driver's options.
+// A PEM keystore file holds the client certificate and its key together, so the one path
+// supplied fills both of this driver's options.
 func TestResolveConnectionConfig_KeyStoreLocationFillsCertificateAndKey(t *testing.T) {
 
 	path := writeTempPEM(t)
 
-	overrides := consoleSASLPlaintext()
+	overrides := clientPropertySASLPlaintext()
 	overrides["security.protocol"] = []interface{}{"SSL"}
 	delete(overrides, "sasl.mechanism")
 	delete(overrides, "sasl.username")

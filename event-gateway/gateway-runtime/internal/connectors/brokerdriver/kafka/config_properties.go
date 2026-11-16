@@ -23,13 +23,14 @@ import (
 	"strings"
 )
 
-// Broker properties reach this driver as a free-form map, and two different writers fill it.
-// The control plane's own clients use this driver's option names — sasl_password and the rest.
-// The Choreo console writes the names a Kafka client library uses — sasl.password, and it sends
-// every value as a one-element list of strings rather than a scalar.
+// Broker properties reach this driver as a free-form map, and two conventions fill it.
+// One uses this driver's own option names — sasl_password and the rest — with scalar values.
+// The other uses the property names a Kafka client library takes, sasl.password and
+// security.protocol, and sends every value as a one-element list of strings.
 //
-// Nothing between the two translates, so a connection configured in the console reached this
-// driver with not one key it recognised, and it fell back to the gateway's own global Kafka
+// Nothing between translated the second into the first, and brokers was the only key the two
+// conventions spelled the same way. A binding written the second way therefore reached this
+// driver with not one key it recognised, and fell back to the gateway's own global Kafka
 // settings. canonicalizeOverrides is that translation: it maps the client property names onto
 // this driver's options and unwraps the one-element lists, leaving a map the rest of this file
 // reads exactly as it always has.
@@ -37,10 +38,10 @@ import (
 // This driver's own names win where both spellings are present, so an existing binding keeps
 // behaving as it did.
 
-// consoleScalarAliases maps a Kafka client property name to this driver's option name. Only
-// properties this driver can act on are listed; see unsupportedConsoleProperties for the ones
+// clientPropertyAliases maps a Kafka client property name to this driver's option name. Only
+// properties this driver can act on are listed; see unsupportedClientProperties for the ones
 // that are rejected rather than ignored.
-var consoleScalarAliases = map[string]string{
+var clientPropertyAliases = map[string]string{
 	"sasl.mechanism":                 "sasl_mechanism",
 	"sasl.username":                  "sasl_username",
 	"sasl.password":                  "sasl_password",
@@ -50,11 +51,11 @@ var consoleScalarAliases = map[string]string{
 	"ssl.keystore.key":               "tls_key_pem",
 }
 
-// unsupportedConsoleProperties are properties the console can write that this driver has no way
-// to honour. They are rejected with a named error rather than ignored: silently dropping a
-// Kerberos keytab or an encrypted key's passphrase would leave a connection that looks
-// configured and cannot authenticate, which is the failure this whole translation exists to end.
-var unsupportedConsoleProperties = map[string]string{
+// unsupportedClientProperties are Kafka client properties this driver has no way to honour.
+// They are rejected with a named error rather than ignored: silently dropping a Kerberos keytab
+// or an encrypted key's passphrase would leave a connection that looks configured and cannot
+// authenticate, which is the failure this whole translation exists to end.
+var unsupportedClientProperties = map[string]string{
 	"ssl.key.password":                    "an encrypted private key is not supported; supply an unencrypted PEM key",
 	"sasl.kerberos.service.name":          "Kerberos (GSSAPI) is not supported by this driver",
 	"sasl.kerberos.principal":             "Kerberos (GSSAPI) is not supported by this driver",
@@ -74,7 +75,7 @@ func canonicalizeOverrides(overrides map[string]interface{}) (map[string]interfa
 		canonical[key] = value
 	}
 
-	for property, reason := range unsupportedConsoleProperties {
+	for property, reason := range unsupportedClientProperties {
 		if present, err := hasValue(overrides[property]); err != nil {
 			return nil, err
 		} else if present {
@@ -82,13 +83,13 @@ func canonicalizeOverrides(overrides map[string]interface{}) (map[string]interfa
 		}
 	}
 
-	for property, option := range consoleScalarAliases {
+	for property, option := range clientPropertyAliases {
 		value, present, err := scalarValue(overrides[property], property)
 		if err != nil {
 			return nil, err
 		}
 		// This driver's own option name wins, so a binding that already carries one is
-		// untouched by whatever the console wrote alongside it.
+		// untouched by whatever was written alongside it.
 		if !present || canonical[option] != nil {
 			continue
 		}
@@ -115,8 +116,8 @@ func canonicalizeOverrides(overrides map[string]interface{}) (map[string]interfa
 		}
 	}
 
-	// Unwrap any remaining one-element list on this driver's own scalar options, so a client
-	// that sends every value the console's way is read the same either way.
+	// Unwrap any remaining one-element list on this driver's own scalar options, so a caller
+	// that sends every value as a list is read the same either way.
 	for _, option := range []string{"tls_ca_file", "tls_ca_pem", "tls_cert_file", "tls_cert_pem",
 		"tls_key_file", "tls_key_pem", "tls_server_name", "sasl_mechanism", "sasl_username",
 		"sasl_password"} {
@@ -132,10 +133,10 @@ func canonicalizeOverrides(overrides map[string]interface{}) (map[string]interfa
 	return canonical, nil
 }
 
-// applySecurityProtocol turns the console's security.protocol into this driver's tls option.
-// A protocol naming SSL turns TLS on; one naming PLAINTEXT turns it off, which is what a user
-// choosing an unencrypted connection in the console asked for even when the gateway's global
-// Kafka settings enable TLS.
+// applySecurityProtocol turns a Kafka client's security.protocol into this driver's tls option.
+// A protocol naming SSL turns TLS on; one naming PLAINTEXT turns it off, which is what a
+// binding asking for an unencrypted connection means even when the gateway's global Kafka
+// settings enable TLS.
 func applySecurityProtocol(overrides, canonical map[string]interface{}) error {
 	protocol, present, err := scalarValue(overrides["security.protocol"], "security.protocol")
 	if err != nil {
@@ -158,8 +159,8 @@ func applySecurityProtocol(overrides, canonical map[string]interface{}) error {
 	return nil
 }
 
-// scalarValue reads a property the console writes as a one-element list of strings, and accepts
-// a plain string for the clients that send one. An empty list reads as absent; a longer one is
+// scalarValue reads a property written as a one-element list of strings, and accepts a plain
+// string from the callers that send one. An empty list reads as absent; a longer one is
 // an error rather than a silent choice between its entries.
 func scalarValue(value interface{}, property string) (string, bool, error) {
 	switch v := value.(type) {
