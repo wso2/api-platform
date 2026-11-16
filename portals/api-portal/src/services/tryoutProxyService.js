@@ -125,6 +125,10 @@ function getClient() {
         responseType: 'arraybuffer',
         // Upstream 4xx/5xx are a legitimate try-it result, not a proxy failure.
         validateStatus: () => true,
+        // Connect directly, so the guarded lookup checks the target's address. With
+        // an HTTP(S)_PROXY from the environment axios would dial the proxy instead,
+        // and the proxy would resolve the target unchecked.
+        proxy: false,
         httpAgent: new http.Agent({ lookup }),
         httpsAgent: new https.Agent({ ...tlsOptions, lookup, rejectUnauthorized: !cfg.tlsSkipVerify }),
     });
@@ -289,4 +293,5 @@ module.exports = {
     // Exported for tests.
     resolveAllowedEndpoints,
     selectAllowedTarget,
+    getClient,
 };

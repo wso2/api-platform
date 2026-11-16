@@ -210,6 +210,11 @@ function buildClient(policy = {}) {
         // A key manager's 4xx is a meaningful answer (invalid_redirect_uri and
         // friends), not a transport failure — the driver inspects the status.
         validateStatus: () => true,
+        // A user-supplied destination is connected to directly. Through an
+        // HTTP(S)_PROXY from the environment, axios would dial the proxy, and the
+        // guarded lookup would check the proxy's address instead of the target's.
+        // Destinations from config.toml keep axios's default proxy handling.
+        ...(policy.userSupplied === true ? { proxy: false } : {}),
         httpAgent: new http.Agent({ ...pooling, lookup }),
         httpsAgent: new https.Agent({
             ...pooling,

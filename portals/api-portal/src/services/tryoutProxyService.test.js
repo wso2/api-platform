@@ -30,7 +30,9 @@ const path = require('node:path');
 const destinationGuard = require('../utils/destinationGuard');
 
 const r = (p) => path.resolve(__dirname, p);
-const portalConfig = { tryout: {}, httpClient: {} };
+// The defaults stand in for a loaded config.toml (the try-it client reads its TLS
+// settings from it); each test sets its own tryout section.
+const portalConfig = { ...structuredClone(require('../config/configDefaults').DEFAULTS), tryout: {} };
 const STUBBED = {
     [r('../config/configLoader.js')]: { config: portalConfig },
     [r('../config/logger.js')]: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
@@ -75,4 +77,34 @@ test('the host rule applies on top of the registered-endpoint check', (t) => {
 test('the metadata address is refused whatever the configuration', (t) => {
     setup(t, { allowPrivateEndpoints: true }, { enabled: false });
     refused(() => selectAllowedTarget('http://169.254.169.254/latest', ['http://169.254.169.254/']));
+});
+
+// A try-it target is connected to directly, so an HTTP(S)_PROXY from the environment
+// cannot carry it past the guarded lookup (which would then check the proxy's address).
+test('the try-it client is not routed through an environment proxy', async (t) => {
+    const http = require('node:http');
+    const listen = (body, onRequest = () => {}) => new Promise((resolve) => {
+        const server = http.createServer((req, res) => { onRequest(req); res.end(body); });
+        server.listen(0, '127.0.0.1', () => resolve(server.address().port));
+        t.after(() => server.close());
+    });
+    let proxied = 0;
+    const proxyPort = await listen('via proxy', () => { proxied += 1; });
+    const targetPort = await listen('direct');
+    const saved = { HTTP_PROXY: process.env.HTTP_PROXY, NO_PROXY: process.env.NO_PROXY, no_proxy: process.env.no_proxy };
+    delete process.env.NO_PROXY;
+    delete process.env.no_proxy;
+    process.env.HTTP_PROXY = `http://127.0.0.1:${proxyPort}`;
+    t.after(() => {
+        for (const [name, value] of Object.entries(saved)) {
+            if (value === undefined) delete process.env[name];
+            else process.env[name] = value;
+        }
+    });
+    setup(t, { allowPrivateEndpoints: true }, { enabled: false });
+
+    const { getClient } = require('./tryoutProxyService');
+    const res = await getClient().get(`http://localhost:${targetPort}/`);
+    assert.equal(Buffer.from(res.data).toString(), 'direct');
+    assert.equal(proxied, 0, 'the try-it request went to the proxy');
 });

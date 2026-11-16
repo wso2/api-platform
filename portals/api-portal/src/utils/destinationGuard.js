@@ -45,13 +45,16 @@ const { RE2JS } = require('re2js');
 // Denied unconditionally, whatever the deployment looks like. 169.254.169.254
 // (AWS/GCP/Azure IMDS) and fd00:ec2::254 (IPv6 IMDS) are the addresses a forged
 // request is usually aimed at; there is no legitimate reason for a managed API endpoint
-// to live on a link-local or unspecified address.
+// to live on a link-local, unspecified, multicast or broadcast address.
 const ALWAYS_DENIED_CIDRS = [
     '169.254.0.0/16',   // link-local, includes the 169.254.169.254 metadata address
     '0.0.0.0/8',        // "this network"
+    '224.0.0.0/4',      // multicast
+    '255.255.255.255/32', // limited broadcast
     'fe80::/10',        // IPv6 link-local
     'fd00:ec2::254/128',// IPv6 cloud metadata address
     '::/128',           // IPv6 unspecified
+    'ff00::/8',         // IPv6 multicast
 ];
 
 // Denied only when private destinations are disallowed. These ranges are where
@@ -158,7 +161,11 @@ const MAX_HOSTNAME_PATTERN_LENGTH = 255;
  * @returns {Readonly<{enabled: boolean, mode: string, patterns: object[], denyPrivateNetworks: boolean, allowedSchemes: string[], maxRedirects: number}>}
  */
 function compileAccessControl(cfg = {}) {
-    const enabled = cfg.enabled === true;
+    // Both switches must be real booleans: a quoted "true" would otherwise read as
+    // false and silently turn the control (or its private-network rule) off. A value
+    // templated from the environment is already a boolean (configLoader coerces it).
+    const enabled = optionalBoolean(cfg.enabled, 'enabled');
+    const denyPrivateNetworks = optionalBoolean(cfg.denyPrivateNetworks, 'deny_private_networks');
     const mode = String(cfg.mode || 'deny').trim().toLowerCase();
     const hostnames = cfg.hostnames ?? [];
     const allowedSchemes = (cfg.allowedSchemes && cfg.allowedSchemes.length ? cfg.allowedSchemes : ['http', 'https'])
@@ -204,10 +211,24 @@ function compileAccessControl(cfg = {}) {
         enabled: true,
         mode,
         patterns: Object.freeze(patterns),
-        denyPrivateNetworks: cfg.denyPrivateNetworks === true,
+        denyPrivateNetworks,
         allowedSchemes: Object.freeze(allowedSchemes),
         maxRedirects,
     });
+}
+
+/**
+ * Read an optional boolean setting: false when it is absent, the value when it is a
+ * boolean, and an error for anything else.
+ */
+function optionalBoolean(value, name) {
+    if (value === undefined || value === null) {
+        return false;
+    }
+    if (typeof value !== 'boolean') {
+        throw new Error(`${name} must be true or false`);
+    }
+    return value;
 }
 
 let installedAccessControl = compileAccessControl({ enabled: false });

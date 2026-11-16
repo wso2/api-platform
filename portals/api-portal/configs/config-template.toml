@@ -97,8 +97,8 @@ ecdh_curves = "X25519,P-256"
 #                       and unique-local addresses. It can only tighten a feature's
 #                       own allow_private_endpoints (tryout, key_manager_provisioning),
 #                       never relax it. In allow mode a listed host must pass this
-#                       check too. Link-local (cloud metadata), unspecified and
-#                       multicast addresses are always refused.
+#                       check too. Link-local (cloud metadata), unspecified, multicast
+#                       and broadcast addresses are always refused.
 # allowed_schemes       "http" and/or "https".
 #
 # A refused destination gets a generic error; the reason is logged only.
