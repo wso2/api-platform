@@ -4298,3 +4298,40 @@ func TestGatewayServiceStopRegistersNothingForAServiceItCannotStop(t *testing.T)
 	require.Error(t, steps.startService(ctx, "gateway-controller"))
 	require.Equal(t, 1, reg.Count(), "a service that failed to start is still restarted at cleanup")
 }
+
+func TestServiceLogMarkerHelpers(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("log-marker-runner"))
+	require.NoError(t, tcontext.Set(ctx, "apiContext", "/fault-skipped-1"))
+
+	marker, err := expandLogMarker(ctx, "route=POST|${CTX:apiContext}/check|* hint=")
+	require.NoError(t, err)
+	require.Equal(t, "route=POST|/fault-skipped-1/check|* hint=", marker)
+
+	_, err = expandLogMarker(ctx, "  ")
+	require.ErrorContains(t, err, "must not be empty")
+	_, err = expandLogMarker(ctx, "${CTX:missing}")
+	require.Error(t, err)
+
+	logs := "line one\nmsg=skipped route=POST|/a/check|* hint=x\nline three"
+	require.True(t, logsHaveMarker(logs, "route=POST|/a/check|* hint="))
+	require.False(t, logsHaveMarker(logs, "route=POST|/b/check|* hint="))
+	require.False(t, logsHaveMarker("", "x"))
+
+	require.True(t, logEventMatches(logs, "route=POST|/a", "hint=", true))
+	require.False(t, logEventMatches(logs, "route=POST|/a", "secret", true))
+	require.True(t, logEventMatches(logs, "route=POST|/a", "secret", false))
+	require.False(t, logEventMatches(logs, "route=POST|/a", "hint=", false))
+	require.False(t, logEventMatches(logs, "no such event", "secret", true))
+	require.False(t, logEventMatches(logs, "no such event", "secret", false),
+		"an absent event satisfies neither check")
+	events := "access /x/check 200\nrecord /x/check FAULT\nother FAULT"
+	require.True(t, logEventMatches(events, "/x/check", "FAULT", true), "any event with the marker may hold the text")
+	require.False(t, logEventMatches(events, "/x/check", "FAULT", false), "no event with the marker may hold the text")
+	require.False(t, logEventMatches(events, "/y/check", "FAULT", true))
+
+	long := strings.Repeat("a", 2500) + "tail"
+	described := serviceLog(long).Describe()
+	require.Len(t, described, 2000)
+	require.True(t, strings.HasSuffix(described, "tail"))
+	require.Equal(t, "short", serviceLog("short").Describe())
+}
