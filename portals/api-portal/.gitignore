@@ -109,6 +109,3 @@ resources/certificates/
 
 # ./setup.sh output: bind-mounted RS256 JWT signing keypair
 resources/keys/
-
-# Test reports
-it/reports/*
