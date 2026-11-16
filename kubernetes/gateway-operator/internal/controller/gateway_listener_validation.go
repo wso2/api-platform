@@ -243,7 +243,7 @@ func validateTLSCertificateRefs(ctx context.Context, cl client.Client, gwNamespa
 
 	for _, certRef := range l.TLS.CertificateRefs {
 		// Validate the cert ref group/kind
-		if certRef.Group != nil && string(*certRef.Group) != "" && string(*certRef.Group) != "core" {
+		if !isCoreAPIGroup(certRef.Group) {
 			return false, string(gatewayv1.ListenerReasonInvalidCertificateRef),
 				fmt.Sprintf("Unsupported group %q for certificateRef", *certRef.Group), nil
 		}

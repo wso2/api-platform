@@ -826,6 +826,53 @@ func TestHTTPRouteNotAllowedByListenerIsNotDeployed(t *testing.T) {
 	requireCondition(t, ourParentStatus(h.get(route), gwNs, "gw"), "Accepted", metav1.ConditionFalse, string(gatewayv1.RouteReasonNotAllowedByListeners))
 }
 
+// A Gateway whose listeners stop accepting the route is cleaned up at once, even while another
+// parent is still pending or failed; only moves wait for the other parents to settle.
+func TestHTTPRouteRevokedGatewayIsCleanedUpWithoutWaiting(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		other string // "", "pending" or "failed"
+	}{
+		{name: "other parent pending", other: "pending"},
+		{name: "other parent failed", other: "failed"},
+		{name: "only parent"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ns := "mg-revoke"
+			gwNs := "mg-revoke-infra"
+			gwA := mgGateway(gwNs, "gw-a", mgClass, gatewayv1.NamespacesFromAll)
+			gwB := mgGateway(gwNs, "gw-b", mgClass, gatewayv1.NamespacesFromAll)
+			refs := []gatewayv1.ParentReference{mgRef(gwNs, "gw-a")}
+			if tc.other != "" {
+				refs = append(refs, mgRef(gwNs, "gw-b"))
+			}
+			route := mgRoute(ns, "r", "/", refs...)
+			objs := append(mgObjects(ns), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: gwNs}}, gwA, gwB, route)
+			h := newRouteHarness(t, ns, nil, objs...)
+			epA := h.register(gwA)
+			if tc.other == "failed" {
+				epB := h.register(gwB)
+				h.rest.failDeploy[epB] = &gatewayclient.NonRetryableError{Err: errors.New("configuration already exists"), StatusCode: 409}
+			}
+			h.settle(route)
+			require.True(t, h.rest.has(epA, ns+"-r"))
+
+			// gw-a's owner stops allowing routes from other namespaces.
+			gw := &gatewayv1.Gateway{}
+			require.NoError(t, h.cl.Get(context.Background(), client.ObjectKeyFromObject(gwA), gw))
+			same := gatewayv1.NamespacesFromSame
+			gw.Spec.Listeners[0].AllowedRoutes.Namespaces.From = &same
+			require.NoError(t, h.cl.Update(context.Background(), gw))
+
+			h.reconcile(route)
+			require.False(t, h.rest.has(epA, ns+"-r"), "a Gateway that rejects the route must stop serving it")
+			got := h.get(route)
+			require.NotContains(t, recordOf(t, got), gwNs+"/gw-a")
+			requireCondition(t, ourParentStatus(got, gwNs, "gw-a"), "Accepted", metav1.ConditionFalse, string(gatewayv1.RouteReasonNotAllowedByListeners))
+		})
+	}
+}
+
 // --- Status writes ---
 
 func TestHTTPRouteStatusConflictKeepsOtherControllersEntry(t *testing.T) {

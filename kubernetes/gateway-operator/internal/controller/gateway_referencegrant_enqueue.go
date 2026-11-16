@@ -67,7 +67,7 @@ func gatewayListenersReferenceSecretsIn(gw *gatewayv1.Gateway, ns string) bool {
 			continue
 		}
 		for _, ref := range l.TLS.CertificateRefs {
-			if ref.Group != nil && string(*ref.Group) != "" {
+			if !isCoreAPIGroup(ref.Group) {
 				continue
 			}
 			if ref.Kind != nil && string(*ref.Kind) != "Secret" {
@@ -79,4 +79,10 @@ func gatewayListenersReferenceSecretsIn(gw *gatewayv1.Gateway, ns string) bool {
 		}
 	}
 	return false
+}
+
+// isCoreAPIGroup reports whether a reference's group names the core API group: unset, "" or
+// "core". Listener validation and the ReferenceGrant watch must agree on this.
+func isCoreAPIGroup(g *gatewayv1.Group) bool {
+	return g == nil || *g == "" || *g == "core"
 }

@@ -35,10 +35,13 @@ import (
 // The GatewaySecretInvalidReferenceGrant conformance case: a Gateway first resolved while another
 // grant allowed it must be re-evaluated once that grant is deleted.
 func TestEnqueueK8sGatewaysForReferenceGrant(t *testing.T) {
-	https := func(ns, name, class, secretNS string) *gatewayv1.Gateway {
+	https := func(ns, name, class, secretNS string, group ...string) *gatewayv1.Gateway {
 		ref := gatewayv1.SecretObjectReference{Name: "certificate"}
 		if secretNS != "" {
 			ref.Namespace = goldenStr[gatewayv1.Namespace](secretNS)
+		}
+		if len(group) > 0 {
+			ref.Group = goldenStr[gatewayv1.Group](group[0])
 		}
 		return &gatewayv1.Gateway{
 			ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name},
@@ -53,6 +56,9 @@ func TestEnqueueK8sGatewaysForReferenceGrant(t *testing.T) {
 	}
 	cl := fake.NewClientBuilder().WithScheme(redirectRouteScheme(t)).WithObjects(
 		https("infra", "cross-ns", "wso2", "web-backend"),
+		// Listener validation accepts "core" for the core group, so the watch must too.
+		https("infra", "cross-ns-core-group", "wso2", "web-backend", "core"),
+		https("infra", "cross-ns-other-group", "wso2", "web-backend", "example.com"),
 		https("infra", "same-ns", "wso2", ""),
 		https("infra", "other-ns", "wso2", "elsewhere"),
 		https("infra", "unmanaged", "istio", "web-backend"),
@@ -64,5 +70,8 @@ func TestEnqueueK8sGatewaysForReferenceGrant(t *testing.T) {
 
 	grant := &gatewayv1beta1.ReferenceGrant{ObjectMeta: metav1.ObjectMeta{Namespace: "web-backend", Name: "g"}}
 	got := r.enqueueK8sGatewaysForReferenceGrant(context.Background(), grant)
-	require.Equal(t, []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: "infra", Name: "cross-ns"}}}, got)
+	require.ElementsMatch(t, []reconcile.Request{
+		{NamespacedName: types.NamespacedName{Namespace: "infra", Name: "cross-ns"}},
+		{NamespacedName: types.NamespacedName{Namespace: "infra", Name: "cross-ns-core-group"}},
+	}, got)
 }

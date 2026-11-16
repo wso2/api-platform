@@ -276,6 +276,7 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	next := deployedGateways{}
 	wanted := map[string]bool{}
+	rejected := map[string]bool{}
 	settled := len(missing) == 0
 	for i, p := range ours {
 		o := outcomes[i]
@@ -287,6 +288,8 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		key := gatewayKeyString(p.group.key)
 		switch o.state {
+		case gatewayNotTarget:
+			rejected[key] = true
 		case gatewayDeployed:
 			next[key] = o.entry
 			wanted[key] = true
@@ -308,38 +311,40 @@ func (r *HTTPRouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		wanted[k] = true
 	}
 
-	// Old deployments are removed only once every wanted Gateway has settled, so a route moving
-	// to a Gateway that isn't ready yet keeps serving where it was.
+	// A Gateway the route left is cleaned up only once every wanted Gateway has settled, so a
+	// route moving to a Gateway that isn't ready yet keeps serving where it was. A Gateway whose
+	// listeners now reject the route is cleaned up at once: it no longer allows the route.
 	stale := staleCleanupCandidates(route, record, wanted)
 	cleanupPending := map[string]bool{}
-	var cleanupErr error
-	if settled {
-		done := make([]bool, len(stale))
-		errs := make([]error, len(stale))
-		forEachBounded(len(stale), httpRouteGatewayConcurrency, func(i int) {
-			done[i], errs[i] = r.removeFromGateway(ctx, stale[i], handle, log)
-		})
-		for i, c := range stale {
-			if done[i] {
-				continue
-			}
-			k := gatewayKeyString(c.key)
-			if c.recorded {
-				next[k] = c.entry
-			}
-			cleanupPending[k] = true
-			requeue.at(requeueStaleCleanup)
-			if errs[i] != nil && !isGatewayRESTError(errs[i]) && cleanupErr == nil {
-				cleanupErr = errs[i]
-			}
+	keepStale := func(c cleanupCandidate) {
+		k := gatewayKeyString(c.key)
+		if c.recorded {
+			next[k] = c.entry
 		}
-	} else {
-		for _, c := range stale {
-			k := gatewayKeyString(c.key)
-			if c.recorded {
-				next[k] = c.entry
-			}
-			cleanupPending[k] = true
+		cleanupPending[k] = true
+	}
+	var removeNow []cleanupCandidate
+	for _, c := range stale {
+		if settled || rejected[gatewayKeyString(c.key)] {
+			removeNow = append(removeNow, c)
+		} else {
+			keepStale(c)
+		}
+	}
+	var cleanupErr error
+	done := make([]bool, len(removeNow))
+	errs := make([]error, len(removeNow))
+	forEachBounded(len(removeNow), httpRouteGatewayConcurrency, func(i int) {
+		done[i], errs[i] = r.removeFromGateway(ctx, removeNow[i], handle, log)
+	})
+	for i, c := range removeNow {
+		if done[i] {
+			continue
+		}
+		keepStale(c)
+		requeue.at(requeueStaleCleanup)
+		if errs[i] != nil && !isGatewayRESTError(errs[i]) && cleanupErr == nil {
+			cleanupErr = errs[i]
 		}
 	}
 
