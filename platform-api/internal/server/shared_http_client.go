@@ -83,11 +83,19 @@ func buildAccessControlClientConfig(shared httpclient.Config, hc config.HTTPClie
 		switch hc.Proxy.Egress {
 		case "manual_connect":
 			out.Proxy.Egress = httpclient.ProxyEgressManualCONNECT
-		default:
-			// The existing destination preset is off, so egress was never required. Delegated
-			// keeps such a deployment working: the proxy's own egress controls govern the
-			// destination's address, while the host rule and schemes are still enforced here.
+		case "delegated":
 			out.Proxy.Egress = httpclient.ProxyEgressDelegated
+		case "":
+			// Delegated egress leaves the destination's address to the proxy's own egress
+			// controls; only the host rule and schemes are enforced here. That cannot honour
+			// deny_private_networks, so asking for it requires choosing egress explicitly.
+			if ac.DenyPrivateNetworks {
+				return httpclient.Config{}, false, fmt.Errorf("deny_private_networks requires platform_api.http_client.proxy.egress to be set when a proxy is configured: \"manual_connect\" checks each destination's address here, \"delegated\" leaves it to the proxy")
+			}
+			// Otherwise delegated keeps a deployment that never had to choose working.
+			out.Proxy.Egress = httpclient.ProxyEgressDelegated
+		default:
+			return httpclient.Config{}, false, fmt.Errorf("platform_api.http_client.proxy.egress must be \"delegated\" or \"manual_connect\", got %q", hc.Proxy.Egress)
 		}
 	}
 	return out, true, nil

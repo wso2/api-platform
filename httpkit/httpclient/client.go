@@ -440,8 +440,35 @@ func (d *destinationRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 			return nil, err
 		}
 		req = routed
+		if err := d.checkProxiedAuthority(req); err != nil {
+			closeRequestBody(req)
+			return nil, err
+		}
 	}
 	return d.next.RoundTrip(req)
+}
+
+// checkProxiedAuthority applies the host rule to req.Host when a plain http
+// request goes through a forward proxy. Such a request is sent to the proxy as
+// an absolute URI built from req.Host (when set), so the proxy fetches that
+// authority rather than req.URL's. A direct request dials req.URL's host and an
+// https request tunnels to it (CONNECT), so for those req.Host is only the
+// virtual-host header the destination sees, and it is not checked.
+func (d *destinationRoundTripper) checkProxiedAuthority(req *http.Request) error {
+	if req.Host == "" || !strings.EqualFold(req.URL.Scheme, "http") {
+		return nil
+	}
+	if proxyAddr, _ := req.Context().Value(proxyRouteKey{}).(string); proxyAddr == "" {
+		return nil
+	}
+	host := req.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if err := d.policy.CheckHost(host); err != nil {
+		return fmt.Errorf("httpclient: destination rejected: %w", err)
+	}
+	return nil
 }
 
 // closeRequestBody honours the RoundTripper contract that the request body

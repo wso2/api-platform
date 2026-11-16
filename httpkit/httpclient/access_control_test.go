@@ -355,3 +355,56 @@ func TestTransportProxyAddr_MatchesWhatTheTransportDials(t *testing.T) {
 		}
 	}
 }
+
+// TestNew_HostRuleAppliesToTheAuthorityAProxyFetches covers a plain http
+// request through a forward proxy whose Host differs from its URL: the request
+// line sent to the proxy carries req.Host, so that is the authority the proxy
+// fetches, and the host rule must apply to it. A direct request's Host is only
+// a virtual-host header and is not checked.
+func TestNew_HostRuleAppliesToTheAuthorityAProxyFetches(t *testing.T) {
+	var fetched []string
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetched = append(fetched, r.URL.Host) // the absolute URI's authority
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(proxy.Close)
+
+	allowOnly := netguard.GuardConfig{Enabled: true, Mode: netguard.ModeAllow, Hostnames: []string{`allowed\.example`}}
+	proxied := guardedClient(t, allowOnly, func(c *Config) {
+		c.Proxy.Mode = "url"
+		c.Proxy.URL = proxy.URL
+		c.Proxy.Egress = ProxyEgressDelegated
+	})
+	get := func(client *http.Client, rawURL, host string) error {
+		req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Host = host
+		resp, err := client.Do(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+		return err
+	}
+
+	if err := get(proxied, "http://allowed.example/x", "denied.example"); !errors.Is(err, netguard.ErrDestinationNotAllowed) {
+		t.Fatalf("proxied request with an unlisted Host = %v, want ErrDestinationNotAllowed", err)
+	}
+	if len(fetched) != 0 {
+		t.Fatalf("a refused request must not reach the proxy, it fetched %v", fetched)
+	}
+	if err := get(proxied, "http://allowed.example/x", "allowed.example:8080"); err != nil {
+		t.Fatalf("positive control: proxied request with a listed Host: %v", err)
+	}
+	if len(fetched) != 1 || fetched[0] != "allowed.example:8080" {
+		t.Fatalf("the proxy fetched %v, want the Host authority allowed.example:8080", fetched)
+	}
+
+	// Direct: the Host header is a virtual host on the dialed server, not a destination.
+	origin := okServer(t)
+	direct := guardedClient(t, netguard.GuardConfig{Enabled: true, Mode: netguard.ModeAllow, Hostnames: []string{`127\.0\.0\.1`}}, nil)
+	if err := get(direct, origin.URL, "vhost.example"); err != nil {
+		t.Fatalf("a direct request's virtual-host header must not be checked: %v", err)
+	}
+}

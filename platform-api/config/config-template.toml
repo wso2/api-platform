@@ -630,8 +630,10 @@ url = ""
 username = ""
 password = ""
 no_proxy = []
-# Required ("delegated" or "manual_connect") only when mode != "none" AND destination_guard.enabled below
-# — see config.HTTPClientProxyConfig's doc comment.
+# Required ("delegated" or "manual_connect") when mode != "none" AND either destination_guard.enabled
+# below or server.network_security.access_control.deny_private_networks is true — see
+# config.HTTPClientProxyConfig's doc comment. Left empty with access control on, tenant URLs use
+# "delegated": the proxy's own egress controls govern destination addresses.
 egress = ""
 
 [platform_api.http_client.proxy.tls]

@@ -253,7 +253,14 @@ func (p Policy) CheckURL(ctx context.Context, rawURL string, resolve bool) error
 	if err := p.CheckHost(host); err != nil {
 		return err
 	}
-	if ip := net.ParseIP(host); ip != nil {
+	// Parse an IP literal from the normalized host, the form the host rule
+	// matches and the HTTP transport dials: a literal written with ideographic
+	// full stops (169。254。169。254) is not an IP to net.ParseIP until it is.
+	ipHost := host
+	if normalized, err := NormalizeHost(host); err == nil {
+		ipHost = normalized
+	}
+	if ip := net.ParseIP(ipHost); ip != nil {
 		if !p.allowed(ip) {
 			return refused("netguard: address is not allowed")
 		}

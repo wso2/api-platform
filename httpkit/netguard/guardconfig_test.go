@@ -210,6 +210,8 @@ func TestCheckURL(t *testing.T) {
 		"https://BLOCKED.example./x",     // host rule after normalization
 		"https://169.254.169.254/latest", // literal metadata address
 		"https://[fe80::1]/",             // literal link-local
+		"https://169。254。169。254/",       // literal metadata address with ideographic full stops
+		"https://１６９．２５４．１６９．２５４/",       // and in full-width digits and stops
 	}
 	for _, raw := range refusedCases {
 		if err := p.CheckURL(ctx, raw, false); !errors.Is(err, ErrDestinationNotAllowed) {
@@ -224,6 +226,9 @@ func TestCheckURL(t *testing.T) {
 	}
 	if err := p.CheckURL(ctx, "https://10.0.0.5:8443/api", false); err != nil {
 		t.Errorf("positive control: private literal with private networks permitted = %v", err)
+	}
+	if err := p.CheckURL(ctx, "https://10。0。0。5/api", false); err != nil {
+		t.Errorf("positive control: a permitted literal with ideographic full stops = %v", err)
 	}
 
 	// A malformed URL is an error but not a refusal.
