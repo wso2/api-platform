@@ -102,6 +102,20 @@ gateway:
       # Keys within the Secret holding the registry username and password.
       usernameKey: username
       passwordKey: password
+  # Safety delay (Go duration, e.g. "1h") before the operator uninstalls the gateway
+  # release of a deleted APIGateway. Until the APIGateway's deletion timestamp plus this
+  # period has passed, the release keeps running, the APIGateway stays in the Deleting
+  # phase with a DeletionPending condition naming the uninstall time, and the deletion can
+  # still be recovered from (see "Gateway Deletion Safety" in the chart README).
+  # "0s" uninstalls straight away. An APIGateway annotated with
+  # gateway.api-platform.wso2.com/delete-immediately: "true" skips the wait.
+  # Rendered into operator config as gateway.deletion_grace_period.
+  deletionGracePeriod: "0s"
+  # When true, the operator annotates each gateway's controller PersistentVolumeClaim with
+  # helm.sh/resource-policy: keep, so uninstalling the gateway release leaves the claim and
+  # its data behind (delete it by hand when no longer needed). Takes effect from the next
+  # install or upgrade of each gateway. Rendered as gateway.retain_volume_on_delete.
+  retainVolumeOnDelete: false
   # Gateway chart values that will be used when deploying gateways
   # Users can override these values during helm install/upgrade
   values:

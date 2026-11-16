@@ -136,6 +136,18 @@ gateway:
 
 The chart fails to render if `encryptionKeys` is not enabled.
 
+### Gateway Deletion Safety
+
+| Config key | Environment Variable | Default | Description |
+|------------|---------------------|---------|-------------|
+| `gateway.deletion_grace_period` | `GATEWAY_DELETION_GRACE_PERIOD` | `0s` | How long a deleted APIGateway's gateway release keeps running before it is uninstalled. While waiting, the APIGateway reports a `DeletionPending` condition with the uninstall time. `0s` uninstalls at once. |
+| `gateway.retain_volume_on_delete` | `GATEWAY_RETAIN_VOLUME_ON_DELETE` | `false` | Annotate each gateway controller's PersistentVolumeClaim with `helm.sh/resource-policy: keep` so it survives the uninstall. Applies from the next install or upgrade of each gateway. |
+
+The annotation `gateway.api-platform.wso2.com/delete-immediately: "true"` on an APIGateway skips
+the grace period for that gateway. In the operator Helm chart these are `gateway.deletionGracePeriod`
+and `gateway.retainVolumeOnDelete`; the chart README's "Gateway Deletion Safety" section describes
+how to recover a gateway deleted by mistake.
+
 ### Logging Configuration
 
 | Environment Variable | Default | Description |

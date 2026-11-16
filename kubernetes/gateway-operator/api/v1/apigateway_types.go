@@ -185,6 +185,16 @@ const (
 	GatewayConditionProgrammed = "Programmed"
 	// GatewayConditionReady is the canonical Ready condition type for Gateway (retained for compatibility)
 	GatewayConditionReady = "Ready"
+	// GatewayConditionDeletionPending is True while a deleted gateway's release is kept
+	// running for the operator's configured deletion grace period
+	GatewayConditionDeletionPending = "DeletionPending"
+)
+
+// DeletionPending Condition Reasons
+const (
+	// GatewayDeletionPendingReasonGracePeriod indicates the operator is waiting for the
+	// deletion grace period to pass before uninstalling the gateway release
+	GatewayDeletionPendingReasonGracePeriod = "GracePeriod"
 )
 
 // Accepted Condition Reasons
