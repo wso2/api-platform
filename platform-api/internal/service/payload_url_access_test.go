@@ -290,6 +290,12 @@ func TestGraphQLSchemaResolution_RefusedAtDialTime(t *testing.T) {
 	svc := newGraphQLTestService(&mockGraphQLAPIRepo{}, nil)
 	_, err := svc.ValidateSchema(validateSchemaRequest(api.ValidateGraphQLSchemaRequestSchemaSourceUrl, byName, ""))
 	assertRefusedField(t, err, "sdlUrl")
+
+	// Introspection posts to the upstream itself; a refusal at dial time is reported
+	// against upstream.main.url rather than leaving the API without a schema.
+	_, err = svc.ValidateSchema(validateSchemaRequest(api.ValidateGraphQLSchemaRequestSchemaSourceIntrospection,
+		"", "http://localhost:"+port+"/graphql"))
+	assertRefusedField(t, err, "upstream.main.url")
 }
 
 // Positive controls: without a refusal, an unreachable source stays best-effort and a

@@ -59,7 +59,7 @@ scenarios:
       status: exempt
       reason: "Withdrawn before release: an API portal's URL is deployment configuration, so access control no longer checks it. NETAC-PA-015 asserts the portal is accepted."
   - id: NETAC-PA-005
-    title: "Create, and update, an LLM provider template whose metadata.openapiSpecUrl is the cloud metadata address; 400 DESTINATION_NOT_ALLOWED each time and no template is created or changed, while one with a permitted spec URL is created with 201."
+    title: "Create, and update, an LLM provider template whose metadata.openapiSpecUrl is the cloud metadata address; 400 DESTINATION_NOT_ALLOWED each time and no template is created or changed, while one with a permitted spec URL is created with 201 and updated to another permitted spec URL with 200."
     priority: P1
     ui:
       status: exempt

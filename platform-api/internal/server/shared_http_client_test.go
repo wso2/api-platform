@@ -18,6 +18,7 @@ package server
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wso2/api-platform/httpkit/httpclient"
@@ -107,6 +108,48 @@ func TestBuildAccessControlClientConfig(t *testing.T) {
 		}
 		if _, err := httpclient.New(out); err != nil {
 			t.Fatalf("the derived configuration must build: %v", err)
+		}
+	})
+
+	t.Run("deny_private_networks behind a proxy requires an explicit egress choice", func(t *testing.T) {
+		shared := httpclient.DefaultConfig()
+		shared.Proxy.Mode = "url"
+		shared.Proxy.URL = "http://proxy.internal:3128"
+		strict := enabled
+		strict.DenyPrivateNetworks = true
+
+		_, _, err := buildAccessControlClientConfig(shared, config.HTTPClientConfig{}, strict)
+		if err == nil || !strings.Contains(err.Error(), "platform_api.http_client.proxy.egress") {
+			t.Fatalf("unset egress with deny_private_networks = %v, want an error naming proxy.egress", err)
+		}
+
+		for value, want := range map[string]httpclient.ProxyEgressPolicy{
+			"manual_connect": httpclient.ProxyEgressManualCONNECT,
+			"delegated":      httpclient.ProxyEgressDelegated,
+		} {
+			hc := config.HTTPClientConfig{}
+			hc.Proxy.Egress = value
+			out, _, err := buildAccessControlClientConfig(shared, hc, strict)
+			if err != nil {
+				t.Fatalf("egress %q: %v", value, err)
+			}
+			if out.Proxy.Egress != want {
+				t.Fatalf("egress %q: got %v, want %v", value, out.Proxy.Egress, want)
+			}
+			if _, err := httpclient.New(out); err != nil {
+				t.Fatalf("egress %q: the derived configuration must build: %v", value, err)
+			}
+		}
+	})
+
+	t.Run("an unknown egress value is a configuration error", func(t *testing.T) {
+		shared := httpclient.DefaultConfig()
+		shared.Proxy.Mode = "url"
+		shared.Proxy.URL = "http://proxy.internal:3128"
+		hc := config.HTTPClientConfig{}
+		hc.Proxy.Egress = "tunnel"
+		if _, _, err := buildAccessControlClientConfig(shared, hc, enabled); err == nil {
+			t.Fatal("want an error for an unrecognized egress value")
 		}
 	})
 
