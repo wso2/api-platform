@@ -2,12 +2,18 @@ name: CLI Release
 
 on:
   workflow_dispatch:
+    inputs:
+      next_dev_version:
+        description: 'Next development version (with -SNAPSHOT suffix, e.g. 0.10.0-SNAPSHOT)'
+        required: true
+        type: string
 
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - name: Checkout code
@@ -19,6 +25,52 @@ jobs:
           VERSION=$(make -C cli/src version-get-release --no-print-directory)
           echo "Releasing CLI version: ${VERSION}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      # Fail before anything is tagged, built or published.
+      - name: Validate release inputs
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          NEXT_DEV_VERSION: ${{ inputs.next_dev_version }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if [ "${REF_TYPE}" != "branch" ]; then
+            echo "Error: run this workflow from a branch; the version bump PR targets the branch it ran from"
+            exit 1
+          fi
+          if [ -z "${NEXT_DEV_VERSION}" ]; then
+            echo "Error: next_dev_version input is required"
+            exit 1
+          fi
+          # X.Y.Z, an optional qualifier (e.g. -rc), then -SNAPSHOT. version-set writes the value
+          # through a shell command, so nothing outside this format may reach it.
+          if [[ ! "${NEXT_DEV_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?-SNAPSHOT$ ]]; then
+            echo "Error: next_dev_version must be X.Y.Z-SNAPSHOT, optionally with a qualifier (e.g. 0.10.0-SNAPSHOT, 1.2.0-rc-SNAPSHOT)"
+            exit 1
+          fi
+          if [ "${NEXT_DEV_VERSION}" = "${RELEASE_VERSION}-SNAPSHOT" ]; then
+            echo "Error: next_dev_version must differ from the version being released (${RELEASE_VERSION})"
+            exit 1
+          fi
+          # The next release would push ap/v<next version>: it must be a valid tag name that does
+          # not exist yet. version-get-release removes the first "-SNAPSHOT", so the qualifier
+          # must not contain SNAPSHOT itself, or the two would derive different versions.
+          NEXT_RELEASE_VERSION="${NEXT_DEV_VERSION%-SNAPSHOT}"
+          if [[ "${NEXT_RELEASE_VERSION}" == *SNAPSHOT* ]]; then
+            echo "Error: next_dev_version must not contain SNAPSHOT before its -SNAPSHOT suffix"
+            exit 1
+          fi
+          if ! git check-ref-format "refs/tags/ap/v${NEXT_RELEASE_VERSION}"; then
+            echo "Error: ap/v${NEXT_RELEASE_VERSION} is not a valid Git tag name"
+            exit 1
+          fi
+          if ! TAG_REFS=$(git ls-remote --refs origin "refs/tags/ap/v${NEXT_RELEASE_VERSION}"); then
+            echo "Error: could not check whether tag ap/v${NEXT_RELEASE_VERSION} exists"
+            exit 1
+          fi
+          if [ -n "${TAG_REFS}" ]; then
+            echo "Error: tag ap/v${NEXT_RELEASE_VERSION} already exists; choose a later next_dev_version"
+            exit 1
+          fi
 
       - name: Set version
         run: |
@@ -168,8 +220,12 @@ jobs:
           name: ap-release-zips-${{ steps.version.outputs.version }}
           path: release-artifacts/*.zip
 
-      - name: Bump to next dev version
-        run: make -C cli/src version-bump-next-dev
+      - name: Set next dev version
+        env:
+          NEXT_DEV_VERSION: ${{ inputs.next_dev_version }}
+        run: |
+          echo "Setting CLI to next dev version: ${NEXT_DEV_VERSION}"
+          make -C cli/src version-set "VERSION=${NEXT_DEV_VERSION}"
 
       - name: Commit version bump
         run: |
@@ -183,14 +239,15 @@ jobs:
         id: create-pr
         uses: peter-evans/create-pull-request@v6
         with:
+          token: ${{ secrets.API_PLATFORM_BOT_TOKEN }}
           commit-message: "Bump CLI to next dev version"
           title: "chore: Bump CLI to next dev version"
           body: |
             Automated version bump after release `ap/v${{ steps.version.outputs.version }}`
 
-            This PR bumps the CLI version to the next development version.
+            This PR bumps the CLI version to the next development version `${{ inputs.next_dev_version }}`.
           branch: cli-version-bump-${{ github.run_id }}
-          base: main
+          base: ${{ github.ref_name }}
           delete-branch: true
           assignees: renuka-fernando
           labels: |
