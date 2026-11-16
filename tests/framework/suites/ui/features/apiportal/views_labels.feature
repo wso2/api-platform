@@ -16,22 +16,37 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal settings views and labels
+@APIPORTAL
+Feature: API Portal settings: views, labels and themes
+  Journey APIPUI-008: an administrator creates, edits, renames and deletes views and labels, and
+  each view serves only the APIs that carry its labels.
+  Journey APIPUI-009: an administrator themes one view, sees the new look only there, downloads the
+  theme and resets it.
 
   Background:
     Given the user is signed in to the API Portal
 
-  Scenario: An administrator creates a view from a display name
-    Given the API Portal has a settings label fixture
-    When the user creates a view from a display name
-
-  Scenario: An administrator renames a view from the edit modal
-    Given the API Portal has a settings view fixture
+  @APIP-010 @APIP-011
+  Scenario: Journey: an administrator manages views and labels, and each view serves the APIs of its labels
+    When the administrator adds a label and a view with that label from their display names
+    And the API Portal has an API with the settings label and an API with only the default label
+    Then the settings view lists only the API with its label
+    When the user adds the default label to the settings view
+    Then the settings view lists both APIs
     When the user renames the settings view
+    Then the old address of the renamed view is not found
+    When the user renames the settings label
+    And the user deletes the settings label, which an API uses
+    Then the API that used the deleted label drops out of the settings view
+    When the user deletes the settings view
+    Then the deleted view's address is not found
 
-  Scenario: The default view has an enabled delete control
-    Given the API Portal has a settings view fixture
-    When the default view has an enabled delete control
-
-  Scenario: An administrator creates a label from a display name
-    When the user creates a label from a display name
+  @APIP-012
+  Scenario: Journey: an administrator themes a view, downloads the theme and resets it
+    Given the API Portal has two views to theme
+    When the user applies a theme to the first view in the settings
+    Then the first view shows the theme, and the second view keeps the default look
+    And the downloaded theme of the first view holds the applied stylesheet
+    And a theme that holds only a script is refused, and the first view keeps its theme
+    When the user resets the theme of the first view
+    Then the first view is back to the default look

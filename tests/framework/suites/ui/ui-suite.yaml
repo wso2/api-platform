@@ -50,9 +50,6 @@ blocks:
       - name: portal-access
         features:
           - features/apiportal/access.feature
-      - name: file-based-login
-        features:
-          - features/apiportal/file_based_login.feature
       - name: views-labels
         features:
           - features/apiportal/views_labels.feature
@@ -74,11 +71,11 @@ blocks:
         features:
           - features/apiportal/api_wizard.feature
 
-  # Key managers are portal-global resources, so the scenario that creates one
-  # keeps a dedicated stack and runs serialized. apiportal/applications.feature
-  # no longer creates any — it shares this stack only because both runners drive
-  # the same portal; it could move to api-portal-core if that stack's parallelism
-  # is ever worth the churn.
+  # Key managers, the organization's details and webhooks are portal-wide, so the
+  # journeys that change them (apiportal/key_managers.feature) keep a dedicated
+  # stack and run serialized. apiportal/applications.feature shares it because its
+  # developer journeys expect that developer to start without applications or
+  # subscriptions, which no other runner on this stack creates.
   - name: api-portal-key-manager
     parallel: 1
     components:

@@ -30,6 +30,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -287,6 +288,88 @@ func TestSuiteShapeRejectsMissingSuiteFile(t *testing.T) {
 	}
 }
 
+// TestPortalDeleterAsActorUsesEachResourcesOwnActor checks that two resources of one kind,
+// registered under different actors, are each deleted with their own actor's session, and that an
+// unknown actor falls back.
+func TestPortalDeleterAsActorUsesEachResourcesOwnActor(t *testing.T) {
+	developer := &apiPortalAuth{user: actor.Credentials{Username: "dev"}}
+	other := &apiPortalAuth{user: actor.Credentials{Username: "other"}}
+	fallback := &apiPortalAuth{}
+	used := map[string]*apiPortalAuth{}
+	deleter := portalDeleterAsActor(map[string]*apiPortalAuth{"dev": developer, "other": other}, fallback,
+		func(auth *apiPortalAuth) cleanup.Deleter {
+			return func(_ context.Context, res cleanup.Resource) error {
+				used[res.ID] = auth
+				return nil
+			}
+		})
+	for _, res := range []cleanup.Resource{
+		{ID: "a", Actor: "dev"}, {ID: "b", Actor: "other"}, {ID: "c", Actor: "unknown"}, {ID: "d"},
+	} {
+		if err := deleter(context.Background(), res); err != nil {
+			t.Fatalf("portalDeleterAsActor(%q) error = %v", res.ID, err)
+		}
+	}
+	want := map[string]*apiPortalAuth{"a": developer, "b": other, "c": fallback, "d": fallback}
+	for id, auth := range want {
+		if used[id] != auth {
+			t.Errorf("resource %q deleted with the wrong session", id)
+		}
+	}
+}
+
+// TestPortalAPIKeyRevokerRejectsAnIDWithoutAPIAndKey checks that an id not shaped "api/key" is
+// refused before any request is sent.
+func TestPortalAPIKeyRevokerRejectsAnIDWithoutAPIAndKey(t *testing.T) {
+	revoke := portalAPIKeyRevoker(&apiPortalAuth{})
+	for _, id := range []string{"", "only-api", "/key", "api/"} {
+		if err := revoke(context.Background(), cleanup.Resource{ID: id}); err == nil {
+			t.Fatalf("portalAPIKeyRevoker() accepted id %q", id)
+		}
+	}
+}
+
+// TestPortalOrganizationRestorerRejectsAPayloadWithoutHandle checks that a restore payload that is
+// not JSON or has no organization id is refused before any request is sent.
+func TestPortalOrganizationRestorerRejectsAPayloadWithoutHandle(t *testing.T) {
+	restore := portalOrganizationRestorer(&apiPortalAuth{})
+	for _, id := range []string{"", "not json", "{}", `{"id":""}`} {
+		if err := restore(context.Background(), cleanup.Resource{ID: id}); err == nil {
+			t.Fatalf("portalOrganizationRestorer() accepted payload %q", id)
+		}
+	}
+}
+
+// TestWebhooksNamedPicksTheNamedSubscribersAndPages checks that a list page yields the ids of the
+// subscribers with the name, an exact match, and the offset of the next page until the last.
+func TestWebhooksNamedPicksTheNamedSubscribersAndPages(t *testing.T) {
+	body := `{"count":3,"list":[{"id":"a","displayName":"IT Webhook x"},{"id":"b","displayName":"IT Webhook x Edited"},` +
+		`{"id":"c","displayName":"IT Webhook x"}],"pagination":{"limit":3,"offset":0,"total":5}}`
+	ids, next, err := webhooksNamed([]byte(body), "IT Webhook x")
+	if err != nil || strings.Join(ids, ",") != "a,c" || next != 3 {
+		t.Fatalf("webhooksNamed() = %v, %d, %v, want [a c], 3", ids, next, err)
+	}
+	last := `{"count":2,"list":[{"id":"d","displayName":"other"},{"id":"e","displayName":"IT Webhook x"}],"pagination":{"limit":3,"offset":3,"total":5}}`
+	if ids, next, err := webhooksNamed([]byte(last), "IT Webhook x"); err != nil || strings.Join(ids, ",") != "e" || next != -1 {
+		t.Fatalf("webhooksNamed() on the last page = %v, %d, %v, want [e], -1", ids, next, err)
+	}
+	empty := `{"count":0,"list":[],"pagination":{"limit":100,"offset":0,"total":0}}`
+	if ids, next, err := webhooksNamed([]byte(empty), "IT Webhook x"); err != nil || len(ids) != 0 || next != -1 {
+		t.Fatalf("webhooksNamed() on an empty list = %v, %d, %v, want none, -1", ids, next, err)
+	}
+	if _, _, err := webhooksNamed([]byte("not json"), "x"); err == nil {
+		t.Fatal("webhooksNamed() accepted a body that is not JSON")
+	}
+}
+
+// TestPortalWebhookByNameDeleterRejectsAnEmptyName checks that an empty name is refused before any
+// request is sent, so a sweep never deletes every webhook that has no name.
+func TestPortalWebhookByNameDeleterRejectsAnEmptyName(t *testing.T) {
+	if err := portalWebhookByNameDeleter(&apiPortalAuth{})(context.Background(), cleanup.Resource{}); err == nil {
+		t.Fatal("portalWebhookByNameDeleter() accepted an empty name")
+	}
+}
+
 func TestRepoRootFindsWorkspaceRoot(t *testing.T) {
 	root := repoRoot(t)
 
@@ -332,7 +415,10 @@ func registerUIDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) 
 	portalAuth := &apiPortalAuth{topo: topo, client: portalClient, cookies: map[string]string{}}
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalAPI, portalAPIDeleter(portalAuth, "apis"))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalMCP, portalAPIDeleter(portalAuth, "mcp-servers"))
-	reg.RegisterDeleter(apiportalsteps.KindAPIPortalApplication, portalAPIDeleter(portalAuth, "applications"))
+	developerAuth := &apiPortalAuth{topo: topo, client: portalClient, cookies: map[string]string{}, user: actor.Developer()}
+	byActor := map[string]*apiPortalAuth{actor.Developer().Username: developerAuth}
+	reg.RegisterDeleter(apiportalsteps.KindAPIPortalApplication, portalDeleterAsActor(byActor, portalAuth,
+		func(auth *apiPortalAuth) cleanup.Deleter { return portalAPIDeleter(auth, "applications") }))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalApplicationKey, portalAPIApplicationKeyDeleter(portalAuth))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalKeyManager, portalAPIDeleter(portalAuth, "key-managers"))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalView, portalAPIDeleter(portalAuth, "views"))
@@ -342,9 +428,98 @@ func registerUIDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) 
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalMeter, portalAPIDeleter(portalAuth, "meters"))
 	reg.RegisterDeleter(apiportalsteps.KindAPIPortalBilling, portalAPIPathDeleter(portalAuth,
 		func(string) string { return "/billing-configuration" }))
-	developerAuth := &apiPortalAuth{topo: topo, client: portalClient, cookies: map[string]string{}, user: actor.Developer()}
-	reg.RegisterDeleter(apiportalsteps.KindAPIPortalPaidSubscription, portalAPIPathDeleter(developerAuth,
-		func(id string) string { return "/subscriptions/" + url.PathEscape(id) + "?immediate=true" }))
+	reg.RegisterDeleter(apiportalsteps.KindAPIPortalPaidSubscription, portalDeleterAsActor(byActor, developerAuth,
+		func(auth *apiPortalAuth) cleanup.Deleter {
+			return portalAPIPathDeleter(auth,
+				func(id string) string { return "/subscriptions/" + url.PathEscape(id) + "?immediate=true" })
+		}))
+	reg.RegisterDeleter(apiportalsteps.KindAPIPortalSubscription, portalDeleterAsActor(byActor, developerAuth,
+		func(auth *apiPortalAuth) cleanup.Deleter {
+			return portalAPIPathDeleter(auth, func(id string) string { return "/subscriptions/" + url.PathEscape(id) })
+		}))
+	reg.RegisterDeleter(apiportalsteps.KindAPIPortalAPIKey, portalDeleterAsActor(byActor, developerAuth, portalAPIKeyRevoker))
+	reg.RegisterDeleter(apiportalsteps.KindAPIPortalWebhook, portalAPIDeleter(portalAuth, "webhook-subscribers"))
+	reg.RegisterDeleter(apiportalsteps.KindAPIPortalWebhookByName, portalWebhookByNameDeleter(portalAuth))
+	reg.RegisterDeleter(apiportalsteps.KindAPIPortalOrganization, portalOrganizationRestorer(portalAuth))
+}
+
+// portalWebhookByNameDeleter deletes every webhook subscriber whose display name is the resource
+// id, reading every page of the list. No webhook with that name means the click that would have
+// created it created nothing, or the webhook is already gone: both count as deleted, and so does a
+// 404 on the delete.
+func portalWebhookByNameDeleter(auth *apiPortalAuth) cleanup.Deleter {
+	return func(ctx context.Context, res cleanup.Resource) error {
+		if res.ID == "" {
+			return fmt.Errorf("cleanup: API Portal webhook name is empty")
+		}
+		base, err := auth.baseURL()
+		if err != nil {
+			return err
+		}
+		headers, err := auth.authHeaders(ctx)
+		if err != nil {
+			return err
+		}
+		var ids []string
+		for offset := 0; offset >= 0; {
+			resp, err := auth.client.Do(ctx, httpx.Request{
+				Method:  http.MethodGet,
+				URL:     fmt.Sprintf("%s/api-portal/api/v0.9/webhook-subscribers?limit=100&offset=%d", base, offset),
+				Headers: headers,
+			}, 1, 0)
+			if err != nil {
+				return err
+			}
+			if !resp.Succeeded() {
+				return fmt.Errorf("cleanup: %s", resp.Describe())
+			}
+			named, next, err := webhooksNamed(resp.Body, res.ID)
+			if err != nil {
+				return err
+			}
+			if next >= 0 && next <= offset {
+				return fmt.Errorf("cleanup: the API Portal webhook list did not advance past offset %d", offset)
+			}
+			ids = append(ids, named...)
+			offset = next
+		}
+		for _, id := range ids {
+			if err := portalMutation(ctx, auth, http.MethodDelete, "/webhook-subscribers/"+url.PathEscape(id), nil, http.StatusNotFound); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+// webhooksNamed reads one page of the webhook subscriber list and returns the ids of the
+// subscribers whose display name is name, and the offset of the next page, or -1 after the last.
+func webhooksNamed(body []byte, name string) ([]string, int, error) {
+	var page struct {
+		List []struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"displayName"`
+		} `json:"list"`
+		Pagination struct {
+			Limit  int `json:"limit"`
+			Offset int `json:"offset"`
+			Total  int `json:"total"`
+		} `json:"pagination"`
+	}
+	if err := json.Unmarshal(body, &page); err != nil {
+		return nil, -1, fmt.Errorf("cleanup: decoding the API Portal webhook list: %w", err)
+	}
+	var ids []string
+	for _, subscriber := range page.List {
+		if subscriber.DisplayName == name && subscriber.ID != "" {
+			ids = append(ids, subscriber.ID)
+		}
+	}
+	next := page.Pagination.Offset + len(page.List)
+	if len(page.List) == 0 || next >= page.Pagination.Total {
+		return ids, -1, nil
+	}
+	return ids, next, nil
 }
 
 func platformAPITLSConfig() *tls.Config {
@@ -592,6 +767,76 @@ func portalAPIPathDeleter(auth *apiPortalAuth, target func(id string) string) cl
 		}
 		return fmt.Errorf("cleanup: %s", resp.Describe())
 	}
+}
+
+// portalDeleterAsActor deletes a resource as the actor that created it, taken from the resource
+// rather than captured by the closure: an actor named in byActor uses that session, any other the
+// fallback. Applications, subscriptions and API keys are visible only to their owner, so another
+// user's delete answers 404 and would leave the resource behind.
+func portalDeleterAsActor(byActor map[string]*apiPortalAuth, fallback *apiPortalAuth,
+	deleterFor func(*apiPortalAuth) cleanup.Deleter) cleanup.Deleter {
+	return func(ctx context.Context, res cleanup.Resource) error {
+		auth, ok := byActor[res.Actor]
+		if !ok {
+			auth = fallback
+		}
+		return deleterFor(auth)(ctx, res)
+	}
+}
+
+// portalAPIKeyRevoker revokes an API key, identified as "apiId/keyId", as the developer that
+// generated it. An already revoked or deleted key is success for a sweep.
+func portalAPIKeyRevoker(auth *apiPortalAuth) cleanup.Deleter {
+	return func(ctx context.Context, res cleanup.Resource) error {
+		apiID, keyID, ok := strings.Cut(res.ID, "/")
+		if !ok || apiID == "" || keyID == "" {
+			return fmt.Errorf("cleanup: API Portal API key resource id %q is not \"api/key\"", res.ID)
+		}
+		body, err := json.Marshal(map[string]string{"keyId": keyID})
+		if err != nil {
+			return err
+		}
+		return portalMutation(ctx, auth, http.MethodPost, "/apis/"+url.PathEscape(apiID)+"/api-keys/revoke", body,
+			http.StatusNotFound, http.StatusConflict)
+	}
+}
+
+// portalOrganizationRestorer puts an organization's details back. The resource id is the JSON
+// restore payload, whose "id" is the organization handle.
+func portalOrganizationRestorer(auth *apiPortalAuth) cleanup.Deleter {
+	return func(ctx context.Context, res cleanup.Resource) error {
+		var payload struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal([]byte(res.ID), &payload); err != nil || payload.ID == "" {
+			return fmt.Errorf("cleanup: API Portal organization restore payload is not valid JSON with an id")
+		}
+		return portalMutation(ctx, auth, http.MethodPut, "/organizations/"+url.PathEscape(payload.ID), []byte(res.ID))
+	}
+}
+
+// portalMutation sends a JSON request to the API Portal Management API as auth's user. A status in
+// tolerated counts as success.
+func portalMutation(ctx context.Context, auth *apiPortalAuth, method, path string, body []byte, tolerated ...int) error {
+	base, err := auth.baseURL()
+	if err != nil {
+		return err
+	}
+	headers, err := auth.authHeaders(ctx)
+	if err != nil {
+		return err
+	}
+	resp, err := auth.client.Do(ctx, httpx.Request{
+		Method: method, URL: base + "/api-portal/api/v0.9" + path,
+		Headers: headers, ContentType: "application/json", Body: body,
+	}, 1, 0)
+	if err != nil {
+		return err
+	}
+	if resp.Succeeded() || slices.Contains(tolerated, resp.StatusCode) {
+		return nil
+	}
+	return fmt.Errorf("cleanup: %s", resp.Describe())
 }
 
 func portalAPIWorkflowDeleter(auth *apiPortalAuth) cleanup.Deleter {

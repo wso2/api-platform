@@ -18,7 +18,10 @@ scenarios:
     title: "REST API lifecycle"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/api_wizard.feature
+          scenario: "Journey: an administrator adds, edits, deprecates, republishes and deletes APIs in the settings"
     it:
       status: automated
       refs:
@@ -28,7 +31,10 @@ scenarios:
     title: "REST API labels and offered plans"
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/api_wizard.feature
+          scenario: "Journey: an administrator adds, edits, deprecates, republishes and deletes APIs in the settings"
     it:
       status: automated
       refs:
@@ -38,7 +44,10 @@ scenarios:
     title: "REST API refusals"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/api_wizard.feature
+          scenario: "Journey: an administrator adds, edits, deprecates, republishes and deletes APIs in the settings"
     it:
       status: automated
       refs:
@@ -50,7 +59,12 @@ scenarios:
     title: "GraphQL, WebSocket, WebSub and SOAP APIs"
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/rest_api_details.feature
+          scenario: "Journey: a developer reads API pages of every type and their documentation"
+        - feature: suites/ui/features/apiportal/rest_api_details.feature
+          scenario: "Journey: a developer opens the Try It, GraphiQL and AsyncAPI consoles"
     it:
       status: automated
       refs:
@@ -73,7 +87,10 @@ scenarios:
     title: "Catalogue listing and view scoping"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/api_listing.feature
+          scenario: "Journey: a developer browses and searches the API catalogue"
     it:
       status: automated
       refs:
@@ -83,7 +100,10 @@ scenarios:
     title: "Catalogue search"
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/api_listing.feature
+          scenario: "Journey: a developer browses and searches the API catalogue"
     it:
       status: automated
       refs:
@@ -93,7 +113,10 @@ scenarios:
     title: "Routing, health checks and unknown paths"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/smoke.feature
+          scenario: "Journey: a visitor finds their way around the portal shell, and unknown pages show the Page not found page"
     it:
       status: automated
       refs:
@@ -103,7 +126,12 @@ scenarios:
     title: "API content: upload, merge, replace, delete, docs and access"
     priority: P0
     ui:
-      status: planned
+      status: known-issue
+      refs:
+        - feature: suites/ui/features/apiportal/api_wizard.feature
+          scenario: "Journey: an administrator imports API content and sets the LLM instructions agents read"
+        - feature: suites/ui/features/apiportal/rest_api_details.feature
+          scenario: "The REST API documentation lists the specification and additional document"
     it:
       status: automated
       refs:
@@ -115,7 +143,10 @@ scenarios:
     title: "Views: lifecycle, handles, deletion rules and access"
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/views_labels.feature
+          scenario: "Journey: an administrator manages views and labels, and each view serves the APIs of its labels"
     it:
       status: known-issue
       issue: https://github.com/wso2/api-platform/issues/4142
@@ -128,7 +159,10 @@ scenarios:
     title: "Labels: lifecycle, effect on APIs and validation"
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/views_labels.feature
+          scenario: "Journey: an administrator manages views and labels, and each view serves the APIs of its labels"
     it:
       status: automated
       refs:
@@ -138,7 +172,10 @@ scenarios:
     title: "Themes: apply, export, reset, per view, validation and access"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/views_labels.feature
+          scenario: "Journey: an administrator themes a view, downloads the theme and resets it"
     it:
       status: automated
       refs:
@@ -150,7 +187,10 @@ scenarios:
     title: "LLM instructions and per-view AI discovery"
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/api_wizard.feature
+          scenario: "Journey: an administrator imports API content and sets the LLM instructions agents read"
     it:
       status: automated
       refs:
@@ -160,7 +200,10 @@ scenarios:
     title: "Applications: lifecycle, limits, ownership and deletion side effects"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/applications.feature
+          scenario: "Journey: a developer creates, edits and deletes an application and associates an API key with it"
     it:
       status: automated
       refs:
@@ -172,7 +215,10 @@ scenarios:
     title: "Key managers: lifecycle, discovery, SSRF, validation, access and enablement"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/key_managers.feature
+          scenario: "Journey: an administrator adds a key manager, disables and enables it, and deletes it"
     it:
       status: known-issue
       issue:
@@ -203,7 +249,10 @@ scenarios:
     title: "MCP servers: lifecycle, validation, isolation and agent routes"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/mcp_listing.feature
+          scenario: "Journey: a developer explores MCP servers, and an administrator adds, deprecates and deletes one"
     it:
       status: automated
       refs:
@@ -225,7 +274,8 @@ scenarios:
     title: "MCP registry: publish, versions, status and soft delete"
     priority: P1
     ui:
-      status: planned
+      status: exempt
+      reason: Registry publishing, versions, status and soft delete are an API used by tools; the portal UI offers no registry controls, and published servers are seen through APIP-017.
     it:
       status: automated
       refs:
@@ -237,7 +287,8 @@ scenarios:
     title: "MCP registry: listing contract, mounts and access"
     priority: P0
     ui:
-      status: planned
+      status: exempt
+      reason: The registry listing contract (paging, cursors, both mounts, CORS) is read by tools; the portal UI offers no registry listing.
     it:
       status: known-issue
       issue: https://github.com/wso2/api-platform/issues/3610
@@ -250,7 +301,10 @@ scenarios:
     title: "API workflows: lifecycle, visibility, Arazzo, prompts and llms.txt"
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/api_workflows.feature
+          scenario: "Journey: an administrator publishes API workflows, and a developer finds them and hands an API to an AI agent"
     it:
       status: known-issue
       issue: https://github.com/wso2/api-platform/issues/3111
@@ -275,7 +329,10 @@ scenarios:
     title: "Subscription plans: lifecycle, limits, access and control-plane sync"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/billing.feature
+          scenario: "Journey: an administrator adds a free plan with limits and offers it on an API"
     it:
       status: automated
       refs:
@@ -297,7 +354,10 @@ scenarios:
     title: "Subscription rules and ownership"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/applications.feature
+          scenario: "Journey: a developer subscribes to an API and manages the subscription"
     it:
       status: automated
       refs:
@@ -307,7 +367,10 @@ scenarios:
     title: "API keys: lifecycle, expiry, validation and association"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/applications.feature
+          scenario: "Journey: a developer generates, associates, regenerates and revokes an API key"
     it:
       status: automated
       refs:
@@ -329,7 +392,10 @@ scenarios:
     title: "Organization settings"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/key_managers.feature
+          scenario: "Journey: an administrator edits the organization"
     it:
       status: automated
       refs:
@@ -365,7 +431,10 @@ scenarios:
     title: "Local login, session and CSRF"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/access.feature
+          scenario: "Journey: a developer signs in and out, and pages that need sign-in or admin rights are protected"
     it:
       status: automated
       refs:
@@ -375,7 +444,8 @@ scenarios:
     title: "Bearer tokens on the Management API"
     priority: P0
     ui:
-      status: planned
+      status: exempt
+      reason: Bearer tokens are used by programs on the Management API; the portal UI signs in with a session and sends no bearer token.
     it:
       status: automated
       refs:
@@ -385,7 +455,10 @@ scenarios:
     title: "Authorization: scope mode, role mode, page access and grants"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/access.feature
+          scenario: "Journey: a developer signs in and out, and pages that need sign-in or admin rights are protected"
     it:
       status: automated
       refs:
@@ -413,7 +486,8 @@ scenarios:
     title: "Hardening: headers, error bodies, upload limits, SSRF and secrets at rest"
     priority: P0
     ui:
-      status: planned
+      status: exempt
+      reason: Response headers, error bodies, upload limits, SSRF guards and secrets at rest are not visible in the portal UI.
     it:
       status: automated
       refs:
@@ -425,7 +499,10 @@ scenarios:
     title: "Billing setup with Stripe and Moesif"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/billing.feature
+          scenario: "Journey: an administrator sets up billing, adds meters and prices plans"
     it:
       status: automated
       refs:
@@ -437,7 +514,10 @@ scenarios:
     title: "Meters"
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/billing.feature
+          scenario: "Journey: an administrator sets up billing, adds meters and prices plans"
     it:
       status: automated
       refs:
@@ -449,7 +529,10 @@ scenarios:
     title: "Priced plans"
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/billing.feature
+          scenario: "Journey: an administrator sets up billing, adds meters and prices plans"
     it:
       status: automated
       refs:
@@ -463,7 +546,10 @@ scenarios:
     title: "Paid checkout and the paid subscription lifecycle"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/billing.feature
+          scenario: "Journey: a developer pays for a flat rate and a usage based plan, follows them and ends them"
     it:
       status: automated
       refs:
@@ -479,7 +565,10 @@ scenarios:
     title: "Usage, invoices and revenue reports"
     priority: P1
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/billing.feature
+          scenario: "Journey: a developer pays for a flat rate and a usage based plan, follows them and ends them"
     it:
       status: automated
       refs:
@@ -491,7 +580,10 @@ scenarios:
     title: "Webhook subscribers"
     priority: P0
     ui:
-      status: planned
+      status: automated
+      refs:
+        - feature: suites/ui/features/apiportal/key_managers.feature
+          scenario: "Journey: an administrator adds, edits, disables and deletes a webhook"
     it:
       status: automated
       refs:
@@ -516,7 +608,8 @@ scenarios:
     title: "Events per resource"
     priority: P1
     ui:
-      status: planned
+      status: exempt
+      reason: Events are delivered to a webhook receiver; the portal UI shows no events or deliveries.
     it:
       status: automated
       refs:
@@ -530,7 +623,8 @@ scenarios:
     title: "Per-organization token issuers"
     priority: P0
     ui:
-      status: planned
+      status: exempt
+      reason: Per-organization issuers are verified on token-authenticated calls; the portal UI offers no control that selects an issuer.
     it:
       status: automated
       refs:
@@ -540,7 +634,8 @@ scenarios:
     title: "Per-organization webhooks and portal_id scoping"
     priority: P1
     ui:
-      status: planned
+      status: exempt
+      reason: Per-organization webhooks and portal_id scoping are server-to-server and stored rows; the portal UI shows neither.
     it:
       status: automated
       refs:

@@ -44,19 +44,27 @@ What happens automatically on first start:
 ### Test
 
 ```bash
-# Run the Cypress UI E2E suite headlessly inside Docker
-make it
+# Unit tests (node:test) and lint
+npm test
+npm run lint
 
-# Run the REST API suite (Jest + Supertest)
-make -C it test-rest-api
-
-# Open Cypress interactive UI — requires the portal running locally first
-make it-open
+# Integration (REST API) and UI (browser) tests — run from the repository root.
+# They live in the shared test framework, tests/framework.
+make test-api-portal                         # both
+make -C tests/framework test-api-portal-it   # integration blocks only
+make -C tests/framework test-api-portal-ui   # UI blocks only
 ```
 
-Both suites also run on pull requests via the
-[API Portal Integration Test](../../.github/workflows/devportal-integration-test.yml)
-GitHub Actions workflow. For integration test details, see [it/README.md](it/README.md).
+The blocks they run are listed in `API_PORTAL_IT_BLOCKS` and `API_PORTAL_UI_BLOCKS` in
+[tests/framework/Makefile](../../tests/framework/Makefile).
+
+The integration tests are in
+[tests/framework/suites/it/features/apiportal](../../tests/framework/suites/it/features/apiportal)
+(blocks: [api-portal.yaml](../../tests/framework/suites/it/blocks/api-portal.yaml)) and the UI
+journeys in [tests/framework/suites/ui/features/apiportal](../../tests/framework/suites/ui/features/apiportal).
+Both run on pull requests via the
+[Platform tests](../../.github/workflows/platform-tests.yml) GitHub Actions workflow. See
+[tests/framework/README.md](../../tests/framework/README.md) for running a single block or feature.
 
 ### Clean
 
@@ -103,15 +111,9 @@ Run `make help` to see the full list. Summary:
 
 ### Integration Tests
 
-| Target | Description |
-|--------|-------------|
-| `make it` | Run the Cypress UI E2E suite against SQLite (headless, in Docker) |
-| `make it-postgres` | Run the Cypress UI E2E suite against PostgreSQL (headless, in Docker) |
-| `make it-open` | Open Cypress interactive UI (requires the portal running locally) |
-| `make -C it test-rest-api` | Run the REST API suite (Jest + Supertest) against SQLite |
-| `make -C it test-rest-api-postgres` | Run the REST API suite against PostgreSQL |
-
-See [it/README.md](it/README.md) for the full list of test commands and suite details.
+Integration and UI tests are not run from this directory. Run `make -C tests/framework test-api-portal`
+(or `make test-api-portal`) from the repository root, or use the commands in
+[tests/framework/README.md](../../tests/framework/README.md).
 
 ### Database
 

@@ -1,12 +1,22 @@
-# Build targets for the v2 integration framework.
+# Build and run targets for the v2 integration framework.
 #
-# Nothing here runs on every test run. The testbench and A2A trip-planner images are rebuilt only
-# when their source changes, which is why each is a separate target rather than a test dependency.
+# The testbench and A2A trip-planner images are rebuilt only when their source changes, which is
+# why each is a separate target rather than a test dependency. The test-api-portal* targets run
+# the API Portal blocks; the API Portal release workflow calls test-api-portal.
 
 TESTBENCH_IMAGE ?= ghcr.io/wso2/api-platform/testbench:test
 A2A_TRIP_PLANNER_IMAGE ?= ghcr.io/wso2/api-platform/a2a-trip-planner:test
 
-.PHONY: help testbench a2a-trip-planner ap-cli coverage-report standards-check snapshots snapshots-check
+.PHONY: help testbench a2a-trip-planner ap-cli coverage-report standards-check snapshots snapshots-check \
+        test-api-portal test-api-portal-it test-api-portal-ui
+
+# API Portal blocks, run by the API Portal release (make test-api-portal). Keep these lists in
+# step with the block files (CLAUDE.md, "Integration Suite Blocks"): every block of
+# suites/it/blocks/api-portal.yaml, and every api-portal-* block of suites/ui/ui-suite.yaml.
+# A block missing here is not run at release.
+API_PORTAL_IT_BLOCKS ?= api-portal-core,api-portal-webhooks,api-portal-auth-scope,api-portal-auth-role,api-portal-grant-table,api-portal-multi-organization,api-portal-foreign-org,api-portal-billing
+API_PORTAL_UI_BLOCKS ?= api-portal-core,api-portal-key-manager,api-portal-billing
+
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*##' '{printf "  %-12s %s\n", $$1, $$2}'
 
@@ -33,3 +43,11 @@ snapshots: ## Generate the embedded gateway fixtures from the repository (not co
 
 snapshots-check: ## Verify generated gateway fixtures equal the repository files
 	go run ./cmd/syncassets -check
+
+test-api-portal: test-api-portal-it test-api-portal-ui ## Run the API Portal integration and UI blocks
+
+test-api-portal-it: testbench ## Run the API Portal integration blocks (API_PORTAL_IT_BLOCKS)
+	go test -v ./suites/it -count=1 -timeout=60m -logs -blocks=$(API_PORTAL_IT_BLOCKS)
+
+test-api-portal-ui: testbench ## Run the API Portal UI blocks (API_PORTAL_UI_BLOCKS)
+	go test -v ./suites/ui -count=1 -timeout=60m -logs -blocks=$(API_PORTAL_UI_BLOCKS)
