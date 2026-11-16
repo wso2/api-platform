@@ -122,6 +122,24 @@ blocks:
         features:
           - features/apiportal/applications/oauth2_keys.feature
 
+  # Plans stored before plan conditions: every scenario writes a plan's limits into the portal's
+  # database as an earlier release did and restarts the portal, as an upgrade does, so the feature
+  # runs alone here. A step can write only to a database server, not to an embedded SQLite store.
+  - name: api-portal-plan-upgrade
+    parallel: 1
+    components:
+      - name: platform-api
+        db: postgres
+      - name: api-portal
+        db:
+          matrix: [postgres, sqlserver]
+        dependsOn: [platform-api]
+      - name: testbench
+    runners:
+      - name: subscription-plan-upgrade
+        features:
+          - features/apiportal/subscriptions/subscription_plan_upgrade.feature
+
   # Webhook subscribers are organization-wide. Keep their intentionally failing
   # delivery targets isolated from every other API Portal runner.
   - name: api-portal-webhooks

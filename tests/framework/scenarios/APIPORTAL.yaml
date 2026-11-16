@@ -567,3 +567,25 @@ scenarios:
       refs:
         - feature: suites/it/features/apiportal/subscriptions/subscription_plan_conditions.feature
           scenario: "A plan with an invalid condition is refused with the reason and nothing is stored"
+  - id: APIP-058
+    title: "Subscription plan upgrade: limits an earlier release stored (two request windows, total tokens, events, bandwidth) read as request-count and token-count conditions after the portal restarts, and a rename leaves them where they are"
+    priority: P0
+    ui:
+      status: exempt
+      reason: Upgrade of stored data; covered where the database can be prepared as an earlier release left it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/subscriptions/subscription_plan_upgrade.feature
+          scenario: "A plan's earlier limits read as its conditions after an upgrade, and a rename keeps them where they are"
+  - id: APIP-059
+    title: "Subscription plan upgrade: saving request limits on a plan stored before conditions moves it to conditions, keeps its token limit, and leaves its event and bandwidth rows"
+    priority: P0
+    ui:
+      status: exempt
+      reason: Upgrade of stored data; covered where the database can be prepared as an earlier release left it.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/apiportal/subscriptions/subscription_plan_upgrade.feature
+          scenario: "Saving the limits of a plan stored before plan conditions moves it to conditions and keeps its other rows"

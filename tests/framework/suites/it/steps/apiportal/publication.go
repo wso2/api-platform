@@ -45,6 +45,7 @@ func registerPublication(sc *godog.ScenarioContext, s *Steps) {
 	sc.Step(`^an API key is generated in the API Portal for the published API "([^"]*)" and the key handle is stored as "([^"]*)"$`,
 		s.generateKeyForPublishedAPI)
 	registerOutage(sc, s)
+	registerLegacyPlans(sc, s)
 	sc.Step(`^the subscription "([^"]*)" is deleted from the API Portal$`, s.deletePublishedSubscription)
 	sc.Step(`^the API key "([^"]*)" of the published API "([^"]*)" is revoked in the API Portal$`, s.revokePublishedKey)
 }
