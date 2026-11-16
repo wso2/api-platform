@@ -192,11 +192,12 @@ func defaultConfig() *Server {
 				},
 			},
 			WebSocket: WebSocket{
-				MaxConnections:     1000,
-				ConnectionTimeout:  30,
-				RateLimitPerMin:    1000,
-				MetricsLogEnabled:  true,
-				MetricsLogInterval: 10,
+				MaxConnections:           1000,
+				MaxConnectionsPerGateway: 0, // unlimited
+				ConnectionTimeout:        30,
+				RateLimitPerMin:          1000,
+				MetricsLogEnabled:        true,
+				MetricsLogInterval:       10,
 			},
 		},
 		Security: Security{

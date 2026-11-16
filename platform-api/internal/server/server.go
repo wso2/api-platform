@@ -264,11 +264,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// Initialize WebSocket manager first (needed for GatewayEventsService)
 	wsConfig := websocket.ManagerConfig{
-		MaxConnections:     cfg.Listeners.WebSocket.MaxConnections,
-		HeartbeatInterval:  20 * time.Second,
-		HeartbeatTimeout:   time.Duration(cfg.Listeners.WebSocket.ConnectionTimeout) * time.Second,
-		MetricsLogEnabled:  cfg.Listeners.WebSocket.MetricsLogEnabled,
-		MetricsLogInterval: time.Duration(cfg.Listeners.WebSocket.MetricsLogInterval) * time.Second,
+		MaxConnections:           cfg.Listeners.WebSocket.MaxConnections,
+		MaxConnectionsPerGateway: cfg.Listeners.WebSocket.MaxConnectionsPerGateway,
+		HeartbeatInterval:        20 * time.Second,
+		HeartbeatTimeout:         time.Duration(cfg.Listeners.WebSocket.ConnectionTimeout) * time.Second,
+		MetricsLogEnabled:        cfg.Listeners.WebSocket.MetricsLogEnabled,
+		MetricsLogInterval:       time.Duration(cfg.Listeners.WebSocket.MetricsLogInterval) * time.Second,
 	}
 	wsManager := websocket.NewManager(wsConfig, slogger)
 
@@ -968,6 +969,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	slogger.Info("WebSocket manager initialized",
 		slog.Int("maxConnections", cfg.Listeners.WebSocket.MaxConnections),
+		slog.Int("maxConnectionsPerGateway", cfg.Listeners.WebSocket.MaxConnectionsPerGateway),
 		slog.Int("heartbeatTimeout", cfg.Listeners.WebSocket.ConnectionTimeout),
 		slog.Int("rateLimitPerMin", cfg.Listeners.WebSocket.RateLimitPerMin),
 	)
