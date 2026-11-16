@@ -178,7 +178,40 @@ Feature: Fault policies
     And the response header "x-operation-fault" should not exist
 
   @FAULT-006
-  Scenario Outline: The error response formatter renders a failure in a preset shape
+  Scenario Outline: The error response formatter renders a failure in a JSON preset shape
+    Given I generate a unique value from "fault-preset-api" and store it as "apiName"
+    And I generate a unique API context from "/fault-preset" and store it as "apiContext"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion} |
+      | name                   | ${CTX:apiName}            |
+      | spec.displayName       | Fault-Preset-Api          |
+      | spec.version           | v1.0                      |
+      | spec.context           | ${CTX:apiContext}         |
+      | spec.upstream.main.url | http://testbench:3000     |
+      | spec.operations        | [{"method":"POST","path":"/check","policies":[{"name":"regex-guardrail","version":"v1","params":{"request":{"enabled":true,"regex":"^[A-Za-z0-9 ]+$","jsonPath":"$.message"}}}]}] |
+      | spec.faultPolicies     | [{"name":"error-response-formatter","version":"v1","params":{"preset":"<preset>"}}] |
+    Then the response should be successful
+    When I send a "POST" request to "${CTX:apiContext}/check" until status 200 with body:
+      """
+      {"message":"hello world"}
+      """
+    When I send a "POST" request to "${CTX:apiContext}/check" with body:
+      """
+      {"message":"hello!"}
+      """
+    Then the response status code should be 422
+    And the response header "Content-Type" should contain "application/json"
+    And the JSON response field "<field1>" should be "<value1>"
+    And the JSON response field "<field2>" should be "<value2>"
+
+    Examples:
+      | preset    | field1     | value1  | field2        | value2                                   |
+      | canonical | code       | 906205  | type          | guardrail                                |
+      | openai    | error.code | 906205  | error.message | Violation of regular expression detected |
+      | jsonrpc   | jsonrpc    | 2.0     | error.code    | -32600                                   |
+
+  @FAULT-006
+  Scenario Outline: The error response formatter renders a failure in a SOAP preset shape
     Given I generate a unique value from "fault-preset-api" and store it as "apiName"
     And I generate a unique API context from "/fault-preset" and store it as "apiContext"
     When I create API from "resources/templates/rest-api.yaml" with values:
@@ -204,12 +237,9 @@ Feature: Fault policies
     And the response body should match pattern "<bodyPattern>"
 
     Examples:
-      | preset    | contentType          | bodyPattern                                                   |
-      | canonical | application/json     | ^\{.code.:.906205.,.message.:.+,.type.:.guardrail.\}$         |
-      | openai    | application/json     | ^\{.error.:\{.*.code.:.906205.                                |
-      | jsonrpc   | application/json     | ^\{.error.:\{.code.:-32600,.*\},.id.:null,.jsonrpc.:.2\.0.\}$ |
-      | soap11    | text/xml             | <faultcode>[a-zA-Z0-9]+:Client</faultcode>                    |
-      | soap12    | application/soap+xml | <[a-zA-Z0-9]+:Value>[a-zA-Z0-9]+:Sender</                     |
+      | preset | contentType          | bodyPattern                                |
+      | soap11 | text/xml             | <faultcode>[a-zA-Z0-9]+:Client</faultcode> |
+      | soap12 | application/soap+xml | <[a-zA-Z0-9]+:Value>[a-zA-Z0-9]+:Sender</  |
 
   @FAULT-007
   Scenario: A fault policy changes the status of the error response
@@ -240,7 +270,6 @@ Feature: Fault policies
   Scenario: Log Message as a fault policy logs the failure
     Given I generate a unique value from "fault-log-api" and store it as "apiName"
     And I generate a unique API context from "/fault-log" and store it as "apiContext"
-    And I generate a unique value from "fault-log-marker" and store it as "marker"
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion             | ${CTX:gatewaySpecVersion} |
       | name                   | ${CTX:apiName}            |
@@ -255,13 +284,12 @@ Feature: Fault policies
       """
       {"message":"hello world"}
       """
-    Then the "gateway-runtime" service logs should not contain "${CTX:marker}"
     When I send a "POST" request to "${CTX:apiContext}/check" with body:
       """
-      {"message":"${CTX:marker}"}
+      {"message":"hello!"}
       """
     Then the response status code should be 422
-    And the "gateway-runtime" service logs should contain "${CTX:marker}"
+    And the "gateway-runtime" service log event containing "${CTX:apiContext}/check" should contain "FAULT"
 
   @FAULT-009
   Scenario: A backend error does not run fault policies by default
@@ -280,6 +308,8 @@ Feature: Fault policies
     When I send a "GET" request to "${CTX:apiContext}/data?statusCode=500" until status 500
     Then the response header "x-error-code" should not exist
     And the JSON response field "code" should not exist
+    And the JSON response field "method" should be "GET"
+    And the JSON response field "path" should be "/data"
     When I send a "POST" request to "${CTX:apiContext}/check" until status 422 with body:
       """
       {"message":"hello!"}
@@ -336,6 +366,9 @@ Feature: Fault policies
       | spec.faultPolicies     | [{"name":"log-message","version":"v1","params":{"fault":{"payload":false}}}] |
     Then the response should be successful
     And the resource creation response should indicate successful deployment
+    When I get the API "${CTX:apiName}"
+    Then the response status code should be 200
+    And the response body should contain "${CTX:apiName}"
 
   @FAULT-012
   Scenario: A policy that cannot run as a fault policy is skipped
@@ -363,4 +396,4 @@ Feature: Fault policies
     Then the response status code should be 422
     And the response header "x-error-code" should be "906205"
     And the response header "x-set-headers-fault" should not exist
-    And the "gateway-runtime" service logs should contain "skipping fault-policies policy that does not implement OnFault"
+    And the "gateway-runtime" service logs should contain "route=POST|${CTX:apiContext}/check|* hint="

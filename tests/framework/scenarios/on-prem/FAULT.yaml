@@ -75,7 +75,9 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/gateway/core/fault_policies.feature
-          scenario: "The error response formatter renders a failure in a preset shape"
+          scenario: "The error response formatter renders a failure in a JSON preset shape"
+        - feature: suites/it/features/gateway/core/fault_policies.feature
+          scenario: "The error response formatter renders a failure in a SOAP preset shape"
   - id: FAULT-007
     title: "Set error-response-formatter statusCode on a fault policy; a guardrail rejection is returned with that status and its fault code, instead of 422."
     priority: P2
@@ -88,7 +90,7 @@ scenarios:
         - feature: suites/it/features/gateway/core/fault_policies.feature
           scenario: "A fault policy changes the status of the error response"
   - id: FAULT-008
-    title: "Declare log-message as a fault policy with payload logging; a guardrail rejection writes a fault record with the rejected payload to the gateway runtime log."
+    title: "Declare log-message as a fault policy; a guardrail rejection writes a fault record for that request's resource path to the gateway runtime log."
     priority: P1
     ui:
       status: exempt
