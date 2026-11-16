@@ -318,3 +318,19 @@ func TestStricter_OnlyTightens(t *testing.T) {
 	}
 
 }
+
+func TestCheckIPLiteral(t *testing.T) {
+	p := mustBuild(t, GuardConfig{Enabled: true})
+	for host, want := range map[string]bool{"169.254.169.254": false, "169。254。169。254": false, "[fe80::1]": false, "10.0.0.5": true} {
+		literal, err := p.CheckIPLiteral(host)
+		if !literal || (err == nil) != want {
+			t.Errorf("CheckIPLiteral(%q) = %v, %v; want literal and allowed=%v", host, literal, err, want)
+		}
+		if err != nil && !errors.Is(err, ErrDestinationNotAllowed) {
+			t.Errorf("CheckIPLiteral(%q): %v does not match ErrDestinationNotAllowed", host, err)
+		}
+	}
+	if literal, err := p.CheckIPLiteral("api.example.com"); literal || err != nil {
+		t.Errorf("a hostname is neither a literal nor refused here, got %v, %v", literal, err)
+	}
+}

@@ -27,6 +27,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/wso2/api-platform/httpkit/netguard"
@@ -362,9 +363,17 @@ func TestTransportProxyAddr_MatchesWhatTheTransportDials(t *testing.T) {
 // fetches, and the host rule must apply to it. A direct request's Host is only
 // a virtual-host header and is not checked.
 func TestNew_HostRuleAppliesToTheAuthorityAProxyFetches(t *testing.T) {
+	var mu sync.Mutex
 	var fetched []string
+	fetchedNow := func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), fetched...)
+	}
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		fetched = append(fetched, r.URL.Host) // the absolute URI's authority
+		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(proxy.Close)
@@ -376,7 +385,7 @@ func TestNew_HostRuleAppliesToTheAuthorityAProxyFetches(t *testing.T) {
 		c.Proxy.Egress = ProxyEgressDelegated
 	})
 	get := func(client *http.Client, rawURL, host string) error {
-		req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, rawURL, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -391,14 +400,31 @@ func TestNew_HostRuleAppliesToTheAuthorityAProxyFetches(t *testing.T) {
 	if err := get(proxied, "http://allowed.example/x", "denied.example"); !errors.Is(err, netguard.ErrDestinationNotAllowed) {
 		t.Fatalf("proxied request with an unlisted Host = %v, want ErrDestinationNotAllowed", err)
 	}
-	if len(fetched) != 0 {
-		t.Fatalf("a refused request must not reach the proxy, it fetched %v", fetched)
+	if got := fetchedNow(); len(got) != 0 {
+		t.Fatalf("a refused request must not reach the proxy, it fetched %v", got)
 	}
 	if err := get(proxied, "http://allowed.example/x", "allowed.example:8080"); err != nil {
 		t.Fatalf("positive control: proxied request with a listed Host: %v", err)
 	}
-	if len(fetched) != 1 || fetched[0] != "allowed.example:8080" {
-		t.Fatalf("the proxy fetched %v, want the Host authority allowed.example:8080", fetched)
+	if got := fetchedNow(); len(got) != 1 || got[0] != "allowed.example:8080" {
+		t.Fatalf("the proxy fetched %v, want the Host authority allowed.example:8080", got)
+	}
+
+	// An address-literal authority is refused by the address rules even when the
+	// host list does not name it, for the Host header and for the URL alike.
+	denyMetadata := guardedClient(t, netguard.GuardConfig{Enabled: true}, func(c *Config) {
+		c.Proxy.Mode = "url"
+		c.Proxy.URL = proxy.URL
+		c.Proxy.Egress = ProxyEgressDelegated
+	})
+	if err := get(denyMetadata, "http://allowed.example/x", "169.254.169.254"); !errors.Is(err, netguard.ErrDestinationNotAllowed) {
+		t.Fatalf("proxied request with a metadata-address Host = %v, want ErrDestinationNotAllowed", err)
+	}
+	if err := get(denyMetadata, "http://169.254.169.254/x", ""); !errors.Is(err, netguard.ErrDestinationNotAllowed) {
+		t.Fatalf("proxied request to a metadata-address URL = %v, want ErrDestinationNotAllowed", err)
+	}
+	if err := get(denyMetadata, "http://allowed.example/x", "10.0.0.5:8080"); err != nil {
+		t.Fatalf("positive control: a private address is permitted here: %v", err)
 	}
 
 	// Direct: the Host header is a virtual host on the dialed server, not a destination.

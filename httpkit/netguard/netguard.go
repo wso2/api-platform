@@ -253,23 +253,35 @@ func (p Policy) CheckURL(ctx context.Context, rawURL string, resolve bool) error
 	if err := p.CheckHost(host); err != nil {
 		return err
 	}
-	// Parse an IP literal from the normalized host, the form the host rule
-	// matches and the HTTP transport dials: a literal written with ideographic
-	// full stops (169。254。169。254) is not an IP to net.ParseIP until it is.
-	ipHost := host
-	if normalized, err := NormalizeHost(host); err == nil {
-		ipHost = normalized
-	}
-	if ip := net.ParseIP(ipHost); ip != nil {
-		if !p.allowed(ip) {
-			return refused("netguard: address is not allowed")
-		}
-		return nil
+	if literal, err := p.CheckIPLiteral(host); literal || err != nil {
+		return err
 	}
 	if !resolve {
 		return nil
 	}
 	return Validate(ctx, p, host)
+}
+
+// CheckIPLiteral applies p's address rules to host when it is an IP literal,
+// without resolving anything: literal reports whether it was one, and err is a
+// refusal (matching ErrDestinationNotAllowed) when its address is not allowed.
+// The literal is parsed from the normalized host, the form the host rule
+// matches and the HTTP transport dials, so one written with ideographic or
+// full-width dots (169。254。169。254) is checked as the address it becomes.
+// A hostname is neither checked nor refused here.
+func (p Policy) CheckIPLiteral(host string) (literal bool, err error) {
+	ipHost := host
+	if normalized, nerr := NormalizeHost(host); nerr == nil {
+		ipHost = normalized
+	}
+	ip := net.ParseIP(ipHost)
+	if ip == nil {
+		return false, nil
+	}
+	if !p.allowed(ip) {
+		return true, refused("netguard: address is not allowed")
+	}
+	return true, nil
 }
 
 // DialContext returns a dial function suitable for http.Transport.DialContext

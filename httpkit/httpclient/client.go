@@ -434,6 +434,16 @@ func (d *destinationRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 		return nil, fmt.Errorf("httpclient: destination rejected: %w", err)
 	}
 	if d.routing != nil {
+		// Through a forward proxy the dial only ever sees the proxy's address, so an
+		// IP-literal destination is checked here instead. Only the categories that are
+		// never a legitimate peer apply (link-local/metadata, unspecified, multicast):
+		// private ranges stay the proxy's to govern under delegated egress.
+		if _, err := d.policy.ProxyHop().CheckIPLiteral(req.URL.Hostname()); err != nil {
+			closeRequestBody(req)
+			return nil, fmt.Errorf("httpclient: destination rejected: %w", err)
+		}
+	}
+	if d.routing != nil {
 		routed, err := d.routing.mark(req)
 		if err != nil {
 			closeRequestBody(req)
@@ -466,6 +476,9 @@ func (d *destinationRoundTripper) checkProxiedAuthority(req *http.Request) error
 		host = h
 	}
 	if err := d.policy.CheckHost(host); err != nil {
+		return fmt.Errorf("httpclient: destination rejected: %w", err)
+	}
+	if _, err := d.policy.ProxyHop().CheckIPLiteral(host); err != nil {
 		return fmt.Errorf("httpclient: destination rejected: %w", err)
 	}
 	return nil
