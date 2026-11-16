@@ -27,7 +27,7 @@ import { anOrganization, aProject } from '@/test/msw';
 import type { AuthState } from '@/contexts/auth/authTypes';
 import { makeAuthState } from '@/test/mockAuthState';
 import { makeConsoleScope } from '@/test/mockScope';
-import { renderWithProviders, screen } from '@/test/utils';
+import { renderWithProviders, screen, within } from '@/test/utils';
 
 vi.mock('@/api/resources/restApis', async (importActual) => ({
   ...(await importActual<typeof import('@/api/resources/restApis')>()),
@@ -74,14 +74,16 @@ function Located() {
 }
 
 /**
- * `APIQuickSelector`'s icon button sets its own `aria-label` while also
- * sitting inside a `Tooltip`'s wrapping `<span>` carrying the identical
- * label — two elements match `getByLabelText`/`getByRole` name computation
- * for the same string, so grab the actual `<button>` directly rather than
- * either query (which either finds zero or "multiple elements").
+ * Oxygen's `Header.Switchers` is `display: none` below the `md` breakpoint and
+ * flips to `flex` in a media query. jsdom never applies that override, so the
+ * breadcrumb computes as hidden and the default role query skips it — hence
+ * `hidden: true` on the trigger lookups. Each menu renders in a portal on
+ * `body`, outside that box, so it is queried normally.
  */
-const selectApiButton = () =>
-  screen.getAllByLabelText('Select API').find((el): el is HTMLButtonElement => el instanceof HTMLButtonElement)!;
+const trigger = (name: string) => screen.getByRole('button', { name, hidden: true });
+
+/** The › button a project page shows while no API is selected. */
+const selectApiButton = () => trigger('Select API');
 
 const scopeAtProject = () => makeConsoleScope({ project: PROJECT, projects: [PROJECT] });
 
@@ -92,7 +94,7 @@ describe('HeaderScopeSwitchers — the API switcher lists both resource types', 
     vi.mocked(useAllGraphQLApis).mockReturnValue(graphqlApisResult(GRAPHQL_API_LIST));
   });
 
-  it('offers a GraphQL API through the quick selector, not just REST ones', async () => {
+  it('offers a GraphQL API in the open-API menu, not just REST ones', async () => {
     const { user } = renderWithProviders(
       <Header>
         <HeaderScopeSwitchers />
@@ -148,7 +150,7 @@ describe('HeaderScopeSwitchers — the API switcher lists both resource types', 
 /*
  * A GraphQL API sets `params.graphqlApiHandler`, never `params.apiHandler`
  * (see `graphqlApiPath`'s doc comment) — the switcher has to treat either as
- * "an API is selected" or it falls back to the quick-selector every time a
+ * "an API is selected" or it falls back to the › open button every time a
  * GraphQL API is open, instead of showing it as the current selection the
  * way an open REST API already does.
  */
@@ -169,7 +171,7 @@ describe('HeaderScopeSwitchers — a GraphQL API in scope', () => {
       projects: [PROJECT],
     });
 
-  it('shows the APIs switcher pill with the GraphQL API selected, not the quick-selector', async () => {
+  it('shows the GraphQL API as the current segment, not the › open button', async () => {
     renderWithProviders(
       <Header>
         <HeaderScopeSwitchers />
@@ -178,7 +180,7 @@ describe('HeaderScopeSwitchers — a GraphQL API in scope', () => {
     );
 
     expect(await screen.findByText('Countries API')).toBeInTheDocument();
-    expect(screen.queryAllByLabelText('Select API')).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Select API', hidden: true })).not.toBeInTheDocument();
   });
 });
 
@@ -215,9 +217,8 @@ describe('HeaderScopeSwitchers — switching from a REST API to a GraphQL API', 
         }),
       },
     );
-    // `Header.Switchers` computes as hidden in jsdom — see `organizationTrigger`.
-    await user.click(screen.getByRole('combobox', { name: 'APIs', hidden: true }));
-    await user.click(await screen.findByRole('option', { name: /Countries API/ }));
+    await user.click(trigger('Switch api'));
+    await user.click(await screen.findByRole('menuitemradio', { name: /Countries API/ }));
   };
 
   it('stays on the page the GraphQL API also has', async () => {
@@ -235,15 +236,7 @@ describe('HeaderScopeSwitchers — switching from a REST API to a GraphQL API', 
   });
 });
 
-/**
- * Oxygen's `Header.Switchers` is `display: none` below the `md` breakpoint and
- * flips to `flex` in a media query. jsdom never applies that override, so the
- * switchers compute as hidden and the default role query skips them — hence
- * `hidden: true` on the trigger lookups. The menu itself renders in a portal on
- * `body`, outside that box, so it is queried normally.
- */
-const organizationTrigger = () =>
-  screen.getByRole('combobox', { name: 'Organizations', hidden: true });
+const organizationTrigger = () => trigger('Switch organization');
 
 const ACME = anOrganization({ id: 'acme-org', displayName: 'Acme' });
 const GLOBEX = anOrganization({ id: 'globex-org', displayName: 'Globex' });
@@ -282,32 +275,18 @@ describe('HeaderScopeSwitchers organization switcher', () => {
     vi.mocked(useAllGraphQLApis).mockReturnValue(graphqlApisResult([]));
   });
 
-  it('stays inert, at full contrast, when the user belongs to a single organization', async () => {
-    const { user } = renderSwitchers([ACME]);
+  it('names the current organization in the trail', () => {
+    renderSwitchers([ACME]);
 
-    const trigger = organizationTrigger();
-    // Still names the org — going read-only must not blank the header.
-    expect(trigger).toHaveTextContent('Acme');
-    // Read-only, not disabled: `disabled` would grey the name out, and the org
-    // you are in is information the header should keep showing plainly.
-    expect(trigger).toHaveClass('Mui-readOnly');
-    expect(trigger).not.toHaveClass('Mui-disabled');
-    // No chevron, because there is nothing it could drop down. Scoped to this
-    // field — the project switcher beside it keeps its own.
-    expect(trigger.closest('.MuiFormControl-root')?.querySelector('.MuiSelect-icon')).toBeNull();
-
-    await user.click(trigger);
-
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Acme', hidden: true })).toBeInTheDocument();
   });
 
-  it('opens the picker when there is more than one organization', async () => {
+  it('lists the other organizations in the switch menu', async () => {
     const { user } = renderSwitchers([ACME, GLOBEX]);
 
     await user.click(organizationTrigger());
 
-    expect(await screen.findByRole('listbox')).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /Globex/ })).toBeInTheDocument();
+    expect(await screen.findByRole('menuitemradio', { name: /Globex/ })).toBeInTheDocument();
   });
 
   // The Platform API lists only the organizations the user has used; where the
@@ -326,6 +305,183 @@ describe('HeaderScopeSwitchers organization switcher', () => {
 
     await user.click(organizationTrigger());
 
-    expect(await screen.findByRole('option', { name: /Initech/ })).toBeInTheDocument();
+    expect(await screen.findByRole('menuitemradio', { name: /Initech/ })).toBeInTheDocument();
+  });
+});
+
+/** Renders the current location's pathname and router state, so a test sees where a click landed and what it carried. */
+function LocatedWithState() {
+  const location = useLocation();
+  return (
+    <>
+      <span>{`at ${location.pathname}`}</span>
+      <span data-testid="state">{JSON.stringify(location.state ?? null)}</span>
+    </>
+  );
+}
+
+const SCENARIO_PROJECTS = [
+  aProject({ id: 'retail-apis', displayName: 'Retail APIs', description: 'Everything the shops call' }),
+  aProject({ id: 'plain-project', displayName: 'Plain project', description: undefined }),
+];
+
+const DESCRIBED_REST_APIS = [
+  { ...REST_API_LIST[0], description: 'Places and tracks orders' },
+  { ...REST_API_LIST[0], id: 'bare-api', displayName: 'Bare API', description: undefined },
+] as RestApi[];
+
+const renderTrail = (
+  scope: ReturnType<typeof makeConsoleScope>,
+  options: { route?: string; permissionMode?: 'enforce' | 'permissive'; scopes?: string[] } = {},
+) =>
+  renderWithProviders(
+    <AppShell>
+      <AppShell.Navbar>
+        <Header>
+          <HeaderScopeSwitchers />
+        </Header>
+      </AppShell.Navbar>
+      <LocatedWithState />
+    </AppShell>,
+    {
+      route: options.route,
+      permissionMode: options.permissionMode,
+      authState: makeAuthState({
+        user: { name: 'Test User', email: 'test.user@example.com', scopes: options.scopes },
+      }),
+      scope,
+    },
+  );
+
+describe('HeaderScopeSwitchers — project menu', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useAllRestApis).mockReturnValue(restApisResult([]));
+    vi.mocked(useAllGraphQLApis).mockReturnValue(graphqlApisResult([]));
+  });
+
+  const scopeInProject = () =>
+    makeConsoleScope({
+      project: SCENARIO_PROJECTS[0],
+      projects: SCENARIO_PROJECTS,
+      params: { orgHandle: ORG, projectHandler: 'retail-apis' },
+    });
+
+  it('shows a search field and each project’s description, and never its id', async () => {
+    const { user } = renderTrail(scopeInProject());
+
+    await user.click(trigger('Switch project'));
+
+    // Only two projects — below Oxygen's own search threshold.
+    expect(await screen.findByPlaceholderText('Search projects...')).toBeInTheDocument();
+    expect(screen.getByText('Everything the shops call')).toBeInTheDocument();
+    expect(screen.queryByText('plain-project')).not.toBeInTheDocument();
+    expect(screen.queryByText('retail-apis')).not.toBeInTheDocument();
+  });
+
+  it('opens the new-project page from the New project action', async () => {
+    const { user } = renderTrail(scopeInProject());
+
+    await user.click(trigger('Switch project'));
+    await user.click(await screen.findByRole('menuitem', { name: 'New project' }));
+
+    expect(screen.getByText(`at ${routes.newProject(ORG)}`)).toBeInTheDocument();
+  });
+
+  it('leaves out New project for a user who cannot create projects', async () => {
+    const { user } = renderTrail(scopeInProject(), { permissionMode: 'enforce', scopes: [] });
+
+    await user.click(trigger('Switch project'));
+
+    await screen.findByRole('menuitemradio', { name: /Retail APIs/ });
+    expect(screen.queryByRole('menuitem', { name: 'New project' })).not.toBeInTheDocument();
+  });
+});
+
+describe('HeaderScopeSwitchers — API menu', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useAllRestApis).mockReturnValue(restApisResult(DESCRIBED_REST_APIS));
+    vi.mocked(useAllGraphQLApis).mockReturnValue(graphqlApisResult(GRAPHQL_API_LIST));
+  });
+
+  const scopeInApi = () =>
+    makeConsoleScope({
+      isApiScope: true,
+      params: { apiHandler: 'orders-api', orgHandle: ORG, projectHandler: PROJECT_ID },
+      project: PROJECT,
+      projects: [PROJECT],
+    });
+
+  it('badges each API with its type, and shows a description only where there is one', async () => {
+    const { user } = renderTrail(scopeInApi());
+
+    await user.click(trigger('Switch api'));
+
+    const orders = await screen.findByRole('menuitemradio', { name: /Orders API/ });
+    expect(within(orders).getByText('REST')).toBeInTheDocument();
+    expect(within(orders).getByText('Places and tracks orders')).toBeInTheDocument();
+    const graphql = screen.getByRole('menuitemradio', { name: /Countries API/ });
+    expect(within(graphql).getByText('GraphQL')).toBeInTheDocument();
+    // No description means the entry is the name alone: not the id in its place.
+    const bare = screen.getByRole('menuitemradio', { name: /Bare API/ });
+    expect(within(bare).queryByText('bare-api')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Search APIs...')).toBeInTheDocument();
+  });
+
+  it('opens the creation wizard from New API, reporting the breadcrumb as its entry point', async () => {
+    const { user } = renderTrail(scopeInApi());
+
+    await user.click(trigger('Switch api'));
+    await user.click(await screen.findByRole('menuitem', { name: 'New API' }));
+
+    expect(screen.getByText(`at ${routes.newApi(ORG, PROJECT_ID)}`)).toBeInTheDocument();
+    expect(screen.getByTestId('state')).toHaveTextContent('header-breadcrumb');
+  });
+
+  it('leaves out New API for a user who can create neither kind', async () => {
+    const { user } = renderTrail(scopeInApi(), { permissionMode: 'enforce', scopes: [] });
+
+    await user.click(trigger('Switch api'));
+
+    await screen.findByRole('menuitemradio', { name: /Orders API/ });
+    expect(screen.queryByRole('menuitem', { name: 'New API' })).not.toBeInTheDocument();
+  });
+});
+
+describe('HeaderScopeSwitchers — clicking a name in the trail', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useAllRestApis).mockReturnValue(restApisResult(REST_API_LIST));
+    vi.mocked(useAllGraphQLApis).mockReturnValue(graphqlApisResult([]));
+  });
+
+  const scopeInApi = () =>
+    makeConsoleScope({
+      isApiScope: true,
+      params: { apiHandler: 'orders-api', orgHandle: ORG, projectHandler: PROJECT_ID },
+      project: PROJECT,
+      projects: [PROJECT],
+    });
+
+  it('goes up to the project from the API', async () => {
+    const { user } = renderTrail(scopeInApi(), {
+      route: routes.apiDevelopPolicies(ORG, PROJECT_ID, 'orders-api'),
+    });
+
+    await user.click(screen.getByRole('button', { name: PROJECT.displayName!, hidden: true }));
+
+    expect(screen.getByText(new RegExp(`^at /organizations/${ORG}/projects/${PROJECT_ID}`))).toBeInTheDocument();
+    expect(screen.queryByText(/orders-api/)).not.toBeInTheDocument();
+  });
+
+  it('goes up to the organization from the project', async () => {
+    const { user } = renderTrail(makeConsoleScope({ project: PROJECT, projects: [PROJECT] }), {
+      route: routes.projectHome(ORG, PROJECT_ID),
+    });
+
+    await user.click(screen.getByRole('button', { name: anOrganization().displayName!, hidden: true }));
+
+    expect(screen.queryByText(new RegExp(`projects/${PROJECT_ID}`))).not.toBeInTheDocument();
   });
 });

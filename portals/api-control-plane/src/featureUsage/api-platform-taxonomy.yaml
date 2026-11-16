@@ -116,7 +116,7 @@ features:
           description: "The API Platform UI the action was taken in."
         - name: "entry_point"
           type: "enum"
-          values: ["api-list", "api-list-empty-state", "org-home", "project-quick-actions", "direct"]
+          values: ["api-list", "api-list-empty-state", "org-home", "project-quick-actions", "header-breadcrumb", "direct"]
           required: true
       aggregations:
         - type: "count"
