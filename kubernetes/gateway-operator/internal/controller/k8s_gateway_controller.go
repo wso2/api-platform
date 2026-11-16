@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"log/slog"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -51,6 +52,7 @@ import (
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helmgateway"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/valuespolicy"
 )
 
 const (
@@ -63,6 +65,8 @@ type K8sGatewayReconciler struct {
 	Scheme *runtime.Scheme
 	Config *config.OperatorConfig
 	Logger *slog.Logger
+	// Recorder emits Events on Gateways; set by SetupWithManager when nil.
+	Recorder events.EventRecorder
 }
 
 // NewK8sGatewayReconciler creates a reconciler for gateway.networking.k8s.io Gateway.
@@ -383,6 +387,28 @@ func (r *K8sGatewayReconciler) syncGateway(ctx context.Context, gw *gatewayv1.Ga
 	} else {
 		valuesYAML = infraOverlay
 		log.Info("Using default Helm values file with infra overlay", slog.String("path", valuesFile))
+	}
+
+	// Validate the per-gateway values (infra overlay + ConfigMap) before anything
+	// is rendered. On refusal the installed release is left as it is, and the
+	// ConfigMap and Gateway watches bring the Gateway back once either changes.
+	if err := checkGatewayValuesPolicy(r.Config, valuesYAML); err != nil {
+		var violation *valuespolicy.ViolationError
+		if !errors.As(err, &violation) {
+			return err
+		}
+		log.Warn("Gateway values refused by values policy; keeping the current release",
+			slog.String("keys", strings.Join(violation.Keys(), ",")),
+			slog.String("error", violation.Error()))
+		recordValuesPolicyViolation(r.Recorder, gw, violation)
+		return r.patchGatewayStatus(ctx, gw, nil, nil, metav1.Condition{
+			Type:               string(gatewayv1.GatewayConditionProgrammed),
+			Status:             metav1.ConditionFalse,
+			Reason:             string(gatewayv1.GatewayReasonInvalid),
+			Message:            violation.Error(),
+			ObservedGeneration: gw.Generation,
+			LastTransitionTime: metav1.Now(),
+		})
 	}
 
 	if overlayYAML, overlayErr := applyListenerOverlayToValues(gw, valuesYAML); overlayErr != nil {
@@ -747,6 +773,9 @@ func (r *K8sGatewayReconciler) enqueueK8sGatewaysForListenerTLSSecret(ctx contex
 
 // SetupWithManager registers the Kubernetes Gateway controller.
 func (r *K8sGatewayReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.Recorder == nil {
+		r.Recorder = mgr.GetEventRecorder("k8s-gateway-controller")
+	}
 	opts := contctrl.Options{MaxConcurrentReconciles: r.Config.Reconciliation.MaxConcurrentReconciles}
 	if opts.MaxConcurrentReconciles <= 0 {
 		opts.MaxConcurrentReconciles = 1

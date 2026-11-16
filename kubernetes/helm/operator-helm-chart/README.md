@@ -72,6 +72,8 @@ helm install apip-operator oci://ghcr.io/wso2/api-platform/helm-charts/gateway-o
 | `gateway.helm.insecureRegistry` | Skip TLS verification for OCI registries (still HTTPS) | `false` |
 | `gateway.helm.plainHTTP` | Use plain HTTP for OCI registries | `false` |
 | `gateway.helm.registryCredentialsSecret.name` | Secret holding private-registry credentials for the gateway chart pull (empty = anonymous) | `""` |
+| `gateway.valuesPolicy.enabled` | Check per-gateway Helm values (CR overlay + referenced ConfigMap) against the values policy before rendering; see the operator's CONFIGURATION.md | `true` |
+| `gateway.valuesPolicy.allowedImageRegistries` | Image repository prefixes per-gateway values may use (empty list refuses every image override) | `["ghcr.io/wso2/api-platform/", "registry.wso2.com/wso2-api-platform/"]` |
 
 ### Gateway API (Kubernetes Gateway API) Configuration
 

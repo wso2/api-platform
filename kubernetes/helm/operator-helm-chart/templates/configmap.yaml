@@ -27,6 +27,19 @@ data:
         password_key: {{ .passwordKey | default "password" | quote }}
 {{- end }}
 {{- end }}
+{{- $valuesPolicy := default (dict) .Values.gateway.valuesPolicy }}
+      values_policy:
+        enabled: {{ ternary $valuesPolicy.enabled true (hasKey $valuesPolicy "enabled") }}
+        allowed_image_registries:
+{{- if hasKey $valuesPolicy "allowedImageRegistries" }}
+{{- range $valuesPolicy.allowedImageRegistries }}
+          - {{ . | quote }}
+{{- else }} []
+{{- end }}
+{{- else }}
+          - "ghcr.io/wso2/api-platform/"
+          - "registry.wso2.com/wso2-api-platform/"
+{{- end }}
     reconciliation:
       sync_period: {{ .Values.reconciliation.syncPeriod | default "10m" | quote }}
       max_concurrent_reconciles: {{ .Values.reconciliation.maxConcurrentReconciles | default 1 }}

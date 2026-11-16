@@ -116,6 +116,13 @@ storage driver never patches. The gateway chart renders no Secrets.
   - update
   - delete
 - apiGroups:
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
   - ""
   resources:
   - nodes
