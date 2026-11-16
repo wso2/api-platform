@@ -143,8 +143,8 @@ func addURL(out *[]urlTarget, path string, value any) {
 // placeholder ({{ secret }}, {{ env }} or any other expression the gateway renders) is
 // skipped only when the placeholder is in its scheme or host, which only the gateway can
 // resolve; otherwise its literal scheme and host are checked as scheme://host[:port], so
-// a placeholder in the userinfo, path or query neither hides a refused host nor stops
-// the URL from parsing.
+// a placeholder in the userinfo, port, path or query neither hides a refused host nor
+// stops the URL from parsing (a templated port is left out).
 func destinationOf(raw string) (string, bool) {
 	if raw == "" {
 		return "", false
@@ -164,10 +164,30 @@ func destinationOf(raw string) (string, bool) {
 	if at := strings.LastIndex(authority, "@"); at >= 0 {
 		authority = authority[at+1:]
 	}
-	if authority == "" || strings.Contains(authority, "{{") {
+	host, port := splitHostPort(authority)
+	if host == "" || strings.Contains(host, "{{") {
 		return "", false
 	}
-	return scheme + "://" + authority, true
+	if strings.Contains(port, "{{") {
+		// The port is the gateway's to render; the literal host is still checked.
+		port = ""
+	}
+	return scheme + "://" + host + port, true
+}
+
+// splitHostPort splits a URL authority into its host and its ":port" suffix (empty when
+// there is none), keeping a bracketed IPv6 host whole. It does not validate either part.
+func splitHostPort(authority string) (host, port string) {
+	if strings.HasPrefix(authority, "[") {
+		if end := strings.Index(authority, "]"); end >= 0 {
+			return authority[:end+1], authority[end+1:]
+		}
+		return authority, ""
+	}
+	if i := strings.Index(authority, ":"); i >= 0 {
+		return authority[:i], authority[i:]
+	}
+	return authority, ""
 }
 
 // collectRequestURLs gathers the URL fields of a request, in a stable order.
