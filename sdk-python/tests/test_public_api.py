@@ -119,6 +119,7 @@ class PublicAPITests(unittest.TestCase):
             "NO_POLICY_CHAIN": "905005",
             "RESOLUTION_BAD_REQUEST": "905006",
             "RESOLUTION_UNSUPPORTED_ENCODING": "905007",
+            "ENDPOINT_UNAVAILABLE": "905008",
             "MEDIATION_FAILED": "960000",
             "INVALID_REQUEST_BODY": "960001",
             "PROVIDER_STREAM_FAILED": "960002",

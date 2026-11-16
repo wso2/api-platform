@@ -218,6 +218,11 @@ const (
 	FaultCodeResolutionBadRequest = "905006"
 	// FaultCodeResolutionUnsupportedEncoding is a content coding the gateway cannot decode.
 	FaultCodeResolutionUnsupportedEncoding = "905007"
+	// FaultCodeEndpointUnavailable is a request routed to a gateway-wide Endpoint the
+	// gateway does not have: a policy's fixed target that was never created, or one removed
+	// while the request was in flight. Distinct from the upstream codes because no upstream
+	// was contacted — the thing to fix is the Endpoint's existence, not its backend.
+	FaultCodeEndpointUnavailable = "905008"
 )
 
 // Guardrail error codes for FaultDetails.Code, for a guardrail that rejected content.
