@@ -1,0 +1,361 @@
+# Scenario list: Sandbox and VHost Routing (SVR).
+#
+# A gateway routes each request to an API's main or sandbox upstream by its Host header. Default
+# vhosts come from the gateway's config.toml; an API can override them in its spec or when it is
+# deployed through platform-api, and defaults are fixed when the API is deployed
+# (https://github.com/wso2/api-platform/discussions/369).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+#
+# SVR-015 is planned: the framework has no event-gateway component yet.
+code: SVR
+title: Sandbox and VHost Routing
+scenarios:
+  - id: SVR-001
+    title: "Deploy an API with vhosts.main and vhosts.sandbox and main and sandbox upstreams, then call it on each host; the main host reaches the main upstream and the sandbox host the sandbox upstream."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Route requests to different upstreams using main and sandbox vhosts"
+  - id: SVR-002
+    title: "Deploy an API with no vhosts.main, an explicit vhosts.sandbox and only a main upstream, then call it on the sandbox host; the request is rejected and does not reach the main upstream."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/4286
+      refs:
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "A request on the API's sandbox vhost is rejected when the API has no sandbox upstream"
+  - id: SVR-003
+    title: "Deploy an API with no vhosts block and only a main upstream, then call it on a host matching the gateway's default sandbox vhost; the request is rejected."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/4286
+      refs:
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "A request on the gateway's default sandbox vhost is rejected for an API with no vhosts and no sandbox upstream"
+  - id: SVR-004
+    title: "Redeploy an API that has only a main upstream with a sandbox upstream added, then call it on the sandbox host; the request reaches the new sandbox upstream."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Sandbox routing becomes available after redeploying API with sandbox upstream added"
+  - id: SVR-005
+    title: "Deploy an API with a custom vhosts.main, no vhosts.sandbox and a sandbox upstream, then call it on a host matching the gateway's default sandbox vhost; the request reaches the sandbox upstream."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Sandbox routes use global default vhost when vhosts.sandbox is omitted"
+  - id: SVR-006
+    title: "With single-domain gateway defaults (*.wso2.com, *-sandbox.wso2.com), deploy an API without vhosts and call it on a host under each; hosts under *.wso2.com reach the main upstream and hosts under *-sandbox.wso2.com the sandbox upstream."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/vhost_routing_single.feature
+          scenario: "Route requests using single-domain gateway defaults"
+  - id: SVR-007
+    title: "With multi-domain gateway defaults, deploy an API without vhosts and call it on a host under each configured main and sandbox domain; every main domain reaches the main upstream and every sandbox domain the sandbox upstream."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/vhost_routing_multi.feature
+          scenario: "Route requests across all configured main and sandbox domains"
+  - id: SVR-008
+    title: "With gateway vhost domains that include a bare host and a host with a port, deploy an API on the default vhost; the bare host gets host and host:* virtual host domains, and the host with a port is kept as is."
+    priority: P2
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: exempt
+      reason: "Proven by the gateway-controller unit test gateway/gateway-controller/pkg/xds/translator_test.go TestTranslator_GetVHostDomains, on the function that builds every virtual host's domains; the IT suite has no step to read Envoy's virtual host domains."
+  - id: SVR-009
+    title: "With single-domain gateway defaults, deploy an API with its own vhosts.main and vhosts.sandbox and call it on its hosts and on the defaults; its hosts route to its upstreams and the defaults do not reach it."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/vhost_routing_single.feature
+          scenario: "API vhost override should take precedence over gateway defaults"
+  - id: SVR-010
+    title: "With multi-domain gateway defaults, deploy an API with its own vhosts and call it on its hosts and on the defaults; its hosts route to its upstreams and the defaults do not reach it."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/vhost_routing_multi.feature
+          scenario: "API vhost override should bypass multi-domain gateway defaults"
+  - id: SVR-011
+    title: "With single-domain gateway defaults, deploy an API with vhosts.main and vhosts.sandbox set to _gateway_default_; the placeholder resolves to the default hosts, and requests on them route to the API."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/vhost_routing_single.feature
+          scenario: "Sentinel vhost resolves to gateway defaults at deploy time"
+  - id: SVR-012
+    title: "With multi-domain gateway defaults, deploy an API with _gateway_default_ vhosts; requests on every configured domain route to the API."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/vhost_routing_multi.feature
+          scenario: "Sentinel vhost resolves to all configured gateway domains"
+  - id: SVR-013
+    title: "Deploy an API without vhosts while the default main vhost is A, change the default to B and restart the gateway; the API still answers on A only, and once redeployed it answers on B only."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/vhost_default_change.feature
+          scenario: "An API deployed without vhosts answers on the old default after the default changes, and on the new one once redeployed"
+  - id: SVR-014
+    title: "Create a REST API on the gateway with no vhosts block and read it back; vhosts.main holds the current main default and vhosts.sandbox the sandbox default, even without a sandbox upstream."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/vhost_routing_single.feature
+          scenario: "An API created on the gateway without vhosts stores the gateway's default vhosts"
+  - id: SVR-015
+    title: "Deploy a WebSub API to the event gateway with _gateway_default_ or no vhosts and read it back; the vhosts resolve to the gateway defaults, the same as for a REST API."
+    priority: P2
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: planned
+  - id: SVR-016
+    title: "Start the gateway with router.vhosts.sandbox.default empty; it refuses to start with router.vhosts.sandbox.default must be a non-empty string."
+    priority: P2
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: exempt
+      reason: "Proven by the gateway-controller unit test gateway/gateway-controller/pkg/config/config_test.go TestConfig_ValidateVHostsConfig (\"Empty sandbox default\"); a gateway that refuses to start cannot be booted in a block."
+  - id: SVR-017
+    title: "Deploy a REST API with main and sandbox upstreams through platform-api with metadata.vhostMain and metadata.vhostSandbox; the deployment is created, its metadata returns the given vhosts, and the gateway routes on those hosts."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/deployments/vhosts.feature
+          scenario: "A deployment with its own main and sandbox vhosts is served on those hosts"
+  - id: SVR-018
+    title: "Deploy REST APIs through platform-api with no vhost values; the deployment's metadata shows _gateway_default_ for vhostMain and, only when the API has a sandbox upstream, vhostSandbox, and the gateway stores its own defaults in their place."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/deployments/vhosts.feature
+          scenario: "A deployment with no vhosts carries the gateway-default placeholder, and the gateway stores its own defaults"
+  - id: SVR-019
+    title: "Restore an earlier deployment D1 that had custom main and sandbox vhosts; the restored deployment keeps both D1 vhosts and the gateway routes on them again."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/management-portal/deployments/vhosts.feature
+          scenario: "Restoring an earlier deployment brings back the vhosts it was deployed with"
+  - id: SVR-020
+    title: "Deploy through platform-api with vhostMain set to bad_host, to a host starting with a hyphen and to a host with a 64-character label, and to _gateway_default_; the three invalid hosts are rejected with an invalid vhost error and the placeholder is accepted."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/4166
+      refs:
+        - feature: suites/it/features/management-portal/deployments/vhosts.feature
+          scenario: "A deployment with an invalid vhost is refused with a validation error, while the gateway-default placeholder is accepted"
+  - id: SVR-021
+    title: "Deploy APIs with main by ref and sandbox by url, main by url and sandbox by ref, and both by ref, and call each on both hosts; each host reaches its own upstream."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Route requests with main via ref and sandbox via url"
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Route requests with main via url and sandbox via ref"
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Route requests with both main and sandbox via ref"
+  - id: SVR-022
+    title: "Use a sandbox ref to an upstreamDefinitions entry with hostRewrite manual, a connect timeout, an http:// URL and several URLs; manual hostRewrite keeps the incoming host, the timeout applies, HTTP upstreams work, and with several URLs the first is used."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Sandbox ref with hostRewrite manual should preserve incoming host"
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Sandbox ref should honor upstreamDefinitions connect timeout"
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Sandbox ref should work with HTTP upstream"
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Sandbox ref with several URLs uses the first URL"
+        - feature: suites/it/features/gateway/routes/sandbox_upstream_first_url.feature
+          scenario: "Sandbox ref with multiple URLs should use the first URL"
+  - id: SVR-023
+    title: "Send sandbox-host requests to a path-parameter operation and a wildcard operation of an API whose sandbox upstream is a ref; both reach the sandbox upstream with the right path."
+    priority: P2
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Path params should route correctly with sandbox ref"
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Wildcard route should work with sandbox ref"
+  - id: SVR-024
+    title: "Send sandbox-host requests to an API with a policy for each upstream combination (url and url, ref and url, url and ref, ref and ref); the policy takes effect on sandbox requests in every combination, as on main."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Policy effects should apply for main url and sandbox url routes"
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Policy effects should apply for main ref and sandbox url routes"
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Policy effects should apply for sandbox ref routes"
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Policy effects should apply for main ref and sandbox ref routes"
+  - id: SVR-025
+    title: "Deploy APIs with a main ref to a missing definition, a sandbox ref to a missing definition, and two upstream definitions with the same name; each deployment fails with a validation error."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Deploy API with missing main ref definition should fail"
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Deploy should fail when sandbox ref is missing while main is valid"
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Deploy should fail for duplicate upstream definition names used by refs"
+  - id: SVR-026
+    title: "Deploy APIs with an invalid URL in upstreamDefinitions and with a sandbox url whose scheme is not http or https; both deployments fail, the scheme case with Upstream URL must use http or https scheme."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Deploy API with invalid URL in upstreamDefinitions should fail"
+        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+          scenario: "Deploy API with invalid URL scheme in direct sandbox url should fail"
+  - id: SVR-027
+    title: "With multi-domain gateway defaults, deploy an API with vhosts.main alpha.example.com;beta.example.com;*.wild.example.com and vhosts.sandbox sandbox.example.com; each listed main host and the wildcard host reach main, the sandbox host reaches sandbox, and the wildcard's apex and the default domain get 404."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/vhost_routing_multiple_production_hosts.feature
+          scenario: "Semicolon-separated main vhosts route listed production hosts to the main upstream"
+  - id: SVR-028
+    title: "Deploy an API whose upstreamDefinitions URL includes a path; the deployment fails with a client error saying the URL must not include a path, and the API is not stored."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/routes/sandbox_upstream_url_validation.feature
+          scenario: "Deploy fails when an upstreamDefinitions URL contains a path"
+  - id: SVR-029
+    title: "Update a REST API through the gateway REST API with vhosts set to _gateway_default_, and again with no vhosts block; both updates store the current gateway defaults and the API keeps answering on them."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The Management Portal has no vhost controls; its deployments send no vhosts, which SVR-018 covers at the API level."
+    it:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/4167
+      refs:
+        - feature: suites/it/features/gateway/routes/vhost_routing_single.feature
+          scenario: "Updating an API on the gateway with the default placeholder or without vhosts keeps the gateway's default vhosts"

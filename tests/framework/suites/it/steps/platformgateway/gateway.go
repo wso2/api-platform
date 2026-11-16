@@ -1268,6 +1268,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.assertCPArtifactID)
 
 	g.registerTimeoutSteps(sc)
+	g.registerConfigSteps(sc)
 }
 
 const elapsedTolerance = 0.05

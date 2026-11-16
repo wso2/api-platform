@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@sandbox-routing
+@SVR @sandbox-routing
 Feature: Sandbox routing
   As an API developer
   I want main and sandbox upstreams to route by host
@@ -26,6 +26,7 @@ Feature: Sandbox routing
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
 
+  @SVR-001
   Scenario: Route requests to different upstreams using main and sandbox vhosts
     Given I generate a unique value from "sandbox-routing-1" and store it as "apiName1"
     And I generate a unique API context from "/sandbox-routing-1" and store it as "apiContext1"
@@ -59,6 +60,7 @@ Feature: Sandbox routing
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext1}/v1.0/whoami" until status 404
 
+  @SVR-021
   Scenario: Route requests with main via ref and sandbox via url
     Given I generate a unique value from "sandbox-routing-2" and store it as "apiName2"
     And I generate a unique API context from "/sandbox-routing-2" and store it as "apiContext2"
@@ -92,6 +94,7 @@ Feature: Sandbox routing
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext2}/v1.0/whoami" until status 404
 
+  @SVR-021
   Scenario: Route requests with main via url and sandbox via ref
     Given I generate a unique value from "sandbox-routing-3" and store it as "apiName3"
     And I generate a unique API context from "/sandbox-routing-3" and store it as "apiContext3"
@@ -125,6 +128,7 @@ Feature: Sandbox routing
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext3}/v1.0/whoami" until status 404
 
+  @SVR-025
   Scenario: Deploy API with missing main ref definition should fail
     Given I generate a unique value from "sandbox-routing-4" and store it as "apiName4"
     And I generate a unique API context from "/sandbox-routing-4" and store it as "apiContext4"
@@ -139,6 +143,7 @@ Feature: Sandbox routing
     And I send a "GET" request to the "gateway-controller" service at "/rest-apis/${CTX:apiName4}"
     Then the response status code should be 404
 
+  @SVR-026
   Scenario: Deploy API with invalid URL in upstreamDefinitions should fail
     Given I generate a unique value from "sandbox-routing-5" and store it as "apiName5"
     And I generate a unique API context from "/sandbox-routing-5" and store it as "apiContext5"
@@ -153,6 +158,7 @@ Feature: Sandbox routing
     And I send a "GET" request to the "gateway-controller" service at "/rest-apis/${CTX:apiName5}"
     Then the response status code should be 404
 
+  @SVR-024
   Scenario: Policy effects should apply for sandbox ref routes
     Given I generate a unique value from "sandbox-routing-6" and store it as "apiName6"
     And I generate a unique API context from "/sandbox-routing-6" and store it as "apiContext6"
@@ -183,6 +189,7 @@ Feature: Sandbox routing
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext6}/v1.0/whoami" until status 404
 
+  @SVR-021
   Scenario: Route requests with both main and sandbox via ref
     Given I generate a unique value from "sandbox-routing-7" and store it as "apiName7"
     And I generate a unique API context from "/sandbox-routing-7" and store it as "apiContext7"
@@ -213,6 +220,7 @@ Feature: Sandbox routing
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext7}/v1.0/whoami" until status 404
 
+  @SVR-022
   Scenario: Sandbox ref with hostRewrite manual should preserve incoming host
     Given I generate a unique value from "sandbox-routing-8" and store it as "apiName8"
     And I generate a unique API context from "/sandbox-routing-8" and store it as "apiContext8"
@@ -239,6 +247,7 @@ Feature: Sandbox routing
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext8}/v1.0/whoami" until status 404
 
+  @SVR-022
   Scenario: Sandbox ref should honor upstreamDefinitions connect timeout
     Given I generate a unique value from "sandbox-routing-9" and store it as "apiName9"
     And I generate a unique API context from "/sandbox-routing-9" and store it as "apiContext9"
@@ -262,6 +271,7 @@ Feature: Sandbox routing
     And I set request host to "${CTX:mainHost9}"
     And I send a "GET" request to "${CTX:apiContext9}/v1.0/whoami" until status 404
 
+  @SVR-022
   Scenario: Sandbox ref should work with HTTP upstream
     Given I generate a unique value from "sandbox-routing-10" and store it as "apiName10"
     And I generate a unique API context from "/sandbox-routing-10" and store it as "apiContext10"
@@ -309,6 +319,7 @@ Feature: Sandbox routing
       {"model": "gpt-4", "messages": [{"role": "user", "content": "cleanup"}]}
       """
 
+  @SVR-023
   Scenario: Path params should route correctly with sandbox ref
     Given I generate a unique value from "sandbox-routing-12" and store it as "apiName12"
     And I generate a unique API context from "/sandbox-routing-12" and store it as "apiContext12"
@@ -339,6 +350,7 @@ Feature: Sandbox routing
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext12}/v1.0/us/seattle" until status 404
 
+  @SVR-023
   Scenario: Wildcard route should work with sandbox ref
     Given I generate a unique value from "sandbox-routing-13" and store it as "apiName13"
     And I generate a unique API context from "/sandbox-routing-13" and store it as "apiContext13"
@@ -356,13 +368,14 @@ Feature: Sandbox routing
     And I set request host to "${CTX:sandboxHost13}"
     And I send a "GET" request to "${CTX:apiContext13}/v1.0/assets/a/b/c"
     Then the response should be successful
-    And the response body should contain "/sandbox/"
+    And the JSON response field "path" should be "/sandbox/assets/a/b/c"
 
     Given I authenticate using basic auth as "admin"
     When I delete the API "${CTX:apiName13}"
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext13}/v1.0/assets/a/b/c" until status 404
 
+  @SVR-025
   Scenario: Deploy should fail when sandbox ref is missing while main is valid
     Given I generate a unique value from "sandbox-routing-14" and store it as "apiName14"
     And I generate a unique API context from "/sandbox-routing-14" and store it as "apiContext14"
@@ -377,6 +390,7 @@ Feature: Sandbox routing
     And I send a "GET" request to the "gateway-controller" service at "/rest-apis/${CTX:apiName14}"
     Then the response status code should be 404
 
+  @SVR-025
   Scenario: Deploy should fail for duplicate upstream definition names used by refs
     Given I generate a unique value from "sandbox-routing-15" and store it as "apiName15"
     And I generate a unique API context from "/sandbox-routing-15" and store it as "apiContext15"
@@ -391,6 +405,7 @@ Feature: Sandbox routing
     And I send a "GET" request to the "gateway-controller" service at "/rest-apis/${CTX:apiName15}"
     Then the response status code should be 404
 
+  @SVR-024
   Scenario: Policy effects should apply for main ref and sandbox ref routes
     Given I generate a unique value from "sandbox-routing-16" and store it as "apiName16"
     And I generate a unique API context from "/sandbox-routing-16" and store it as "apiContext16"
@@ -421,6 +436,7 @@ Feature: Sandbox routing
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext16}/v1.0/whoami" until status 404
 
+  @SVR-024
   Scenario: Policy effects should apply for main ref and sandbox url routes
     Given I generate a unique value from "sandbox-routing-17" and store it as "apiName17"
     And I generate a unique API context from "/sandbox-routing-17" and store it as "apiContext17"
@@ -451,36 +467,28 @@ Feature: Sandbox routing
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext17}/v1.0/whoami" until status 404
 
-  Scenario: Requests to sandbox vhost are rejected when API has no sandbox upstream
+  # A request on the sandbox host reaches the main upstream: https://github.com/wso2/api-platform/issues/4286
+  @SVR-002 @known-issue
+  Scenario: A request on the API's sandbox vhost is rejected when the API has no sandbox upstream
     Given I generate a unique value from "sandbox-routing-18" and store it as "apiName18"
     And I generate a unique API context from "/sandbox-routing-18" and store it as "apiContext18"
-    And I generate a unique resource name from "sandbox-routing-18-mainHost18" and store it as "mainHost18"
+    And I generate a unique resource name from "sandbox-routing-18-sandboxHost18" and store it as "sandboxHost18"
+    # No vhosts.main, so the API's main routes are on the gateway's catch-all default vhost.
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion | ${CTX:gatewaySpecVersion} |
       | name | ${CTX:apiName18} |
-      | spec | {"displayName":"Env-Routing-No-Sandbox-API","version":"v1.0","context":"${CTX:apiContext18}/$version","vhosts":{"main":"${CTX:mainHost18}"},"upstream":{"main":{"url":"http://testbench:3000"}},"operations":[{"method":"GET","path":"/whoami"}]} |
+      | spec | {"displayName":"Env-Routing-No-Sandbox-API","version":"v1.0","context":"${CTX:apiContext18}/$version","vhosts":{"sandbox":"${CTX:sandboxHost18}"},"upstream":{"main":{"url":"http://testbench:3000"}},"operations":[{"method":"GET","path":"/whoami"}]} |
     Then the response should be successful
-    And I set request host to "${CTX:mainHost18}"
+    And I set request host to "main-${CTX:sandboxHost18}"
     And I send a "GET" request to "${CTX:apiContext18}/v1.0/whoami" until status 200
-
-    When I clear all headers
-    And I set request host to "${CTX:mainHost18}"
-    And I send a "GET" request to "${CTX:apiContext18}/v1.0/whoami"
-    Then the response should be successful
-    And the response should be valid JSON
     And the JSON response field "path" should be "/whoami"
 
     When I clear all headers
-    And I set request host to "no-sandbox-sandbox.local"
+    And I set request host to "${CTX:sandboxHost18}"
     And I send a "GET" request to "${CTX:apiContext18}/v1.0/whoami"
     Then the response status code should be 404
 
-    Given I authenticate using basic auth as "admin"
-    When I delete the API "${CTX:apiName18}"
-    Then the response should be successful
-    And I set request host to "${CTX:mainHost18}"
-    And I send a "GET" request to "${CTX:apiContext18}/v1.0/whoami" until status 404
-
+  @SVR-026
   Scenario: Deploy API with invalid URL scheme in direct sandbox url should fail
     Given I generate a unique value from "sandbox-routing-19" and store it as "apiName19"
     And I generate a unique API context from "/sandbox-routing-19" and store it as "apiContext19"
@@ -495,6 +503,7 @@ Feature: Sandbox routing
     And I send a "GET" request to the "gateway-controller" service at "/rest-apis/${CTX:apiName19}"
     Then the response status code should be 404
 
+  @SVR-024
   Scenario: Policy effects should apply for main url and sandbox url routes
     Given I generate a unique value from "sandbox-routing-20" and store it as "apiName20"
     And I generate a unique API context from "/sandbox-routing-20" and store it as "apiContext20"
@@ -525,6 +534,7 @@ Feature: Sandbox routing
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext20}/v1.0/whoami" until status 404
 
+  @SVR-004
   Scenario: Sandbox routing becomes available after redeploying API with sandbox upstream added
     Given I generate a unique value from "sandbox-routing-21" and store it as "apiName21"
     And I generate a unique API context from "/sandbox-routing-21" and store it as "apiContext21"
@@ -569,6 +579,7 @@ Feature: Sandbox routing
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext21}/v1.0/whoami" until status 404
 
+  @SVR-005
   Scenario: Sandbox routes use global default vhost when vhosts.sandbox is omitted
     Given I generate a unique value from "sandbox-routing-22" and store it as "apiName22"
     And I generate a unique API context from "/sandbox-routing-22" and store it as "apiContext22"
@@ -600,29 +611,54 @@ Feature: Sandbox routing
     Then the response should be successful
     And I send a "GET" request to "${CTX:apiContext22}/v1.0/whoami" until status 404
 
-  Scenario: Requests to global default sandbox vhost are rejected when API has no sandbox upstream
+  # A request on the default sandbox vhost reaches the main upstream unless another API serves
+  # that vhost: https://github.com/wso2/api-platform/issues/4286
+  @SVR-003 @known-issue
+  Scenario: A request on the gateway's default sandbox vhost is rejected for an API with no vhosts and no sandbox upstream
     Given I generate a unique value from "sandbox-routing-23" and store it as "apiName23"
     And I generate a unique API context from "/sandbox-routing-23" and store it as "apiContext23"
-    And I generate a unique resource name from "sandbox-routing-23-mainHost23" and store it as "mainHost23"
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion | ${CTX:gatewaySpecVersion} |
       | name | ${CTX:apiName23} |
-      | spec | {"displayName":"Env-Routing-No-Sandbox-Global-Vhost-API","version":"v1.0","context":"${CTX:apiContext23}/$version","vhosts":{"main":"${CTX:mainHost23}"},"upstream":{"main":{"url":"http://testbench:3000"}},"operations":[{"method":"GET","path":"/whoami"}]} |
+      | spec | {"displayName":"Env-Routing-No-Sandbox-Global-Vhost-API","version":"v1.0","context":"${CTX:apiContext23}/$version","upstream":{"main":{"url":"http://testbench:3000"}},"operations":[{"method":"GET","path":"/whoami"}]} |
     Then the response should be successful
-    And I set request host to "${CTX:mainHost23}"
+    And I set request host to "no-sb-global.local"
     And I send a "GET" request to "${CTX:apiContext23}/v1.0/whoami" until status 200
-
-    When I clear all headers
-    And I set request host to "${CTX:mainHost23}"
-    And I send a "GET" request to "${CTX:apiContext23}/v1.0/whoami"
-    Then the response should be successful
     And the JSON response field "path" should be "/whoami"
+
+    # Matches the gateway's default sandbox vhost, sandbox-*.
     When I clear all headers
     And I set request host to "sandbox-no-sb-global.local"
     And I send a "GET" request to "${CTX:apiContext23}/v1.0/whoami"
     Then the response status code should be 404
 
-    Given I authenticate using basic auth as "admin"
-    When I delete the API "${CTX:apiName23}"
+  # Each API lists two upstreams in its definition, in opposite orders. testbench's backend (3000)
+  # and echo (3002) answer differently: only the echo's response has a url field.
+  @SVR-022
+  Scenario: Sandbox ref with several URLs uses the first URL
+    Given I generate a unique value from "sandbox-routing-first" and store it as "apiFirst"
+    And I generate a unique API context from "/sandbox-routing-first" and store it as "contextFirst"
+    And I generate a unique value from "sandbox-routing-second" and store it as "apiSecond"
+    And I generate a unique API context from "/sandbox-routing-second" and store it as "contextSecond"
+    And I generate a unique resource name from "sandbox-routing-first-sandboxHost" and store it as "sandboxHost"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion | ${CTX:gatewaySpecVersion} |
+      | name | ${CTX:apiFirst} |
+      | spec | {"displayName":"Env-Routing-Sandbox-Backend-First-API","version":"v1.0","context":"${CTX:contextFirst}/$version","vhosts":{"sandbox":"${CTX:sandboxHost}"},"upstreamDefinitions":[{"name":"backend-first","upstreams":[{"url":"http://testbench:3000"},{"url":"http://testbench:3002"}]}],"upstream":{"main":{"url":"http://testbench:3000"},"sandbox":{"ref":"backend-first"}},"operations":[{"method":"GET","path":"/whoami"}]} |
     Then the response should be successful
-    And I send a "GET" request to "${CTX:apiContext23}/v1.0/whoami" until status 404
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion | ${CTX:gatewaySpecVersion} |
+      | name | ${CTX:apiSecond} |
+      | spec | {"displayName":"Env-Routing-Sandbox-Echo-First-API","version":"v1.0","context":"${CTX:contextSecond}/$version","vhosts":{"sandbox":"${CTX:sandboxHost}"},"upstreamDefinitions":[{"name":"echo-first","upstreams":[{"url":"http://testbench:3002"},{"url":"http://testbench:3000"}]}],"upstream":{"main":{"url":"http://testbench:3000"},"sandbox":{"ref":"echo-first"}},"operations":[{"method":"GET","path":"/whoami"}]} |
+    Then the response should be successful
+
+    When I set request host to "${CTX:sandboxHost}"
+    And I send a "GET" request to "${CTX:contextFirst}/v1.0/whoami" until status 200
+    Then the JSON response field "path" should be "/whoami"
+    And the JSON response field "url" should not exist
+
+    When I clear all headers
+    And I set request host to "${CTX:sandboxHost}"
+    And I send a "GET" request to "${CTX:contextSecond}/v1.0/whoami" until status 200
+    Then the JSON response field "path" should be "/whoami"
+    And the JSON response field "url" should contain "/whoami"

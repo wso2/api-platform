@@ -120,6 +120,7 @@ blocks:
         features:
           - features/gateway/routes/header_routing.feature
       - name: sandbox-routing
+        tags: "~@known-issue"
         features:
           - features/gateway/routes/sandbox_routing.feature
       - name: sandbox-upstream-first-url
@@ -480,8 +481,24 @@ blocks:
       - name: testbench
     runners:
       - name: vhost-routing-single
+        tags: "~@known-issue"
         features:
           - features/gateway/routes/vhost_routing_single.feature
+
+  # Changes the gateway's default main vhost in its config.toml and restarts gateway-controller,
+  # so it runs alone and with the single-domain defaults (vhost-routing-single.toml).
+  - name: vhost-default-change
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/vhost-routing-single.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: vhost-default-change
+        features:
+          - features/gateway/routes/vhost_default_change.feature
 
   # The gateway serves two domains for main and sandbox traffic (vhost-routing-multi.toml).
   # Kept out of gateway-core for the same reason as vhost-routing-single.
