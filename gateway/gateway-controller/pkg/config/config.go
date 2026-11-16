@@ -75,6 +75,17 @@ type Config struct {
 	ImmutableGateway ImmutableGatewayConfig `koanf:"immutable_gateway"`
 	MCP              MCPConfig              `koanf:"mcp"`
 	Signing          SigningConfig          `koanf:"signing"`
+	Budgets          BudgetsConfig          `koanf:"budgets"`
+	AICostStats      AICostStatsConfig      `koanf:"ai_cost_stats"`
+	Counters         CountersConfig         `koanf:"counters"`
+}
+
+// AICostStatsConfig is the [ai_cost_stats] section. Enabled counts what every LLM request
+// costs, per month and per project, agent, API key, user, provider and model, and reports
+// it to the control plane, with or without budgets. Off by default: it places the budget
+// system policy (and llm-cost) on every LLM route.
+type AICostStatsConfig struct {
+	Enabled bool `koanf:"enabled"`
 }
 
 // SigningConfig is the controller's view of the shared [signing] section. The
@@ -230,7 +241,14 @@ type Controller struct {
 	Metrics      MetricsConfig      `koanf:"metrics"`
 	Encryption   EncryptionConfig   `koanf:"encryption"`
 	EventHub     EventHubConfig     `koanf:"event_hub"`
-	Counters     CountersConfig     `koanf:"counters"`
+}
+
+// BudgetsConfig is the [budgets] section. Enabled turns budgets on: the budget system
+// policy on LLM routes, the gateway's budget API, budgets from the control plane, and
+// spend reports to it. Off by default, so a gateway that does not use budgets runs exactly
+// as without them. Budgets keep their spend in the shared counters ([counters]).
+type BudgetsConfig struct {
+	Enabled bool `koanf:"enabled"`
 }
 
 // CountersConfig holds the shared counter store the policy engines report to
@@ -1518,14 +1536,6 @@ func defaultConfig() *Config {
 					Enabled: false,
 				},
 			},
-			Counters: CountersConfig{
-				Retention: 40 * 24 * time.Hour,
-				Redis: CountersRedisConfig{
-					Address:     "localhost:6379",
-					KeyPrefix:   "apip:counters:",
-					DialTimeout: 5 * time.Second,
-				},
-			},
 			EventHub: EventHubConfig{
 				PollInterval:    3 * time.Second,
 				CleanupInterval: 10 * time.Minute,
@@ -1675,6 +1685,14 @@ func defaultConfig() *Config {
 				PathWithEscapedSlashesAction:  commonconstants.KEEP_UNCHANGED, // Leave escaped-slash paths unchanged by default
 			},
 		},
+		Counters: CountersConfig{
+			Retention: 40 * 24 * time.Hour,
+			Redis: CountersRedisConfig{
+				Address:     "localhost:6379",
+				KeyPrefix:   "apip:counters:",
+				DialTimeout: 5 * time.Second,
+			},
+		},
 		Analytics: AnalyticsConfig{
 			Enabled:           false,
 			EnabledPublishers: []string{"moesif"},
@@ -1733,7 +1751,7 @@ func defaultConfig() *Config {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
-	if err := c.Controller.Counters.validate(); err != nil {
+	if err := c.Counters.validate(); err != nil {
 		return err
 	}
 
@@ -3129,10 +3147,10 @@ func (c *Config) validateHTTPListenerConfig() error {
 func (c CountersConfig) validate() error {
 	// Redis expiries are whole seconds: under a second would delete counters at once.
 	if c.Retention < 0 || (c.Retention > 0 && c.Retention < time.Second) {
-		return fmt.Errorf("controller.counters.retention must be 0 (40 days) or at least 1s, got %s", c.Retention)
+		return fmt.Errorf("counters.retention must be 0 (40 days) or at least 1s, got %s", c.Retention)
 	}
 	if c.Redis.Enabled && strings.TrimSpace(c.Redis.Address) == "" {
-		return fmt.Errorf("controller.counters.redis.address is required when controller.counters.redis.enabled is true")
+		return fmt.Errorf("counters.redis.address is required when counters.redis.enabled is true")
 	}
 	return nil
 }

@@ -445,23 +445,6 @@ max_idle_conns = 2
 conn_max_lifetime = "30m"
 conn_max_idle_time = "5m"
 
-[controller.counters]
-# Shared counters the policy engines report to (budgets count spend here).
-# How long a counter is kept after its last add.
-retention = "960h"
-
-[controller.counters.redis]
-# Without Redis the counters live in this controller's memory: shared only by its own
-# policy engines and lost on restart. Enable Redis (or Valkey) so every gateway sharing
-# it sees the same totals. Only gateway-controllers connect to it.
-enabled = '{{ env "APIP_GW_CONTROLLER_COUNTERS_REDIS_ENABLED" "false" }}'
-address = '{{ env "APIP_GW_CONTROLLER_COUNTERS_REDIS_ADDRESS" "localhost:6379" }}'
-username = '{{ env "APIP_GW_CONTROLLER_COUNTERS_REDIS_USERNAME" "" }}'
-password = '{{ env "APIP_GW_CONTROLLER_COUNTERS_REDIS_PASSWORD" "" }}'
-db = 0
-key_prefix = "apip:counters:"
-tls = false
-dial_timeout = "5s"
 
 # =============================================================================
 # ROUTER CONFIGURATION
@@ -803,12 +786,6 @@ ciphers = '{{ env "POLICY_ENGINE_XDS_CLIENT_TLS_CIPHERS" (env "XDS_CLIENT_TLS_CI
 # classical entry in this same list.
 ecdh_curves = '{{ env "POLICY_ENGINE_XDS_CLIENT_TLS_ECDH_CURVES" (env "XDS_CLIENT_TLS_ECDH_CURVES" "X25519MLKEM768,X25519,P-256") }}'
 
-[policy_engine.counters]
-# How long a shared counter (budget spend) keeps being synced with the gateway-controller
-# after this policy engine last used it. Longer keeps totals fresh across pauses in
-# traffic; shorter means fewer reads from Redis.
-idle_timeout = "10m"
-
 [policy_engine.file_config]
 path = ""
 
@@ -1029,6 +1006,52 @@ max_payload_bytes = 262144
 # as soon as their access-log entry is processed; a field that does not fit stays
 # in metadata. 0 keeps every body in metadata (headers then share a 16 MiB budget).
 max_body_bytes = 16777216
+
+# =============================================================================
+# BUDGETS CONFIGURATION (spend limits on LLM traffic)
+# =============================================================================
+[budgets]
+# On, LLM provider routes and single-provider LLM proxy routes carry the budget system
+# policy, the gateway's budget API is available, and budgets are synced with the control
+# plane when there is one. Off (the default), none of this runs and LLM routes stay
+# exactly as configured. Budgets keep their spend in the shared counters ([counters]).
+enabled = '{{ env "APIP_GW_BUDGETS_ENABLED" "false" }}'
+
+# =============================================================================
+# AI COST STATS CONFIGURATION
+# =============================================================================
+[ai_cost_stats]
+# On, every LLM request's cost is counted per month and per project, agent, API key,
+# user, provider and model, with or without budgets, and reported to the control plane.
+# This places the budget system policy (and llm-cost) on every LLM route. Off (the
+# default), nothing is counted. The costs are kept in the shared counters ([counters]).
+enabled = '{{ env "APIP_GW_AI_COST_STATS_ENABLED" "false" }}'
+
+# =============================================================================
+# SHARED COUNTERS CONFIGURATION
+# =============================================================================
+[counters]
+# Counters any policy can use (sdk/core/counters), kept by the gateway-controller and
+# synced with its policy engines; budgets keep their spend in them. A policy engine
+# connects to sync them only once a policy uses a counter.
+# How long a counter is kept after its last add (gateway-controller).
+retention = "960h"
+# How long a counter keeps being synced after a policy engine last used it. Longer keeps
+# totals fresh across pauses in traffic; shorter means fewer reads (policy engine).
+idle_timeout = "10m"
+
+[counters.redis]
+# Without Redis the counters live in the gateway-controller's memory: shared only by its
+# own policy engines and lost on restart. Enable Redis (or Valkey) so every gateway sharing
+# it sees the same totals. Only gateway-controllers connect to it.
+enabled = '{{ env "APIP_GW_COUNTERS_REDIS_ENABLED" "false" }}'
+address = '{{ env "APIP_GW_COUNTERS_REDIS_ADDRESS" "localhost:6379" }}'
+username = '{{ env "APIP_GW_COUNTERS_REDIS_USERNAME" "" }}'
+password = '{{ env "APIP_GW_COUNTERS_REDIS_PASSWORD" "" }}'
+db = 0
+key_prefix = "apip:counters:"
+tls = false
+dial_timeout = "5s"
 
 # =============================================================================
 # ANALYTICS CONFIGURATION (consumer — enabling it activates the collector)

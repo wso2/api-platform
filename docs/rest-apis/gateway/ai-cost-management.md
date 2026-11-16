@@ -233,6 +233,8 @@ Status Code **200**
 |»»» kind|string|true|none|none|
 |»»» metadata|[BudgetMetadata](schemas.md#schemabudgetmetadata)|true|none|none|
 |»»»» name|string|true|none|The budget's handle, unique on the gateway. Lowercase letters, digits, '-' and '.'.|
+|»»»» annotations|object|false|none|Non-identifying metadata, as on the gateway's other kinds. gateway.api-platform.wso2.com/artifact-id sets the budget's UUID, which cannot change afterwards; without it the gateway assigns one. gateway.api-platform.wso2.com/project-id names the project that owns the budget in the control plane; without it, the organization owns it.|
+|»»»»» **additionalProperties**|string|false|none|none|
 |»»» spec|[BudgetSpec](schemas.md#schemabudgetspec)|true|none|none|
 |»»»» status|string|false|none|An inactive budget is kept but matches no traffic.|
 |»»»» limit|[BudgetLimit](schemas.md#schemabudgetlimit)|true|none|none|
@@ -247,11 +249,15 @@ Status Code **200**
 |»»»»» id|string|false|none|LLM provider handle. Omit for all providers.|
 |»»»» consumers|[[BudgetConsumer](schemas.md#schemabudgetconsumer)]|false|none|Every consumer must match (AND). Empty means all traffic.|
 |»»»»» type|string|true|none|none|
-|»»»»» allocation|string|true|none|shared is one allowance; separate is one allowance per value of the expression.|
-|»»»»» expression|string|true|none|CEL over the request. A condition when shared; the value to allocate by when separate.|
+|»»»»» allocation|string|true|none|shared is one allowance; separate is one allowance per value (each user, project, agent or API key).|
+|»»»»» expression|string|false|none|attribute only. CEL over the request. A condition when shared; the value to allocate by when separate.|
+|»»»»» id|string|false|none|The project, agent or API key name. Required when shared; omitted when separate.|
+|»»»»» project|string|false|none|agent only, with id. The agent's project; agent names are unique only per project.|
 |»»»» exemptions|[[BudgetExemption](schemas.md#schemabudgetexemption)]|false|none|Matching traffic is left out of this budget.|
 |»»»»» type|string|true|none|none|
-|»»»»» expression|string|true|none|CEL condition over the request.|
+|»»»»» expression|string|false|none|attribute only. CEL condition over the request.|
+|»»»»» id|string|false|none|The project or agent name.|
+|»»»»» project|string|false|none|agent only. The agent's project.|
 
 *and*
 
@@ -287,9 +293,14 @@ Status Code **200**
 |allocation|shared|
 |allocation|separate|
 |type|attribute|
+|type|project|
+|type|agent|
+|type|apiKey|
 |allocation|shared|
 |allocation|separate|
 |type|attribute|
+|type|project|
+|type|agent|
 |state|deployed|
 |state|undeployed|
 |code|MTLS_ACCEPT_INHERITS_POOL|

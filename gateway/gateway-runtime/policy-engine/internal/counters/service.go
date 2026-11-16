@@ -60,6 +60,10 @@ type Service struct {
 	inflight   map[sdkcounters.Key]float64
 	inflightID string
 	now        func() time.Time
+	// used is closed when a policy first uses a counter: until then there is nothing to
+	// sync and the engine does not connect to its controller.
+	used     chan struct{}
+	usedOnce sync.Once
 }
 
 // NewService returns an empty Service. source must be unique per engine process;
@@ -74,7 +78,13 @@ func NewService(source string, idleTimeout time.Duration) *Service {
 		idleTimeout: idleTimeout,
 		entries:     map[sdkcounters.Key]*entry{},
 		now:         time.Now,
+		used:        make(chan struct{}),
 	}
+}
+
+// Used is closed once a policy has used a counter.
+func (s *Service) Used() <-chan struct{} {
+	return s.used
 }
 
 // use returns the counter's entry, creating it, and pushes its expiry forward.
@@ -84,6 +94,7 @@ func (s *Service) use(key sdkcounters.Key) *entry {
 	if e == nil {
 		e = &entry{}
 		s.entries[key] = e
+		s.usedOnce.Do(func() { close(s.used) })
 	}
 	e.expiresAt = s.now().Add(s.idleTimeout)
 	return e

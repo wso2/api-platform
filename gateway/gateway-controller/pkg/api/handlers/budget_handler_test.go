@@ -63,9 +63,26 @@ func newBudgetTestServer(t *testing.T) *APIServer {
 	publisher := utils.NewBudgetPublisher(db, newTestLazyResourceManager())
 	return &APIServer{
 		db: db, logger: logger, store: storage.NewConfigStore(),
-		budgetPublisher: publisher,
-		budgetService:   budget.NewService(db, publisher, &mockEventHub{}, "test-gateway", logger, false),
+		budgetPublisher: publisher, budgetsEnabled: true,
+		budgetService: budget.NewService(db, publisher, &mockEventHub{}, "test-gateway", logger, false),
 	}
+}
+
+// With budgets off (budgets.enabled), the budget API is not there: every
+// operation answers 404 and nothing is stored.
+func TestBudgetAPIAnswers404WhenBudgetsAreDisabled(t *testing.T) {
+	server := newBudgetTestServer(t)
+	server.budgetsEnabled = false
+	rec := postBudget(server, `{"apiVersion":"gateway.api-platform.wso2.com/v1","kind":"Budget","metadata":{"name":"x"},"spec":{"limit":{"amount":"1","period":"day","action":"allow"}}}`)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.Contains(t, rec.Body.String(), "budgets.enabled")
+
+	list := httptest.NewRecorder()
+	server.ListBudgets(list, httptest.NewRequest(http.MethodGet, "/budgets", nil))
+	assert.Equal(t, http.StatusNotFound, list.Code)
+	stored, err := server.budgetService.List()
+	require.NoError(t, err)
+	assert.Empty(t, stored)
 }
 
 func postBudget(server *APIServer, body string) *httptest.ResponseRecorder {

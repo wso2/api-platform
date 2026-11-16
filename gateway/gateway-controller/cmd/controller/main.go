@@ -440,9 +440,13 @@ func main() {
 	// Publish the stored active budgets so a restart enforces them before any
 	// request is served, with or without the control plane.
 	budgets := utils.NewBudgetPublisher(db, lazyResourceXDSManager)
-	if err := budgets.Publish(""); err != nil {
-		log.Error("Refusing to start: budgets could not be published", slog.Any("error", err))
-		os.Exit(1)
+	if cfg.Budgets.Enabled {
+		if err := budgets.Publish(""); err != nil {
+			log.Error("Refusing to start: budgets could not be published", slog.Any("error", err))
+			os.Exit(1)
+		}
+	} else {
+		log.Info("Budgets are disabled (budgets.enabled): LLM routes carry no budget policy")
 	}
 
 	// The SDS secret manager serves the listener certificate, gateway
@@ -642,15 +646,19 @@ func main() {
 		serverOpts = append(serverOpts, policyxds.WithMTLS(policyXDSTLSConfig, cfg.Controller.PolicyServer.TLS.AllowedClientIdentities))
 	}
 	// The shared counter store the policy engines report to (budgets count spend in it).
-	counterStore, err := newCounterStore(cfg.Controller.Counters, log)
+	counterStore, err := newCounterStore(cfg.Counters, log)
 	if err != nil {
 		log.Error("Refusing to start: the counter store is not reachable", slog.Any("error", err))
 		os.Exit(1)
 	}
 	defer func() { _ = counterStore.Close() }()
 	serverOpts = append(serverOpts, policyxds.WithCounterStore(counterStore))
-	budgetUsage := controlplane.NewBudgetUsageReporter(log)
-	serverOpts = append(serverOpts, policyxds.WithCounterObserver(budgetUsage))
+	// Budget spend and AI cost stats are reported to the control plane only when on.
+	var budgetUsage *controlplane.BudgetUsageReporter
+	if cfg.Budgets.Enabled || cfg.AICostStats.Enabled {
+		budgetUsage = controlplane.NewBudgetUsageReporter(log)
+		serverOpts = append(serverOpts, policyxds.WithCounterObserver(budgetUsage))
+	}
 	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, subscriptionSnapshotManager, nil, cfg.Controller.PolicyServer.Port, log, serverOpts...)
 	go func() {
 		if err := policyXDSServer.Start(); err != nil {
@@ -727,7 +735,9 @@ func main() {
 		nil,
 		sharedHTTPClient,
 	)
-	cpClient.SetBudgetUsageReporter(budgetUsage)
+	if budgetUsage != nil {
+		cpClient.SetBudgetUsageReporter(budgetUsage)
+	}
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
 		// Don't fail startup - gateway can run in degraded mode without control plane

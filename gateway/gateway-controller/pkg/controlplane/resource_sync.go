@@ -22,6 +22,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -78,9 +79,15 @@ type gatewayResourcesResponse struct {
 }
 
 // canPushResources reports whether a DP->CP push should be attempted now.
+// The pushed resources are budgets, so nothing is pushed when budgets are not enabled
+// on this gateway (no budget applier is set).
 func (c *Client) canPushResources() bool {
-	return c.IsConnected() && c.config.DeploymentSyncEnabled && !c.IsOnPrem()
+	return c.IsConnected() && c.config.DeploymentSyncEnabled && !c.IsOnPrem() && c.getBudgetApplier() != nil
 }
+
+// errResourcesNotSupported is a control plane that does not take gateway resources: it
+// answers 404 (AI Workspace). Retrying cannot help.
+var errResourcesNotSupported = errors.New("the control plane does not support gateway resources")
 
 // PushResource pushes a gateway-created resource after it is created or updated.
 func (c *Client) PushResource(cfg *models.StoredConfig) {
@@ -162,11 +169,20 @@ func (c *Client) pushResources(req gatewayResourcesRequest, sent map[string]*mod
 		return
 	}
 	var resp *gatewayResourcesResponse
+	unsupported := false
 	err := c.retryPush("resource push", func() error {
 		var err error
 		resp, err = c.postGatewayResources(gatewayID, req)
+		if errors.Is(err, errResourcesNotSupported) {
+			unsupported = true
+			return nil
+		}
 		return err
 	}, slog.Int("count", len(req.Resources)+len(req.Deleted)))
+	if unsupported {
+		c.logger.Debug("The control plane does not support gateway resources; nothing was pushed")
+		return
+	}
 	if err != nil {
 		// The resources keep their pending/failed cp_sync_status and are pushed again on
 		// the next (re)connect.
@@ -235,6 +251,9 @@ func (c *Client) postGatewayResources(gatewayID string, body gatewayResourcesReq
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read gateway resources response: %w", err)
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, errResourcesNotSupported
 	}
 	if resp.StatusCode != http.StatusOK {
 		if isPermanentControlPlaneStatus(resp.StatusCode) {

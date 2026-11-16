@@ -20,6 +20,7 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
@@ -29,6 +30,10 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 )
+
+// ErrBudgetsNotSupported is a control plane that does not keep budgets: it does not
+// serve GET /budgets.
+var ErrBudgetsNotSupported = errors.New("the control plane does not support budgets")
 
 // LazyResourceTypeBudget is the lazy-resource type that carries budgets to the policy engine.
 const LazyResourceTypeBudget = "Budget"

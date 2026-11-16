@@ -117,3 +117,41 @@ func TestBudgetUsage_IgnoresUnlabelledCounters(t *testing.T) {
 	r.Observe([]counterproto.Add{{Key: spend, Delta: 1}}, []counterproto.Total{{Key: spend, Total: 1}})
 	assert.Empty(t, r.entries)
 }
+
+// AI cost stats: the cost, missing-price and usage-unavailable counters of one combination
+// are reported as one costs entry, next to the allowances.
+func TestBudgetUsage_ReportsCostTotals(t *testing.T) {
+	now := time.Date(2026, 11, 14, 10, 0, 0, 0, time.UTC)
+	r := usageReporter(&now)
+	month := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	cost := counterproto.KeyFor("ai-cost", "c-1", month)
+	missing := counterproto.KeyFor("ai-cost-missing-price", "c-1", month)
+	unavailable := counterproto.KeyFor("ai-cost-usage-unavailable", "c-1", month)
+	labels := map[string]string{
+		"project": "api-platform", "agent": "support-agent", "apiKey": "support-prod",
+		"llmProvider": "openai", "model": "gpt-4o",
+	}
+	spend := counterproto.KeyFor("budget", "a-1", month)
+
+	r.Observe([]counterproto.Add{
+		{Key: cost, Delta: 2, Labels: labels},
+		{Key: missing, Delta: 1, Labels: labels},
+		{Key: unavailable, Delta: 1, Labels: labels},
+		{Key: spend, Delta: 2, Labels: map[string]string{"budget": "all"}},
+	}, []counterproto.Total{{Key: cost, Total: 80.14}, {Key: missing, Total: 3}, {Key: unavailable, Total: 1}, {Key: spend, Total: 80.14}})
+
+	s := &sentUsage{}
+	r.flush(s.send)
+	require.Len(t, s.messages, 1)
+	assert.Equal(t, []CostUsage{{
+		Month: "2026-11-01", CostKey: "c-1", Project: "api-platform", Agent: "support-agent", APIKey: "support-prod",
+		LLMProvider: "openai", Model: "gpt-4o", Cost: "80.14", MissingPriceRequests: 3, UsageUnavailableRequests: 1,
+	}}, s.messages[0].Payload.Costs)
+	require.Len(t, s.messages[0].Payload.Allowances, 1, "allowances and costs travel together")
+
+	r.Observe(nil, []counterproto.Total{{Key: missing, Total: 4}})
+	r.flush(s.send)
+	require.Len(t, s.messages, 2)
+	assert.Empty(t, s.messages[1].Payload.Allowances)
+	assert.Equal(t, int64(4), s.messages[1].Payload.Costs[0].MissingPriceRequests)
+}

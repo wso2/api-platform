@@ -293,6 +293,11 @@ const (
 	BUDGET_SYSTEM_POLICY_NAME    = "wso2_apip_sys_budget"
 	BUDGET_SYSTEM_POLICY_VERSION = "v1"
 
+	// BudgetAdmittedHeader carries an LLM proxy route's stamp to the provider route it
+	// forwards to, so the request is counted once. Never sent to an LLM provider: the
+	// provider route's budget policy removes it, and Envoy drops it there too.
+	BudgetAdmittedHeader = "x-wso2-budget-admitted"
+
 	// AnnotationAgentID names the agent of an agent's hidden LLM proxy, set by the control
 	// plane beside the proxy's project-id annotation. The budget system policy on that
 	// route matches agent budget consumers by it.

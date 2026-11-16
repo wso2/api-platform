@@ -120,3 +120,18 @@ func TestBudgetEvents_IgnoredWithoutBudgets(t *testing.T) {
 	client.handleBudgetDeletedEvent(map[string]interface{}{"type": "budget.deleted"})
 	client.syncBudgets()
 }
+
+// A control plane without budgets (AI Workspace) answers 404 to GET /budgets: the stored
+// budgets stay, and no error is logged as a failure.
+func TestSyncBudgets_KeepsBudgetsWhenTheControlPlaneHasNoBudgets(t *testing.T) {
+	client := newManifestTLSServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+	applier := &fakeBudgetApplier{stored: []string{"b-1"}}
+	client.SetBudgetApplier(applier)
+
+	client.syncBudgets()
+
+	assert.Empty(t, applier.applied)
+	assert.Empty(t, applier.deleted, "a control plane without budgets deletes nothing")
+}

@@ -148,11 +148,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_provider_global_ratelimit.feature
-      - name: budget-management
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/gateway/core/budget_management.feature
-          - features/gateway/core/budget_agent.feature
       - name: llm-provider-management
         features:
           - features/ai-workspace-gateway/llm/llm_provider.feature
@@ -559,14 +554,6 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/gateway/observability/analytics_llm.feature
-      - name: analytics-budget
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/gateway/observability/analytics_budget.feature
-      - name: budget-jwt
-        tags: "gateway-version>1.2.0"
-        features:
-          - features/gateway/core/budget_jwt.feature
       # Released gateways up to 1.2.0 do not publish the ai_context block.
       - name: analytics-ai-context
         tags: "gateway-version>1.2.0"
@@ -630,6 +617,32 @@ blocks:
         tags: "gateway-version>=1.2.0"
         features:
           - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
+
+  # Budgets turned on ([budgets] enabled), which the other blocks must not see:
+  # with budgets on, LLM routes carry the budget system policy. Serialized: the analytics
+  # scenario counts the events its requests publish.
+  - name: gateway-budgets
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/gateway-budgets.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: budget-management
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/budget_management.feature
+          - features/gateway/core/budget_agent.feature
+      - name: analytics-budget
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/observability/analytics_budget.feature
+      - name: budget-jwt
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/budget_jwt.feature
 
   # Budgets with the gateway-controller's counters in Redis. Its own block: the Redis overlay
   # must not reach the other runners, and the scenario restarts the gateway.

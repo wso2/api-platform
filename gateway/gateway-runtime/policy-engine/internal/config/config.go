@@ -109,6 +109,7 @@ type Config struct {
 	TrafficLogging       TrafficLoggingConfig   `koanf:"traffic_logging"`
 	TracingConfig        TracingConfig          `koanf:"tracing"`
 	Signing              SigningConfig          `koanf:"signing"`
+	Counters             CountersConfig         `koanf:"counters"`
 }
 
 // CollectorConfig holds the data-collection ("collector") configuration. The
@@ -601,7 +602,6 @@ type PolicyEngine struct {
 	Metrics        MetricsConfig        `koanf:"metrics"`
 	ConfigMode     ConfigModeConfig     `koanf:"config_mode"`
 	XDS            XDSConfig            `koanf:"xds"`
-	Counters       CountersConfig       `koanf:"counters"`
 	FileConfig     FileConfigConfig     `koanf:"file_config"`
 	Logging        LoggingConfig        `koanf:"logging"`
 	PythonExecutor PythonExecutorConfig `koanf:"python_executor"`
@@ -999,8 +999,9 @@ type ConfigModeConfig struct {
 }
 
 // XDSConfig holds xDS client configuration
-// CountersConfig configures the shared counters this engine syncs with its
-// gateway-controller (budgets count spend in them).
+// CountersConfig is the shared [counters] section, as the policy engine reads it: the
+// shared counters any policy can use (sdk/core/counters), synced with the
+// gateway-controller once one is used. Budgets keep their spend in them.
 type CountersConfig struct {
 	// IdleTimeout is how long a counter keeps being synced after this engine last used
 	// it; 0 means the default, 10 minutes. Longer keeps totals fresh across pauses in
@@ -1376,9 +1377,6 @@ func defaultConfig() *Config {
 					EcdhCurves: "X25519MLKEM768,X25519,P-256",
 				},
 			},
-			Counters: CountersConfig{
-				IdleTimeout: 10 * time.Minute,
-			},
 			FileConfig: FileConfigConfig{
 				Path: "",
 			},
@@ -1452,6 +1450,7 @@ func defaultConfig() *Config {
 			ExcludeFields:   []string{},
 			Properties:      map[string]string{},
 		},
+		Counters: CountersConfig{IdleTimeout: 10 * time.Minute},
 		Analytics: AnalyticsConfig{
 			Enabled:           false,
 			EnabledPublishers: []string{"moesif"},
@@ -1771,7 +1770,7 @@ func (c *Config) validateXDSConfig() error {
 	}
 
 	// Zero falls back to the default (internal/counters.DefaultIdleTimeout).
-	if c.PolicyEngine.Counters.IdleTimeout < 0 {
+	if c.Counters.IdleTimeout < 0 {
 		return fmt.Errorf("counters.idle_timeout must not be negative")
 	}
 

@@ -19,6 +19,7 @@
 package controlplane
 
 import (
+	"errors"
 	"log/slog"
 	"time"
 
@@ -65,7 +66,7 @@ func (c *Client) getBudgetApplier() utils.ControlPlaneBudgetApplier {
 func (c *Client) handleBudgetEvent(event map[string]interface{}) {
 	applier := c.getBudgetApplier()
 	if applier == nil {
-		c.logger.Warn("Ignoring a budget event: budgets are not available")
+		c.logger.Debug("Ignoring a budget event: budgets are not enabled on this gateway")
 		return
 	}
 	var evt BudgetEvent
@@ -83,7 +84,7 @@ func (c *Client) handleBudgetEvent(event map[string]interface{}) {
 func (c *Client) handleBudgetDeletedEvent(event map[string]interface{}) {
 	applier := c.getBudgetApplier()
 	if applier == nil {
-		c.logger.Warn("Ignoring a budget event: budgets are not available")
+		c.logger.Debug("Ignoring a budget event: budgets are not enabled on this gateway")
 		return
 	}
 	var evt BudgetDeletedEvent
@@ -108,6 +109,10 @@ func (c *Client) syncBudgets() {
 		return
 	}
 	budgets, err := c.apiUtilsService.FetchBudgets()
+	if errors.Is(err, utils.ErrBudgetsNotSupported) {
+		c.logger.Debug("The control plane does not support budgets; keeping the stored ones")
+		return
+	}
 	if err != nil {
 		c.logger.Warn("Failed to sync control-plane budgets", slog.Any("error", err))
 		return

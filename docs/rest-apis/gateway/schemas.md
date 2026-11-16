@@ -3300,7 +3300,11 @@ and
 
 ```json
 {
-  "name": "research-team-monthly"
+  "name": "research-team-monthly",
+  "annotations": {
+    "property1": "string",
+    "property2": "string"
+  }
 }
 
 ```
@@ -3310,6 +3314,8 @@ and
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |name|string|true|none|The budget's handle, unique on the gateway. Lowercase letters, digits, '-' and '.'.|
+|annotations|object|false|none|Non-identifying metadata, as on the gateway's other kinds. gateway.api-platform.wso2.com/artifact-id sets the budget's UUID, which cannot change afterwards; without it the gateway assigns one. gateway.api-platform.wso2.com/project-id names the project that owns the budget in the control plane; without it, the organization owns it.|
+|» **additionalProperties**|string|false|none|none|
 
 ## BudgetSpec
 
@@ -3337,13 +3343,17 @@ and
     {
       "type": "attribute",
       "allocation": "shared",
-      "expression": "string"
+      "expression": "string",
+      "id": "string",
+      "project": "string"
     }
   ],
   "exemptions": [
     {
       "type": "attribute",
-      "expression": "string"
+      "expression": "string",
+      "id": "string",
+      "project": "string"
     }
   ]
 }
@@ -3449,26 +3459,33 @@ and
 {
   "type": "attribute",
   "allocation": "shared",
-  "expression": "string"
+  "expression": "string",
+  "id": "string",
+  "project": "string"
 }
 
 ```
 
-Who the budget applies to. Only token-claim attributes for now.
+Who the budget applies to; consumers combine with AND. attribute is a CEL expression over the request (token claims); project and agent are the project and agent of an agent's LLM proxy (its gateway.api-platform.wso2.com/project-name and agent-name annotations); apiKey is the name of the API key the request authenticated with.
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |type|string|true|none|none|
-|allocation|string|true|none|shared is one allowance; separate is one allowance per value of the expression.|
-|expression|string|true|none|CEL over the request. A condition when shared; the value to allocate by when separate.|
+|allocation|string|true|none|shared is one allowance; separate is one allowance per value (each user, project, agent or API key).|
+|expression|string|false|none|attribute only. CEL over the request. A condition when shared; the value to allocate by when separate.|
+|id|string|false|none|The project, agent or API key name. Required when shared; omitted when separate.|
+|project|string|false|none|agent only, with id. The agent's project; agent names are unique only per project.|
 
 ##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |type|attribute|
+|type|project|
+|type|agent|
+|type|apiKey|
 |allocation|shared|
 |allocation|separate|
 
@@ -3482,25 +3499,31 @@ Who the budget applies to. Only token-claim attributes for now.
 ```json
 {
   "type": "attribute",
-  "expression": "string"
+  "expression": "string",
+  "id": "string",
+  "project": "string"
 }
 
 ```
 
-Traffic left out of the budget. Only token-claim attributes for now.
+Traffic left out of the budget: an attribute condition (expression), a project (id), or an agent (id and its project).
 
 #### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |type|string|true|none|none|
-|expression|string|true|none|CEL condition over the request.|
+|expression|string|false|none|attribute only. CEL condition over the request.|
+|id|string|false|none|The project or agent name.|
+|project|string|false|none|agent only. The agent's project.|
 
 ##### Enumerated Values
 
 |Property|Value|
 |---|---|
 |type|attribute|
+|type|project|
+|type|agent|
 
 ## LLMProviderTemplateRequest
 

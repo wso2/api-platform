@@ -38,6 +38,9 @@ import (
 // CreateBudget implements ServerInterface.CreateBudget
 // (POST /budgets)
 func (s *APIServer) CreateBudget(w http.ResponseWriter, r *http.Request) {
+	if !s.budgetsAvailable(w) {
+		return
+	}
 	log := middleware.GetLogger(r, s.logger)
 
 	body, err := io.ReadAll(r.Body)
@@ -71,6 +74,9 @@ func (s *APIServer) CreateBudget(w http.ResponseWriter, r *http.Request) {
 // ListBudgets implements ServerInterface.ListBudgets
 // (GET /budgets)
 func (s *APIServer) ListBudgets(w http.ResponseWriter, r *http.Request) {
+	if !s.budgetsAvailable(w) {
+		return
+	}
 	log := middleware.GetLogger(r, s.logger)
 
 	cfgs, err := s.budgetService.List()
@@ -90,6 +96,9 @@ func (s *APIServer) ListBudgets(w http.ResponseWriter, r *http.Request) {
 // GetBudget implements ServerInterface.GetBudget
 // (GET /budgets/{id})
 func (s *APIServer) GetBudget(w http.ResponseWriter, r *http.Request, id string) {
+	if !s.budgetsAvailable(w) {
+		return
+	}
 	log := middleware.GetLogger(r, s.logger)
 
 	cfg, err := s.budgetService.Get(id)
@@ -103,6 +112,9 @@ func (s *APIServer) GetBudget(w http.ResponseWriter, r *http.Request, id string)
 // UpdateBudget implements ServerInterface.UpdateBudget
 // (PUT /budgets/{id})
 func (s *APIServer) UpdateBudget(w http.ResponseWriter, r *http.Request, id string) {
+	if !s.budgetsAvailable(w) {
+		return
+	}
 	log := middleware.GetLogger(r, s.logger)
 
 	body, err := io.ReadAll(r.Body)
@@ -123,6 +135,9 @@ func (s *APIServer) UpdateBudget(w http.ResponseWriter, r *http.Request, id stri
 // DeleteBudget implements ServerInterface.DeleteBudget
 // (DELETE /budgets/{id})
 func (s *APIServer) DeleteBudget(w http.ResponseWriter, r *http.Request, id string) {
+	if !s.budgetsAvailable(w) {
+		return
+	}
 	log := middleware.GetLogger(r, s.logger)
 
 	if err := s.budgetService.Delete(id, middleware.GetCorrelationID(r), log); err != nil {
@@ -171,6 +186,18 @@ func budgetValidationResponse(invalid *budget.ValidationError) api.ErrorResponse
 		details = append(details, api.ValidationError{Field: &field, Message: &message})
 	}
 	return api.ErrorResponse{Status: "error", Message: "Budget validation failed", Errors: &details}
+}
+
+// budgetsAvailable answers 404 when budgets are off on this gateway
+// (budgets.enabled) and reports whether the request may go on.
+func (s *APIServer) budgetsAvailable(w http.ResponseWriter) bool {
+	if s.budgetsEnabled {
+		return true
+	}
+	httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
+		Status: "error", Message: "Budgets are not enabled on this gateway. Set budgets.enabled to use them.",
+	})
+	return false
 }
 
 // configDumpBudgets lists the stored budgets for the config dump, in name order, each

@@ -38,11 +38,22 @@ import (
 // in the last ten minutes, so a lost message heals itself. While disconnected it keeps
 // only the latest total per allowance and period.
 
-// Counter namespaces the budget system policy charges.
+// Counter namespaces the budget system policy charges: budget spend, and the AI cost
+// stats ([ai_cost_stats]), which count every request's cost by its values.
 const (
 	usageNamespaceSpend    = "budget"
 	usageNamespaceUnpriced = "budget-unpriced"
 	usageLabelBudget       = "budget"
+
+	usageNamespaceCost                 = "ai-cost"
+	usageNamespaceCostMissingPrice     = "ai-cost-missing-price"
+	usageNamespaceCostUsageUnavailable = "ai-cost-usage-unavailable"
+)
+
+// Kinds of usage entries.
+const (
+	usageKindAllowance = "allowance"
+	usageKindCost      = "cost"
 )
 
 const (
@@ -59,9 +70,28 @@ type BudgetUsageMessage struct {
 	Payload BudgetUsagePayload `json:"payload"`
 }
 
-// BudgetUsagePayload carries allowance totals.
+// BudgetUsagePayload carries allowance totals and cost totals.
 type BudgetUsagePayload struct {
-	Allowances []AllowanceUsage `json:"allowances"`
+	Allowances []AllowanceUsage `json:"allowances,omitempty"`
+	Costs      []CostUsage      `json:"costs,omitempty"`
+}
+
+// CostUsage is what one combination of values cost in one month, across every gateway
+// sharing the counter store (Interfaces 4.2). The control plane keeps the higher totals.
+type CostUsage struct {
+	// Month is the month's first day, UTC.
+	Month string `json:"month"`
+	// CostKey keys the combination; the other fields are its values, empty when unknown.
+	CostKey                  string `json:"costKey"`
+	Project                  string `json:"project,omitempty"`
+	Agent                    string `json:"agent,omitempty"`
+	APIKey                   string `json:"apiKey,omitempty"`
+	User                     string `json:"user,omitempty"`
+	LLMProvider              string `json:"llmProvider"`
+	Model                    string `json:"model,omitempty"`
+	Cost                     string `json:"cost"`
+	MissingPriceRequests     int64  `json:"missingPriceRequests"`
+	UsageUnavailableRequests int64  `json:"usageUnavailableRequests"`
 }
 
 // AllowanceUsage is one allowance's total in one period, across every gateway sharing
@@ -78,19 +108,34 @@ type AllowanceUsage struct {
 	UnpricedRequests int64             `json:"unpricedRequests"`
 }
 
-// usageKey names one allowance in one period.
+// usageKey names one allowance in one period, or one cost combination in one month.
 type usageKey struct {
+	kind      string
 	allowance string
 	window    int64
 }
 
 type usageEntry struct {
 	budget    string
-	allowance map[string]string
+	allowance map[string]string // an allowance's values, or a cost combination's
 	spent     float64
 	unpriced  float64
-	writtenAt time.Time
-	dirty     bool
+	// missingPrice and usageUnavailable count a cost combination's requests charged $0.
+	missingPrice     float64
+	usageUnavailable float64
+	writtenAt        time.Time
+	dirty            bool
+}
+
+// usageKindOf returns the kind of entry a counter namespace feeds, or "" for others.
+func usageKindOf(namespace string) string {
+	switch namespace {
+	case usageNamespaceSpend, usageNamespaceUnpriced:
+		return usageKindAllowance
+	case usageNamespaceCost, usageNamespaceCostMissingPrice, usageNamespaceCostUsageUnavailable:
+		return usageKindCost
+	}
+	return ""
 }
 
 // BudgetUsageReporter collects allowance totals from the counter stream and sends them
@@ -114,41 +159,46 @@ func (r *BudgetUsageReporter) Observe(adds []counterproto.Add, totals []counterp
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, add := range adds {
-		if !isBudgetNamespace(add.Key.Namespace) || add.Labels[usageLabelBudget] == "" {
+		kind := usageKindOf(add.Key.Namespace)
+		if kind == "" || len(add.Labels) == 0 || (kind == usageKindAllowance && add.Labels[usageLabelBudget] == "") {
 			continue
 		}
-		key := usageKey{add.Key.ID, add.Key.Window}
+		key := usageKey{kind, add.Key.ID, add.Key.Window}
 		e := r.entries[key]
 		if e == nil {
 			e = &usageEntry{}
 			r.entries[key] = e
 		}
-		e.budget = add.Labels[usageLabelBudget]
 		e.allowance = maps.Clone(add.Labels)
-		delete(e.allowance, usageLabelBudget)
+		if kind == usageKindAllowance {
+			e.budget = add.Labels[usageLabelBudget]
+			delete(e.allowance, usageLabelBudget)
+		}
 	}
 	now := r.now()
 	for _, t := range totals {
-		if !isBudgetNamespace(t.Key.Namespace) {
+		kind := usageKindOf(t.Key.Namespace)
+		if kind == "" {
 			continue
 		}
-		e := r.entries[usageKey{t.Key.ID, t.Key.Window}]
+		e := r.entries[usageKey{kind, t.Key.ID, t.Key.Window}]
 		if e == nil {
 			continue
 		}
 		field := &e.spent
-		if t.Key.Namespace == usageNamespaceUnpriced {
+		switch t.Key.Namespace {
+		case usageNamespaceUnpriced:
 			field = &e.unpriced
+		case usageNamespaceCostMissingPrice:
+			field = &e.missingPrice
+		case usageNamespaceCostUsageUnavailable:
+			field = &e.usageUnavailable
 		}
 		if t.Total != *field {
 			*field = t.Total
 			e.dirty, e.writtenAt = true, now
 		}
 	}
-}
-
-func isBudgetNamespace(ns string) bool {
-	return ns == usageNamespaceSpend || ns == usageNamespaceUnpriced
 }
 
 // run sends changed totals every second and every recent total every minute until done
@@ -189,41 +239,53 @@ func (r *BudgetUsageReporter) markRecent() {
 
 // flush sends the changed totals; on failure they stay marked and are sent later.
 func (r *BudgetUsageReporter) flush(send func([]byte) error) {
+	type pending struct {
+		key  usageKey
+		sent usageEntry
+	}
 	r.mu.Lock()
-	var batch []AllowanceUsage
-	var keys []usageKey
+	var batch []pending
 	for key, e := range r.entries {
-		if !e.dirty {
-			continue
+		if e.dirty {
+			batch = append(batch, pending{key: key, sent: *e})
 		}
-		batch = append(batch, AllowanceUsage{
-			Budget:           e.budget,
-			PeriodStart:      time.Unix(key.window, 0).UTC().Format(time.DateOnly),
-			AllowanceUUID:    key.allowance,
-			Allowance:        maps.Clone(e.allowance),
-			Spent:            formatUSD(e.spent),
-			UnpricedRequests: int64(e.unpriced),
-		})
-		keys = append(keys, key)
 	}
 	r.mu.Unlock()
 
 	for start := 0; start < len(batch); start += usageMaxPerMessage {
 		end := min(start+usageMaxPerMessage, len(batch))
-		data, err := json.Marshal(BudgetUsageMessage{Type: "usage", Payload: BudgetUsagePayload{Allowances: batch[start:end]}})
+		var payload BudgetUsagePayload
+		for _, p := range batch[start:end] {
+			e, day := p.sent, time.Unix(p.key.window, 0).UTC().Format(time.DateOnly)
+			if p.key.kind == usageKindCost {
+				payload.Costs = append(payload.Costs, CostUsage{
+					Month: day, CostKey: p.key.allowance,
+					Project: e.allowance["project"], Agent: e.allowance["agent"], APIKey: e.allowance["apiKey"],
+					User: e.allowance["user"], LLMProvider: e.allowance["llmProvider"], Model: e.allowance["model"],
+					Cost: formatUSD(e.spent), MissingPriceRequests: int64(e.missingPrice),
+					UsageUnavailableRequests: int64(e.usageUnavailable),
+				})
+				continue
+			}
+			payload.Allowances = append(payload.Allowances, AllowanceUsage{
+				Budget: e.budget, PeriodStart: day, AllowanceUUID: p.key.allowance,
+				Allowance: maps.Clone(e.allowance), Spent: formatUSD(e.spent), UnpricedRequests: int64(e.unpriced),
+			})
+		}
+		data, err := json.Marshal(BudgetUsageMessage{Type: "usage", Payload: payload})
 		if err != nil {
-			r.logger.Error("Failed to encode budget usage", slog.Any("error", err))
+			r.logger.Error("Failed to encode usage", slog.Any("error", err))
 			return
 		}
 		if err := send(data); err != nil {
-			r.logger.Debug("Budget usage not sent; will retry", slog.Any("error", err))
+			r.logger.Debug("Usage not sent; will retry", slog.Any("error", err))
 			return
 		}
 		r.mu.Lock()
-		for i, key := range keys[start:end] {
+		for _, p := range batch[start:end] {
 			// A total that changed while sending is still marked.
-			if e := r.entries[key]; e != nil && formatUSD(e.spent) == batch[start+i].Spent &&
-				int64(e.unpriced) == batch[start+i].UnpricedRequests {
+			if e := r.entries[p.key]; e != nil && e.spent == p.sent.spent && e.unpriced == p.sent.unpriced &&
+				e.missingPrice == p.sent.missingPrice && e.usageUnavailable == p.sent.usageUnavailable {
 				e.dirty = false
 			}
 		}

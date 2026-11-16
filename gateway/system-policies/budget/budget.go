@@ -58,6 +58,9 @@ const (
 	// paramAdmittedToken is the controller's secret the proxy route stamps a request with,
 	// so the provider route the proxy forwards it to does not count it again.
 	paramAdmittedToken = "admittedToken"
+	// paramCostStats is true on a route whose requests' costs are counted for the
+	// control plane's cost stats ([ai_cost_stats] enabled on the gateway).
+	paramCostStats = "costStats"
 
 	roleProxy    = "proxy"
 	roleProvider = "provider"
@@ -130,11 +133,22 @@ func storedAPIKeyName(apiID, hash string) string {
 // routeParams are the policy's parameters on one route.
 type routeParams struct {
 	agent, role, admittedToken string
+	costStats                  bool
 }
 
 func readParams(params map[string]any) routeParams {
 	get := func(k string) string { v, _ := params[k].(string); return v }
-	return routeParams{agent: get(paramAgent), role: get(paramRole), admittedToken: get(paramAdmittedToken)}
+	costStats, _ := params[paramCostStats].(bool)
+	return routeParams{agent: get(paramAgent), role: get(paramRole), admittedToken: get(paramAdmittedToken), costStats: costStats}
+}
+
+// tokenSubject is the verified token's subject: the user for cost stats. Empty for an API
+// key, which names no user.
+func tokenSubject(auth *policy.AuthContext) string {
+	if auth == nil || !auth.Authenticated || auth.AuthType == authTypeAPIKey {
+		return ""
+	}
+	return auth.Subject
 }
 
 // stampedByProxy reports whether the proxy route already evaluated the request: it carries
@@ -230,13 +244,20 @@ func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.
 	if provider == "" {
 		return pass
 	}
+	who := p.callerOf(reqCtx, rp)
+	if rp.costStats {
+		// Every request is counted in the cost stats, with or without a budget.
+		reqCtx.Metadata[metadataCostCaller] = costCaller{
+			project: who.project, agent: who.agent, apiKey: who.apiKey,
+			user: tokenSubject(reqCtx.AuthContext), provider: provider,
+		}
+	}
 	budgets := p.catalog.current()
 	if len(budgets) == 0 {
 		return pass
 	}
 
 	now := p.now().UTC()
-	who := p.callerOf(reqCtx, rp)
 	var vars map[string]any
 	lazyVars := func() map[string]any {
 		if vars == nil {
@@ -313,20 +334,34 @@ func (p *BudgetSystemPolicy) charge(shared *policy.SharedContext) map[string]any
 		return nil
 	}
 	keys, _ := shared.Metadata[metadataAllowances].([]admitted)
-	if len(keys) == 0 {
+	caller, counted := shared.Metadata[metadataCostCaller].(costCaller)
+	if len(keys) == 0 && !counted {
 		return nil
 	}
 	delete(shared.Metadata, metadataAllowances)
+	delete(shared.Metadata, metadataCostCaller)
 
 	status, _ := shared.Metadata[metadataLLMCostStatus].(string)
 	costText, _ := shared.Metadata[metadataLLMCost].(string)
 	cost, err := strconv.ParseFloat(costText, 64)
-	if status != costStatusCalculated || err != nil || cost < 0 || math.IsNaN(cost) || math.IsInf(cost, 0) {
-		p.tracker.countUnpriced(keys)
-		return map[string]any{analyticsBudgetCostStatus: unpricedReason(shared)}
+	priced := status == costStatusCalculated && err == nil && cost >= 0 && !math.IsNaN(cost) && !math.IsInf(cost, 0)
+	costStatus := costStatusPriced
+	if !priced {
+		costStatus, cost = unpricedReason(shared), 0
 	}
-	p.tracker.charge(keys, cost)
-	return map[string]any{analyticsBudgetCostStatus: costStatusPriced}
+	if counted {
+		p.tracker.recordCost(caller, usageModel(shared.Metadata[metadataUsage]), monthStart(p.now()), cost, costStatus)
+	}
+	if len(keys) == 0 {
+		// Counted in the cost stats only: no budget covered it, so analytics gets nothing.
+		return nil
+	}
+	if !priced {
+		p.tracker.countUnpriced(keys)
+	} else {
+		p.tracker.charge(keys, cost)
+	}
+	return map[string]any{analyticsBudgetCostStatus: costStatus}
 }
 
 // unpricedReason tells a response without usage from one whose model has no price: the

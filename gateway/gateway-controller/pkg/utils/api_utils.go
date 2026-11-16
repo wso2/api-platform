@@ -502,6 +502,10 @@ func (s *APIUtilsService) FetchBudgets() ([]ControlPlaneBudget, error) {
 		return nil, fmt.Errorf("failed to fetch budgets: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		// A control plane without budgets (AI Workspace) does not serve the list.
+		return nil, ErrBudgetsNotSupported
+	}
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("budgets request failed with status %d: %s", resp.StatusCode, string(bodyBytes))

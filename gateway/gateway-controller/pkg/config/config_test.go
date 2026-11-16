@@ -3150,7 +3150,49 @@ func TestCountersConfigRetention(t *testing.T) {
 		if tc.ok {
 			assert.NoError(t, err, "retention %s", tc.retention)
 		} else {
-			assert.ErrorContains(t, err, "controller.counters.retention", "retention %s", tc.retention)
+			assert.ErrorContains(t, err, "counters.retention", "retention %s", tc.retention)
 		}
 	}
+}
+
+// [budgets] holds only the switch; the shared counters budgets keep spend in are their
+// own top-level [counters] section, read by the controller and the policy engine (the
+// controller ignores the policy engine's idle_timeout).
+func TestLoadConfig_BudgetsAndCountersSections(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.toml")
+	contents := `
+[budgets]
+enabled = '{{ env "APIP_GW_BUDGETS_ENABLED" "false" }}'
+
+[ai_cost_stats]
+enabled = true
+
+[counters]
+retention = "48h"
+idle_timeout = "5m"
+
+[counters.redis]
+enabled = '{{ env "APIP_GW_COUNTERS_REDIS_ENABLED" "false" }}'
+address = "redis:6379"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(contents), 0o644))
+	t.Setenv("APIP_GW_BUDGETS_ENABLED", "true")
+	t.Setenv("APIP_GW_COUNTERS_REDIS_ENABLED", "true")
+
+	cfg, err := LoadConfig(configPath)
+	require.NoError(t, err)
+	assert.True(t, cfg.Budgets.Enabled)
+	assert.True(t, cfg.AICostStats.Enabled)
+	assert.Equal(t, 48*time.Hour, cfg.Counters.Retention)
+	assert.True(t, cfg.Counters.Redis.Enabled)
+	assert.Equal(t, "redis:6379", cfg.Counters.Redis.Address)
+	assert.Equal(t, "apip:counters:", cfg.Counters.Redis.KeyPrefix, "defaults kept")
+
+	empty := filepath.Join(t.TempDir(), "empty.toml")
+	require.NoError(t, os.WriteFile(empty, nil, 0o644))
+	defaults, err := LoadConfig(empty)
+	require.NoError(t, err)
+	assert.False(t, defaults.Budgets.Enabled, "budgets are off by default")
+	assert.False(t, defaults.AICostStats.Enabled, "AI cost stats are off by default")
+	assert.False(t, defaults.Counters.Redis.Enabled, "counters are in memory by default")
 }

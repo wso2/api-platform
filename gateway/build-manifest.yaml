@@ -7,7 +7,7 @@ policies:
       version: v1.0.1
       gomodule: github.com/wso2/gateway-controllers/policies/analytics-header-filter@v1
     - name: api-key-auth
-      version: v1.3.0
+      version: v1.3.1
       gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v1
     - name: aws-authentication
       version: v0.11.0

@@ -113,6 +113,13 @@ type stubController struct {
 	totals  map[counterproto.Key]float64
 	applied map[string]bool
 	drop    int // acknowledgements to drop
+	seen    int // sync requests received
+}
+
+func (c *stubController) requests() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.seen
 }
 
 func (c *stubController) sync(_ any, stream grpc.ServerStream) error {
@@ -125,6 +132,7 @@ func (c *stubController) sync(_ any, stream grpc.ServerStream) error {
 			return err
 		}
 		c.mu.Lock()
+		c.seen++
 		marker := req.Source + "/" + req.ReportID
 		if len(req.Adds) > 0 && !c.applied[marker] {
 			c.applied[marker] = true
@@ -261,6 +269,9 @@ func TestSyncerReloadsCredentialsAndResetsBackoff(t *testing.T) {
 			return conn, nil
 		},
 	}
+	// A counter in use, so every interval has something to sync: an engine that counts
+	// nothing sends nothing and so never notices a broken stream until it does.
+	syncer.Service.Add(key("a"), 0.5)
 	go syncer.Run(ctx)
 
 	// With MaxBackoff an hour, a backoff that kept doubling across healthy streams would
@@ -330,4 +341,32 @@ func TestDescribedCountersSendTheirLabelsWithTheirAdds(t *testing.T) {
 			}
 		}
 	}
+}
+
+// An engine whose policies count nothing does not connect to its controller; the first
+// counter a policy uses starts the syncs.
+func TestSyncerConnectsOnlyOnceACounterIsUsed(t *testing.T) {
+	stub := &stubController{totals: map[counterproto.Key]float64{}, applied: map[string]bool{}}
+	dialer := startStub(t, stub)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var dials atomic.Int32
+	syncer := &Syncer{
+		Service: NewService("engine-1", 0), ServerAddress: "passthrough:///bufnet",
+		Credentials: func() (credentials.TransportCredentials, error) { return insecure.NewCredentials(), nil },
+		Interval:    5 * time.Millisecond, Timeout: time.Second, MaxBackoff: time.Second,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		dialer: func(ctx context.Context, addr string) (net.Conn, error) {
+			dials.Add(1)
+			return dialer(ctx, addr)
+		},
+	}
+	go syncer.Run(ctx)
+	time.Sleep(100 * time.Millisecond)
+	assert.Zero(t, dials.Load(), "no counters in use: no connection")
+	assert.Zero(t, stub.requests(), "and no syncs")
+
+	syncer.Service.Add(key("a"), 1)
+	require.Eventually(t, func() bool { return stub.requests() > 0 }, 5*time.Second, 5*time.Millisecond,
+		"the first counter starts the syncs")
 }

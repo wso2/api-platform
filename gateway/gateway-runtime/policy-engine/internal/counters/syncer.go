@@ -54,6 +54,13 @@ type Syncer struct {
 
 // Run syncs until ctx is done.
 func (s *Syncer) Run(ctx context.Context) {
+	// No connection until a policy uses a counter: an engine whose policies count
+	// nothing never opens the stream.
+	select {
+	case <-s.Service.Used():
+	case <-ctx.Done():
+		return
+	}
 	backoff := s.Interval
 	for ctx.Err() == nil {
 		synced, err := s.stream(ctx)
@@ -124,6 +131,11 @@ func (s *Syncer) stream(ctx context.Context) (synced bool, err error) {
 // syncOnce sends one request and applies its response.
 func (s *Syncer) syncOnce(stream grpc.ClientStream) error {
 	req := s.Service.nextRequest()
+	if len(req.Adds) == 0 && len(req.Keys) == 0 {
+		// Nothing counted: a policy engine whose routes use no counters (no budgets)
+		// sends nothing.
+		return nil
+	}
 	if err := stream.SendMsg(req); err != nil {
 		return fmt.Errorf("sending counters: %w", err)
 	}

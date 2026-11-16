@@ -62,6 +62,7 @@ type APIServer struct {
 	restAPIService              *restapi.RestAPIService
 	agentService                *agent.AgentService
 	budgetService               *budget.Service
+	budgetsEnabled              bool
 	budgetPublisher             *utils.BudgetPublisher
 	store                       *storage.ConfigStore
 	db                          storage.Storage
@@ -195,8 +196,10 @@ func NewAPIServer(
 
 	server.agentService = agentService
 	server.budgetPublisher = budgets
+	server.budgetsEnabled = systemConfig.Budgets.Enabled
 	server.budgetService = budget.NewService(db, budgets, eventHub, gatewayID, logger, pushEnabled)
-	if controlPlaneClient != nil {
+	if controlPlaneClient != nil && server.budgetsEnabled {
+		// Budgets off: no budgets come from or go to the control plane.
 		server.budgetService.SetResourcePusher(controlPlaneClient, pushEnabled)
 		controlPlaneClient.SetBudgetApplier(server.budgetService)
 	}

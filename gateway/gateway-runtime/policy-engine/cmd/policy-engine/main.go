@@ -259,7 +259,8 @@ func main() {
 			os.Exit(1)
 		}
 		// The shared counter service policies use through sdk/core/counters, synced with
-		// the gateway-controller on the policy server connection.
+		// the gateway-controller on the policy server connection once a policy uses a
+		// counter; until then the engine does not connect.
 		if err := startCounterSync(ctx, cfg, *xdsServerAddr); err != nil {
 			slog.ErrorContext(ctx, "Failed to start the counter sync", "error", err)
 			os.Exit(1)
@@ -562,7 +563,7 @@ func startCounterSync(ctx context.Context, cfg *config.Config, serverAddr string
 	if _, err := xdsclient.TransportCredentials(xdsConfig); err != nil {
 		return err
 	}
-	service := counters.NewService(uuid.NewString(), cfg.PolicyEngine.Counters.IdleTimeout)
+	service := counters.NewService(uuid.NewString(), cfg.Counters.IdleTimeout)
 	sdkcounters.Install(service)
 	syncer := &counters.Syncer{
 		Service:       service,

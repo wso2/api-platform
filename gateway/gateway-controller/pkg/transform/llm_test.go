@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
@@ -91,7 +92,7 @@ func TestWithBudgetEnforcement(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := withBudgetEnforcement(tc.kind, tc.chain, tc.defs, config.BuildLatestVersionIndex(tc.defs))
+			got := withBudgetEnforcement(tc.kind, tc.chain, tc.defs, config.BuildLatestVersionIndex(tc.defs), false)
 			assert.Equal(t, tc.want, names(got))
 		})
 	}
@@ -119,4 +120,42 @@ func TestBudgetPlacementParameters(t *testing.T) {
 	assert.Equal(t, "provider", params["role"])
 	assert.Equal(t, budgetAdmittedToken, params["admittedToken"], "both hops share the controller's token")
 	assert.NotContains(t, params, "project")
+}
+
+// Budgets off (budgets.enabled, the default): an LLM route's chain is exactly
+// what was configured, with no budget policy and no llm-cost added. On: the budget policy
+// joins it.
+func TestBudgetsAreOnlyPlacedWhenEnabled(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{"llm-cost|v1.2.0": {Name: "llm-cost", Version: "v1.2.0"}}
+	provider := &models.StoredConfig{Kind: models.KindLlmProvider}
+	chain := []policyenginev1.PolicyInstance{{Name: "api-key-auth", Version: "v1"}}
+
+	off := NewRestAPITransformer(testRouterCfg(), &config.Config{}, defs)
+	assert.Equal(t, chain, off.withBudgets(provider, chain))
+
+	cfg := &config.Config{}
+	cfg.Budgets.Enabled = true
+	on := NewRestAPITransformer(testRouterCfg(), cfg, defs)
+	var names []string
+	for _, p := range on.withBudgets(provider, chain) {
+		names = append(names, p.Name)
+	}
+	assert.Equal(t, []string{"api-key-auth", "wso2_apip_sys_budget", "llm-cost"}, names)
+}
+
+// AI cost stats on, budgets off: the policy is placed too, told to count every request.
+func TestCostStatsPlaceThePolicyWithoutBudgets(t *testing.T) {
+	defs := map[string]models.PolicyDefinition{"llm-cost|v1.2.0": {Name: "llm-cost", Version: "v1.2.0"}}
+	provider := &models.StoredConfig{Kind: models.KindLlmProvider}
+	cfg := &config.Config{}
+	cfg.AICostStats.Enabled = true
+	chain := NewRestAPITransformer(testRouterCfg(), cfg, defs).withBudgets(provider, nil)
+	require.Len(t, chain, 2)
+	assert.Equal(t, "wso2_apip_sys_budget", chain[0].Name)
+	assert.Equal(t, true, chain[0].Parameters["costStats"])
+
+	budgetsOnly := &config.Config{}
+	budgetsOnly.Budgets.Enabled = true
+	chain = NewRestAPITransformer(testRouterCfg(), budgetsOnly, defs).withBudgets(provider, nil)
+	assert.NotContains(t, chain[0].Parameters, "costStats", "budgets alone count no costs")
 }

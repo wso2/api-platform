@@ -209,3 +209,28 @@ func TestPushGatewayArtifacts_LeavesSyncedResourceKindsOut(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, models.CPSyncStatusPending, a.CPSyncStatus, "budgets are not artifacts")
 }
+
+// A control plane that does not take gateway resources (AI Workspace) answers 404: the
+// push stops at once, without retries.
+func TestPushResources_NotFoundMeansTheControlPlaneDoesNotTakeThem(t *testing.T) {
+	var hits int32
+	client := newManifestTLSServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusNotFound)
+	})
+	client.config.PushRetry = config.PushRetryConfig{MaxAttempts: 5, InitialDuration: time.Millisecond, ProgressionFactor: 1}
+	setGatewayID(client, testGatewayID)
+	seedBudget(t, client, "budget-a", "team-a", models.OriginGatewayAPI)
+
+	client.pushGatewayResources()
+
+	assert.Equal(t, int32(1), atomic.LoadInt32(&hits), "not retried")
+}
+
+// Budgets off on this gateway (no budget applier): nothing is pushed on connect.
+func TestCanPushResources_OnlyWithBudgetsEnabled(t *testing.T) {
+	client := createTestClient(t)
+	client.config.DeploymentSyncEnabled = true
+	client.SetBudgetApplier(nil)
+	assert.False(t, client.canPushResources())
+}
