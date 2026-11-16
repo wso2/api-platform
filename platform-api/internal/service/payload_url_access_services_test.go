@@ -337,6 +337,12 @@ func TestDestinationOf(t *testing.T) {
 		{`https://api.example.com:8443/v1?key={{ secret "k" }}#frag`, "https://api.example.com:8443", true},
 		{`https://{{ secret "user" }}@orders.default.svc.cluster.local/v1`, "https://orders.default.svc.cluster.local", true},
 		{`https://{{ secret "user" }}@/v1`, "", false},
+		// A placeholder in the port leaves the literal host to check, without the port.
+		{`http://orders.default.svc.cluster.local:{{"8080"}}/v1`, "http://orders.default.svc.cluster.local", true},
+		{`http://[fd00::1]:{{ env "PORT" }}/v1`, "http://[fd00::1]", true},
+		{`http://[fd00::1]:8443/{{"x"}}`, "http://[fd00::1]:8443", true},
+		{`http://[{{ env "IPV6" }}]:8443/v1`, "", false},
+		{`http://[fd00::1/{{"x"}}`, "http://[fd00::1", true},
 	}
 	for _, tc := range cases {
 		got, checked := destinationOf(tc.raw)
@@ -352,6 +358,9 @@ func TestCheckRequestURLs_PlaceholdersOutsideTheHostDoNotExemptIt(t *testing.T) 
 	useRequestAccessControl(t, clusterDenyRule)
 	hidden := &api.CreateRESTAPIRequest{Upstream: upstreamOf(`http://orders.default.svc.cluster.local/{{"x"}}`, "")}
 	assertRefusedField(t, CheckRequestURLs(context.Background(), "org-1", hidden), "upstream.main.url")
+
+	templatedPort := &api.CreateRESTAPIRequest{Upstream: upstreamOf(`http://orders.default.svc.cluster.local:{{"8080"}}/v1`, "")}
+	assertRefusedField(t, CheckRequestURLs(context.Background(), "org-1", templatedPort), "upstream.main.url")
 
 	templatedHost := &api.CreateRESTAPIRequest{Upstream: upstreamOf(`https://{{ env "BACKEND_HOST" }}/v1`, "")}
 	if err := CheckRequestURLs(context.Background(), "org-1", templatedHost); err != nil {
