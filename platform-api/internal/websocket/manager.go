@@ -55,7 +55,7 @@ type Manager struct {
 	maxConnections int
 
 	// maxConnectionsPerGateway caps the concurrent connections one gateway may
-	// hold. Zero or less means unlimited.
+	// hold. -1 (or any value below 1) means unlimited.
 	maxConnectionsPerGateway int
 
 	// gatewayLimitLogged records the gateways whose per-gateway limit has been
@@ -103,7 +103,8 @@ type Manager struct {
 type ManagerConfig struct {
 	MaxConnections int // Maximum concurrent connections (default 1000)
 	// MaxConnectionsPerGateway caps the concurrent connections a single gateway
-	// may hold, across all of its tokens. Zero or less means unlimited (default).
+	// may hold, across all of its tokens. -1 (or any value below 1) means
+	// unlimited, which is the default.
 	MaxConnectionsPerGateway int
 	HeartbeatInterval        time.Duration // Ping interval (default 20s)
 	HeartbeatTimeout         time.Duration // Pong timeout (default 30s)
@@ -114,11 +115,12 @@ type ManagerConfig struct {
 // DefaultManagerConfig returns sensible default configuration values
 func DefaultManagerConfig() ManagerConfig {
 	return ManagerConfig{
-		MaxConnections:     1000,
-		HeartbeatInterval:  20 * time.Second,
-		HeartbeatTimeout:   30 * time.Second,
-		MetricsLogEnabled:  true,
-		MetricsLogInterval: 10 * time.Second,
+		MaxConnections:           1000,
+		MaxConnectionsPerGateway: -1, // unlimited
+		HeartbeatInterval:        20 * time.Second,
+		HeartbeatTimeout:         30 * time.Second,
+		MetricsLogEnabled:        true,
+		MetricsLogInterval:       10 * time.Second,
 	}
 }
 

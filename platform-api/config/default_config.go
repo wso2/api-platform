@@ -193,7 +193,7 @@ func defaultConfig() *Server {
 			},
 			WebSocket: WebSocket{
 				MaxConnections:           1000,
-				MaxConnectionsPerGateway: 0, // unlimited
+				MaxConnectionsPerGateway: -1, // unlimited
 				ConnectionTimeout:        30,
 				RateLimitPerMin:          1000,
 				MetricsLogEnabled:        true,

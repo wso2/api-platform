@@ -204,7 +204,7 @@ type WebSocket struct {
 - `WEBSOCKET_MAX_CONNECTIONS` - Maximum concurrent connections (default: 1000)
 - `WEBSOCKET_CONNECTION_TIMEOUT` - Heartbeat timeout in seconds (default: 30)
 - `WEBSOCKET_RATE_LIMIT_PER_MIN` - Connection attempts per IP per minute (default: 1000)
-- `max_connections_per_gateway` (config.toml / Helm `maxConnectionsPerGateway`) - Concurrent connections one gateway may hold across all of its tokens (default: 0 = unlimited). When reached, new connections are rejected and a warning is logged once until a slot frees up
+- `max_connections_per_gateway` (config.toml / Helm `maxConnectionsPerGateway`) - Concurrent connections one gateway may hold across all of its tokens (default: -1 = unlimited). When reached, new connections are rejected and a warning is logged once until a slot frees up
 - `WEBSOCKET_MAX_CONNECTIONS_PER_ORG` - Concurrent connections allowed per organization (default: 3)
 - `WEBSOCKET_METRICS_LOG_ENABLED` - Periodically log connection metrics (default: true)
 - `WEBSOCKET_METRICS_LOG_INTERVAL` - Metrics log interval in seconds (default: 10)

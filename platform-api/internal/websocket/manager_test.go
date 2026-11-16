@@ -83,13 +83,13 @@ func limitWarnings(logs *syncBuffer) int {
 }
 
 func TestDefaultManagerConfigLeavesPerGatewayConnectionsUnlimited(t *testing.T) {
-	if got := DefaultManagerConfig().MaxConnectionsPerGateway; got != 0 {
-		t.Fatalf("DefaultManagerConfig().MaxConnectionsPerGateway = %d, want 0 (unlimited)", got)
+	if got := DefaultManagerConfig().MaxConnectionsPerGateway; got != -1 {
+		t.Fatalf("DefaultManagerConfig().MaxConnectionsPerGateway = %d, want -1 (unlimited)", got)
 	}
 }
 
-func TestRegisterAllowsUnlimitedConnectionsPerGatewayWhenLimitIsZero(t *testing.T) {
-	m, logs := newTestManager(t, 1000, 0)
+func TestRegisterAllowsUnlimitedConnectionsPerGatewayWhenLimitIsMinusOne(t *testing.T) {
+	m, logs := newTestManager(t, 1000, -1)
 	for i := 0; i < 50; i++ {
 		register(t, m, "gw-1")
 	}
@@ -189,7 +189,7 @@ func TestConcurrentRegistrationsNeverExceedThePerGatewayLimit(t *testing.T) {
 // Without a per-gateway limit, concurrent registrations for one gateway used to
 // drop each other's connections from the registry while still counting them.
 func TestConcurrentRegistrationsKeepRegistryAndCountInStep(t *testing.T) {
-	m, _ := newTestManager(t, 10000, 0)
+	m, _ := newTestManager(t, 10000, -1)
 
 	var wg sync.WaitGroup
 	conns := make(chan *Connection, 500)
@@ -223,7 +223,7 @@ func TestConcurrentRegistrationsKeepRegistryAndCountInStep(t *testing.T) {
 }
 
 func TestRegisterStillEnforcesTheGlobalLimit(t *testing.T) {
-	m, _ := newTestManager(t, 2, 0)
+	m, _ := newTestManager(t, 2, -1)
 	register(t, m, "gw-1")
 	register(t, m, "gw-2")
 	if _, err := m.Register("gw-3", stubTransport{}, "token", "org-1"); !errors.Is(err, ErrMaxConnectionsReached) {
