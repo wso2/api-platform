@@ -67,7 +67,7 @@ const CLOUD_DEPLOY_SCOPES = [
 
 /**
  * Scopes that change a project (the accepted list of UpdateProject): one of them
- * is needed for the Manage project button, as the WSO2 Cloud console shows its
+ * is needed for the project's Settings button, as the WSO2 Cloud console shows its
  * own Manage button only to someone who may change the project. Project delete
  * is left out: WSO2 Cloud's roles do not grant it.
  */
@@ -209,7 +209,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
     // the header lays its action slot out ahead of the theme switcher, so the icon
     // sits between them.
     //
-    // The project overview's Manage project button, which opens the WSO2 Cloud
+    // The project overview's Settings button, which opens the WSO2 Cloud
     // console's manage page for the project, where it is edited and deleted. Shown
     // with a project in scope and to someone who may change it (MANAGE_PROJECT_SCOPES).
     id: 'settings',
