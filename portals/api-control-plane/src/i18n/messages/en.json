@@ -1048,29 +1048,45 @@
     "defaultMessage": "Create project",
     "description": "Browser tab title for the project creation page."
   },
-  "apiControlPlane.pages.appShell.APIQuickSelector.apis": {
-    "defaultMessage": "APIs"
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.apiKindGraphql": {
+    "defaultMessage": "GraphQL",
+    "description": "Badge on an API in the header API menu: a GraphQL API. Product name, keep as is."
   },
-  "apiControlPlane.pages.appShell.APIQuickSelector.failed.to.load.apis": {
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.apiKindRest": {
+    "defaultMessage": "REST",
+    "description": "Badge on an API in the header API menu: a REST API. Technical term, usually kept as is."
+  },
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.apiLevel": {
+    "defaultMessage": "API",
+    "description": "Name of the API level in the header breadcrumb. Singular noun."
+  },
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.apisFailed": {
     "defaultMessage": "Failed to load APIs"
   },
-  "apiControlPlane.pages.appShell.APIQuickSelector.loading": {
-    "defaultMessage": "Loading..."
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.apisPartial": {
+    "defaultMessage": "APIs (some failed to load)",
+    "description": "Title of the header API menu when one kind of API (REST or GraphQL) could not be loaded but the other could."
   },
-  "apiControlPlane.pages.appShell.APIQuickSelector.no.apis.available": {
-    "defaultMessage": "No APIs available"
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.breadcrumbAria": {
+    "defaultMessage": "Organization, project and API",
+    "description": "Accessible name of the header breadcrumb trail that switches organization, project and API."
   },
-  "apiControlPlane.pages.appShell.ProjectQuickSelector.failed.to.load.projects": {
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.newApi": {
+    "defaultMessage": "New API"
+  },
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.newProject": {
+    "defaultMessage": "New project"
+  },
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.orgLevel": {
+    "defaultMessage": "Organization",
+    "description": "Name of the organization level in the header breadcrumb. Singular noun."
+  },
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.projectLevel": {
+    "defaultMessage": "Project",
+    "description": "Name of the project level in the header breadcrumb. Singular noun."
+  },
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.projectsFailed": {
     "defaultMessage": "Failed to load projects"
-  },
-  "apiControlPlane.pages.appShell.ProjectQuickSelector.loading": {
-    "defaultMessage": "Loading..."
-  },
-  "apiControlPlane.pages.appShell.ProjectQuickSelector.no.projects.available": {
-    "defaultMessage": "No projects available"
-  },
-  "apiControlPlane.pages.appShell.ProjectQuickSelector.projects": {
-    "defaultMessage": "Projects"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.by.label": {
     "defaultMessage": "by",
@@ -5610,26 +5626,14 @@
   "appShell.compliancePage.feature": {
     "defaultMessage": "Compliance reporting for this API"
   },
-  "appShell.header.api.aria": {
-    "defaultMessage": "APIs"
-  },
   "appShell.header.api.empty": {
     "defaultMessage": "No APIs found"
-  },
-  "appShell.header.api.goToProjectLevel": {
-    "defaultMessage": "Go to project level"
   },
   "appShell.header.api.label": {
     "defaultMessage": "APIs"
   },
-  "appShell.header.api.noResults": {
-    "defaultMessage": "No matching APIs"
-  },
   "appShell.header.api.placeholder": {
     "defaultMessage": "Search APIs..."
-  },
-  "appShell.header.api.search": {
-    "defaultMessage": "Search"
   },
   "appShell.header.api.select": {
     "defaultMessage": "Select API"
@@ -5637,35 +5641,20 @@
   "appShell.header.brand.aria": {
     "defaultMessage": "Go to organization overview"
   },
-  "appShell.header.org.aria": {
-    "defaultMessage": "Organizations"
-  },
   "appShell.header.org.empty": {
     "defaultMessage": "No organizations found"
   },
   "appShell.header.org.label": {
     "defaultMessage": "Organizations"
   },
-  "appShell.header.org.noResults": {
-    "defaultMessage": "No matching organizations"
-  },
   "appShell.header.org.placeholder": {
     "defaultMessage": "Search organizations..."
-  },
-  "appShell.header.project.aria": {
-    "defaultMessage": "Projects"
   },
   "appShell.header.project.empty": {
     "defaultMessage": "No projects found"
   },
-  "appShell.header.project.goToOrganization": {
-    "defaultMessage": "Go to organization level"
-  },
   "appShell.header.project.label": {
     "defaultMessage": "Projects"
-  },
-  "appShell.header.project.noResults": {
-    "defaultMessage": "No matching projects"
   },
   "appShell.header.project.placeholder": {
     "defaultMessage": "Search projects..."
@@ -5675,9 +5664,6 @@
   },
   "appShell.header.signOut": {
     "defaultMessage": "Sign out"
-  },
-  "appShell.header.title": {
-    "defaultMessage": "API Platform"
   },
   "appShell.insightsPage.feature": {
     "defaultMessage": "API insights",
@@ -5698,14 +5684,15 @@
   "appShell.runtimeLogsPage.subHeader": {
     "defaultMessage": "Runtime logs for {apiHandler}."
   },
+  "branding.BrandLockup.name": {
+    "defaultMessage": "<bold>API</bold> Management",
+    "description": "Product name in the brand lockup. API is bold, Management regular — keep the bold tag around the equivalent of API."
+  },
   "components.comingSoon.body": {
     "defaultMessage": "{feature} will be available soon."
   },
   "components.comingSoon.title": {
     "defaultMessage": "Coming Soon"
-  },
-  "components.common.searchableComplexSelect.dropdownClickAriaLabel": {
-    "defaultMessage": "Open {label}"
   },
   "develop.definition.DefinitionPage.scopePrompt": {
     "defaultMessage": "The API definition is specific to a single API."
