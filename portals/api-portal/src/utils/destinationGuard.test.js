@@ -324,3 +324,45 @@ test('createGuardedLookup: the host rule is applied before any DNS lookup', asyn
     const err = await new Promise((resolve) => lookup('evil.example', {}, (e) => resolve(e)));
     assert.equal(err.code, 'DESTINATION_NOT_ALLOWED');
 });
+
+test('isDenied: multicast and broadcast are refused whatever the private-network setting', () => {
+    for (const ip of ['224.0.0.1', '239.255.255.250', '255.255.255.255', 'ff02::1', 'ff05::1:3', '::ffff:224.0.0.1']) {
+        assert.equal(isDenied(ip, { allowPrivate: true }), true, `${ip} with private networks permitted`);
+        assert.equal(isDenied(ip, { allowPrivate: false }), true, `${ip} with private networks denied`);
+    }
+    // Positive control: the neighbouring unicast addresses pass when private networks are permitted.
+    for (const ip of ['223.255.255.255', '240.0.0.1', 'fe00::1']) {
+        assert.equal(isDenied(ip, { allowPrivate: true }), false, ip);
+    }
+});
+
+test('createGuardedLookup: a hostname that resolves to a multicast address is refused', async () => {
+    // The literal stands in for a resolver answer: dns.lookup returns it verbatim.
+    for (const allowPrivate of [true, false]) {
+        const lookup = createGuardedLookup({ allowPrivate });
+        const err = await new Promise((resolve) => lookup('224.0.0.251', {}, (e) => resolve(e)));
+        assert.ok(err, `allowPrivate=${allowPrivate}: expected a refusal`);
+        assert.match(err.message, /not allowed/);
+    }
+});
+
+test('assertUserUrl: a multicast or broadcast literal is refused', () => {
+    const policy = compileAccessControl({ enabled: true, denyPrivateNetworks: false });
+    for (const target of ['http://224.0.0.1/', 'http://255.255.255.255/', 'http://[ff02::1]/']) {
+        assert.throws(() => assertUserUrl(target, { accessControl: policy, allowPrivate: true }), undefined, target);
+    }
+    assertUserUrl('https://api.example.com/', { accessControl: policy, allowPrivate: true });
+});
+
+test('compileAccessControl: enabled and deny_private_networks must be booleans', () => {
+    for (const cfg of [{ enabled: 'true' }, { enabled: 1 }, { enabled: true, denyPrivateNetworks: 'true' }, { enabled: true, denyPrivateNetworks: 0 },
+        // A quoted value never disables the check silently, even with the control off.
+        { enabled: false, denyPrivateNetworks: 'yes' }]) {
+        assert.throws(() => compileAccessControl(cfg), /must be true or false/, JSON.stringify(cfg));
+    }
+    // Positive controls: booleans keep their value, and an omitted value is false.
+    assert.equal(compileAccessControl({ enabled: true, denyPrivateNetworks: true }).denyPrivateNetworks, true);
+    assert.equal(compileAccessControl({ enabled: true }).denyPrivateNetworks, false);
+    assert.equal(compileAccessControl({}).enabled, false);
+    assert.equal(compileAccessControl({ enabled: true }).enabled, true);
+});
