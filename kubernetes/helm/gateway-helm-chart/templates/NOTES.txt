@@ -79,4 +79,17 @@ PVC created: {{ include "gateway-operator.fullname" . }}-controller-data
 {{- end }}
 {{- end }}
 
+{{- $notesBasic := dig "auth" "basic" (dict) (default (dict) .Values.gateway.config.controller) }}
+{{- if $notesBasic.enabled }}
+{{- range $user := (default (list) $notesBasic.users) }}
+{{- if and (not $user.password_hashed) (eq (toString $user.password) "admin") }}
+
+WARNING: controller REST API user {{ toString $user.username | quote }} still has the default password "admin".
+  Set gateway.config.controller.auth.basic.users to a credential of your own, preferably a
+  bcrypt hash with password_hashed: true (plus a passwordSecretRef when the gateway operator
+  manages this gateway). See the comments on gateway.config.controller.auth in values.yaml.
+{{- end }}
+{{- end }}
+{{- end }}
+
 Documentation: {{ .Chart.Home }}

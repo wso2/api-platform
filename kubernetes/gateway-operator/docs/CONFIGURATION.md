@@ -136,6 +136,48 @@ gateway:
 
 The chart fails to render if `encryptionKeys` is not enabled.
 
+### Gateway-controller REST Credentials
+
+The operator deploys APIs to each gateway through the gateway-controller REST API, using
+HTTP basic auth. It takes the credential from the same Helm values the gateway was installed
+with: `gateway_values.yaml` (the operator's base values), overlaid with the gateway's own values
+ConfigMap (`APIGateway.spec.configRef`, or the Gateway API values ConfigMap). It uses the first
+user in `gateway.config.controller.auth.basic.users` whose password it can obtain:
+
+- a user with `passwordSecretRef`, whose plaintext password is read from that Secret in the
+  **gateway's own namespace** (default key `password`), while the controller config holds only
+  the hash (`password_hashed: true`); or
+- a user with a plaintext `password`.
+
+There is no built-in fallback credential. If basic auth is disabled, or no user has a password
+the operator can obtain (for example only a hashed password with no `passwordSecretRef`), API
+deployments to that gateway fail with an error that names the reason.
+
+To give a gateway its own admin credential:
+
+```bash
+PASSWORD="$(openssl rand -base64 32)"
+kubectl create secret generic gateway-admin-credential \
+  --from-literal=password="$PASSWORD" -n <gateway-namespace>
+htpasswd -nbBC 12 "" "$PASSWORD" | cut -d: -f2   # paste the hash below
+```
+
+```yaml
+gateway:
+  config:
+    controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: gateway-admin
+              password: "$2y$12$..."
+              password_hashed: true
+              roles: ["admin"]
+              passwordSecretRef:
+                name: gateway-admin-credential
+```
+
 ### Logging Configuration
 
 | Environment Variable | Default | Description |

@@ -82,6 +82,27 @@ gateway:
   config:
     controller:
       auth:
+        # Basic auth users of the controller REST management API.
+        #
+        # The default admin/admin user is kept so existing installs and clients keep
+        # working, but replace it for any gateway that is reachable by anyone else.
+        # Prefer storing only a hash in this config (it is rendered into a ConfigMap):
+        #   password:        bcrypt ($2a$/$2b$/$2y$) or Argon2id ($argon2id$) hash,
+        #                    e.g. from `htpasswd -nbBC 12 "" '<password>' | cut -d: -f2`
+        #   password_hashed: true
+        # A hashed password cannot be sent by a client, so when this gateway is managed
+        # by the gateway operator, give the user a passwordSecretRef naming a Secret in
+        # the gateway's namespace that holds the plaintext password. Only the operator
+        # reads it; it is not rendered into the controller config. The operator uses
+        # the first user whose password it can obtain (passwordSecretRef or plaintext)
+        # and fails, rather than guessing, if there is none.
+        #   - username: "gateway-admin"
+        #     password: "$2a$12$..."
+        #     password_hashed: true
+        #     roles: ["admin"]
+        #     passwordSecretRef:
+        #       name: gateway-admin-credential   # kubectl create secret generic ... --from-literal=password=...
+        #       key: password                    # optional, defaults to "password"
         basic:
           enabled: true
           users:

@@ -794,29 +794,9 @@ func payloadMetadataForRestAPI(apiConfig *apiv1.RestApi) gatewayclient.RestAPIPa
 
 // addAuthToRequest adds authentication headers to an HTTP request based on gateway auth config
 func (r *RestApiReconciler) addAuthToRequest(ctx context.Context, req *http.Request, gatewayInfo *registry.GatewayInfo) error {
-	log := r.Logger.With(slog.String("controller", "RestApi"))
-
-	authConfig, err := auth.GetAuthSettingsForRegistryGateway(ctx, r.Client, gatewayInfo)
+	username, password, err := auth.ResolveControllerCredentials(ctx, r.Client, gatewayInfo, helmValuesFilePath(r.Config))
 	if err != nil {
-		return fmt.Errorf("retrieve auth config for gateway %q: %w", gatewayInfo.Name, err)
-	}
-
-	var username, password string
-	if authConfig != nil {
-		// Try to get credentials from the auth config
-		var ok bool
-		username, password, ok = auth.GetBasicAuthCredentials(authConfig)
-		if !ok {
-			// Auth config exists but no valid basic auth, use default
-			log.Debug("No valid basic auth in config, using default credentials",
-				slog.String("gateway", gatewayInfo.Name))
-			username, password = auth.GetDefaultBasicAuthCredentials()
-		}
-	} else {
-		// No auth config, use default
-		log.Debug("No auth config found, using default credentials",
-			slog.String("gateway", gatewayInfo.Name))
-		username, password = auth.GetDefaultBasicAuthCredentials()
+		return fmt.Errorf("resolve gateway-controller credentials for gateway %q: %w", gatewayInfo.Name, err)
 	}
 
 	// Encode and set the Authorization header

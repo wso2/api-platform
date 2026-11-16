@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiv1 "github.com/wso2/api-platform/kubernetes/gateway-operator/api/v1"
+	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/config"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/helm"
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 )
@@ -45,6 +46,16 @@ func configMapValuesYAML(ctx context.Context, c client.Client, configMapName, na
 		return "", fmt.Errorf("'values.yaml' key in ConfigMap %s/%s is empty", namespace, configMapName)
 	}
 	return valuesYAML, nil
+}
+
+// helmValuesFilePath returns the operator's base gateway Helm values file, or "" when
+// none is configured. Gateways are installed with it as the lowest-priority values
+// layer, so controller credentials are resolved against it too.
+func helmValuesFilePath(cfg *config.OperatorConfig) string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.Gateway.HelmValuesFilePath
 }
 
 // discoverControllerService finds the gateway-controller Service for a Helm release.

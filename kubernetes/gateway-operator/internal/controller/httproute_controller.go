@@ -448,7 +448,7 @@ func (r *HTTPRouteReconciler) reconcileParentGateway(
 		return o
 	}
 
-	auth := httprouteAuthFunc(r.Client, log, gwInfo)
+	auth := httprouteAuthFunc(r.Client, log, gwInfo, helmValuesFilePath(r.Config))
 	ep := gwInfo.GetGatewayServiceEndpoint()
 	exists, err := r.rest().Exists(ctx, ep, handle, auth)
 	if err != nil {
@@ -607,7 +607,7 @@ func (r *HTTPRouteReconciler) removeFromGateway(ctx context.Context, c cleanupCa
 	if !gw.DeletionTimestamp.IsZero() {
 		// Its runtime is being uninstalled: try once, but don't hold the route on it.
 		if registered {
-			auth := httprouteAuthFunc(r.Client, log, info)
+			auth := httprouteAuthFunc(r.Client, log, info, helmValuesFilePath(r.Config))
 			for _, h := range handles {
 				if err := r.rest().Delete(ctx, info.GetGatewayServiceEndpoint(), h, auth); err != nil {
 					log.Info("skip API removal from Gateway being deleted", slog.String("handle", h), slog.Any("error", err))
@@ -617,7 +617,7 @@ func (r *HTTPRouteReconciler) removeFromGateway(ctx context.Context, c cleanupCa
 		return true, nil
 	}
 	if registered {
-		auth := httprouteAuthFunc(r.Client, log, info)
+		auth := httprouteAuthFunc(r.Client, log, info, helmValuesFilePath(r.Config))
 		for _, h := range handles {
 			if err := r.rest().Delete(ctx, info.GetGatewayServiceEndpoint(), h, auth); err != nil {
 				log.Error("failed to remove HTTPRoute API from Gateway", slog.Any("error", err), slog.String("handle", h))
@@ -836,22 +836,14 @@ func forEachBounded(n, limit int, fn func(i int)) {
 	wg.Wait()
 }
 
-func httprouteAuthFunc(c client.Client, log *slog.Logger, info *registry.GatewayInfo) gatewayclient.AuthHeaderFunc {
+func httprouteAuthFunc(c client.Client, log *slog.Logger, info *registry.GatewayInfo, baseValuesFile string) gatewayclient.AuthHeaderFunc {
 	return func(ctx context.Context, req *http.Request) error {
-		authConfig, err := auth.GetAuthSettingsForRegistryGateway(ctx, c, info)
+		username, password, err := auth.ResolveControllerCredentials(ctx, c, info, baseValuesFile)
 		if err != nil {
 			if log != nil {
-				log.Warn("auth config lookup failed", slog.Any("error", err))
+				log.Warn("gateway-controller credential lookup failed", slog.Any("error", err))
 			}
 			return err
-		}
-		var username, password string
-		var ok bool
-		if authConfig != nil {
-			username, password, ok = auth.GetBasicAuthCredentials(authConfig)
-		}
-		if !ok {
-			username, password = auth.GetDefaultBasicAuthCredentials()
 		}
 		req.Header.Set("Authorization", "Basic "+auth.EncodeBasicAuth(username, password))
 		return nil

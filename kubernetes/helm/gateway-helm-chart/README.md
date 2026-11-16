@@ -261,6 +261,56 @@ effect with `storage.type=postgres`, the SQL Server settings with `storage.type=
 - Like the env var, the file is read once at startup: restart the controller after rotating the
   Secret.
 
+### Controller REST API credentials
+
+The controller's REST management API authenticates with the users in
+`gateway.config.controller.auth.basic.users`. The chart default is a single `admin` user with
+password `admin`, kept so that existing installs and the clients that call them keep working.
+Replace it on any gateway other people can reach. The chart prints a warning while the default
+password is in use.
+
+Because `config.toml` is rendered into a ConfigMap, store a hash rather than the password:
+
+```bash
+htpasswd -nbBC 12 "" '<password>' | cut -d: -f2   # bcrypt hash
+```
+
+```yaml
+gateway:
+  config:
+    controller:
+      auth:
+        basic:
+          enabled: true
+          users:
+            - username: gateway-admin
+              password: "$2y$12$..."          # bcrypt ($2a$/$2b$/$2y$) or Argon2id ($argon2id$)
+              password_hashed: true
+              roles: ["admin"]
+              # Only when the gateway operator manages this gateway (see below).
+              passwordSecretRef:
+                name: gateway-admin-credential
+                key: password                 # optional, defaults to "password"
+```
+
+The chart fails to render when `password_hashed: true` is set on a value that is neither a bcrypt
+nor an Argon2id hash (an `{{ env }}`/`{{ file }}` token is accepted).
+
+**Gateways managed by the gateway operator.** The operator calls this API and must send the
+plaintext password, which it cannot recover from a hash. Create a Secret holding the password
+in the gateway's namespace and point `passwordSecretRef` at it:
+
+```bash
+kubectl create secret generic gateway-admin-credential \
+  --from-literal=password='<password>' -n <gateway-namespace>
+```
+
+`passwordSecretRef` is read only by the operator and is never rendered into `config.toml`. It
+requires `password_hashed: true`. The operator uses the first user whose password it can obtain
+(through `passwordSecretRef`, or a plaintext `password`), resolved from the operator's base
+gateway values overlaid with the gateway's own values ConfigMap. If no such user exists, it
+reports an error instead of falling back to a built-in credential.
+
 ### Raw config passthrough (`gateway.config_toml`)
 
 For configuration the chart doesn't model as structured `gateway.config.*` values, use

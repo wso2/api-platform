@@ -343,6 +343,20 @@ data:
     enabled = {{ $gc.auth.basic.enabled }}
     {{- if $gc.auth.basic.users }}
     {{- range $gc.auth.basic.users }}
+    {{- /* passwordSecretRef is read only by the gateway operator, which needs the plaintext
+           to call this API; the controller is given only the hash, so the ref is never rendered. */ -}}
+    {{- $pwHash := toString .password }}
+    {{- if .passwordSecretRef }}
+    {{- if not .passwordSecretRef.name }}
+    {{- fail (printf "gateway.config.controller.auth.basic.users: user %q sets passwordSecretRef without a name." (toString .username)) }}
+    {{- end }}
+    {{- if not .password_hashed }}
+    {{- fail (printf "gateway.config.controller.auth.basic.users: user %q sets passwordSecretRef, so password must hold the hash of that Secret's password and password_hashed must be true." (toString .username)) }}
+    {{- end }}
+    {{- end }}
+    {{- if and .password_hashed (not (contains "{{" $pwHash)) (not (or (hasPrefix "$2a$" $pwHash) (hasPrefix "$2b$" $pwHash) (hasPrefix "$2y$" $pwHash) (hasPrefix "$argon2id$" $pwHash))) }}
+    {{- fail (printf "gateway.config.controller.auth.basic.users: user %q has password_hashed: true, but password is not a bcrypt ($2a$/$2b$/$2y$) or Argon2id ($argon2id$) hash." (toString .username)) }}
+    {{- end }}
     [[controller.auth.basic.users]]
     username = {{ .username | quote }}
     password = {{ .password | quote }}
