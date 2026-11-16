@@ -35,9 +35,9 @@ func createTestAPIPortalOrg(t *testing.T, db *database.DB, orgUUID string) {
 	t.Helper()
 	q := `
 		INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
-		VALUES (?, ?, ?, 'default', 'idp-ref', datetime('now'), datetime('now'))
+		VALUES (?, ?, ?, 'default', ?, datetime('now'), datetime('now'))
 	`
-	if _, err := db.Exec(q, orgUUID, "test-org-"+orgUUID, "Test Org"); err != nil {
+	if _, err := db.Exec(q, orgUUID, "test-org-"+orgUUID, "Test Org", "idp-ref-"+orgUUID); err != nil {
 		t.Fatalf("failed to insert test organization: %v", err)
 	}
 }

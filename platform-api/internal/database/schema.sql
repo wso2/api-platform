@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS organizations (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- One organization per identity-provider organization. A guarded index rather than an
+-- inline UNIQUE, so it is also added to existing databases. Empty references are excluded.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_organizations_idp_org_ref ON organizations(idp_organization_ref_uuid) WHERE idp_organization_ref_uuid <> '';
+
 
 -- Projects table
 CREATE TABLE IF NOT EXISTS projects (

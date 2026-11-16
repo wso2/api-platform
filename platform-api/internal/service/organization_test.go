@@ -27,6 +27,7 @@ import (
 	"database/sql"
 
 	"github.com/wso2/api-platform/platform-api/config"
+	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/database"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
@@ -98,6 +99,176 @@ func TestOrganizationService_RegisterOrganization_RecordsMembership(t *testing.T
 	}
 	if count != 1 {
 		t.Fatalf("expected a membership row for the registering user, got count=%d", count)
+	}
+}
+
+// countOrganizations returns the number of organization rows.
+func countOrganizations(t *testing.T, db *database.DB) int {
+	t.Helper()
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM organizations`).Scan(&count); err != nil {
+		t.Fatalf("failed to count organizations: %v", err)
+	}
+	return count
+}
+
+// requireOrganizationExists fails the test unless err is apperror.OrganizationExists (409).
+func requireOrganizationExists(t *testing.T, err error) {
+	t.Helper()
+	if !apperror.OrganizationExists.Is(err) {
+		t.Fatalf("expected OrganizationExists, got %v", err)
+	}
+	var appErr *apperror.Error
+	if !errors.As(err, &appErr) || appErr.HTTPStatus != 409 {
+		t.Fatalf("expected HTTP 409, got %+v", appErr)
+	}
+}
+
+// An identity-provider organization can register exactly one organization: the
+// first registration succeeds, a second one is refused with 409 and nothing is stored.
+func TestOrganizationService_RegisterOrganization_RefusesSecondOrganizationForSameIdpOrg(t *testing.T) {
+	svc, db, cleanup := setupOrganizationTestEnv(t)
+	t.Cleanup(cleanup)
+
+	org, err := svc.RegisterOrganization("org-uuid-1", "first-org", "First Org", "us", "idp-org-1", "")
+	if err != nil || org == nil {
+		t.Fatalf("first RegisterOrganization = %v, %v; want the organization", org, err)
+	}
+
+	_, err = svc.RegisterOrganization("org-uuid-2", "second-org", "Second Org", "us", "idp-org-1", "")
+	requireOrganizationExists(t, err)
+
+	if got := countOrganizations(t, db); got != 1 {
+		t.Fatalf("organizations = %d, want 1", got)
+	}
+	if got := countDefaultProjects(t, db, "org-uuid-2"); got != 0 {
+		t.Fatalf("default projects for the refused organization = %d, want 0", got)
+	}
+}
+
+// Once an organization is registered, the organization resolver rewrites the
+// request's organization reference to that organization's platform UUID. A
+// registration carrying that resolved UUID is refused too.
+func TestOrganizationService_RegisterOrganization_RefusesWhenReferenceResolvesToExistingOrganization(t *testing.T) {
+	svc, db, cleanup := setupOrganizationTestEnv(t)
+	t.Cleanup(cleanup)
+
+	if _, err := svc.RegisterOrganization("org-uuid-1", "first-org", "First Org", "us", "idp-org-1", ""); err != nil {
+		t.Fatalf("first RegisterOrganization failed: %v", err)
+	}
+
+	_, err := svc.RegisterOrganization("org-uuid-2", "second-org", "Second Org", "us", "org-uuid-1", "")
+	requireOrganizationExists(t, err)
+
+	if got := countOrganizations(t, db); got != 1 {
+		t.Fatalf("organizations = %d, want 1", got)
+	}
+}
+
+// Distinct identity-provider organizations each register their own organization.
+func TestOrganizationService_RegisterOrganization_AllowsDistinctIdpOrgs(t *testing.T) {
+	svc, db, cleanup := setupOrganizationTestEnv(t)
+	t.Cleanup(cleanup)
+
+	if _, err := svc.RegisterOrganization("org-uuid-1", "first-org", "First Org", "us", "idp-org-1", ""); err != nil {
+		t.Fatalf("RegisterOrganization (idp-org-1) failed: %v", err)
+	}
+	if _, err := svc.RegisterOrganization("org-uuid-2", "second-org", "Second Org", "us", "idp-org-2", ""); err != nil {
+		t.Fatalf("RegisterOrganization (idp-org-2) failed: %v", err)
+	}
+	if got := countOrganizations(t, db); got != 2 {
+		t.Fatalf("organizations = %d, want 2", got)
+	}
+}
+
+// Without an organization reference there is nothing to deduplicate on, so
+// several organizations can still be registered.
+func TestOrganizationService_RegisterOrganization_AllowsEmptyIdpOrgReference(t *testing.T) {
+	svc, db, cleanup := setupOrganizationTestEnv(t)
+	t.Cleanup(cleanup)
+
+	if _, err := svc.RegisterOrganization("org-uuid-1", "first-org", "First Org", "us", "", ""); err != nil {
+		t.Fatalf("first RegisterOrganization failed: %v", err)
+	}
+	if _, err := svc.RegisterOrganization("org-uuid-2", "second-org", "Second Org", "us", "", ""); err != nil {
+		t.Fatalf("second RegisterOrganization failed: %v", err)
+	}
+	if got := countOrganizations(t, db); got != 2 {
+		t.Fatalf("organizations = %d, want 2", got)
+	}
+}
+
+// A handle already in use is refused with 409.
+func TestOrganizationService_RegisterOrganization_RefusesTakenHandle(t *testing.T) {
+	svc, db, cleanup := setupOrganizationTestEnv(t)
+	t.Cleanup(cleanup)
+
+	if _, err := svc.RegisterOrganization("org-uuid-1", "taken-org", "Taken Org", "us", "idp-org-1", ""); err != nil {
+		t.Fatalf("first RegisterOrganization failed: %v", err)
+	}
+
+	_, err := svc.RegisterOrganization("org-uuid-2", "taken-org", "Other Org", "us", "idp-org-2", "")
+	requireOrganizationExists(t, err)
+
+	if got := countOrganizations(t, db); got != 1 {
+		t.Fatalf("organizations = %d, want 1", got)
+	}
+}
+
+// The database enforces one organization per non-empty identity-provider
+// reference, which covers concurrent registrations that both pass the service check.
+func TestOrganizationSchema_UniqueIdpOrgReference(t *testing.T) {
+	svc, _, cleanup := setupOrganizationTestEnv(t)
+	t.Cleanup(cleanup)
+
+	create := func(id, handle, ref string) error {
+		return svc.orgRepo.CreateOrganization(&model.Organization{ID: id, Handle: handle, Name: handle, Region: "us", IdpOrganizationRefUUID: ref})
+	}
+	if err := create("org-uuid-1", "org-one", "idp-org-1"); err != nil {
+		t.Fatalf("CreateOrganization failed: %v", err)
+	}
+	err := create("org-uuid-2", "org-two", "idp-org-1")
+	if !repository.IsUniqueViolation(err) {
+		t.Fatalf("expected a unique violation for a duplicate reference, got %v", err)
+	}
+	if err := create("org-uuid-3", "org-three", ""); err != nil {
+		t.Fatalf("CreateOrganization with an empty reference failed: %v", err)
+	}
+	if err := create("org-uuid-4", "org-four", ""); err != nil {
+		t.Fatalf("second CreateOrganization with an empty reference failed: %v", err)
+	}
+}
+
+// staleOrgLookupRepo hides existing organizations from the reference lookups,
+// as a concurrent registration that has not committed yet would.
+type staleOrgLookupRepo struct {
+	repository.OrganizationRepository
+}
+
+func (staleOrgLookupRepo) GetOrganizationByIdpOrgRefUUID(string) (*model.Organization, error) {
+	return nil, nil
+}
+
+func (staleOrgLookupRepo) GetOrganizationByUUID(string) (*model.Organization, error) {
+	return nil, nil
+}
+
+// When the pre-insert check misses a concurrent registration, the database
+// constraint rejects the insert and the caller still gets 409, not 500.
+func TestOrganizationService_RegisterOrganization_MapsConstraintViolationToConflict(t *testing.T) {
+	svc, db, cleanup := setupOrganizationTestEnv(t)
+	t.Cleanup(cleanup)
+
+	if _, err := svc.RegisterOrganization("org-uuid-1", "first-org", "First Org", "us", "idp-org-1", ""); err != nil {
+		t.Fatalf("first RegisterOrganization failed: %v", err)
+	}
+
+	svc.orgRepo = staleOrgLookupRepo{OrganizationRepository: svc.orgRepo}
+	_, err := svc.RegisterOrganization("org-uuid-2", "second-org", "Second Org", "us", "idp-org-1", "")
+	requireOrganizationExists(t, err)
+
+	if got := countOrganizations(t, db); got != 1 {
+		t.Fatalf("organizations = %d, want 1", got)
 	}
 }
 

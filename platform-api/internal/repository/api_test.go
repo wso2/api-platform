@@ -35,9 +35,9 @@ func createTestOrganizationAndProject(t *testing.T, db *database.DB, orgUUID, pr
 
 	orgQuery := `
 		INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
-		VALUES (?, ?, ?, ?, 'idp-ref', datetime('now'), datetime('now'))
+		VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 	`
-	_, err := db.Exec(orgQuery, orgUUID, "test-org-"+orgUUID, "Test Org", "default")
+	_, err := db.Exec(orgQuery, orgUUID, "test-org-"+orgUUID, "Test Org", "default", "idp-ref-"+orgUUID)
 	if err != nil {
 		t.Fatalf("Failed to create test organization: %v", err)
 	}

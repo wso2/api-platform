@@ -50,7 +50,7 @@ func seedSearchOrg(t *testing.T, tdb *schemaDB) string {
 	t.Helper()
 	org := id()
 	tdb.exec(t, `INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid) VALUES (?, ?, ?, ?, ?)`,
-		org, "so-"+org[:8], "search org", "us", "idp-ref")
+		org, "so-"+org[:8], "search org", "us", "idp-ref-"+org)
 	return org
 }
 

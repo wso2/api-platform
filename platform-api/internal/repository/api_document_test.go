@@ -37,8 +37,8 @@ func seedTestArtifact(t *testing.T, db *database.DB, orgUUID, artifactUUID strin
 
 	if _, err := db.Exec(
 		`INSERT INTO organizations (uuid, handle, display_name, region, idp_organization_ref_uuid, created_at, updated_at)
-		 VALUES (?, ?, ?, 'default', 'idp-ref', datetime('now'), datetime('now'))`,
-		orgUUID, "test-org-"+orgUUID, "Test Org",
+		 VALUES (?, ?, ?, 'default', ?, datetime('now'), datetime('now'))`,
+		orgUUID, "test-org-"+orgUUID, "Test Org", "idp-ref-"+orgUUID,
 	); err != nil {
 		t.Fatalf("seed organization: %v", err)
 	}
