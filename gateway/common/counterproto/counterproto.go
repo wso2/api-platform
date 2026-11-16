@@ -76,6 +76,10 @@ func KeyFor(namespace, id string, window time.Time) Key {
 type Add struct {
 	Key   Key     `json:"key"`
 	Delta float64 `json:"delta"`
+	// Labels describe the counter for reporting, as the policy gave them with
+	// sdk/core/counters.Describe: the controller reports them with the counter's total.
+	// They are never stored in the shared store.
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // Total is the shared total of one counter.

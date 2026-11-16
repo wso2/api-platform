@@ -36,17 +36,26 @@ func init() {
 	encoding.RegisterCodec(counterproto.Codec{})
 }
 
+// Observer is told of every applied report: its adds, with the labels the engine gave
+// them, and the totals returned. Budgets use it to report spend per allowance to the
+// control plane. It must not block.
+type Observer interface {
+	Observe(adds []counterproto.Add, totals []counterproto.Total)
+}
+
 // service serves the counter stream.
 type service struct {
-	store   Store
-	allowed map[string]bool // nil: no mTLS identity check
-	logger  *slog.Logger
+	store    Store
+	allowed  map[string]bool // nil: no mTLS identity check
+	observer Observer        // nil: none
+	logger   *slog.Logger
 }
 
 // Register adds the counter stream to the policy server. allowed restricts the peers
-// as the policy xDS stream does; nil when mTLS is not configured.
-func Register(server *grpc.Server, store Store, allowed map[string]bool, logger *slog.Logger) {
-	s := &service{store: store, allowed: allowed, logger: logger}
+// as the policy xDS stream does; nil when mTLS is not configured. observer, when not
+// nil, is told of every applied report.
+func Register(server *grpc.Server, store Store, allowed map[string]bool, observer Observer, logger *slog.Logger) {
+	s := &service{store: store, allowed: allowed, observer: observer, logger: logger}
 	server.RegisterService(&grpc.ServiceDesc{
 		ServiceName: counterproto.ServiceName,
 		HandlerType: (*any)(nil),
@@ -94,6 +103,9 @@ func (s *service) sync(_ any, stream grpc.ServerStream) error {
 			resp.OK = true
 			resp.ReportID = req.ReportID
 			resp.Totals = totals
+			if s.observer != nil {
+				s.observer.Observe(req.Adds, totals)
+			}
 		}
 		if err := stream.SendMsg(resp); err != nil {
 			return err

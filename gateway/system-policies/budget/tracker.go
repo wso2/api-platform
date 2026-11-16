@@ -74,6 +74,7 @@ const (
 type counterService interface {
 	Add(key counters.Key, delta float64)
 	Total(key counters.Key) (float64, bool)
+	Describe(key counters.Key, labels map[string]string)
 }
 
 // installedCounters uses the counter service the policy engine installed: synced with the
@@ -83,6 +84,9 @@ type installedCounters struct{}
 
 func (installedCounters) Add(key counters.Key, delta float64)    { counters.Add(key, delta) }
 func (installedCounters) Total(key counters.Key) (float64, bool) { return counters.Total(key) }
+func (installedCounters) Describe(key counters.Key, labels map[string]string) {
+	counters.Describe(key, labels)
+}
 
 // tracker charges spend per allowance and period to the shared counters.
 type tracker struct {
@@ -115,16 +119,21 @@ func (t *tracker) unpricedIn(key spendKey) int64 {
 	return int64(total)
 }
 
-// charge adds cost to every key.
-func (t *tracker) charge(keys []spendKey, cost float64) {
+// charge adds cost to every key, describing each counter so the gateway-controller can
+// report the allowance's spend to the control plane.
+func (t *tracker) charge(keys []admitted, cost float64) {
 	for _, key := range keys {
-		t.counters.Add(spendCounter(key), cost)
+		counter := spendCounter(key.spendKey)
+		t.counters.Describe(counter, key.labels)
+		t.counters.Add(counter, cost)
 	}
 }
 
 // countUnpriced records one request charged $0 against every key.
-func (t *tracker) countUnpriced(keys []spendKey) {
+func (t *tracker) countUnpriced(keys []admitted) {
 	for _, key := range keys {
-		t.counters.Add(unpricedCounter(key), 1)
+		counter := unpricedCounter(key.spendKey)
+		t.counters.Describe(counter, key.labels)
+		t.counters.Add(counter, 1)
 	}
 }

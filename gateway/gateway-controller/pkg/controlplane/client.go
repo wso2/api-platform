@@ -166,6 +166,8 @@ type Client struct {
 	// budgetApplier stores the budgets the control plane sends; nil until SetBudgetApplier.
 	budgetApplierMu sync.RWMutex
 	budgetApplier   utils.ControlPlaneBudgetApplier
+	// budgetUsage reports budget spend; nil when budgets are not reported.
+	budgetUsage *BudgetUsageReporter
 
 	// httpClient is the single shared outbound *http.Client for this entire process (built
 	// once in cmd/controller/main.go and injected here), used for every plain (non-WebSocket)
@@ -386,6 +388,14 @@ func (c *Client) Start() error {
 	// Start connection in background
 	c.wg.Add(1)
 	go c.connectionLoop()
+
+	if c.budgetUsage != nil {
+		c.wg.Add(1)
+		go func() {
+			defer c.wg.Done()
+			c.budgetUsage.run(c.stopChan, c.sendBudgetUsage)
+		}()
+	}
 
 	return nil
 }

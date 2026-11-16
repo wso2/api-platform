@@ -193,8 +193,12 @@ func (p *BudgetSystemPolicy) Mode() policy.ProcessingMode {
 	}
 }
 
-// admitted is one allowance a request was admitted against, in the period it was admitted in.
-type admitted = spendKey
+// admitted is one allowance a request was admitted against, in the period it was admitted
+// in, with the labels that describe it to the control plane.
+type admitted struct {
+	spendKey
+	labels map[string]string
+}
 
 // OnRequestHeaders finds the budgets that cover the request and refuses it when a Block
 // budget's allowance has spent its block point.
@@ -251,10 +255,10 @@ func (p *BudgetSystemPolicy) OnRequestHeaders(_ context.Context, reqCtx *policy.
 		names = append(names, b.name)
 		start := periodStart(b.period, now)
 		used := false
-		for _, allowance := range allowances {
-			key := admitted{allowance: allowance, periodStart: start}
+		for _, a := range allowances {
+			key := admitted{spendKey: spendKey{allowance: a.id, periodStart: start}, labels: a.labels(b.name)}
 			keys = append(keys, key)
-			if b.action == actionBlock && p.tracker.spentIn(key) >= b.blockPoint() {
+			if b.action == actionBlock && p.tracker.spentIn(key.spendKey) >= b.blockPoint() {
 				used = true
 			}
 		}

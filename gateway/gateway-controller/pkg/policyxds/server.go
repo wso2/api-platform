@@ -79,6 +79,7 @@ type Server struct {
 	mtls                     *serverMTLS
 	onFirstConnect           chan struct{}
 	counterStore             counters.Store
+	counterObserver          counters.Observer
 	logger                   *slog.Logger
 }
 
@@ -114,6 +115,13 @@ func WithMTLS(tlsConfig *tls.Config, allowedIdentities []string) ServerOption {
 func WithCounterStore(store counters.Store) ServerOption {
 	return func(s *Server) {
 		s.counterStore = store
+	}
+}
+
+// WithCounterObserver is told of every report applied on the counter stream.
+func WithCounterObserver(observer counters.Observer) ServerOption {
+	return func(s *Server) {
+		s.counterObserver = observer
 	}
 }
 
@@ -193,7 +201,7 @@ func NewServer(snapshotManager *SnapshotManager, apiKeySnapshotMgr *apikeyxds.AP
 
 	// The shared counter stream, on the same port and under the same mTLS identity check.
 	if s.counterStore != nil {
-		counters.Register(grpcServer, s.counterStore, allowedIdentities, logger)
+		counters.Register(grpcServer, s.counterStore, allowedIdentities, s.counterObserver, logger)
 	}
 
 	s.grpcServer = grpcServer

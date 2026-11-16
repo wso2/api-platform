@@ -159,9 +159,34 @@ type allocated struct {
 	value     string
 }
 
-// matches reports whether the budget covers the request, and the allowance names it
-// charges: one when nothing is separate, otherwise one per combination of separate values.
-func (b *budget) matches(provider string, who caller, activation func() map[string]any) ([]string, bool) {
+// allowance is one allowance a request is charged to: its UUID and the values it is
+// separated by (none for a shared budget).
+type allowance struct {
+	id     string
+	values []allocated
+}
+
+// labels describe the allowance for the control plane: the budget's name and the
+// allocated values, by type ("agent" is project/agent). A second value of the same type
+// gets a numbered key ("attribute.2").
+func (a allowance) labels(budgetName string) map[string]string {
+	out := map[string]string{labelBudget: budgetName}
+	for _, v := range a.values {
+		key := v.valueType
+		for n := 2; out[key] != ""; n++ {
+			key = v.valueType + "." + strconv.Itoa(n)
+		}
+		out[key] = v.value
+	}
+	return out
+}
+
+// labelBudget is the label naming an allowance's budget.
+const labelBudget = "budget"
+
+// matches reports whether the budget covers the request, and the allowances it charges:
+// one when nothing is separate, otherwise one per combination of separate values.
+func (b *budget) matches(provider string, who caller, activation func() map[string]any) ([]allowance, bool) {
 	if b.providerID != "" && b.providerID != provider {
 		return nil, false
 	}
@@ -203,11 +228,11 @@ func (b *budget) matches(provider string, who caller, activation func() map[stri
 		}
 	}
 
-	names := make([]string, 0, len(combinations))
+	allowances := make([]allowance, 0, len(combinations))
 	for _, combination := range combinations {
-		names = append(names, b.allowanceUUID(combination))
+		allowances = append(allowances, allowance{id: b.allowanceUUID(combination), values: combination})
 	}
-	return names, true
+	return allowances, true
 }
 
 // allowanceUUID is the UUIDv5, under the budget's spendID, of the allocated values sorted

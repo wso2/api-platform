@@ -44,6 +44,8 @@ type entry struct {
 	// expiresAt is pushed forward on every use; past it, with nothing left to report,
 	// the counter is no longer synced and is forgotten.
 	expiresAt time.Time
+	// labels describe the counter; sent with its adds (sdk/core/counters.Describe).
+	labels map[string]string
 }
 
 // Service implements sdk/core/counters.Service.
@@ -95,6 +97,18 @@ func (s *Service) Add(key sdkcounters.Key, delta float64) {
 	s.use(key).pending += delta
 }
 
+// Describe sets the labels sent with the counter's adds.
+func (s *Service) Describe(key sdkcounters.Key, labels map[string]string) {
+	key = normalize(key)
+	copied := make(map[string]string, len(labels))
+	for k, v := range labels {
+		copied[k] = v
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.use(key).labels = copied
+}
+
 // Total returns the last shared total plus this engine's adds not yet in it. ok is
 // false until a shared total has come back for the counter.
 func (s *Service) Total(key sdkcounters.Key) (float64, bool) {
@@ -128,7 +142,11 @@ func (s *Service) nextRequest() *counterproto.SyncRequest {
 	if s.inflight != nil {
 		req.ReportID = s.inflightID
 		for key, delta := range s.inflight {
-			req.Adds = append(req.Adds, counterproto.Add{Key: wire(key), Delta: delta})
+			add := counterproto.Add{Key: wire(key), Delta: delta}
+			if e := s.entries[key]; e != nil {
+				add.Labels = e.labels
+			}
+			req.Adds = append(req.Adds, add)
 		}
 	}
 	for key, e := range s.entries {

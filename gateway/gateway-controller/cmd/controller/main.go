@@ -649,6 +649,8 @@ func main() {
 	}
 	defer func() { _ = counterStore.Close() }()
 	serverOpts = append(serverOpts, policyxds.WithCounterStore(counterStore))
+	budgetUsage := controlplane.NewBudgetUsageReporter(log)
+	serverOpts = append(serverOpts, policyxds.WithCounterObserver(budgetUsage))
 	policyXDSServer := policyxds.NewServer(policySnapshotManager, apiKeySnapshotManager, lazyResourceSnapshotManager, subscriptionSnapshotManager, nil, cfg.Controller.PolicyServer.Port, log, serverOpts...)
 	go func() {
 		if err := policyXDSServer.Start(); err != nil {
@@ -725,6 +727,7 @@ func main() {
 		nil,
 		sharedHTTPClient,
 	)
+	cpClient.SetBudgetUsageReporter(budgetUsage)
 	if err := cpClient.Start(); err != nil {
 		log.Error("Failed to start control plane client", slog.Any("error", err))
 		// Don't fail startup - gateway can run in degraded mode without control plane

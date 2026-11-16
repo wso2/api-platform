@@ -48,7 +48,7 @@ func openStream(t *testing.T, store Store) grpc.ClientStream {
 	t.Helper()
 	listener := bufconn.Listen(1 << 20)
 	server := grpc.NewServer()
-	Register(server, store, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	Register(server, store, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(server.Stop)
 

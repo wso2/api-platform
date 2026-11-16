@@ -542,7 +542,11 @@ func TestSpendIsSharedByNameNotUUID(t *testing.T) {
 	other, _, _ := testPolicy(t, budgetBody("team", otherUUID, "1", "day", "block", allProviders, nil))
 	renamed, _, _ := testPolicy(t, budgetBody("team-2", testBudgetUUID, "1", "day", "block", allProviders, nil))
 	ids := func(p *BudgetSystemPolicy) []string {
-		names, _ := p.catalog.current()[0].matches("openai", caller{}, func() map[string]any { return activation(nil, "", "", nil, nil) })
+		allowances, _ := p.catalog.current()[0].matches("openai", caller{}, func() map[string]any { return activation(nil, "", "", nil, nil) })
+		names := make([]string, len(allowances))
+		for i, a := range allowances {
+			names[i] = a.id
+		}
 		return names
 	}
 
@@ -668,5 +672,40 @@ func TestAProviderRouteNamesNoProject(t *testing.T) {
 	send(t, p, direct, "5")
 	if send(t, p, direct, "") != nil {
 		t.Fatal("a provider route's own project ID was charged as the caller's project")
+	}
+}
+
+func TestChargedCountersAreDescribedForTheControlPlane(t *testing.T) {
+	p, _, _ := testPolicy(t, budgetBody("per-agent", testBudgetUUID, "10", "day", "block", allProviders,
+		consumers(map[string]any{"type": "project", "allocation": "shared", "id": "api-platform"},
+			map[string]any{"type": "agent", "allocation": "separate"})))
+	mem := counters.NewMemory()
+	p.tracker = newTracker(mem)
+
+	support := call{provider: "openai", project: "api-platform", params: agentRoute("support-agent")}
+	if send(t, p, support, "2") != nil {
+		t.Fatal("refused")
+	}
+	if send(t, p, call{provider: "openai", project: "api-platform", params: agentRoute("support-agent")}, "") != nil {
+		t.Fatal("refused")
+	}
+	allowances, _ := p.catalog.current()[0].matches("openai", caller{project: "api-platform", agent: "support-agent"}, nil)
+	if len(allowances) != 1 {
+		t.Fatalf("allowances %v", allowances)
+	}
+	key := spendKey{allowance: allowances[0].id, periodStart: periodStart(periodDay, wednesdayNoon)}
+	want := map[string]string{"budget": "per-agent", "agent": "api-platform/support-agent"}
+	for _, counter := range []counters.Key{spendCounter(key), unpricedCounter(key)} {
+		if got := mem.Labels(counter); len(got) != 2 || got["budget"] != want["budget"] || got["agent"] != want["agent"] {
+			t.Fatalf("%s labels %v, want %v", counter.Namespace, got, want)
+		}
+	}
+}
+
+func TestAllowanceLabelsNumberRepeatedTypes(t *testing.T) {
+	a := allowance{values: []allocated{{valueTypeAttribute, "R&D"}, {valueTypeAttribute, "alice@wso2.com"}, {valueTypeLLMProvider, "openai"}}}
+	got := a.labels("team")
+	if got["budget"] != "team" || got["attribute"] != "R&D" || got["attribute.2"] != "alice@wso2.com" || got["llmProvider"] != "openai" {
+		t.Fatalf("labels %v", got)
 	}
 }

@@ -302,3 +302,32 @@ func TestAnExpiredCounterWithUnreportedSpendIsKept(t *testing.T) {
 	s.apply(again, &counterproto.SyncResponse{OK: true, ReportID: again.ReportID})
 	assert.Empty(t, s.nextRequest().Keys)
 }
+
+func TestDescribedCountersSendTheirLabelsWithTheirAdds(t *testing.T) {
+	s := NewService("engine-1", time.Minute)
+	window := time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)
+	described := sdkcounters.Key{Namespace: "budget", ID: "a-1", Window: window}
+	plain := sdkcounters.Key{Namespace: "ratelimit", ID: "x"}
+	labels := map[string]string{"budget": "per-agent", "agent": "api-platform/support-agent"}
+	s.Describe(described, labels)
+	labels["budget"] = "changed after Describe"
+	s.Add(described, 0.5)
+	s.Add(plain, 1)
+
+	req := s.nextRequest()
+	if len(req.Adds) != 2 {
+		t.Fatalf("adds %+v", req.Adds)
+	}
+	for _, add := range req.Adds {
+		switch add.Key.Namespace {
+		case "budget":
+			if add.Labels["budget"] != "per-agent" || add.Labels["agent"] != "api-platform/support-agent" {
+				t.Fatalf("labels %v", add.Labels)
+			}
+		default:
+			if add.Labels != nil {
+				t.Fatalf("an undescribed counter carries labels %v", add.Labels)
+			}
+		}
+	}
+}

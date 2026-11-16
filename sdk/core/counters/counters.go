@@ -64,6 +64,15 @@ type Service interface {
 	Total(key Key) (total float64, ok bool)
 }
 
+// Describer is implemented by a Service that reports what its counters are: the
+// policy engine forwards the labels to its gateway-controller with the counter's adds,
+// so the controller can report the counter's total (budgets report spend per
+// allowance to the control plane). Labels are never written to the shared store.
+type Describer interface {
+	// Describe sets the counter's labels, replacing any it had.
+	Describe(key Key, labels map[string]string)
+}
+
 // serviceHolder lets atomic.Pointer hold an interface value.
 type serviceHolder struct{ svc Service }
 
@@ -102,6 +111,14 @@ func Total(key Key) (float64, bool) {
 	return current().Total(key)
 }
 
+// Describe labels the counter for reporting when the installed service reports
+// counters (Describer); otherwise it does nothing.
+func Describe(key Key, labels map[string]string) {
+	if d, ok := current().(Describer); ok {
+		d.Describe(key, labels)
+	}
+}
+
 // local is the process-local service used when none is installed.
 var local Service = NewMemory()
 
@@ -110,11 +127,12 @@ var local Service = NewMemory()
 type Memory struct {
 	mu     sync.Mutex
 	totals map[Key]float64
+	labels map[Key]map[string]string
 }
 
 // NewMemory returns an empty in-memory Service.
 func NewMemory() *Memory {
-	return &Memory{totals: map[Key]float64{}}
+	return &Memory{totals: map[Key]float64{}, labels: map[Key]map[string]string{}}
 }
 
 // Add adds delta to the counter.
@@ -129,4 +147,22 @@ func (m *Memory) Total(key Key) (float64, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.totals[key], true
+}
+
+// Describe records the counter's labels; there is no controller to report them to.
+func (m *Memory) Describe(key Key, labels map[string]string) {
+	copied := make(map[string]string, len(labels))
+	for k, v := range labels {
+		copied[k] = v
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.labels[key] = copied
+}
+
+// Labels returns the counter's labels; useful in tests.
+func (m *Memory) Labels(key Key) map[string]string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.labels[key]
 }
