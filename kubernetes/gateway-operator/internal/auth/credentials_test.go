@@ -35,7 +35,22 @@ import (
 	"github.com/wso2/api-platform/kubernetes/gateway-operator/internal/registry"
 )
 
-const testNamespace = "gw-ns"
+const (
+	testNamespace = "gw-ns"
+	testRelease   = "gw-gw"
+)
+
+func boolPtr(b bool) *bool { return &b }
+
+// generatedAdminSecret is the Secret the gateway chart renders for release.
+func generatedAdminSecret(namespace, release, password string) *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: release + "-controller-admin", Labels: map[string]string{
+			"app.kubernetes.io/instance": release, "app.kubernetes.io/component": "controller-admin",
+		}},
+		Data: map[string][]byte{"password": []byte(password), "password-hash": []byte(testHash)},
+	}
+}
 
 // A bcrypt-shaped placeholder; the operator never verifies hashes, it only skips them.
 const testHash = "$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ01234"
@@ -65,11 +80,11 @@ func valuesConfigMap(name, values string) *corev1.ConfigMap {
 func TestResolveBasicAuthCredentials(t *testing.T) {
 	ctx := context.Background()
 	enabled := func(users ...AuthUser) *AuthSettings {
-		return &AuthSettings{Basic: BasicAuthConfig{Enabled: true, Users: users}}
+		return &AuthSettings{Basic: BasicAuthConfig{Enabled: boolPtr(true), Users: users}}
 	}
 
 	t.Run("plaintext password", func(t *testing.T) {
-		u, p, err := ResolveBasicAuthCredentials(ctx, nil, testNamespace, enabled(AuthUser{Username: "ops", Password: "s3cret"}))
+		u, p, err := ResolveBasicAuthCredentials(ctx, nil, testNamespace, testRelease, enabled(AuthUser{Username: "ops", Password: "s3cret"}))
 		require.NoError(t, err)
 		assert.Equal(t, "ops", u)
 		assert.Equal(t, "s3cret", p)
@@ -77,7 +92,7 @@ func TestResolveBasicAuthCredentials(t *testing.T) {
 
 	t.Run("hashed password read from Secret with default key", func(t *testing.T) {
 		c := newFakeClient(t, passwordSecret(testNamespace, "gw-admin", DefaultPasswordSecretKey, "from-secret"))
-		u, p, err := ResolveBasicAuthCredentials(ctx, c, testNamespace, enabled(AuthUser{
+		u, p, err := ResolveBasicAuthCredentials(ctx, c, testNamespace, testRelease, enabled(AuthUser{
 			Username: "ops", Password: testHash, PasswordHashed: true,
 			PasswordSecretRef: &SecretKeyRef{Name: "gw-admin"},
 		}))
@@ -88,7 +103,7 @@ func TestResolveBasicAuthCredentials(t *testing.T) {
 
 	t.Run("Secret with custom key", func(t *testing.T) {
 		c := newFakeClient(t, passwordSecret(testNamespace, "gw-admin", "adminPassword", "custom"))
-		_, p, err := ResolveBasicAuthCredentials(ctx, c, testNamespace, enabled(AuthUser{
+		_, p, err := ResolveBasicAuthCredentials(ctx, c, testNamespace, testRelease, enabled(AuthUser{
 			Username: "ops", Password: testHash, PasswordHashed: true,
 			PasswordSecretRef: &SecretKeyRef{Name: "gw-admin", Key: "adminPassword"},
 		}))
@@ -98,7 +113,7 @@ func TestResolveBasicAuthCredentials(t *testing.T) {
 
 	t.Run("Secret is only looked up in the gateway namespace", func(t *testing.T) {
 		c := newFakeClient(t, passwordSecret("other-ns", "gw-admin", DefaultPasswordSecretKey, "x"))
-		_, _, err := ResolveBasicAuthCredentials(ctx, c, testNamespace, enabled(AuthUser{
+		_, _, err := ResolveBasicAuthCredentials(ctx, c, testNamespace, testRelease, enabled(AuthUser{
 			Username: "ops", Password: testHash, PasswordHashed: true,
 			PasswordSecretRef: &SecretKeyRef{Name: "gw-admin"},
 		}))
@@ -109,7 +124,7 @@ func TestResolveBasicAuthCredentials(t *testing.T) {
 
 	t.Run("Secret without the key", func(t *testing.T) {
 		c := newFakeClient(t, passwordSecret(testNamespace, "gw-admin", "other", "x"))
-		_, _, err := ResolveBasicAuthCredentials(ctx, c, testNamespace, enabled(AuthUser{
+		_, _, err := ResolveBasicAuthCredentials(ctx, c, testNamespace, testRelease, enabled(AuthUser{
 			Username: "ops", Password: testHash, PasswordHashed: true,
 			PasswordSecretRef: &SecretKeyRef{Name: "gw-admin"},
 		}))
@@ -118,7 +133,7 @@ func TestResolveBasicAuthCredentials(t *testing.T) {
 	})
 
 	t.Run("hashed password without Secret is skipped for a later plaintext user", func(t *testing.T) {
-		u, p, err := ResolveBasicAuthCredentials(ctx, nil, testNamespace, enabled(
+		u, p, err := ResolveBasicAuthCredentials(ctx, nil, testNamespace, testRelease, enabled(
 			AuthUser{Username: "hashed", Password: testHash, PasswordHashed: true},
 			AuthUser{Username: "plain", Password: "pw"},
 		))
@@ -127,18 +142,54 @@ func TestResolveBasicAuthCredentials(t *testing.T) {
 		assert.Equal(t, "pw", p)
 	})
 
+	t.Run("no users: the chart's generated admin Secret", func(t *testing.T) {
+		c := newFakeClient(t,
+			generatedAdminSecret(testNamespace, testRelease, "generated"),
+			generatedAdminSecret(testNamespace, "other-release", "not-this-one"),
+			generatedAdminSecret("other-ns", testRelease, "not-this-either"),
+		)
+		for name, settings := range map[string]*AuthSettings{"nil settings (chart defaults)": nil, "enabled, no users": enabled()} {
+			u, p, err := ResolveBasicAuthCredentials(ctx, c, testNamespace, testRelease, settings)
+			require.NoError(t, err, name)
+			assert.Equal(t, "admin", u, name)
+			assert.Equal(t, "generated", p, name)
+		}
+	})
+
+	t.Run("no users: existingSecret", func(t *testing.T) {
+		c := newFakeClient(t, passwordSecret(testNamespace, "my-admin", "password", "provided"))
+		u, p, err := ResolveBasicAuthCredentials(ctx, c, testNamespace, testRelease,
+			&AuthSettings{Basic: BasicAuthConfig{ExistingSecret: "my-admin"}})
+		require.NoError(t, err)
+		assert.Equal(t, "admin", u)
+		assert.Equal(t, "provided", p)
+	})
+
+	t.Run("no users: generated Secret not there yet", func(t *testing.T) {
+		_, _, err := ResolveBasicAuthCredentials(ctx, newFakeClient(t), testNamespace, testRelease, enabled())
+		assert.ErrorIs(t, err, ErrNoControllerCredentials)
+		assert.Contains(t, err.Error(), "app.kubernetes.io/instance=gw-gw")
+	})
+
+	t.Run("explicit users win over a generated Secret", func(t *testing.T) {
+		c := newFakeClient(t, generatedAdminSecret(testNamespace, testRelease, "generated"))
+		u, p, err := ResolveBasicAuthCredentials(ctx, c, testNamespace, testRelease, enabled(AuthUser{Username: "ops", Password: "pw"}))
+		require.NoError(t, err)
+		assert.Equal(t, "ops", u)
+		assert.Equal(t, "pw", p)
+	})
+
 	failures := map[string]*AuthSettings{
-		"nil settings":            nil,
-		"basic auth disabled":     {Basic: BasicAuthConfig{Enabled: false, Users: []AuthUser{{Username: "a", Password: "b"}}}},
-		"no users":                enabled(),
-		"only hashed password":    enabled(AuthUser{Username: "ops", Password: testHash, PasswordHashed: true}),
-		"interpolation token":     enabled(AuthUser{Username: "ops", Password: `{{ env "ADMIN_PASSWORD" }}`}),
-		"empty password":          enabled(AuthUser{Username: "ops"}),
-		"user without a username": enabled(AuthUser{Password: "pw"}),
+		"basic auth disabled":         {Basic: BasicAuthConfig{Enabled: boolPtr(false), Users: []AuthUser{{Username: "a", Password: "b"}}}},
+		"no users and generate false": {Basic: BasicAuthConfig{Generate: boolPtr(false)}},
+		"only hashed password":        enabled(AuthUser{Username: "ops", Password: testHash, PasswordHashed: true}),
+		"interpolation token":         enabled(AuthUser{Username: "ops", Password: `{{ env "ADMIN_PASSWORD" }}`}),
+		"empty password":              enabled(AuthUser{Username: "ops"}),
+		"user without a username":     enabled(AuthUser{Password: "pw"}),
 	}
 	for name, settings := range failures {
 		t.Run("no credentials: "+name, func(t *testing.T) {
-			_, _, err := ResolveBasicAuthCredentials(ctx, nil, testNamespace, settings)
+			_, _, err := ResolveBasicAuthCredentials(ctx, nil, testNamespace, testRelease, settings)
 			require.Error(t, err)
 			assert.ErrorIs(t, err, ErrNoControllerCredentials)
 		})
@@ -227,7 +278,16 @@ gateway:
 		assert.Equal(t, "gwapi-password", p)
 	})
 
-	t.Run("no configured credentials is an error, not admin/admin", func(t *testing.T) {
+	t.Run("chart defaults: the generated admin Secret of the gateway's release", func(t *testing.T) {
+		// The operator installs gateway "gw" as release "gw-gw".
+		c := newFakeClient(t, gatewayWithConfig(""), generatedAdminSecret(testNamespace, "gw-gw", "generated"))
+		u, p, err := ResolveControllerCredentials(ctx, c, info, filepath.Join(t.TempDir(), "missing.yaml"))
+		require.NoError(t, err)
+		assert.Equal(t, "admin", u)
+		assert.Equal(t, "generated", p)
+	})
+
+	t.Run("no credential anywhere is an error, not admin/admin", func(t *testing.T) {
 		c := newFakeClient(t, gatewayWithConfig(""))
 		_, _, err := ResolveControllerCredentials(ctx, c, info, filepath.Join(t.TempDir(), "missing.yaml"))
 		require.Error(t, err)

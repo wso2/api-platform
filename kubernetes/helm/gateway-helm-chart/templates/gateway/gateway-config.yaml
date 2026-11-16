@@ -341,6 +341,20 @@ data:
     {{- if $gc.auth.basic }}
     [controller.auth.basic]
     enabled = {{ $gc.auth.basic.enabled }}
+    {{- $adminSecret := include "gateway-operator.controllerAdminSecretName" . }}
+    {{- if and $gc.auth.basic.users $gc.auth.basic.existingSecret }}
+    {{- fail "gateway.config.controller.auth.basic: set either users or existingSecret, not both." }}
+    {{- end }}
+    {{- if $adminSecret }}
+    {{- /* Generated (or existingSecret) admin user: only a token is rendered here. The controller
+           resolves it at startup from the env var its Deployment reads from the Secret's
+           password-hash key, so neither the password nor the hash is in this ConfigMap. */}}
+    [[controller.auth.basic.users]]
+    username = "admin"
+    password = {{ `'{{ env "APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH" "" }}'` }}
+    password_hashed = true
+    roles = ["admin"]
+    {{- end }}
     {{- if $gc.auth.basic.users }}
     {{- range $gc.auth.basic.users }}
     {{- /* passwordSecretRef is read only by the gateway operator, which needs the plaintext

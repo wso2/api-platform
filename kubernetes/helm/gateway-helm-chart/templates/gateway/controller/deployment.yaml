@@ -123,6 +123,13 @@ spec:
               value: {{ $controller.controlPlane.token.value | quote }}
               {{- end }}
             {{- end }}
+            {{- with (include "gateway-operator.controllerAdminSecretName" $) }}
+            - name: APIP_GW_CONTROLLER_AUTH_BASIC_ADMIN_PASSWORD_HASH
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: password-hash
+            {{- end }}
             - name: GATEWAY_CONTROLLER_HOST
               value: {{ default (printf "%s-controller" (include "gateway-operator.fullname" .)) $deployment.env.gatewayControllerHost | quote }}
             {{- if and (eq .Values.gateway.config.controller.storage.type "postgres") $controller.postgres.passwordSecretRef.name (eq $pgSecret.source "env") }}

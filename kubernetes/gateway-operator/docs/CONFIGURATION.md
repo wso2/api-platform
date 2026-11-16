@@ -141,42 +141,33 @@ The chart fails to render if `encryptionKeys` is not enabled.
 The operator deploys APIs to each gateway through the gateway-controller REST API, using
 HTTP basic auth. It takes the credential from the same Helm values the gateway was installed
 with: `gateway_values.yaml` (the operator's base values), overlaid with the gateway's own values
-ConfigMap (`APIGateway.spec.configRef`, or the Gateway API values ConfigMap). It uses the first
-user in `gateway.config.controller.auth.basic.users` whose password it can obtain:
+ConfigMap (`APIGateway.spec.configRef`, or the Gateway API values ConfigMap).
+
+**Default: a generated credential.** The base values list no users, so the gateway chart
+generates an `admin` user: a random password in the Secret `<fullname>-controller-admin` in the
+gateway's namespace (keys `password` and `password-hash`), kept across upgrades. The controller
+config holds only the bcrypt hash; the operator finds the Secret by the release's labels
+(`app.kubernetes.io/instance=<release>`, `app.kubernetes.io/component=controller-admin`) and
+sends `password`. `gateway.config.controller.auth.basic.existingSecret` names a Secret you
+provide instead. This needs a gateway chart version that generates the credential
+(`gateway.helm.chartVersion`); with an older chart, set explicit users.
+
+```bash
+kubectl get secret <release>-gateway-controller-admin -n <gateway-namespace> \
+  -o jsonpath='{.data.password}' | base64 -d
+```
+
+**Explicit users** (`gateway.config.controller.auth.basic.users`) replace the generated user. The
+operator uses the first user whose password it can obtain:
 
 - a user with `passwordSecretRef`, whose plaintext password is read from that Secret in the
   **gateway's own namespace** (default key `password`), while the controller config holds only
   the hash (`password_hashed: true`); or
 - a user with a plaintext `password`.
 
-There is no built-in fallback credential. If basic auth is disabled, or no user has a password
-the operator can obtain (for example only a hashed password with no `passwordSecretRef`), API
-deployments to that gateway fail with an error that names the reason.
-
-To give a gateway its own admin credential:
-
-```bash
-PASSWORD="$(openssl rand -base64 32)"
-kubectl create secret generic gateway-admin-credential \
-  --from-literal=password="$PASSWORD" -n <gateway-namespace>
-htpasswd -nbBC 12 "" "$PASSWORD" | cut -d: -f2   # paste the hash below
-```
-
-```yaml
-gateway:
-  config:
-    controller:
-      auth:
-        basic:
-          enabled: true
-          users:
-            - username: gateway-admin
-              password: "$2y$12$..."
-              password_hashed: true
-              roles: ["admin"]
-              passwordSecretRef:
-                name: gateway-admin-credential
-```
+There is no built-in fallback credential. If basic auth is disabled, the generated Secret does
+not exist, or no listed user has a password the operator can obtain, API deployments to that
+gateway fail with an error that names the reason.
 
 ### Logging Configuration
 

@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -65,9 +66,23 @@ type AuthSettings struct {
 
 // BasicAuthConfig describes basic authentication configuration
 type BasicAuthConfig struct {
-	Enabled bool       `yaml:"enabled"`
+	// Enabled is nil when the values do not set it; the gateway chart's default is true.
+	Enabled *bool      `yaml:"enabled"`
 	Users   []AuthUser `yaml:"users"`
+	// Generate makes the gateway chart create the "admin" user with a random password
+	// when Users is empty and ExistingSecret is not set. nil means the chart default, true.
+	Generate *bool `yaml:"generate"`
+	// ExistingSecret names a Secret in the gateway's namespace, with keys "password" and
+	// "password-hash", that holds the "admin" user's credential when Users is empty.
+	ExistingSecret string `yaml:"existingSecret"`
 }
+
+// IsEnabled reports whether basic auth is on, applying the gateway chart's default.
+func (b BasicAuthConfig) IsEnabled() bool { return b.Enabled == nil || *b.Enabled }
+
+// GenerateEnabled reports whether the gateway chart generates the admin credential,
+// applying its default.
+func (b BasicAuthConfig) GenerateEnabled() bool { return b.Generate == nil || *b.Generate }
 
 // AuthUser describes a locally configured user
 type AuthUser struct {
@@ -91,6 +106,16 @@ type SecretKeyRef struct {
 
 // DefaultPasswordSecretKey is the Secret key read when passwordSecretRef.key is empty.
 const DefaultPasswordSecretKey = "password"
+
+// The admin user the gateway chart configures when no users are listed, and the
+// labels of the Secret it generates for it (<fullname>-controller-admin).
+const (
+	AdminUsername             = "admin"
+	AdminSecretPassword       = "password"
+	adminSecretInstanceLabel  = "app.kubernetes.io/instance"
+	adminSecretComponentLabel = "app.kubernetes.io/component"
+	adminSecretComponent      = "controller-admin"
+)
 
 // ErrNoControllerCredentials reports that the gateway's values configure no
 // gateway-controller user whose password the operator can send.
@@ -144,20 +169,29 @@ func ResolveControllerCredentials(ctx context.Context, k8sClient client.Reader, 
 	if err != nil {
 		return "", "", err
 	}
-	return ResolveBasicAuthCredentials(ctx, k8sClient, info.Namespace, settings)
+	return ResolveBasicAuthCredentials(ctx, k8sClient, info.Namespace, helm.GetReleaseName(info.Name), settings)
 }
 
-// ResolveBasicAuthCredentials picks the first basic auth user whose password the
-// operator can send: one with a passwordSecretRef (read from that Secret in
+// ResolveBasicAuthCredentials returns the credential the operator sends to a gateway
+// installed as Helm release releaseName in namespace.
+//
+// With no users listed (the gateway chart's default), it is the "admin" user's
+// password from basic.existingSecret, or from the Secret the chart generated for the
+// release (found by its labels). Otherwise it is the first listed user whose password
+// the operator can send: one with a passwordSecretRef (read from that Secret in
 // namespace), or one with a plaintext password. Users with only a hashed password, or
 // with a config interpolation token as their password, are skipped, because the
-// operator cannot recover the plaintext from them.
-func ResolveBasicAuthCredentials(ctx context.Context, k8sClient client.Reader, namespace string, settings *AuthSettings) (username, password string, err error) {
-	if settings == nil || !settings.Basic.Enabled {
+// operator cannot recover the plaintext from them. nil settings mean the chart defaults.
+func ResolveBasicAuthCredentials(ctx context.Context, k8sClient client.Reader, namespace, releaseName string, settings *AuthSettings) (username, password string, err error) {
+	if settings == nil {
+		settings = &AuthSettings{}
+	}
+	basic := settings.Basic
+	if !basic.IsEnabled() {
 		return "", "", fmt.Errorf("%w: gateway.config.controller.auth.basic is not enabled", ErrNoControllerCredentials)
 	}
-	if len(settings.Basic.Users) == 0 {
-		return "", "", fmt.Errorf("%w: gateway.config.controller.auth.basic.users is empty", ErrNoControllerCredentials)
+	if len(basic.Users) == 0 {
+		return resolveAdminSecret(ctx, k8sClient, namespace, releaseName, basic)
 	}
 	var skipped []string
 	for _, user := range settings.Basic.Users {
@@ -189,6 +223,37 @@ func ResolveBasicAuthCredentials(ctx context.Context, k8sClient client.Reader, n
 		return "", "", fmt.Errorf("%w: no basic auth user has a username", ErrNoControllerCredentials)
 	}
 	return "", "", fmt.Errorf("%w: %s", ErrNoControllerCredentials, strings.Join(skipped, "; "))
+}
+
+// resolveAdminSecret reads the password of the chart-configured "admin" user from
+// basic.existingSecret or from the generated Secret of the release.
+func resolveAdminSecret(ctx context.Context, k8sClient client.Reader, namespace, releaseName string, basic BasicAuthConfig) (string, string, error) {
+	if basic.ExistingSecret == "" && !basic.GenerateEnabled() {
+		return "", "", fmt.Errorf("%w: gateway.config.controller.auth.basic has no users, no existingSecret and generate is false", ErrNoControllerCredentials)
+	}
+	if k8sClient == nil {
+		return "", "", fmt.Errorf("read gateway-controller admin password: no Kubernetes client")
+	}
+	name := basic.ExistingSecret
+	if name == "" {
+		secrets := &corev1.SecretList{}
+		selector := client.MatchingLabels{adminSecretInstanceLabel: releaseName, adminSecretComponentLabel: adminSecretComponent}
+		if err := k8sClient.List(ctx, secrets, client.InNamespace(namespace), selector); err != nil {
+			return "", "", fmt.Errorf("list gateway-controller admin Secrets in %s: %w", namespace, err)
+		}
+		if len(secrets.Items) == 0 {
+			return "", "", fmt.Errorf("%w: no Secret labelled %s=%s,%s=%s in namespace %s yet; the gateway may not be installed yet, "+
+				"or its chart version does not generate the controller admin credential (then list gateway.config.controller.auth.basic.users)",
+				ErrNoControllerCredentials, adminSecretInstanceLabel, releaseName, adminSecretComponentLabel, adminSecretComponent, namespace)
+		}
+		sort.Slice(secrets.Items, func(i, j int) bool { return secrets.Items[i].Name < secrets.Items[j].Name })
+		name = secrets.Items[0].Name
+	}
+	password, err := readSecretKey(ctx, k8sClient, namespace, &SecretKeyRef{Name: name, Key: AdminSecretPassword})
+	if err != nil {
+		return "", "", fmt.Errorf("read gateway-controller admin password: %w", err)
+	}
+	return AdminUsername, password, nil
 }
 
 // effectiveAuthSettings merges the operator's base values file with the gateway's
@@ -291,7 +356,7 @@ func GetBasicAuthCredentials(authConfig *AuthSettings) (username, password strin
 	}
 
 	// Check if basic auth is enabled
-	if !authConfig.Basic.Enabled {
+	if !authConfig.Basic.IsEnabled() {
 		return "", "", false
 	}
 

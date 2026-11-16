@@ -267,3 +267,20 @@ Args: the root context.
 {{- end -}}
 {{- toYaml (dict "mounts" $mounts) -}}
 {{- end -}}
+
+{{/*
+Name of the Secret holding the controller REST API admin credential (keys "password" and
+"password-hash"), or "" when basic auth is off or explicit users are configured.
+gateway.config.controller.auth.basic.existingSecret names a Secret you provide; otherwise, with
+generate (default true), the chart renders <fullname>-controller-admin.
+*/}}
+{{- define "gateway-operator.controllerAdminSecretName" -}}
+{{- $basic := dig "auth" "basic" (dict) (default (dict) .Values.gateway.config.controller) -}}
+{{- if and (dig "enabled" true $basic) (not $basic.users) -}}
+{{- if $basic.existingSecret -}}
+{{- $basic.existingSecret -}}
+{{- else if (dig "generate" true $basic) -}}
+{{- printf "%s-controller-admin" (include "gateway-operator.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}

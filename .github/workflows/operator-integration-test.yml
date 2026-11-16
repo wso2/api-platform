@@ -1470,13 +1470,16 @@ jobs:
           fi
 
           echo "Pre-check: waiting until management API can resolve rest-api handle hello-sub-api..."
+          # The gateway chart generates the controller admin password; read it from its Secret.
+          ADMIN_PASSWORD=$(kubectl get secret -l app.kubernetes.io/instance=test-gateway-gw,app.kubernetes.io/component=controller-admin \
+            -o jsonpath='{.items[0].data.password}' | base64 -d)
           kubectl port-forward svc/test-gateway-gw-controller 9090:9090 >/tmp/subscription-precheck-port-forward.log 2>&1 &
           PF_MGMT_PID=$!
           trap 'kill "${PF_MGMT_PID}" >/dev/null 2>&1 || true' EXIT
           sleep 5
           API_READY=""
           for i in $(seq 1 60); do
-            API_STATUS=$(curl -s -o /tmp/subscription-precheck-body.txt -w "%{http_code}" -u admin:admin \
+            API_STATUS=$(curl -s -o /tmp/subscription-precheck-body.txt -w "%{http_code}" -u "admin:${ADMIN_PASSWORD}" \
               "http://localhost:9090/api/management/v1/rest-apis/hello-sub-api" || true)
             if [ "${API_STATUS}" = "200" ]; then
               API_READY="yes"
