@@ -28,10 +28,22 @@ RUN chmod +x /app/policy-engine
 RUN rm -rf /app/python-executor
 COPY python-executor/ /app/python-executor/
 
-# Install python dependencies for custom policies
+# Install python dependencies for custom policies.
+# The executor's base dependencies (requirements.txt, hash-pinned) are already in the
+# base image. Indexed policy packages pinned with a checksum are installed in
+# hash-checking mode first; git policy packages are pinned to a commit SHA. Existing
+# packages in /app/python-libs are not replaced (no --upgrade), and base-constraints.txt
+# keeps policy dependencies on the base image's locked versions.
 RUN apt-get update && apt-get install -y --no-install-recommends git python3-pip && \
     pip3 install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip3 install --no-cache-dir --target /app/python-libs -r /app/python-executor/requirements.txt && \
+    if [ -s /app/python-executor/policy-requirements-hashed.txt ]; then \
+        pip3 install --no-cache-dir --target /app/python-libs --require-hashes --no-deps \
+            -r /app/python-executor/policy-requirements-hashed.txt; \
+    fi && \
+    if [ -s /app/python-executor/policy-requirements.txt ]; then \
+        pip3 install --no-cache-dir --target /app/python-libs \
+            -c /app/python-executor/base-constraints.txt -r /app/python-executor/policy-requirements.txt; \
+    fi && \
     apt-get purge -y git python3-pip && \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*

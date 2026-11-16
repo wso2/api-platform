@@ -235,6 +235,12 @@ func main() {
 		errors.FatalError(err)
 	}
 
+	// Confirm the compiled module graph uses exactly the pinned policy versions
+	// and hashes from the build file.
+	if err := policyengine.VerifyPinnedGoModules(*policyEngineSrc, policies); err != nil {
+		errors.FatalError(errors.NewCompilationError("pinned policy module verification failed", err))
+	}
+
 	// Phase 5: Dockerfile Generation
 	slog.Info("Starting Phase 5: Dockerfile Generation", "phase", "dockerfile-generation")
 

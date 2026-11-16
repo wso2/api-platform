@@ -50,7 +50,12 @@ func CompileBinary(srcDir string, options *types.CompilationOptions) error {
 		return errors.NewCompilationError("go mod tidy failed", err)
 	}
 
-	// Step 3: Compile binary
+	// Step 3: verify every downloaded module against go.sum
+	if err := runGoModVerify(srcDir); err != nil {
+		return errors.NewCompilationError("go mod verify failed", err)
+	}
+
+	// Step 4: Compile binary
 	if err := runGoBuild(srcDir, options); err != nil {
 		return errors.NewCompilationError("go build failed", err)
 	}
@@ -105,6 +110,26 @@ func runGoModTidy(srcDir string) error {
 	return nil
 }
 
+// runGoModVerify checks that the modules in the module cache still match the
+// hashes recorded in go.sum, so a cache modified after download is not built.
+func runGoModVerify(srcDir string) error {
+	slog.Info("Running go mod verify",
+		"step", "mod-verify",
+		"phase", "compilation")
+
+	cmd := exec.Command("go", "mod", "verify")
+	cmd.Dir = srcDir
+	cmd.Env = goenv.WithToolchain(cmd.Environ())
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("go mod verify failed: %w", err)
+	}
+
+	return nil
+}
+
 // runGoBuild compiles the Go binary
 func runGoBuild(srcDir string, options *types.CompilationOptions) error {
 	slog.Info("Running go build (static binary)",
@@ -119,8 +144,10 @@ func runGoBuild(srcDir string, options *types.CompilationOptions) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// Build arguments
-	args := []string{"build"}
+	// Build arguments. -mod=readonly makes the build fail instead of silently
+	// adding or upgrading modules: go.mod and go.sum were finalised (and the
+	// pinned policy versions checked) before this step.
+	args := []string{"build", "-mod=readonly"}
 
 	// Add coverage instrumentation when requested. Atomic mode supports concurrent
 	// execution and produces counters that can be merged after the process exits.

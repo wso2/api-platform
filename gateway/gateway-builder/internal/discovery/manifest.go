@@ -137,6 +137,12 @@ func validateBuildFile(bf *types.BuildFile) error {
 			)
 		}
 
+		// Remote policies must name one immutable artifact (exact version plus
+		// checksum, or a git commit SHA) so that every build compiles the same code.
+		if err := validatePolicyPin(i, entry); err != nil {
+			return errors.NewDiscoveryError(err.Error(), nil)
+		}
+
 		// Check for duplicates based on name + source to avoid ambiguity
 		key := fmt.Sprintf("%s:%s|%s|%s", entry.Name, entry.FilePath, entry.Gomodule, entry.PipPackage)
 		if seen[key] {
@@ -177,6 +183,20 @@ func DiscoverPoliciesFromBuildFile(buildFilePath string, baseDir string) ([]*typ
 		slog.Debug("Using build file directory as baseDir",
 			"baseDir", baseDir,
 			"phase", "discovery")
+	}
+
+	var remoteModulePaths []string
+	for _, entry := range bf.Policies {
+		if entry.Gomodule != "" {
+			path, _, err := ParsePinnedGoModule(entry.Gomodule)
+			if err != nil {
+				return nil, errors.NewDiscoveryError(err.Error(), err)
+			}
+			remoteModulePaths = append(remoteModulePaths, path)
+		}
+	}
+	if err := checkGoChecksumEnv(remoteModulePaths); err != nil {
+		return nil, errors.NewDiscoveryError("refusing to fetch remote policy modules", err)
 	}
 
 	var discovered []*types.DiscoveredPolicy
@@ -276,7 +296,7 @@ func DetectRuntime(policyDir string) (string, error) {
 // build-time validation, and records the pip spec so the python-deps Docker
 // stage can do the real install on the correct platform.
 func discoverPipPolicy(entry types.BuildEntry) (*types.DiscoveredPolicy, error) {
-	pkgInfo, err := FetchPipPackage(entry.PipPackage)
+	pkgInfo, err := FetchPinnedPipPackage(entry.PipPackage, entry.Checksum)
 	if err != nil {
 		return nil, errors.NewDiscoveryError(
 			fmt.Sprintf("failed to fetch pip package for %s: %v", entry.Name, err),
@@ -301,6 +321,7 @@ func discoverPipPolicy(entry types.BuildEntry) (*types.DiscoveredPolicy, error) 
 	discovered.OriginalPipSpec = entry.PipPackage
 	discovered.PipSpec = pkgInfo.PipSpec
 	discovered.PipIndexURL = pkgInfo.IndexURL
+	discovered.PipChecksum = pkgInfo.Checksum
 	discovered.PythonTopLevelModule = pkgInfo.TopLevelModule
 
 	return discovered, nil
@@ -471,6 +492,7 @@ func discoverGoPolicy(entry types.BuildEntry, baseDir string) (*types.Discovered
 	var source string
 	var goModulePath string
 	var goModuleVersion string
+	var goModuleSum string
 	var isFilePathEntry bool
 
 	if entry.FilePath != "" {
@@ -501,6 +523,13 @@ func discoverGoPolicy(entry types.BuildEntry, baseDir string) (*types.Discovered
 				err,
 			)
 		}
+		if err := verifyResolvedModule(entry, modInfo); err != nil {
+			return nil, errors.NewDiscoveryError(
+				fmt.Sprintf("failed to verify gomodule for %s: %v", entry.Name, err),
+				err,
+			)
+		}
+		goModuleSum = modInfo.Sum
 		policyPath = modInfo.Dir
 		goModulePath = modInfo.Path
 		goModuleVersion = modInfo.Version
@@ -596,6 +625,7 @@ func discoverGoPolicy(entry types.BuildEntry, baseDir string) (*types.Discovered
 		Definition:       definition,
 		GoModulePath:     goModulePath,
 		GoModuleVersion:  goModuleVersion,
+		GoModuleSum:      goModuleSum,
 		IsFilePathEntry:  isFilePathEntry,
 		Runtime:          "go", // Default runtime for Go policies
 	}
@@ -611,34 +641,51 @@ type moduleInfo struct {
 	Path    string // e.g., "github.com/wso2/gateway-controllers/policies/add-headers"
 	Version string // e.g., "v0.1.0"
 	Dir     string // Local directory path in module cache
+	Sum     string // go.sum hash of the module zip, e.g., "h1:..."
 }
 
-// resolveModuleInfo resolves a Go module and returns full module information
+// runGoModDownload is a seam over the 'go mod download -json' invocation so
+// tests can supply the command output without network access.
+var runGoModDownload = func(ctx context.Context, gomodule string) (stdout, stderr []byte, err error) {
+	cmd := exec.CommandContext(ctx, "go", "mod", "download", "-json", gomodule)
+	cmd.Env = goenv.WithToolchain(cmd.Environ())
+
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+
+	out, err := cmd.Output()
+	return out, errBuf.Bytes(), err
+}
+
+// resolveModuleInfo downloads a Go module and returns full module information.
+// 'go mod download' verifies the module against the checksum database (unless
+// the environment disables it); the returned Sum is additionally compared with
+// the checksum pinned in the build file by verifyResolvedModule.
 func resolveModuleInfo(gomodule string) (*moduleInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "go", "mod", "download", "-json", gomodule)
-	cmd.Env = goenv.WithToolchain(cmd.Environ())
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	out, err := cmd.Output()
+	out, stderr, err := runGoModDownload(ctx, gomodule)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return nil, fmt.Errorf("timed out while running 'go mod download -json %s'", gomodule)
 		}
-		return nil, fmt.Errorf("failed to run 'go mod download -json %s': %w; stderr: %s", gomodule, err, stderr.String())
+		return nil, fmt.Errorf("failed to run 'go mod download -json %s': %w; stderr: %s", gomodule, err, stderr)
 	}
 
 	var info struct {
 		Path    string `json:"Path"`
 		Version string `json:"Version"`
 		Dir     string `json:"Dir"`
+		Sum     string `json:"Sum"`
+		Error   string `json:"Error"`
 	}
 	if err := json.Unmarshal(out, &info); err != nil {
 		return nil, fmt.Errorf("failed to parse 'go mod download' output: %w", err)
+	}
+
+	if info.Error != "" {
+		return nil, fmt.Errorf("'go mod download -json %s' reported an error: %s", gomodule, info.Error)
 	}
 
 	if info.Dir == "" {
@@ -649,7 +696,21 @@ func resolveModuleInfo(gomodule string) (*moduleInfo, error) {
 		Path:    info.Path,
 		Version: info.Version,
 		Dir:     info.Dir,
+		Sum:     info.Sum,
 	}, nil
+}
+
+// verifyResolvedModule checks that the downloaded module is the exact version
+// requested and that its hash matches the checksum pinned in the build file.
+func verifyResolvedModule(entry types.BuildEntry, info *moduleInfo) error {
+	path, version, err := ParsePinnedGoModule(entry.Gomodule)
+	if err != nil {
+		return err
+	}
+	if info.Path != path || info.Version != version {
+		return fmt.Errorf("requested %s@%s but 'go mod download' returned %s@%s", path, version, info.Path, info.Version)
+	}
+	return VerifyGoModuleSum(entry.Gomodule, entry.Checksum, info.Sum)
 }
 
 // extractModulePathFromGoMod reads the module path from a go.mod file

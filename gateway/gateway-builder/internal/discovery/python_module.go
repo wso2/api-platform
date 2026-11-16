@@ -138,6 +138,7 @@ type PipPackageInfo struct {
 	PipSpec        string // Full pip specifier (e.g., "my-gateway-policy==1.0.0")
 	TopLevelModule string // Python module name from top_level.txt (e.g., "prompt_compression_policy")
 	Dir            string // Temp directory with extracted policy source (for build-time validation)
+	Checksum       string // Verified wheel hash ("sha256:...") for indexed packages fetched with a checksum
 }
 
 // PipPackageRef holds parsed indexed pip package reference information.
@@ -181,7 +182,19 @@ func (t vcsVersionType) String() string {
 // FetchPipPackage downloads a Python policy package and extracts metadata.
 // Supports indexed packages (PyPI/private), full VCS specs, and Go-style short
 // URLs, each with exact or ranged version specifiers.
+//
+// Build files are restricted to pinned references before this is called (see
+// validatePolicyPin); FetchPipPackage itself stays permissive so it can also
+// resolve ranges for tooling.
 func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
+	return FetchPinnedPipPackage(pipPackage, "")
+}
+
+// FetchPinnedPipPackage is FetchPipPackage with an optional checksum. When
+// checksum ("sha256:<hex>") is set, indexed packages are downloaded with
+// 'pip download --require-hashes' and the build fails if the wheel served by
+// the index does not match.
+func FetchPinnedPipPackage(pipPackage string, checksum string) (*PipPackageInfo, error) {
 	if isDirectPipSpec(pipPackage) {
 		return fetchVCSPipPackage(pipPackage)
 	}
@@ -194,7 +207,7 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	}
 
 	if strings.Contains(pipPackage, "==") || strings.Contains(pipPackage, "~=") {
-		return fetchIndexedPipPackage(pipPackage)
+		return fetchIndexedPipPackage(pipPackage, checksum)
 	}
 
 	if strings.Contains(pipPackage, "@") {
@@ -214,10 +227,18 @@ func FetchPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	return nil, fmt.Errorf("unrecognized pipPackage format: %q", pipPackage)
 }
 
-func fetchIndexedPipPackage(pipPackage string) (*PipPackageInfo, error) {
+func fetchIndexedPipPackage(pipPackage string, checksum string) (*PipPackageInfo, error) {
 	ref, err := ParsePipPackageRef(pipPackage)
 	if err != nil {
 		return nil, err
+	}
+	if checksum != "" {
+		if ref.IsVersionRange {
+			return nil, fmt.Errorf("a checksum can only be verified for an exact '==' version, got %q", SanitizePipSpec(pipPackage))
+		}
+		if err := ValidatePipChecksum(checksum); err != nil {
+			return nil, err
+		}
 	}
 
 	var downloadSpec string
@@ -241,6 +262,14 @@ func fetchIndexedPipPackage(pipPackage string) (*PipPackageInfo, error) {
 	defer os.RemoveAll(downloadDir)
 
 	args := []string{"download", "--no-deps", downloadSpec, "-d", downloadDir}
+	if checksum != "" {
+		// Hash-checking mode: pip refuses any file whose sha256 differs.
+		reqFile := filepath.Join(downloadDir, "pinned-requirement.txt")
+		if err := os.WriteFile(reqFile, []byte(HashedPipRequirement(downloadSpec, checksum)+"\n"), 0600); err != nil {
+			return nil, fmt.Errorf("failed to write pinned requirement file: %w", err)
+		}
+		args = []string{"download", "--no-deps", "--require-hashes", "-r", reqFile, "-d", downloadDir}
+	}
 	if ref.IndexURL != "" {
 		args = append(args, "--index-url", ref.IndexURL)
 	}
@@ -290,7 +319,14 @@ func fetchIndexedPipPackage(pipPackage string) (*PipPackageInfo, error) {
 		PipSpec:        exactPipSpec,
 		TopLevelModule: topLevelModule,
 		Dir:            extractDir,
+		Checksum:       checksum,
 	}, nil
+}
+
+// HashedPipRequirement renders a requirement line in pip's hash-checking form,
+// e.g. "my-policy==1.0.0 --hash=sha256:<hex>".
+func HashedPipRequirement(spec string, checksum string) string {
+	return fmt.Sprintf("%s --hash=%s", spec, checksum)
 }
 
 func buildExactIndexedPipSpec(ref *PipPackageRef, resolvedVersion string) string {
@@ -434,6 +470,10 @@ func expandShortURL(spec string) (string, error) {
 
 	repoURL := fmt.Sprintf("https://%s/%s/%s.git", host, org, repo)
 	gitRef := subdirectory + "/" + version
+	if IsGitCommitSHA(version) {
+		// A commit SHA is repository-wide, not a per-policy tag.
+		gitRef = version
+	}
 
 	return fmt.Sprintf("git+%s@%s#subdirectory=%s", repoURL, gitRef, subdirectory), nil
 }
