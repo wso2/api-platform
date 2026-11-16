@@ -27,7 +27,9 @@ import (
 	"slices"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattn/go-sqlite3"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage/observe"
 )
 
 //go:embed gateway-controller-db.sql
@@ -39,15 +41,13 @@ type SQLiteStorage struct {
 	logger *slog.Logger
 }
 
-// newSQLiteStorage creates a new SQLite storage instance.
-func newSQLiteStorage(dbPath string, logger *slog.Logger) (*SQLiteStorage, error) {
+// newSQLiteStorage creates a new SQLite storage instance. Database operation outcomes are
+// recorded in window.
+func newSQLiteStorage(dbPath string, window *observe.Window, logger *slog.Logger) (*SQLiteStorage, error) {
 	// Build connection string with SQLite pragmas for optimal performance
 	dsn := fmt.Sprintf("file:%s?_journal_mode=WAL&_busy_timeout=5000&_synchronous=NORMAL&_cache_size=2000&_foreign_keys=ON", dbPath)
 
-	db, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open database: %w", err)
-	}
+	db := sql.OpenDB(observe.Wrap(observe.DSNConnector(&sqlite3.SQLiteDriver{}, dsn), window))
 
 	// CRITICAL: Prevents "database is locked" errors with concurrent access
 	db.SetMaxOpenConns(1)
