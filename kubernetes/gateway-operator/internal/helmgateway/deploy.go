@@ -62,6 +62,12 @@ type legacyCleanupInput struct {
 	FromGatewayAPI bool
 }
 
+// Helm keeps release state in Secrets (sh.helm.release.v1.<release>.v<N>) in the
+// release namespace, and its Secret storage driver uses get, list, create, update
+// and delete - never patch. This is the only reason the operator writes Secrets;
+// the gateway chart itself renders none.
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;delete
+
 // InstallOrUpgrade deploys or upgrades the platform-gateway Helm release.
 func InstallOrUpgrade(ctx context.Context, in DeployInput) error {
 	helmClient, err := helm.NewClientWithOptions(in.Config.Gateway.PlainHTTP)
