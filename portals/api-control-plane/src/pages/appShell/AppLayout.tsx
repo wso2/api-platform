@@ -197,11 +197,13 @@ export default function AppLayout() {
             directly), so the shell adds none and a page owns its width and
             padding. The fallbacks stand in for a page, so they bring one of
             their own. */}
-            {/* No bottom padding: the footer is the last thing in the page, and
-              Oxygen's `plain` footer puts its divider one sidebar-footer row up
-              from its own bottom edge, so it only lines up with the sidebar's
-              divider when the footer sits flush with the bottom of the shell. */}
-            <Box sx={{ flex: 1, minWidth: 0, width: '100%', pt: 1, px: 1, pb: 0 }}>
+            {/* No bottom or side padding: the footer is the last thing in the page,
+              and Oxygen's `plain` footer puts its divider one sidebar-footer row
+              up from its own bottom edge and insets it by its own padding, so it
+              only lines up with the sidebar's divider (and with Oxygen's
+              `PageContent` footer story) when it spans the shell flush with its
+              bottom. Pages keep their own padding through `PageContent`. */}
+            <Box sx={{ flex: 1, minWidth: 0, width: '100%', pt: 1, px: 0, pb: 0 }}>
               {/* Error boundary scoped to routed page only; resets on pathname change */}
               <ErrorBoundary
                 fallback={(error, reset) => <PageErrorFallback error={error} reset={reset} />}

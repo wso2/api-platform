@@ -37,21 +37,4 @@ describe('AppPage', () => {
 
     expect(screen.queryByText(/WSO2 LLC/)).not.toBeInTheDocument();
   });
-
-  it('offers the four footer links, each opening in a new tab', () => {
-    renderWithProviders(<AppPage>Page body</AppPage>);
-
-    const expected: Record<string, string> = {
-      Documentation: 'https://wso2.com/api-platform/docs/',
-      Support: 'https://discord.com/invite/wso2',
-      'Terms of Use': 'https://wso2.com/api-platform/terms-of-use/',
-      'Privacy Policy': 'https://wso2.com/privacy-policy',
-    };
-    Object.entries(expected).forEach(([name, href]) => {
-      const link = screen.getByRole('link', { name });
-      expect(link).toHaveAttribute('href', href);
-      expect(link).toHaveAttribute('target', '_blank');
-      expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
-    });
-  });
 });

@@ -49,7 +49,7 @@ import {
 } from '@/extensions';
 import type { NavigationLevel } from '@/navigation/navigationTypes';
 import { usePort } from '@/hostPort';
-import { ExtensionPageFrame } from '@/components/ExtensionPageFrame';
+import { AppPageContent } from '@/components/AppPageContent';
 import { Hideable, useSlot } from '@/slots';
 import { ProtectedRoute } from './ProtectedRoute';
 import { usePermissions } from '@/permissions/PermissionContext';
@@ -291,6 +291,19 @@ const scopedRoutes = (paths: string[], element: ReactNode) =>
   paths.map((path) => <Route key={path} path={path} element={element} />);
 
 /**
+ * An extension's page, with the console footer under it. The page is its own
+ * `PageContent`, in a package that cannot import this portal's components, so the
+ * host wraps it in the common page container, without padding of its own.
+ */
+function ExtensionPage({ children }: { children: ReactNode }) {
+  return (
+    <AppPageContent fullWidth noPadding>
+      {children}
+    </AppPageContent>
+  );
+}
+
+/**
  * Resolves the real `CloudHostPort` and hands it to the extension's `render`.
  *
  * The port is read from context here, inside the router, rather than passed in
@@ -299,7 +312,7 @@ const scopedRoutes = (paths: string[], element: ReactNode) =>
  */
 function ExtensionRoute({ render }: { render: RenderableExtension['render'] }) {
   const port = usePort();
-  return <ExtensionPageFrame>{render(port)}</ExtensionPageFrame>;
+  return <ExtensionPage>{render(port)}</ExtensionPage>;
 }
 
 /** Strips a trailing `/*` descendant marker off an extension `routePath`. */
@@ -370,7 +383,7 @@ function OverridablePage({
 }) {
   const port = usePort();
   const [override] = useSlot<ApiControlPlaneExtension>(slot).filter(hasRender);
-  if (override) return <ExtensionPageFrame>{override.render(port, artifactHandle)}</ExtensionPageFrame>;
+  if (override) return <ExtensionPage>{override.render(port, artifactHandle)}</ExtensionPage>;
   return <Hideable name={slot}>{children}</Hideable>;
 }
 
@@ -417,7 +430,7 @@ function GatewaysRoute() {
     // the list at a URL claiming to be a create or detail page.
     return (
       <Routes>
-        <Route index element={<ExtensionPageFrame>{override.render(port)}</ExtensionPageFrame>} />
+        <Route index element={<ExtensionPage>{override.render(port)}</ExtensionPage>} />
         <Route element={<Navigate replace to={indexPath} />} path="*" />
       </Routes>
     );

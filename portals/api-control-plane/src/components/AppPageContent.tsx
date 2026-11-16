@@ -16,7 +16,9 @@
  * under the License.
  */
 
-import { Box, Footer } from '@wso2/oxygen-ui';
+import { Box, Footer, PageContent } from '@wso2/oxygen-ui';
+import type { PageContentProps } from '@wso2/oxygen-ui';
+import { createContext, useContext } from 'react';
 import { FormattedMessage } from 'react-intl';
 
 import { runtimeConfig } from '../config/runtime';
@@ -26,15 +28,19 @@ import { APP_FOOTER_ID } from '../pages/appShell/appLayoutConstants';
 const NEW_TAB = { target: '_blank', rel: 'noopener noreferrer' } as const;
 
 /**
- * The console's footer, handed to `PageContent` through its `footer` prop (see
- * `AppPage`) so it sits at the bottom of a short page and follows the content of
- * a long one, instead of being pinned under the shell. The `plain` variant: no
- * bar behind it, just an inset divider, so it reads as part of the page.
+ * True below an `AppPageContent`, which has already put the footer under its
+ * content. A page container nested inside one (a built-in page an extension
+ * renders, say) must not add a second.
+ */
+const FooterProvidedContext = createContext(false);
+
+/**
+ * The console's footer, in Oxygen's `plain` variant (no bar, an inset divider).
  *
  * The id is an anchor for measuring the footer, so a page that fills the scroll
  * area (`useFillScrollArea`) can leave room for it.
  */
-export function AppFooter() {
+function PageFooter() {
   return (
     <Box id={APP_FOOTER_ID}>
       <Footer variant="plain">
@@ -73,5 +79,29 @@ export function AppFooter() {
         </Footer.Link>
       </Footer>
     </Box>
+  );
+}
+
+export type AppPageContentProps = PageContentProps;
+
+/**
+ * The console's one page container: Oxygen's `PageContent` with the console
+ * footer passed through its `footer` prop, so a short page leaves the footer at
+ * the bottom and a long one pushes it down after the content.
+ *
+ * Every page uses this, directly or through `AppPage`, so the footer is defined
+ * once. Pass `footer` to replace it (`footer={null}` for none). Wrapped around
+ * an extension's own page it gives that page the footer too (`noPadding`, as the
+ * page brings its own); only the outermost one renders a footer.
+ */
+export function AppPageContent({ children, footer, ...pageContentProps }: AppPageContentProps) {
+  const footerProvided = useContext(FooterProvidedContext);
+  const resolvedFooter = footer !== undefined ? footer : footerProvided ? null : <PageFooter />;
+  return (
+    <PageContent footer={resolvedFooter} {...pageContentProps}>
+      <FooterProvidedContext.Provider value={footerProvided || resolvedFooter !== null}>
+        {children}
+      </FooterProvidedContext.Provider>
+    </PageContent>
   );
 }
