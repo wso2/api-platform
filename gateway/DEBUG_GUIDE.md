@@ -79,7 +79,8 @@ By default `build.yaml` uses `gomodule:` entries — policies compile from the G
    ```yaml
    - name: api-key-auth
      version: v1.8.0
-     gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v0
+     gomodule: github.com/wso2/gateway-controllers/policies/api-key-auth@v1.8.0
+     checksum: h1:...
    ```
 
 2. **Add an entry to the `substitutePath` array** in the `"Policy Engine (Remote)"` config — construct the `to` path from the `gomodule` module path and the `version`:

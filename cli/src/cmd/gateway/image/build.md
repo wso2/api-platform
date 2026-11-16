@@ -39,7 +39,8 @@ policies:
   - name: api-key-auth
     filePath: api-key-auth-v0.1.0 # Local Policy
   - name: respond
-    gomodule: github.com/wso2/gateway-controllers/policies/respond@v0.1.0 # Hub Policy
+    gomodule: github.com/wso2/gateway-controllers/policies/respond@v1.1.0 # Hub Policy
+    checksum: h1:cgoKDMdixHqGygwuIPkbSsFGfjlANoUPynrUVd/ZSBA=
 ```
 
 ### With Custom Images (Optional)
@@ -69,6 +70,13 @@ Each image path can be specified independently. If not provided, the default ima
 ### Policy Types
 1. **Hub Policies**: No `filePath` specified → fetched from PolicyHub
 2. **Local Policies**: Has `filePath` → loaded from local filesystem
+
+### Pinning Hub Policies
+Remote policies must name one immutable release, or the build fails:
+- `gomodule`: an exact version (`@v1.1.0`, not `@v1` or `@latest`) and a `checksum:` with the
+  module's `h1:` hash (the `Sum` field of `go mod download -json <module>@<version>`).
+- `pipPackage` from git: a full 40-character commit SHA as the ref.
+- `pipPackage` from a package index: an exact `==` version and `checksum: sha256:<wheel hash>`.
 
 ## File Locations
 

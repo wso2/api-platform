@@ -42,7 +42,8 @@ policies:
   - name: api-key-auth
     filePath: api-key-auth-v0.1.0 # Local
   - name: respond
-    gomodule: github.com/wso2/gateway-controllers/policies/respond@v0.1.0 # Hub
+    gomodule: github.com/wso2/gateway-controllers/policies/respond@v1.1.0 # Hub
+    checksum: h1:cgoKDMdixHqGygwuIPkbSsFGfjlANoUPynrUVd/ZSBA=
 ```
 
 Policies defined with a `filePath` are treated as **local policies**:
@@ -50,6 +51,18 @@ Policies defined with a `filePath` are treated as **local policies**:
 - These policies are not managed through Go Modules.
 
 All other policies are treated as **PolicyHub policies**:
+
+- A `gomodule` entry must name an exact version (`@v1.1.0` or a pseudo-version, not `@v1`
+  or `@latest`) and carry a `checksum:` with the module's `h1:` hash. Get it with
+  `go mod download -json <module>@<version>` (the `Sum` field); it is the same value Go
+  records in `go.sum`. The build fails if the downloaded module does not match.
+- A `pipPackage` that points at a git repository must pin a full commit SHA, for example
+  `github.com/wso2/gateway-controllers/policies/prompt-compressor@<40-hex commit SHA>`.
+- A `pipPackage` from a package index must use an exact `==` version and carry
+  `checksum: sha256:<hex>` of the wheel.
+
+See "Policy pinning in `build.yaml`" in [gateway/README.md](../../gateway/README.md) for how
+to bump a pinned policy.
 
 
 Even an output directory is not explicitly specified, the built images are cached by default. On subsequent executions, the cache is cleared and replaced with newly built images. The cache location is displayed in the command output.

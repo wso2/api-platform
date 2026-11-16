@@ -97,6 +97,59 @@ For integration test details, see [tests/framework/README.md](../tests/framework
 make clean
 ```
 
+### Policy pinning in `build.yaml`
+
+`build.yaml` lists the policies compiled into the gateway image. To keep builds
+reproducible, every remote policy names one immutable release, and the gateway
+builder fails the build if what it downloads does not match:
+
+| Entry | Required form | What the builder verifies |
+|---|---|---|
+| `gomodule` | `<module>@vX.Y.Z` (or a pseudo-version) plus `checksum: h1:...` | The `h1:` hash equals the `Sum` reported by `go mod download -json`, and `go.mod`/`go.sum` of the compiled policy engine record that same version and hash. Major-only (`@v1`), minor-only (`@v1.4`) and queries (`@latest`) are rejected. Checksum verification must stay on (`GOSUMDB=off` is refused). |
+| `pipPackage` (git) | `github.com/<org>/<repo>/<subdir>@<40-hex commit SHA>` or `git+https://...@<commit SHA>#subdirectory=...` | pip checks out exactly that commit. Git object names are content hashes, so the commit pins the source tree; tags and branches are rejected because they can be moved. |
+| `pipPackage` (index) | `<package>==X.Y.Z[@<index-url>]` plus `checksum: sha256:...` | The wheel is downloaded with `pip --require-hashes` at build time and installed again in hash-checking mode in the image. `~=` ranges are rejected. |
+| `filePath` | unchanged | Local source in this repository. |
+
+The Python executor's own dependencies are locked separately in
+[`gateway-runtime/python-executor/requirements.txt`](gateway-runtime/python-executor/requirements.txt)
+(exact versions and sha256 hashes, generated from `requirements.in`) and installed with
+`pip install --require-hashes`.
+
+#### How to bump a policy
+
+Go policy (run outside any Go module, or with `GOFLAGS=-mod=mod`):
+
+```bash
+MOD=github.com/wso2/gateway-controllers/policies/basic-auth
+# Latest release of the major version (optional), then its hash:
+go list -m -json "$MOD@v1" | jq -r .Version
+go mod download -json "$MOD@v1.2.0" | jq -r .Sum
+```
+
+Set `gomodule: $MOD@v1.2.0` and `checksum:` to the printed `h1:` value. The value is the
+same one Go records in `go.sum`; you can cross-check it with
+`curl https://sum.golang.org/lookup/$MOD@v1.2.0`.
+
+Python policy from git: resolve the release tag to its commit (`^{}` gives the commit an
+annotated tag points to) and use that SHA:
+
+```bash
+git ls-remote https://github.com/wso2/gateway-controllers.git \
+  'refs/tags/policies/prompt-compressor/v0.9.0^{}'
+```
+
+and set `pipPackage: git+https://github.com/wso2/gateway-controllers.git@<sha>#subdirectory=policies/prompt-compressor`.
+Keep a `# policies/<name>/<version>` comment next to the entry so reviewers can see which
+release the SHA corresponds to.
+
+Python executor dependencies: edit `gateway-runtime/python-executor/requirements.in`, then
+regenerate the lock with the command in its header (`uv pip compile ... --generate-hashes`;
+`pip-compile --generate-hashes` from pip-tools produces an equivalent file when run with
+Python 3.10 on Linux).
+
+Review a bump like any other code change: the diff shows exactly which release and hash
+the next image will contain.
+
 ## Configuration
 
 ### Gateway-Controller & Policy-Engine
