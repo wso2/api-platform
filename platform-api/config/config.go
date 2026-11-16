@@ -842,11 +842,14 @@ func (j *JWT) LoadPrivateKey() (*rsa.PrivateKey, error) {
 
 // WebSocket holds WebSocket-specific configuration.
 type WebSocket struct {
-	MaxConnections     int  `koanf:"max_connections"`
-	ConnectionTimeout  int  `koanf:"connection_timeout"`
-	RateLimitPerMin    int  `koanf:"rate_limit_per_min"`
-	MetricsLogEnabled  bool `koanf:"metrics_log_enabled"`
-	MetricsLogInterval int  `koanf:"metrics_log_interval"`
+	MaxConnections int `koanf:"max_connections"`
+	// MaxConnectionsPerGateway caps the concurrent WebSocket connections one
+	// gateway may hold across all of its registration tokens. 0 means unlimited.
+	MaxConnectionsPerGateway int  `koanf:"max_connections_per_gateway"`
+	ConnectionTimeout        int  `koanf:"connection_timeout"`
+	RateLimitPerMin          int  `koanf:"rate_limit_per_min"`
+	MetricsLogEnabled        bool `koanf:"metrics_log_enabled"`
+	MetricsLogInterval       int  `koanf:"metrics_log_interval"`
 }
 
 // Database holds database-specific configuration.
@@ -1662,6 +1665,9 @@ func validateListenersConfig(l *ServerListeners) error {
 	}
 	if err := l.NetworkSecurity.AccessControl.GuardConfig().Validate(); err != nil {
 		return fmt.Errorf("server.network_security.access_control: %w", err)
+	}
+	if l.WebSocket.MaxConnectionsPerGateway < 0 {
+		return fmt.Errorf("server.websocket.max_connections_per_gateway must be 0 (unlimited) or positive (got %d)", l.WebSocket.MaxConnectionsPerGateway)
 	}
 	return nil
 }

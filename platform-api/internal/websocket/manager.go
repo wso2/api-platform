@@ -19,6 +19,7 @@ package websocket
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -40,7 +41,11 @@ type Manager struct {
 	// Supports multiple connections per gateway ID for clustering scenarios
 	connections sync.Map
 
-	// mu protects the connectionCount and maxConnections fields
+	// mu serialises every change to the registry: the read-modify-write of a
+	// gateway's connection slice in Register/Unregister, connectionCount and
+	// gatewayLimitLogged. Readers of a single gateway's slice (GetConnections)
+	// still go through the sync.Map without it, because a stored slice is never
+	// modified in place.
 	mu sync.RWMutex
 
 	// connectionCount tracks the total number of active connections across all gateways
@@ -48,6 +53,15 @@ type Manager struct {
 
 	// maxConnections enforces a limit on concurrent connections (default 1000)
 	maxConnections int
+
+	// maxConnectionsPerGateway caps the concurrent connections one gateway may
+	// hold. Zero or less means unlimited.
+	maxConnectionsPerGateway int
+
+	// gatewayLimitLogged records the gateways whose per-gateway limit has been
+	// logged since they last had a free slot, so a gateway retrying against a
+	// full limit logs one warning, not one per attempt.
+	gatewayLimitLogged map[string]struct{}
 
 	// heartbeatInterval specifies how often to send ping frames (default 20s)
 	heartbeatInterval time.Duration
@@ -87,11 +101,14 @@ type Manager struct {
 
 // ManagerConfig contains configuration parameters for the connection manager
 type ManagerConfig struct {
-	MaxConnections     int           // Maximum concurrent connections (default 1000)
-	HeartbeatInterval  time.Duration // Ping interval (default 20s)
-	HeartbeatTimeout   time.Duration // Pong timeout (default 30s)
-	MetricsLogEnabled  bool          // Enable periodic metrics logging (default true)
-	MetricsLogInterval time.Duration // Interval between metrics log entries (default 10s)
+	MaxConnections int // Maximum concurrent connections (default 1000)
+	// MaxConnectionsPerGateway caps the concurrent connections a single gateway
+	// may hold, across all of its tokens. Zero or less means unlimited (default).
+	MaxConnectionsPerGateway int
+	HeartbeatInterval        time.Duration // Ping interval (default 20s)
+	HeartbeatTimeout         time.Duration // Pong timeout (default 30s)
+	MetricsLogEnabled        bool          // Enable periodic metrics logging (default true)
+	MetricsLogInterval       time.Duration // Interval between metrics log entries (default 10s)
 }
 
 // DefaultManagerConfig returns sensible default configuration values
@@ -109,16 +126,18 @@ func DefaultManagerConfig() ManagerConfig {
 func NewManager(config ManagerConfig, slogger *slog.Logger) *Manager {
 	ctx, cancel := context.WithCancel(context.Background())
 	mgr := &Manager{
-		connections:        sync.Map{},
-		connectionCount:    0,
-		maxConnections:     config.MaxConnections,
-		heartbeatInterval:  config.HeartbeatInterval,
-		heartbeatTimeout:   config.HeartbeatTimeout,
-		slogger:            slogger,
-		shutdownCtx:        ctx,
-		shutdownFn:         cancel,
-		metricsLogEnabled:  config.MetricsLogEnabled,
-		metricsLogInterval: config.MetricsLogInterval,
+		connections:              sync.Map{},
+		connectionCount:          0,
+		maxConnections:           config.MaxConnections,
+		maxConnectionsPerGateway: config.MaxConnectionsPerGateway,
+		gatewayLimitLogged:       make(map[string]struct{}),
+		heartbeatInterval:        config.HeartbeatInterval,
+		heartbeatTimeout:         config.HeartbeatTimeout,
+		slogger:                  slogger,
+		shutdownCtx:              ctx,
+		shutdownFn:               cancel,
+		metricsLogEnabled:        config.MetricsLogEnabled,
+		metricsLogInterval:       config.MetricsLogInterval,
 	}
 	// Disable metrics logging if the interval is non-positive to prevent
 	// time.NewTicker from panicking.
@@ -142,8 +161,18 @@ func (m *Manager) SetConnectionHooks(onConnect, onDisconnect func(gatewayID stri
 	m.onDisconnect = onDisconnect
 }
 
+// ErrMaxConnectionsReached is returned by Register when the global connection
+// limit is reached.
+var ErrMaxConnectionsReached = errors.New("maximum connection limit reached")
+
+// ErrGatewayConnectionLimitReached is returned by Register when the gateway
+// already holds the configured maximum number of connections.
+var ErrGatewayConnectionLimitReached = errors.New("maximum connections for this gateway reached")
+
 // Register adds a new connection to the registry and starts heartbeat monitoring.
-// Returns an error if the maximum connection limit is reached.
+// Returns ErrMaxConnectionsReached if the global limit is reached, or
+// ErrGatewayConnectionLimitReached if the gateway already holds
+// maxConnectionsPerGateway connections.
 //
 // Parameters:
 //   - gatewayID: UUID of the authenticated gateway
@@ -155,28 +184,46 @@ func (m *Manager) SetConnectionHooks(onConnect, onDisconnect func(gatewayID stri
 //
 // Design decision: Support multiple connections per gateway ID by storing
 // connections in a slice. This enables gateway clustering where multiple
-// instances share the same gateway identity.
+// instances share the same gateway identity. Both limits are checked and the
+// slice is replaced under m.mu, so concurrent registrations for one gateway can
+// neither exceed the per-gateway limit nor drop each other's connections.
 func (m *Manager) Register(gatewayID string, transport Transport, authToken string,
 	orgID string) (*Connection, error) {
 
-	// Check global connection limit
-	m.mu.Lock()
-	if m.connectionCount >= m.maxConnections {
-		m.mu.Unlock()
-		return nil, fmt.Errorf("maximum connection limit reached (%d)", m.maxConnections)
-	}
-	m.connectionCount++
-	m.mu.Unlock()
-
-	// Create connection
 	connectionID := uuid.New().String()
 	conn := NewConnection(gatewayID, connectionID, transport, authToken, orgID)
 
-	// Add connection to registry
-	connsInterface, _ := m.connections.LoadOrStore(gatewayID, []*Connection{})
-	conns := connsInterface.([]*Connection)
-	conns = append(conns, conn)
-	m.connections.Store(gatewayID, conns)
+	m.mu.Lock()
+	if m.connectionCount >= m.maxConnections {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("%w (%d)", ErrMaxConnectionsReached, m.maxConnections)
+	}
+	var existing []*Connection
+	if connsInterface, ok := m.connections.Load(gatewayID); ok {
+		existing = connsInterface.([]*Connection)
+	}
+	if m.maxConnectionsPerGateway > 0 && len(existing) >= m.maxConnectionsPerGateway {
+		_, alreadyLogged := m.gatewayLimitLogged[gatewayID]
+		m.gatewayLimitLogged[gatewayID] = struct{}{}
+		m.mu.Unlock()
+		if alreadyLogged {
+			m.slogger.Debug("Gateway connection rejected: per-gateway connection limit reached",
+				"gatewayID", gatewayID, "orgID", orgID, "limit", m.maxConnectionsPerGateway)
+		} else {
+			m.slogger.Warn("Gateway reached its per-gateway connection limit; further connections are rejected until one closes",
+				"gatewayID", gatewayID, "orgID", orgID, "limit", m.maxConnectionsPerGateway,
+				"activeConnections", len(existing))
+		}
+		return nil, ErrGatewayConnectionLimitReached
+	}
+	// Build a new slice rather than appending in place: a slice handed out by
+	// GetConnections must never change underneath its reader.
+	updated := make([]*Connection, len(existing), len(existing)+1)
+	copy(updated, existing)
+	updated = append(updated, conn)
+	m.connections.Store(gatewayID, updated)
+	m.connectionCount++
+	m.mu.Unlock()
 
 	// Start heartbeat monitoring in background
 	m.wg.Go(func() { m.monitorHeartbeat(conn) })
@@ -184,7 +231,7 @@ func (m *Manager) Register(gatewayID string, transport Transport, authToken stri
 	m.IncrementSuccessfulConnections()
 
 	m.slogger.Info("Gateway connected", "gatewayID", gatewayID, "connectionID", connectionID,
-		"orgID", orgID, "totalConnections", m.GetConnectionCount())
+		"orgID", orgID, "gatewayConnections", len(updated), "totalConnections", m.GetConnectionCount())
 
 	if m.onConnect != nil {
 		m.onConnect(gatewayID)
@@ -200,13 +247,15 @@ func (m *Manager) Register(gatewayID string, transport Transport, authToken stri
 //   - gatewayID: UUID of the gateway
 //   - connectionID: Unique identifier of the connection to remove
 func (m *Manager) Unregister(gatewayID, connectionID string) {
+	m.mu.Lock()
 	connsInterface, ok := m.connections.Load(gatewayID)
 	if !ok {
+		m.mu.Unlock()
 		return // Gateway not found
 	}
 
 	conns := connsInterface.([]*Connection)
-	var updatedConns []*Connection
+	updatedConns := make([]*Connection, 0, len(conns))
 	var removed *Connection
 
 	// Filter out the connection to remove
@@ -219,6 +268,7 @@ func (m *Manager) Unregister(gatewayID, connectionID string) {
 	}
 
 	if removed == nil {
+		m.mu.Unlock()
 		return // Connection not found
 	}
 
@@ -228,6 +278,11 @@ func (m *Manager) Unregister(gatewayID, connectionID string) {
 	} else {
 		m.connections.Store(gatewayID, updatedConns)
 	}
+	m.connectionCount--
+	// A slot is free again, so the next time the gateway fills its limit is
+	// logged as a fresh warning.
+	delete(m.gatewayLimitLogged, gatewayID)
+	m.mu.Unlock()
 
 	// Close the connection gracefully
 	if err := removed.Close(1000, "normal closure"); err != nil {
@@ -237,11 +292,6 @@ func (m *Manager) Unregister(gatewayID, connectionID string) {
 	if m.onDisconnect != nil {
 		m.onDisconnect(gatewayID)
 	}
-
-	// Decrement connection count
-	m.mu.Lock()
-	m.connectionCount--
-	m.mu.Unlock()
 
 	m.IncrementDisconnections()
 
