@@ -37,9 +37,9 @@ import "strings"
 // credentials or raw key material.
 //
 // Both spellings are listed deliberately. The gateway's Kafka driver reads
-// snake_case keys (event-gateway brokerdriver/kafka/config.go), while the
-// Choreo console writes the dotted Kafka client property names. Until those
-// converge, blanking either spelling alone leaves the other exposed.
+// snake_case keys (event-gateway brokerdriver/kafka/config.go), while a client
+// configured in Kafka's own property names uses the dotted spellings. Until
+// those converge, blanking either alone leaves the other exposed.
 //
 // Usernames, mechanisms and file paths are not listed: they are configuration a
 // user needs to see to recognise the connection they configured.
@@ -52,8 +52,8 @@ var kafkaSensitiveKeys = []string{
 }
 
 // sensitiveKeysByType maps a broker type to its credential-bearing property keys.
-// Keys are matched case-insensitively against the broker type, which arrives as
-// "kafka" from the Platform API and "KAFKA" from Choreo.
+// Keys are matched case-insensitively against the broker type, which arrives
+// spelled either way depending on the writer.
 var sensitiveKeysByType = map[string][]string{
 	"kafka": kafkaSensitiveKeys,
 }

@@ -52,8 +52,8 @@ func TestBlankRedactsCredentialsAndKeepsEverythingElse(t *testing.T) {
 }
 
 func TestBlankCoversDottedKeysAndKeepsListShape(t *testing.T) {
-	// The Choreo console writes dotted Kafka client property names, each value a
-	// single-element list.
+	// Kafka's own property names are dotted, and a client writing them sends each
+	// value as a single-element list.
 	properties := map[string]interface{}{
 		"brokers":           []interface{}{"kafka:9092"},
 		"security.protocol": []interface{}{"SASL_PLAINTEXT"},
