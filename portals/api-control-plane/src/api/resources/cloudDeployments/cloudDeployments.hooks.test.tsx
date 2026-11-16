@@ -25,7 +25,7 @@ import { failure, recorder, resource, type Recorder } from '@/test/msw';
 import { renderApiHook, settle, TEST_ORG } from '@/test/renderApiHook';
 import { server } from '@/test/server';
 
-import { useCloudDeployments } from './useCloudDeployments';
+import { useCloudDeployments } from './cloudDeployments.hooks';
 
 const PATH = '/projects/retail/apis/pizza-shack/deployments';
 
@@ -47,7 +47,12 @@ const stages = {
     {
       environment: 'development',
       gateways: [
-        { gatewayId: 'gw-1', deploymentId: 'd-1', status: 'DEPLOYED', createdAt: '2026-11-08T10:00:00Z' },
+        {
+          gatewayId: 'gw-1',
+          deploymentId: 'd-1',
+          status: 'DEPLOYED',
+          createdAt: '2026-11-08T10:00:00Z',
+        },
         { gatewayId: 'gw-2', status: 'NOT_DEPLOYED' },
       ],
     },
@@ -81,7 +86,9 @@ describe('useCloudDeployments', () => {
   it('reads the project pipeline route for the kind, scoped to the organization', async () => {
     server.use(resource(PATH, stages, { record: requests }));
 
-    const { result } = renderApiHook(() => useCloudDeployments('GraphQLApi', 'retail', 'pizza-shack'));
+    const { result } = renderApiHook(() =>
+      useCloudDeployments('GraphQLApi', 'retail', 'pizza-shack'),
+    );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(requests.last()?.params.get('kind')).toBe('GraphQLApi');
@@ -95,7 +102,12 @@ describe('useCloudDeployments', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual([
-      { gatewayId: 'gw-1', deploymentId: 'd-1', status: 'DEPLOYED', createdAt: '2026-11-08T10:00:00Z' },
+      {
+        gatewayId: 'gw-1',
+        deploymentId: 'd-1',
+        status: 'DEPLOYED',
+        createdAt: '2026-11-08T10:00:00Z',
+      },
       // No deployment id or timestamp on the wire: the gateway handle and '' stand in.
       { gatewayId: 'gw-3', deploymentId: 'gw-3', status: 'DEPLOYING', createdAt: '' },
     ]);
