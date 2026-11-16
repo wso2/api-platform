@@ -183,18 +183,33 @@ The operator reconciles **cluster-scoped** `GatewayClass` resources whose **`spe
 6. Patch **`Gateway.status.conditions`**: `Accepted` and `Programmed` (Gateway API condition types).
 7. **Deletion:** `registry.Unregister`, `helmgateway.Uninstall`, remove finalizer.
 
+Besides the Gateway itself, a reconcile is triggered by changes to its Helm values ConfigMap, its attached HTTPRoutes (for `attachedRoutes`), its gateway-runtime Service, a TLS Secret in its namespace, and a **ReferenceGrant** in a namespace its listeners take TLS Secrets from, so a listener's `ResolvedRefs` follows grants being created or deleted.
+
 ### `HTTPRoute`
 
-1. Resolve **parent** `Gateway` from `spec.parentRefs` (`Kind` `Gateway`, `Group` `gateway.networking.k8s.io` or unset/`Kind` default handling as implemented).
-2. Load parent Gateway; confirm managed **gatewayClassName**.
-3. Finalizer: `gateway.api-platform.wso2.com/httproute-finalizer`.
-4. **Registry lookup** by parent `namespace/name` (not label-based `RestApi` matching).
-5. Build `APIConfigData` (policies from **`APIPolicy`** CRs and rule **`ExtensionRef`s** — see `httproute_mapper.go` / `httproute_policies.go`).
-6. **`resolveAPIConfigPolicyParamsValueFrom`** — replace `params.valueFrom.secretKeyRef` / `configMapKeyRef` blobs with string values from **Secrets** / **ConfigMaps** (`httproute_policy_params_resolve.go`).
-7. Serialize → YAML via `gatewayclient.BuildRestAPIYAML` (`apiVersion` `gateway.api-platform.wso2.com/v1alpha1`, `Kind` `RestApi`).
-8. Auth: `GetAuthSettingsForRegistryGateway` (Helm values ConfigMap on `GatewayInfo` if set, else `APIGateway` CR with same name if present).
-9. `RestAPIExists` + `DeployRestAPI`; update **`status.parents`** entry with `ControllerName` `gateway.api-platform.wso2.com/gateway-operator`.
-10. **Deletion:** `DeleteRestAPI` for the handle, then remove finalizer.
+A route is deployed once to **every parent Gateway** the operator manages. A route with one parent Gateway is the same flow with a single Gateway.
+
+1. Group `spec.parentRefs` by Gateway (`Kind` `Gateway`, `Group` `gateway.networking.k8s.io` or unset). Refs to one Gateway with different `sectionName`s or ports share one deployment.
+2. Load each Gateway once. A Gateway whose **gatewayClassName** is not managed belongs to another controller: nothing is deployed there and no `status.parents` entry is written for it. A Gateway that doesn't exist yet is retried every 15s without blocking the others.
+3. Finalizer `gateway.api-platform.wso2.com/httproute-finalizer`, added when at least one parent Gateway is ours.
+4. Resolve `backendRefs` once (they are Services, so the result is the same for every Gateway).
+5. For each of our Gateways, **up to 4 at a time** (`httpRouteGatewayConcurrency`), so one slow gateway-controller doesn't delay the rest:
+   1. Check each parentRef against that Gateway's listeners (`allowedRoutes`, hostnames, `sectionName`/`port`) and set `Accepted` per ref. If no listener accepts the route, the Gateway is not a target.
+   2. **Registry lookup** by `namespace/name` (not label-based `RestApi` matching); wait until the Gateway's runtime registers.
+   3. Build `APIConfigData` for this Gateway (only the vhosts differ between Gateways; policies from **`APIPolicy`** CRs and rule **`ExtensionRef`s**, `valueFrom` resolved from **Secrets** / **ConfigMaps**), serialize with `gatewayclient.BuildRestAPIYAML`.
+   4. Auth: `GetAuthSettingsForRegistryGateway` (Helm values ConfigMap on `GatewayInfo` if set, else `APIGateway` CR with same name if present).
+   5. `RestAPIExists` + `DeployRestAPI`, skipped when this Gateway's recorded hash and handle match and the API still exists. When the record holds a different handle (the `api-handle` annotation changed on a multi-Gateway route), the old handle is deleted from this Gateway after the new one is live.
+   6. A failure only affects this Gateway's parentRefs: `Accepted=False` with reason `Retrying` (requeued) or `DeploymentFailed`.
+6. **Stale deployments:** Gateways the route was deployed to but no longer targets (parentRef removed, class changed, no listener accepts it) have the API deleted, but only once no wanted Gateway is still pending. A route moving to a Gateway that isn't ready keeps serving where it was.
+7. Write the deployment record (below) in one patch, and `status.parents` in one patch guarded by `resourceVersion` and retried on conflict, so other controllers' entries are never lost. Our entries for parents the route no longer lists, or for Gateways of another class, are removed.
+8. **Deletion:** delete the API from every Gateway in the record, every parent Gateway, and every Gateway our status says accepted the route. Wait only for a Gateway of ours that still exists, isn't being deleted and hasn't registered yet; then remove the finalizer.
+
+**Bookkeeping annotations** (written by the operator, never part of the deployed payload or its hash):
+
+| Annotation | Meaning |
+| ---------- | ------- |
+| `gateway.api-platform.wso2.com/last-deployed-parent-gateway`, `.../last-deployed-config-hash` | The record for a route deployed to **one** Gateway, written exactly as earlier releases did. Upgrading or downgrading the operator therefore leaves such routes untouched (an older operator copies any other annotation into the payload it hashes, so an extra annotation would redeploy every route on downgrade). Removed while the route is deployed to more than one Gateway. |
+| `gateway.api-platform.wso2.com/deployed-gateways` | JSON `{"<namespace>/<name>": {"hash": "...", "handle": "..."}}`, written only when the legacy pair can't hold the record: the route is deployed to several Gateways, or an old handle still has to be removed. The reconciler merges it with the legacy pair, so a Gateway an older operator deployed to after a downgrade is still cleaned up. |
 
 ### Watches (enqueue `HTTPRoute` reconcile)
 
@@ -226,9 +241,13 @@ ClusterRole in `config/rbac/role.yaml` (generated from kubebuilder markers on **
 - **HTTPRoute → APIConfigData:** Geared toward **HTTP** routes; single-backend assumptions in places (first resolving **Service** `backendRef` drives `upstream.main.url`).
 - Advanced route **filters** (rewrite, redirect, weighted backends), **GRPCRoute**, and rich **TLS/vhost** mapping into `APIConfigData` are out of scope unless extended.
 - Cross-namespace backends without **ReferenceGrant** are not fully modelled; errors should surface via reconcile / status where possible.
+- **HTTPRoute on several Gateways:** `ApiKey`, `Subscription`, `SubscriptionPlan`, `Certificate` and `ManagedSecret` resources pick their own gateway, so they exist on one gateway only. Requests through the route's other Gateways fail checks that depend on them. Policy params resolved through `valueFrom` are part of the payload and work on every Gateway.
+- **Changing `api-handle`:** the gateway-controller rejects a second API with the same display name and version (409), so changing only the handle fails with `DeploymentFailed` while the old API keeps serving, as in earlier releases. When `display-name` or `api-version` changes with it, a multi-Gateway route has the old handle removed from each Gateway; a single-Gateway route leaves it deployed, since the legacy record doesn't store the handle.
+- **Handle collisions:** the default handle `{namespace}-{name}` maps `a-b/c` and `a/b-c` to the same value; on a shared Gateway the two routes overwrite each other. Set `gateway.api-platform.wso2.com/api-handle` to avoid this.
 
 ## Testing
 
+- Multi-Gateway reconcile, upgrade from the legacy annotations, deletion and status writes: `internal/controller/httproute_multi_gateway_test.go`. Single-parent payloads are compared byte for byte against `testdata/httproute_golden`, captured from the operator before multi-Gateway support; a change there means every existing route redeploys on upgrade.
 - Mapper / policy validation: `internal/controller/httproute_mapper_test.go`
 - Enqueue / Secret reference detection: `internal/controller/httproute_enqueue_test.go`
 - `valueFrom` resolution: `internal/controller/httproute_policy_params_resolve_test.go`

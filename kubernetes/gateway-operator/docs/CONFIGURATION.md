@@ -266,7 +266,7 @@ The operator reconciles standard **Gateway** and **HTTPRoute** resources (`gatew
 
 | Setting | Description |
 | -------- | ------------- |
-| `gateway_api.gateway_class_names` | Only **Gateway** objects whose `spec.gatewayClassName` is in this list are managed. **HTTPRoute** objects are processed when their parent **Gateway** uses one of these classes. |
+| `gateway_api.gateway_class_names` | Only **Gateway** objects whose `spec.gatewayClassName` is in this list are managed. An **HTTPRoute** is deployed to each of its parent **Gateways** that uses one of these classes. |
 
 In `config.yaml`:
 
@@ -295,7 +295,41 @@ Environment variable (comma-separated list, overrides the config file list):
 | `gateway.api-platform.wso2.com/api-version` | Version field in the generated REST payload (default `v1.0`). |
 | `gateway.api-platform.wso2.com/context` | API base context; default **`/`** when omitted or whitespace-only. |
 | `gateway.api-platform.wso2.com/display-name` | Overrides API display name. |
-| `gateway.api-platform.wso2.com/api-handle` | REST API handle for `POST`/`PUT`/`DELETE` `/api/management/v0.9/rest-apis/{handle}` (default: `{namespace}-{name}`). |
+| `gateway.api-platform.wso2.com/api-handle` | REST API handle for `POST`/`PUT`/`DELETE` `/api/management/v0.9/rest-apis/{handle}` (default: `{namespace}-{name}`). The gateway-controller rejects a second API with the same display name and version, so changing only the handle fails with `DeploymentFailed` while the old API keeps serving, as in earlier releases. Change `display-name` or `api-version` with it: on a route with several parent Gateways the old handle is then removed from each Gateway; on a route with one parent Gateway the old API stays deployed, as in earlier releases. |
+
+The operator tracks where a route is deployed with `last-deployed-parent-gateway` / `last-deployed-config-hash` (route on one Gateway, unchanged from earlier releases) or `deployed-gateways` (route on several Gateways), all under `gateway.api-platform.wso2.com/`. Don't set or edit these; they are excluded from the deployed payload.
+
+### HTTPRoutes with several parent Gateways
+
+An HTTPRoute whose `spec.parentRefs` list several Gateways of a managed class is deployed to each of them, as Gateway API specifies. Each parent reports its own `Accepted` condition in `status.parents`, so one unreachable gateway-controller shows `Retrying` on its parent while the others keep serving. Parents whose Gateway uses another class are left to that class's controller.
+
+Limitations:
+
+- `ApiKey`, `Subscription`, `SubscriptionPlan`, `Certificate` and `ManagedSecret` resources select their own gateway and exist on that one only. If the route relies on them, requests through its other Gateways fail those checks.
+- The default handle `{namespace}-{name}` can collide (`a-b/c` and `a/b-c`). On a shared Gateway, set `api-handle` explicitly.
+
+**Upgrading from an operator without this support:** earlier releases rejected these routes (`ResolvedRefs=False`, reason `Invalid`) and served them nowhere. After the upgrade they start serving on every managed Gateway they list. To review them first, list the routes the current operator rejected:
+
+```sh
+kubectl get httproutes -A -o json | jq -r '.items[]
+  | select([.status.parents[]?
+      | select(.controllerName == "gateway.api-platform.wso2.com/gateway-operator")
+      | .conditions[]?
+      | select(.reason == "Invalid"
+          and (.message | test("multiple (distinct )?Gateway parentRefs")))] | length > 0)
+  | "\(.metadata.namespace)/\(.metadata.name)"'
+```
+
+**Downgrading:** an older operator rejects any route whose `parentRefs` list more than one Gateway, of any class, and can't find where a multi-Gateway route is deployed: its copies keep serving with nothing managing them, and deleting the route later removes at most one of them. Before downgrading, reduce these routes to one parent Gateway (or delete them) while this operator is still running, and wait for it to reconcile them. To list them:
+
+```sh
+kubectl get httproutes -A -o json | jq -r '.items[] | .metadata.namespace as $ns
+  | select([.spec.parentRefs[]? | select((.kind // "Gateway") == "Gateway") | "\(.namespace // $ns)/\(.name)"] | unique | length > 1)
+  | select([.status.parents[]? | select(.controllerName == "gateway.api-platform.wso2.com/gateway-operator")] | length > 0)
+  | "\(.metadata.namespace)/\(.metadata.name)"'
+```
+
+Routes on one Gateway need nothing: their annotations are the same as in earlier releases, so the older operator neither redeploys nor loses them. Upgrading again picks up any multi-Gateway copies left behind.
 
 **`APIPolicy` CR (`gateway.api-platform.wso2.com/v1alpha1`, plural `apipolicies`):** Recommended for Gateway API flows. **`spec.policies`** is a non-empty list of policy instances. **API-level** attachment: set **`spec.targetRef`** to the **`HTTPRoute`** (`group: gateway.networking.k8s.io`, `kind: HTTPRoute`); all entries are merged into **`APIConfigData.policies`**. **Rule / resource-level** attachment: omit **`spec.targetRef`** and reference the object from **`spec.rules[].filters`** with `type: ExtensionRef`, `group: gateway.api-platform.wso2.com`, `kind: APIPolicy`, `name: <metadata.name>`. If **`targetRef`** is set and the policy is also referenced from a rule, **`targetRef`** must still match that HTTPRoute for the ExtensionRef path. Policy **`params`** may embed **`valueFrom`** using the same shape as PodSpec `env[].valueFrom` — **exactly one** of **`secretKeyRef`** or **`configMapKeyRef`** with `{name, key, namespace?}`; the operator resolves these from **Secrets** (via `Secret.data[key]`) or **ConfigMaps** (via `data[key]` / `binaryData[key]`) before calling gateway-controller and watches both **`Secret`** and **`ConfigMap`** in addition to **`APIPolicy`** to re-reconcile the route when referenced values change. **`APIPolicy` does not apply to `RestApi` / `APIGateway` reconciliation.**
 

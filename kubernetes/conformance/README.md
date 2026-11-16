@@ -71,7 +71,7 @@ Colima host-reachability setup details.
 ```
 
 Installs cert-manager, the gateway operator using the locally built images (the
-operator installs the bundled standard-channel Gateway API CRDs v1.5.1), and the
+operator installs the bundled standard-channel Gateway API CRDs v1.6.3), and the
 `wso2-api-platform` GatewayClass. It also provisions a throwaway AES-256 at-rest
 encryption key Secret in the `gateway-conformance-infra` namespace and enables
 `gateway.controller.encryptionKeys`, because at-rest encryption is mandatory — the
