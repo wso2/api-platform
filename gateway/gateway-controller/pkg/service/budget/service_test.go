@@ -246,7 +246,7 @@ func TestCreate_AProjectBudgetListsItsProject(t *testing.T) {
 		name, consumers, exemptions, field string
 	}{
 		{"its project listed", project + ", " + attribute, "", ""},
-		{"no project consumer", attribute, "", "spec.consumers"},
+		{"no project consumer: it is added", attribute, "", ""},
 		{"another project", `{"type": "project", "allocation": "shared", "id": "support"}`, "", "spec.consumers[0]"},
 		{"exempting a project", project, `{"type": "project", "id": "support"}`, "spec.exemptions[0].type"},
 		{"exempting another project's agent", project, `{"type": "agent", "project": "support", "id": "triage-bot"}`, "spec.exemptions[0].project"},
@@ -263,7 +263,7 @@ func TestCreate_AProjectBudgetListsItsProject(t *testing.T) {
 			_, err := svc.Create(CreateParams{Body: []byte(body)})
 
 			if tc.field == "" {
-				require.NoError(t, err, "the annotation names the owner; the listed consumer scopes it")
+				require.NoError(t, err, "the annotation names the owner; the project consumer scopes it")
 				return
 			}
 			var invalid *ValidationError
@@ -275,6 +275,30 @@ func TestCreate_AProjectBudgetListsItsProject(t *testing.T) {
 			assert.Contains(t, fields, tc.field, "errors: %v", invalid.Errors)
 		})
 	}
+}
+
+func TestCreate_AProjectBudgetGetsItsProjectConsumer(t *testing.T) {
+	const owned = `"metadata": {"name": "research-team-monthly", "annotations": {"gateway.api-platform.wso2.com/project-id": "api-platform"}}`
+	svc, _ := newTestService(t, false)
+	body := strings.Replace(validBudget, `"metadata": {"name": "research-team-monthly"}`, owned, 1)
+
+	cfg, err := svc.Create(CreateParams{Body: []byte(body)})
+	require.NoError(t, err)
+
+	stored, ok := cfg.SourceConfiguration.(api.BudgetRequest)
+	require.True(t, ok)
+	require.NotNil(t, stored.Spec.Consumers)
+	consumers := *stored.Spec.Consumers
+	require.Len(t, consumers, 2)
+	assert.Equal(t, api.BudgetConsumerTypeProject, consumers[0].Type, "added first")
+	assert.Equal(t, api.BudgetConsumerAllocationShared, consumers[0].Allocation)
+	require.NotNil(t, consumers[0].Id)
+	assert.Equal(t, "api-platform", *consumers[0].Id)
+	assert.Equal(t, api.BudgetConsumerTypeAttribute, consumers[1].Type)
+
+	// The body first sent, without the project consumer, can be sent again as an update.
+	_, err = svc.Update(UpdateParams{Name: "research-team-monthly", Body: []byte(body)})
+	require.NoError(t, err)
 }
 
 func TestCreate_ReportsEveryError(t *testing.T) {

@@ -97,6 +97,7 @@ func decode(body []byte) (*api.BudgetRequest, error) {
 			Message: "must be omitted for separate allocation, which gives each provider its own allowance",
 		}}}
 	}
+	addProjectConsumer(&budget)
 	if errs := consumerShapes(budget.Spec); len(errs) > 0 {
 		return nil, &ValidationError{Errors: errs}
 	}
@@ -106,10 +107,44 @@ func decode(body []byte) (*api.BudgetRequest, error) {
 	return &budget, nil
 }
 
+// maxConsumers is the schema's limit on spec.consumers.
+const maxConsumers = 20
+
+// addProjectConsumer adds the owning project as the first consumer, shared, when a budget
+// with the project-id annotation lists no project consumer, as the control plane does: a
+// project budget counts only its project's traffic. The stored document, the response
+// and the push to the control plane list it.
+func addProjectConsumer(budget *api.BudgetRequest) {
+	if budget.Metadata.Annotations == nil {
+		return
+	}
+	project := strings.TrimSpace((*budget.Metadata.Annotations)[commonconstants.AnnotationProjectID])
+	if project == "" {
+		return
+	}
+	var consumers []api.BudgetConsumer
+	if budget.Spec.Consumers != nil {
+		consumers = *budget.Spec.Consumers
+	}
+	if len(consumers) >= maxConsumers {
+		return // projectOwner says to list it
+	}
+	for _, c := range consumers {
+		if c.Type == api.BudgetConsumerTypeProject {
+			return
+		}
+	}
+	consumers = append([]api.BudgetConsumer{{
+		Type: api.BudgetConsumerTypeProject, Allocation: api.BudgetConsumerAllocationShared, Id: &project,
+	}}, consumers...)
+	budget.Spec.Consumers = &consumers
+}
+
 // projectOwner checks a budget owned by a project (the project-id annotation) is that
 // project's own, as the control plane checks it: it lists the project as a shared
 // consumer, so the kind means the same wherever it is applied, and exempts only that
-// project's agents. The annotation itself scopes nothing.
+// project's agents. The annotation itself scopes nothing; addProjectConsumer adds the
+// consumer when it is left out.
 func projectOwner(budget api.BudgetRequest) []FieldError {
 	if budget.Metadata.Annotations == nil {
 		return nil
