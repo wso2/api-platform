@@ -19,7 +19,6 @@ import {
   PORTAL_OPERATIONS,
 } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
 import { MarketingConsentGate } from '@wso2-enterprise/apip-cloud-ui-marketing-consent';
-import { AppSwitcherButton } from '@wso2-enterprise/apip-cloud-ui-app-switcher';
 import { ManageProjectButton, SettingsButton } from '@wso2-enterprise/apip-cloud-ui-settings';
 import { nameFromPort } from '@wso2-enterprise/apip-cloud-ui-user-profile';
 import {
@@ -32,7 +31,6 @@ import { GatewayPoliciesPanel } from '../../../../api-control-plane/src/pages/ap
 import {
   APP_GATE_SLOT,
   HEADER_ACTIONS_SLOT,
-  HEADER_START_SLOT,
   HOME_GREETING_SLOT,
   PAGE_API_DEPLOY_SLOT,
   PAGE_GRAPHQL_API_DEPLOY_SLOT,
@@ -182,27 +180,6 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         slot: APP_GATE_SLOT,
         order: 10,
         render: (port) => <EntitlementsGate port={port} />,
-      },
-    ],
-  }),
-  defineCloudPlugin({
-    // The WSO2 Cloud platform switcher (Oxygen AppSwitcher), fed by the
-    // deployment's `cloudShell` / `cloudConsoleUrl` runtime config. Console-only.
-    // Takes over the header's sidebar-collapse toggle spot at the far left —
-    // the sidebar's own `Sidebar.CollapseToggle` still collapses it.
-    id: 'app-switcher',
-    version: '0.1.0',
-    extensions: [
-      {
-        id: 'app-switcher',
-        slot: HEADER_START_SLOT,
-        order: 0,
-        render: () => (
-          <AppSwitcherButton
-            cloudShell={runtimeConfig.cloudShell}
-            cloudConsoleUrl={runtimeConfig.cloudConsoleUrl}
-          />
-        ),
       },
     ],
   }),
