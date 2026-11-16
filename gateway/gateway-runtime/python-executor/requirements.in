@@ -1,0 +1,8 @@
+# Python Executor base requirements (input for the hash-pinned requirements.txt lock).
+# After editing this file, regenerate the lock from this directory with:
+#   uv pip compile requirements.in --generate-hashes --python-version 3.10 \
+#     --python-platform x86_64-unknown-linux-gnu -o requirements.txt
+# Python 3.10 matches the python3 of the gateway runtime base image.
+grpcio>=1.59.0
+protobuf>=4.24.0
+apip-sdk-core~=0.2.3
