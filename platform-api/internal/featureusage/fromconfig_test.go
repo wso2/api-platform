@@ -37,9 +37,16 @@ import (
 // does by default: SSRF-guarded, private addresses reachable, metadata not.
 func initSharedClient(t *testing.T) {
 	t.Helper()
+	initSharedClientWithPolicy(t, netguard.PermitPrivateBlockMetadata())
+}
+
+// initSharedClientWithPolicy builds the process-wide outbound client under policy,
+// e.g. netguard.PublicOnly() for platform_api.http_client.ssrf.preset = "public_only".
+func initSharedClientWithPolicy(t *testing.T, policy netguard.Policy) {
+	t.Helper()
 	cfg := httpclient.DefaultConfig()
 	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = netguard.PermitPrivateBlockMetadata()
+	cfg.SSRF.Policy = policy
 	cfg.SSRF.Policy.AllowedSchemes = []string{"http", "https"}
 	cfg.SSRF.MaxRedirects = 5
 	if err := utils.InitSharedHTTPClientFromConfig(cfg, 0); err != nil {
@@ -136,6 +143,35 @@ func TestNewFromConfigDeliversThroughTheSharedClient(t *testing.T) {
 	}
 	if strings.Contains(logs, "REPORT_DROPPED") || strings.Contains(logs, "m2m-secret") || strings.Contains(logs, "idp-issued") {
 		t.Errorf("unexpected logs: %s", logs)
+	}
+}
+
+// The collector and token endpoint are operator-configured and usually in-cluster, so
+// a "public_only" shared client, meant for tenant-supplied URLs, must not stop
+// delivery to a private or loopback collector.
+func TestNewFromConfigReachesAPrivateCollectorUnderPublicOnly(t *testing.T) {
+	initSharedClientWithPolicy(t, netguard.PublicOnly())
+	t.Cleanup(func() { initSharedClient(t) })
+	wr := newWiring(t)
+	logs := deliverOne(t, wr.config(wr.collectorURL))
+
+	if wr.idpCalls.Load() != 1 || wr.collectorCalls.Load() != 1 {
+		t.Fatalf("idp calls = %d, collector calls = %d; want 1 and 1", wr.idpCalls.Load(), wr.collectorCalls.Load())
+	}
+	if strings.Contains(logs, "REPORT_DROPPED") {
+		t.Errorf("unexpected drop: %s", logs)
+	}
+}
+
+// Relaxing the policy for operator destinations stops at private addresses:
+// cloud metadata is still refused under "public_only".
+func TestNewFromConfigRefusesMetadataAddressesUnderPublicOnly(t *testing.T) {
+	initSharedClientWithPolicy(t, netguard.PublicOnly())
+	t.Cleanup(func() { initSharedClient(t) })
+	wr := newWiring(t)
+	logs := deliverOne(t, wr.config("http://169.254.169.254/moesif-collector"))
+	if !strings.Contains(logs, "REPORT_DROPPED") {
+		t.Errorf("want the event dropped, got: %s", logs)
 	}
 }
 

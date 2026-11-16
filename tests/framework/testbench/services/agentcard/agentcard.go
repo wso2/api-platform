@@ -75,7 +75,14 @@ const (
 	ModeSlow = "slow"
 	// ModeServerError answers 500.
 	ModeServerError = "status500"
+	// ModeRedirectMetadata answers 302 to MetadataCardURL, the cloud metadata address, so a
+	// stored upstream on an allowed host can lead the caller to a refused destination.
+	ModeRedirectMetadata = "redirect-metadata"
 )
+
+// MetadataCardURL is where ModeRedirectMetadata redirects: a card path on the cloud metadata
+// address, which a caller's network access control always refuses.
+const MetadataCardURL = "http://169.254.169.254/.well-known/agent-card.json"
 
 // Credential returns the credential ModeAuth expects for a scope.
 func Credential(scope string) string { return "card-key-" + scope }
@@ -165,6 +172,8 @@ func (s *Service) card(key string, w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, Card(scope, "Slow card "+scope))
 	case ModeServerError:
 		http.Error(w, "agentcard: upstream failure", http.StatusInternalServerError)
+	case ModeRedirectMetadata:
+		http.Redirect(w, r, MetadataCardURL, http.StatusFound)
 	default:
 		http.Error(w, fmt.Sprintf("agentcard: unknown mode %q", mode), http.StatusNotFound)
 	}

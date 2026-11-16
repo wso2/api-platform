@@ -1319,6 +1319,19 @@ pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 [policy_configurations.azure_llm_cost_v1]
 pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 
+# A2A Agent Card URL rewriting.
+#
+# gateway_url is the externally reachable base URL of the gateway (scheme, host,
+# optional port, optional path prefix). When set, every interface URL a
+# passthrough Agent Card is rewritten to is built on it, ahead of the Agent's
+# vhost and the scheme and authority of the request. Leave it unset when the
+# gateway is the edge. Set it when the gateway sits behind a load balancer,
+# ingress or API front door whose public address differs from the one requests
+# arrive on. It must be an absolute http or https URL with no userinfo, query
+# string or fragment; an unusable value makes card rewriting fail closed.
+# [policy_configurations.a2a_v1]
+# gateway_url = "https://agents.example.com"
+
 # =============================================================================
 # GATEWAY SIGNING KEYS
 # =============================================================================

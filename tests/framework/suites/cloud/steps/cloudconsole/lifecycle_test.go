@@ -87,6 +87,7 @@ func TestCloudResourceURLEscapesID(t *testing.T) {
 }
 
 func TestResolveCloudDataPlaneURLRequiresHTTPSAndApproval(t *testing.T) {
+	t.Setenv(cloudDataPlaneDomainsEnv, "")
 	for _, target := range []string{
 		"", "relative/path", "http://gateway.example.com/api", "ftp://gateway.example.com/api",
 		"//gateway.example.com/api", "https://127.0.0.1/api", "https://10.0.0.1/api",
@@ -100,6 +101,62 @@ func TestResolveCloudDataPlaneURLRequiresHTTPSAndApproval(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestResolveCloudDataPlaneURLApprovesConfiguredDomains(t *testing.T) {
+	const wso2Gateway = "https://abc-gw-p1.gateway.dp.dev.cloud.wso2.com/api"
+	const stageGateway = "https://abc-gw-p1.dp1.us.stage.example/api"
+	t.Run("unset approves gateway hosts under wso2.com only", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, "")
+		_, err := resolveCloudDataPlaneURL(context.Background(), wso2Gateway)
+		require.NoError(t, err)
+		_, err = resolveCloudDataPlaneURL(context.Background(), stageGateway)
+		require.Error(t, err)
+	})
+	t.Run("blank keeps the default", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, "  ")
+		_, err := resolveCloudDataPlaneURL(context.Background(), wso2Gateway)
+		require.NoError(t, err)
+		_, err = resolveCloudDataPlaneURL(context.Background(), stageGateway)
+		require.Error(t, err)
+	})
+	t.Run("a configured domain approves one label in front of it", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, "dp1.us.stage.example")
+		got, err := resolveCloudDataPlaneURL(context.Background(), stageGateway)
+		require.NoError(t, err)
+		require.Equal(t, stageGateway, got)
+		_, err = resolveCloudDataPlaneURL(context.Background(), wso2Gateway)
+		require.Error(t, err, "a configured domain replaces the default")
+	})
+	t.Run("a configured domain approves nothing else", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, "dp1.us.stage.example")
+		for _, target := range []string{
+			"https://dp1.us.stage.example/api",
+			"https://a.abc-gw-p1.dp1.us.stage.example/api",
+			"https://abc.notdp1.us.stage.example/api",
+			"https://abc.dp1.us.stage.example.evil.test/api",
+			"https://abc.dp1.us.stage.example:8443/api",
+			"http://abc.dp1.us.stage.example/api",
+		} {
+			_, err := resolveCloudDataPlaneURL(context.Background(), target)
+			require.Error(t, err, target)
+		}
+	})
+	t.Run("several domains, case and spaces normalised", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, " Gateway.DP.dev.cloud.wso2.com , dp1.us.stage.example,")
+		for _, target := range []string{wso2Gateway, stageGateway} {
+			_, err := resolveCloudDataPlaneURL(context.Background(), target)
+			require.NoError(t, err, target)
+		}
+	})
+	t.Run("an invalid domain fails closed", func(t *testing.T) {
+		for _, value := range []string{"example", "*.stage.example", ".stage.example", "stage..example", "stage example", "https://stage.example", ","} {
+			t.Setenv(cloudDataPlaneDomainsEnv, value)
+			_, err := resolveCloudDataPlaneURL(context.Background(), stageGateway)
+			require.ErrorIs(t, err, errCloudDataPlaneDomains, value)
+			require.Contains(t, err.Error(), cloudDataPlaneDomainsEnv, value)
+		}
+	})
+}
+
 func TestFirstApprovedDataPlaneEndpointSkipsInvalidCandidates(t *testing.T) {
 	steps := &Steps{dataPlaneURLResolver: func(_ context.Context, target string) (string, error) {
 		if target == "https://unapproved.example.com" {
@@ -108,11 +165,21 @@ func TestFirstApprovedDataPlaneEndpointSkipsInvalidCandidates(t *testing.T) {
 		return target, nil
 	}}
 
-	endpoint, ok := firstApprovedDataPlaneEndpoint(context.Background(), steps, []any{
+	endpoint, ok, err := firstApprovedDataPlaneEndpoint(context.Background(), steps, []any{
 		"https://unapproved.example.com", " https://approved.example.com/// ", 42,
 	})
+	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "https://approved.example.com", endpoint)
+}
+
+func TestFirstApprovedDataPlaneEndpointReturnsAnInvalidDomainsSetting(t *testing.T) {
+	t.Setenv(cloudDataPlaneDomainsEnv, "*.stage.example")
+	_, ok, err := firstApprovedDataPlaneEndpoint(context.Background(), &Steps{}, []any{
+		"https://abc-gw-p1.dp1.us.stage.example",
+	})
+	require.False(t, ok)
+	require.ErrorIs(t, err, errCloudDataPlaneDomains)
 }
 
 func TestExpandCloudValueResolvesContextValues(t *testing.T) {
@@ -2458,14 +2525,6 @@ func TestJudgeRejection(t *testing.T) {
 	require.Empty(t, judgeRejection(good), "no expected fragment means any message that names the setting")
 }
 
-func TestConfigValuesFromTable(t *testing.T) {
-	values, err := configValuesFromTable(valuesTable(t, []string{"a.b", "true"}, []string{"c", "text"}, []string{"d", "null"}))
-	require.NoError(t, err)
-	require.Equal(t, map[string]any{"a.b": true, "c": "text", "d": nil}, values)
-	_, err = configValuesFromTable(valuesTable(t, []string{"a", "1"}, []string{"a", "2"}))
-	require.Error(t, err)
-}
-
 func TestValidateConfigurationDocument(t *testing.T) {
 	encode := func(document map[string]any) []byte {
 		raw, err := json.Marshal(document)
@@ -2542,7 +2601,7 @@ func TestAwaitConfigurationReadable(t *testing.T) {
 	require.Equal(t, 2, reads, "a gateway whose release does not exist yet is waited for")
 }
 
-func TestWriteGatewayConfigurationAndLongString(t *testing.T) {
+func TestWriteLongString(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
 	var bodies []map[string]map[string]any
 	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
@@ -2551,14 +2610,11 @@ func TestWriteGatewayConfigurationAndLongString(t *testing.T) {
 		bodies = append(bodies, body)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request", "message": "no"})
 	})
-	require.Error(t, steps.writeGatewayConfiguration(ctx, valuesTable(t, []string{"a", "1"})), "no active gateway was found")
+	require.Error(t, steps.writeLongString(ctx, "gateway.config_toml", 8193), "no active gateway was found")
 	local.Set(keyGatewayID, "dev-gw")
-	require.NoError(t, steps.writeGatewayConfiguration(ctx, valuesTable(t, []string{"a", "1"}, []string{"b", "null"})))
-	require.Equal(t, map[string]any{"a": float64(1), "b": nil}, bodies[0]["values"])
-	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusBadRequest))
-
 	require.NoError(t, steps.writeLongString(ctx, "gateway.config_toml", 8193))
-	require.Len(t, bodies[1]["values"]["gateway.config_toml"], 8193)
+	require.Len(t, bodies[0]["values"]["gateway.config_toml"], 8193)
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusBadRequest))
 	require.Error(t, steps.writeLongString(ctx, "gateway.config_toml", 0))
 }
 
@@ -3000,6 +3056,7 @@ func TestResolveCloudDataPlaneURLApprovesLocalhostOnlyWhenEnabled(t *testing.T) 
 		require.Equal(t, local[2], got, "an invalid port is ignored")
 	})
 	t.Run("on widens nothing else", func(t *testing.T) {
+		t.Setenv(cloudDataPlaneDomainsEnv, "")
 		t.Setenv(cloudLocalDataPlaneEnv, "true")
 		for _, target := range []string{
 			"http://127.0.0.1:19080/api", "http://[::1]:19080/api", "http://localhost:19080/api",
@@ -3958,7 +4015,7 @@ func TestRequestRunnerPortalRegistersThePortalBeforeTheRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, handle, sent["handle"])
 	require.Equal(t, "Synthetic "+handle, sent["name"])
-	require.NotContains(t, sent, "loginEnvironment", "the login environment is left to the platform's default")
+	require.Equal(t, "development", sent["loginEnvironment"], "consumers sign in on the development environment")
 	require.LessOrEqual(t, len(handle), portalHandleMaxLength)
 	require.Equal(t, []string{handle}, registeredAtRequest, "the portal is registered before the request that creates it")
 	require.NoError(t, steps.assertPortalAccepted(ctx))
@@ -4117,20 +4174,21 @@ func TestRequestDuplicatePortalRepeatsTheHandleWithAnotherName(t *testing.T) {
 	require.Empty(t, registeredPortals(registry), "the handle is the runner's and already registered")
 }
 
-func TestRequestDuplicatePortalSkipsWhereThePlanHasNoRoomForAnotherPortal(t *testing.T) {
+func TestRequestDuplicatePortalLeavesAnyAnswerToTheStatusAssertion(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	code, body := http.StatusPaymentRequired, map[string]string{"code": portalQuotaExceededCode, "message": "Hard limit reached: 1 of 1 used"}
+	code, body := http.StatusPaymentRequired, map[string]string{"code": "quota_exceeded", "message": "Hard limit reached: 1 of 1 used"}
 	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, code, body)
 	})
 	local.Set(keyAPIPortalID, "syn-portal-1")
-	require.ErrorIs(t, steps.requestDuplicatePortal(ctx), godog.ErrSkip, "a full plan cannot show the duplicate handle")
+	require.NoError(t, steps.requestDuplicatePortal(ctx), "a 402 is not skipped; the status assertion fails it")
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusPaymentRequired, published.StatusCode)
 
-	body = map[string]string{"code": "payment_required"}
-	require.NoError(t, steps.requestDuplicatePortal(ctx), "another 402 is left to the status assertion")
 	code, body = http.StatusConflict, map[string]string{"code": "conflict"}
 	require.NoError(t, steps.requestDuplicatePortal(ctx))
-	published, err := httpx.Published(ctx)
+	published, err = httpx.Published(ctx)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusConflict, published.StatusCode)
 }

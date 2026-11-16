@@ -299,8 +299,9 @@ The proxy guide's `Action` schema, built by the backend:
       "category": "manage-apis",
       "tier": "core",
       "event_category": "engagement",
-      "initiating_product": "apip",
-      "platform": "web",
+      "growth_action": "apip.manage-apis.rest-api-create-click",
+      "platform": "API Platform",
+      "source": "console",
       "portal": "api-control-plane"
     }
   }
@@ -308,8 +309,10 @@ The proxy guide's `Action` schema, built by the backend:
 ```
 
 The metadata keys after the feature's dimensions are the ones in the proxy
-guide's example, plus `platform` (`tracking.platforms` in the template) and
-`portal` (the UI the action was taken in).
+guide's example, plus the keys Platform API's endpoint events and Agent Manager's
+records carry: `growth_action` (the feature code), `platform` (the product name)
+and `source` (`console` here, `api` from Platform API). `portal` names the UI the
+action was taken in.
 
 ### 7.3 On-prem table
 
@@ -344,9 +347,10 @@ purging rows older than 13 months.
 - **One account.** Every product publishes to the single WSO2 Moesif account.
   The proxy adds that account's Application ID, so neither the browser nor the
   backend holds or sends one.
-- **Dashboards per product.** API Platform actions carry
-  `metadata.initiating_product = "apip"`, and their names start with `apip.`.
-  The API Platform dashboard filters on either.
+- **Dashboards per product.** API Platform records carry
+  `metadata.platform = "API Platform"`, as Agent Manager's carry
+  `"Agent Manager"`, and their names start with `apip.`. `metadata.source`
+  separates console actions (`console`) from endpoint events (`api`).
 - **Same keys as every other publisher.** Because all products share one
   account, `company_id` and `user_id` must be the same values the other
   services send. Otherwise one organization becomes several Moesif companies.

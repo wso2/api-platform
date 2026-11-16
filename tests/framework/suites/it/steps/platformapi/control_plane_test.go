@@ -1949,3 +1949,16 @@ func TestMintUserTokenValidatesItsInput(t *testing.T) {
 	require.Error(t, err, "nothing is stored when minting fails")
 	require.Empty(t, requests())
 }
+
+// An LLM provider template is created and tracked like any other control-plane resource, and is
+// removed only after the providers that may have been created from it.
+func TestLLMProviderTemplatesAreTrackedAndRemovedAfterProviders(t *testing.T) {
+	require.Equal(t, platformLLMTemplateKind, platformCollectionKinds["llm-provider-templates"])
+	require.Greater(t, platformLLMTemplateKind.Order, platformProviderKind.Order)
+	require.Equal(t, "/llm-provider-templates", templateCollections["LLM provider template"])
+
+	ctx, reg := trackingContext(t)
+	s := &Steps{}
+	require.NoError(t, s.trackControlPlaneResource(ctx, http.MethodPost, nil, created("/api/v0.9/llm-provider-templates/tpl")))
+	require.Equal(t, []string{"tpl"}, pendingIDs(reg, platformLLMTemplateKind))
+}

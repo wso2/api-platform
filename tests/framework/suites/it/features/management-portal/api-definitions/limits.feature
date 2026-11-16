@@ -69,7 +69,7 @@ Feature: An OpenAPI definition import is bounded in size and never fetches from 
     Then the response status code should be 201
 
   @APIDEF-013 @type:negative
-  Scenario: Importing from the cloud metadata address or a file URL is refused with a generic error and creates nothing
+  Scenario: Importing from the cloud metadata address or a file URL is refused and creates nothing
     When I send a multipart "POST" request to the control plane at "/rest-apis/import-openapi" with fields:
       | id          | ${CTX:api}                                 |
       | displayName | ${CTX:api}                                 |
@@ -79,7 +79,8 @@ Feature: An OpenAPI definition import is bounded in size and never fetches from 
       | upstream    | {"main": {"url": "http://testbench:3000"}} |
       | url         | http://169.254.169.254/latest/meta-data/   |
     Then the response status code should be 400
-    And the JSON response field "message" should be "failed to fetch OpenAPI spec from the provided URL"
+    And the JSON response field "code" should be "DESTINATION_NOT_ALLOWED"
+    And the JSON response field "message" should be "The URL's destination is not permitted."
     And the response body should not contain "169.254"
     When I send a "GET" request to the control plane at "/rest-apis/${CTX:api}"
     Then the response status code should be 404

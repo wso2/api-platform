@@ -41,6 +41,7 @@ import (
 	"github.com/knadh/koanf/v2"
 
 	"github.com/wso2/api-platform/common/configinterpolate"
+	"github.com/wso2/api-platform/httpkit/netguard"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/health"
 	"github.com/wso2/api-platform/platform-api/internal/logger"
@@ -615,11 +616,56 @@ type Gateway struct {
 // cross-cutting settings — timeouts, CORS, WebSocket — that apply to
 // whichever listener(s) are serving requests.
 type ServerListeners struct {
-	HTTP      HTTPListener  `koanf:"http"`
-	HTTPS     HTTPSListener `koanf:"https"`
-	Timeouts  Timeouts      `koanf:"timeouts"`
-	CORS      CORS          `koanf:"cors"`
-	WebSocket WebSocket     `koanf:"websocket"`
+	HTTP            HTTPListener    `koanf:"http"`
+	HTTPS           HTTPSListener   `koanf:"https"`
+	Timeouts        Timeouts        `koanf:"timeouts"`
+	CORS            CORS            `koanf:"cors"`
+	WebSocket       WebSocket       `koanf:"websocket"`
+	NetworkSecurity NetworkSecurity `koanf:"network_security"`
+}
+
+// NetworkSecurity groups outbound network controls.
+type NetworkSecurity struct {
+	AccessControl AccessControl `koanf:"access_control"`
+}
+
+// AccessControl restricts the destinations platform-api connects to when the
+// URL comes from tenant or user input: an OpenAPI/SDL spec URL, an MCP server
+// or agent-card URL, a GraphQL introspection endpoint, an API portal URL, or a
+// gateway endpoint reached through the gateway relay. URLs configured in this
+// file (the IdP JWKS URL, the feature-usage collector, the proxy) are never
+// subject to it.
+//
+// When enabled it is combined with the existing [platform_api.http_client]
+// destination preset, which can only make it stricter: an operator who chose
+// the "public_only" preset keeps private addresses refused. When disabled,
+// those URLs keep the [platform_api.http_client] behaviour alone.
+type AccessControl struct {
+	Enabled bool `koanf:"enabled"`
+	// Mode is "deny" (a host matching Hostnames is refused) or "allow" (only a
+	// host matching Hostnames is permitted).
+	Mode string `koanf:"mode"`
+	// Hostnames are RE2 regular expressions, each matched case-insensitively
+	// against the whole hostname of a destination (never its port or path).
+	Hostnames []string `koanf:"hostnames"`
+	// DenyPrivateNetworks also refuses private, loopback, carrier-grade NAT and
+	// unique-local addresses. Link-local (cloud metadata), unspecified and
+	// multicast addresses are refused regardless.
+	DenyPrivateNetworks bool     `koanf:"deny_private_networks"`
+	MaxRedirects        int      `koanf:"max_redirects"`
+	AllowedSchemes      []string `koanf:"allowed_schemes"`
+}
+
+// GuardConfig returns the shared netguard representation of a.
+func (a AccessControl) GuardConfig() netguard.GuardConfig {
+	return netguard.GuardConfig{
+		Enabled:             a.Enabled,
+		Mode:                a.Mode,
+		Hostnames:           a.Hostnames,
+		DenyPrivateNetworks: a.DenyPrivateNetworks,
+		MaxRedirects:        a.MaxRedirects,
+		AllowedSchemes:      a.AllowedSchemes,
+	}
 }
 
 // HTTPListener configures the plain-HTTP listener. Enable it only when a trusted
@@ -1601,6 +1647,9 @@ func validateListenersConfig(l *ServerListeners) error {
 		if _, err := ParseHTTPSEcdhCurves(l.HTTPS.EcdhCurves); err != nil {
 			return fmt.Errorf("server.https.ecdh_curves: %w", err)
 		}
+	}
+	if err := l.NetworkSecurity.AccessControl.GuardConfig().Validate(); err != nil {
+		return fmt.Errorf("server.network_security.access_control: %w", err)
 	}
 	return nil
 }

@@ -76,6 +76,8 @@ export type GatewayOverviewProps = {
   canManageTokens?: boolean;
   /** Whether the user may edit the gateway; the Edit button is hidden otherwise. Defaults to allowed. */
   canEdit?: boolean;
+  /** Content of the Policies tab; a placeholder is shown without it. */
+  renderPolicies?: (gatewayId: string) => ReactNode;
 };
 
 const ACCENT = '#f7882f';
@@ -166,6 +168,7 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
   notify,
   canManageTokens = true,
   canEdit = true,
+  renderPolicies,
 }) => {
   const [tab, setTab] = useState<'configurations' | 'policies'>('configurations');
   const [installMethod, setInstallMethod] = useState<InstallMethod>('Quick Start');
@@ -357,11 +360,15 @@ const GatewayOverview: FC<GatewayOverviewProps> = ({
         </Box>
         <CardContent>
           {tab === 'policies' ? (
-            <Box sx={{ py: 4, textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary">
-                Gateway policies aren&apos;t available here yet.
-              </Typography>
-            </Box>
+            renderPolicies ? (
+              renderPolicies(gateway.id)
+            ) : (
+              <Box sx={{ py: 4, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary">
+                  Gateway policies aren&apos;t available here yet.
+                </Typography>
+              </Box>
+            )
           ) : (
             <Grid container spacing={4} sx={{ width: '100%', m: 0 }}>
               <Grid size={{ xs: 12, md: 8 }}>

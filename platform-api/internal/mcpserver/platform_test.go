@@ -71,7 +71,7 @@ func TestPlatformTools_ReturnTheRawObjectsThroughTheSDKOutputCheck(t *testing.T)
 		{"create_project", map[string]any{"name": "p1", "description": "d"}, `"organizationId":"acme"`},
 		{"list_gateways", nil, `"functionalityType":"regular"`},
 		{"get_gateway", map[string]any{"gatewayId": "gw1"}, `"isActive":true`},
-		{"deploy_api", map[string]any{"apiType": "rest-api", "apiId": "a1", "gatewayId": "gw1"}, `"statusReason":"DEPLOYMENT_TIMEOUT"`},
+		{"deploy_api", map[string]any{"apiType": "rest-api", "apiId": "a1", "gatewayId": "gw1", "confirm": true}, `"statusReason":"DEPLOYMENT_TIMEOUT"`},
 	} {
 		res, text := call(t, cs, tc.tool, tc.args)
 		require.False(t, res.IsError, "%s: %s", tc.tool, text)

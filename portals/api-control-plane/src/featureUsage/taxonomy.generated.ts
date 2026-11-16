@@ -85,7 +85,7 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
   schema: { version: '1.0.0', id: 'https://wso2.com/schemas/feature-taxonomy/v1' },
   product: {
     id: 'apip',
-    name: 'WSO2 API Platform',
+    name: 'API Platform',
     version: '0.9.0',
     description:
       'AI-ready, GitOps-driven API platform for full lifecycle management across cloud, hybrid, and on-premises deployments.',
@@ -1273,6 +1273,42 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
             label: 'Distinct Install Methods Used',
             dimension: 'install_method',
           },
+        ],
+      },
+    },
+    {
+      code: 'apip.gateway.custom-policy-sync-click',
+      name: 'Gateway Custom Policy Sync Click',
+      description:
+        "Sync a custom policy installed on a gateway into the organization, from the gateway's Policies tab, so that APIs can use it. Emitted by the console.",
+      category: 'gateway',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.gateway.custom-policy-sync-click',
+        event_category: 'adoption',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'sync_kind',
+            type: 'enum',
+            values: ['add', 'update'],
+            required: true,
+            description:
+              'add for a major version the organization does not hold yet; update for a higher minor version of one it holds.',
+          },
+        ],
+        aggregations: [
+          { type: 'count', label: 'Gateway Custom Policy Sync Click' },
+          { type: 'count_distinct', label: 'Sync Kinds', dimension: 'sync_kind' },
         ],
       },
     },
@@ -5092,6 +5128,9 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
   ],
 };
 
+/** The taxonomy's product: its `id` prefixes every code, its `name` is sent as `platform`. */
+export const API_PLATFORM_PRODUCT = { id: 'apip', name: 'API Platform' } as const;
+
 /** This console's `portal` value, sent with every event it emits. */
 export const CONSOLE_PORTAL = 'api-control-plane';
 
@@ -5288,6 +5327,13 @@ export const CONSOLE_FEATURES = {
         values: ['check-runtime', 'download', 'setup', 'configure', 'start', 'install'],
       },
     },
+  },
+  'apip.gateway.custom-policy-sync-click': {
+    name: 'Gateway Custom Policy Sync Click',
+    category: 'gateway',
+    tier: 'core',
+    eventCategory: 'adoption',
+    dimensions: { sync_kind: { required: true, values: ['add', 'update'] } },
   },
   'apip.policies.client-authentication-attach': {
     name: 'Client Authentication',
