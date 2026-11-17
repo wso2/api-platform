@@ -55,16 +55,16 @@ var portalServePollInterval = 3 * time.Second
 // registerPortalRuntimeSteps binds the steps that talk to a provisioned portal itself, as a
 // visitor or as the control plane would, and the checks that follow a portal's deletion.
 func (s *Steps) registerPortalRuntimeSteps(sc stepRegistrar) {
-	sc.Step(`^I request "([^"]*)" from the synthetic managed API Portal$`, s.requestFromPortal)
-	sc.Step(`^I request "([^"]*)" from the synthetic managed API Portal until status (\d+)(?: containing "([^"]*)")?$`, s.requestFromPortalUntilStatus)
-	sc.Step(`^I request "([^"]*)" from the synthetic managed API Portal with a wrong shared key$`, s.requestFromPortalWithWrongSharedKey)
-	sc.Step(`^I follow the front door of the synthetic managed API Portal to its view$`, s.followPortalFrontDoor)
+	sc.Step(`^I request "([^"]*)" from the managed API Portal$`, s.requestFromPortal)
+	sc.Step(`^I request "([^"]*)" from the managed API Portal until status (\d+)(?: containing "([^"]*)")?$`, s.requestFromPortalUntilStatus)
+	sc.Step(`^I request "([^"]*)" from the managed API Portal with a wrong shared key$`, s.requestFromPortalWithWrongSharedKey)
+	sc.Step(`^I follow the front door of the managed API Portal to its view$`, s.followPortalFrontDoor)
 	sc.Step(`^the portal answer should (contain|not contain) "([^"]*)"$`, s.assertPortalAnswerText)
 	sc.Step(`^the portal answer should send the visitor to the identity provider for a silent sign-in$`, s.assertSilentSignInRedirect)
 	sc.Step(`^the portal answer should carry no "([^"]*)" header$`, s.assertPortalAnswerLacksHeader)
 	sc.Step(`^the portal answer header "([^"]*)" should contain "([^"]*)"$`, s.assertPortalAnswerHeader)
-	sc.Step(`^the sign-in of the synthetic managed API Portal should (offer|not offer) sign-up$`, s.assertSignUpOffer)
-	sc.Step(`^the synthetic managed API Portal should no longer serve$`, s.awaitPortalStopsServing)
+	sc.Step(`^the sign-in of the managed API Portal should (offer|not offer) sign-up$`, s.assertSignUpOffer)
+	sc.Step(`^the managed API Portal should no longer serve$`, s.awaitPortalStopsServing)
 	sc.Step(`^I request a managed API Portal under the handle of the deleted synthetic managed API Portal$`, s.requestPortalUnderDeletedHandle)
 }
 

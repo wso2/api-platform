@@ -76,9 +76,10 @@ const gatewayPollInterval = 10 * time.Second
 const gatewayStatusActive = "ACTIVE"
 
 // defaultPortalName is the base of the name and handle of the managed API Portal the starter
-// creates when the organisation has none. Like the gateway's, it carries the starter's own suffix
-// so the finalizer removes the portal at the end of the run. It is a valid portal handle on its
-// own: lower case letters, digits and dashes, between 3 and 40 characters.
+// creates when the organisation has none. The portal stays after the run: the finalizer empties it
+// of what the run published and never deletes it, so later runs reuse it instead of building
+// another. It is a valid portal handle on its own: lower case letters, digits and dashes, between
+// 3 and 40 characters.
 const defaultPortalName = "dap"
 
 // portalRunner is the runner whose scenarios rely on the managed API Portal the starter prepares.
@@ -515,7 +516,7 @@ func createDefaultPortal(ctx context.Context, platform organisationAPI, name str
 	body, err := json.Marshal(map[string]any{
 		"name":        name,
 		"handle":      name,
-		"description": "API Portal the APIP cloud integration tests publish to. Created by the suite's starter and removed by its finalizer.",
+		"description": "API Portal the APIP cloud integration tests publish to. Created by the suite's starter and kept between runs.",
 	})
 	if err != nil {
 		return "", err

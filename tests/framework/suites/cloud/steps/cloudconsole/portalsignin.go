@@ -654,14 +654,14 @@ func (s *Steps) signOutConsumer(ctx context.Context) error {
 // registerPortalSignInSteps binds the steps that sign a consumer up, in and out of a managed API
 // Portal.
 func (s *Steps) registerPortalSignInSteps(sc stepRegistrar) {
-	sc.Step(`^I open the sign-in page of the synthetic managed API Portal as a new visitor$`, s.openSignInAsVisitor)
+	sc.Step(`^I open the sign-in page of the managed API Portal as a new visitor$`, s.openSignInAsVisitor)
 	sc.Step(`^the visitor should be sent to the portal's identity provider to sign in$`, s.assertSentToIdentityProvider)
-	sc.Step(`^I sign up on the synthetic managed API Portal as a new consumer$`, s.signUpConsumer)
-	sc.Step(`^I sign in to the synthetic managed API Portal as the consumer$`, s.signInConsumer)
-	sc.Step(`^I try to sign in to the synthetic managed API Portal as the consumer with a wrong password$`, s.trySignInWithWrongPassword)
+	sc.Step(`^I sign up on the managed API Portal as a new consumer$`, s.signUpConsumer)
+	sc.Step(`^I sign in to the managed API Portal as the consumer$`, s.signInConsumer)
+	sc.Step(`^I try to sign in to the managed API Portal as the consumer with a wrong password$`, s.trySignInWithWrongPassword)
 	sc.Step(`^the identity provider should refuse the sign-in$`, s.assertSignInRefused)
-	sc.Step(`^the consumer should be signed in to the synthetic managed API Portal$`, s.assertConsumerSignedIn)
-	sc.Step(`^the consumer should not be signed in to the synthetic managed API Portal$`, s.assertConsumerNotSignedIn)
+	sc.Step(`^the consumer should be signed in to the managed API Portal$`, s.assertConsumerSignedIn)
+	sc.Step(`^the consumer should not be signed in to the managed API Portal$`, s.assertConsumerNotSignedIn)
 	sc.Step(`^a visitor without the consumer's session should be sent to sign in$`, s.assertVisitorWithoutSessionSentToSignIn)
-	sc.Step(`^I sign out of the synthetic managed API Portal$`, s.signOutConsumer)
+	sc.Step(`^I sign out of the managed API Portal$`, s.signOutConsumer)
 }

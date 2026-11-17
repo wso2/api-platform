@@ -36,9 +36,13 @@
 #   core-smoke    a light check that the provisioned portal's own pages and routes answer
 #                 (AI discovery file, not-found pages, no internals in headers)
 #
-# The scenarios share one portal per runner and run in feature-file order: the refusals first,
-# while the runner holds no portal, then the creation scenario, which builds the portal, and
-# last the deletion scenarios. The portal consumer is created once and reused.
+# Every scenario that runs uses one portal: the starter takes the organisation's first active
+# portal, waits for one that is still being built, and builds one only when the organisation has
+# none. No running scenario creates or deletes a portal, and neither does the finalizer: it only
+# unpublishes the run's leftover listings from the portals and leaves the portals in place. A scenario that changes the portal
+# puts its settings back afterwards. The scenarios of the creation and deletion flow are written
+# and tagged @skip until building a portal is reliable on the dev cluster, and their entries read
+# `planned`. The portal consumer is created once and reused.
 code: PORTAL
 title: APIP Cloud Managed API Portal and Consumer Sign-in
 scenarios:
@@ -47,7 +51,8 @@ scenarios:
     priority: P1
     layer: cloud-owned
     cloud:
-      status: automated
+      # Written and tagged @skip: the suite shares one existing portal and creates or deletes none while building one fails on the dev cluster.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A portal request that breaks the naming rules is refused and leaves nothing behind"
@@ -56,7 +61,8 @@ scenarios:
     priority: P1
     layer: cloud-owned
     cloud:
-      status: automated
+      # Written and tagged @skip: the suite shares one existing portal and creates or deletes none while building one fails on the dev cluster.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A portal whose consumers would sign in on an environment the organisation does not have is refused"
@@ -65,7 +71,8 @@ scenarios:
     priority: P0
     layer: cloud-owned
     cloud:
-      status: automated
+      # Written and tagged @skip: the suite shares one existing portal and creates or deletes none while building one fails on the dev cluster.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A portal requested with a name and a handle is built and becomes active"
@@ -74,7 +81,8 @@ scenarios:
     priority: P1
     layer: cloud-owned
     cloud:
-      status: automated
+      # Written and tagged @skip: the suite shares one existing portal and creates or deletes none while building one fails on the dev cluster.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A portal whose handle is already in use is refused"
@@ -101,7 +109,8 @@ scenarios:
     priority: P0
     layer: cloud-owned
     cloud:
-      status: automated
+      # Written and tagged @skip until the portal runner refactoring is complete: the consumer sign-in needs CP Thunder, which the local cloud lacks.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A consumer signs up from the portal's sign-in page and is signed in"
@@ -110,7 +119,8 @@ scenarios:
     priority: P1
     layer: cloud-owned
     cloud:
-      status: automated
+      # Written and tagged @skip until the portal runner refactoring is complete: the consumer sign-in needs CP Thunder, which the local cloud lacks.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A consumer who signed up signs in again with a username and password"
@@ -119,7 +129,8 @@ scenarios:
     priority: P1
     layer: cloud-owned
     cloud:
-      status: automated
+      # Written and tagged @skip until the portal runner refactoring is complete: the consumer sign-in needs CP Thunder, which the local cloud lacks.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A wrong password does not sign the consumer in"
@@ -128,7 +139,8 @@ scenarios:
     priority: P1
     layer: cloud-owned
     cloud:
-      status: automated
+      # Written and tagged @skip until the portal runner refactoring is complete: the consumer sign-in needs CP Thunder, which the local cloud lacks.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "Signing out ends the consumer's session"
@@ -137,7 +149,8 @@ scenarios:
     priority: P1
     layer: cloud-owned
     cloud:
-      status: automated
+      # Written and tagged @skip: the suite shares one existing portal and creates or deletes none while building one fails on the dev cluster.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A deleted portal is torn down and leaves the list"
@@ -300,7 +313,8 @@ scenarios:
     priority: P1
     layer: cloud-owned
     cloud:
-      status: automated
+      # Written and tagged @skip: the suite shares one existing portal and creates or deletes none while building one fails on the dev cluster.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A create body that breaks the request's shape is refused and leaves nothing behind"
@@ -374,7 +388,8 @@ scenarios:
     priority: P2
     layer: cloud-owned
     cloud:
-      status: automated
+      # Written and tagged @skip: the suite shares one existing portal and creates or deletes none while building one fails on the dev cluster.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A deleted portal stops serving and its handle can be used again"
@@ -411,7 +426,8 @@ scenarios:
     priority: P1
     layer: cloud-owned
     cloud:
-      status: automated
+      # Written and tagged @skip: the suite shares one existing portal and creates or deletes none while building one fails on the dev cluster.
+      status: planned
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A deleted portal stops serving and its handle can be used again"

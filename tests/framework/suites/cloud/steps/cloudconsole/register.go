@@ -345,6 +345,9 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 	if err := reg.RegisterDeleter(kindAPIPortal, portalDeleter(topo, client)); err != nil {
 		return err
 	}
+	if err := reg.RegisterDeleter(kindPortalRestore, portalRestoreDeleter(topo, client)); err != nil {
+		return err
+	}
 	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, managedGatewaysCollection, false))
 }
 

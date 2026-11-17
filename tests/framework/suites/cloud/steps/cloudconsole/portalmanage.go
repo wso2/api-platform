@@ -101,9 +101,9 @@ func portalNamesOf[V any](values map[string]V) string {
 // and the steps that check what its answers carry.
 func (s *Steps) registerPortalManageSteps(sc stepRegistrar) {
 	sc.Step(`^I send a managed API Portal create request with (an unknown field|an organization field|a name that is not text|malformed JSON)$`, s.sendDefectiveCreateBody)
-	sc.Step(`^I update the synthetic managed API Portal with:$`, s.updateRunnerPortal)
-	sc.Step(`^I try to update the synthetic managed API Portal with (an empty name|an empty login environment|a name longer than 255 characters|a description longer than 1023 characters|a handle)$`, s.tryDefectiveUpdate)
-	sc.Step(`^I rotate the key of the synthetic managed API Portal$`, s.rotateRunnerPortalKey)
+	sc.Step(`^I update the managed API Portal with:$`, s.updateRunnerPortal)
+	sc.Step(`^I try to update the managed API Portal with (an empty name|an empty login environment|a name longer than 255 characters|a description longer than 1023 characters|a handle)$`, s.tryDefectiveUpdate)
+	sc.Step(`^I rotate the key of the managed API Portal$`, s.rotateRunnerPortalKey)
 	sc.Step(`^I (update|rotate the key of) a managed API Portal that does not exist$`, s.changeAbsentPortal)
 	sc.Step(`^the organisation has an environment other than the portal's login environment$`, s.findOtherEnvironment)
 	sc.Step(`^the managed API Portal answer should carry its details$`, s.assertPortalDetails)
@@ -170,8 +170,9 @@ func portalUpdateBody(values map[string]string) (map[string]any, error) {
 	return body, nil
 }
 
-// updateRunnerPortal updates the runner's portal with the fields of the table and publishes the
-// answer without requiring success.
+// updateRunnerPortal updates the scenario's portal with the fields of the table and publishes the
+// answer without requiring success. The portal's settings are recorded first and put back when the
+// scenario ends, because the portal is shared.
 func (s *Steps) updateRunnerPortal(ctx context.Context, table *godog.Table) error {
 	handle, err := runnerPortal(ctx)
 	if err != nil {
@@ -188,6 +189,9 @@ func (s *Steps) updateRunnerPortal(ctx context.Context, table *godog.Table) erro
 	}
 	body, err := portalUpdateBody(values)
 	if err != nil {
+		return err
+	}
+	if err := s.registerPortalRestore(ctx, handle); err != nil {
 		return err
 	}
 	_, err = s.doAuthenticated(ctx, http.MethodPut, portalPath(handle), body)
@@ -337,10 +341,29 @@ func (s *Steps) assertPortalLocation(ctx context.Context) error {
 }
 
 // findOtherEnvironment records an environment of the organisation that is not the one the
-// runner's portals sign consumers in on, so a scenario can change the login environment to a
+// scenario's portal signs consumers in on, so a scenario can change the login environment to a
 // valid one. An organisation with a single environment cannot test that, and the scenario is
 // skipped there.
 func (s *Steps) findOtherEnvironment(ctx context.Context) error {
+	handle, err := runnerPortal(ctx)
+	if err != nil {
+		return err
+	}
+	platform, err := s.organisation(ctx)
+	if err != nil {
+		return err
+	}
+	portal, err := platform.get(ctx, portalPath(handle))
+	if err != nil {
+		return err
+	}
+	if portal.StatusCode != http.StatusOK {
+		return responseError(portal)
+	}
+	loginEnvironment, err := stringField(portal, "loginEnvironment")
+	if err != nil {
+		return fmt.Errorf("reading the login environment of managed API Portal %q: %w", handle, err)
+	}
 	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/environments", nil)
 	if err != nil {
 		return err
@@ -353,11 +376,11 @@ func (s *Steps) findOtherEnvironment(ctx context.Context) error {
 		return fmt.Errorf("decoding the organisation's environments: %w", err)
 	}
 	for _, item := range items {
-		if name, _ := item["name"].(string); name != "" && name != portalLoginEnvironment {
+		if name, _ := item["name"].(string); name != "" && name != loginEnvironment {
 			return tcontext.Set(ctx, keyOtherEnvironment, name)
 		}
 	}
-	slog.Warn("skipping: the organisation has no environment besides the portals' login environment",
-		"environment", portalLoginEnvironment, "environments", len(items))
+	slog.Warn("skipping: the organisation has no environment besides the portal's login environment",
+		"environment", loginEnvironment, "environments", len(items))
 	return godog.ErrSkip
 }
