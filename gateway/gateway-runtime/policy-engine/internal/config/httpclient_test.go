@@ -19,8 +19,10 @@
 package config
 
 import (
+	"crypto/x509"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -207,5 +209,72 @@ func TestSharedHTTPClientSkipVerifyAgainstSelfSignedServer(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("expected 204, got %d", resp.StatusCode)
+	}
+}
+
+func TestBuildHTTPClientConfigSkipHostnameVerifyIsOffByDefault(t *testing.T) {
+	cfg, err := BuildHTTPClientConfig(defaultHTTPClientConfigForTest())
+	if err != nil {
+		t.Fatalf("BuildHTTPClientConfig returned error: %v", err)
+	}
+	if cfg.TLS.InsecureSkipHostnameVerify {
+		t.Fatal("expected hostname-only skip off by default")
+	}
+}
+
+func TestBuildHTTPClientConfigRejectsBothSkipVerifyOptions(t *testing.T) {
+	hc := defaultHTTPClientConfigForTest()
+	hc.TLS.InsecureSkipVerify = true
+	hc.TLS.InsecureSkipHostnameVerify = true
+	if _, err := BuildHTTPClientConfig(hc); err == nil {
+		t.Fatal("expected setting both skip-verify options to be rejected")
+	}
+}
+
+// A certificate the client trusts but that names a different host is accepted by the
+// hostname-only option and refused by default. The certificate chain is still checked, so a
+// certificate nothing trusts is refused even with the option on.
+func TestSharedHTTPClientSkipHostnameVerify(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	// httptest's certificate names 127.0.0.1 and example.com, so dialing "localhost" is a
+	// name mismatch against an otherwise trusted certificate.
+	target := "https://localhost:" + server.URL[strings.LastIndex(server.URL, ":")+1:]
+
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+
+	build := func(trusted, skipHostname bool) *http.Client {
+		hc := defaultHTTPClientConfigForTest()
+		hc.TLS.InsecureSkipHostnameVerify = skipHostname
+		cfg, err := BuildHTTPClientConfig(hc)
+		if err != nil {
+			t.Fatalf("BuildHTTPClientConfig returned error: %v", err)
+		}
+		if trusted {
+			cfg.TLS.RootCAs = roots
+		}
+		client, err := httpclient.New(cfg)
+		if err != nil {
+			t.Fatalf("httpclient.New returned error: %v", err)
+		}
+		return client
+	}
+
+	if resp, err := build(true, false).Get(target); err == nil {
+		resp.Body.Close()
+		t.Fatal("expected the default client to refuse a certificate that does not name the host")
+	}
+	resp, err := build(true, true).Get(target)
+	if err != nil {
+		t.Fatalf("expected the hostname-only option to accept a trusted certificate for another name, got %v", err)
+	}
+	resp.Body.Close()
+	if resp, err := build(false, true).Get(target); err == nil {
+		resp.Body.Close()
+		t.Fatal("expected the hostname-only option to still refuse an untrusted certificate")
 	}
 }

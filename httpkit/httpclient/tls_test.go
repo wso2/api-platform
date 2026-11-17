@@ -167,3 +167,55 @@ func TestBuildTLSConfig_RejectsAsymmetricVersionRange(t *testing.T) {
 		t.Fatal("expected an error for min_version > max_version")
 	}
 }
+
+// TestNew_InsecureSkipHostnameVerify proves the hostname-only mode skips the name check and
+// nothing else: a certificate the client trusts but that does not name the dialed host is
+// accepted, while one that no trusted CA signed is still refused.
+func TestNew_InsecureSkipHostnameVerify(t *testing.T) {
+	// The server presents a certificate that names 127.0.0.3 while being dialed at 127.0.0.1.
+	presented := newSelfSignedCert(t, "presented", nil, []net.IP{net.ParseIP("127.0.0.3")})
+	untrusted := newSelfSignedCert(t, "untrusted", nil, []net.IP{net.ParseIP("127.0.0.3")})
+
+	srv := startTLSServerOn(t, "127.0.0.1", presented.tlsCert, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	build := func(trust *x509.CertPool, skipHostname bool) *http.Client {
+		cfg := DefaultConfig()
+		cfg.TLS.RootCAs = trust
+		cfg.TLS.InsecureSkipHostnameVerify = skipHostname
+		client, err := New(cfg)
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		return client
+	}
+
+	if resp, err := build(presented.pool, false).Get(srv.URL); err == nil {
+		resp.Body.Close()
+		t.Fatal("expected the default client to refuse a certificate that does not name the host")
+	}
+
+	resp, err := build(presented.pool, true).Get(srv.URL)
+	if err != nil {
+		t.Fatalf("expected hostname-only skip to accept a trusted certificate for another name, got %v", err)
+	}
+	resp.Body.Close()
+
+	if resp, err := build(untrusted.pool, true).Get(srv.URL); err == nil {
+		resp.Body.Close()
+		t.Fatal("expected hostname-only skip to still refuse a certificate no trusted CA signed")
+	}
+}
+
+func TestBuildTLSConfig_InsecureSkipHostnameVerifyRejectsConflicts(t *testing.T) {
+	both := TLSConfig{InsecureSkipHostnameVerify: true, InsecureSkipVerify: true, InsecureSkipVerifyAcknowledged: true}
+	if _, err := buildTLSConfig(both); err == nil {
+		t.Fatal("expected InsecureSkipHostnameVerify combined with InsecureSkipVerify to be rejected")
+	}
+	withCallback := TLSConfig{InsecureSkipHostnameVerify: true, VerifyConnection: func(tls.ConnectionState) error { return nil }}
+	if _, err := buildTLSConfig(withCallback); err == nil {
+		t.Fatal("expected InsecureSkipHostnameVerify combined with a custom verify callback to be rejected")
+	}
+}
