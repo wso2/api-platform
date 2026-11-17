@@ -56,16 +56,23 @@ vi.mock('@/components/ApiTestConsole', async (importOriginal) => ({
   // persistence.
   ApiTestConsole: ({
     baseUrl,
+    onRequestChange,
     routeLabel,
     toolbar,
     transport,
   }: {
     baseUrl: string;
+    onRequestChange?: unknown;
     routeLabel: string;
     toolbar?: React.ReactNode;
     transport: (request: unknown, signal: AbortSignal) => Promise<unknown>;
   }) => (
-    <div data-route={routeLabel} data-testid="spec-viewer">
+    // `data-mirroring` shows whether the page is listening to the console's requests.
+    <div
+      data-mirroring={onRequestChange ? 'true' : 'false'}
+      data-route={routeLabel}
+      data-testid="spec-viewer"
+    >
       {baseUrl}
       {toolbar}
       {/* Sends one request through the transport the page handed over, so a test can see where it goes. */}
@@ -648,6 +655,26 @@ describe('TestPage — proxy or direct', () => {
     await waitFor(() =>
       expect(screen.getByTestId('spec-viewer')).toHaveAttribute('data-route', 'direct'),
     );
+    expectNoRenderLoop();
+  });
+
+  it('stops the hidden console from overwriting cURL edits, and resumes when it is shown again', async () => {
+    server.use(...happyPath());
+
+    const { user } = renderPage();
+    const viewer = await screen.findByTestId('spec-viewer');
+
+    // The console mirrors its request into the page while it is the active view.
+    expect(viewer).toHaveAttribute('data-mirroring', 'true');
+
+    // The console stays mounted while hidden and rebuilds its request when the
+    // gateway or the test key changes. If it still mirrored, that would replace
+    // the method, path, headers and body the user edited in the cURL builder.
+    await user.click(screen.getByRole('button', { name: /cURL view/i }));
+    expect(viewer).toHaveAttribute('data-mirroring', 'false');
+
+    await user.click(screen.getByRole('button', { name: /Console view/i }));
+    expect(viewer).toHaveAttribute('data-mirroring', 'true');
     expectNoRenderLoop();
   });
 

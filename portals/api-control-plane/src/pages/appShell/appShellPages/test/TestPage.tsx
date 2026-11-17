@@ -519,7 +519,13 @@ function TestConsole() {
                   autoHeaders={autoHeaders}
                   autoQuery={autoQuery}
                   baseUrl={baseUrl}
-                  onRequestChange={handleConsoleRequestChange}
+                  // Mirror only while the console is the active view. It stays mounted while
+                  // hidden and rebuilds its request when the gateway or test key changes; a
+                  // mirror then would replace the user's cURL edits with the console's draft.
+                  // The cURL view re-applies the gateway and credentials itself (`withTarget`).
+                  onRequestChange={
+                    activeView === 'console' ? handleConsoleRequestChange : undefined
+                  }
                   routeLabel={intl.formatMessage(
                     callMode === 'direct' ? messages.routeDirect : messages.routeProxy,
                   )}
