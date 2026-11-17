@@ -16,10 +16,10 @@
  * under the License.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { useBootstrapOrganization, useOrganization } from '../api/resources/organizations';
-import { ErrorCode, isErrorCode } from '../api/core/errors';
+import { ErrorCode, isApiError, isErrorCode } from '../api/core/errors';
 import { runtimeConfig } from '../config/runtime';
 import { useAuth } from '../contexts/auth/AuthProvider';
 
@@ -42,6 +42,13 @@ import { useAuth } from '../contexts/auth/AuthProvider';
  *
  * Renders nothing, and never blocks the console — the organization may simply be
  * arriving by the other route.
+ *
+ * A registration that fails is never retried straight away. A deployment may not let
+ * portals register organizations at all (the route is not served, or the caller may
+ * not use it); then the console stops trying and only looks again, every
+ * {@link RECHECK_INTERVAL_MS}, until provisioning has created the organization. Any
+ * other failure may be transient, so the console looks again after the same interval
+ * and registers then if the organization is still missing.
  */
 export function OrganizationBootstrap() {
   const { isAuthenticated, user } = useAuth();
@@ -56,6 +63,9 @@ export function OrganizationBootstrap() {
   // another organization may need that one registered too.
   const started = useRef<string | undefined>(undefined);
   const refetchExisting = existing.refetch;
+  // What to do while the organization is still missing after a failed registration:
+  // keep looking ('recheck'), or look once and then register again ('retry').
+  const [waiting, setWaiting] = useState<{ handle: string; mode: 'recheck' | 'retry' }>();
 
   useEffect(() => {
     if (!isAuthenticated || !handle || started.current === handle) return;
@@ -82,8 +92,9 @@ export function OrganizationBootstrap() {
             void refetchExisting();
             return;
           }
-          // Anything else may be transient; allow a later attempt.
-          started.current = undefined;
+          // `started` stays set either way, so nothing registers again until the
+          // wait below says so.
+          setWaiting({ handle, mode: isRegistrationRefused(error) ? 'recheck' : 'retry' });
         },
       },
     );
@@ -98,5 +109,33 @@ export function OrganizationBootstrap() {
     refetchExisting,
   ]);
 
+  const waitingFor = waiting && waiting.handle === handle && !existing.data ? waiting.mode : undefined;
+  useEffect(() => {
+    if (!waitingFor) return;
+    if (waitingFor === 'recheck') {
+      const timer = setInterval(() => void refetchExisting(), RECHECK_INTERVAL_MS);
+      return () => clearInterval(timer);
+    }
+    const timer = setTimeout(() => {
+      started.current = undefined;
+      setWaiting(undefined);
+      void refetchExisting();
+    }, RECHECK_INTERVAL_MS);
+    return () => clearTimeout(timer);
+  }, [waitingFor, refetchExisting]);
+
   return null;
+}
+
+/** How long the console waits before looking for the organization again. */
+export const RECHECK_INTERVAL_MS = 30_000;
+
+/**
+ * Whether the platform refused the registration itself, rather than failing it: the
+ * route is not served here (404, 405) or the caller may not use it (403). Retrying
+ * cannot change either answer. Read from the HTTP status, since a route an
+ * intermediary does not serve answers without the platform's error body.
+ */
+function isRegistrationRefused(error: unknown): boolean {
+  return isApiError(error) && error.kind === 'http' && [403, 404, 405].includes(error.status ?? 0);
 }
