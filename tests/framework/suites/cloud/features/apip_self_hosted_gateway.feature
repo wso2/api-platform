@@ -14,12 +14,13 @@
 # limitations under the License.
 # --------------------------------------------------------------------
 
-@apip-cloud @apip-self-hosted-gateway
+@apip-cloud
 Feature: APIP cloud self-hosted gateway lifecycle
   As an APIP cloud user
   I want to register a gateway I run myself and manage its registration tokens
   So that the control-plane side of self-hosted gateway onboarding is verified
 
+  @ID_APIP_SELF_HOSTED_GATEWAY_001
   Scenario: A self-hosted gateway is registered awaiting connection, issued a token, and deleted
     Given I obtain an APIP cloud console token
     And I select an existing APIP environment for a self-hosted gateway
@@ -30,6 +31,7 @@ Feature: APIP cloud self-hosted gateway lifecycle
     When I delete the synthetic self-hosted APIP gateway
     Then the self-hosted APIP gateway should eventually be absent
 
+  @ID_APIP_SELF_HOSTED_GATEWAY_002
   Scenario: Reconfiguring a self-hosted gateway's registration token revokes the previous one
     Given I obtain an APIP cloud console token
     And I select an existing APIP environment for a self-hosted gateway

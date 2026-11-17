@@ -1732,6 +1732,10 @@ func newLeftoverStub() *leftoverStub {
 	return &leftoverStub{failing: map[string]int{}, listedProjects: map[string][]string{}, lists: map[string][]map[string]any{
 		"/secrets":             {{"id": "syn-secret-abcde234-1"}, {"id": "ops-secret"}},
 		"/managed-api-portals": {{"id": "syn-portal-abcde234-3", "name": "Synthetic syn-portal-abcde234-3"}, {"id": "ops-portal", "name": "Operations portal"}},
+		"/self-hosted-gateways": {
+			{"id": "development-syn-shgw-abcde234-1", "displayName": "syn-shgw-abcde234-1", "environment": "development"},
+			{"id": "development-ops-shgw", "displayName": "ops-shgw", "environment": "development"},
+		},
 		"/managed-gateways": {
 			{"id": "development-syn-gw-abcde234-1", "environment": "development"},
 			{"id": "development-default", "environment": "development"},
@@ -1768,13 +1772,14 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		"rest-apis/syn-api-abcde234-2",
 		"secrets/syn-secret-abcde234-1",
 		"managed-api-portals/syn-portal-abcde234-3",
+		"self-hosted-gateways/development-syn-shgw-abcde234-1",
 		"managed-gateways/development-syn-gw-abcde234-1",
 		"managed-gateways/development-syn-gw-ab",
 		"projects/syn-project-abcde234-2",
 		"pipelines/syn-pipeline-abcde234-1",
 		"environments/syn-env-abcde234-1",
-	}, stub.deleted[:9])
-	require.Len(t, removed, 9)
+	}, stub.deleted[:10])
+	require.Len(t, removed, 10)
 	for _, collection := range projectScopedCollections {
 		require.ElementsMatch(t, []string{"default", "syn-project-abcde234-2"}, stub.listedProjects[collection],
 			collection+" is listed for the default project and the run's projects only")
@@ -1785,6 +1790,7 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		require.NotContains(t, id, "ops-api")
 		require.NotContains(t, id, "syn-api-abcde234-9")
 		require.NotContains(t, id, "ops-portal")
+		require.NotContains(t, id, "ops-shgw")
 	}
 }
 
@@ -3129,7 +3135,7 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 				answer["status"], answer["statusReason"] = "FAILED", p.failsWith
 			}
 			_ = json.NewEncoder(w).Encode(answer)
-		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis", "/managed-api-portals"}, r.URL.Path):
+		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis", "/managed-api-portals", "/self-hosted-gateways"}, r.URL.Path):
 			// What the finalizer reads: this organisation holds none of it.
 			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{}})
 		default:
