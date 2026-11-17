@@ -149,6 +149,7 @@ const (
 	TerminalReasonPolicyError          = "policy_error"           // handlePolicyError generated a 500
 	TerminalReasonPayloadTooLarge      = "payload_too_large"      // handlePayloadTooLarge generated a 413
 	TerminalReasonNoPolicyChain        = "no_policy_chain"        // route resolved but no chain registered
+	TerminalReasonBackendUnavailable   = "backend_unavailable"    // a policy routed to a global Backend the gateway does not hold; handleBackendUnavailable generated a 503
 	TerminalReasonUnknownMessageType   = "unknown_message_type"   // unrecognised ext_proc message
 	TerminalReasonProcessingFailed     = "processing_failed"      // a phase returned a fatal (stream-ending) error with no ImmediateResponse to classify
 	TerminalReasonUnsupportedEncoding  = "unsupported_encoding"   // Content-Encoding the kernel cannot round-trip, on a body the policy chain requires

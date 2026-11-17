@@ -86,10 +86,18 @@ it takes next.
 | Route has no policy chain | `905005` |
 | Resolver could not turn the request into an operation | `905006` |
 | Content coding the gateway cannot decode | `905007` |
+| A policy routed to a global Backend the gateway does not hold | `905008` |
 | Resolver found no operation for the request | `900906` |
 
 `905005` is distinct from `905003` because it is a different thing to fix: the chain never
 arrived, rather than arrived and failed. Both are opaque 500s to the caller.
+
+`905008` is a `503`: a fixed `targetUpstream` that names neither one of the API's upstream
+definitions nor a Backend on the gateway (for example a Backend not created yet), or a Backend
+removed while the request was in flight. The request fails closed rather than falling back to the API's
+own upstream, and the gateway doesn't retry it. Subsequent requests succeed once the Backend
+exists on the gateway that serves them, with no change to the API. The Backend name goes to
+the log under the `x-error-id`, never to the caller.
 
 Resolution failures are coded by the **status**, never one code per internal failure kind. The
 status already tells a caller which class of thing went wrong, so a code tracking it discloses
