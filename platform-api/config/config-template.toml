@@ -501,11 +501,12 @@ allowed_schemes       = ["http", "https"]
 # WebSocket
 # ---------------------------------------------------------------------------
 [platform_api.server.websocket]
-max_connections      = 1000   # global WebSocket connection limit
-connection_timeout   = 30     # seconds before an idle connection is closed
-rate_limit_per_min   = 1000   # maximum messages per minute per connection
-metrics_log_enabled  = true   # emit WebSocket metrics to the log
-metrics_log_interval = 10     # seconds between metrics log lines
+max_connections             = 1000   # global WebSocket connection limit
+max_connections_per_gateway = -1     # concurrent connections one gateway may hold across all its tokens; -1 = unlimited
+connection_timeout          = 30     # seconds before an idle connection is closed
+rate_limit_per_min          = 1000   # maximum messages per minute per connection
+metrics_log_enabled         = true   # emit WebSocket metrics to the log
+metrics_log_interval        = 10     # seconds between metrics log lines
 
 # ---------------------------------------------------------------------------
 # Gateway

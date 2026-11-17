@@ -578,8 +578,9 @@ tls_skip_verify = false
 
 [api_portal.monetization]
 # true hides the Monetization section of Settings (Billing, Meters, Usage &
-# Revenue) and the Paid plan option of the plan dialog. Only Settings changes:
-# billing already set up keeps working, and the REST API is unchanged.
+# Revenue) and the Paid plan option of the plan dialog. The REST API then
+# refuses billing setup, and meter and paid plan creates other than the
+# Platform API's. Billing already set up keeps working.
 disabled = false
 
 [api_portal.billing.stripe]

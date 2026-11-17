@@ -23,7 +23,7 @@ Feature: The API Portal serves only its configured organization
   I want every page, catalog and registry route of another organization to be unreachable
   So that one portal can never expose or be steered into a tenant it does not serve
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml). Each refused
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml). Each refused
   # route is paired with the same route for the configured organization, which is served, so a
   # broken route cannot pass as an isolated one.
 

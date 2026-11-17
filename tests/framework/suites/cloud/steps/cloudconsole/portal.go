@@ -26,8 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cucumber/godog"
-
 	corecatalog "github.com/wso2/api-platform/tests/framework/core/catalog/cloudconsole"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
@@ -41,7 +39,8 @@ const (
 	// deleted from.
 	managedPortalsCollection = "/managed-api-portals"
 
-	// keyAPIPortalID names the managed API Portal the runner built; the sign-in scenarios use it.
+	// keyAPIPortalID names the managed API Portal the scenarios act on: the shared portal the starter
+	// prepared, or the one a creation scenario built for itself.
 	keyAPIPortalID = "cloudAPIPortalID"
 	// keyAPIPortalURL is the public URL of that portal, known once it is active.
 	keyAPIPortalURL = "cloudAPIPortalURL"
@@ -49,6 +48,9 @@ const (
 	keyRefusedAPIPortalID = "cloudRefusedAPIPortalID"
 	// keyAbsentAPIPortalID names a portal the scenario never creates.
 	keyAbsentAPIPortalID = "cloudAbsentAPIPortalID"
+	// keyOtherEnvironment names an environment of the organisation other than the one the runner's
+	// portals sign consumers in on.
+	keyOtherEnvironment = "cloudOtherEnvironment"
 	// keyAbsentPortalEnvironment names a login environment the organisation does not have.
 	keyAbsentPortalEnvironment = "cloudAbsentPortalEnvironment"
 
@@ -65,13 +67,6 @@ const (
 
 	// portalHandleMaxLength is the longest handle the platform accepts.
 	portalHandleMaxLength = 40
-
-	// keyPortalBuilds counts the portals the runner has asked the platform to build.
-	keyPortalBuilds = "cloudAPIPortalBuilds"
-	// maxPortalBuilds bounds them: the first, and one replacement for a build the platform failed,
-	// so the scenarios that only use a portal still run while the creation scenario reports the
-	// failure.
-	maxPortalBuilds = 2
 
 	portalDescription = "Created and deleted by the APIP cloud integration test. Safe to delete."
 )
@@ -111,6 +106,14 @@ var portalRequestDefects = map[string]func(handle string) (string, map[string]an
 	"no name": func(handle string) (string, map[string]any) {
 		return handle, portalRequestBody(handle, "")
 	},
+	"a name longer than 255 characters": func(handle string) (string, map[string]any) {
+		return handle, portalRequestBody(handle, strings.Repeat("n", portalNameMaxLength+1))
+	},
+	"a description longer than 1023 characters": func(handle string) (string, map[string]any) {
+		body := portalRequestBody(handle, "Synthetic "+handle)
+		body["description"] = strings.Repeat("d", portalDescriptionMaxLength+1)
+		return handle, body
+	},
 }
 
 func portalRequestDefectNames() string {
@@ -123,23 +126,25 @@ func portalRequestDefectNames() string {
 }
 
 // registerPortalSteps binds the steps that create, read, refuse and delete a managed API Portal.
-func (s *Steps) registerPortalSteps(sc *godog.ScenarioContext) {
+func (s *Steps) registerPortalSteps(sc stepRegistrar) {
 	sc.Step(`^I request a synthetic managed API Portal for the runner$`, s.requestRunnerPortal)
 	sc.Step(`^the synthetic managed API Portal should be accepted for provisioning$`, s.assertPortalAccepted)
-	sc.Step(`^the synthetic managed API Portal should become active$`, s.awaitPortalActive)
-	sc.Step(`^the runner has an active synthetic managed API Portal$`, s.ensureActiveRunnerPortal)
-	sc.Step(`^the synthetic managed API Portal should report an HTTPS URL$`, s.assertPortalURL)
-	sc.Step(`^the managed API Portal list should include the synthetic managed API Portal$`, s.assertPortalListed)
-	sc.Step(`^I request a managed API Portal under the handle of the synthetic managed API Portal$`, s.requestDuplicatePortal)
-	sc.Step(`^the synthetic managed API Portal should still be active$`, s.assertPortalStillActive)
+	sc.Step(`^the managed API Portal should become active$`, s.awaitPortalActive)
+	sc.Step(`^the managed API Portal should report an HTTPS URL$`, s.assertPortalURL)
+	sc.Step(`^the managed API Portal list should include the managed API Portal$`, s.assertPortalListed)
+	sc.Step(`^I request a managed API Portal under the handle of the managed API Portal$`, s.requestDuplicatePortal)
+	sc.Step(`^the managed API Portal should still be active$`, s.assertPortalStillActive)
 	sc.Step(`^I request a managed API Portal that has "([^"]*)"$`, s.requestDefectivePortal)
 	sc.Step(`^I request a managed API Portal whose login environment does not exist$`, s.requestPortalInAbsentEnvironment)
 	sc.Step(`^the refused managed API Portal should not be listed$`, s.assertRefusedPortalNotListed)
-	sc.Step(`^I read the synthetic managed API Portal$`, s.readRunnerPortal)
+	sc.Step(`^I read the managed API Portal$`, s.readRunnerPortal)
 	sc.Step(`^I read a managed API Portal that does not exist$`, s.readAbsentPortal)
 	sc.Step(`^I delete the synthetic managed API Portal$`, s.deleteRunnerPortal)
 	sc.Step(`^the managed API Portal deletion should be accepted$`, s.assertPortalDeletionAccepted)
 	sc.Step(`^the synthetic managed API Portal should eventually be gone$`, s.awaitPortalGone)
+	s.registerPortalManageSteps(sc)
+	s.registerPortalRuntimeSteps(sc)
+	s.registerPublicationDraftSteps(sc)
 }
 
 // portalPath is the route of one managed API Portal.
@@ -177,11 +182,6 @@ func runnerPortal(ctx context.Context) (string, error) {
 // request and the registration is dropped again when the platform refuses it. The response is
 // published without requiring success.
 func (s *Steps) requestRunnerPortal(ctx context.Context) error {
-	local, ok := tcontext.LocalOf(ctx)
-	if !ok || local == nil {
-		return errors.New("cannot request a runner portal without runner context")
-	}
-	local.Append(keyPortalBuilds, true)
 	if err := generateResourceAndStore(ctx, "syn-portal", keyAPIPortalID); err != nil {
 		return err
 	}
@@ -284,93 +284,6 @@ func (s *Steps) awaitPortalActive(ctx context.Context) error {
 	if portalURL, err := stringField(last, "url"); err == nil {
 		return tcontext.Set(ctx, keyAPIPortalURL, portalURL)
 	}
-	return nil
-}
-
-// ensureActiveRunnerPortal gives a scenario that only uses a portal an active one: the runner's
-// portal, waited for while it is built. When the platform failed that build, or refused it, the
-// failed portal is deleted, which frees the organisation's portal quota, and one replacement is
-// built. The creation scenario still reports the failure; a second failed build fails here too.
-func (s *Steps) ensureActiveRunnerPortal(ctx context.Context) error {
-	local, ok := tcontext.LocalOf(ctx)
-	if !ok || local == nil {
-		return errors.New("cannot find the runner portal without runner context")
-	}
-	for {
-		handle, haveHandle := "", false
-		if value, err := requiredValue(ctx, keyAPIPortalID); err == nil {
-			handle, haveHandle = value, true
-		}
-		var waitErr error
-		if haveHandle && !portalRegistered(ctx, handle) {
-			// The platform refused this portal, so there is nothing to wait for or delete.
-			haveHandle, waitErr = false, fmt.Errorf("%w: the request for %q was refused", errPortalAbsent, handle)
-		}
-		if haveHandle {
-			if waitErr = s.awaitPortalActive(ctx); waitErr == nil {
-				return nil
-			}
-			if !errors.Is(waitErr, errPortalFailed) && !errors.Is(waitErr, errPortalAbsent) {
-				return waitErr
-			}
-		}
-		if builds := len(local.List(keyPortalBuilds)); builds >= maxPortalBuilds {
-			if waitErr == nil {
-				waitErr = errPortalAbsent
-			}
-			return fmt.Errorf("the runner asked for %d managed API Portals and none became active: %w", builds, waitErr)
-		}
-		if haveHandle {
-			if err := s.removeRunnerPortal(ctx, handle); err != nil {
-				return fmt.Errorf("removing the failed managed API Portal %q before building another: %w", handle, err)
-			}
-		}
-		if err := s.requestRunnerPortal(ctx); err != nil {
-			return err
-		}
-		if err := s.assertPortalAccepted(ctx); err != nil {
-			return err
-		}
-	}
-}
-
-// errPortalAbsent marks a runner portal the platform does not have, such as one whose creation it
-// refused.
-var errPortalAbsent = errors.New("the platform has no such managed API Portal")
-
-// portalRegistered reports whether a portal is waiting to be cleaned up: a portal the platform took
-// stays registered, and one it refused is dropped.
-func portalRegistered(ctx context.Context, id string) bool {
-	registry, err := cleanup.Of(ctx)
-	if err != nil {
-		return false
-	}
-	for _, resource := range registry.Pending() {
-		if resource.Kind == kindAPIPortal && resource.ID == id {
-			return true
-		}
-	}
-	return false
-}
-
-// removeRunnerPortal deletes a portal of the runner, waits until it is gone and drops its cleanup
-// registration.
-func (s *Steps) removeRunnerPortal(ctx context.Context, handle string) error {
-	base, err := s.topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
-	if err != nil {
-		return err
-	}
-	bearer, err := bearerToken(ctx)
-	if err != nil {
-		return err
-	}
-	if err := deletePortal(ctx, s.client, base, bearer, handle, portalBuildTimeout); err != nil {
-		return err
-	}
-	if err := awaitPortalDeleted(ctx, s.client, base, bearer, handle, portalDeletionTimeout); err != nil {
-		return err
-	}
-	deregister(ctx, kindAPIPortal, handle)
 	return nil
 }
 
@@ -615,6 +528,9 @@ func (s *Steps) deleteRunnerPortal(ctx context.Context) error {
 	handle, err := runnerPortal(ctx)
 	if err != nil {
 		return err
+	}
+	if !strings.HasPrefix(handle, syntheticPortalPrefix) {
+		return fmt.Errorf("refusing to delete managed API Portal %q: only a portal this scenario built (a handle starting %q) may be deleted, never the shared portal", handle, syntheticPortalPrefix)
 	}
 	_, err = s.doAuthenticated(ctx, http.MethodDelete, portalPath(handle), nil)
 	return err

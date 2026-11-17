@@ -26,8 +26,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cucumber/godog"
-
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
@@ -60,7 +58,7 @@ const (
 
 // registerSelfHostedGatewaySteps binds the steps that register a self-hosted gateway, manage its
 // registration tokens and delete it.
-func (s *Steps) registerSelfHostedGatewaySteps(sc *godog.ScenarioContext) {
+func (s *Steps) registerSelfHostedGatewaySteps(sc stepRegistrar) {
 	sc.Step(`^I create a synthetic self-hosted APIP gateway$`, s.createSelfHostedGateway)
 	sc.Step(`^the self-hosted APIP gateway should be retrievable and awaiting connection$`, s.getSelfHostedGatewayAwaitingConnection)
 	sc.Step(`^I generate a registration token for the self-hosted APIP gateway$`, s.generateRegistrationToken)

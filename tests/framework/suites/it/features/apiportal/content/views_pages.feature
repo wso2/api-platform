@@ -23,7 +23,7 @@ Feature: A view serves exactly the API pages its labels allow
   I want each view to address its pages by handle and show only the APIs that carry its labels
   So that an audience never reaches an API, its Markdown or its specification through another view
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml). Pages
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml). Pages
   # are anonymous. Every hidden page is paired with the same page served by the view that holds the
   # API's label, so a broken route cannot pass as a hidden one. The default view is never deleted
   # here: other runners in the block read it.

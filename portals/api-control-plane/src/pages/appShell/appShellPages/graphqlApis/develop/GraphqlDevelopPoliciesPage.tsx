@@ -62,5 +62,6 @@ function GraphqlDevelopPoliciesPageContent() {
 
   const api = apiQuery.data;
 
-  return <GraphqlPolicyPanel api={api} />;
+  // Remount when switching APIs to reset the panel state.
+  return <GraphqlPolicyPanel key={api.id ?? graphqlApiHandler} api={api} />;
 }

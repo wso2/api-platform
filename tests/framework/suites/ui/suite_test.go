@@ -23,9 +23,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -33,6 +35,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/wso2/api-platform/tests/framework/core/actor"
@@ -41,6 +44,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/catalog/platformapi"
 	"github.com/wso2/api-platform/tests/framework/core/catalog/shared"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
+	"github.com/wso2/api-platform/tests/framework/core/components"
 	"github.com/wso2/api-platform/tests/framework/core/coverage"
 	"github.com/wso2/api-platform/tests/framework/core/logcapture"
 	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
@@ -378,6 +382,63 @@ func TestRepoRootFindsWorkspaceRoot(t *testing.T) {
 	}
 }
 
+func TestCustomPolicyDeleterDeletesEveryVersionWhenOneFails(t *testing.T) {
+	pages := map[string]string{
+		"0": `{"list":[{"uuid":"in-use","name":"it-policy","version":"v1.0.0"},` +
+			`{"uuid":"other","name":"it-other","version":"v1.0.0"}],"pagination":{"total":3}}`,
+		"2": `{"list":[{"uuid":"free","name":"it-policy","version":"v2.0.0"}],"pagination":{"total":3}}`,
+	}
+	var mu sync.Mutex
+	var deleted []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, pages[r.URL.Query().Get("offset")])
+		case http.MethodDelete:
+			mu.Lock()
+			deleted = append(deleted, r.URL.Path)
+			mu.Unlock()
+			if strings.Contains(r.URL.Path, "/in-use/") {
+				w.WriteHeader(http.StatusConflict)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}))
+	defer srv.Close()
+
+	def := &components.Definition{Name: "platform-api", Alias: "platform-api",
+		External: &components.ExternalSpec{Endpoints: []components.ExternalEndpoint{{Name: "https"}}}}
+	inst, err := components.NewExternalInstance(def, 0, 1, map[string]string{"https": srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := components.NewSet()
+	if err := set.Add(inst); err != nil {
+		t.Fatal(err)
+	}
+	auth := &platformAPIAuth{
+		topo:   &frameworkruntime.Topology{Instances: set},
+		client: httpx.NewClient(httpx.Options{}),
+		token:  "test",
+	}
+
+	err = customPolicyDeleter(auth)(context.Background(), cleanup.Resource{
+		Kind: managementportal.KindCustomPolicy, ID: "it-policy"})
+
+	if err == nil || !strings.Contains(err.Error(), "v1.0.0") {
+		t.Fatalf("customPolicyDeleter() error = %v, want the v1.0.0 delete failure", err)
+	}
+	want := []string{
+		"/api/v0.9/gateway-custom-policies/in-use/versions/v1.0.0",
+		"/api/v0.9/gateway-custom-policies/free/versions/v2.0.0",
+	}
+	if strings.Join(deleted, " ") != strings.Join(want, " ") {
+		t.Fatalf("deleted %v, want %v", deleted, want)
+	}
+}
+
 // registerUIDeleters configures cleanup handlers for every resource kind a UI scenario can
 // create. A deleter runs independently of any browser page — by the time a sweep runs, the
 // scenario's own page may already be closed — so every one here uses its own HTTP client
@@ -406,6 +467,7 @@ func registerUIDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) 
 	reg.RegisterDeleter(cleanup.KindAPI, platformAPIDeleter(auth, "/api/v0.9/rest-apis"))
 	reg.RegisterDeleter(managementportal.KindGraphQLAPI, platformAPIDeleter(auth, "/api/v0.9/graphql-apis"))
 	reg.RegisterDeleter(managementportal.KindAPIPortal, platformAPIDeleter(auth, "/api/v0.9/api-portals"))
+	reg.RegisterDeleter(managementportal.KindCustomPolicy, customPolicyDeleter(auth))
 	secondOrganization := &platformAPIAuth{topo: topo, client: client, secondOrganization: true}
 	reg.RegisterDeleter(managementportal.KindSecondOrganizationRESTAPI,
 		platformAPIDeleter(secondOrganization, "/api/v0.9/rest-apis"))
@@ -619,6 +681,75 @@ func platformAPIDeleter(auth *platformAPIAuth, collection string) cleanup.Delete
 			return nil
 		}
 		return fmt.Errorf("cleanup: %s", resp.Describe())
+	}
+}
+
+// customPolicyDeleter deletes every version of the custom policy named by the resource ID that
+// the organization holds. One synced from the console is known only by name. Every page is read
+// before anything is deleted, so a delete cannot shift a later page. A failed delete does not
+// stop the others.
+func customPolicyDeleter(auth *platformAPIAuth) cleanup.Deleter {
+	type policyVersion struct{ uuid, version string }
+	return func(ctx context.Context, res cleanup.Resource) error {
+		base, err := auth.baseURL()
+		if err != nil {
+			return err
+		}
+		authHeader, err := auth.authHeader(ctx)
+		if err != nil {
+			return err
+		}
+		headers := map[string]string{"Authorization": authHeader}
+		var matched []policyVersion
+		for offset := 0; ; {
+			listed, err := auth.client.Do(ctx, httpx.Request{
+				Method:  http.MethodGet,
+				URL:     fmt.Sprintf("%s/api/v0.9/gateway-custom-policies?limit=100&offset=%d", base, offset),
+				Headers: headers,
+			}, 1, 0)
+			if err != nil {
+				return err
+			}
+			if !listed.Succeeded() {
+				return fmt.Errorf("cleanup: listing custom policies: %s", listed.Describe())
+			}
+			var page struct {
+				List []struct {
+					UUID    string `json:"uuid"`
+					Name    string `json:"name"`
+					Version string `json:"version"`
+				} `json:"list"`
+				Pagination struct {
+					Total int `json:"total"`
+				} `json:"pagination"`
+			}
+			if err := json.Unmarshal(listed.Body, &page); err != nil {
+				return fmt.Errorf("cleanup: decoding the custom policy list: %w", err)
+			}
+			for _, policy := range page.List {
+				if policy.Name == res.ID {
+					matched = append(matched, policyVersion{policy.UUID, policy.Version})
+				}
+			}
+			offset += len(page.List)
+			if len(page.List) == 0 || offset >= page.Pagination.Total {
+				break
+			}
+		}
+		var errs []error
+		for _, policy := range matched {
+			resp, err := auth.client.Do(ctx, httpx.Request{
+				Method: http.MethodDelete, Headers: headers,
+				URL: base + "/api/v0.9/gateway-custom-policies/" + url.PathEscape(policy.uuid) + "/versions/" + url.PathEscape(policy.version),
+			}, 1, 0)
+			switch {
+			case err != nil:
+				errs = append(errs, fmt.Errorf("cleanup: deleting %s %s: %w", res.ID, policy.version, err))
+			case resp.StatusCode != http.StatusNotFound && !resp.Succeeded():
+				errs = append(errs, fmt.Errorf("cleanup: deleting %s %s: %s", res.ID, policy.version, resp.Describe()))
+			}
+		}
+		return errors.Join(errs...)
 	}
 }
 

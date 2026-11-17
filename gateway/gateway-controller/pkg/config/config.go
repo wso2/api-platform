@@ -37,6 +37,7 @@ import (
 	commonconstants "github.com/wso2/api-platform/common/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
+	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
 const (
@@ -333,6 +334,9 @@ type ServerConfig struct {
 	// second listener -- XDSPort itself starts speaking mTLS. Off by
 	// default; see XDSServerTLSConfig for why xDS has no server-only mode.
 	XDSTLS XDSServerTLSConfig `koanf:"xds_tls"`
+
+	// NetworkSecurity groups the gateway's outbound network controls.
+	NetworkSecurity NetworkSecurityConfig `koanf:"network_security"`
 
 	// ReadTimeout, ReadHeaderTimeout, WriteTimeout, and IdleTimeout bound the
 	// REST management API's http.Server (both the plaintext listener on
@@ -1177,6 +1181,19 @@ func defaultConfig() *Config {
 	return &Config{
 		Controller: Controller{
 			Server: ServerConfig{
+				// Outbound access control for artifact URLs. On by default with
+				// private and in-cluster destinations reachable; only link-local
+				// (cloud metadata), unspecified and multicast addresses are refused.
+				NetworkSecurity: NetworkSecurityConfig{
+					AccessControl: AccessControlConfig{
+						Enabled:             true,
+						Mode:                netguard.ModeDeny,
+						Hostnames:           []string{},
+						DenyPrivateNetworks: false,
+						MaxRedirects:        5,
+						AllowedSchemes:      []string{"http", "https"},
+					},
+				},
 				APIPort:                         9090,
 				XDSPort:                         18000,
 				ShutdownTimeout:                 15 * time.Second,
@@ -1950,6 +1967,12 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Validate network access control; a malformed hostname pattern or an allow
+	// mode with no hostnames refuses startup.
+	if _, _, err := c.ArtifactAccessControlPolicy(); err != nil {
+		return err
+	}
+
 	// Validate vhost configuration
 	if err := c.validateVHostsConfig(); err != nil {
 		return err
@@ -2288,6 +2311,59 @@ func (c *Config) validateTimeoutConfig() error {
 	}
 
 	return nil
+}
+
+// NetworkSecurityConfig groups outbound network controls.
+type NetworkSecurityConfig struct {
+	AccessControl AccessControlConfig `koanf:"access_control"`
+}
+
+// AccessControlConfig restricts the destinations an artifact may point the
+// gateway at: its upstream URLs, which the router dials, and the URL
+// parameters (`format: uri` or `x-wso2-url: true`) of the policies attached to
+// it, which the policy engine dials. The controller refuses a deployment that
+// breaks it and undeploys a stored artifact that breaks it after a restart.
+// URLs configured in this file (the control plane, the IdP, collectors,
+// policy system parameters) are never subject to it.
+type AccessControlConfig struct {
+	Enabled bool `koanf:"enabled"`
+	// Mode is "deny" (a host matching Hostnames is refused) or "allow" (only a
+	// host matching Hostnames is permitted).
+	Mode string `koanf:"mode"`
+	// Hostnames are RE2 regular expressions, each matched case-insensitively
+	// against the whole hostname of a destination (never its port or path).
+	Hostnames []string `koanf:"hostnames"`
+	// DenyPrivateNetworks also refuses private, loopback, carrier-grade NAT and
+	// unique-local addresses. Link-local (cloud metadata), unspecified and
+	// multicast addresses are refused regardless.
+	DenyPrivateNetworks bool     `koanf:"deny_private_networks"`
+	MaxRedirects        int      `koanf:"max_redirects"`
+	AllowedSchemes      []string `koanf:"allowed_schemes"`
+}
+
+// GuardConfig returns the shared netguard representation of a.
+func (a AccessControlConfig) GuardConfig() netguard.GuardConfig {
+	return netguard.GuardConfig{
+		Enabled:             a.Enabled,
+		Mode:                a.Mode,
+		Hostnames:           a.Hostnames,
+		DenyPrivateNetworks: a.DenyPrivateNetworks,
+		MaxRedirects:        a.MaxRedirects,
+		AllowedSchemes:      a.AllowedSchemes,
+	}
+}
+
+// ArtifactAccessControlPolicy builds the policy for
+// controller.server.network_security.access_control. enabled is false when
+// access control is off, in which case the policy is the zero Policy and must
+// not be applied.
+func (c *Config) ArtifactAccessControlPolicy() (policy netguard.Policy, enabled bool, err error) {
+	ac := c.Controller.Server.NetworkSecurity.AccessControl
+	policy, err = ac.GuardConfig().Build()
+	if err != nil {
+		return netguard.Policy{}, false, fmt.Errorf("controller.server.network_security.access_control: %w", err)
+	}
+	return policy, ac.Enabled, nil
 }
 
 // validatePolicyEngineConfig validates the policy engine configuration

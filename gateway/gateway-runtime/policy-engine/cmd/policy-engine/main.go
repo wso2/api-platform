@@ -530,6 +530,8 @@ func initializeXDSClient(ctx context.Context, cfg *config.Config, serverAddr str
 		RequestTimeout:        cfg.PolicyEngine.XDS.RequestTimeout,
 		InitialReconnectDelay: cfg.PolicyEngine.XDS.InitialReconnectDelay,
 		MaxReconnectDelay:     cfg.PolicyEngine.XDS.MaxReconnectDelay,
+		KeepaliveTime:         cfg.PolicyEngine.XDS.KeepaliveTime,
+		KeepaliveTimeout:      cfg.PolicyEngine.XDS.KeepaliveTimeout,
 		TLSEnabled:            cfg.PolicyEngine.XDS.TLS.Enabled,
 		TLSCertPath:           cfg.PolicyEngine.XDS.TLS.CertPath,
 		TLSKeyPath:            cfg.PolicyEngine.XDS.TLS.KeyPath,
