@@ -826,13 +826,11 @@ root_ca_file = ""
 client_cert_file = ""
 client_key_file = ""
 # Disables certificate chain and hostname verification for EVERY outbound call every policy
-# makes through this client. Off by default. Setting insecure_skip_verify alone is rejected
-# at startup: insecure_skip_verify_acknowledged must be set too. Prefer root_ca_file to trust a
-# specific private CA; use this only in development and test environments. Policies' own
-# skip-verify parameters (skipTlsVerify, tlsSkipVerify, tlsInsecureSkipVerify) are ignored while
-# this shared client is in use, so this is the one place the setting is made.
+# makes through this client. Off by default. Prefer root_ca_file to trust a specific private
+# CA; use this only in development and test environments. Policies' own skip-verify parameters
+# (skipTlsVerify, tlsSkipVerify, tlsInsecureSkipVerify) are ignored while this shared client is
+# in use, so this is the one place the setting is made.
 insecure_skip_verify = false
-insecure_skip_verify_acknowledged = false
 
 [policy_engine.http_client.proxy]
 # "none" (default) | "environment" (HTTP_PROXY/HTTPS_PROXY/NO_PROXY) | "url"

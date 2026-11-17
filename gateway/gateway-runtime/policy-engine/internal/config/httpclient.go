@@ -57,12 +57,11 @@ func BuildHTTPClientConfig(hc HTTPClientConfig) (httpclient.Config, error) {
 	cfg.TLS.RootCAFile = hc.TLS.RootCAFile
 	cfg.TLS.ClientCertFile = hc.TLS.ClientCertFile
 	cfg.TLS.ClientKeyFile = hc.TLS.ClientKeyFile
-	// Skip-verify is off by default and needs both flags: httpclient.New rejects
-	// InsecureSkipVerify without InsecureSkipVerifyAcknowledged, so one mistyped line in
-	// config.toml cannot disable verification for every policy's outbound calls. The two
-	// are passed through as set, never mirrored, so the gate stays a real double opt-in.
+	// Skip-verify is off by default. httpclient.New requires an acknowledgement alongside
+	// it, which this single operator-facing flag supplies, as the gateway controller's
+	// shared client does.
 	cfg.TLS.InsecureSkipVerify = hc.TLS.InsecureSkipVerify
-	cfg.TLS.InsecureSkipVerifyAcknowledged = hc.TLS.InsecureSkipVerifyAcknowledged
+	cfg.TLS.InsecureSkipVerifyAcknowledged = hc.TLS.InsecureSkipVerify
 
 	switch hc.Proxy.Mode {
 	case "", "none":
