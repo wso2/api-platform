@@ -22,7 +22,7 @@ Feature: Developers own the applications they create in the API Portal
   I want to create, rename and delete applications that only I can see
   So that the credentials I group in them stay mine and are named the way I expect
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level.
   # The application events are asserted by webhooks/api_key_webhooks.feature,
   # and deleting an application that holds credentials by applications/application_deletion.feature.
   # The suite has one developer, so the administrator, who holds every

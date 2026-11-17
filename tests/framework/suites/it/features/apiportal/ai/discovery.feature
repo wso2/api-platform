@@ -23,7 +23,7 @@ Feature: AI agents discover a view's APIs, MCP servers and specifications withou
   I want each view to publish an llms.txt index, Markdown catalogues and raw specifications
   So that AI agents can find and call the APIs I make visible to them, and never the ones I hide
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml).
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml).
   # Every scenario after the first uses its own labelled view, so what it publishes, and turning AI
   # discovery off, never affects another runner's view. Every hidden entry is paired with a visible
   # one in the same index.

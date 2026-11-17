@@ -24,7 +24,7 @@ Feature: API Portal hardening: headers, error bodies, upload limits and outbound
   limit, and the try-it proxy to call only an API's registered public endpoints
   So that the portal neither advertises what to attack nor becomes a way into the internal network
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level.
   # Each route's status is asserted first, so a broken route cannot pass a header or body check by
   # returning nothing. Every refusal is paired with the same request succeeding.
 
