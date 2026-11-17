@@ -27,6 +27,14 @@ import (
 // PortalPublisher pushes a publication to its API Portal, addressing the
 // listing by the API's own handle; no portal-returned ID is stored locally.
 // HTTPPortalPublisher is the implementation.
+// ForceUnpublisher is implemented by a PortalPublisher that can remove a listing even
+// while it has subscriptions or active API keys: the portal removes those first. Deleting
+// an API uses it, since nothing can withdraw the listing once the API is gone. The
+// portal still refuses while a paid subscription exists.
+type ForceUnpublisher interface {
+	ForceUnpublish(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string) error
+}
+
 type PortalPublisher interface {
 	// Publish pushes pub, identified to the portal by apiHandle and listed as
 	// apiType (e.g. rest-api, graphql-api), together with

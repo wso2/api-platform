@@ -279,27 +279,39 @@ async function revoke({ orgId, apiId, keyId, actor }) {
     if (!existing) throw Object.assign(new Error('API key not found'), { status: 404 });
     if (apiId && existing.api_uuid !== apiId) throw Object.assign(new Error('API key not found'), { status: 404 });
 
-    const revokeApiInfo = await resolveApiDirect(orgId, existing.api_uuid);
-    const subscription = await resolveSubscription(orgId, existing.subscription_uuid);
-
     await db.withTransaction(async (t) => {
-        const revoked = await apiKeyDao.revoke(orgId, keyId, actor, t);
+        const revoked = await revokeInTransaction({ orgId, existing, actor, t });
         if (!revoked) throw Object.assign(new Error('Key already revoked or not found'), { status: 409 });
-
-        await publish('apikey.revoked',
-            {
-                key_id: keyId,
-                handle: existing.handle,
-                display_name: existing.display_name,
-                api: { name: revokeApiInfo ? revokeApiInfo.name : null, version: revokeApiInfo ? revokeApiInfo.version : null, ref_id: revokeApiInfo ? revokeApiInfo.refId : '', type: revokeApiInfo ? revokeApiInfo.type : null },
-                ...(subscription && { subscription })
-            },
-            { transaction: t, orgId,
-              aggregateType: 'apikey', aggregateId: keyId }
-        );
     });
 
     logger.info('API key revoked', { keyId, orgId, actor });
+}
+
+/**
+ * Revoke `existing` (an apiKeyDao row) and publish apikey.revoked inside the caller's
+ * transaction `t`, so the key and its event commit together. Resolves to false when the
+ * key was already revoked or is gone.
+ */
+async function revokeInTransaction({ orgId, existing, actor, t }) {
+    const keyId = existing.uuid;
+    const revokeApiInfo = await resolveApiDirect(orgId, existing.api_uuid);
+    const subscription = await resolveSubscription(orgId, existing.subscription_uuid);
+
+    const revoked = await apiKeyDao.revoke(orgId, keyId, actor, t);
+    if (!revoked) return false;
+
+    await publish('apikey.revoked',
+        {
+            key_id: keyId,
+            handle: existing.handle,
+            display_name: existing.display_name,
+            api: { name: revokeApiInfo ? revokeApiInfo.name : null, version: revokeApiInfo ? revokeApiInfo.version : null, ref_id: revokeApiInfo ? revokeApiInfo.refId : '', type: revokeApiInfo ? revokeApiInfo.type : null },
+            ...(subscription && { subscription })
+        },
+        { transaction: t, orgId,
+          aggregateType: 'apikey', aggregateId: keyId }
+    );
+    return true;
 }
 
 async function list(orgId, filters, transaction) {
@@ -359,7 +371,7 @@ async function removeApplicationAssociation({ orgId, apiId, keyId, actor }) {
 }
 
 module.exports = {
-    generate, regenerate, revoke, list,
+    generate, regenerate, revoke, revokeInTransaction, list,
     associateApplication, removeApplicationAssociation,
     publishKeyApplicationUpdated
 };

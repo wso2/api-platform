@@ -43,6 +43,7 @@ import {
   useUpdateRestApi,
 } from './restApis.hooks';
 import { restApiKeys } from './restApis.queries';
+import { apiPublicationKeys } from '../apiPublications/apiPublications.queries';
 
 /**
  * Hook-layer tests for the **full-CRUD-with-optimistic-update** shape.
@@ -366,6 +367,20 @@ describe('useDeleteRestApi', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(queryClient.getQueryState(otherOrgKey)?.isInvalidated).toBe(false);
+  });
+
+  it('refreshes the API Portal counts when the delete fails', async () => {
+    // A delete that stops part way may already have taken the API off some portals.
+    server.use(failure('delete', `/rest-apis/${API_ID}`, 503, 'PUBLICATION_PORTAL_UNAVAILABLE'));
+
+    const { result, queryClient, org } = renderApiHook(() => useDeleteRestApi());
+    const publications = apiPublicationKeys.list(org, { apiType: 'rest-api', apiId: API_ID });
+    queryClient.setQueryData(publications, { count: 0, list: [], pagination: {} });
+
+    result.current.mutate({ restApiId: API_ID });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    await waitFor(() => expect(queryClient.getQueryState(publications)?.isInvalidated).toBe(true));
   });
 });
 

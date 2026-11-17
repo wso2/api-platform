@@ -724,11 +724,13 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 	}
 	published, wasReplace, err := s.publicationRepo.PromoteDraftToPublication(artifactUUID, portal.ID, orgUUID, actor, draft.UpdatedAt, snapshotAt, pushedPlans, pushedDocs)
 	if err != nil {
+		s.withdrawIfArtifactDeleted(ctx, portal, apiType, apiId, artifactUUID, orgUUID)
 		return nil, false, fmt.Errorf("failed to promote publication draft: %w", err)
 	}
 	if published == nil {
 		// The draft existed moments ago (checked above) but is gone now —
 		// same defensive DRAFT_NOT_FOUND, not a normal outcome.
+		s.withdrawIfArtifactDeleted(ctx, portal, apiType, apiId, artifactUUID, orgUUID)
 		return nil, false, apperror.APIPublicationDraftNotFound.New()
 	}
 
@@ -736,6 +738,26 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 	published.APIPortalName = portal.Name
 	applySelections(published, pushedPlans, pushedDocs)
 	return published, wasReplace, nil
+}
+
+// withdrawIfArtifactDeleted takes back a listing Publish has just pushed when the
+// artifact was deleted before Publish could record it. Publish pushes to the portal
+// before it writes its row, and the API's delete unpublishes only the listings it can
+// see, so without this the portal would keep serving an API that no longer exists,
+// with no row left here to unpublish it from. Best effort: the publish is already
+// failing, and a failure here is logged.
+func (s *PublicationService) withdrawIfArtifactDeleted(ctx context.Context, portal *model.APIPortal, apiType, apiHandle, artifactUUID, orgUUID string) {
+	artifact, err := s.artifactRepo.GetByUUID(artifactUUID, orgUUID)
+	if err != nil || artifact != nil {
+		return
+	}
+	if err := s.removeFromPortal(ctx, portal, apiType, apiHandle); err != nil {
+		s.slogger.Error("A listing pushed for a deleted API could not be withdrawn from its API Portal",
+			"apiType", apiType, "apiHandle", apiHandle, "apiPortal", portal.Handle, "error", err)
+		return
+	}
+	s.slogger.Warn("Withdrew a listing pushed for an API deleted while it was being published",
+		"apiType", apiType, "apiHandle", apiHandle, "apiPortal", portal.Handle)
 }
 
 // Unpublish removes the live listing from portal, then writes locally.

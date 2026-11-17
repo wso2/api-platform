@@ -27,6 +27,9 @@ const apiWorkflowDao = require('../dao/apiWorkflowDao');
 const subscriptionPlanDao = require('../dao/subscriptionPlanDao');
 const apiFileDao = require('../dao/apiFileDao');
 const apiKeyDao = require("../dao/apiKeyDao");
+const billingSubscriptionDao = require('../dao/billingSubscriptionDao');
+const apiKeyService = require('./apiKeyService');
+const subscriptionService = require('./subscriptionService');
 const util = require("../utils/util");
 const orgContext = require("../utils/orgContext");
 const logger = require("../config/logger");
@@ -806,19 +809,56 @@ const updateAPIMetadata = async (req, res) => {
     }
 };
 
+/**
+ * Whether any of `subs` (subDao rows) is a paid subscription billed through the payment
+ * provider. A forced delete never ends one: that would cut a customer's billing short.
+ */
+const hasPaidSubscription = async (subs) => {
+    if (subs.length === 0) return false;
+    const billing = await billingSubscriptionDao.listBySubscriptions(subs.map((sub) => sub.uuid));
+    return billing.size > 0;
+};
+
+/**
+ * Remove every subscription of `apiId` and revoke its active keys inside `t`, publishing
+ * subscription.deleted and apikey.revoked for each as a manual removal would, so the
+ * Platform API stops the keys at the gateways. Paid subscriptions are refused beforehand.
+ */
+const removeSubscriptionsAndKeys = async (orgId, apiId, subApis, activeKeys, actor, t) => {
+    for (const row of subApis) {
+        const sub = await subDao.getById(orgId, row.uuid);
+        if (sub) await subscriptionService.removeSubscription(orgId, sub, null, t);
+    }
+    for (const key of activeKeys) {
+        await apiKeyService.revokeInTransaction({ orgId, existing: key, actor, t });
+    }
+    logger.info('Removed subscriptions and revoked keys for a forced API delete', {
+        orgId, apiId, subscriptions: subApis.length, keys: activeKeys.length,
+    });
+};
+
 const deleteAPIMetadata = async (req, res) => {
     const orgId = req.orgId;
     const { apiId: apiHandle } = req.params;
+    // ?force=true removes the API's free subscriptions and revokes its active keys instead of
+    // refusing the delete. Paid subscriptions still refuse it (409 ERR_SUB_EXIST).
+    const force = req.query?.force === true || req.query?.force === 'true';
     let apiId;
     let deleted = false;
     let apiPlans = [];
     try {
         // The API's open checkouts are ended before it is deleted, and its paid plans taken off sale once it is.
         const apiUuid = await resolveScopedApiId(req, orgId, apiHandle);
-        if (apiUuid && (await subDao.listByApi(orgId, apiUuid)).length === 0
-            && (await apiKeyDao.list(orgId, { apiId: apiUuid, status: 'ACTIVE' })).length === 0) {
-            await endOpenCheckouts(orgId, { apiUuid });
-            apiPlans = await billingApiPlanDao.listByOrg(orgId, { apiUuid });
+        if (apiUuid) {
+            const subs = await subDao.listByApi(orgId, apiUuid);
+            const keys = await apiKeyDao.list(orgId, { apiId: apiUuid, status: 'ACTIVE' });
+            const deletable = force
+                ? !(await hasPaidSubscription(subs))
+                : subs.length === 0 && keys.length === 0;
+            if (deletable) {
+                await endOpenCheckouts(orgId, { apiUuid });
+                apiPlans = await billingApiPlanDao.listByOrg(orgId, { apiUuid });
+            }
         }
     } catch (error) {
         logger.error('API metadata deletion failed', { error: error.message, orgId, apiId: apiHandle });
@@ -831,12 +871,19 @@ const deleteAPIMetadata = async (req, res) => {
                 return util.sendError(res, 404, 'API not found');
             }
             const subApis = await subDao.listByApi(orgId, apiId);
-            if (subApis.length > 0) {
-                throw new CustomError(409, constants.ERROR_MESSAGE.ERR_SUB_EXIST, "API has subscriptions.");
-            }
-            const activeKeys = await apiKeyDao.list(orgId, { apiId, status: 'ACTIVE' });
-            if (activeKeys.length > 0) {
-                throw new CustomError(409, constants.ERROR_MESSAGE.ERR_KEY_EXIST, "API has active keys.");
+            const activeKeys = await apiKeyDao.list(orgId, { apiId, status: 'ACTIVE' }, t);
+            if (force) {
+                if (await hasPaidSubscription(subApis)) {
+                    throw new CustomError(409, constants.ERROR_MESSAGE.ERR_SUB_EXIST, "API has paid subscriptions.");
+                }
+                await removeSubscriptionsAndKeys(orgId, apiId, subApis, activeKeys, util.resolveActor(req), t);
+            } else {
+                if (subApis.length > 0) {
+                    throw new CustomError(409, constants.ERROR_MESSAGE.ERR_SUB_EXIST, "API has subscriptions.");
+                }
+                if (activeKeys.length > 0) {
+                    throw new CustomError(409, constants.ERROR_MESSAGE.ERR_KEY_EXIST, "API has active keys.");
+                }
             }
             // Delete revoked/expired keys within the transaction before removing the API row
             await apiKeyDao.deleteByApi(orgId, apiId, t);

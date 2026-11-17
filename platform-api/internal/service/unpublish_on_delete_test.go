@@ -169,3 +169,103 @@ func TestUnpublishEverywhere_NoPublications(t *testing.T) {
 		t.Fatalf("want no portal call, got %v", rec.portals)
 	}
 }
+
+// hookedPublisher runs a hook during Publish and during Unpublish, and records the
+// portals unpublished.
+type hookedPublisher struct {
+	alwaysSucceedsPortalPublisher
+	onPublish   func()
+	onUnpublish func()
+	unpublished []string
+}
+
+func (h *hookedPublisher) Publish(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication, _ *model.PublicationContent) error {
+	if h.onPublish != nil {
+		h.onPublish()
+	}
+	return nil
+}
+
+func (h *hookedPublisher) Unpublish(_ context.Context, portal *model.APIPortal, _, _ string) error {
+	h.unpublished = append(h.unpublished, portal.Handle)
+	if h.onUnpublish != nil {
+		hook := h.onUnpublish
+		h.onUnpublish = nil
+		hook()
+	}
+	return nil
+}
+
+// A listing published to another portal while the delete is unpublishing is caught by
+// the next pass, so the delete leaves no portal serving the API.
+func TestUnpublishEverywhere_CatchesAPublishThatLandsMeanwhile(t *testing.T) {
+	tdb := openSchemaDB(t)
+	g := seedOrgGraph(t, tdb)
+	pub := &hookedPublisher{}
+	svc := newPublicationTestServiceWith(tdb, pub)
+	apiHandle, first := apiHandleFor(g), portalHandleFor(g)
+
+	saveDraftOn(t, svc, apiHandle, first, g.org)
+	if _, _, err := svc.Publish(context.Background(), "rest-api", apiHandle, first, g.org, "actor"); err != nil {
+		t.Fatalf("Publish failed: %v", err)
+	}
+	second := addPortal(t, tdb, g, "active")
+	saveDraftOn(t, svc, apiHandle, second, g.org)
+	pub.onUnpublish = func() {
+		if _, _, err := svc.Publish(context.Background(), "rest-api", apiHandle, second, g.org, "actor"); err != nil {
+			t.Errorf("concurrent Publish failed: %v", err)
+		}
+	}
+
+	if err := svc.UnpublishEverywhere(context.Background(), "rest-api", apiHandle, g.apiArtifact, g.org, "deleter"); err != nil {
+		t.Fatalf("UnpublishEverywhere failed: %v", err)
+	}
+	if len(pub.unpublished) != 2 || pub.unpublished[0] != first || pub.unpublished[1] != second {
+		t.Fatalf("want %s then %s unpublished, got %v", first, second, pub.unpublished)
+	}
+}
+
+// A publish whose API is deleted while its listing is being pushed withdraws the listing
+// it pushed, so the portal does not keep serving an API that no longer exists.
+func TestPublish_WithdrawsTheListingWhenTheAPIIsDeletedMeanwhile(t *testing.T) {
+	tdb := openSchemaDB(t)
+	g := seedOrgGraph(t, tdb)
+	pub := &hookedPublisher{}
+	svc := newPublicationTestServiceWith(tdb, pub)
+	apiHandle, portal := apiHandleFor(g), portalHandleFor(g)
+
+	saveDraftOn(t, svc, apiHandle, portal, g.org)
+	pub.onPublish = func() {
+		tdb.exec(t, `DELETE FROM rest_apis WHERE uuid = ?`, g.apiArtifact)
+		tdb.exec(t, `DELETE FROM api_documents WHERE artifact_uuid = ?`, g.apiArtifact)
+		tdb.exec(t, `DELETE FROM artifacts WHERE uuid = ?`, g.apiArtifact)
+	}
+
+	if _, _, err := svc.Publish(context.Background(), "rest-api", apiHandle, portal, g.org, "actor"); err == nil {
+		t.Fatal("want Publish to fail once its API is gone")
+	}
+	if len(pub.unpublished) != 1 || pub.unpublished[0] != portal {
+		t.Fatalf("want the pushed listing withdrawn from %s, got %v", portal, pub.unpublished)
+	}
+}
+
+// A publish that fails for another reason, with its API still there, withdraws nothing.
+func TestPublish_KeepsTheListingWhenTheAPIStillExists(t *testing.T) {
+	tdb := openSchemaDB(t)
+	g := seedOrgGraph(t, tdb)
+	pub := &hookedPublisher{}
+	svc := newPublicationTestServiceWith(tdb, pub)
+	apiHandle, portal := apiHandleFor(g), portalHandleFor(g)
+
+	saveDraftOn(t, svc, apiHandle, portal, g.org)
+	pub.onPublish = func() {
+		tdb.exec(t, `DELETE FROM api_publications WHERE artifact_uuid = ?`, g.apiArtifact)
+	}
+
+	if _, _, err := svc.Publish(context.Background(), "rest-api", apiHandle, portal, g.org, "actor"); err == nil {
+		t.Fatal("want Publish to fail once its draft is gone")
+	}
+	if len(pub.unpublished) != 0 {
+		t.Fatalf("want nothing withdrawn while the API exists, got %v", pub.unpublished)
+	}
+}

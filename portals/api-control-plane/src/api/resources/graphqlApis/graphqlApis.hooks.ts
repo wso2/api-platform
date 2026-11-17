@@ -43,6 +43,7 @@ import {
   type ValidateGraphQLSchemaResponse,
 } from './graphqlApis.endpoints';
 import { graphQLApiKeys, graphQLApiQueries } from './graphqlApis.queries';
+import { apiPublicationKeys } from '../apiPublications/apiPublications.queries';
 
 /**
  * Everything the caller may vary on a list request — the spec's own query
@@ -288,6 +289,10 @@ export const useDeleteGraphQLApi = (overrides: { orgId?: string } = {}) => {
       invalidate();
       // Frees shared budget — see `useDeleteRestApi`.
       refreshResourceLimits();
+    },
+    // Refreshes the API Portal count after a partial delete — see `useDeleteRestApi`.
+    onError: () => {
+      if (org) queryClient.invalidateQueries({ queryKey: apiPublicationKeys.lists(org) });
     },
   });
 };
