@@ -18,7 +18,7 @@
 @APIPORTAL @apiportal-foreign-org-login
 Feature: API Portal organization-pinned login
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level.
   # Runs in the api-portal-foreign-org block: a second portal ("api-portal-other-org") serves
   # "other-org" from the same platform-api, so each refusal is paired with the portal that accepts it.
 

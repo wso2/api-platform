@@ -16,21 +16,35 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal REST API details
+@APIPORTAL
+Feature: API Portal API pages, documentation and consoles
+  Journey APIPUI-003: an API page shows the header buttons, endpoints, resources, scopes and plans
+  that fit its type, and its documentation renders the specification.
+  Journey APIPUI-004: the built-in consoles: Try It for REST, GraphiQL for GraphQL and the AsyncAPI
+  tryout for WebSocket and WebSub. Sending a request needs a gateway, which this stack does not run.
 
   Background:
     Given the user is signed in to the API Portal
-    And the API Portal has a REST API details fixture
+    And the API Portal has API page fixtures
 
-  Scenario: The REST API overview shows its details
+  @APIP-004
+  Scenario: Journey: a developer reads API pages of every type and their documentation
     When the user opens the seeded REST API overview and sees its details
-
-  Scenario: The REST API documentation renders its OpenAPI specification
+    Then the REST API page header offers Subscribe, Documentation, Try with AI and API Keys
+    And the GraphQL API page shows the sections of its type
+    And the WebSocket API page shows the sections of its type
+    And the WebSub API page shows the sections of its type
+    And the SOAP API page shows the sections of its type
+    And the page of the API without plans has no plans panel and no Subscribe button, and offers API Keys
     When the user opens the seeded REST API specification and sees its OpenAPI document
 
-  @known-issue
+  @APIP-009 @known-issue
   Scenario: The REST API documentation lists the specification and additional document
     When the user opens the seeded REST API documentation and sees the additional document
 
-  Scenario: The REST API specification exposes the Try It console
+  @APIP-004
+  Scenario: Journey: a developer opens the Try It, GraphiQL and AsyncAPI consoles
     When the seeded REST API specification exposes the Try It console
+    Then the GraphQL API Tryout offers the GraphiQL console with its production and sandbox endpoints
+    And the WebSocket API Tryout opens the AsyncAPI tryout
+    And the WebSub API Tryout opens the AsyncAPI tryout

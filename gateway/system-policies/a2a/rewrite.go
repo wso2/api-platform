@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -46,14 +47,15 @@ import (
 // the binding is one the operator exposed, so half-rewriting it would publish a
 // URL for a protocol the endpoint does not speak.
 //
-// A binding no configured transport serves is the other case, and it is left
-// exactly as the upstream wrote it: the gateway has no endpoint to point it at, and the
-// operator's transport list is the statement of which bindings this gateway
-// carries — an interface outside it was never asked to come through here. The
-// consequence is worth being explicit about: that URL still names the agent
-// directly, so a client that selects that binding reaches the agent without
-// traversing the gateway or any of its policies. Exposing a transport through
-// the gateway is what brings its interface under those policies.
+// A binding no configured transport serves is the other case. The gateway has
+// no endpoint of its own for it, but leaving the upstream's URL in place would
+// publish the agent's backend address in a document whose whole purpose under
+// rewriting is to name the gateway — and would hand every client a way around
+// the gateway and its policies. So that interface is pointed at the gateway too,
+// at the endpoint of the first configured transport. The entry's binding and
+// version are left as the upstream wrote them: the gateway does not speak that
+// binding there, and a client selecting it gets the gateway's own refusal rather
+// than a direct line to the agent.
 //
 // What is deliberately *not* attempted: validating anything else about the card.
 // Only the interface URLs are touched and only the `signatures` block is
@@ -86,6 +88,15 @@ const (
 	ParamProtocolBinding = "protocolBinding"
 	ParamPath            = "path"
 )
+
+// ParamGatewayURL is the operator-configured base URL rewritten interface URLs
+// are built on.
+//
+// It is a system parameter — resolved by the policy engine from the gateway's
+// own configuration (policy_configurations.a2a_v1.gateway_url) and merged into
+// every instance's parameters at the top level — rather than something the
+// controller writes per Agent. It is optional; see rewriteConfig.gatewayBase.
+const ParamGatewayURL = "gatewayUrl"
 
 // Agent Card field names read during a rewrite. The card is a free-form
 // document, so the two fields this touches are named once here rather than
@@ -147,10 +158,16 @@ var errRewriteFailed = errors.New("agent card response cannot be rewritten")
 type rewriteConfig struct {
 	// endpoints maps a protocolBinding to the absolute gateway path serving it.
 	// It holds exactly the configured transports, so a binding missing from it is
-	// one this gateway does not front, and that interface is left untouched.
+	// one this gateway does not front, and that interface gets fallbackPath.
 	// Lookup is by binding rather than by position: a card lists its interfaces
 	// in whatever order its author wrote them.
 	endpoints map[string]string
+
+	// fallbackPath is the gateway path advertised for an interface whose binding
+	// no configured transport serves: the first configured transport's. The first
+	// rather than any, so the same card is rewritten the same way on every
+	// request — endpoints is a map and has no order to take one from.
+	fallbackPath string
 
 	// protocolVersion is the A2A version the endpoints above serve, and half of
 	// what an advertised interface has to match to be rewritten.
@@ -166,6 +183,20 @@ type rewriteConfig struct {
 	// to speak. It is only read, to decide whether this gateway has an endpoint
 	// that claim can point at.
 	protocolVersion string
+
+	// gatewayBase is the operator-configured external base URL of the gateway, or
+	// nil when none is configured.
+	//
+	// When set it decides the whole origin of a rewritten URL — scheme, host and
+	// port — and takes precedence over both the Agent's vhost and the request.
+	// Those two describe how a client reached *this* gateway, which is the address
+	// to advertise only when the gateway is the edge. Behind a load balancer,
+	// ingress or API front door, the request carries an internal authority and
+	// often a different scheme, and the vhost is a routing match that may name
+	// nothing public; the operator is then the only one who knows the address
+	// clients use, and this is where they state it. A path on it is kept as a
+	// prefix, for an edge that publishes the gateway under one.
+	gatewayBase *url.URL
 
 	// protected reports which representation this instance rewrites. It decides
 	// the response shape, not the rewrite: a protected card on the JSON-RPC
@@ -221,17 +252,92 @@ func parseRewriteConfig(card map[string]any, protected bool) (*rewriteConfig, er
 				ParamRewriteUrls, ParamInterfaces, ParamProtocolBinding, ParamPath)
 		}
 		cfg.endpoints[binding] = path
+		if cfg.fallbackPath == "" {
+			cfg.fallbackPath = path
+		}
 	}
 	return cfg, nil
 }
 
+// parseGatewayBase reads the gatewayUrl system parameter.
+//
+// It returns (nil, nil) when the parameter is absent or empty, which is the
+// ordinary case: an edge gateway derives the origin from the vhost and the
+// request. A value that is present but unusable is an error rather than a silent
+// fall back to that derivation — the operator set it because the derived origin
+// is wrong for their deployment, so falling back would publish exactly the
+// address they configured this to replace.
+//
+// The value must be an absolute http or https URL with a host. Userinfo, a query
+// string and a fragment are refused: the gateway path is appended to this value
+// to form a URL published to every client of the agent, and none of the three
+// belongs in one.
+func parseGatewayBase(params map[string]any) (*url.URL, error) {
+	raw, present := params[ParamGatewayURL]
+	if !present || raw == nil {
+		return nil, nil
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return nil, fmt.Errorf("%s must be a string", ParamGatewayURL)
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	base, err := url.Parse(value)
+	if err != nil {
+		return nil, fmt.Errorf("%s is not a valid URL: %w", ParamGatewayURL, err)
+	}
+	if base.Scheme != schemeHTTP && base.Scheme != schemeHTTPS {
+		return nil, fmt.Errorf("%s scheme must be http or https, got %q", ParamGatewayURL, base.Scheme)
+	}
+	if base.Hostname() == "" || !validAuthority(base.Host) {
+		return nil, fmt.Errorf("%s must name a host", ParamGatewayURL)
+	}
+	// url.Parse checks that a port is numeric, not that it is one a client can
+	// connect to.
+	if port := base.Port(); port != "" {
+		if number, err := strconv.Atoi(port); err != nil || number < 1 || number > 65535 {
+			return nil, fmt.Errorf("%s port must be between 1 and 65535, got %q", ParamGatewayURL, port)
+		}
+	}
+	if base.User != nil || base.RawQuery != "" || base.ForceQuery || base.Fragment != "" {
+		return nil, fmt.Errorf("%s must not carry userinfo, a query string or a fragment", ParamGatewayURL)
+	}
+
+	// The prefix is kept in its escaped form as well as its decoded one. An
+	// operator who wrote %2F in it meant a segment containing a slash, not two
+	// segments, and an entry point that tells the two apart would route a URL
+	// rebuilt from the decoded path somewhere else.
+	escapedPrefix := strings.TrimRight(base.EscapedPath(), "/")
+	prefix, err := url.PathUnescape(escapedPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("%s path is not validly escaped: %w", ParamGatewayURL, err)
+	}
+	return &url.URL{Scheme: base.Scheme, Host: base.Host, Path: prefix, RawPath: escapedPrefix}, nil
+}
+
 // gatewayURL builds the URL a gateway path is advertised at.
 //
-// The path is the caller's, resolved from the configured transports. scheme and
-// authority come from the request, so both are validated here rather than
-// interpolated: this string is published to every client of the agent, and a
-// value that arrived on the wire has no business reaching it unchecked.
+// The path is the caller's, resolved from the configured transports. With a
+// configured gatewayBase the origin is the operator's and the request is not
+// consulted at all. Otherwise scheme and authority come from the request, so
+// both are validated here rather than interpolated: this string is published to
+// every client of the agent, and a value that arrived on the wire has no
+// business reaching it unchecked.
 func (c *rewriteConfig) gatewayURL(path, scheme, authority string) (string, error) {
+	if c.gatewayBase != nil {
+		// RawPath carries the prefix exactly as the operator escaped it, followed
+		// by the gateway path in its default escaping; Path is the same thing
+		// decoded, which is what makes url.URL honour RawPath.
+		return (&url.URL{
+			Scheme:  c.gatewayBase.Scheme,
+			Host:    c.gatewayBase.Host,
+			Path:    c.gatewayBase.Path + path,
+			RawPath: c.gatewayBase.RawPath + (&url.URL{Path: path}).EscapedPath(),
+		}).String(), nil
+	}
 	if scheme != schemeHTTP && scheme != schemeHTTPS {
 		return "", fmt.Errorf("%w: request scheme %q is not http or https", errRewriteFailed, scheme)
 	}
@@ -243,6 +349,9 @@ func (c *rewriteConfig) gatewayURL(path, scheme, authority string) (string, erro
 
 // gatewayAuthority composes the authority a rewritten interface URL advertises,
 // from the Agent's configured virtual host and the request the client made.
+//
+// This is the derivation used when no gatewayUrl is configured; a configured one
+// replaces it entirely (see rewriteConfig.gatewayBase).
 //
 // The vhost decides the *host*, because that is the name the operator published
 // the Agent under: the authority a client happened to dial may be an internal
@@ -320,12 +429,10 @@ func validAuthority(authority string) bool {
 // rewritten card.
 //
 // A nil return with a nil error means "leave this response exactly as it is".
-// Two responses get that: a JSON-RPC error, which holds no card to rewrite and
-// which inventing one for would turn an upstream failure into a success; and a
-// card whose interfaces are all on bindings this gateway does not front, which
-// has nothing to point anywhere and is forwarded whole, signatures included.
-// A card the gateway cannot read as a card at all is neither of those, and
-// fails rather than being forwarded.
+// One response gets that: a JSON-RPC error, which holds no card to rewrite and
+// which inventing one for would turn an upstream failure into a success. A card
+// the gateway cannot read as a card at all is not that, and fails rather than
+// being forwarded.
 func (c *rewriteConfig) rewriteResponse(body []byte, transport, scheme, authority string) ([]byte, error) {
 	if len(body) > c.maxResponseBytes() {
 		return nil, fmt.Errorf("%w: response is %d bytes, over the %d byte ceiling",
@@ -386,13 +493,6 @@ func (c *rewriteConfig) rewriteJSONRPCResponse(body []byte, scheme, authority st
 	if err != nil {
 		return nil, err
 	}
-	if rewritten == nil {
-		// The card held nothing this gateway serves, so it was not changed. The
-		// envelope is left alone with it, rather than re-encoded around identical
-		// bytes — re-encoding would reorder the members of a document the gateway
-		// has decided not to touch.
-		return nil, nil
-	}
 	envelope[jsonRPCFieldResult] = rewritten
 
 	out, err := json.Marshal(envelope)
@@ -412,10 +512,10 @@ func (c *rewriteConfig) rewriteJSONRPCResponse(body []byte, scheme, authority st
 // it does not implement, and the failure surfaces as malformed calls rather
 // than as anything a client could attribute to the card.
 //
-// Refusing the whole response rather than skipping the entry is deliberate: the
-// binding *is* one this gateway fronts, so skipping would leave the agent's own
-// URL on an interface the operator did expose — a partial rewrite of exactly the
-// kind that makes a card look as though the gateway were in the path.
+// Refusing the whole response rather than rewriting the entry anyway is
+// deliberate: the binding *is* one this gateway fronts, so the rewritten entry
+// would read as a working interface — binding, version and gateway URL all
+// plausible — for a protocol the endpoint does not implement.
 //
 // An interface that states no version is rewritten. It contradicts nothing, and
 // a card that carries the version only at the top level is a normal shape.
@@ -445,18 +545,16 @@ func (c *rewriteConfig) assertInterfaceVersion(iface map[string]json.RawMessage,
 // decode/encode round trip that would reformat it. (Member *order* is not
 // preserved; the bytes of each member are.)
 //
-// Only the interfaces this gateway fronts are rewritten; one whose binding no
-// configured transport serves keeps the URL the upstream wrote, because there is
-// no gateway endpoint that would serve it.
+// Every interface is rewritten. One whose binding a configured transport serves
+// gets that transport's endpoint; one whose binding none serves gets the first
+// configured transport's, so the upstream's own address never survives into the
+// returned document. The version check applies only to the first kind — an
+// unserved binding is not served at any version, so there is nothing for its
+// version to disagree with.
 //
-// A card whose every advertised interface is on a binding this gateway does not
-// front is therefore returned unchanged, signalled by a nil result, meaning
-// "forward this response as it stands". That
-// keeps the signatures intact: they are removed because they no longer cover the
-// document being returned, so a document that was not changed keeps them.
-// Signatures are never replaced, only dropped: the gateway does not sign a
-// passthrough card, and a card with no signature is honestly unsigned rather
-// than falsely signed.
+// Signatures are never replaced, only dropped: they no longer cover the document
+// being returned, the gateway does not sign a passthrough card, and a card with
+// no signature is honestly unsigned rather than falsely signed.
 func (c *rewriteConfig) rewriteCard(card json.RawMessage, scheme, authority string) ([]byte, error) {
 	var document map[string]json.RawMessage
 	if err := json.Unmarshal(card, &document); err != nil {
@@ -481,7 +579,6 @@ func (c *rewriteConfig) rewriteCard(card json.RawMessage, scheme, authority stri
 		return nil, fmt.Errorf("%w: card %s is empty", errRewriteFailed, cardFieldSupportedInterfaces)
 	}
 
-	rewrote := false
 	for _, iface := range interfaces {
 		var binding string
 		if err := json.Unmarshal(iface[cardFieldProtocolBinding], &binding); err != nil {
@@ -492,11 +589,12 @@ func (c *rewriteConfig) rewriteCard(card json.RawMessage, scheme, authority stri
 				errRewriteFailed, cardFieldProtocolBinding)
 		}
 		path, served := c.endpoints[binding]
-		if !served {
-			continue
-		}
-		if err := c.assertInterfaceVersion(iface, binding); err != nil {
-			return nil, err
+		if served {
+			if err := c.assertInterfaceVersion(iface, binding); err != nil {
+				return nil, err
+			}
+		} else {
+			path = c.fallbackPath
 		}
 		gateway, err := c.gatewayURL(path, scheme, authority)
 		if err != nil {
@@ -507,10 +605,6 @@ func (c *rewriteConfig) rewriteCard(card json.RawMessage, scheme, authority stri
 			return nil, fmt.Errorf("%w: rewritten url cannot be encoded: %v", errRewriteFailed, err)
 		}
 		iface[cardFieldURL] = encoded
-		rewrote = true
-	}
-	if !rewrote {
-		return nil, nil
 	}
 
 	encodedInterfaces, err := json.Marshal(interfaces)

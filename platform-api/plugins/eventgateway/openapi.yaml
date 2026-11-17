@@ -1117,6 +1117,14 @@ components:
               example: kafka
             properties:
               type: object
+              description: |
+                Driver-specific connection properties.
+
+                Credential properties (for kafka: sasl_password, sasl.password,
+                ssl.key.password, ssl.keystore.key, sasl.kerberos.keytab) are
+                write-only. A read returns the key with an empty value, never the
+                stored credential. On update, an empty value keeps the stored
+                credential, null clears it, and any other value replaces it.
               additionalProperties: true
         allChannels:
           $ref: '#/components/schemas/WebBrokerAllChannelPolicies'

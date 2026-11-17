@@ -100,6 +100,10 @@ func FetchAgentCard(ctx context.Context, rawURL, headerName, headerValue string,
 		return nil, err
 	}
 
+	if err := CheckUserURL(ctx, target); err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, agentCardFetchTimeout)
 	defer cancel()
 
@@ -122,6 +126,9 @@ func FetchAgentCard(ctx context.Context, rawURL, headerName, headerValue string,
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if refused := DestinationNotAllowedError(err); refused != nil {
+			return nil, refused
+		}
 		return nil, fmt.Errorf("%w: %w", ErrAgentCardUnreachable, err)
 	}
 	defer resp.Body.Close()

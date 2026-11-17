@@ -240,7 +240,7 @@ every key below with `api-portal-ui.`.
 - `config.artifacts.enabledTypes` — allowlist of served types (`apis`, `mcp-servers`,
   `api-workflows`).
 - `config.webhooksDelivery.*`, `config.uploads.*`, `config.tryout.*` — webhook delivery
-  tuning, upload/archive limits, and the SSRF-sensitive "Try It" console. Private endpoints
+  tuning, upload/archive limits, and the "Try It" console, whose destinations are restricted. Private endpoints
   are denied by default.
 - `configToml` — raw TOML appended to the generated config.
 - `secrets.existingSecret` / `secrets.keys.*` / `secrets.hasPublicKey` /

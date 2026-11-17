@@ -51,6 +51,7 @@
     "passport": "0.7.0",
     "passport-oauth2": "1.8.0",
     "pg": "8.22.0",
+    "re2js": "2.10.0",
     "smol-toml": "1.9.1",
     "unzipper": "0.12.5",
     "winston": "3.19.0",

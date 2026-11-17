@@ -22,35 +22,40 @@ import (
 	"os"
 	"testing"
 
-	"github.com/wso2/api-platform/platform-api/internal/utils"
 	"github.com/wso2/api-platform/httpkit/httpclient"
 	"github.com/wso2/api-platform/httpkit/netguard"
+	"github.com/wso2/api-platform/platform-api/internal/utils"
 )
 
 // TestMain initializes the package-level shared outbound *http.Client (see
 // utils.InitSharedHTTPClient) once, before any test in this package runs. Several tests here
 // (mcp_test.go's TestFetchServerInfo*, llm_openapi_resolve_test.go's
 // TestResolveTemplateOpenAPISpec) reach utils.NewUpstreamFetchClient/FetchOpenAPISpecFromURL
-// indirectly through the service layer — an httptest loopback server, or the SSRF guard
+// indirectly through the service layer — an httptest loopback server, or the destination guard
 // itself, only exercises real behavior if the shared client is actually built, mirroring
 // production's cmd/main.go wiring rather than being left nil.
 func TestMain(m *testing.M) {
+	// Installed with its config, as production does (server.InitSharedHTTPClient), so the
+	// portal publisher can derive clients with its own timeouts from it.
+	if err := utils.InitSharedHTTPClientFromConfig(testSharedHTTPClientConfig(), 0); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to build test double for the shared HTTP client: %v\n", err)
+		os.Exit(1)
+	}
+
+	os.Exit(m.Run())
+}
+
+// testSharedHTTPClientConfig is the shared client TestMain installs. Reinstalling it also
+// drops any access-control client a test installed (see useRequestAccessControl).
+func testSharedHTTPClientConfig() httpclient.Config {
 	policy := netguard.PermitPrivateBlockMetadata()
 	policy.AllowedSchemes = []string{"http", "https"}
 
 	cfg := httpclient.DefaultConfig()
 	cfg.Pooling.DisableKeepAlives = true
 	cfg.Timeouts.MaxResponseBytes = -1
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = policy
-	cfg.SSRF.MaxRedirects = 5
-
-	client, err := httpclient.New(cfg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to build test double for the shared HTTP client: %v\n", err)
-		os.Exit(1)
-	}
-	utils.InitSharedHTTPClient(client, 0)
-
-	os.Exit(m.Run())
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = policy
+	cfg.DestinationGuard.MaxRedirects = 5
+	return cfg
 }

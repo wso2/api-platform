@@ -92,7 +92,7 @@ The interface rules are the ones worth knowing before you write a card:
 - Each interface's `protocolVersion` must equal the agent's `spec.a2a.protocolVersion`.
 - Each `url` must be absolute and use `https`, with no userinfo, query string, or fragment. Because the URL names the router's HTTPS listener, it doesn't match the plaintext port you use for local testing.
 - Each `url` path must equal the gateway path for that transport, which is `context` plus the transport's `pathPrefix`.
-- The document must not carry a `signatures` block, and must not exceed 1 MiB once encoded.
+- The document must not carry signatures (an empty or null `signatures` field is accepted), and must not exceed 1 MiB once encoded.
 
 ### How a managed card is served
 
@@ -116,9 +116,24 @@ By default the gateway rewrites the addresses in the response before returning i
 
 Three consequences follow from rewriting:
 
-- **Only the bindings your transports expose are rewritten.** An interface on a binding this gateway doesn't serve keeps the agent's own URL, so a client selecting that binding reaches the agent directly, outside your policies.
+- **Every interface is rewritten, including bindings your transports don't expose.** An interface on a binding this gateway doesn't serve has no gateway endpoint of its own, so it gets the URL of the first configured transport and the agent's own address is never published. The gateway doesn't serve that binding, so a client selecting it is refused by the gateway.
 - **The `signatures` block is dropped,** because it no longer covers the bytes being returned. The gateway doesn't sign a card it didn't write, so a rewritten card is unsigned.
 - **The response is buffered,** up to 1 MiB.
+
+### Set the gateway's public URL
+
+The rewritten URLs are built from how the client reached the gateway: the request's scheme, the Agent's `vhost` (or the request's authority for a wildcard vhost), and the request's port. That's the right address when the gateway is the edge. When it sits behind a load balancer, ingress, or API front door, the request arrives on an internal address and the card would advertise it.
+
+For that deployment, set the gateway's public base URL in `config.toml`:
+
+```toml
+[policy_configurations.a2a_v1]
+gateway_url = "https://agents.example.com"
+```
+
+When `gateway_url` is set, it takes precedence over the vhost and the request, and every rewritten interface URL is this value followed by the gateway path for the transport. A port and a path prefix are kept, so `https://edge.example.com:8443/gateway` produces `https://edge.example.com:8443/gateway/trip-planner/v1`.
+
+The value must be an absolute `http` or `https` URL with no userinfo, query string, or fragment. If it's set to something else, the gateway refuses to serve rewritten cards rather than fall back to the request's address. The setting applies to every Agent on the gateway and has no effect on `managed` cards, whose URLs you write yourself.
 
 Turn rewriting off to forward the proxied response byte for byte, signatures included:
 
@@ -185,7 +200,7 @@ That's also what an omitted `protected` block means. Writing the block out only 
 
 In `passthrough` mode the gateway forwards the authenticated request and proxies the agent's own extended card, rewriting interface URLs unless you turn that off. In `managed` mode it serves the `content` you supply, correctly for the binding the caller used: the bare card on HTTP+JSON, and a JSON-RPC result envelope echoing the caller's request id on JSON-RPC.
 
-Two differences from the public card are worth noting. A protected card response carries `Cache-Control: no-store` and no `ETag`, because it's authenticated and the JSON-RPC binding is a `POST`, so there's no conditional-`GET` contract to take part in. And when the public card is `managed`, it must declare `capabilities.extendedAgentCard: true`, since that's what tells a client the operation exists at all.
+Two differences from the public card are worth noting. A protected card response carries `Cache-Control: no-store` and no `ETag`, because it's authenticated and the JSON-RPC binding is a `POST`, so there's no conditional-`GET` contract to take part in. And when the public card is `managed`, declare `capabilities.extendedAgentCard: true` in it, since that's what tells a client the operation exists at all. The gateway doesn't enforce this.
 
 To make the protected card reachable, attach an authentication policy to the agent's operations:
 

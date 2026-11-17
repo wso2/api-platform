@@ -23,7 +23,7 @@ Feature: A view's theme is applied, exported and reset through the API Portal RE
   I want to give a view its own theme, download it and return it to the default
   So that each audience sees a branded portal, and only administrators can change how it looks
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API
   # level. A theme archive holds one wrapper folder; only templates, stylesheets and images are kept.
   # Each scenario themes its own view. Themed images are public. Every refused change is followed
   # by a read showing the view's theme is unchanged.

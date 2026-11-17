@@ -134,6 +134,14 @@ func (u *Steps) failProviderCall(ctx context.Context, service string, failure ma
 
 // portalCall sends a REST request from the page, with its session and CSRF token, and returns
 // the status and body.
+//
+// It is the browser-session exception to the funnel rule (tests/framework/CLAUDE.md, "Funnel
+// Principle"). The request must run as the user the journey signed in, through the page's cookie
+// and CSRF token, which the framework's HTTP client and its funnel do not carry. It never
+// publishes its response: the result goes back only to the step that sent it, which asserts it
+// at once, and no step reads a response published by another. A later step cannot read a stale
+// result, which is the failure the funnel prevents. assertWizardAssets and wizardStoredAPI read
+// through the same session for the same reason. TestPortalCallReturnsThePageResponse covers it.
 func (u *Steps) portalCall(page playwright.Page, method, path string, body any) (int, string, error) {
 	payload := ""
 	if body != nil {
@@ -160,6 +168,72 @@ func (u *Steps) portalCall(page playwright.Page, method, path string, body any) 
 	}
 	text, _ := fields["body"].(string)
 	return status, text, nil
+}
+
+// createdBy runs action, waits for the create request it makes the page send (method, with a URL
+// that path matches), and returns the id that field of the JSON response names. The caller
+// registers that id for cleanup before it checks any dialog, toast or page, so a resource the
+// portal created is cleaned up even when those checks fail. It fails if the portal did not answer
+// 200 or 201, or if the response names no id.
+func createdBy(page playwright.Page, method string, path *regexp.Regexp, field string, action func() error) (string, error) {
+	response, err := awaitCreate(page, method, path, action)
+	if err != nil {
+		return "", err
+	}
+	body, err := response.Body()
+	if err != nil {
+		return "", fmt.Errorf("reading the %s response: %w", method, err)
+	}
+	return createdID(body, field)
+}
+
+// createdAs is createdBy for a create whose id the page chooses and sends in the request's JSON
+// body, under field. It reads the id from the request, not the response: a page that reloads as
+// soon as the portal answers (the Applications page) discards the response body before it can be
+// read. It still requires the portal to have answered 200 or 201.
+func createdAs(page playwright.Page, method string, path *regexp.Regexp, field string, action func() error) (string, error) {
+	response, err := awaitCreate(page, method, path, action)
+	if err != nil {
+		return "", err
+	}
+	sent, err := response.Request().PostData()
+	if err != nil {
+		return "", fmt.Errorf("reading the %s request: %w", method, err)
+	}
+	return createdID([]byte(sent), field)
+}
+
+// awaitCreate runs action and returns the response to the create request it makes the page send,
+// failing unless the portal answered 200 or 201.
+func awaitCreate(page playwright.Page, method string, path *regexp.Regexp, action func() error) (playwright.Response, error) {
+	response, err := page.ExpectResponse(func(r playwright.Response) bool {
+		return r.Request().Method() == method && path.MatchString(r.URL())
+	}, action)
+	if err != nil {
+		return nil, fmt.Errorf("waiting for the %s request: %w", method, err)
+	}
+	if status := response.Status(); status != http.StatusCreated && status != http.StatusOK {
+		return nil, fmt.Errorf("%s %s answered %d", method, response.URL(), status)
+	}
+	return response, nil
+}
+
+// createdID returns the non-empty string that field of a JSON create response holds.
+func createdID(body []byte, field string) (string, error) {
+	var decoded map[string]any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return "", fmt.Errorf("decoding the create response: %w", err)
+	}
+	id, _ := decoded[field].(string)
+	if id == "" {
+		return "", fmt.Errorf("the create response has no %q", field)
+	}
+	return id, nil
+}
+
+// portalPath matches a request to an API Portal Management API path, with or without a query.
+func portalPath(path string) *regexp.Regexp {
+	return regexp.MustCompile(`/api-portal/api/v0\.9` + path + `(\?|$)`)
 }
 
 // expectToast waits for the portal's toast to say text.

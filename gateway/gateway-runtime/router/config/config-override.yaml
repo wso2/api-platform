@@ -34,11 +34,27 @@ static_resources:
     - name: xds_cluster
       type: STRICT_DNS
       connect_timeout: 1s
+      # Envoy only writes on the ADS stream after it receives a response, so
+      # without keepalive a connection that dies silently (controller pod
+      # restart, conntrack/NAT entry dropped, network blip) is never noticed:
+      # Envoy keeps waiting on a dead stream and stops receiving config. The
+      # HTTP/2 PING detects that and makes Envoy reconnect; TCP keepalive is
+      # the kernel-level backstop. Keep the PING interval at or above
+      # gateway-controller's keepalive EnforcementPolicy.MinTime (5s) or the
+      # server answers with GOAWAY "too_many_pings".
+      upstream_connection_options:
+        tcp_keepalive:
+          keepalive_probes: ${XDS_TCP_KEEPALIVE_PROBES}
+          keepalive_time: ${XDS_TCP_KEEPALIVE_TIME_SECONDS}
+          keepalive_interval: ${XDS_TCP_KEEPALIVE_INTERVAL_SECONDS}
       typed_extension_protocol_options:
         envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
           "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
           explicit_http_config:
-            http2_protocol_options: {}
+            http2_protocol_options:
+              connection_keepalive:
+                interval: ${XDS_KEEPALIVE_INTERVAL_SECONDS}s
+                timeout: ${XDS_KEEPALIVE_TIMEOUT_SECONDS}s
       # docker-entrypoint.sh sets this to a flow-style (JSON-like)
       # UpstreamTlsContext mapping when XDS_TLS_ENABLED=true, or to `null`
       # (== field not present, once parsed) otherwise -- xds_cluster stays

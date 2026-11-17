@@ -19,7 +19,6 @@ import {
   PORTAL_OPERATIONS,
 } from '@wso2-enterprise/apip-cloud-ui-managed-portals';
 import { MarketingConsentGate } from '@wso2-enterprise/apip-cloud-ui-marketing-consent';
-import { AppSwitcherButton } from '@wso2-enterprise/apip-cloud-ui-app-switcher';
 import { ManageProjectButton, SettingsButton } from '@wso2-enterprise/apip-cloud-ui-settings';
 import { nameFromPort } from '@wso2-enterprise/apip-cloud-ui-user-profile';
 import {
@@ -28,10 +27,10 @@ import {
 } from '@wso2-enterprise/apip-cloud-ui-entitlements';
 import type { BrandLogo } from '../../../../api-control-plane/src/branding/BrandLogoProvider';
 import { AppPage } from '../../../../api-control-plane/src/components/AppPage';
+import { GatewayPoliciesPanel } from '../../../../api-control-plane/src/pages/appShell/appShellPages/gateways/components/GatewayPoliciesPanel';
 import {
   APP_GATE_SLOT,
   HEADER_ACTIONS_SLOT,
-  HEADER_START_SLOT,
   HOME_GREETING_SLOT,
   PAGE_API_DEPLOY_SLOT,
   PAGE_GRAPHQL_API_DEPLOY_SLOT,
@@ -68,7 +67,7 @@ const CLOUD_DEPLOY_SCOPES = [
 
 /**
  * Scopes that change a project (the accepted list of UpdateProject): one of them
- * is needed for the Manage project button, as the WSO2 Cloud console shows its
+ * is needed for the project's Settings button, as the WSO2 Cloud console shows its
  * own Manage button only to someone who may change the project. Project delete
  * is left out: WSO2 Cloud's roles do not grant it.
  */
@@ -131,7 +130,8 @@ function CloudDeployPage({ port }: { port: CloudHostPort }) {
  * sidebar item — the native nav entry and route stay in place; only what renders
  * there changes. Data flows through `apiFetch` to `/managed-gateways`. This
  * console manages API and event gateways; AI gateways belong to the AI
- * workspace host, which registers the same feature with only that type.
+ * workspace host, which registers the same feature with only that type. The
+ * Policies tab shows the console's own `GatewayPoliciesPanel`.
  *
  * `deploy` overrides the built-in API Deploy page via the `page.apiDeploy` slot,
  * and the GraphQL API Deploy page via `page.graphqlApiDeploy` with the same feature,
@@ -184,27 +184,6 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
     ],
   }),
   defineCloudPlugin({
-    // The WSO2 Cloud platform switcher (Oxygen AppSwitcher), fed by the
-    // deployment's `cloudShell` / `cloudConsoleUrl` runtime config. Console-only.
-    // Takes over the header's sidebar-collapse toggle spot at the far left —
-    // the sidebar's own `Sidebar.CollapseToggle` still collapses it.
-    id: 'app-switcher',
-    version: '0.1.0',
-    extensions: [
-      {
-        id: 'app-switcher',
-        slot: HEADER_START_SLOT,
-        order: 0,
-        render: () => (
-          <AppSwitcherButton
-            cloudShell={runtimeConfig.cloudShell}
-            cloudConsoleUrl={runtimeConfig.cloudConsoleUrl}
-          />
-        ),
-      },
-    ],
-  }),
-  defineCloudPlugin({
     // Asks a signed-in person once whether they want WSO2 marketing email, and
     // records the answer with Pardot through platform-api's internal consent
     // endpoint (the BFF's `marketing-consent` upstream, carrying the person's own
@@ -230,7 +209,7 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
     // the header lays its action slot out ahead of the theme switcher, so the icon
     // sits between them.
     //
-    // The project overview's Manage project button, which opens the WSO2 Cloud
+    // The project overview's Settings button, which opens the WSO2 Cloud
     // console's manage page for the project, where it is edited and deleted. Shown
     // with a project in scope and to someone who may change it (MANAGE_PROJECT_SCOPES).
     id: 'settings',
@@ -300,6 +279,9 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         render: (port) => (
           <GatewaysFeature
             gatewayTypes={API_GATEWAY_TYPES}
+            renderPolicies={(gatewayId) => (
+              <GatewayPoliciesPanel gatewayId={gatewayId} variant="embedded" />
+            )}
             // Map the environment-specific gateway host expected by the plugin.
             port={{
               ...port,

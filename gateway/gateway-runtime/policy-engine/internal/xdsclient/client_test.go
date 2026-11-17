@@ -47,6 +47,8 @@ func createValidTestConfig() *Config {
 		RequestTimeout:        5 * time.Second,
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 		TLSEnabled:            false,
 		TLSEcdhCurves:         "X25519,P-256",
 	}
@@ -87,6 +89,8 @@ func TestNewClient_InvalidConfig(t *testing.T) {
 				RequestTimeout:        5 * time.Second,
 				InitialReconnectDelay: 1 * time.Second,
 				MaxReconnectDelay:     60 * time.Second,
+				KeepaliveTime:         30 * time.Second,
+				KeepaliveTimeout:      10 * time.Second,
 			},
 		},
 		{
@@ -97,6 +101,8 @@ func TestNewClient_InvalidConfig(t *testing.T) {
 				RequestTimeout:        5 * time.Second,
 				InitialReconnectDelay: 1 * time.Second,
 				MaxReconnectDelay:     60 * time.Second,
+				KeepaliveTime:         30 * time.Second,
+				KeepaliveTimeout:      10 * time.Second,
 			},
 		},
 	}

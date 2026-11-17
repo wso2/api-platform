@@ -299,17 +299,41 @@ test('_validateProvisioning requires the registration endpoint', () => {
     result.forEach((r) => assert.match(r.error, /provisioning\.registrationEndpoint is required/));
 });
 
-test('_validateProvisioning treats the authorize endpoint as optional but still guarded', () => {
+// The portal never dials the authorize endpoint (a user's browser is sent there), so
+// only its shape and scheme are checked, never the address ranges or access control.
+test('_validateProvisioning checks only the shape of the authorize endpoint', () => {
     const result = runProbe(`
         emit([
             svc._validateProvisioning(${valid({ authorizeEndpoint: '' })}).error,
             svc._validateProvisioning(${valid({ authorizeEndpoint: 'https://idp.example.com/authorize' })}).error,
-            svc._validateProvisioning(${valid({ authorizeEndpoint: 'https://169.254.169.254/' })}).error,
+            svc._validateProvisioning(${valid({ authorizeEndpoint: 'https://169.254.169.254/authorize' })}).error,
+            svc._validateProvisioning(${valid({ authorizeEndpoint: 'https://10.0.0.5/authorize' })}).error,
+            svc._validateProvisioning(${valid({ authorizeEndpoint: 'not a url' })}).error,
+            svc._validateProvisioning(${valid({ authorizeEndpoint: 'ftp://idp.example.com/authorize' })}).error,
+            svc._validateProvisioning(${valid({ authorizeEndpoint: 'http://idp.example.com/authorize' })}).error,
         ]);
     `);
     assert.equal(result[0], null, 'omitted is allowed');
     assert.equal(result[1], null, 'a public https endpoint is allowed');
-    assert.match(result[2], /blocked address range/, 'a supplied one is still checked');
+    assert.equal(result[2], null, 'a link-local address is not refused: the portal never dials it');
+    assert.equal(result[3], null, 'a private address is not refused: the portal never dials it');
+    assert.match(result[4], /provisioning\.authorizeEndpoint: Malformed URL/);
+    assert.match(result[5], /provisioning\.authorizeEndpoint: URL scheme is not allowed/);
+    assert.match(result[6], /provisioning\.authorizeEndpoint: URL scheme is not allowed/, 'plaintext needs allow_http_endpoints');
+
+    const permissive = runProbe(`
+        emit([svc._validateProvisioning(${valid({ authorizeEndpoint: 'http://idp.example.com/authorize' })}).error]);
+    `, { permissive: true });
+    assert.equal(permissive[0], null, 'plaintext is allowed once the operator opts in');
+});
+
+// Positive control for the test above: the registration endpoint, which the driver
+// does dial, is still refused at a link-local address.
+test('_validateProvisioning still guards the registration endpoint at a link-local address', () => {
+    const result = runProbe(`
+        emit([svc._validateProvisioning(${valid({ registrationEndpoint: 'https://169.254.169.254/register' })}).error]);
+    `);
+    assert.match(result[0], /blocked address range/);
 });
 
 test('_validateProvisioning applies the address guard to the registration endpoint', () => {

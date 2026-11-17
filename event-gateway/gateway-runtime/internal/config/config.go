@@ -27,10 +27,12 @@ import (
 	"time"
 
 	"github.com/knadh/koanf/parsers/toml/v2"
+	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
+	"github.com/wso2/api-platform/common/configcompat"
 	"github.com/wso2/api-platform/httpkit/tlsconfig"
 )
 
@@ -152,13 +154,13 @@ type LoggingConfig struct {
 // see the preset's own doc comment), so blocking RFC 1918/loopback would break that core,
 // intended deployment shape. Link-local (where the cloud metadata endpoint lives),
 // unspecified, and multicast/broadcast addresses stay refused regardless. Only the
-// redirect/scheme knobs netguard exposes are configurable, via HTTPClientSSRFConfig.
+// redirect/scheme knobs netguard exposes are configurable, via HTTPClientDestinationGuardConfig.
 type HTTPClientConfig struct {
-	Pooling  HTTPClientPoolingConfig  `koanf:"pooling"`
-	Timeouts HTTPClientTimeoutsConfig `koanf:"timeouts"`
-	TLS      HTTPClientTLSConfig      `koanf:"tls"`
-	Proxy    HTTPClientProxyConfig    `koanf:"proxy"`
-	SSRF     HTTPClientSSRFConfig     `koanf:"ssrf"`
+	Pooling          HTTPClientPoolingConfig          `koanf:"pooling"`
+	Timeouts         HTTPClientTimeoutsConfig         `koanf:"timeouts"`
+	TLS              HTTPClientTLSConfig              `koanf:"tls"`
+	Proxy            HTTPClientProxyConfig            `koanf:"proxy"`
+	DestinationGuard HTTPClientDestinationGuardConfig `koanf:"destination_guard"`
 }
 
 // HTTPClientPoolingConfig mirrors httpclient.PoolingConfig.
@@ -242,11 +244,11 @@ type HTTPClientProxyTLSConfig struct {
 	InsecureSkipVerifyAcknowledged bool `koanf:"insecure_skip_verify_acknowledged"`
 }
 
-// HTTPClientSSRFConfig mirrors the TOML-expressible redirect/scheme knobs of
-// httpclient.SSRFConfig. It deliberately has NO Enabled/Preset field: SSRF guarding for
+// HTTPClientDestinationGuardConfig mirrors the TOML-expressible redirect/scheme knobs of
+// httpclient.DestinationGuardConfig. It deliberately has NO Enabled/Preset field: the destination guard for
 // this client is always on with netguard.PermitPrivateBlockMetadata() (see
 // HTTPClientConfig's doc comment) — there is no supported way to disable it via config.
-type HTTPClientSSRFConfig struct {
+type HTTPClientDestinationGuardConfig struct {
 	MaxRedirects   int      `koanf:"max_redirects"`   // 0 uses netguard's own default (5)
 	AllowedSchemes []string `koanf:"allowed_schemes"` // empty defaults to {"https"}
 }
@@ -324,6 +326,21 @@ func Load(path string) (*Config, map[string]interface{}, error) {
 		}
 	}
 
+	// http_client.destination_guard shipped under an earlier name; a config that
+	// still uses it keeps working, with a deprecation warning.
+	raw := k.Raw()
+	deprecated, err := configcompat.MigrateDestinationGuard(raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	if deprecated != "" {
+		slog.Warn("Deprecated configuration key; rename it to http_client.destination_guard", "key", deprecated)
+		k = koanf.New(".")
+		if err := k.Load(confmap.Provider(raw, "."), nil); err != nil {
+			return nil, nil, fmt.Errorf("failed to reload configuration: %w", err)
+		}
+	}
+
 	// Load environment variable overrides. Single underscores separate the
 	// top-level section from the field name, while field-name underscores are
 	// preserved (for example SERVER_WEBSUB_PORT -> server.websub_port).
@@ -331,6 +348,11 @@ func Load(path string) (*Config, map[string]interface{}, error) {
 		mapped := mapEnvKey(key)
 		if mapped == "" {
 			return "", nil
+		}
+		if renamed, ok := migrateLegacyEnvKey(mapped); ok {
+			slog.Warn("Deprecated environment variable; it sets the previous name of http_client.destination_guard",
+				"variable", key, "key", renamed)
+			mapped = renamed
 		}
 		return mapped, mapEnvValue(mapped, value)
 	}), nil); err != nil {
@@ -365,6 +387,23 @@ func Load(path string) (*Config, map[string]interface{}, error) {
 	)
 
 	return cfg, rawConfig, nil
+}
+
+// legacyDestinationGuardPrefix is where an environment variable written before
+// http_client.destination_guard was renamed maps to, for example
+// APIP_EGW_HTTP__CLIENT_SSRF_MAX__REDIRECTS -> http_client.ssrf.max_redirects.
+var legacyDestinationGuardPrefix = "http_client." + configcompat.LegacyDestinationGuardKey + "."
+
+// migrateLegacyEnvKey moves a key under the destination guard's previous name to
+// its current one. Environment variables are loaded after the file's keys are
+// migrated, so without this an override set under the old name would no longer
+// reach the config.
+func migrateLegacyEnvKey(path string) (string, bool) {
+	rest, ok := strings.CutPrefix(path, legacyDestinationGuardPrefix)
+	if !ok {
+		return path, false
+	}
+	return "http_client." + configcompat.DestinationGuardKey + "." + rest, true
 }
 
 func mapEnvKey(key string) string {

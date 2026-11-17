@@ -264,11 +264,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// Initialize WebSocket manager first (needed for GatewayEventsService)
 	wsConfig := websocket.ManagerConfig{
-		MaxConnections:     cfg.Listeners.WebSocket.MaxConnections,
-		HeartbeatInterval:  20 * time.Second,
-		HeartbeatTimeout:   time.Duration(cfg.Listeners.WebSocket.ConnectionTimeout) * time.Second,
-		MetricsLogEnabled:  cfg.Listeners.WebSocket.MetricsLogEnabled,
-		MetricsLogInterval: time.Duration(cfg.Listeners.WebSocket.MetricsLogInterval) * time.Second,
+		MaxConnections:           cfg.Listeners.WebSocket.MaxConnections,
+		MaxConnectionsPerGateway: cfg.Listeners.WebSocket.MaxConnectionsPerGateway,
+		HeartbeatInterval:        20 * time.Second,
+		HeartbeatTimeout:         time.Duration(cfg.Listeners.WebSocket.ConnectionTimeout) * time.Second,
+		MetricsLogEnabled:        cfg.Listeners.WebSocket.MetricsLogEnabled,
+		MetricsLogInterval:       time.Duration(cfg.Listeners.WebSocket.MetricsLogInterval) * time.Second,
 	}
 	wsManager := websocket.NewManager(wsConfig, slogger)
 
@@ -968,6 +969,7 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	slogger.Info("WebSocket manager initialized",
 		slog.Int("maxConnections", cfg.Listeners.WebSocket.MaxConnections),
+		slog.Int("maxConnectionsPerGateway", cfg.Listeners.WebSocket.MaxConnectionsPerGateway),
 		slog.Int("heartbeatTimeout", cfg.Listeners.WebSocket.ConnectionTimeout),
 		slog.Int("rateLimitPerMin", cfg.Listeners.WebSocket.RateLimitPerMin),
 	)
@@ -1130,11 +1132,11 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	if len(cfg.Auth.IDP.Audience) > 0 {
 		idpCfg.Audience = &cfg.Auth.IDP.Audience
 	}
-	// JWKS fetching is an outbound request to a tenant-configured URL (auth.idp.jwks_url),
-	// so it must go through the same SSRF-guarded shared client as every other
-	// tenant/operator-configured upstream call this process makes, rather than falling
-	// back to net/http's unguarded default client.
-	sharedClient, err := utils.NewUpstreamFetchClient(0)
+	// JWKS fetching goes to auth.idp.jwks_url, a destination configured in config.toml, so it
+	// uses the shared client with platform_api.http_client's own policy rather than
+	// net/http's unguarded default client. It is deliberately not subject to
+	// server.network_security.access_control, which governs tenant- and user-supplied URLs.
+	sharedClient, err := utils.NewConfiguredDestinationClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain shared HTTP client for JWKS fetching: %w", err)
 	}
@@ -1438,7 +1440,9 @@ func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config
 }
 
 // newAPIInvokeHandler builds the gateway relay behind the invoke route. An
-// invalid allow_hosts entry fails startup.
+// invalid allow_hosts entry fails startup. A gateway's endpoints are deployment
+// configuration, so server.network_security.access_control does not apply to the
+// relay; gateway_relay.egress.allow_hosts and the relay's own dial guard do.
 func newAPIInvokeHandler(cfg *config.GatewayRelay, apiService *service.APIService, slogger *slog.Logger) (*handler.APIInvokeHandler, error) {
 	policy, err := egress.Parse(egress.Spec{AllowHosts: cfg.Egress.AllowHosts, Logger: slogger})
 	if err != nil {

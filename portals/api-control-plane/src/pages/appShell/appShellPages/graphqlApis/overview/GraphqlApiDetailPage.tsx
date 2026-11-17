@@ -35,7 +35,7 @@ import { ApiOverviewHeader } from '../../apis/overview/ApiOverviewHeader';
 import { deployedGateways as deployedGatewaysOf } from '../../test/utils/deployedGateways';
 import { GraphqlOverviewTab } from './GraphqlOverviewTab';
 import { GraphqlProgressBanner } from './GraphqlProgressBanner';
-import { useCloudDeployments } from '../../apis/overview/useCloudDeployments';
+import { useCloudDeployments } from '@/api/resources/cloudDeployments';
 
 const messages = defineMessages({
   notFound: {

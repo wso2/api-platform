@@ -377,7 +377,7 @@ os.chmod(socket_path, 0o660)  # defense-in-depth only, not the primary guarantee
 
 ## GO-AUTH-019: No Deferring a Rule Violation Behind a Code Comment — Critical
 
-Resolving a finding from GO-AUTH-001 through GO-AUTH-018 by adding a `// TODO`/`FIXME`-style comment next to the non-compliant code, and shipping it anyway, is not compliance — a comment does not change what the code does at runtime. Treat an inline deferral comment as equivalent to leaving the violation undocumented and unfixed. An existing violation that genuinely can't be fixed immediately must be filed as a tracked issue (owner + deadline) in the team's issue tracker, and the vulnerable path must default deny/fail-closed in the meantime — never ship it open behind a comment "for now."
+Resolving a finding from any other rule in this file (GO-AUTH-001 through GO-AUTH-021) by adding a `// TODO`/`FIXME`-style comment next to the non-compliant code, and shipping it anyway, is not compliance — a comment does not change what the code does at runtime. Treat an inline deferral comment as equivalent to leaving the violation undocumented and unfixed. An existing violation that genuinely can't be fixed immediately must be filed as a tracked issue (owner + deadline) in the team's issue tracker, and the vulnerable path must default deny/fail-closed in the meantime — never ship it open behind a comment "for now."
 
 ```go
 // BAD: acknowledges the missing scope check but ships the endpoint reachable anyway
@@ -441,6 +441,48 @@ if !params.TrustedOrigin { // set only by RevokeExternalAPIKeyFromEvent
 
 ---
 
+## GO-AUTH-021: Machine-Credential Endpoints Must Scope Every Lookup to the Credential's Own Organization and Gateway — Critical
+
+The gateway-facing APIs (`/api/internal/v1/*`, the gateway WebSocket) authenticate a gateway registration token, and that token resolves to exactly one organization and one gateway. That pair is the only authority for which rows the caller may reach. Anyone can register a gateway in their own organization and hold a valid token, so on these endpoints "authenticated" means "a member of *some* tenant", not "entitled to this resource". A resource ID taken from the path, query or body (artifact UUID, deployment ID, secret handle) may only *select within* the credential's scope; it must never *be* the scope. This is GO-AUTH-005 applied to machine credentials, which carry no user claims and no OAuth scopes, so the request can reach the DB through nothing but the token's org and gateway.
+
+* **Never discard the resolved identity.** A handler that authenticates and then ignores the result (`_, _, ok := h.authenticateRequest(w, r)`) and fetches by a path ID alone is a cross-tenant BOLA, whatever the service layer underneath was written to do.
+* **Organization predicate in the SQL itself.** Every query an internal endpoint reaches filters `organization_uuid = ?` with the token's org. A child table keyed only by `artifact_uuid` (no org column of its own) must `JOIN artifacts` and filter on `artifacts.organization_uuid`; a repository method shaped `ListByArtifact(artifactUUID)` is not callable from a credential-scoped path. Per GO-AUTH-015, the predicate lives in the repository so that no future handler can forget it.
+* **Gateway predicate for artifact-bound data.** Deployment content, API keys, subscriptions and any secret or credential material belonging to an artifact also require a `deployment_status` row for *this* gateway, as `GetCurrentByGateway`/`ListByGatewayAndKind`/`IsAPIDeployedOnGateway` do. Organization scope alone still lets every gateway in the organization read artifacts that were never deployed to it. Organization-wide reference data (subscription plans, artifact existence) may stop at the organization.
+* **Decrypted material is the highest-risk case.** An endpoint that returns plaintext secrets must enforce both predicates *before* decrypting, never filter the result afterwards.
+* **Unguessable IDs are not a control.** UUIDv7 randomness stops brute force, not leakage: IDs appear in portals, logs, events, exports and support tickets.
+* **Not-yours and not-found give the same 404**, so the endpoint cannot be used to probe for IDs in other tenants (error-handling.md directive 5).
+* **Test each endpoint with two tenants.** Two organizations each register a gateway: gateway A requesting B's resource gets 404, and gateway A requesting its own resource succeeds (the positive control). Add a third case where a second gateway in the *same* organization requests an artifact not deployed on it, for every artifact-bound endpoint.
+
+```go
+// BAD: token authenticated, identity thrown away, lookup by path ID alone —
+// any tenant's gateway token reads any other tenant's per-artifact secrets.
+func (h *Handler) GetArtifactCredentials(w http.ResponseWriter, r *http.Request) {
+    _, _, ok := h.authenticateRequest(w, r)
+    if !ok { return }
+    creds, _ := h.repo.ListByArtifact(r.PathValue("artifactId")) // WHERE artifact_uuid = ?
+    writeDecrypted(w, creds)
+}
+
+// GOOD: org + gateway from the token flow into the query; ownership and deployment
+// are proven before anything is decrypted; one 404 for every "not yours" case.
+func (h *Handler) GetArtifactCredentials(w http.ResponseWriter, r *http.Request) {
+    orgID, gatewayID, ok := h.authenticateRequest(w, r)
+    if !ok { return }
+    artifactID := r.PathValue("artifactId")
+    if err := h.svc.RequireDeployedOnGateway(artifactID, orgID, gatewayID); err != nil {
+        httputil.WriteJSON(w, http.StatusNotFound, dto.NewInternalErrorResponse(404, "Not Found", "Not found"))
+        return
+    }
+    creds, err := h.repo.ListByArtifactInOrg(artifactID, orgID)
+    // SELECT c.* FROM artifact_credentials c
+    //   INNER JOIN artifacts a ON a.uuid = c.artifact_uuid
+    //   WHERE c.artifact_uuid = ? AND a.organization_uuid = ?
+    ...
+}
+```
+
+---
+
 > **Verification Checklist before outputting code:**
 > * GO-AUTH-001: Does every auth-failure branch `return` immediately instead of falling through to `next()`?
 > * GO-AUTH-002: Is JWT verification restricted to an explicit asymmetric-algorithm allowlist, rejecting `HS*`/`none`?
@@ -462,3 +504,4 @@ if !params.TrustedOrigin { // set only by RevokeExternalAPIKeyFromEvent
 > * GO-AUTH-018: Does a permission check on a critical file/socket hard-fail when too permissive, with socket mode set at creation time?
 > * GO-AUTH-019: Is a finding from any of the above "resolved" by a `// TODO`/`FIXME`-style comment, or by a tracked issue that lacks an assigned owner and deadline, or by a tracked issue not paired with deny-by-default/fail-closed behavior in the meantime — instead of an actual fix with all of: owner, deadline, and fail-closed behavior?
 > * GO-AUTH-020: Is a cross-user override a named scope enforced by one service-layer predicate that fails closed on an empty caller, rather than an implicit empty-id/absent-filter bypass?
+> * GO-AUTH-021: Does every gateway-token (`/api/internal/v1`, gateway WebSocket) handler pass the token's org and gateway into its query, with the SQL filtering `organization_uuid` (joining `artifacts` for child tables without one), requiring a `deployment_status` row for this gateway on artifact-bound data, and checked before any decryption — with a two-tenant 404 test and a positive control?
