@@ -76,7 +76,27 @@ type UpstreamRequestHeaderModifications struct {
 	// Routing mutations — applied before the request is forwarded to upstream.
 	// These are valid at the header phase because routing decisions do not require
 	// the request body to be available.
+	//
+	// UpstreamName and BackendName share one last-write-wins slot across the chain. A result
+	// that sets both routes to the API's upstream definition named UpstreamName when the API
+	// has one, and otherwise to the global Backend named BackendName. A Backend missing from
+	// the gateway fails closed with a 503.
+	//
+	// A policy that checks a Backend's record before naming it, for example against a label
+	// selector, sets BackendClusterName to the ClusterName of the record it checked. The request
+	// then reaches the Backend only while the Backend is still on that revision. If the Backend
+	// has changed since, the request fails closed with a 503, so the check always holds for the
+	// revision the request reaches.
+	//
+	// A templated Backend (BackendInfo.Templated) has a BackendKeyPlaceholder in its endpoint
+	// host. BackendKey fills it, and must satisfy IsValidBackendKey. A request routed to a
+	// templated Backend without a valid key is rejected with a 400. A key is ignored when the
+	// request is routed anywhere else, including to an upstream definition of the API that
+	// takes precedence over a Backend of the same name.
 	UpstreamName            *string             // route to a named upstream definition (nil = no change)
+	BackendName             *string             // route to a global Backend by name (nil = no change)
+	BackendClusterName      *string             // with BackendName: the ClusterName of the Backend record the policy checked (nil = any revision)
+	BackendKey              *string             // with BackendName: the key that fills a templated Backend's host (nil = none)
 	UpstreamSlot            *UpstreamSlot       // route to the API's main or sandbox upstream slot instead of the slot implied by the current vhost (nil = no change); requesting a slot the API doesn't have configured is a no-op (logged, not an error)
 	Path                    *string             // rewrite the request path (nil = no change)
 	Host                    *string             // rewrite the :authority header (nil = no change)
@@ -147,8 +167,13 @@ type UpstreamRequestModifications struct {
 	HeadersToRemove []string            // remove by name (case-insensitive)
 
 	// Routing mutations — applied before the request is forwarded to upstream.
+	// UpstreamName, BackendName, BackendClusterName and BackendKey behave as in
+	// UpstreamRequestHeaderModifications.
 	UpstreamName            *string             // route to a named upstream definition (nil = no change)
-	UpstreamSlot            *UpstreamSlot       // route to the API's main or sandbox upstream slot instead of the slot implied by the current vhost (nil = no change); requesting a slot the API doesn't have configured is a no-op (logged, not an error)
+	BackendName             *string             // route to a global Backend by name (nil = no change)
+	BackendClusterName      *string             // with BackendName: the ClusterName of the Backend record the policy checked (nil = any revision)
+	BackendKey              *string             // with BackendName: the key that fills a templated Backend's host (nil = none)
+	UpstreamSlot           *UpstreamSlot       // route to the API's main or sandbox upstream slot instead of the slot implied by the current vhost (nil = no change); requesting a slot the API doesn't have configured is a no-op (logged, not an error)
 	Path                    *string             // rewrite the request path (nil = no change)
 	Host                    *string             // rewrite the :authority header (nil = no change)
 	Method                  *string             // rewrite the request method (nil = no change)
