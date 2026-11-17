@@ -73,6 +73,23 @@ export const CONDITION_POLICIES: {
   customById: {},
 };
 
+/** The policy that enforces request-count after subscription-validation v2 (wso2/gateway-controllers#399). */
+export const REQUEST_RATELIMIT = 'subscription-request-ratelimit';
+
+/**
+ * Whether subscription-validation enforces the request-count condition itself: v1 does, and is what
+ * the console attaches. From v2 on it only checks subscriptions and records the plan, and
+ * subscription-request-ratelimit after it enforces request-count. So an API whose
+ * subscription-validation is v2 (and not v1) needs the rate-limit policy for its request limits.
+ */
+export const validationEnforcesRequests = (attached?: ReadonlySet<string>): boolean => {
+  // Versioned keys (`subscription-validation@v2`) say which; with none known, it is taken as v1.
+  const versions = [...(attached ?? [])].filter((key) =>
+    key.startsWith(`${SUBSCRIPTION_VALIDATION}@`),
+  );
+  return versions.length === 0 || versions.includes(policyKey(SUBSCRIPTION_VALIDATION, 'v1'));
+};
+
 /** The kinds of API a plan can be offered on, as far as its conditions are concerned. */
 export type ApiKind = 'rest' | 'graphql' | 'mcp' | 'llm' | 'event';
 
@@ -104,12 +121,14 @@ export const apiKindOf = (apiType: string): ApiKind => {
 const hasOwn = (record: object, key: string) => Object.prototype.hasOwnProperty.call(record, key);
 
 /** The policy that enforces a condition, or `null` when none does yet. A custom condition that
- * names its policy (`params.policy`) is enforced by that policy at that version. */
-export const enforcerOf = (condition: {
-  type: string;
-  id?: string;
-  params?: unknown;
-}): string | null => {
+ * names its policy (`params.policy`) is enforced by that policy at that version. Request-count
+ * depends on the subscription-validation the API has (`attached`): see validationEnforcesRequests. */
+export const enforcerOf = (
+  condition: { type: string; id?: string; params?: unknown },
+  attached?: ReadonlySet<string>,
+): string | null => {
+  if (condition.type === 'request-count' && !validationEnforcesRequests(attached))
+    return REQUEST_RATELIMIT;
   if (isBuiltInType(condition.type)) return CONDITION_POLICIES.builtIn[condition.type];
   const named = customPolicyOf(condition);
   if (named) return policyKey(named.name, named.version);
@@ -147,7 +166,9 @@ export const policyAttachment = (api: PolicyHolder): PolicyAttachment => {
   const global = new Set(policyKeysOf(api.policies));
   const perOperation = (api.operations ?? []).map(
     (operation) =>
-      new Set(policyKeysOf([...(operation.request?.policies ?? []), ...(operation.policies ?? [])])),
+      new Set(
+        policyKeysOf([...(operation.request?.policies ?? []), ...(operation.policies ?? [])]),
+      ),
   );
   const attached = new Set(global);
   const partial = new Set<string>();
@@ -163,24 +184,52 @@ export const policyAttachment = (api: PolicyHolder): PolicyAttachment => {
 export const attachedPolicyNames = (api: PolicyHolder): Set<string> =>
   policyAttachment(api).attached;
 
+/** subscription-validation v2: it records the plan and its conditions for the policies after it. */
+export const VALIDATION_V2 = policyKey(SUBSCRIPTION_VALIDATION, 'v2');
+
+const isValidation = (key: string) => parsePolicyKey(key).name === SUBSCRIPTION_VALIDATION;
+
 /**
  * The policies an API needs for these plans to be enforced: subscription-validation always, then
  * the policy of each condition the plans hold, once each. A condition no policy enforces needs none,
  * and neither does one this kind of API never counts.
+ *
+ * Which subscription-validation: the one the API has (`attached`). An API with none gets v1, unless
+ * the plans need another policy that reads their conditions (a custom condition's policy, such as
+ * subscription-request-ratelimit), which only v2 records: then it is `subscription-validation@v2`,
+ * and request-count is enforced by subscription-request-ratelimit too.
  */
 export const requiredPolicies = (
   plans: readonly Pick<SubscriptionPlan, 'conditions'>[],
   kind?: ApiKind,
+  attached?: ReadonlySet<string>,
 ): string[] => {
-  const names = new Set<string>([SUBSCRIPTION_VALIDATION]);
-  for (const plan of plans) {
-    for (const condition of plan.conditions ?? []) {
-      if (!appliesTo(condition, kind)) continue;
-      const enforcer = enforcerOf(condition);
-      if (enforcer) names.add(enforcer);
+  const collect = (known: ReadonlySet<string> | undefined, validation: string) => {
+    // A policy by name is attached at v1, so `name` and `name@v1` are the same policy, asked for
+    // once; the versioned key is kept, since a custom condition's policy is attached by it.
+    const identityOf = (key: string) => {
+      const { name, version } = parsePolicyKey(key);
+      return policyKey(name, version ?? 'v1');
+    };
+    const byIdentity = new Map<string, string>([[identityOf(validation), validation]]);
+    for (const plan of plans) {
+      for (const condition of plan.conditions ?? []) {
+        if (!appliesTo(condition, kind)) continue;
+        const enforcer = enforcerOf(condition, known);
+        if (!enforcer) continue;
+        const identity = identityOf(enforcer);
+        const seen = byIdentity.get(identity);
+        if (seen === undefined || (seen !== validation && !parsePolicyKey(seen).version)) {
+          byIdentity.set(identity, enforcer);
+        }
+      }
     }
-  }
-  return [...names];
+    return [...byIdentity.values()];
+  };
+  const asIs = collect(attached, SUBSCRIPTION_VALIDATION);
+  const hasValidation = [...(attached ?? [])].some(isValidation);
+  if (hasValidation || !asIs.some((key) => !isValidation(key))) return asIs;
+  return collect(new Set([...(attached ?? []), VALIDATION_V2]), VALIDATION_V2);
 };
 
 /** Whether a condition is enforced on the API, not (yet attached), or has no policy at all. */
@@ -227,7 +276,11 @@ export const planEnforcement = (
   const validationPartial = !validationAttached && partial.has(SUBSCRIPTION_VALIDATION);
   const validationMissing = !validationAttached && !validationPartial;
   const conditions = plans.flatMap((plan) => plan.conditions ?? []);
-  const rowOf = (type: EnforcementRow['type'], id: string, policy: string | null): EnforcementRow => {
+  const rowOf = (
+    type: EnforcementRow['type'],
+    id: string,
+    policy: string | null,
+  ): EnforcementRow => {
     if (!policy) return { id, partial: false, policy, status: 'noPolicy', type };
     if (attached.has(policy) && validationAttached) {
       return { id, partial: false, policy, status: 'enforced', type };
@@ -241,8 +294,14 @@ export const planEnforcement = (
     conditions.some((condition) => condition.type === type),
   ).map((type) =>
     appliesTo({ type }, kind)
-      ? rowOf(type, BUILT_IN_IDS[type], CONDITION_POLICIES.builtIn[type])
-      : { id: BUILT_IN_IDS[type], partial: false, policy: null, status: 'notApplicable' as const, type },
+      ? rowOf(type, BUILT_IN_IDS[type], enforcerOf({ type }, attached))
+      : {
+          id: BUILT_IN_IDS[type],
+          partial: false,
+          policy: null,
+          status: 'notApplicable' as const,
+          type,
+        },
   );
   // One row per custom ID, enforced by the policy the first condition with that ID names.
   const customById = new Map<string, (typeof conditions)[number]>();

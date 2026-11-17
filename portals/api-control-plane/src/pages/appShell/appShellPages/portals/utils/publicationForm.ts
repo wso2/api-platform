@@ -23,6 +23,7 @@ import type { RestApi } from '@/api/resources/restApis';
 import type { GraphQLApiGateway } from '@/api/resources/graphqlApis/apiGateways';
 import type { RestApiGateway } from '@/api/resources/restApis/apiGateways/apiGateways.endpoints';
 import { isHttpUrl } from '../../apis/utils/basicInfoRules';
+import { attachedPlanIdsOf } from '../../develop/usagePlans/usagePlans';
 import { buildInvokeUrl, gatewayEndpoint } from '../../gateways/utils/gatewayDisplay';
 
 const messages = defineMessages({
@@ -138,7 +139,10 @@ export const emptyDraftFormValues: DraftFormValues = {
 };
 
 /** The API fields a draft starts from — REST and GraphQL APIs both carry them. */
-export type PublishableApiDetails = Pick<RestApi, 'description' | 'displayName' | 'version'>;
+export type PublishableApiDetails = Pick<RestApi, 'description' | 'displayName' | 'version'> & {
+  /** The plans attached on Develop › Usage Plans: a new listing starts with them selected. */
+  subscriptionPlans?: RestApi['subscriptionPlans'];
+};
 
 const valuesOfListing = (listing: ListingSource): DraftFormValues => ({
   displayName: listing.displayName ?? '',
@@ -177,7 +181,9 @@ export const resolveDraftFormValues = (
       productionUrl: defaultProductionUrl ?? '',
       sandboxUrl: '',
       agentVisibility: DEFAULT_AGENT_VISIBILITY,
-      subscriptionPlanIds: [],
+      // Nothing saved for this portal yet: start from the API's usage plans, which the developer
+      // can deselect before saving the draft. An inactive one is dropped by the page.
+      subscriptionPlanIds: attachedPlanIdsOf(api),
       docIds: [],
     };
   }

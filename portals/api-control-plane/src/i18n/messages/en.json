@@ -2691,9 +2691,6 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.columnPricing": {
     "defaultMessage": "Pricing"
   },
-  "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.deployHint": {
-    "defaultMessage": "Saving the changes stores the plans and policies on the API. The gateway applies them the next time you deploy it."
-  },
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.emptyDescription": {
     "defaultMessage": "Create subscription plans in Manage › Subscription Plans to attach them here."
   },
@@ -2709,6 +2706,10 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.loading": {
     "defaultMessage": "Loading API"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.lockedPlan": {
+    "defaultMessage": "{count, plural, one {The API Portal {portals} selects this plan for the API. To detach it, first remove it from the publication and the draft on that portal.} other {The API Portals {portals} select this plan for the API. To detach it, first remove it from the publications and drafts on those portals.}}",
+    "description": "{portals} is a comma-separated list of API Portal names."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.missingPolicies": {
     "defaultMessage": "You have not yet attached the following required policies:",
@@ -2774,7 +2775,7 @@
     "description": "{count} is a styled number rendered as a React element, not plain text; {total} is a plain number."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.subtitle": {
-    "defaultMessage": "The subscription plans this API offers. Attaching a plan offers to attach the policies it needs. When you publish, you choose which of these plans each API Portal lists."
+    "defaultMessage": "Choose the subscription plans this API offers."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.title": {
     "defaultMessage": "Usage Plans",
@@ -4203,7 +4204,7 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.expires": {
     "defaultMessage": "Expires {date}",
-    "description": "Chip after the name of a plan that has an expiry. {date} is a formatted date."
+    "description": "Chip under the name of a plan that has an expiry. {date} is a formatted date."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.inactive": {
     "defaultMessage": "Inactive",
@@ -4349,6 +4350,10 @@
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.error": {
     "defaultMessage": "Unable to load subscription plans."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.liveNotSelected": {
+    "defaultMessage": "{count, plural, one {The live listing offers {names}, which this draft does not select. Publishing the draft removes it from the API Portal, and developers can no longer subscribe to it.} other {The live listing offers {names}, which this draft does not select. Publishing the draft removes them from the API Portal, and developers can no longer subscribe to them.}}",
+    "description": "Draft view warning. {names} is a comma-separated list of plan names."
   },
   "apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.loading": {
     "defaultMessage": "Loading subscription plans"

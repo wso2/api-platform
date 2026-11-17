@@ -212,7 +212,12 @@ export function PlanConditionChips({
   const shown = chips.slice(0, max);
   const rest = chips.slice(max);
   return (
-    <Stack direction="row" flexWrap={singleLine ? 'nowrap' : 'wrap'} gap={0.75} sx={singleLine ? { minWidth: 0, overflow: 'hidden' } : undefined}>
+    <Stack
+      direction="row"
+      flexWrap={singleLine ? 'nowrap' : 'wrap'}
+      gap={0.75}
+      sx={singleLine ? { m: '-1px', minWidth: 0, overflow: 'hidden', p: '1px' } : undefined}
+    >
       {shown.map((chip, index) => (
         // The chip says it all; only "+N" has a tooltip, for what it hides.
         <Chip

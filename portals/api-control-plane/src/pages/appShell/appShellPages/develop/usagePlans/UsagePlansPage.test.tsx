@@ -64,10 +64,10 @@ const renderPanel = (overrides: Parameters<typeof aRestApi>[0] = {}) => {
 
 beforeEach(() => {
   resetHttpClient();
-  server.use(collection('/subscription-plans', [gold, silver, legacy]));
+  server.use(collection('/subscription-plans', [gold, silver, legacy]), collection('/api-publications', []));
 });
 
-const rowOf = (name: string) => screen.getByText(name).closest('[role="row"]') as HTMLElement;
+const rowOf = (name: string) => screen.getByText(name).closest('tr') as HTMLElement;
 const boxOf = async (name: string) => {
   await screen.findByText(name);
   return within(rowOf(name)).getByRole('checkbox');
@@ -82,11 +82,42 @@ describe('UsagePlansPanel', () => {
     expect(screen.queryByText('Legacy')).not.toBeInTheDocument();
     expect(screen.getByText('For production traffic.')).toBeInTheDocument();
     expect(screen.queryByText('Required by usage plans')).not.toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Saving the changes stores the plans and policies on the API. The gateway applies them the next time you deploy it.',
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText('Choose the subscription plans this API offers.')).toBeInTheDocument();
+    expect(screen.getByText(/of 2 plans attached/)).toBeInTheDocument();
+  });
+
+  describe('a plan an API Portal selects', () => {
+    const portal = (status: string) => ({ apiPortalId: 'default', apiPortalName: 'Default API Portal', status });
+    const draftPath = '/api-portals/:apiPortalId/apis/:apiType/:apiId/draft';
+    const publicationPath = '/api-portals/:apiPortalId/apis/:apiType/:apiId/publication';
+
+    it('can’t be detached while the portal’s live listing selects it', async () => {
+      server.use(
+        collection('/api-publications', [portal('PUBLISHED')]),
+        failure('get', draftPath, 404, 'DRAFT_NOT_FOUND'),
+        resource(publicationPath, { subscriptionPlans: [{ displayName: 'Silver', id: 'silver' }] }),
+      );
+      const { user } = renderPanel({ subscriptionPlans: [{ id: 'silver' }, { id: 'gold' }] });
+
+      await waitFor(async () => expect(await boxOf('Silver')).toBeDisabled());
+      expect(await boxOf('Gold')).toBeEnabled();
+
+      // Detaching every plan keeps the one the portal selects.
+      await user.click(await screen.findByRole('checkbox', { name: 'Detach all plans' }));
+      expect(await boxOf('Silver')).toBeChecked();
+      expect(await boxOf('Gold')).not.toBeChecked();
+    });
+
+    it('can’t be detached while the portal’s draft selects it', async () => {
+      server.use(
+        collection('/api-publications', [portal('NOT_PUBLISHED')]),
+        resource(draftPath, { subscriptionPlans: [{ displayName: 'Gold', id: 'gold' }] }),
+      );
+      renderPanel({ subscriptionPlans: [{ id: 'gold' }] });
+
+      await waitFor(async () => expect(await boxOf('Gold')).toBeDisabled());
+      expect(await boxOf('Silver')).toBeEnabled();
+    });
   });
 
   it('lists only the required policies the API has not attached yet', async () => {
@@ -237,6 +268,8 @@ describe('UsagePlansPanel', () => {
       // Validation first, before the policy that reads it; the header the resources used is kept.
       expect(body.policies.map((policy) => policy.name)).toEqual(['subscription-validation', 'cors', 'region-guard']);
       expect(body.policies[0].params).toEqual({ subscriptionKeyHeader: 'X-Key' });
+      // The custom policy is told which condition it enforces.
+      expect(body.policies[2].params).toEqual({ conditionName: 'region' });
       expect(body.operations.map((o) => (o.request.policies ?? []).map((policy) => policy.name))).toEqual([[], ['cors']]);
     });
 
@@ -292,6 +325,43 @@ describe('UsagePlansPanel', () => {
         'region-guard v1',
       ]);
       expect(dialog).not.toHaveTextContent('Moved');
+    });
+  });
+
+  describe('subscription-validation v2 on the API', () => {
+    const v2 = { name: 'subscription-validation', params: { subscriptionKeyHeader: 'Subscription-Key' }, version: 'v2' };
+
+    it('warns that request limits need subscription-request-ratelimit, since v2 enforces none', async () => {
+      renderPanel({ policies: [v2], subscriptionPlans: [{ id: 'silver' }] });
+
+      const note = (await screen.findByText('You have not yet attached the following required policies:')).closest(
+        '[role="alert"]',
+      ) as HTMLElement;
+      expect(within(note).getAllByRole('listitem').map((item) => item.getAttribute('aria-label'))).toEqual([
+        'subscription-request-ratelimit v1',
+      ]);
+    });
+
+    it('offers subscription-request-ratelimit when a plan with request limits is ticked, and attaches it after v2', async () => {
+      const updates = recorder();
+      const { api, user } = renderPanel({ policies: [v2] });
+      server.use(accepts('put', '/rest-apis/:restApiId', api, { record: updates }));
+
+      await user.click(await boxOf('Gold'));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getAllByRole('listitem').map((item) => item.getAttribute('aria-label'))).toEqual([
+        'subscription-request-ratelimit v1',
+      ]);
+      await user.click(within(dialog).getByRole('button', { name: 'Attach policies' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      await user.click(await screen.findByRole('button', { name: 'Save changes' }));
+
+      await waitFor(() => expect(updates.count()).toBe(1));
+      const body = JSON.parse(updates.last()?.body ?? '{}') as { policies: { name: string; version: string }[] };
+      expect(body.policies.map((policy) => `${policy.name} ${policy.version}`)).toEqual([
+        'subscription-validation v2',
+        'subscription-request-ratelimit v1',
+      ]);
     });
   });
 

@@ -108,7 +108,7 @@ describe('PlanCard', () => {
     expect(card).not.toHaveTextContent(/requests|Unlimited|\$/);
   });
 
-  it('shows when a plan expires in a chip after its name', () => {
+  it('shows when a plan expires in a chip under its name', () => {
     renderWithProviders(
       // Midday UTC: the same calendar day in every time zone from UTC-11 to UTC+11.
       <PlanCard displayName="Plan" expiryTime="2027-03-31T12:00:00Z" selected={false} />,
@@ -116,7 +116,9 @@ describe('PlanCard', () => {
 
     const [chip] = chipsOf(screen.getByRole('checkbox', { name: /Plan/ }));
     expect(chip).toHaveTextContent(/^Expires Mar 31, 2027$/);
-    expect(screen.getByText('Plan').nextElementSibling).toBe(chip);
+    // On its own line under the name's, not beside the name.
+    expect(screen.getByText('Plan').nextElementSibling).toBeNull();
+    expect(screen.getByText('Plan').parentElement?.nextElementSibling).toBe(chip);
   });
 
   it('shows no expiry chip on a plan that never expires', () => {

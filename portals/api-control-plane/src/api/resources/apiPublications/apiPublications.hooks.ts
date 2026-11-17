@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { ApiError } from '../../core/errors';
 import { HANDLED_LOCALLY } from '../../core/queryClient';
@@ -177,6 +177,64 @@ export const useApiPublication = (
     ...apiPublicationQueries.publication(org!, apiPortalId!, apiType!, apiId!),
     enabled: Boolean(org && apiPortalId && apiType && apiId),
   });
+};
+
+/** Which API Portals select each plan for one API, in a live listing or a draft. */
+export type PortalPlanSelections = {
+  /** Plan id → the names of the portals whose live listing or draft selects it. */
+  byPlan: ReadonlyMap<string, readonly string[]>;
+  /** Still reading, or a read failed: the selections may be missing some portals. */
+  incomplete: boolean;
+};
+
+const PORTAL_LIST_LIMIT = 100;
+
+const isListed = (status: string | undefined) => status === 'PUBLISHED' || status === 'DEPRECATED';
+
+/**
+ * Every plan each API Portal selects for this API, in its live listing or its saved draft. The
+ * server refuses to detach a plan a portal selects, so Develop › Usage Plans locks it. A portal
+ * with no draft (404) or no live listing (never published) adds nothing.
+ */
+export const usePortalPlanSelections = (
+  apiType: string | undefined,
+  apiId: string | undefined,
+  overrides: { orgId?: string } = {},
+): PortalPlanSelections => {
+  const { org } = useApiScope(overrides);
+  const listQuery = useApiPublications(apiType, apiId, { limit: PORTAL_LIST_LIMIT }, overrides);
+  const portals = listQuery.isPlaceholderData
+    ? []
+    : (listQuery.data?.list ?? []).filter((portal) => Boolean(portal.apiPortalId));
+  const enabled = Boolean(org && apiType && apiId);
+  // Each portal's draft, then (when it is listed) its live listing, in this order.
+  const reads = portals.flatMap((portal) => {
+    const portalId = portal.apiPortalId as string;
+    const draft = { portal, query: apiPublicationQueries.draft(org!, portalId, apiType!, apiId!) };
+    return isListed(portal.status)
+      ? [draft, { portal, query: apiPublicationQueries.publication(org!, portalId, apiType!, apiId!) }]
+      : [draft];
+  });
+  const results = useQueries({
+    queries: reads.map(({ query }) => ({ ...query, enabled, retry: false })),
+  });
+
+  const byPlan = new Map<string, string[]>();
+  let incomplete = !listQuery.isSuccess || listQuery.isPlaceholderData;
+  results.forEach((result, index) => {
+    if (result.isPending) incomplete = true;
+    if (result.error && !(result.error as ApiError).isNotFound) incomplete = true;
+    const listing = result.data as Publication | PublicationDraftDetails | undefined;
+    const { portal } = reads[index];
+    const name = portal.apiPortalName || (portal.apiPortalId as string);
+    for (const plan of listing?.subscriptionPlans ?? []) {
+      if (!plan.id || plan.sourceStatus === 'DELETED') continue;
+      const names = byPlan.get(plan.id) ?? [];
+      if (!names.includes(name)) names.push(name);
+      byPlan.set(plan.id, names);
+    }
+  });
+  return { byPlan, incomplete };
 };
 
 /** The published definition — the fallback tier once no draft definition exists. */

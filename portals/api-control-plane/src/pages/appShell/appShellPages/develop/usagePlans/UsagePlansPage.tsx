@@ -21,8 +21,8 @@ import {
   Avatar,
   Box,
   Button,
+  Checkbox,
   Chip,
-  DataGrid,
   ListingTable,
   PageTitle,
   Stack,
@@ -41,6 +41,7 @@ import {
   type GraphQLApiDetail,
 } from '@/api/resources/graphqlApis';
 import { useMetersById } from '@/api/resources/meters';
+import { GRAPHQL_API_TYPE, REST_API_TYPE, usePortalPlanSelections } from '@/api/resources/apiPublications';
 import { useRestApi, useUpdateRestApi, type Policy, type RestApi } from '@/api/resources/restApis';
 import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/subscriptionPlans';
 import { AppPage } from '@/components/AppPage';
@@ -74,6 +75,7 @@ import { SaveBar } from '../SaveBar';
 import { useDirtyTracking } from '../useDirtyTracking';
 import {
   attachedPlanIdsOf,
+  customPolicyConditions,
   defaultPolicy,
   missingPolicies,
   policiesToAttach,
@@ -95,7 +97,7 @@ const messages = defineMessages({
   subtitle: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.subtitle',
     defaultMessage:
-      'The subscription plans this API offers. Attaching a plan offers to attach the policies it needs. When you publish, you choose which of these plans each API Portal lists.',
+      'Choose the subscription plans this API offers.',
   },
   loading: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.loading',
@@ -140,10 +142,11 @@ const messages = defineMessages({
     defaultMessage: '{count, plural, one {<n>#</n> plan attached} other {<n>#</n> plans attached}}',
     description: '<n> wraps the number, which is styled.',
   },
-  deployHint: {
-    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.deployHint',
+  lockedPlan: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.lockedPlan',
     defaultMessage:
-      'Saving the changes stores the plans and policies on the API. The gateway applies them the next time you deploy it.',
+      '{count, plural, one {The API Portal {portals} selects this plan for the API. To detach it, first remove it from the publication and the draft on that portal.} other {The API Portals {portals} select this plan for the API. To detach it, first remove it from the publications and drafts on those portals.}}',
+    description: '{portals} is a comma-separated list of API Portal names.',
   },
   missingPolicies: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.usagePlans.UsagePlansPage.missingPolicies',
@@ -321,13 +324,13 @@ type PlanRow = {
   pricing: SubscriptionPlan['pricing'];
 };
 
-/** One line of secondary text; the whole text on hover, only when it is cut short. */
-function TruncatedText({ text }: { text?: string }) {
+/** One line of text; the whole text on hover, only when it is cut short. */
+function TruncatedText({ primary = false, text }: { primary?: boolean; text?: string }) {
   const [cut, setCut] = useState(false);
   return (
     <Tooltip disableHoverListener={!cut} slotProps={tipSlotProps} title={text ?? ''}>
       <Typography
-        color="text.secondary"
+        color={primary ? 'text.primary' : 'text.secondary'}
         noWrap
         onMouseEnter={(event) =>
           setCut(event.currentTarget.scrollWidth > event.currentTarget.clientWidth)
@@ -340,14 +343,8 @@ function TruncatedText({ text }: { text?: string }) {
   );
 }
 
-/** Every cell's content, centred in the fixed-height row. */
-const cellSx = { alignItems: 'center', display: 'flex', height: '100%', minWidth: 0 } as const;
-
 /** Condition chips a row shows before the rest fold into "+N". */
 const MAX_ROW_CONDITIONS = 2;
-
-/** Above this many plans the grid pages; below it the footer is hidden. */
-const MAX_PAGE_ROWS = 100;
 
 /** A policy key's name and version, as `labelOf` reads it ("subscription-validation v2"). */
 const policyParts = (label: string) => {
@@ -434,6 +431,10 @@ const countChanges = (
 
 /** What the panel needs from an API, whatever its kind. */
 type PlanAttachmentProps = {
+  /** The API's `{apiType}` on the publication endpoints, and its handle: which plans each API
+   * Portal selects for it, in a live listing or a draft. Such a plan can't be detached. */
+  apiType: string;
+  apiHandle?: string;
   /** Plan ids the API offers now (its `subscriptionPlans`). */
   attachedPlanIds: string[];
   /** The API's own (API-level) policies. */
@@ -461,7 +462,9 @@ type PlanAttachmentProps = {
  * the plans and the policies on the API; nothing is deployed.
  */
 function PlanAttachmentPanel({
+  apiHandle,
   apiPolicies,
+  apiType,
   attachedPlanIds,
   kind,
   onSave,
@@ -474,6 +477,10 @@ function PlanAttachmentPanel({
   const intl = useIntl();
   const { notify } = useNotifications();
   const plansQuery = useAllSubscriptionPlans();
+  const portalSelections = usePortalPlanSelections(apiType, apiHandle);
+  /** The portals that select a saved plan, which keeps it attached (the server refuses to detach it). */
+  const lockedBy = (id: string) =>
+    attachedPlanIds.includes(id) ? portalSelections.byPlan.get(id) : undefined;
 
   const [planIds, setPlanIds] = useState<string[]>(attachedPlanIds);
   const [policies, setPolicies] = useState<Policy[]>(apiPolicies);
@@ -509,6 +516,7 @@ function PlanAttachmentPanel({
     planIds.flatMap((id) => plansById.get(id) ?? []),
     kind,
     attachment,
+    policies,
   );
 
   /**
@@ -516,9 +524,10 @@ function PlanAttachmentPanel({
    * policies they need; an untick (or clearing all) detaches them and offers to remove the policies
    * no remaining plan needs. The grid reports a select-all as "every row but these".
    */
-  const handleSelection = (model: DataGrid.GridRowSelectionModel) => {
-    if (readOnly) return;
-    const ticked = (id: string) => (model.type === 'exclude' ? !model.ids.has(id) : model.ids.has(id));
+  const handleSelection = (tickedIds: ReadonlySet<string>) => {
+    if (readOnly || saving) return;
+    // A plan an API Portal selects stays attached, even when "Detach all plans" is used.
+    const ticked = (id: string) => tickedIds.has(id) || Boolean(lockedBy(id) && planIds.includes(id));
     const shownIds = new Set(shownPlans.map((plan) => plan.id));
     // An attached id the list does not show (a deleted plan) is not the grid's to change.
     const next = [
@@ -531,7 +540,7 @@ function PlanAttachmentPanel({
     const nameOf = (plans: DisplayablePlan[]) =>
       plans.length === 1 ? plans[0].displayName : intl.formatMessage(messages.selectedPlans);
     if (added.length > 0) {
-      const needed = policiesToAttach(added, kind, attachment);
+      const needed = policiesToAttach(added, kind, attachment, policies);
       const move = validationMove(policies, ops, needed);
       if (move && move.kind !== 'move') {
         // subscription-validation is on only some resources, or configured differently on them: the
@@ -572,11 +581,6 @@ function PlanAttachmentPanel({
     }
   };
 
-  const selection = useMemo<DataGrid.GridRowSelectionModel>(
-    () => ({ ids: new Set(planIds), type: 'include' }),
-    [planIds],
-  );
-
   const confirmPrompt = () => {
     if (!prompt) return;
     if (prompt.action === 'blocked') {
@@ -589,7 +593,9 @@ function PlanAttachmentPanel({
       const moved = validationToMove(policies, ops, prompt.names);
       const base = moved ? [moved, ...policies] : policies;
       if (moved) setOps(withoutOperationValidation(ops));
-      setPolicies(withPoliciesAdded(base, prompt.names, requiredPolicies(ticked, kind)));
+      setPolicies(
+        withPoliciesAdded(base, prompt.names, requiredPolicies(ticked, kind), customPolicyConditions(ticked, kind)),
+      );
       notify(intl.formatMessage(messages.policiesAttached), 'success');
     } else {
       setPolicies(withPoliciesRemoved(policies, prompt.names));
@@ -644,65 +650,6 @@ function PlanAttachmentPanel({
     name: plan.displayName,
     pricing: plan.pricing,
   }));
-  const columns: DataGrid.GridColDef<PlanRow>[] = [
-    {
-      field: 'name',
-      flex: 0.4,
-      headerName: intl.formatMessage(messages.columnName),
-      minWidth: 180,
-      renderCell: ({ row }) => (
-        <Box sx={{ ...cellSx, gap: 1 }}>
-          <Typography noWrap variant="body2">{row.name}</Typography>
-          {row.inactive && (
-            <Typography color="text.secondary" variant="caption">
-              <FormattedMessage {...messages.inactive} />
-            </Typography>
-          )}
-        </Box>
-      ),
-      sortable: false,
-    },
-    {
-      field: 'description',
-      flex: 0.9,
-      headerName: intl.formatMessage(messages.columnDescription),
-      minWidth: 200,
-      // One line in every row; the full text on hover.
-      renderCell: ({ row }) => (
-        <Box sx={cellSx}>
-          <TruncatedText text={row.description} />
-        </Box>
-      ),
-      sortable: false,
-    },
-    {
-      field: 'conditions',
-      flex: 1.2,
-      headerName: intl.formatMessage(messages.columnConditions),
-      minWidth: 300,
-      renderCell: ({ row }) => (
-        <Box sx={cellSx}>
-          <PlanConditionChips conditions={row.conditions} max={MAX_ROW_CONDITIONS} singleLine />
-        </Box>
-      ),
-      sortable: false,
-    },
-    {
-      field: 'pricing',
-      flex: 0.4,
-      headerName: intl.formatMessage(messages.columnPricing),
-      minWidth: 110,
-      renderCell: ({ row }) => (
-        <Box sx={cellSx}>
-          <Typography color={row.pricing ? 'text.primary' : 'text.secondary'} noWrap variant="body2">
-            {pricingSummary(intl, row.pricing, meters)}
-          </Typography>
-        </Box>
-      ),
-      sortable: false,
-    },
-  ];
-
   let plansBody;
   if (plansQuery.isPending) {
     plansBody = <LoadingState label={intl.formatMessage(messages.plansLoading)} />;
@@ -716,56 +663,130 @@ function PlanAttachmentPanel({
       />
     );
   } else {
+    const shownIds = shownPlans.map((plan) => plan.id);
+    const tickedShown = new Set(planIds.filter((id) => shownIds.includes(id)));
+    const allTicked = tickedShown.size === shownIds.length;
+    const toggle = (id: string) => {
+      const next = new Set(tickedShown);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      handleSelection(next);
+    };
     plansBody = (
-      <Stack spacing={2}>
-        <SelectionSummary
-          count={planIds.filter((id) => plansById.has(id)).length}
-          published={messages.attachedSummary}
-          readOnly={readOnly}
-          selected={messages.selectedSummary}
-          total={shownPlans.length}
-        />
+      <ListingTable.Provider>
         <ListingTable.Container>
-          <ListingTable.DataGrid
-            checkboxSelection
-            columns={columns}
-            density="standard"
-            disableColumnMenu
-            disableColumnResize
-            disableRowSelectionOnClick
-            hideFooter={rows.length <= MAX_PAGE_ROWS}
-            hideFooterSelectedRowCount
-            isRowSelectable={() => !readOnly && !saving}
-            localeText={{
-              checkboxSelectionSelectAllRows: intl.formatMessage(messages.selectAll),
-              checkboxSelectionSelectRow: intl.formatMessage(messages.selectRow),
-              checkboxSelectionUnselectAllRows: intl.formatMessage(messages.clearAll),
-              checkboxSelectionUnselectRow: intl.formatMessage(messages.unselectRow),
-            }}
-            onRowSelectionModelChange={handleSelection}
-            rows={rows}
-            rowSelectionModel={selection}
-          />
+          <ListingTable>
+            <ListingTable.Head>
+              <ListingTable.Row>
+                <ListingTable.Cell padding="checkbox">
+                  <Checkbox
+                    checked={allTicked}
+                    disabled={readOnly || saving}
+                    indeterminate={tickedShown.size > 0 && !allTicked}
+                    inputProps={{
+                      'aria-label': intl.formatMessage(allTicked ? messages.clearAll : messages.selectAll),
+                    }}
+                    onChange={() => handleSelection(new Set(allTicked ? [] : shownIds))}
+                  />
+                </ListingTable.Cell>
+                <ListingTable.Cell>
+                  <FormattedMessage {...messages.columnName} />
+                </ListingTable.Cell>
+                <ListingTable.Cell>
+                  <FormattedMessage {...messages.columnDescription} />
+                </ListingTable.Cell>
+                <ListingTable.Cell>
+                  <FormattedMessage {...messages.columnConditions} />
+                </ListingTable.Cell>
+                <ListingTable.Cell>
+                  <FormattedMessage {...messages.columnPricing} />
+                </ListingTable.Cell>
+              </ListingTable.Row>
+            </ListingTable.Head>
+            <ListingTable.Body>
+              {rows.map((row) => {
+                const checked = tickedShown.has(row.id);
+                const portals = checked ? lockedBy(row.id) : undefined;
+                const label = intl.formatMessage(checked ? messages.unselectRow : messages.selectRow);
+                return (
+                  <ListingTable.Row key={row.id}>
+                    <ListingTable.Cell padding="checkbox">
+                      <Tooltip
+                        disableHoverListener={!portals}
+                        slotProps={tipSlotProps}
+                        title={
+                          portals
+                            ? intl.formatMessage(messages.lockedPlan, {
+                                count: portals.length,
+                                portals: portals.join(', '),
+                              })
+                            : ''
+                        }
+                      >
+                        <span>
+                          <Checkbox
+                            checked={checked}
+                            disabled={readOnly || saving || Boolean(portals)}
+                            inputProps={{ 'aria-label': `${label} ${row.name}` }}
+                            onChange={() => toggle(row.id)}
+                          />
+                        </span>
+                      </Tooltip>
+                    </ListingTable.Cell>
+                    <ListingTable.Cell sx={{ maxWidth: 240 }}>
+                      <TruncatedText primary text={row.name} />
+                      {row.inactive && (
+                        <Typography color="text.secondary" variant="caption">
+                          <FormattedMessage {...messages.inactive} />
+                        </Typography>
+                      )}
+                    </ListingTable.Cell>
+                    <ListingTable.Cell sx={{ maxWidth: 320 }}>
+                      <TruncatedText text={row.description} />
+                    </ListingTable.Cell>
+                    <ListingTable.Cell>
+                      <PlanConditionChips conditions={row.conditions} max={MAX_ROW_CONDITIONS} singleLine />
+                    </ListingTable.Cell>
+                    <ListingTable.Cell>
+                      <Typography color={row.pricing ? 'text.primary' : 'text.secondary'} noWrap variant="body2">
+                        {pricingSummary(intl, row.pricing, meters)}
+                      </Typography>
+                    </ListingTable.Cell>
+                  </ListingTable.Row>
+                );
+              })}
+            </ListingTable.Body>
+          </ListingTable>
         </ListingTable.Container>
-      </Stack>
+      </ListingTable.Provider>
     );
   }
 
   return (
     <Stack spacing={2}>
-      <PageTitle>
-        <PageTitle.Header>
-          <FormattedMessage {...messages.title} />
-        </PageTitle.Header>
-        <PageTitle.SubHeader>
-          <SecondaryText component="span" variant="inherit">
-            <FormattedMessage {...messages.subtitle} />
-          </SecondaryText>
-        </PageTitle.SubHeader>
-      </PageTitle>
-
-      {notice}
-      {plansBody}
+      <Stack alignItems="flex-start" direction="row" justifyContent="space-between" spacing={2}>
+        <PageTitle>
+          <PageTitle.Header>
+            <FormattedMessage {...messages.title} />
+          </PageTitle.Header>
+          <PageTitle.SubHeader>
+            <SecondaryText component="span" variant="inherit">
+              <FormattedMessage {...messages.subtitle} />
+            </SecondaryText>
+          </PageTitle.SubHeader>
+        </PageTitle>
+        {plansQuery.data && shownPlans.length > 0 && (
+          <Box sx={{ flexShrink: 0, pt: 1 }}>
+            <SelectionSummary
+              count={planIds.filter((id) => plansById.has(id)).length}
+              published={messages.attachedSummary}
+              readOnly={readOnly}
+              selected={messages.selectedSummary}
+              total={shownPlans.length}
+            />
+          </Box>
+        )}
+      </Stack>
 
       {plansQuery.data && missing.length > 0 && (
         <Alert severity="warning">
@@ -773,9 +794,8 @@ function PlanAttachmentPanel({
           <PolicyBullets labels={missing.map(labelOf)} />
         </Alert>
       )}
-      <SecondaryText variant="body2">
-        <FormattedMessage {...messages.deployHint} />
-      </SecondaryText>
+      {notice}
+      {plansBody}
 
       {!readOnly && (
         <SaveBar
@@ -823,7 +843,9 @@ export function UsagePlansPanel({ api }: { api: RestApi }) {
   const operations = useMemo(() => toEditableOperations(api), [api]);
   return (
     <PlanAttachmentPanel
+      apiHandle={api.id}
       apiPolicies={api.policies ?? []}
+      apiType={REST_API_TYPE}
       attachedPlanIds={attachedPlanIdsOf(api)}
       kind="rest"
       onSave={(planIds, policies, editedOperations, onSaved) => {
@@ -881,7 +903,9 @@ export function GraphqlUsagePlansPanel({ api }: { api: GraphQLApiDetail }) {
   const intl = useIntl();
   return (
     <PlanAttachmentPanel
+      apiHandle={api.id}
       apiPolicies={api.policies ?? []}
+      apiType={GRAPHQL_API_TYPE}
       attachedPlanIds={attachedPlanIdsOf(api)}
       kind="graphql"
       notice={

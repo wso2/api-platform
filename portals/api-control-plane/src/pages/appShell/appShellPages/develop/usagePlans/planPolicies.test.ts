@@ -52,7 +52,7 @@ describe('CONDITION_POLICIES', () => {
 });
 
 describe('enforcerOf', () => {
-  it('finds a custom condition\'s policy among its own IDs only', () => {
+  it("finds a custom condition's policy among its own IDs only", () => {
     for (const id of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
       expect(enforcerOf({ id, type: 'custom' })).toBeNull();
       expect(enforcerOf({ id, type: id })).toBeNull();
@@ -173,7 +173,11 @@ describe('planEnforcement', () => {
   });
 
   it('marks request-count not enforced, and why, while subscription-validation is on some resources only', () => {
-    const result = planEnforcement(plans, new Set(['jwt-auth']), new Set([SUBSCRIPTION_VALIDATION]));
+    const result = planEnforcement(
+      plans,
+      new Set(['jwt-auth']),
+      new Set([SUBSCRIPTION_VALIDATION]),
+    );
     expect(result.validationMissing).toBe(false);
     expect(result.validationPartial).toBe(true);
     expect(result.rows[0]).toMatchObject({ id: 'requests', partial: true, status: 'notEnforced' });
@@ -205,9 +209,9 @@ describe('unenforcedConditionTypes', () => {
   });
 
   it('is empty for plans whose conditions are all enforced', () => {
-    expect(unenforcedConditionTypes([{ conditions: [limit('request-count', 'requests')] }])).toEqual(
-      [],
-    );
+    expect(
+      unenforcedConditionTypes([{ conditions: [limit('request-count', 'requests')] }]),
+    ).toEqual([]);
   });
 });
 
@@ -301,8 +305,42 @@ describe('a custom condition that names its policy', () => {
     expect(planEnforcement([regionPlan], wrongVersion).rows[0].status).toBe('notEnforced');
   });
 
-  it('asks for that policy among the required ones', () => {
-    expect(requiredPolicies([regionPlan], 'rest')).toEqual(['subscription-validation', 'region-guard@v1']);
+  it('asks for that policy among the required ones, after subscription-validation v2 when the API has none', () => {
+    // Only v2 records the plan's conditions for the policies after it.
+    expect(requiredPolicies([regionPlan], 'rest')).toEqual([
+      'subscription-validation@v2',
+      'region-guard@v1',
+    ]);
     expect(policyLabel('region-guard@v1')).toBe('region-guard v1');
+  });
+
+  it('keeps the subscription-validation the API already has', () => {
+    const v1 = new Set(['subscription-validation', 'subscription-validation@v1']);
+    expect(requiredPolicies([regionPlan], 'rest', v1)).toEqual([
+      'subscription-validation',
+      'region-guard@v1',
+    ]);
+  });
+
+  it('asks for v2 and the rate-limit policy for request limits next to a custom condition’s policy', () => {
+    const plan = {
+      conditions: [
+        { id: 'requests', params: {}, type: 'request-count' },
+        {
+          id: 'custom-name',
+          params: { policy: { name: 'subscription-request-ratelimit', version: 'v1' } },
+          type: 'custom',
+        },
+      ],
+    } as never;
+    expect(requiredPolicies([plan], 'rest')).toEqual([
+      'subscription-validation@v2',
+      'subscription-request-ratelimit@v1',
+    ]);
+    // A plan with request limits only still gets v1, which enforces them itself.
+    const requestsOnly = {
+      conditions: [{ id: 'requests', params: {}, type: 'request-count' }],
+    } as never;
+    expect(requiredPolicies([requestsOnly], 'rest')).toEqual(['subscription-validation']);
   });
 });

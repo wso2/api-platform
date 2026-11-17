@@ -194,7 +194,7 @@ describe('GraphqlPortalPublishPage', () => {
     expect(publishRequests.count()).toBe(0);
   });
 
-  it('saves the selected subscription plans with the GraphQL draft', async () => {
+  it('starts with the API’s usage plans selected, and saves the selection with the GraphQL draft', async () => {
     serveFreshApi();
     const bronze = aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' });
     const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
@@ -208,12 +208,15 @@ describe('GraphqlPortalPublishPage', () => {
 
     await screen.findByDisplayValue('Countries GraphQL API');
     await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
-    await user.click(await screen.findByRole('checkbox', { name: /Gold/ }));
+    // Nothing saved for this portal yet: the plans attached on Usage Plans start selected.
+    expect(await screen.findByRole('checkbox', { name: /Gold/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('checkbox', { name: /Bronze/ })).toHaveAttribute('aria-checked', 'true');
+    await user.click(screen.getByRole('checkbox', { name: /Gold/ }));
     await user.click(screen.getByRole('button', { name: 'Save Draft' }));
 
     await waitFor(() => expect(draftRequests.count()).toBe(1));
     expect(JSON.parse(draftRequests.last()?.body ?? '{}')).toMatchObject({
-      subscriptionPlanIds: ['gold'],
+      subscriptionPlanIds: ['bronze'],
     });
   });
 

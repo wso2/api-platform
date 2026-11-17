@@ -21,6 +21,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   attachedPlanIdsOf,
+  customPolicyConditions,
+  missingPolicies,
   policiesToAttach,
   policiesToRemove,
   validationMove,
@@ -57,7 +59,9 @@ describe('usage plans helpers', () => {
   });
 
   it('offers subscription-validation first, and nothing already on every request', () => {
-    expect(policiesToAttach([requests as never], 'rest', none)).toEqual(['subscription-validation']);
+    expect(policiesToAttach([requests as never], 'rest', none)).toEqual([
+      'subscription-validation',
+    ]);
     expect(
       policiesToAttach([requests as never], 'rest', {
         attached: new Set(['subscription-validation']),
@@ -78,7 +82,9 @@ describe('usage plans helpers', () => {
   it('offers removal only of what no remaining plan needs; subscription-validation once no plan is left', () => {
     const onApi = [{ name: 'subscription-validation', version: 'v1' }];
     expect(policiesToRemove(requests as never, [tools as never], 'rest', onApi)).toEqual([]);
-    expect(policiesToRemove(requests as never, [], 'rest', onApi)).toEqual(['subscription-validation']);
+    expect(policiesToRemove(requests as never, [], 'rest', onApi)).toEqual([
+      'subscription-validation',
+    ]);
     // Never offered when it is not an API-level policy.
     expect(policiesToRemove(requests as never, [], 'rest', [])).toEqual([]);
   });
@@ -86,17 +92,29 @@ describe('usage plans helpers', () => {
   it('offers a custom condition’s own policy, attached at its version with no params', () => {
     const region = {
       conditions: [
-        { id: 'region-limit', params: { policy: { name: 'region-guard', version: 'v2' } }, type: 'custom' },
+        {
+          id: 'region-limit',
+          params: { policy: { name: 'region-guard', version: 'v2' } },
+          type: 'custom',
+        },
       ],
     };
     const keys = policiesToAttach([region as never], 'rest', none);
-    expect(keys).toEqual(['subscription-validation', 'region-guard@v2']);
+    // subscription-validation v2, which records the plan's conditions for region-guard to read.
+    expect(keys).toEqual(['subscription-validation@v2', 'region-guard@v2']);
     expect(withPoliciesAdded([], keys)).toEqual([
-      { name: 'subscription-validation', params: { subscriptionKeyHeader: 'Subscription-Key' }, version: 'v1' },
+      {
+        name: 'subscription-validation',
+        params: { subscriptionKeyHeader: 'Subscription-Key' },
+        version: 'v2',
+      },
       { name: 'region-guard', params: {}, version: 'v2' },
     ]);
     const onApi = withPoliciesAdded([], keys);
-    expect(policiesToRemove(region as never, [], 'rest', onApi)).toEqual(keys);
+    expect(policiesToRemove(region as never, [], 'rest', onApi)).toEqual([
+      'subscription-validation',
+      'region-guard@v2',
+    ]);
     expect(withPoliciesRemoved(onApi, ['region-guard@v2'])).toHaveLength(1);
   });
 
@@ -118,26 +136,43 @@ describe('usage plans helpers', () => {
   it('adds a policy two keys name only once, with the first key’s defaults', () => {
     const added = withPoliciesAdded([], ['subscription-validation', 'subscription-validation@v1']);
     expect(added).toEqual([
-      { name: 'subscription-validation', params: { subscriptionKeyHeader: 'Subscription-Key' }, version: 'v1' },
+      {
+        name: 'subscription-validation',
+        params: { subscriptionKeyHeader: 'Subscription-Key' },
+        version: 'v1',
+      },
     ]);
   });
 
   it('adds each major version of a policy, and a built-in key at its default version', () => {
-    const added = withPoliciesAdded([], ['region-guard@v1', 'region-guard@v2', 'region-guard', 'region-guard@v1']);
-    expect(added.map((policy) => `${policy.name}@${policy.version}`)).toEqual(['region-guard@v1', 'region-guard@v2']);
+    const added = withPoliciesAdded(
+      [],
+      ['region-guard@v1', 'region-guard@v2', 'region-guard', 'region-guard@v1'],
+    );
+    expect(added.map((policy) => `${policy.name}@${policy.version}`)).toEqual([
+      'region-guard@v1',
+      'region-guard@v2',
+    ]);
     // Already on the API at v1: only v2 is added.
     const onApi = [{ name: 'region-guard', params: {}, version: 'v1' }];
-    expect(withPoliciesAdded(onApi, ['region-guard@v1', 'region-guard@v2']).map((p) => p.version)).toEqual(['v1', 'v2']);
+    expect(
+      withPoliciesAdded(onApi, ['region-guard@v1', 'region-guard@v2']).map((p) => p.version),
+    ).toEqual(['v1', 'v2']);
   });
 
   it('puts subscription-validation before the attached policies that depend on it', () => {
     const cors = { name: 'cors', params: {}, version: 'v1' };
     const guard = { name: 'region-guard', params: {}, version: 'v1' };
-    const added = withPoliciesAdded([cors, guard], ['subscription-validation'], [
+    const added = withPoliciesAdded(
+      [cors, guard],
+      ['subscription-validation'],
+      ['subscription-validation', 'region-guard@v1'],
+    );
+    expect(added.map((policy) => policy.name)).toEqual([
+      'cors',
       'subscription-validation',
-      'region-guard@v1',
+      'region-guard',
     ]);
-    expect(added.map((policy) => policy.name)).toEqual(['cors', 'subscription-validation', 'region-guard']);
     // With nothing depending on it, it goes at the end.
     expect(withPoliciesAdded([cors], ['subscription-validation']).map((p) => p.name)).toEqual([
       'cors',
@@ -147,13 +182,36 @@ describe('usage plans helpers', () => {
 
   it('moves subscription-validation from the operations to API level, first, when a plan policy is added', () => {
     const onOps = [
-      { policies: [{ name: 'subscription-validation', params: { subscriptionKeyHeader: 'X-Key' }, version: 'v1' }] },
-      { policies: [{ name: 'cors', params: {}, version: 'v1' }, { name: 'subscription-validation', params: { subscriptionKeyHeader: 'X-Key' }, version: 'v1' }] },
+      {
+        policies: [
+          {
+            name: 'subscription-validation',
+            params: { subscriptionKeyHeader: 'X-Key' },
+            version: 'v1',
+          },
+        ],
+      },
+      {
+        policies: [
+          { name: 'cors', params: {}, version: 'v1' },
+          {
+            name: 'subscription-validation',
+            params: { subscriptionKeyHeader: 'X-Key' },
+            version: 'v1',
+          },
+        ],
+      },
     ];
     const moved = validationToMove([], onOps, ['subscription-request-ratelimit']);
     // As the operations had it: the same version and key header.
-    expect(moved).toEqual({ name: 'subscription-validation', params: { subscriptionKeyHeader: 'X-Key' }, version: 'v1' });
-    expect(withoutOperationValidation(onOps).map((op) => (op.policies ?? []).map((p) => p.name))).toEqual([[], ['cors']]);
+    expect(moved).toEqual({
+      name: 'subscription-validation',
+      params: { subscriptionKeyHeader: 'X-Key' },
+      version: 'v1',
+    });
+    expect(
+      withoutOperationValidation(onOps).map((op) => (op.policies ?? []).map((p) => p.name)),
+    ).toEqual([[], ['cors']]);
     expect(
       withPoliciesAdded([moved as Policy], ['subscription-request-ratelimit']).map((p) => p.name),
     ).toEqual(['subscription-validation', 'subscription-request-ratelimit']);
@@ -162,12 +220,23 @@ describe('usage plans helpers', () => {
     expect(validationToMove(atApi, onOps, ['subscription-request-ratelimit'])).toBeNull();
     expect(validationToMove([], [{ policies: [] }], ['subscription-request-ratelimit'])).toBeNull();
     expect(validationToMove([], onOps, ['subscription-validation'])).toBeNull();
-    expect(validationMove([], onOps, ['region-guard@v1'])).toEqual({ kind: 'move', policy: onOps[0].policies[0] });
+    expect(validationMove([], onOps, ['region-guard@v1'])).toEqual({
+      kind: 'move',
+      policy: onOps[0].policies[0],
+    });
   });
 
   it('moves nothing when subscription-validation is on only some operations', () => {
     const someOps = [
-      { policies: [{ name: 'subscription-validation', params: { subscriptionKeyHeader: 'X-Key' }, version: 'v1' }] },
+      {
+        policies: [
+          {
+            name: 'subscription-validation',
+            params: { subscriptionKeyHeader: 'X-Key' },
+            version: 'v1',
+          },
+        ],
+      },
       { policies: [{ name: 'cors', params: {}, version: 'v1' }] },
     ];
     expect(validationMove([], someOps, ['region-guard@v1'])).toEqual({ kind: 'partial' });
@@ -178,8 +247,16 @@ describe('usage plans helpers', () => {
     const sv = (params: Record<string, unknown>, version = 'v1') => ({
       policies: [{ name: 'subscription-validation', params, version }],
     });
-    expect(validationMove([], [sv({ subscriptionKeyHeader: 'X-Key' }), sv({ subscriptionKeyHeader: 'Y-Key' })], ['region-guard@v1'])).toEqual({ kind: 'differs' });
-    expect(validationMove([], [sv({}, 'v1'), sv({}, 'v2')], ['region-guard@v1'])).toEqual({ kind: 'differs' });
+    expect(
+      validationMove(
+        [],
+        [sv({ subscriptionKeyHeader: 'X-Key' }), sv({ subscriptionKeyHeader: 'Y-Key' })],
+        ['region-guard@v1'],
+      ),
+    ).toEqual({ kind: 'differs' });
+    expect(validationMove([], [sv({}, 'v1'), sv({}, 'v2')], ['region-guard@v1'])).toEqual({
+      kind: 'differs',
+    });
     // The same parameters in another key order are the same configuration.
     const a = sv({ a: 1, b: { c: 2, d: 3 } });
     const b = sv({ b: { d: 3, c: 2 }, a: 1 });
@@ -187,5 +264,63 @@ describe('usage plans helpers', () => {
     // Already at API level: nothing to decide.
     const atApi: Policy[] = [{ name: 'subscription-validation', params: {}, version: 'v1' }];
     expect(validationMove(atApi, [sv({ x: 1 }), { policies: [] }], ['region-guard@v1'])).toBeNull();
+  });
+});
+
+describe('custom condition policies', () => {
+  const custom = (id: string, version = 'v1') => ({
+    id,
+    params: { policy: { name: 'region-guard', version }, zone: 'eu' },
+    type: 'custom' as const,
+  });
+  const plans = [{ conditions: [custom('region-limit'), custom('region-quota')] }];
+
+  it('lists each named policy with the conditions it enforces', () => {
+    expect([...customPolicyConditions(plans, 'rest')]).toEqual([
+      ['region-guard@v1', ['region-limit', 'region-quota']],
+    ]);
+  });
+
+  it('attaches one instance per condition, each told its condition name', () => {
+    const added = withPoliciesAdded(
+      [],
+      ['region-guard@v1'],
+      [],
+      customPolicyConditions(plans, 'rest'),
+    );
+    expect(added).toEqual([
+      { name: 'region-guard', params: { conditionName: 'region-limit' }, version: 'v1' },
+      { name: 'region-guard', params: { conditionName: 'region-quota' }, version: 'v1' },
+    ]);
+  });
+
+  it('adds only the condition an existing instance does not serve', () => {
+    const onApi: Policy[] = [
+      { name: 'region-guard', params: { conditionName: 'region-limit' }, version: 'v1' },
+    ];
+    const attachment = {
+      attached: new Set(['region-guard', 'region-guard@v1']),
+      partial: new Set<string>(),
+    };
+    expect(policiesToAttach(plans, 'rest', attachment, onApi)).toContain('region-guard@v1');
+    expect(missingPolicies(plans, 'rest', attachment, onApi)).toContain('region-guard@v1');
+    expect(
+      withPoliciesAdded(onApi, ['region-guard@v1'], [], customPolicyConditions(plans, 'rest')),
+    ).toEqual([
+      ...onApi,
+      { name: 'region-guard', params: { conditionName: 'region-quota' }, version: 'v1' },
+    ]);
+  });
+
+  it('takes an instance without conditionName as serving every condition (it reads its own default)', () => {
+    const onApi: Policy[] = [{ name: 'region-guard', params: {}, version: 'v1' }];
+    const attachment = {
+      attached: new Set(['region-guard', 'region-guard@v1']),
+      partial: new Set<string>(),
+    };
+    expect(policiesToAttach(plans, 'rest', attachment, onApi)).not.toContain('region-guard@v1');
+    expect(
+      withPoliciesAdded(onApi, ['region-guard@v1'], [], customPolicyConditions(plans, 'rest')),
+    ).toEqual(onApi);
   });
 });

@@ -18,6 +18,7 @@
 
 import { alpha, Box, Chip, Form, Tooltip, Typography, type Theme } from '@wso2/oxygen-ui';
 import { Check } from '@wso2/oxygen-ui-icons-react';
+import { useState, type MouseEvent } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
 import { useFormatters } from '@/i18n/useFormatters';
@@ -62,7 +63,7 @@ const messages = defineMessages({
   expires: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.PlanCard.expires',
     defaultMessage: 'Expires {date}',
-    description: 'Chip after the name of a plan that has an expiry. {date} is a formatted date.',
+    description: 'Chip under the name of a plan that has an expiry. {date} is a formatted date.',
   },
 });
 
@@ -95,6 +96,28 @@ const CHECK_SIZE = 20;
 
 /** Room for two lines of description, so cards with and without one stay level. */
 const BODY_MIN_HEIGHT = 40;
+/** The height of the name's line, which the selection square is centred on. */
+const NAME_LINE_HEIGHT = 28;
+
+/** The plan's name on one line; the whole name on hover, only when it is cut short. */
+function PlanName({ deleted, name, unavailable }: { deleted: boolean; name: string; unavailable: boolean }) {
+  const [cut, setCut] = useState(false);
+  return (
+    <Tooltip describeChild disableHoverListener={!cut} title={name}>
+      <Typography
+        component={deleted ? 'del' : 'span'}
+        noWrap
+        onMouseEnter={(event: MouseEvent<HTMLElement>) =>
+          setCut(event.currentTarget.scrollWidth > event.currentTarget.clientWidth)
+        }
+        sx={{ color: unavailable ? 'text.secondary' : undefined, fontSize: '1rem', fontWeight: 600, minWidth: 0 }}
+        variant="subtitle1"
+      >
+        {name}
+      </Typography>
+    </Tooltip>
+  );
+}
 
 /** The drawn checkbox at the card's left; a real checkbox cannot nest inside a button. A plan no longer available is drawn grey. */
 function SelectionSquare({ accent, selected, unavailable }: { accent: Accent; selected: boolean; unavailable: boolean }) {
@@ -213,32 +236,31 @@ export function PlanCard({
         }
         tabIndex={readOnly ? -1 : 0}
       >
-        <Box sx={{ alignItems: 'center', display: 'flex', gap: 1.5, minWidth: 0, width: '100%' }}>
-          <SelectionSquare accent={accent} selected={selected} unavailable={unavailable} />
-          <Typography
-            component={readOnly && deleted ? 'del' : 'span'}
-            noWrap
-            sx={{ color: unavailable ? 'text.secondary' : undefined, fontSize: '1rem', fontWeight: 600, minWidth: 0 }}
-            variant="subtitle1"
-          >
-            {displayName}
-          </Typography>
-          {chip && (
-            <Chip
-              color={chip === 'inactive' ? 'default' : 'warning'}
-              label={<FormattedMessage {...messages[chip]} />}
-              size="small"
-              sx={{ flexShrink: 0 }}
-              variant="outlined"
-            />
-          )}
-          {expiryTime && !deleted && (
-            <Chip
-              label={<FormattedMessage {...messages.expires} values={{ date: shortDate(expiryTime) }} />}
-              size="small"
-              sx={{ flexShrink: 0 }}
-            />
-          )}
+        <Box sx={{ alignItems: 'flex-start', display: 'flex', gap: 1.5, minWidth: 0, width: '100%' }}>
+          <Box sx={{ alignItems: 'center', display: 'flex', flexShrink: 0, height: NAME_LINE_HEIGHT }}>
+            <SelectionSquare accent={accent} selected={selected} unavailable={unavailable} />
+          </Box>
+          <Box sx={{ display: 'flex', flex: 1, flexDirection: 'column', gap: 0.75, minWidth: 0 }}>
+            <Box sx={{ alignItems: 'center', display: 'flex', gap: 1, minHeight: NAME_LINE_HEIGHT, minWidth: 0 }}>
+              <PlanName deleted={Boolean(readOnly) && deleted} name={displayName} unavailable={unavailable} />
+              {chip && (
+                <Chip
+                  color={chip === 'inactive' ? 'default' : 'warning'}
+                  label={<FormattedMessage {...messages[chip]} />}
+                  size="small"
+                  sx={{ flexShrink: 0 }}
+                  variant="outlined"
+                />
+              )}
+            </Box>
+            {expiryTime && !deleted && (
+              <Chip
+                label={<FormattedMessage {...messages.expires} values={{ date: shortDate(expiryTime) }} />}
+                size="small"
+                sx={{ alignSelf: 'flex-start' }}
+              />
+            )}
+          </Box>
         </Box>
 
         <Box sx={{ minHeight: BODY_MIN_HEIGHT, textAlign: 'start', width: '100%' }}>

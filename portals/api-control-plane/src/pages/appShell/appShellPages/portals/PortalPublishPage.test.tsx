@@ -1837,6 +1837,25 @@ describe('PortalPublishPage — viewing the published version', () => {
     expect(screen.getByDisplayValue('Draft Name')).not.toHaveAttribute('readonly');
   });
 
+  it('keeps the live plan selection when switching to the draft of a live API that has none saved yet', async () => {
+    const bronze = aSubscriptionPlan({ displayName: 'Bronze', id: 'bronze' });
+    const gold = aSubscriptionPlan({ displayName: 'Gold', id: 'gold' });
+    servePublicationState({
+      publication: aPublication({ subscriptionPlans: publicationSelections({ displayName: 'Bronze', id: 'bronze' }) }),
+    });
+    server.use(collection('/subscription-plans', [bronze, gold]));
+
+    const { user } = renderPage();
+
+    await screen.findByDisplayValue('Loan Management Service');
+    await user.click(screen.getByRole('tab', { name: 'Subscription Plans' }));
+    expect(await screen.findByRole('checkbox', { name: /Bronze/ })).toHaveAttribute('aria-checked', 'true');
+    await user.click(screen.getByRole('button', { name: 'Draft' }));
+
+    expect(await screen.findByRole('checkbox', { name: /Bronze/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('checkbox', { name: /Gold/ })).toHaveAttribute('aria-checked', 'false');
+  });
+
   it('can switch to the draft of a live API that has none saved yet', async () => {
     servePublicationState({ publication: published });
 

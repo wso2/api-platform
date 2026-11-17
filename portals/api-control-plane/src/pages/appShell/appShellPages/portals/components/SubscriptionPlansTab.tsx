@@ -16,13 +16,17 @@
  * under the License.
  */
 
-import { Box, Button } from '@wso2/oxygen-ui';
+import { Alert, Box, Button } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link as RouterLink } from 'react-router-dom';
 
 import { useAllSubscriptionPlans, type SubscriptionPlan } from '@/api/resources/subscriptionPlans';
 import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
-import { toggleSelection, type DeletedSelection, type DraftFormValues } from '../utils/publicationForm';
+import {
+  toggleSelection,
+  type DeletedSelection,
+  type DraftFormValues,
+} from '../utils/publicationForm';
 import { PlanCard } from './PlanCard';
 import { SelectionSummary } from './SelectionSummary';
 
@@ -65,12 +69,20 @@ const messages = defineMessages({
   selectedSummary: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.selectedSummary',
     defaultMessage: '{count} of {total} plans selected',
-    description: '{count} is a styled number rendered as a React element, not plain text; {total} is a plain number.',
+    description:
+      '{count} is a styled number rendered as a React element, not plain text; {total} is a plain number.',
   },
   publishedSummary: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.publishedSummary',
-    defaultMessage: '{count, plural, one {<n>#</n> plan published} other {<n>#</n> plans published}}',
+    defaultMessage:
+      '{count, plural, one {<n>#</n> plan published} other {<n>#</n> plans published}}',
     description: '<n> wraps the number, which is styled.',
+  },
+  liveNotSelected: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.liveNotSelected',
+    defaultMessage:
+      '{count, plural, one {The live listing offers {names}, which this draft does not select. Publishing the draft removes it from the API Portal, and developers can no longer subscribe to it.} other {The live listing offers {names}, which this draft does not select. Publishing the draft removes them from the API Portal, and developers can no longer subscribe to them.}}',
+    description: 'Draft view warning. {names} is a comma-separated list of plan names.',
   },
   selectAll: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.SubscriptionPlansTab.selectAll',
@@ -89,6 +101,12 @@ export type SubscriptionPlansTabProps = {
    * plan of the organization.
    */
   attachedPlanIds?: readonly string[];
+  /**
+   * Draft view: the plans the live listing offers. The draft shows them even when they are not
+   * attached to the API (a listing published before Usage Plans existed), and warns when it does not
+   * select them, since publishing it would take them off the API Portal.
+   */
+  publishedPlanIds?: readonly string[];
   /** Draft view: the API's Usage Plans page, linked from the empty state. */
   usagePlansPath?: string;
   /** Published view only: plans the listing holds whose subscription plan was deleted. They show struck through and count as published. */
@@ -125,6 +143,7 @@ export function SubscriptionPlansTab({
   disabled,
   editedPlanIds = [],
   onChange,
+  publishedPlanIds = [],
   readOnly,
   savedPlanIds,
   storedNames,
@@ -137,15 +156,22 @@ export function SubscriptionPlansTab({
   const selectedSet = new Set(selectedIds);
   const editedSet = new Set(editedPlanIds);
   const savedSet = new Set(savedPlanIds ?? selectedIds);
-  const allPlans = (plansQuery.data?.list ?? []).filter((plan): plan is DisplayablePlan => Boolean(plan.id));
+  const allPlans = (plansQuery.data?.list ?? []).filter((plan): plan is DisplayablePlan =>
+    Boolean(plan.id),
+  );
   const attachedSet = attachedPlanIds ? new Set(attachedPlanIds) : undefined;
+  const liveSet = new Set(readOnly ? [] : publishedPlanIds);
   // The plans the draft offers: the API's usage plans when known, or a plan the saved selection or
   // the current one holds although it was detached since, so it can be unticked, and ticked again
   // until the draft is saved.
   const activePlans = allPlans.filter(
     (plan) =>
       plan.status === 'ACTIVE' &&
-      (!attachedSet || attachedSet.has(plan.id) || selectedSet.has(plan.id) || savedSet.has(plan.id)),
+      (!attachedSet ||
+        attachedSet.has(plan.id) ||
+        selectedSet.has(plan.id) ||
+        savedSet.has(plan.id) ||
+        liveSet.has(plan.id)),
   );
   const shownDeleted = readOnly ? deletedPlans : [];
   const rank = (plan: DisplayablePlan) => {
@@ -154,9 +180,9 @@ export function SubscriptionPlansTab({
     return editedSet.has(plan.id) ? 1 : 2;
   };
   // The published view lists whatever the listing holds, active or not; the draft offers the active plans.
-  const shownPlans = (readOnly ? allPlans.filter((plan) => selectedSet.has(plan.id)) : [...activePlans]).sort(
-    (a, b) => rank(a) - rank(b),
-  );
+  const shownPlans = (
+    readOnly ? allPlans.filter((plan) => selectedSet.has(plan.id)) : [...activePlans]
+  ).sort((a, b) => rank(a) - rank(b));
   if (plansQuery.isPending) {
     return <LoadingState label={intl.formatMessage(messages.loading)} />;
   }
@@ -192,6 +218,10 @@ export function SubscriptionPlansTab({
   }
 
   const selectedActiveCount = activePlans.filter((plan) => selectedSet.has(plan.id)).length;
+  // Live plans this draft leaves out: publishing it takes them off the API Portal.
+  const liveDropped = activePlans.filter(
+    (plan) => liveSet.has(plan.id) && !selectedSet.has(plan.id),
+  );
   const allActiveSelected = activePlans.length > 0 && selectedActiveCount === activePlans.length;
 
   const commitSelection = (nextIds: string[]) => {
@@ -200,11 +230,29 @@ export function SubscriptionPlansTab({
 
   const toggle = (planId: string) => commitSelection(toggleSelection(selectedIds, planId));
 
-  const toggleAll = () => commitSelection(allActiveSelected ? [] : activePlans.map((plan) => plan.id));
+  const toggleAll = () =>
+    commitSelection(allActiveSelected ? [] : activePlans.map((plan) => plan.id));
 
   return (
-    <Box component="section" sx={{ containerType: 'inline-size', display: 'flex', flexDirection: 'column', gap: 2.5, p: 3 }}>
-      <Box sx={{ alignItems: 'center', display: 'flex', gap: 2, justifyContent: 'space-between', minHeight: 32 }}>
+    <Box
+      component="section"
+      sx={{
+        containerType: 'inline-size',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2.5,
+        p: 3,
+      }}
+    >
+      <Box
+        sx={{
+          alignItems: 'center',
+          display: 'flex',
+          gap: 2,
+          justifyContent: 'space-between',
+          minHeight: 32,
+        }}
+      >
         <SelectionSummary
           count={readOnly ? shownPlans.length + shownDeleted.length : selectedActiveCount}
           published={messages.publishedSummary}
@@ -213,11 +261,28 @@ export function SubscriptionPlansTab({
           total={activePlans.length}
         />
         {!readOnly && (
-          <Button disabled={disabled || activePlans.length === 0} onClick={toggleAll} size="small" variant="text">
+          <Button
+            disabled={disabled || activePlans.length === 0}
+            onClick={toggleAll}
+            size="small"
+            variant="text"
+          >
             <FormattedMessage {...(allActiveSelected ? messages.clearAll : messages.selectAll)} />
           </Button>
         )}
       </Box>
+
+      {liveDropped.length > 0 && (
+        <Alert severity="warning">
+          <FormattedMessage
+            {...messages.liveNotSelected}
+            values={{
+              count: liveDropped.length,
+              names: intl.formatList(liveDropped.map((plan) => plan.displayName)),
+            }}
+          />
+        </Alert>
+      )}
 
       <Box
         sx={{

@@ -18,8 +18,10 @@
 
 import type { Policy } from '@/api/resources/restApis';
 import type { SubscriptionPlan } from '@/api/resources/subscriptionPlans';
+import { customPolicyOf, isBuiltInType } from '../../orgManage/components/planConditions';
 import {
   type ApiKind,
+  appliesTo,
   parsePolicyKey,
   type PolicyAttachment,
   policyKey,
@@ -37,11 +39,12 @@ import {
  * SubscriptionPlanRef), or a bare plan handle from a Platform API that predates it.
  */
 export type AttachedPlanRef =
-  | string
-  | { readonly id?: string; readonly displayName?: string; readonly sourceStatus?: string };
+  string | { readonly id?: string; readonly displayName?: string; readonly sourceStatus?: string };
 
 /** The ids of the plans attached to an API. A plan deleted since it was attached is left out. */
-export const attachedPlanIdsOf = (api: { subscriptionPlans?: readonly AttachedPlanRef[] }): string[] =>
+export const attachedPlanIdsOf = (api: {
+  subscriptionPlans?: readonly AttachedPlanRef[];
+}): string[] =>
   (api.subscriptionPlans ?? []).flatMap((plan) => {
     if (typeof plan === 'string') return plan ? [plan] : [];
     return plan.id && plan.sourceStatus !== 'DELETED' ? [plan.id] : [];
@@ -73,13 +76,80 @@ export const POLICY_DEFAULTS: Readonly<Record<string, Pick<Policy, 'version' | '
  */
 export const defaultPolicy = (key: string): Policy => {
   const { name, version } = parsePolicyKey(key);
-  if (version) return { name, params: {}, version };
+  if (version) return { name, params: { ...POLICY_DEFAULTS[name]?.params }, version };
   return { name, ...(POLICY_DEFAULTS[name] ?? { params: {}, version: 'v1' }) };
 };
 
 /** The keys a list of policies answers to: each by name, and by name at its major version. */
 const keysOf = (policies: readonly Policy[]) =>
-  new Set(policies.flatMap((policy) => [policy.name, policyKey(policy.name, policy.version || 'v1')]));
+  new Set(
+    policies.flatMap((policy) => [policy.name, policyKey(policy.name, policy.version || 'v1')]),
+  );
+
+/**
+ * The parameter a custom condition's policy reads to find its condition: the condition's name (its
+ * ID). Every policy that enforces a custom condition declares it, and the console sets it when it
+ * attaches the policy for a plan that names that policy.
+ */
+export const CONDITION_NAME_PARAM = 'conditionName';
+
+/**
+ * Each custom policy the plans name (`name@v<major>`), with the names of the conditions it enforces,
+ * once each in the order the plans list them. The console attaches one instance per condition.
+ */
+export const customPolicyConditions = (
+  plans: readonly Pick<SubscriptionPlan, 'conditions'>[],
+  kind?: ApiKind,
+): Map<string, string[]> => {
+  const byKey = new Map<string, string[]>();
+  for (const condition of plans.flatMap((plan) => plan.conditions ?? [])) {
+    if (isBuiltInType(condition.type) || !condition.id || !appliesTo(condition, kind)) continue;
+    const named = customPolicyOf(condition);
+    if (!named) continue;
+    const key = policyKey(named.name, named.version);
+    const ids = byKey.get(key) ?? [];
+    if (!ids.includes(condition.id)) ids.push(condition.id);
+    byKey.set(key, ids);
+  }
+  return byKey;
+};
+
+/**
+ * Which conditions the API-level instances of a custom policy already serve: the `conditionName`
+ * each sets, or every condition when one sets none (it reads its own default).
+ */
+const servedConditions = (policies: readonly Policy[], key: string) => {
+  const instances = policies.filter(
+    (policy) => policyKey(policy.name, policy.version || 'v1') === key,
+  );
+  const names = instances.map(
+    (policy) => (policy.params as Record<string, unknown> | undefined)?.[CONDITION_NAME_PARAM],
+  );
+  return {
+    all: names.some((name) => typeof name !== 'string' || name === ''),
+    names: new Set(names.filter((name): name is string => typeof name === 'string')),
+  };
+};
+
+/** The custom policies on the API that some condition of the plans has no instance of yet. */
+export const uncoveredCustomPolicies = (
+  plans: readonly Pick<SubscriptionPlan, 'conditions'>[],
+  kind: ApiKind | undefined,
+  apiPolicies: readonly Policy[],
+): string[] =>
+  [...customPolicyConditions(plans, kind)]
+    .filter(([key, ids]) => {
+      const served = servedConditions(apiPolicies, key);
+      const present = apiPolicies.some(
+        (policy) => policyKey(policy.name, policy.version || 'v1') === key,
+      );
+      return present && !served.all && ids.some((id) => !served.names.has(id));
+    })
+    .map(([key]) => key);
+
+/** Every policy key on the API, on all its resources or some: what decides which subscription-validation it has. */
+const knownKeys = (attachment: PolicyAttachment) =>
+  new Set([...attachment.attached, ...attachment.partial]);
 
 /**
  * The policies to offer when `plans` are ticked: those they need that apply to no request of the
@@ -91,10 +161,14 @@ export const policiesToAttach = (
   plans: readonly Pick<SubscriptionPlan, 'conditions'>[],
   kind: ApiKind,
   attachment: PolicyAttachment,
-): string[] =>
-  requiredPolicies(plans, kind).filter(
-    (name) => !attachment.attached.has(name) && !attachment.partial.has(name),
+  apiPolicies: readonly Policy[] = [],
+): string[] => {
+  const uncovered = new Set(uncoveredCustomPolicies(plans, kind, apiPolicies));
+  return requiredPolicies(plans, kind, knownKeys(attachment)).filter(
+    (name) =>
+      uncovered.has(name) || (!attachment.attached.has(name) && !attachment.partial.has(name)),
   );
+};
 
 /**
  * The API-level policies to offer for removal when `removed` is unticked: those it needed that no
@@ -106,9 +180,12 @@ export const policiesToRemove = (
   kind: ApiKind,
   apiPolicies: readonly Policy[],
 ): string[] => {
-  const stillNeeded = new Set(remaining.length > 0 ? requiredPolicies(remaining, kind) : []);
+  const onApiKeys = keysOf(apiPolicies);
+  const stillNeeded = new Set(
+    remaining.length > 0 ? requiredPolicies(remaining, kind, onApiKeys) : [],
+  );
   const onApi = keysOf(apiPolicies);
-  return requiredPolicies([removed], kind).filter(
+  return requiredPolicies([removed], kind, onApiKeys).filter(
     (name) => onApi.has(name) && !stillNeeded.has(name),
   );
 };
@@ -121,8 +198,14 @@ export const missingPolicies = (
   plans: readonly Pick<SubscriptionPlan, 'conditions'>[],
   kind: ApiKind,
   attachment: PolicyAttachment,
-): string[] =>
-  plans.length === 0 ? [] : requiredPolicies(plans, kind).filter((name) => !attachment.attached.has(name));
+  apiPolicies: readonly Policy[] = [],
+): string[] => {
+  if (plans.length === 0) return [];
+  const uncovered = new Set(uncoveredCustomPolicies(plans, kind, apiPolicies));
+  return requiredPolicies(plans, kind, knownKeys(attachment)).filter(
+    (name) => uncovered.has(name) || !attachment.attached.has(name),
+  );
+};
 
 /**
  * `policies` with the policies of `keys` added, each once: two keys for the same policy at the same
@@ -136,11 +219,24 @@ export const withPoliciesAdded = (
   policies: readonly Policy[],
   keys: readonly string[],
   dependents: readonly string[] = [],
+  conditionsByKey: ReadonlyMap<string, readonly string[]> = new Map(),
 ): Policy[] => {
   const present = keysOf(policies);
   const addedIdentities = new Set<string>();
   const added: Policy[] = [];
   for (const key of keys) {
+    // A custom condition's policy: one instance per condition, each told its condition's name.
+    const conditions = conditionsByKey.get(key);
+    if (conditions && conditions.length > 0) {
+      const served = servedConditions([...policies, ...added], key);
+      if (served.all) continue;
+      for (const conditionName of conditions) {
+        if (served.names.has(conditionName)) continue;
+        added.push({ ...defaultPolicy(key), params: { [CONDITION_NAME_PARAM]: conditionName } });
+      }
+      addedIdentities.add(key);
+      continue;
+    }
     if (present.has(key)) continue;
     const policy = defaultPolicy(key);
     const identity = policyKey(policy.name, policy.version || 'v1');
@@ -151,8 +247,12 @@ export const withPoliciesAdded = (
   const validation = added.find((policy) => policy.name === SUBSCRIPTION_VALIDATION);
   const rest = added.filter((policy) => policy !== validation);
   if (!validation) return [...policies, ...rest];
-  const dependent = new Set(dependents.filter((key) => parsePolicyKey(key).name !== SUBSCRIPTION_VALIDATION));
-  const at = policies.findIndex((policy) => [...keysOf([policy])].some((key) => dependent.has(key)));
+  const dependent = new Set(
+    dependents.filter((key) => parsePolicyKey(key).name !== SUBSCRIPTION_VALIDATION),
+  );
+  const at = policies.findIndex((policy) =>
+    [...keysOf([policy])].some((key) => dependent.has(key)),
+  );
   if (at < 0) return [...policies, validation, ...rest];
   return [...policies.slice(0, at), validation, ...policies.slice(at), ...rest];
 };
@@ -203,10 +303,7 @@ const configOf = (policy: Policy): string => {
  * Null when it is already at API level, on no operation, or nothing that depends on it is attached.
  */
 export type ValidationMove =
-  | { kind: 'move'; policy: Policy }
-  | { kind: 'partial' }
-  | { kind: 'differs' }
-  | null;
+  { kind: 'move'; policy: Policy } | { kind: 'partial' } | { kind: 'differs' } | null;
 
 export const validationMove = (
   apiPolicies: readonly Policy[],
@@ -226,10 +323,15 @@ export const validationMove = (
 };
 
 /** `operations` without subscription-validation, once it has moved to API level. */
-export const withoutOperationValidation = <T extends OperationPolicies>(operations: readonly T[]): T[] =>
+export const withoutOperationValidation = <T extends OperationPolicies>(
+  operations: readonly T[],
+): T[] =>
   operations.map((operation) =>
     operation.policies?.some((policy) => policy.name === SUBSCRIPTION_VALIDATION)
-      ? { ...operation, policies: operation.policies.filter((policy) => policy.name !== SUBSCRIPTION_VALIDATION) }
+      ? {
+          ...operation,
+          policies: operation.policies.filter((policy) => policy.name !== SUBSCRIPTION_VALIDATION),
+        }
       : operation,
   );
 
@@ -240,7 +342,6 @@ export const withPoliciesRemoved = (
 ): Policy[] => {
   const drop = new Set(keys);
   return policies.filter(
-    (policy) =>
-      !drop.has(policy.name) && !drop.has(policyKey(policy.name, policy.version || 'v1')),
+    (policy) => !drop.has(policy.name) && !drop.has(policyKey(policy.name, policy.version || 'v1')),
   );
 };
