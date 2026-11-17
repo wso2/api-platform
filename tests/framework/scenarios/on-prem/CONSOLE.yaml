@@ -88,8 +88,7 @@ scenarios:
     title: "Edit an API's basic details, endpoint and OpenAPI definition after creating it; the overview, Endpoints card and definition show the saved changes after a page reload."
     priority: P1
     ui:
-      status: known-issue
-      issue: https://github.com/wso2/api-platform/issues/3899
+      status: automated
       refs:
         - feature: suites/ui/features/management_portal/develop_api.feature
           scenario: "Journey: a publisher edits an API's definition, name, description and endpoint, and they stay saved after a reload"
