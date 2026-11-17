@@ -93,7 +93,7 @@ Two gateway logs show what mutual TLS did with a request.
 |---|---|
 | [Manage certificates](manage-certificates.md) | Upload, list, rotate, and delete pool entries, and configure the client certificate header. |
 | [Authenticate clients with certificates](authenticate-clients-with-certificates.md) | Require a client certificate on an API, narrow it, and run the gateway behind a load balancer. |
-| [Connect to backends with mutual TLS](connect-to-backends-with-mtls.md) | Present a gateway identity to a backend, choose what to trust, and rotate the identity. |
+| [Connect to backends with mutual TLS](connect-to-backends-with-mtls.md) | Present a gateway identity to a backend, choose what to trust, and rotate the identity, for an API's upstream definitions and for global Backends. |
 
 ## Related topics
 

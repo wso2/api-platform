@@ -420,6 +420,7 @@ Status Code **200**
 |code|MTLS_HOSTNAME_NOT_SCOPED|
 |code|TLS_VERIFY_HOSTNAME_DISABLED|
 |code|TLS_IDENTITY_EXPIRED|
+|code|TLS_NO_TRUST_SOURCE|
 
 ## Get LLM provider by identifier
 
