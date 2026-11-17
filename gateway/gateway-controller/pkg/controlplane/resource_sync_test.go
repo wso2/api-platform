@@ -179,7 +179,7 @@ func TestPushResources_RetriesPerPushRetryConfig(t *testing.T) {
 			"budget-a": {ID: "cp-a", Status: "synced"},
 		}})
 	})
-	client.config.PushRetry = config.PushRetryConfig{MaxAttempts: 2, InitialDuration: time.Millisecond, ProgressionFactor: 1}
+	client.config.Retry = config.PushRetryConfig{MaxAttempts: 2, InitialDuration: time.Millisecond, ProgressionFactor: 1}
 	setGatewayID(client, testGatewayID)
 	seedBudget(t, client, "budget-a", "team-a", models.OriginGatewayAPI)
 
@@ -218,7 +218,7 @@ func TestPushResources_NotFoundMeansTheControlPlaneDoesNotTakeThem(t *testing.T)
 		atomic.AddInt32(&hits, 1)
 		w.WriteHeader(http.StatusNotFound)
 	})
-	client.config.PushRetry = config.PushRetryConfig{MaxAttempts: 5, InitialDuration: time.Millisecond, ProgressionFactor: 1}
+	client.config.Retry = config.PushRetryConfig{MaxAttempts: 5, InitialDuration: time.Millisecond, ProgressionFactor: 1}
 	setGatewayID(client, testGatewayID)
 	seedBudget(t, client, "budget-a", "team-a", models.OriginGatewayAPI)
 

@@ -440,13 +440,13 @@ func main() {
 	// Publish the stored active budgets so a restart enforces them before any
 	// request is served, with or without the control plane.
 	budgets := utils.NewBudgetPublisher(db, lazyResourceXDSManager)
-	if cfg.Budgets.Enabled {
+	if cfg.AICostManagement.Budgets.Enabled {
 		if err := budgets.Publish(""); err != nil {
 			log.Error("Refusing to start: budgets could not be published", slog.Any("error", err))
 			os.Exit(1)
 		}
 	} else {
-		log.Info("Budgets are disabled (budgets.enabled): LLM routes carry no budget policy")
+		log.Info("Budgets are disabled (ai_cost_management.budgets.enabled): LLM routes carry no budget policy")
 	}
 
 	// The SDS secret manager serves the listener certificate, gateway
@@ -651,7 +651,7 @@ func main() {
 	serverOpts = append(serverOpts, policyxds.WithCounterStore(counterStore))
 	// Budget spend and AI cost stats are reported to the control plane only when on.
 	var budgetUsage *controlplane.BudgetUsageReporter
-	if cfg.Budgets.Enabled || cfg.AICostStats.Enabled {
+	if cfg.AICostManagement.Budgets.Enabled || cfg.AICostManagement.Tracking.Enabled {
 		budgetUsage = controlplane.NewBudgetUsageReporter(log)
 		serverOpts = append(serverOpts, policyxds.WithCounterObserver(budgetUsage))
 	}

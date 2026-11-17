@@ -68,14 +68,14 @@ func newBudgetTestServer(t *testing.T) *APIServer {
 	}
 }
 
-// With budgets off (budgets.enabled), the budget API is not there: every
+// With budgets off (ai_cost_management.budgets.enabled), the budget API is not there: every
 // operation answers 404 and nothing is stored.
 func TestBudgetAPIAnswers404WhenBudgetsAreDisabled(t *testing.T) {
 	server := newBudgetTestServer(t)
 	server.budgetsEnabled = false
 	rec := postBudget(server, `{"apiVersion":"gateway.api-platform.wso2.com/v1","kind":"Budget","metadata":{"name":"x"},"spec":{"limit":{"amount":"1","period":"day","action":"allow"}}}`)
 	assert.Equal(t, http.StatusNotFound, rec.Code)
-	assert.Contains(t, rec.Body.String(), "budgets.enabled")
+	assert.Contains(t, rec.Body.String(), "ai_cost_management.budgets.enabled")
 
 	list := httptest.NewRecorder()
 	server.ListBudgets(list, httptest.NewRequest(http.MethodGet, "/budgets", nil))

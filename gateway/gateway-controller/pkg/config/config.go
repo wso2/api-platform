@@ -75,16 +75,22 @@ type Config struct {
 	ImmutableGateway ImmutableGatewayConfig `koanf:"immutable_gateway"`
 	MCP              MCPConfig              `koanf:"mcp"`
 	Signing          SigningConfig          `koanf:"signing"`
-	Budgets          BudgetsConfig          `koanf:"budgets"`
-	AICostStats      AICostStatsConfig      `koanf:"ai_cost_stats"`
+	AICostManagement AICostManagementConfig `koanf:"ai_cost_management"`
 	Counters         CountersConfig         `koanf:"counters"`
 }
 
-// AICostStatsConfig is the [ai_cost_stats] section. Enabled counts what every LLM request
-// costs, per month and per project, agent, API key, user, provider and model, and reports
-// it to the control plane, with or without budgets. Off by default: it places the budget
-// system policy (and llm-cost) on every LLM route.
-type AICostStatsConfig struct {
+// AICostManagementConfig is the [ai_cost_management] section: cost tracking and budgets,
+// each with its own switch. Both keep what they count in the shared counters ([counters]).
+type AICostManagementConfig struct {
+	Tracking AICostTrackingConfig `koanf:"tracking"`
+	Budgets  BudgetsConfig        `koanf:"budgets"`
+}
+
+// AICostTrackingConfig is the [ai_cost_management.tracking] section. Enabled counts what
+// every LLM request costs, per month and per project, agent, API key, user, provider and
+// model, and reports it to the control plane, independently of budget enforcement. Off by
+// default: it places the budget system policy (and llm-cost) on every LLM route.
+type AICostTrackingConfig struct {
 	Enabled bool `koanf:"enabled"`
 }
 
@@ -243,7 +249,7 @@ type Controller struct {
 	EventHub     EventHubConfig     `koanf:"event_hub"`
 }
 
-// BudgetsConfig is the [budgets] section. Enabled turns budgets on: the budget system
+// BudgetsConfig is the [ai_cost_management.budgets] section. Enabled turns budgets on: the budget system
 // policy on LLM routes, the gateway's budget API, budgets from the control plane, and
 // spend reports to it. Off by default, so a gateway that does not use budgets runs exactly
 // as without them. Budgets keep their spend in the shared counters ([counters]).
@@ -272,7 +278,7 @@ type CountersRedisConfig struct {
 	TLS         bool          `koanf:"tls"`
 	DialTimeout time.Duration `koanf:"dial_timeout"`
 	// Retry is the reconnect while Redis cannot be reached; counting goes on in memory.
-	Retry CountersRedisRetryConfig `koanf:"retry"`
+	Retry CountersRedisRetryConfig `koanf:"retry_config"`
 }
 
 // CountersRedisRetryConfig controls reconnecting to Redis after it cannot be reached, at
@@ -997,9 +1003,9 @@ type ControlPlaneConfig struct {
 	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (insecure, dev/test only)
 	DeploymentSyncEnabled bool          `koanf:"deployment_sync_enabled"` // Enable two-way artifact/deployment sync with the control plane: DP->CP push and CP->DP pull (default: true)
 	SyncBatchSize         int           `koanf:"sync_batch_size"`         // Number of deployments to fetch per batch request during startup sync (default: 50)
-	// PushRetry controls how a push of gateway-created artifacts and resources to the
+	// Retry controls how a push of gateway-created artifacts and resources to the
 	// control plane is retried when the control plane cannot be reached.
-	PushRetry PushRetryConfig `koanf:"push_retry"`
+	Retry PushRetryConfig `koanf:"retry_config"`
 	// Optional worker pools that cap the concurrency of DP->CP sync work
 	APIMSyncPoolSize         int `koanf:"apim_sync_pool_size"`          // Workers for on-prem APIM bottom-up sync (0/unset = unlimited)
 	APIMSyncQueueSize        int `koanf:"apim_sync_queue_size"`         // Max pending APIM sync tasks when pool size > 0 (0/unset = unbounded)
@@ -1016,12 +1022,13 @@ type ControlPlaneConfig struct {
 // PushRetryConfig controls the retry of a push of gateway-created artifacts and resources
 // (APIs, LLM providers, budgets, ...) to the control plane that fails to reach it. The wait
 // before each retry starts at InitialDuration and is multiplied by ProgressionFactor after
-// every attempt, up to 30s. A push that fails every attempt is marked failed and pushed
+// every attempt, up to MaxDuration. A push that fails every attempt is marked failed and pushed
 // again on the next connect.
 type PushRetryConfig struct {
 	MaxAttempts       int           `koanf:"max_attempts"`       // Attempts per push, including the first; 1 = no retry (default: 5)
 	InitialDuration   time.Duration `koanf:"initial_duration"`   // Wait before the first retry (default: 1s)
 	ProgressionFactor float64       `koanf:"progression_factor"` // Factor the wait is multiplied by after each attempt; 1 = constant (default: 2)
+	MaxDuration       time.Duration `koanf:"max_duration"`       // Longest wait between attempts (default: 30s)
 }
 
 // HTTPClientConfig configures the single shared outbound *http.Client used by every
@@ -1512,10 +1519,11 @@ func defaultConfig() *Config {
 				InsecureSkipVerify:    true,
 				DeploymentSyncEnabled: true,
 				SyncBatchSize:         50,
-				PushRetry: PushRetryConfig{
+				Retry: PushRetryConfig{
 					MaxAttempts:       5,
 					InitialDuration:   1 * time.Second,
 					ProgressionFactor: 2,
+					MaxDuration:       30 * time.Second,
 				},
 				APIMSyncPoolSize:         0,
 				APIMSyncQueueSize:        0,
@@ -2267,14 +2275,17 @@ func (c *Config) validateControlPlaneConfig() error {
 	}
 
 	// Validate the retry of pushes to the control plane
-	if cp.PushRetry.MaxAttempts < 1 {
-		return fmt.Errorf("controlplane.push_retry.max_attempts must be at least 1, got: %d", cp.PushRetry.MaxAttempts)
+	if cp.Retry.MaxAttempts < 1 {
+		return fmt.Errorf("controlplane.retry_config.max_attempts must be at least 1, got: %d", cp.Retry.MaxAttempts)
 	}
-	if cp.PushRetry.InitialDuration <= 0 {
-		return fmt.Errorf("controlplane.push_retry.initial_duration must be positive, got: %s", cp.PushRetry.InitialDuration)
+	if cp.Retry.InitialDuration <= 0 {
+		return fmt.Errorf("controlplane.retry_config.initial_duration must be positive, got: %s", cp.Retry.InitialDuration)
 	}
-	if cp.PushRetry.ProgressionFactor < 1 {
-		return fmt.Errorf("controlplane.push_retry.progression_factor must be at least 1, got: %g", cp.PushRetry.ProgressionFactor)
+	if cp.Retry.ProgressionFactor < 1 {
+		return fmt.Errorf("controlplane.retry_config.progression_factor must be at least 1, got: %g", cp.Retry.ProgressionFactor)
+	}
+	if cp.Retry.MaxDuration < cp.Retry.InitialDuration {
+		return fmt.Errorf("controlplane.retry_config.max_duration must be at least initial_duration, got: %s", cp.Retry.MaxDuration)
 	}
 
 	// Validate polling interval
@@ -3175,13 +3186,13 @@ func (c CountersConfig) validate() error {
 	}
 	r := c.Redis.Retry
 	if r.InitialDuration <= 0 {
-		return fmt.Errorf("counters.redis.retry.initial_duration must be positive, got: %s", r.InitialDuration)
+		return fmt.Errorf("counters.redis.retry_config.initial_duration must be positive, got: %s", r.InitialDuration)
 	}
 	if r.ProgressionFactor < 1 {
-		return fmt.Errorf("counters.redis.retry.progression_factor must be at least 1, got: %g", r.ProgressionFactor)
+		return fmt.Errorf("counters.redis.retry_config.progression_factor must be at least 1, got: %g", r.ProgressionFactor)
 	}
 	if r.MaxDuration < r.InitialDuration {
-		return fmt.Errorf("counters.redis.retry.max_duration (%s) must be at least counters.redis.retry.initial_duration (%s)", r.MaxDuration, r.InitialDuration)
+		return fmt.Errorf("counters.redis.retry_config.max_duration (%s) must be at least counters.redis.retry_config.initial_duration (%s)", r.MaxDuration, r.InitialDuration)
 	}
 	return nil
 }

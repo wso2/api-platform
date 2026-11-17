@@ -189,13 +189,13 @@ func budgetValidationResponse(invalid *budget.ValidationError) api.ErrorResponse
 }
 
 // budgetsAvailable answers 404 when budgets are off on this gateway
-// (budgets.enabled) and reports whether the request may go on.
+// (ai_cost_management.budgets.enabled) and reports whether the request may go on.
 func (s *APIServer) budgetsAvailable(w http.ResponseWriter) bool {
 	if s.budgetsEnabled {
 		return true
 	}
 	httputil.WriteJSON(w, http.StatusNotFound, api.ErrorResponse{
-		Status: "error", Message: "Budgets are not enabled on this gateway. Set budgets.enabled to use them.",
+		Status: "error", Message: "Budgets are not enabled on this gateway. Set ai_cost_management.budgets.enabled to use them.",
 	})
 	return false
 }

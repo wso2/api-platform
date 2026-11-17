@@ -4617,13 +4617,14 @@ func (c *Client) IsConnected() bool {
 // DP->CP push retry policy. A push to the control plane is retried with a growing wait so a
 // transient control-plane hiccup does not strand an artifact or resource as unsynced until the
 // next gateway restart. After all attempts are exhausted the failure is recorded
-// (cp_sync_status=failed) and retried again on the next (re)connect. The attempts, first wait
-// and progression factor come from controlplane.push_retry; these defaults apply when unset.
+// (cp_sync_status=failed) and retried again on the next (re)connect. The attempts, first wait,
+// progression factor and longest wait come from controlplane.retry_config; these defaults
+// apply when unset.
 const (
 	defaultPushMaxAttempts            = 5
 	defaultPushRetryInitial           = 1 * time.Second
 	defaultPushRetryProgressionFactor = 2
-	pushRetryMaxWait                  = 30 * time.Second
+	defaultPushRetryMaxWait           = 30 * time.Second
 )
 
 // PushArtifact pushes a gateway-created/updated artifact of any kind to the control plane.
@@ -4676,14 +4677,14 @@ func (c *Client) pushArtifactsWithRetry(configs []*models.StoredConfig) (*utils.
 	return resp, err
 }
 
-// retryPush runs a DP->CP push, retrying its failures per controlplane.push_retry: up to
+// retryPush runs a DP->CP push, retrying its failures per controlplane.retry_config: up to
 // max_attempts attempts, the first retry after initial_duration, each later wait multiplied
-// by progression_factor, capped at pushRetryMaxWait. It
+// by progression_factor, capped at max_duration. It
 // stops early if the client is shutting down. what names the push in logs; attrs are added
 // to its log lines.
 func (c *Client) retryPush(what string, push func() error, attrs ...any) error {
-	retry := c.config.PushRetry
-	maxAttempts, wait, factor, maxWait := retry.MaxAttempts, retry.InitialDuration, retry.ProgressionFactor, pushRetryMaxWait
+	retry := c.config.Retry
+	maxAttempts, wait, factor, maxWait := retry.MaxAttempts, retry.InitialDuration, retry.ProgressionFactor, retry.MaxDuration
 	if maxAttempts < 1 {
 		maxAttempts = defaultPushMaxAttempts
 	}
@@ -4692,6 +4693,9 @@ func (c *Client) retryPush(what string, push func() error, attrs ...any) error {
 	}
 	if factor < 1 {
 		factor = defaultPushRetryProgressionFactor
+	}
+	if maxWait <= 0 {
+		maxWait = defaultPushRetryMaxWait
 	}
 	// Overrides for tests.
 	if c.pushMaxAttempts > 0 {

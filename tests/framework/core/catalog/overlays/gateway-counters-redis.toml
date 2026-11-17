@@ -1,6 +1,6 @@
 # Budgets on, with the shared counters (budget spend) in the block's Redis. The password
 # comes from the Redis component (APIP_GW_COUNTERS_REDIS_PASSWORD).
-[budgets]
+[ai_cost_management.budgets]
 enabled = true
 
 [counters.redis]

@@ -59,7 +59,7 @@ const (
 	// so the provider route the proxy forwards it to does not count it again.
 	paramAdmittedToken = "admittedToken"
 	// paramCostStats is true on a route whose requests' costs are counted for the
-	// control plane's cost stats ([ai_cost_stats] enabled on the gateway).
+	// control plane's cost stats ([ai_cost_management.tracking] enabled on the gateway).
 	paramCostStats = "costStats"
 
 	roleProxy    = "proxy"

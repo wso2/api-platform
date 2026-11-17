@@ -122,7 +122,7 @@ func TestBudgetPlacementParameters(t *testing.T) {
 	assert.NotContains(t, params, "project")
 }
 
-// Budgets off (budgets.enabled, the default): an LLM route's chain is exactly
+// Budgets off (ai_cost_management.budgets.enabled, the default): an LLM route's chain is exactly
 // what was configured, with no budget policy and no llm-cost added. On: the budget policy
 // joins it.
 func TestBudgetsAreOnlyPlacedWhenEnabled(t *testing.T) {
@@ -134,7 +134,7 @@ func TestBudgetsAreOnlyPlacedWhenEnabled(t *testing.T) {
 	assert.Equal(t, chain, off.withBudgets(provider, chain))
 
 	cfg := &config.Config{}
-	cfg.Budgets.Enabled = true
+	cfg.AICostManagement.Budgets.Enabled = true
 	on := NewRestAPITransformer(testRouterCfg(), cfg, defs)
 	var names []string
 	for _, p := range on.withBudgets(provider, chain) {
@@ -148,14 +148,14 @@ func TestCostStatsPlaceThePolicyWithoutBudgets(t *testing.T) {
 	defs := map[string]models.PolicyDefinition{"llm-cost|v1.2.0": {Name: "llm-cost", Version: "v1.2.0"}}
 	provider := &models.StoredConfig{Kind: models.KindLlmProvider}
 	cfg := &config.Config{}
-	cfg.AICostStats.Enabled = true
+	cfg.AICostManagement.Tracking.Enabled = true
 	chain := NewRestAPITransformer(testRouterCfg(), cfg, defs).withBudgets(provider, nil)
 	require.Len(t, chain, 2)
 	assert.Equal(t, "wso2_apip_sys_budget", chain[0].Name)
 	assert.Equal(t, true, chain[0].Parameters["costStats"])
 
 	budgetsOnly := &config.Config{}
-	budgetsOnly.Budgets.Enabled = true
+	budgetsOnly.AICostManagement.Budgets.Enabled = true
 	chain = NewRestAPITransformer(testRouterCfg(), budgetsOnly, defs).withBudgets(provider, nil)
 	assert.NotContains(t, chain[0].Parameters, "costStats", "budgets alone count no costs")
 }

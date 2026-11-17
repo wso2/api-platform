@@ -618,7 +618,7 @@ blocks:
         features:
           - features/ai-workspace-gateway/llm/llm_backend_timeout.feature
 
-  # Budgets turned on ([budgets] enabled), which the other blocks must not see:
+  # Budgets turned on ([ai_cost_management.budgets] enabled), which the other blocks must not see:
   # with budgets on, LLM routes carry the budget system policy. Serialized: the analytics
   # scenario counts the events its requests publish.
   - name: gateway-budgets

@@ -39,7 +39,7 @@ import (
 // only the latest total per allowance and period.
 
 // Counter namespaces the budget system policy charges: budget spend, and the AI cost
-// stats ([ai_cost_stats]), which count every request's cost by its values.
+// stats ([ai_cost_management.tracking]), which count every request's cost by its values.
 const (
 	usageNamespaceSpend    = "budget"
 	usageNamespaceUnpriced = "budget-unpriced"
@@ -51,6 +51,9 @@ const (
 )
 
 // Kinds of usage entries.
+// usageMessageType is the type of the usage message, as the control plane takes it.
+const usageMessageType = "budget.usage"
+
 const (
 	usageKindAllowance = "allowance"
 	usageKindCost      = "cost"
@@ -272,7 +275,7 @@ func (r *BudgetUsageReporter) flush(send func([]byte) error) {
 				Allowance: maps.Clone(e.allowance), Spent: formatUSD(e.spent), UnpricedRequests: int64(e.unpriced),
 			})
 		}
-		data, err := json.Marshal(BudgetUsageMessage{Type: "usage", Payload: payload})
+		data, err := json.Marshal(BudgetUsageMessage{Type: usageMessageType, Payload: payload})
 		if err != nil {
 			r.logger.Error("Failed to encode usage", slog.Any("error", err))
 			return

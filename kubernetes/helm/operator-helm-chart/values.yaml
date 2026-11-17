@@ -221,14 +221,16 @@ gateway:
             # Retry of a push of gateway-created artifacts and resources (APIs, LLM providers,
             # budgets, ...) to the control plane when it cannot be reached. The wait before
             # each retry starts at initial_duration and is multiplied by progression_factor
-            # after every attempt, up to 30s.
-            push_retry:
+            # after every attempt, up to max_duration.
+            retry_config:
               # Attempts per push, including the first (1 = no retry)
               max_attempts: 5
               # Wait before the first retry
               initial_duration: 1s
               # Factor the wait is multiplied by after each attempt (1 = constant wait)
               progression_factor: 2
+              # Longest wait between attempts
+              max_duration: 30s
 
             # Friendly name shown for this gateway in the APIM control plane
             gateway_name: ""

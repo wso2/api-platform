@@ -68,7 +68,7 @@ func TestBudgetUsage_ReportsLabelledAllowanceTotals(t *testing.T) {
 	s := &sentUsage{}
 	r.flush(s.send)
 	require.Len(t, s.messages, 1)
-	assert.Equal(t, "usage", s.messages[0].Type)
+	assert.Equal(t, "budget.usage", s.messages[0].Type)
 	assert.Equal(t, []AllowanceUsage{{
 		Budget: "per-agent", PeriodStart: "2026-11-01", AllowanceUUID: "a-1",
 		Allowance: map[string]string{"agent": "api-platform/support-agent"},

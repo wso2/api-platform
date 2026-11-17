@@ -200,13 +200,13 @@ func budgetPlacement(cfg *models.StoredConfig) (map[string]interface{}, bool) {
 // not price its responses (llm-cost or azure-llm-cost) gets llm-cost appended after it; a
 // gateway build without llm-cost gets the budget policy alone, which then charges $0.
 // withBudgets places the budget system policy on an LLM route when budgets or AI cost
-// stats are on ([budgets] / [ai_cost_stats] enabled); with both off, every chain is left
+// stats are on ([ai_cost_management.budgets] / [ai_cost_management.tracking] enabled); with both off, every chain is left
 // as it is.
 func (t *RestAPITransformer) withBudgets(cfg *models.StoredConfig, chain []policyenginev1.PolicyInstance) []policyenginev1.PolicyInstance {
-	if t.systemConfig == nil || (!t.systemConfig.Budgets.Enabled && !t.systemConfig.AICostStats.Enabled) {
+	if t.systemConfig == nil || (!t.systemConfig.AICostManagement.Budgets.Enabled && !t.systemConfig.AICostManagement.Tracking.Enabled) {
 		return chain
 	}
-	return withBudgetEnforcement(cfg, chain, t.policyDefinitions, t.latestVersions, t.systemConfig.AICostStats.Enabled)
+	return withBudgetEnforcement(cfg, chain, t.policyDefinitions, t.latestVersions, t.systemConfig.AICostManagement.Tracking.Enabled)
 }
 
 func withBudgetEnforcement(
@@ -221,7 +221,7 @@ func withBudgetEnforcement(
 		return chain
 	}
 	if costStats {
-		// The policy also counts every request's cost ([ai_cost_stats] enabled).
+		// The policy also counts every request's cost ([ai_cost_management.tracking] enabled).
 		params["costStats"] = true
 	}
 	budget := policyenginev1.PolicyInstance{

@@ -188,12 +188,15 @@ data:
     apim_oauth2_client_secret = {{ $gc.controlplane.apim_oauth2_client_secret | quote }}
     apim_oauth2_username = {{ $gc.controlplane.apim_oauth2_username | quote }}
     apim_oauth2_password = {{ $gc.controlplane.apim_oauth2_password | quote }}
-    {{- with $gc.controlplane.push_retry }}
+    {{- with $gc.controlplane.retry_config }}
 
-    [controller.controlplane.push_retry]
+    [controller.controlplane.retry_config]
     max_attempts = {{ .max_attempts }}
     initial_duration = {{ .initial_duration | quote }}
     progression_factor = {{ .progression_factor }}
+    {{- with .max_duration }}
+    max_duration = {{ . | quote }}
+    {{- end }}
     {{- end }}
 
     {{- if $gc.event_hub }}

@@ -32,7 +32,7 @@ import (
 // AI cost stats (Interfaces 1.3, 4.2): what every LLM request cost, with or without a
 // budget, per month and per project, agent, API key, user, provider and model. Counted
 // on the route the request enters, like budget spend, when the route asks for it
-// (paramCostStats; [ai_cost_stats] enabled on the gateway).
+// (paramCostStats; [ai_cost_management.tracking] enabled on the gateway).
 
 // Counter namespaces of the cost stats: USD, and requests charged $0 by reason.
 const (

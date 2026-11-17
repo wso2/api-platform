@@ -196,7 +196,7 @@ func NewAPIServer(
 
 	server.agentService = agentService
 	server.budgetPublisher = budgets
-	server.budgetsEnabled = systemConfig.Budgets.Enabled
+	server.budgetsEnabled = systemConfig.AICostManagement.Budgets.Enabled
 	server.budgetService = budget.NewService(db, budgets, eventHub, gatewayID, logger, pushEnabled)
 	if controlPlaneClient != nil && server.budgetsEnabled {
 		// Budgets off: no budgets come from or go to the control plane.

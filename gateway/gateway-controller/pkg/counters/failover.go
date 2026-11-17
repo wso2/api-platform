@@ -36,7 +36,7 @@ const flushTimeout = 10 * time.Second
 // Failover is the Redis store that keeps counting in this controller's memory while Redis
 // cannot be reached, at start or later. Memory starts from the last totals Redis returned,
 // so a limit is not reset by an outage. Meanwhile it reconnects, waiting longer after each
-// failed attempt (counters.redis.retry). Once Redis is back, what was counted meanwhile is
+// failed attempt (counters.redis.retry_config). Once Redis is back, what was counted meanwhile is
 // added to it once and Redis is used again.
 //
 // Each controller adds only what its own policy engines reported, so totals are right
