@@ -1,0 +1,204 @@
+name: wso2_apip_sys_model
+version: v1.0.0
+description: |
+  The gateway's internal model system policy: the parts of a model endpoint the
+  gateway answers or decides itself rather than leaving to a provider. Attached by
+  the gateway controller to the chains it compiles for each model endpoint, never
+  by a Model author. Every body it writes is in the endpoint's inbound format
+  (openai, anthropic or gemini).
+
+  Each concern gets its own parameter block. An instance carries exactly one, and
+  which one it carries is the whole of what that instance does. An instance
+  carrying none, more than one, or one that cannot be read is refused when its
+  chain is built, so the chain is never served and its requests fail closed
+  rather than being forwarded.
+
+  route — sits after the Model's router in every Model chain. In the request body
+  phase it resolves the router's choice, or the absence of one, to exactly one of
+  the Model's targets, rewrites the model to that target's upstream model where the
+  endpoint's format carries it (a top-level body member, a path segment, a header
+  or a query parameter), routes the request to the target's provider, and switches the
+  request's provider scope (`template_handle`, `provider_name`) to that
+  provider's, so the provider-specific policies that follow it read the
+  provider's own wire format. A choice that names no target is never forwarded:
+  the first target is used instead. When the provider is already known in the
+  request header phase — a header-phase router named one of the Model's
+  providers, or every target is on one provider — it is committed there, so a
+  provider's header-phase credential policy applies, and a body phase that then
+  selects a different provider is refused with a 500 rather than sending that
+  credential to another upstream. On the response — headers, a buffered body,
+  and every streamed chunk — it switches the scope back to the endpoint's inbound
+  scope the Model's own policies and the client speak.
+
+  providerScope — sits after every provider-specific policy in a Model chain. On
+  the response it switches the scope to the selected provider's before those
+  policies run, which is what lets them read the provider's own response while
+  everything outside the bracket reads the translated one.
+
+  dispatchError — the only job of the reserved dispatch chain, which a request
+  binds to when it named no model, named one that is not deployed, or was not a
+  JSON object. It answers after the endpoint's own policies, so an unauthenticated
+  caller is refused before it can learn which model names exist, and the answer
+  is an error in the endpoint's format that never echoes the model name it was sent.
+
+  catalog — answers the endpoint's model list routes with the Models it serves, in
+  its format, filtered to the Models the caller's API key reaches. Never forwards.
+
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    route:
+      type: object
+      additionalProperties: false
+      required: ["modelHandle", "modelName", "scope", "targets"]
+      description: >
+        Target resolution and provider scoping for one Model's chain. Present on
+        exactly one instance per Model chain, after the Model's router and before
+        every provider-specific policy.
+      properties:
+        modelHandle:
+          type: string
+          minLength: 1
+          description: The Model's handle, reported as model.handle.
+        modelName:
+          type: string
+          minLength: 1
+          description: >
+            The name clients request the Model by, reported as model.name.
+        modelLocation:
+          type: object
+          additionalProperties: false
+          required: ["location", "identifier"]
+          description: >
+            Where requests carry the model: the endpoint's inbound template's
+            requestModel. Absent is the top-level body member `$.model`.
+          properties:
+            location:
+              type: string
+              enum: [payload, pathParam, header, queryParam]
+            identifier:
+              type: string
+              minLength: 1
+        format:
+          type: string
+          enum: [openai, anthropic, gemini]
+          description: The endpoint's inbound format, which refusals are written in. Absent is openai.
+        scope:
+          type: object
+          additionalProperties: false
+          required: ["templateHandle", "providerName"]
+          description: >
+            The endpoint's inbound scope the response is switched back to once the
+            provider-specific policies are done with it. The route's own scope,
+            written here rather than read back off the route so the policy never
+            has to guess what the kernel seeded.
+          properties:
+            templateHandle:
+              type: string
+              minLength: 1
+            providerName:
+              type: string
+              minLength: 1
+        targets:
+          type: array
+          minItems: 1
+          description: >
+            The Model's targets, in the order the Model declares them. Order is
+            significant: the first target is the one used when the router chose
+            nothing this policy can match, and when there is no router at all.
+          items:
+            type: object
+            additionalProperties: false
+            required: ["name", "provider", "upstreamModel", "template", "routed"]
+            properties:
+              name:
+                type: string
+                minLength: 1
+                description: The target's name within the Model.
+              provider:
+                type: string
+                minLength: 1
+                description: >
+                  The provider's handle. It is also the name of the upstream
+                  definition the request is routed to and the value
+                  selected_provider is set to, which is what the provider's
+                  conditional translator and credential match on — so the three
+                  cannot disagree.
+              upstreamModel:
+                type: string
+                minLength: 1
+                description: >
+                  The model the provider is asked for, written where the request
+                  carries the model.
+              template:
+                type: string
+                minLength: 1
+                description: >
+                  The provider's template handle: the template_handle of the
+                  provider's scope.
+              providerDisplayName:
+                type: string
+                description: >
+                  The provider's display name, reported as the request's provider.
+                  The handle is reported when it is absent.
+              routed:
+                type: boolean
+                description: >
+                  Whether the target is reached through the provider's own route
+                  (loopback) rather than directly. A direct target has any
+                  client-supplied internal loopback marker removed; a routed
+                  target gets the gateway's own marker from a later policy.
+
+    providerScope:
+      type: object
+      additionalProperties: false
+      description: >
+        Switches the response to the selected provider's scope ahead of the
+        provider-specific policies. Carries nothing: the provider is the one the
+        route job of the same chain recorded.
+      properties: {}
+
+    dispatchError:
+      type: object
+      additionalProperties: false
+      description: >
+        Answers the reserved dispatch chain with an error in the endpoint's format,
+        chosen by the llm.dispatch.error resolution attribute.
+      properties:
+        format:
+          type: string
+          enum: [openai, anthropic, gemini]
+
+    catalog:
+      type: object
+      additionalProperties: false
+      description: >
+        Answers the endpoint's model list routes. A caller authenticated with an API
+        key sees only the Models its key reaches.
+      properties:
+        format:
+          type: string
+          enum: [openai, anthropic, gemini]
+        models:
+          type: array
+          description: The Models the endpoint serves.
+          items:
+            type: object
+            additionalProperties: false
+            required: ["handle", "name"]
+            properties:
+              handle:
+                type: string
+                minLength: 1
+              name:
+                type: string
+                minLength: 1
+              displayName:
+                type: string
+              created:
+                type: integer
+
+systemParameters:
+  type: object
+  properties: {}

@@ -46,6 +46,11 @@ const (
 	EventTypeMCPProxy EventType = "MCP_PROXY"
 	// EventTypeAgent represents an Agent (A2A) change event
 	EventTypeAgent EventType = "AGENT"
+	// EventTypeModel represents a Model change event. A Model is served on the
+	// model endpoints it names, so a replica consuming one recompiles them.
+	EventTypeModel EventType = "MODEL"
+	// EventTypeModelEndpoint represents a ModelEndpoint change event.
+	EventTypeModelEndpoint EventType = "MODEL_ENDPOINT"
 	// EventTypeWebhookSecret represents a webhook HMAC secret lifecycle event
 	EventTypeWebhookSecret EventType = "WEBHOOK_SECRET"
 

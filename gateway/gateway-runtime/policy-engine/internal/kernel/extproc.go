@@ -451,7 +451,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 		// to the route-level chain — that would silently apply the wrong policies.
 		if outcome == bindFailed {
 			resp, failureOutcome := s.renderResolutionFailure(ctx, denial.resolverName, rm.RouteName, "",
-				shapeSignalsFromHeaders(policy.APIKind(rm.APIKind), req.GetRequestHeaders()),
+				shapeSignalsFromHeaders(policy.APIKind(rm.APIKind), rm.ErrorFormat, req.GetRequestHeaders()),
 				denial.failure,
 				resolutionFailureAnalytics(extractMetadataFromRouteMetadata(*rm), nil, denial.failure))
 			// Which resolver refused, in which of its phases, and why — bounded
@@ -508,7 +508,7 @@ func (s *ExternalProcessorServer) handleProcessingPhase(ctx context.Context, req
 			// chain to select them from, which is the whole reason we are on this branch.
 			sterileBody := []byte(`{"error":"Internal Server Error"}`)
 			body, contentType := s.formatSterileError(ctx,
-				shapeSignalsFromHeaders(policy.APIKind(rm.APIKind), req.GetRequestHeaders()),
+				shapeSignalsFromHeaders(policy.APIKind(rm.APIKind), rm.ErrorFormat, req.GetRequestHeaders()),
 				policy.FaultDetails{
 					Code:      codeNoPolicyChain,
 					Type:      policy.FaultTypeInternal,
@@ -964,10 +964,12 @@ func (s *ExternalProcessorServer) newBoundExecutionContext(
 	ec := newPolicyExecutionContext(s, routeKey, chain)
 	ec.chainKey = chainKey
 	ec.resolverName = rc.ResolverName
+	ec.errorFormat = routeMetadata.ErrorFormat
 	ec.defaultUpstreamCluster = routeMetadata.DefaultUpstreamCluster
 	ec.upstreamBasePath = routeMetadata.UpstreamBasePath
 	ec.apiContext = routeMetadata.Context
 	ec.upstreamDefinitionPaths = routeMetadata.UpstreamDefinitionPaths
+	ec.upstreamDefinitionURLs = routeMetadata.UpstreamDefinitionURLs
 	ec.defaultUpstream = routeMetadata.DefaultUpstream
 	ec.buildRequestContexts(req.GetRequestHeaders(), routeMetadata)
 
@@ -1114,10 +1116,21 @@ type RouteMetadata struct {
 	UpstreamBasePath        string            // Base path for the upstream (e.g., /anything)
 	UpstreamDefinitionPaths map[string]string // Maps upstream definition names to their URL base paths
 
+	// UpstreamDefinitionURLs maps upstream definition names to their scheme://authority,
+	// for a route whose policies must see the upstream they redirect a request to — the
+	// model endpoint's. Empty on every other route.
+	UpstreamDefinitionURLs map[string]string
+
 	// DefaultUpstream is this route's own compiled-in upstream (cluster name, URL, base
 	// path) — whichever slot it belongs to (main or sandbox). Always present; surfaced
 	// to the policy engine as the route's single default upstream.
 	DefaultUpstream *policyenginev1.UpstreamInfo
+
+	// ErrorFormat is the error shape the route opted into with error_format — a model
+	// endpoint's inbound format ("openai", "anthropic" or "gemini") on its routes, ""
+	// everywhere else. Ingest keeps only values
+	// faultformat.IsRouteFormat recognises, so a non-empty value is always renderable.
+	ErrorFormat string
 }
 
 // generateRequestID generates a unique request identifier

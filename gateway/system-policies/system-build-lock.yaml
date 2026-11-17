@@ -7,3 +7,5 @@ policies:
     filePath: ./analytics
   - name: wso2_apip_sys_jwks
     filePath: ./jwks
+  - name: wso2_apip_sys_model
+    filePath: ./model

@@ -276,6 +276,281 @@ func (xmlRenderer) Render(in RenderInput) []byte {
 	return append([]byte(xml.Header), body...)
 }
 
+// ─── OpenAI ──────────────────────────────────────────────────────────────────
+
+// openAIRenderer emits the OpenAI API's error object, for a route that serves the OpenAI
+// protocol and named this shape with error_format.
+//
+// The envelope is OpenAI's own — one `error` member holding message, type, param and code —
+// because the callers are OpenAI SDKs, which read error.message into the exception they raise
+// and choose its class from the status. A gateway-specific shape here would surface to every
+// such caller as a parse failure or an empty message.
+//
+// Where the two vocabularies meet:
+//
+//   - type is OpenAI's class, derived from the status, NOT FaultDetails.Type. OpenAI clients
+//     branch on values like invalid_request_error and rate_limit_error; the gateway's own
+//     classes ("validation", "throttling") mean the same things in words no OpenAI client
+//     knows. Derivation is right for every failure the gateway produces, since each one
+//     already chose the status that names its class.
+//   - code is the gateway's code, as OpenAI's code is: a string identifying the specific
+//     failure, null when there is none. A client keyed off 900902 elsewhere in the product
+//     finds it here under the same name.
+//   - param is always null. Naming the offending request member needs the request, which a
+//     renderer never sees; a policy that knows it authors its own body instead.
+//
+// error_id and guardrail are extensions inside the error object. OpenAI SDKs ignore members
+// they do not model, and keeping them inside `error` leaves the document's top level exactly
+// what OpenAI sends.
+type openAIRenderer struct{}
+
+func (openAIRenderer) ContentType() string { return "application/json" }
+
+type openAIErrorBody struct {
+	Error openAIError `json:"error"`
+}
+
+type openAIError struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
+	// Param and Code are pointers so they render as null rather than as "" — OpenAI sends
+	// null for both when it has nothing to say, and an SDK checking for null would read an
+	// empty string as a value.
+	Param     *string         `json:"param"`
+	Code      *string         `json:"code"`
+	ErrorID   string          `json:"error_id,omitempty"`
+	Guardrail *guardrailBlock `json:"guardrail,omitempty"`
+}
+
+func (openAIRenderer) Render(in RenderInput) []byte {
+	e := in.Err
+	var code *string
+	if e.Code != "" {
+		code = &e.Code
+	}
+	body, err := json.Marshal(openAIErrorBody{Error: openAIError{
+		Message:   openAIMessage(e, in.Status),
+		Type:      openAIErrorTypeFor(in.Status),
+		Code:      code,
+		ErrorID:   in.ErrorID,
+		Guardrail: guardrailFor(e),
+	}})
+	if err != nil {
+		// Only the guardrail assessments can fail to marshal — they are whatever the
+		// guardrail put there. Retry without them rather than dropping to the constant.
+		if body, err = json.Marshal(openAIErrorBody{Error: openAIError{
+			Message: openAIMessage(e, in.Status),
+			Type:    openAIErrorTypeFor(in.Status),
+			Code:    code,
+			ErrorID: in.ErrorID,
+		}}); err != nil {
+			return []byte(`{"error":{"message":"An unexpected error occurred.","type":"server_error","param":null,"code":null}}`)
+		}
+	}
+	return body
+}
+
+// openAIMessage is the failure's own message or, for one that gave none, a sentence for its
+// status, so the exception an OpenAI SDK raises says what went wrong. A failure gives none
+// when its policy wrote its own body in another shape and the route rendered over it — an
+// authentication policy's 401, for one, which reads as the gateway's one wording for every
+// authentication failure.
+func openAIMessage(e policy.FaultDetails, status int) string {
+	if e.Message != "" {
+		return e.Message
+	}
+	switch status {
+	case 400:
+		return "The request is invalid."
+	case 401:
+		return "Invalid or expired credentials."
+	case 403:
+		return "You do not have access to this resource."
+	case 404:
+		return "The requested resource was not found."
+	case 413:
+		return "The request body is too large."
+	case 415:
+		return "The request body has an unsupported media type."
+	case 429:
+		return "Too many requests. Retry after a short wait."
+	default:
+		return fallbackMessage(e)
+	}
+}
+
+// InRouteFormat reports whether body is already an error document in the named route format,
+// so a policy that wrote one keeps it. Each format's document is an object whose `error`
+// member is an object with a string `message` — what its SDKs read — and an Anthropic one
+// also says `"type": "error"` at the top.
+//
+// The members are looked up by their exact names. Decoding into a struct would also take
+// `Error` or `MESSAGE`, which encoding/json matches case-insensitively but an SDK does not,
+// so a body naming them so would stand and its client would find no message in it.
+func InRouteFormat(format string, body []byte) bool {
+	switch ShapeID(format) {
+	case ShapeOpenAI, ShapeAnthropic, ShapeGemini:
+	default:
+		return false
+	}
+	var doc, errObj map[string]json.RawMessage
+	var message *string
+	if json.Unmarshal(body, &doc) != nil ||
+		json.Unmarshal(doc["error"], &errObj) != nil || errObj == nil ||
+		json.Unmarshal(errObj["message"], &message) != nil || message == nil {
+		return false
+	}
+	if ShapeID(format) == ShapeAnthropic {
+		var typ *string
+		return json.Unmarshal(doc["type"], &typ) == nil && typ != nil && *typ == "error"
+	}
+	return true
+}
+
+// ─── Anthropic ───────────────────────────────────────────────────────────────
+
+// anthropicRenderer emits the Anthropic Messages API's error object, for a model endpoint
+// route whose clients are Anthropic SDKs: `{"type":"error","error":{"type","message"}}`.
+// The SDKs read error.message into the exception they raise and choose its class from the
+// status; error.type is derived from the status as the API documents it. error_id is an
+// extension inside the error object, which the SDKs ignore.
+type anthropicRenderer struct{}
+
+func (anthropicRenderer) ContentType() string { return "application/json" }
+
+type anthropicErrorBody struct {
+	Type  string         `json:"type"`
+	Error anthropicError `json:"error"`
+}
+
+type anthropicError struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+	ErrorID string `json:"error_id,omitempty"`
+}
+
+func (anthropicRenderer) Render(in RenderInput) []byte {
+	body, err := json.Marshal(anthropicErrorBody{Type: "error", Error: anthropicError{
+		Type:    anthropicErrorTypeFor(in.Status),
+		Message: openAIMessage(in.Err, in.Status),
+		ErrorID: in.ErrorID,
+	}})
+	if err != nil {
+		return []byte(`{"type":"error","error":{"type":"api_error","message":"An unexpected error occurred."}}`)
+	}
+	return body
+}
+
+// anthropicErrorTypeFor maps a status onto the error types the Anthropic API documents.
+func anthropicErrorTypeFor(status int) string {
+	switch status {
+	case 400, 405, 409, 415, 422:
+		return "invalid_request_error"
+	case 401:
+		return "authentication_error"
+	case 403:
+		return "permission_error"
+	case 404:
+		return "not_found_error"
+	case 413:
+		return "request_too_large"
+	case 429:
+		return "rate_limit_error"
+	case 529:
+		return "overloaded_error"
+	default:
+		return "api_error"
+	}
+}
+
+// ─── Gemini ──────────────────────────────────────────────────────────────────
+
+// geminiRenderer emits the Google API error object the Gemini API answers with, for a
+// model endpoint route whose clients are Google GenAI SDKs:
+// `{"error":{"code","message","status"}}`, status being the canonical RPC status name.
+type geminiRenderer struct{}
+
+func (geminiRenderer) ContentType() string { return "application/json" }
+
+type geminiErrorBody struct {
+	Error geminiError `json:"error"`
+}
+
+type geminiError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Status  string `json:"status"`
+	ErrorID string `json:"error_id,omitempty"`
+}
+
+func (geminiRenderer) Render(in RenderInput) []byte {
+	status := in.Status
+	if status == 0 {
+		status = 500
+	}
+	body, err := json.Marshal(geminiErrorBody{Error: geminiError{
+		Code:    status,
+		Message: openAIMessage(in.Err, status),
+		Status:  googleStatusFor(status),
+		ErrorID: in.ErrorID,
+	}})
+	if err != nil {
+		return []byte(`{"error":{"code":500,"message":"An unexpected error occurred.","status":"INTERNAL"}}`)
+	}
+	return body
+}
+
+// googleStatusFor maps a status onto the canonical Google RPC status names.
+func googleStatusFor(status int) string {
+	switch status {
+	case 400, 413, 415, 422:
+		return "INVALID_ARGUMENT"
+	case 401:
+		return "UNAUTHENTICATED"
+	case 403:
+		return "PERMISSION_DENIED"
+	case 404:
+		return "NOT_FOUND"
+	case 405:
+		return "UNIMPLEMENTED"
+	case 409:
+		return "ABORTED"
+	case 429:
+		return "RESOURCE_EXHAUSTED"
+	case 503:
+		return "UNAVAILABLE"
+	case 504:
+		return "DEADLINE_EXCEEDED"
+	default:
+		if status >= 400 && status < 500 {
+			return "FAILED_PRECONDITION"
+		}
+		return "INTERNAL"
+	}
+}
+
+// openAIErrorTypeFor maps a status onto the error classes OpenAI's API documents.
+//
+// Every 4xx that is the caller's request being wrong — malformed, too large, the wrong media
+// type, a resource that does not exist — is invalid_request_error, which is how OpenAI itself
+// answers each of them, including 404 for an unknown model. Anything unmapped, and every 5xx,
+// is server_error: a class that tells the client "not your fault, retry may help" is the safe
+// reading of a status this table does not know.
+func openAIErrorTypeFor(status int) string {
+	switch status {
+	case 400, 404, 405, 409, 413, 415, 422:
+		return "invalid_request_error"
+	case 401:
+		return "authentication_error"
+	case 403:
+		return "permission_error"
+	case 429:
+		return "rate_limit_error"
+	default:
+		return "server_error"
+	}
+}
+
 // ─── guardrail ───────────────────────────────────────────────────────────────
 
 // guardrailBlock is the rendered form of FaultDetails.Guardrail.

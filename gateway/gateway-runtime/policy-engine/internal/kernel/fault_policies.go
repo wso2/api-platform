@@ -62,7 +62,7 @@ func (ec *PolicyExecutionContext) runFaultPoliciesOnRejection(
 	// The producing policy's own body is the first chance to author one — unless it also
 	// DESCRIBED the failure, in which case the body is a fallback for a gateway that cannot
 	// render one and this gateway renders instead. See faultformat.ShouldFormat.
-	if immResp.Body != nil && immResp.Fault == nil {
+	if immResp.Body != nil && immResp.Fault == nil && ec.producerBodyStands(immResp.Body) {
 		ec.faultBodyAuthored = true
 	}
 	// A rejection is the gateway's own error by construction, so provenance is settled.
@@ -269,11 +269,27 @@ func (ec *PolicyExecutionContext) noteProducerAuthoredBody(results []executor.Re
 		return
 	}
 	for _, r := range results {
-		if faultformat.BodyAuthored(r.Action) && !faultformat.DescribedError(r.Action) {
+		if body := faultformat.AuthoredBody(r.Action); body != nil && !faultformat.DescribedError(r.Action) &&
+			ec.producerBodyStands(body) {
 			ec.faultBodyAuthored = true
 			return
 		}
 	}
+}
+
+// producerBodyStands reports whether a body the producing policy wrote, describing no
+// failure, is the client's response.
+//
+// It is — unless the route names an error format and the body is not already in it. Such a
+// route promises every gateway error in its format: the model endpoint answers OpenAI SDKs,
+// which cannot read an authentication policy's own `{"error":"Unauthorized",...}`. So a body
+// in another shape is rendered over, keeping its status, while a body already in the format
+// stands: the model endpoint's own dispatch errors keep the param and code they wrote.
+func (ec *PolicyExecutionContext) producerBodyStands(body []byte) bool {
+	if !faultformat.IsRouteFormat(ec.errorFormat) {
+		return true
+	}
+	return faultformat.InRouteFormat(ec.errorFormat, body)
 }
 
 // noteUpstreamAuthoredBody records that the BACKEND decided the client's body.

@@ -100,6 +100,7 @@ func (ec *PolicyExecutionContext) faultFormatInput(
 		ErrorID:          ec.engineErrorID,
 		APIKind:          ec.apiKind(),
 		Transport:        ec.resolvedTransport(),
+		RouteFormat:      ec.errorFormat,
 		ContentType:      ec.requestHeader(headerContentType),
 		Accept:           ec.requestHeader(headerAccept),
 		RequestMethod:    ec.requestMethod(),
@@ -230,6 +231,8 @@ type requestShapeSignals struct {
 	Accept      string
 	// Transport is the Agent route's wire protocol. See faultformat.Request.Transport.
 	Transport string
+	// RouteFormat is the error shape the route opted into. See faultformat.Request.RouteFormat.
+	RouteFormat string
 }
 
 // shapeSignalsFromHeaders reads the shape signals straight off the ext_proc request-headers
@@ -238,8 +241,8 @@ type requestShapeSignals struct {
 // Used on the paths with no execution context. Header names arrive lower-cased from Envoy
 // (HTTP/2 requires it, and Envoy normalizes HTTP/1 to match), and are compared case-
 // insensitively anyway so a test constructing a message by hand cannot silently miss.
-func shapeSignalsFromHeaders(kind policy.APIKind, headers *extprocv3.HttpHeaders) requestShapeSignals {
-	sig := requestShapeSignals{APIKind: kind}
+func shapeSignalsFromHeaders(kind policy.APIKind, routeFormat string, headers *extprocv3.HttpHeaders) requestShapeSignals {
+	sig := requestShapeSignals{APIKind: kind, RouteFormat: routeFormat}
 	if headers == nil || headers.Headers == nil {
 		return sig
 	}
@@ -290,6 +293,7 @@ func (s *ExternalProcessorServer) formatSterileError(
 		ErrorID:         errorID,
 		APIKind:         sig.APIKind,
 		Transport:       sig.Transport,
+		RouteFormat:     sig.RouteFormat,
 		ContentType:     sig.ContentType,
 		Accept:          sig.Accept,
 		RequestMethod:   sig.Method,
@@ -318,5 +322,6 @@ func (ec *PolicyExecutionContext) shapeSignals() requestShapeSignals {
 		ContentType: ec.requestHeader(headerContentType),
 		Accept:      ec.requestHeader(headerAccept),
 		Transport:   ec.resolvedTransport(),
+		RouteFormat: ec.errorFormat,
 	}
 }

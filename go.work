@@ -16,6 +16,7 @@ use (
 	./gateway/system-policies/a2a
 	./gateway/system-policies/analytics
 	./gateway/system-policies/jwks
+	./gateway/system-policies/model
 	./httpkit
 	./kubernetes/conformance/runner
 	./kubernetes/gateway-operator

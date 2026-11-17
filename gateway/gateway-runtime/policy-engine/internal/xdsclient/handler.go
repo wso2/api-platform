@@ -34,6 +34,7 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/wso2/api-platform/common/apikey"
+	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/faultformat"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/kernel"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/registry"
@@ -385,6 +386,7 @@ func (h *ResourceHandler) HandleRouteConfigUpdate(ctx context.Context, resources
 			continue
 		}
 
+		rc.Metadata.ErrorFormat = routeErrorFormat(ctx, routeKey, data)
 		rc.Metadata.DefaultUpstreamCluster = getStringFromMap(data, "default_upstream_cluster")
 		rc.Metadata.UpstreamBasePath = getStringFromMap(data, "upstream_base_path")
 
@@ -401,6 +403,15 @@ func (h *ResourceHandler) HandleRouteConfigUpdate(ctx context.Context, resources
 				}
 			}
 			rc.Metadata.UpstreamDefinitionPaths = paths
+		}
+		if urlsRaw, ok := data["upstream_definition_urls"].(map[string]interface{}); ok {
+			urls := make(map[string]string, len(urlsRaw))
+			for k, v := range urlsRaw {
+				if s, ok := v.(string); ok && s != "" {
+					urls[k] = s
+				}
+			}
+			rc.Metadata.UpstreamDefinitionURLs = urls
 		}
 
 		routeConfigs[routeKey] = rc
@@ -476,6 +487,24 @@ func (h *ResourceHandler) applyRouteResolution(
 	}
 
 	return true
+}
+
+// routeErrorFormat reads the error shape a route opts into with error_format, keeping only
+// a value this binary can render.
+//
+// An unknown value is logged and dropped rather than failing the route. Under
+// State-of-the-World a refused route stops serving entirely, while a route with no format
+// keeps serving with its kind's ordinary errors — the right side to fall on for a field that
+// only ever changes how an error is spelled. Carrying the unknown value forward instead would
+// leave every request on the route to discover, one at a time, that nothing renders it.
+func routeErrorFormat(ctx context.Context, routeKey string, data map[string]interface{}) string {
+	format := getStringFromMap(data, "error_format")
+	if format == "" || faultformat.IsRouteFormat(format) {
+		return format
+	}
+	slog.WarnContext(ctx, "Ignoring unknown route error_format",
+		"route", routeKey, "error_format", format)
+	return ""
 }
 
 // getStringFromMap safely extracts a string value from a map.

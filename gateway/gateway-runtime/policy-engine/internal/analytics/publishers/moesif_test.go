@@ -390,6 +390,29 @@ func TestPublish_McpAPIType(t *testing.T) {
 	assert.Equal(t, "search", mcpAnalytics["toolName"])
 }
 
+// The model endpoint's facts reach Moesif as metadata on its LlmProxy event; another
+// kind's event never carries them.
+func TestPublish_ModelAnalytics(t *testing.T) {
+	moesif := createTestMoesifWithoutAPI()
+	event := createBaseEvent()
+	event.API.APIType = "LlmProxy"
+	event.Properties[modelAnalyticsProperty] = map[string]interface{}{
+		"handle": "gpt", "name": "gpt-4o", "target": "primary", "providerTemplate": "openai",
+	}
+	moesif.Publish(event)
+	require.Len(t, moesif.events, 1)
+	block, ok := getMetadata(moesif.events[0])[modelAnalyticsProperty].(map[string]interface{})
+	require.True(t, ok, "modelAnalytics is published")
+	assert.Equal(t, "primary", block["target"])
+
+	other := createBaseEvent()
+	other.API.APIType = "RestApi"
+	other.Properties[modelAnalyticsProperty] = map[string]interface{}{"handle": "gpt"}
+	moesif.Publish(other)
+	require.Len(t, moesif.events, 2)
+	assert.NotContains(t, getMetadata(moesif.events[1]), modelAnalyticsProperty)
+}
+
 // Total latency has to reach the publisher, not just the event: the other four
 // latencies are all partial spans, so a percentile computed from them measures a phase
 // rather than what the caller waited.

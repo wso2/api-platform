@@ -43,6 +43,11 @@ const (
 	// Spelled here rather than imported from the collector package because publishers
 	// deliberately do not depend on it.
 	a2aAnalyticsProperty = "a2aAnalytics"
+
+	// modelAnalyticsProperty is the event property the collector reports the model
+	// gateway facts under, published as metadata under the same name. Spelled here for
+	// the same reason as a2aAnalyticsProperty.
+	modelAnalyticsProperty = "modelAnalytics"
 )
 
 // Moesif represents a Moesif publisher.
@@ -315,6 +320,13 @@ func (m *Moesif) Publish(event *dto.Event) {
 			}
 		} else {
 			slog.Warn("AI Token Usage data cannot be found in the event properties")
+		}
+
+		// The model gateway facts: which Model a request named and which of its targets
+		// served it. Only the model endpoint's requests carry them, so every other LLM
+		// event is published unchanged.
+		if modelAnalytics, ok := event.Properties[modelAnalyticsProperty]; ok && modelAnalytics != nil {
+			metadataMap[modelAnalyticsProperty] = modelAnalytics
 		}
 	}
 

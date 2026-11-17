@@ -21,6 +21,7 @@ package apikey
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -242,10 +243,63 @@ func (aks *APIkeyStore) ResolveValidatedAPIKey(apiId, apiOperation, operationMet
 		return nil, nil
 	}
 
-	// TODO: Currently, API key creation happens only per API, not per operation, since it was decided to remove the operations field from API keys.
-	// Therefore, this implementation should include some kind of mapping so that when a policy is attached to a resource, this method
-	// can look up that mapping and perform the validation.
+	// Check that the key reaches this operation.
+	if !OperationsAllow(clonedAPIKey.Operations, apiOperation, operationMethod) {
+		return nil, nil
+	}
 	return clonedAPIKey, nil
+}
+
+// AllOperations is the Operations value of a key that reaches every operation of
+// its API.
+const AllOperations = "*"
+
+// OperationsAllow reports whether a key's Operations admits one operation.
+//
+// Operations is "*", or a JSON array of entries, each either an operation name
+// (the operation a body-resolved route binds, such as a Model handle) or
+// "METHOD path" (a route's operation path). An array containing "*" reaches every
+// operation. An empty value is a key from before operations were scoped, and
+// reaches every operation as it always has.
+//
+// Anything else fails closed: an empty array, an array with no matching entry, or
+// a value that is not one of these shapes reaches nothing, so a scoping mistake
+// is a refused request rather than a key that reaches more than it should.
+func OperationsAllow(operations, operation, method string) bool {
+	trimmed := strings.TrimSpace(operations)
+	if trimmed == "" || trimmed == AllOperations {
+		return true
+	}
+	var entries []string
+	if err := json.Unmarshal([]byte(trimmed), &entries); err != nil {
+		return false
+	}
+	if operation == "" {
+		return false
+	}
+	scoped := strings.ToUpper(strings.TrimSpace(method)) + " " + operation
+	for _, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		switch {
+		case entry == AllOperations:
+			return true
+		case entry == operation:
+			return true
+		case operationEntryMatches(entry, scoped):
+			return true
+		}
+	}
+	return false
+}
+
+// operationEntryMatches compares a "METHOD path" entry with the request's, the
+// method case-insensitively (GO-AUTH-006) and the path exactly.
+func operationEntryMatches(entry, scoped string) bool {
+	method, path, ok := strings.Cut(entry, " ")
+	if !ok {
+		return false
+	}
+	return strings.ToUpper(strings.TrimSpace(method))+" "+strings.TrimSpace(path) == scoped
 }
 
 // GetAPIKeyByID retrieves an API key by API ID and key ID.

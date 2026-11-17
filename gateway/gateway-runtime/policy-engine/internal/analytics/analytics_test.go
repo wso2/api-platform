@@ -1676,3 +1676,32 @@ func TestPrepareAnalyticEvent_DestinationDropsQueryString(t *testing.T) {
 		})
 	}
 }
+
+func TestPrepareAnalyticEvent_WithModelGatewayProperties(t *testing.T) {
+	analytics := NewAnalytics(&config.Config{})
+
+	logEntry := createLogEntryWithMetadata(map[string]string{
+		APITypeKey: "LlmProxy",
+		ModelPropertiesMetadataKey: `{"handle":"gpt","name":"gpt-4o","target":"openai",` +
+			`"providerHandle":"openai-prod","providerTemplate":"openai","providerDisplayName":"OpenAI Prod"}`,
+	})
+	event := analytics.prepareAnalyticEvent(logEntry)
+	require.NotNil(t, event)
+	props, ok := event.Properties[ModelAnalyticsProperty].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "gpt", props["handle"])
+	assert.Equal(t, "openai-prod", props["providerHandle"])
+
+	// Every other request is unchanged.
+	event = analytics.prepareAnalyticEvent(createLogEntryWithMetadata(map[string]string{APITypeKey: "LlmProxy"}))
+	require.NotNil(t, event)
+	_, present := event.Properties[ModelAnalyticsProperty]
+	assert.False(t, present)
+
+	// A malformed block is dropped, not reported raw.
+	event = analytics.prepareAnalyticEvent(createLogEntryWithMetadata(map[string]string{
+		APITypeKey: "LlmProxy", ModelPropertiesMetadataKey: `{bad`,
+	}))
+	_, present = event.Properties[ModelAnalyticsProperty]
+	assert.False(t, present)
+}

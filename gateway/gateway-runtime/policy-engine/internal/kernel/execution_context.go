@@ -170,6 +170,10 @@ type PolicyExecutionContext struct {
 	// Used when UpstreamName is set to compute the correct path transformation.
 	upstreamDefinitionPaths map[string]string
 
+	// upstreamDefinitionURLs maps upstream definition names to their URLs, on a route that
+	// shows its policies the upstream they redirect to. See withUpstreamRedirectHook.
+	upstreamDefinitionURLs map[string]string
+
 	// defaultUpstream is this route's own compiled-in upstream (cluster name, URL, base
 	// path) — whichever slot it belongs to. Always present; surfaced to policies via the
 	// "current_upstream" dynamic metadata object when no dynamic override is in effect.
@@ -364,6 +368,11 @@ type PolicyExecutionContext struct {
 	// resolverName is the effective resolver for this route, for logs, metrics and
 	// spans. Empty means identity.
 	resolverName string
+
+	// errorFormat is the error shape this route opted into (RouteMetadata.ErrorFormat),
+	// "" for every route that named none. Copied from the route when the context is
+	// created, so every error-formatting call this request makes reads one value.
+	errorFormat string
 
 	// chainKey is the policy chain key actually selected. Equals routeKey on an
 	// identity route.
@@ -1012,7 +1021,7 @@ func (ec *PolicyExecutionContext) processRequestHeaders(
 	}
 
 	execResult, err := ec.server.executor.ExecuteRequestHeaderPolicies(
-		ctx,
+		ec.withUpstreamRedirectHook(ctx),
 		ec.policyChain.Policies,
 		ec.requestHeaderCtx,
 		ec.policyChain.PolicySpecs,
@@ -1132,7 +1141,7 @@ func (ec *PolicyExecutionContext) processRequestBodyForEmptyRequest(
 	)
 
 	bodyResult, err := ec.server.executor.ExecuteRequestPolicies(
-		ctx,
+		ec.withUpstreamRedirectHook(ctx),
 		ec.policyChain.Policies,
 		ec.requestBodyCtx,
 		ec.policyChain.PolicySpecs,
@@ -1250,7 +1259,7 @@ func (ec *PolicyExecutionContext) processRequestBody(
 		}
 
 		execResult, err := ec.server.executor.ExecuteRequestPolicies(
-			ctx,
+			ec.withUpstreamRedirectHook(ctx),
 			ec.policyChain.Policies,
 			ec.requestBodyCtx,
 			ec.policyChain.PolicySpecs,
@@ -2452,4 +2461,43 @@ func (ec *PolicyExecutionContext) anyPolicyNeedsMoreResponseData(accumulated []b
 		}
 	}
 	return false
+}
+
+// withUpstreamRedirectHook returns ctx with the hook that shows later request policies the
+// upstream an earlier policy redirected the request to (UpstreamName).
+//
+// Only a route whose upstream definitions carry their URLs gets the hook: the model
+// endpoint, where a Model's route job picks the provider and a policy after it — a SigV4
+// signer, which signs for the host and path the request goes to — must see that provider
+// rather than the route's default. Every other route's policies see exactly what they did.
+func (ec *PolicyExecutionContext) withUpstreamRedirectHook(ctx context.Context) context.Context {
+	if len(ec.upstreamDefinitionURLs) == 0 {
+		return ctx
+	}
+	return executor.WithUpstreamRedirectHook(ctx, ec.noteUpstreamRedirect)
+}
+
+// noteUpstreamRedirect makes the named upstream definition the upstream every later request
+// policy sees: its URL and base path, as the route's config gives them. A name the route does
+// not know changes nothing, and routing then falls back exactly as it always has.
+func (ec *PolicyExecutionContext) noteUpstreamRedirect(name string) {
+	url, known := ec.upstreamDefinitionURLs[name]
+	if !known {
+		return
+	}
+	info, _, _, ok := resolveUpstreamRedirect(ec, upstreamRedirectDirective{name: &name})
+	if !ok {
+		return
+	}
+	info.URL = url
+	if ec.requestHeaderCtx != nil {
+		ec.requestHeaderCtx.Upstream = toRequestUpstream(&info)
+	}
+	if ec.requestBodyCtx != nil {
+		ec.requestBodyCtx.UpstreamInfo = &info
+		ec.requestBodyCtx.Upstream = toRequestUpstream(&info)
+	}
+	if ec.requestStreamContext != nil {
+		ec.requestStreamContext.Upstream = toRequestUpstream(&info)
+	}
 }
