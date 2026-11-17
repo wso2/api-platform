@@ -171,13 +171,7 @@ func (g *Gateway) logSinceLatestRequest(ctx context.Context, service string) (st
 // logSinceLatestRequestContains waits until the service logs the text after the latest request.
 // Escaped quotes in the text stand for quotes.
 func (g *Gateway) logSinceLatestRequestContains(ctx context.Context, service, text string) error {
-	return g.awaitLogSinceLatestRequest(ctx, service, strings.ReplaceAll(text, `\"`, `"`))
-}
-
-// awaitLogSinceLatestRequest waits until the service logs the expanded text after the latest
-// request.
-func (g *Gateway) awaitLogSinceLatestRequest(ctx context.Context, service, text string) error {
-	want, err := stepscommon.Expand(ctx, text)
+	want, err := stepscommon.Expand(ctx, strings.ReplaceAll(text, `\"`, `"`))
 	if err != nil {
 		return err
 	}
@@ -194,13 +188,36 @@ func (g *Gateway) awaitLogSinceLatestRequest(ctx context.Context, service, text 
 		})
 }
 
+// numberPlaceholder stands for any JSON number in the text of a doc string log step, for a value
+// that changes on every request, such as a latency.
+const numberPlaceholder = "<number>"
+
+// jsonNumberPattern matches a JSON number.
+const jsonNumberPattern = `-?[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?`
+
 // logSinceLatestRequestContainsDocString is logSinceLatestRequestContains with the text in a doc
-// string, so a whole JSON log line can be written without escaping its quotes.
+// string, so a whole JSON log line can be written without escaping its quotes. The text is
+// searched as written, except that each <number> matches any JSON number.
 func (g *Gateway) logSinceLatestRequestContainsDocString(ctx context.Context, service string, text *godog.DocString) error {
 	if text == nil || strings.TrimSpace(text.Content) == "" {
 		return fmt.Errorf("the %q log step needs a doc string with the text the log must contain", service)
 	}
-	return g.awaitLogSinceLatestRequest(ctx, service, strings.TrimSpace(text.Content))
+	want, err := stepscommon.Expand(ctx, strings.TrimSpace(text.Content))
+	if err != nil {
+		return err
+	}
+	pattern := regexp.MustCompile(strings.ReplaceAll(regexp.QuoteMeta(want), numberPlaceholder, jsonNumberPattern))
+	return awaitReadState(ctx, fmt.Sprintf("waiting for the %q log to contain %q after the latest request", service, want),
+		func(ctx context.Context) error {
+			logs, err := g.logSinceLatestRequest(ctx, service)
+			if err != nil {
+				return err
+			}
+			if !pattern.MatchString(logs) {
+				return tolerated("the %q log has not shown %q since the latest request", service, want)
+			}
+			return nil
+		})
 }
 
 // logExpectation is one thing an access log line must show.
