@@ -4,10 +4,16 @@
 {{- $secrets := $ui.secrets -}}
 {{- $tls := $ui.tls -}}
 {{- $selfSigned := eq $tls.certificateProvider "selfSigned" -}}
-{{- $tlsMounted := or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret") -}}
+{{- $https := eq (include "apip.aiWorkspace.httpsEnabled" .) "true" -}}
+{{- $httpEnabled := eq (include "apip.aiWorkspace.httpEnabled" .) "true" -}}
+{{- $certFromSecret := or (eq $tls.certificateProvider "cert-manager") (eq $tls.certificateProvider "secret") -}}
+{{- $tlsMounted := and $https $certFromSecret -}}
 {{- $imageTag := default .Chart.AppVersion $ui.image.tag -}}
-{{- if and $deployment.enabled (not $tlsMounted) }}
-{{- fail "ai-workspace-ui: tls.certificateProvider must be \"cert-manager\" or \"secret\" — the AI Workspace UI has no self-signed fallback (the BFF does not generate a certificate at startup, it only reads an existing cert_file/key_file). Provide a TLS Secret (certificateProvider=secret) or use cert-manager." }}
+{{- if and $deployment.enabled $https (not $certFromSecret) }}
+{{- fail "ai-workspace-ui: tls.certificateProvider must be \"cert-manager\" or \"secret\" while config.server.https.enabled=true — the AI Workspace UI has no self-signed fallback (the BFF does not generate a certificate at startup, it only reads an existing cert_file/key_file). Provide a TLS Secret (certificateProvider=secret), use cert-manager, or set config.server.https.enabled=false to serve plain HTTP behind a TLS-terminating proxy." }}
+{{- end }}
+{{- if and $deployment.enabled $https $httpEnabled (eq (int $cfg.server.http.port) (int $ui.containerPort)) }}
+{{- fail (printf "ai-workspace-ui: config.server.http.port and containerPort are both %d; the plain-HTTP and HTTPS listeners need different ports." (int $ui.containerPort)) }}
 {{- end }}
 {{- if $deployment.enabled }}
 apiVersion: apps/v1
@@ -118,17 +124,24 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           ports:
-            - name: http
+            {{- if $https }}
+            - name: https
               containerPort: {{ $ui.containerPort }}
               protocol: TCP
+            {{- end }}
+            {{- if $httpEnabled }}
+            - name: http
+              containerPort: {{ $cfg.server.http.port }}
+              protocol: TCP
+            {{- end }}
           livenessProbe:
-            {{- toYaml $deployment.livenessProbe | nindent 12 }}
+            {{- include "apip.aiWorkspace.probe" (dict "probe" $deployment.livenessProbe "plainHttp" (not $https)) | nindent 12 }}
           {{- with $deployment.startupProbe }}
           startupProbe:
-            {{- toYaml . | nindent 12 }}
+            {{- include "apip.aiWorkspace.probe" (dict "probe" . "plainHttp" (not $https)) | nindent 12 }}
           {{- end }}
           readinessProbe:
-            {{- toYaml $deployment.readinessProbe | nindent 12 }}
+            {{- include "apip.aiWorkspace.probe" (dict "probe" $deployment.readinessProbe "plainHttp" (not $https)) | nindent 12 }}
           resources:
             {{- toYaml ($deployment.resources | default dict) | nindent 12 }}
           volumeMounts:

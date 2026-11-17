@@ -38,13 +38,25 @@ spec:
   {{- end }}
   selector:
     {{- include "apip.componentSelectorLabels" (list . "ai-workspace") | nindent 4 }}
+  {{- /* Numeric targetPorts: pods from before a port rename keep matching during a rollout. */}}
   ports:
-    - name: http
+    {{- if eq (include "apip.aiWorkspace.httpsEnabled" .) "true" }}
+    - name: https
       port: {{ $service.port }}
-      targetPort: http
+      targetPort: {{ $ui.containerPort }}
       protocol: TCP
       {{- if and $isNodePortCapable $service.nodePort }}
       nodePort: {{ $service.nodePort }}
       {{- end }}
+    {{- end }}
+    {{- if eq (include "apip.aiWorkspace.httpEnabled" .) "true" }}
+    - name: http
+      port: {{ $service.httpPort }}
+      targetPort: {{ $ui.config.server.http.port }}
+      protocol: TCP
+      {{- if and $isNodePortCapable $service.httpNodePort }}
+      nodePort: {{ $service.httpNodePort }}
+      {{- end }}
+    {{- end }}
 {{- end }}
 

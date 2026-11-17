@@ -71,10 +71,18 @@ config:
     # knows its own address from window.location. Set it when a proxy/ingress
     # fronts the BFF on a different host:port than the listener binds to, so the
     # banner shows an address an operator can actually reach. Leave "" to fall
-    # back to localhost:<containerPort>.
+    # back to localhost:<containerPort> (localhost:<http.port> while HTTPS is off).
     domain: ""
-    # Optional plain-HTTP listener — enable only behind a TLS-terminating
-    # proxy/ingress. The HTTPS listener always runs on containerPort.
+    # HTTPS listener on containerPort (Service port name "https"), using the
+    # certificate from `tls:`. Set false when a proxy terminates TLS (an OpenShift
+    # edge Route, an Ingress, a mesh sidecar): only the plain-HTTP listener below
+    # runs, and `tls:` is ignored. Browsers must still reach the UI over HTTPS:
+    # the session cookies are always Secure.
+    https:
+      enabled: true
+    # Plain-HTTP listener on `port` (Service port service.httpPort, name
+    # "http"). Always on while https.enabled=false; set enabled=true to run
+    # it next to HTTPS.
     http:
       enabled: false
       port: 9080
@@ -186,7 +194,11 @@ service:
   type: LoadBalancer            # LoadBalancer | NodePort | ClusterIP
   annotations: {}
   labels: {}
+  # HTTPS listener (port name "https"), present while config.server.https.enabled=true.
   port: 9643
+  # Plain-HTTP listener (port name "http"), present while it is enabled
+  # (config.server.http.enabled, or config.server.https.enabled=false).
+  httpPort: 9080
   clusterIP: ""
   externalTrafficPolicy: ""
   loadBalancerClass: ""
@@ -194,6 +206,7 @@ service:
   ipFamilyPolicy: ""
   ipFamilies: []
   nodePort: ""
+  httpNodePort: ""
 
 # Port the BFF process listens on (the BFF's native default).
 containerPort: 9643
@@ -208,11 +221,12 @@ openshift:
   routes:
     # Default TLS settings; the route's own `tls` block overrides them key by key.
     tls:
-      # passthrough | reencrypt (the Service serves HTTPS only, so edge cannot reach it)
-      termination: passthrough
+      # passthrough | reencrypt (to the HTTPS listener) | edge (to the plain-HTTP
+      # listener). Empty picks passthrough, or edge while config.server.https.enabled=false.
+      termination: ""
       # None | Redirect
       insecureEdgeTerminationPolicy: None
-      # PEM certificate, key and CA chain served by the router (reencrypt only).
+      # PEM certificate, key and CA chain served by the router (edge and reencrypt).
       # Leave empty to use the router's default certificate.
       certificate: ""
       key: ""
@@ -273,10 +287,12 @@ deployment:
   podAnnotations: {}
   podLabels: {}
   priorityClassName: ""
+  # With config.server.https.enabled=false all probes are rendered with scheme HTTP,
+  # and `port: https` becomes `port: http` (the plain-HTTP listener).
   livenessProbe:
     httpGet:
       path: /healthz
-      port: http
+      port: https
       scheme: HTTPS
     initialDelaySeconds: 10
     periodSeconds: 10
@@ -285,7 +301,7 @@ deployment:
   readinessProbe:
     httpGet:
       path: /healthz
-      port: http
+      port: https
       scheme: HTTPS
     initialDelaySeconds: 5
     periodSeconds: 5
@@ -295,7 +311,7 @@ deployment:
   # startupProbe:
   #   httpGet:
   #     path: /healthz
-  #     port: http
+  #     port: https
   #     scheme: HTTPS
   #   periodSeconds: 5
   #   failureThreshold: 30

@@ -29,7 +29,8 @@ It is an independently released **component chart** and is used in two ways:
 - Helm 3.12+
 - A reachable Platform API
 - cert-manager (default certificate provider), **or** a pre-created TLS Secret. The BFF
-  always serves HTTPS and doesn't generate a self-signed certificate.
+  serves HTTPS by default and doesn't generate a self-signed certificate. Neither is needed
+  when [TLS is terminated in front of the BFF](#terminating-tls-in-front-of-the-bff).
 
 ## Installing cert-manager
 
@@ -136,6 +137,56 @@ Behind an ingress, route a single `path: /ai-workspace, pathType: Prefix` rule t
 with no rewriting. Several portals can then share one host. The probes use `/healthz` at the
 origin root, so they don't depend on the ingress.
 
+### Terminating TLS in front of the BFF
+
+The BFF has two listeners, and the Service exposes whichever are enabled:
+
+| Listener | Pod port | Service port (name) | On when |
+| --- | --- | --- | --- |
+| HTTPS | `containerPort` (9643) | `service.port` (`https`) | `config.server.https.enabled=true` (default) |
+| Plain HTTP | `config.server.http.port` (9080) | `service.httpPort` (`http`) | `config.server.https.enabled=false`, or `config.server.http.enabled=true` |
+
+When an OpenShift edge Route, an Ingress controller or a service mesh terminates TLS, set
+`config.server.https.enabled=false`. Only the plain-HTTP listener runs, and the probes and the
+Route move to it. The chart no longer needs a certificate: `tls.*` is ignored and no
+cert-manager objects are created. Point an Ingress at Service port `9080` (`http`).
+
+```yaml
+service:
+  type: ClusterIP              # don't publish the plain-HTTP port directly
+config:
+  server:
+    https:
+      enabled: false
+openshift:
+  enabled: true
+  routes:
+    tls:
+      termination: edge        # the default while HTTPS is off; targets port http
+      insecureEdgeTerminationPolicy: Redirect
+      # certificate / key / caCertificate: served by the router; empty uses its default
+```
+
+Browsers must still reach the UI over HTTPS, because the session cookies are always `Secure`.
+The hop between the proxy and the pod is plain HTTP, so restrict who can reach the Service
+(for example with a `NetworkPolicy`).
+
+To keep HTTPS and add the plain-HTTP listener next to it (for example HTTPS for direct clients
+and an edge Route for browsers), set `config.server.http.enabled=true` instead. Each Route
+termination then goes to the matching listener: edge to `http`, passthrough and
+reencrypt to `https`.
+
+To move a running HTTPS install behind a TLS-terminating proxy without an outage, change one
+thing at a time. Changing the Route and turning HTTPS off in one upgrade interrupts traffic
+for a few seconds while the router and the pods switch over.
+
+1. `config.server.http.enabled=true`: adds the plain-HTTP listener; the Route or Ingress is
+   unchanged.
+2. Move the proxy to the plain-HTTP listener: `openshift.routes.tls.termination=edge` for
+   the chart's Route, or, for your own Ingress, Service port `9080` with a plain-HTTP backend
+   (for ingress-nginx, drop `nginx.ingress.kubernetes.io/backend-protocol: HTTPS`).
+3. `config.server.https.enabled=false`: removes the HTTPS listener and its certificate.
+
 ## Uninstalling the Chart
 
 ```bash
@@ -150,6 +201,19 @@ The UI keeps no persistent state, so there's no PVC to clean up.
 helm upgrade ai-workspace-ui ./ai-workspace-ui-helm-chart -n ai-workspace -f custom-values.yaml
 ```
 
+### Port names changed
+
+Earlier releases named the HTTPS port `http`. It is now `https`, and `http` names the
+plain-HTTP port (9080), which exists only while that listener is on. The port numbers are
+unchanged. Before upgrading, update anything you created yourself that refers to the port by
+name:
+
+- an Ingress with `backend.service.port.name: http`: use `https`, or `number: 9643`;
+- a Route, `ServiceMonitor` or `NetworkPolicy` with `targetPort: http`: use `https`.
+
+The chart's own Route and probes are updated for you. A probe override still written as
+`port: http` with `scheme: HTTPS` is rendered against `https`.
+
 ## Verifying the Installation
 
 ```bash
@@ -163,10 +227,14 @@ kubectl logs -l app.kubernetes.io/component=ai-workspace -n ai-workspace
 - **`aiWorkspace.secrets.existingSecret is required ...`** — `config.auth.mode=oidc` needs the
   client-secret Secret (see [OIDC mode](#oidc-mode)). Under the umbrella, re-run
   `generate-secrets.sh` with `APIP_AIW_AUTH_OIDC_CLIENT_SECRET` set.
-- **`tls.certificateProvider must be "cert-manager" or "secret"`** — the BFF has no
-  self-signed fallback and no plain-HTTP-only mode. To add a plain-HTTP listener for a
-  TLS-terminating proxy, set `config.server.http.enabled=true`. HTTPS keeps running on
-  `containerPort`.
+- **`tls.certificateProvider must be "cert-manager" or "secret"`**: the BFF has no
+  self-signed fallback. Supply a certificate, or, if a proxy terminates TLS, set
+  `config.server.https.enabled=false` (see
+  [Terminating TLS in front of the BFF](#terminating-tls-in-front-of-the-bff)).
+- **`edge termination forwards plain HTTP ...` / `... termination needs the HTTPS listener`**:
+  edge needs the plain-HTTP listener, and passthrough and reencrypt need HTTPS. Leave
+  `openshift.routes.tls.termination` empty to pick the one that matches
+  `config.server.https.enabled`.
 - **UI loads but API calls fail with a TLS / certificate error** — the BFF verifies the
   Platform API's certificate. Mount the CA and set `config.controlPlane.caFile`
   (`deployment.extraVolumes` / `extraVolumeMounts`). For development only, set
@@ -203,8 +271,11 @@ every key below with `ai-workspace-ui.`.
 
 - `image.*` / `imagePullSecrets` — container image and component-only pull secrets.
 - `config.defaultOrgRegion` — region assigned to a new organization on first login.
-- `config.server.domain` / `config.server.http.*` — host shown in the startup banner, and an
-  optional plain-HTTP listener.
+- `config.server.domain`: host shown in the startup banner.
+- `config.server.https.enabled`: `true` (default) serves HTTPS on `containerPort`; `false`
+  turns it off, leaving only the plain-HTTP listener behind a TLS-terminating proxy.
+- `config.server.http.*`: the plain-HTTP listener on `port` (9080). Always on while HTTPS is
+  off; `enabled=true` runs it next to HTTPS.
 - `config.logging.*` — `level`, `format`, and `browserDebug` (verbose SPA console logging).
 - `config.controlPlane.*` — `url` (derived under the umbrella), `tlsSkipVerify` (dev only),
   and `caFile`.
@@ -220,12 +291,16 @@ every key below with `ai-workspace-ui.`.
 - `config.auth.authorization.*` — `scope` | `role`. Must match the Platform API.
 - `configToml` — raw TOML appended to the generated config.
 - `secrets.existingSecret` / `secrets.keys.oidcClientSecret` — OIDC client secret reference.
-- `service.*` / `containerPort` — Service type (default `LoadBalancer`) and port `9643`.
-- `tls.*` — `certificateProvider` is `cert-manager` (default) or `secret`.
+- `service.*` / `containerPort` — Service type (default `LoadBalancer`), the HTTPS port
+  `9643` (`service.port`, name `https`) and the plain-HTTP port `9080` (`service.httpPort`,
+  name `http`). Each is present only while its listener is on.
+- `tls.*` — `certificateProvider` is `cert-manager` (default) or `secret`. Ignored while
+  `config.server.https.enabled=false`.
 - `deployment.*`, `podDisruptionBudget.*`, `configMap.*` — pod spec, PDB, and extra metadata.
 - `hpa.*` — autoscaling. The UI is stateless, so unlike the Platform API and API Portal it
   can scale with no database requirement. Set CPU requests first.
 - `openshift.*`: an OpenShift Route to the UI (`openshift.routes.aiWorkspace`), rendered only
-  when `openshift.enabled=true`. The Service serves HTTPS only, so the Route uses `passthrough`
-  (default) or `reencrypt`. Security contexts are set through `deployment.podSecurityContext` /
+  when `openshift.enabled=true`. `passthrough` (default) and `reencrypt` go to the HTTPS
+  listener; `edge` (the default with `config.server.https.enabled=false`) goes to the
+  plain-HTTP listener. Security contexts are set through `deployment.podSecurityContext` /
   `deployment.securityContext`, rendered as given.
