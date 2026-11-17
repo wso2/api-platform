@@ -22,7 +22,7 @@ Feature: APIs are created and updated from artifact ZIPs through the API Portal 
   I want to create and update an API by uploading one artifact ZIP with its metadata and definition
   So that a GitOps pipeline can publish an API in a single request, safely
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level.
   # Each artifact fixture is built by the "artifact upload" step from the scenario's "apiId" and
   # carries that id in its metadata. Unsafe uploads (a zip-slip or absolute entry, too many entries,
   # an oversized body, an entry that inflates past the limit, a file that is not a ZIP) and invalid

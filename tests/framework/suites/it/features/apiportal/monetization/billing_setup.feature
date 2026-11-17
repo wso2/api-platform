@@ -22,7 +22,7 @@ Feature: Setting up billing in the API Portal
   I want to connect Moesif and Stripe with my keys, and remove them again
   So that paid plans can be sold, and nothing made with my keys is left behind when I stop
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API
   # level. The api-portal-billing block gives this runner a portal of its own, billed through the
   # testbench Stripe and Moesif services, which are reset before every scenario.
 
