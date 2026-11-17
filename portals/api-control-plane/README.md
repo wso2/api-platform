@@ -160,8 +160,7 @@ as before.
 ### The Test console's requests
 
 The Test console sends its requests to a deployed gateway through the Platform
-API, `POST /gateway-relay/invoke` for a REST API and
-`POST /gateway-relay/invoke-graphql` for a GraphQL API, on the same path
+API, `POST /gateway-relay/invoke`, for REST and GraphQL APIs alike, on the same path
 as every other Platform API call: the BFF's proxy, or the gateway's
 `oauth2-session-proxy`. The Platform API decides which gateway addresses it may
 reach, under `[platform_api.gateway_relay]` in its own config. There is nothing

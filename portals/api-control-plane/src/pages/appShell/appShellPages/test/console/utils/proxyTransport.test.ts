@@ -20,8 +20,7 @@ import { createIntl, createIntlCache } from 'react-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError, type ApiErrorKind } from '@/api/core/errors';
-import type { InvokeRestApiOnGatewayVariables } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
-import type { InvokeGraphQLApiOnGatewayVariables } from '@/api/resources/graphqlApis/apiGateways';
+import type { InvokeApiOnGatewayVariables } from '@/api/resources/gatewayRelay';
 import {
   createGraphqlRelayFetch,
   createRelayFetch,
@@ -35,11 +34,11 @@ import {
 const intl = createIntl({ locale: 'en', messages: {} }, createIntlCache());
 
 /** What the transport asked to invoke, and how the invoke answers. */
-let sent: InvokeRestApiOnGatewayVariables | undefined;
+let sent: InvokeApiOnGatewayVariables | undefined;
 let answer: () => Promise<unknown>;
 
-/** Stands in for `useInvokeRestApiOnGateway`'s `mutateAsync`. */
-const invoke = async (variables: InvokeRestApiOnGatewayVariables) => {
+/** Stands in for `useInvokeApiOnGateway`'s `mutateAsync`. */
+const invoke = async (variables: InvokeApiOnGatewayVariables) => {
   sent = variables;
   if (variables.signal?.aborted) throw new ApiError('Request was canceled', { kind: 'aborted' });
   return answer();
@@ -556,8 +555,8 @@ describe('createRelayFetch — a reply that is not a relay envelope', () => {
 
 describe('createGraphqlRelayFetch', () => {
   const ENDPOINT = 'https://gw.example.com/countries/v1/graphql';
-  let graphqlSent: InvokeGraphQLApiOnGatewayVariables | undefined;
-  const graphqlInvoke = async (variables: InvokeGraphQLApiOnGatewayVariables) => {
+  let graphqlSent: InvokeApiOnGatewayVariables | undefined;
+  const graphqlInvoke = async (variables: InvokeApiOnGatewayVariables) => {
     graphqlSent = variables;
     return answer() as ReturnType<GraphqlRelayContext['invoke']>;
   };

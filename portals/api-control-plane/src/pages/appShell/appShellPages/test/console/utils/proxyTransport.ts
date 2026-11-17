@@ -20,11 +20,9 @@ import { defineMessages, type IntlShape } from 'react-intl';
 
 import { isApiError, type ApiError } from '@/api/core/errors';
 import type {
-  InvokeGraphQLApiOnGatewayResponse,
-  InvokeGraphQLApiOnGatewayVariables,
-} from '@/api/resources/graphqlApis/apiGateways';
-import type { InvokeRestApiOnGatewayResponse } from '@/api/resources/restApis/apiGateways/apiGateways.endpoints';
-import type { InvokeRestApiOnGatewayVariables } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
+  InvokeApiOnGatewayResponse,
+  InvokeApiOnGatewayVariables,
+} from '@/api/resources/gatewayRelay';
 import type { TestCallMode } from '../../utils/callMode';
 import { splitAgainstBase } from './swaggerRequest';
 
@@ -87,8 +85,8 @@ import { splitAgainstBase } from './swaggerRequest';
  *
  * ## GraphQL
  *
- * The GraphQL Test console relays through `POST /gateway-relay/invoke-graphql`
- * the same way: `createGraphqlRelayFetch` is the `fetch` GraphiQL's fetcher
+ * The GraphQL Test console relays through the same operation, naming a
+ * `graphqlApiId`: `createGraphqlRelayFetch` is the `fetch` GraphiQL's fetcher
  * calls, so GraphiQL still builds the request and reads a real `Response`.
  */
 
@@ -161,7 +159,7 @@ const messages = defineMessages({
   },
 });
 
-/** The invoke operations' error codes, and the console's own, mapped to their wording. */
+/** The invoke operation's error codes, and the console's own, mapped to their wording. */
 const ERROR_MESSAGES: Record<string, (typeof messages)[keyof typeof messages]> = {
   REST_API_NOT_FOUND: messages.apiNotFound,
   REST_API_INVOKE_GATEWAY_NOT_DEPLOYED: messages.gatewayNotDeployed,
@@ -190,8 +188,8 @@ const ERROR_MESSAGES: Record<string, (typeof messages)[keyof typeof messages]> =
 /** One header or query parameter on the wire. A list, because names repeat. */
 type WirePair = { name: string; value: string };
 
-/** What the Platform API returns when the relay reached the gateway, for either API kind. */
-type RelayResult = InvokeRestApiOnGatewayResponse | InvokeGraphQLApiOnGatewayResponse;
+/** What the Platform API returns when the relay reached the gateway. */
+type RelayResult = InvokeApiOnGatewayResponse;
 
 /**
  * Everything the relay needs that changes after mount.
@@ -203,8 +201,8 @@ type RelayResult = InvokeRestApiOnGatewayResponse | InvokeGraphQLApiOnGatewayRes
 export type RelayContext = {
   /** Invoke URL of the selected gateway — the base the displayed request uses. */
   baseUrl: string;
-  /** Sends the invoke request: `useInvokeRestApiOnGateway`'s `mutateAsync`. */
-  invoke: (variables: InvokeRestApiOnGatewayVariables) => Promise<InvokeRestApiOnGatewayResponse>;
+  /** Sends the invoke request: `useInvokeApiOnGateway`'s `mutateAsync`. */
+  invoke: (variables: InvokeApiOnGatewayVariables) => Promise<InvokeApiOnGatewayResponse>;
   restApiId: string;
   gatewayId: string;
   intl: IntlShape;
@@ -659,10 +657,8 @@ export const testConsoleRelayPlugin = (contextRef: RelayContextRef) => {
 export type GraphqlRelayContext = {
   /** The GraphQL API's invoke URL on the selected gateway, without a query-parameter key. */
   endpointUrl: string;
-  /** Sends the invoke request: `useInvokeGraphQLApiOnGateway`'s `mutateAsync`. */
-  invoke: (
-    variables: InvokeGraphQLApiOnGatewayVariables,
-  ) => Promise<InvokeGraphQLApiOnGatewayResponse>;
+  /** Sends the invoke request: `useInvokeApiOnGateway`'s `mutateAsync`. */
+  invoke: (variables: InvokeApiOnGatewayVariables) => Promise<InvokeApiOnGatewayResponse>;
   graphqlApiId: string;
   gatewayId: string;
   intl: IntlShape;

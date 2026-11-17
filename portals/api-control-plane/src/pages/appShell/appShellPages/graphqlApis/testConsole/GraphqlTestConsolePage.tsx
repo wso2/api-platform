@@ -28,10 +28,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { AppPage } from '@/components/AppPage';
 import { useGraphQLApi, useGraphQLApiSdl } from '@/api/resources/graphqlApis';
-import {
-  useGraphQLApiGateways,
-  useInvokeGraphQLApiOnGateway,
-} from '@/api/resources/graphqlApis/apiGateways';
+import { useGraphQLApiGateways } from '@/api/resources/graphqlApis/apiGateways';
+import { useInvokeApiOnGateway } from '@/api/resources/gatewayRelay';
 import { useDeployments } from '@/api/resources/graphqlApis/deployments';
 import { isApiError } from '@/api/core/errors';
 import { GatewayIllustration } from '@/components/illustrations/GatewayIllustration';
@@ -231,11 +229,11 @@ function GraphqlTestConsolePageContent() {
 
   /** How GraphiQL sends a request; the REST console's stored choice, shared with it. */
   const [storedCallMode, setCallMode] = useTestCallMode();
-  // The proxy mode relays through the control plane (an InvokeGraphQLAPIOnGateway
+  // The proxy mode relays through the control plane (an InvokeAPIOnGateway
   // call); a caller who may not relay sends the request from the browser.
-  const canRelay = useCan('InvokeGraphQLAPIOnGateway');
+  const canRelay = useCan('InvokeAPIOnGateway');
   const callMode = canRelay ? storedCallMode : 'direct';
-  const { mutateAsync: invoke } = useInvokeGraphQLApiOnGateway();
+  const { mutateAsync: invoke } = useInvokeApiOnGateway();
 
   /**
    * True when the API has no stored SDL (`404`). Unlike REST's missing

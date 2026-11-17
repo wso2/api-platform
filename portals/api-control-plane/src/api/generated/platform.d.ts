@@ -323,48 +323,22 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Send a test request to a REST API through a gateway
-         * @description Sends one request to the REST API (`restApiId`) as deployed on the gateway (`gatewayId`),
-         *     for the console's Test console, and returns the gateway's response as data. The request goes to the gateway's
-         *     endpoint plus the context of the REST API's deployment there, with that deployment's main
-         *     vhost as `Host` when it has one of its own, only if the REST API is deployed there and the
-         *     endpoint is on the control plane's allow list (`gateway_relay.egress.allow_hosts`).
-         *     Redirects are not followed, and the caller's own credentials never reach the gateway.
+         * Send a test request to an API through a gateway
+         * @description Sends one request to the REST API (`restApiId`) or GraphQL API (`graphqlApiId`) as deployed
+         *     on the gateway (`gatewayId`), for the console's Test console, and returns the gateway's
+         *     response as data. The request goes to the gateway's endpoint plus the context of the API's
+         *     deployment there, only if the API is deployed there and the endpoint is on the control
+         *     plane's allow list (`gateway_relay.egress.allow_hosts`). A REST API's deployment sends its
+         *     main vhost as `Host` when it has one of its own; a GraphQL API is always a `POST` to its
+         *     context, on the gateway's default vhost. Redirects are not followed, and the caller's own
+         *     credentials never reach the gateway.
          *
          *     Any answer from the gateway is a `200` carrying its status, headers and body; an error
-         *     status means the request was not relayed. A test can change data behind the REST API
-         *     and reaches gateways the caller may not reach directly, so it needs a manage scope.
+         *     status means the request was not relayed. The gateway applies the API's own security to
+         *     the request, so reading the API is enough to send one: the caller needs the read or
+         *     manage scope of the API's own kind.
          */
-        post: operations["InvokeRESTAPIOnGateway"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/gateway-relay/invoke-graphql": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Send a test request to a GraphQL API through a gateway
-         * @description Sends one GraphQL request to the GraphQL API (`graphqlApiId`) as deployed on the gateway
-         *     (`gatewayId`), for the console's Test console, and returns the gateway's response as data.
-         *     The request is a `POST` to the gateway's endpoint plus the context of the GraphQL API's
-         *     deployment there, only if the GraphQL API is deployed there and the endpoint is on the
-         *     control plane's allow list (`gateway_relay.egress.allow_hosts`). Redirects are not
-         *     followed, and the caller's own credentials never reach the gateway.
-         *
-         *     Any answer from the gateway is a `200` carrying its status, headers and body; an error
-         *     status means the request was not relayed. A mutation can change data behind the GraphQL
-         *     API, so, as for a REST API, it needs a manage scope.
-         */
-        post: operations["InvokeGraphQLAPIOnGateway"];
+        post: operations["InvokeAPIOnGateway"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4549,93 +4523,73 @@ export interface components {
             gatewayId: string;
         };
         /** @description One header or query parameter. A list keeps repeated names. */
-        RESTAPIInvokeHeader: {
+        APIInvokeHeader: {
             /** @example X-API-Key */
             name: string;
             /** @example 3f2a9c */
             value: string;
         };
         /**
-         * @description The test request to send. Hop-by-hop headers, `Host`, `Content-Length`, `Expect`,
-         *     `Cookie` and the forwarding headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`) are
-         *     refused; `Authorization` is allowed, for the API under test.
+         * @description The test request to send, to exactly one of a REST API (`restApiId`) or a GraphQL API
+         *     (`graphqlApiId`). A GraphQL API takes no `method` or `path`: its request is a `POST` to
+         *     its context, and `body` is required. Hop-by-hop headers, `Host`, `Content-Length`,
+         *     `Expect`, `Cookie` and the forwarding headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`)
+         *     are refused; `Authorization` is allowed, for the API under test.
          */
-        RESTAPIInvokeRequest: {
+        APIInvokeRequest: {
             /**
              * @description Handle of the REST API to test
              * @example pizza-api
              */
-            restApiId: string;
+            restApiId?: string;
             /**
-             * @description Handle of a gateway the REST API is deployed to
+             * @description Handle of the GraphQL API to test
+             * @example countries-graphql-api
+             */
+            graphqlApiId?: string;
+            /**
+             * @description Handle of a gateway the API is deployed to
              * @example prod-gateway-01
              */
             gatewayId: string;
             /**
-             * @description One of GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS, in any case
-             * @default GET
+             * @description REST APIs only. One of GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS, in any case;
+             *     `GET` when omitted.
              * @example POST
              */
-            method: string;
+            method?: string;
             /**
-             * @description Path relative to the REST API's invoke URL, starting with `/`. It may not leave the
-             *     REST API's context, or carry a query or fragment.
-             * @default /
+             * @description REST APIs only. Path relative to the REST API's invoke URL, starting with `/`; `/` when
+             *     omitted. It may not leave the REST API's context, or carry a query or fragment.
              * @example /orders
              */
-            path: string;
-            query?: components["schemas"]["RESTAPIInvokeHeader"][];
+            path?: string;
+            query?: components["schemas"]["APIInvokeHeader"][];
             /** @description At most 50 headers, 16 KiB across all names and values */
-            headers?: components["schemas"]["RESTAPIInvokeHeader"][];
+            headers?: components["schemas"]["APIInvokeHeader"][];
             /**
              * @description The request body, at most `gateway_relay.max_request_bytes` once decoded
              * @example {"item":"pizza"}
              */
             body?: string;
-            bodyEncoding?: components["schemas"]["RESTAPIInvokeBodyEncoding"];
-        };
-        /**
-         * @description The GraphQL request to send, as a `POST` to the GraphQL API's endpoint. Headers follow the
-         *     rules of `RESTAPIInvokeRequest`.
-         */
-        GraphQLAPIInvokeRequest: {
-            /**
-             * @description Handle of the GraphQL API to test
-             * @example countries-graphql-api
-             */
-            graphqlApiId: string;
-            /**
-             * @description Handle of a gateway the GraphQL API is deployed to
-             * @example prod-gateway-01
-             */
-            gatewayId: string;
-            /** @description Query parameters, such as an API key the API expects in the query */
-            query?: components["schemas"]["RESTAPIInvokeHeader"][];
-            /** @description At most 50 headers, 16 KiB across all names and values */
-            headers?: components["schemas"]["RESTAPIInvokeHeader"][];
-            /**
-             * @description The GraphQL request, usually JSON with `query`, `variables` and `operationName`, at most
-             *     `gateway_relay.max_request_bytes`
-             * @example {"query":"{ countries { code } }"}
-             */
-            body: string;
+            bodyEncoding?: components["schemas"]["APIInvokeBodyEncoding"];
         };
         /**
          * @description How `body` is written; `base64` carries binary data
          * @default utf8
          * @enum {string}
          */
-        RESTAPIInvokeBodyEncoding: "utf8" | "base64";
-        RESTAPIInvokeResponse: {
+        APIInvokeBodyEncoding: "utf8" | "base64";
+        APIInvokeResponse: {
             /**
              * @description Always `response`
              * @enum {string}
              */
             outcome: "response";
-            response: components["schemas"]["RESTAPIInvokeResult"];
+            response: components["schemas"]["APIInvokeResult"];
         };
         /** @description The gateway's response */
-        RESTAPIInvokeResult: {
+        APIInvokeResult: {
             /**
              * @description The gateway's HTTP status
              * @example 201
@@ -4644,10 +4598,10 @@ export interface components {
             /** @example Created */
             statusText: string;
             /** @description Every response header, sorted, repeated names kept */
-            headers: components["schemas"]["RESTAPIInvokeHeader"][];
+            headers: components["schemas"]["APIInvokeHeader"][];
             /** @description The response body; base64 when it is not valid UTF-8 */
             body: string;
-            bodyEncoding: components["schemas"]["RESTAPIInvokeBodyEncoding"];
+            bodyEncoding: components["schemas"]["APIInvokeBodyEncoding"];
             /** @description The body exceeded `gateway_relay.max_response_bytes` and was clipped */
             truncated: boolean;
             /**
@@ -9869,7 +9823,7 @@ export interface operations {
             500: components["responses"]["InternalServerError"];
         };
     };
-    InvokeRESTAPIOnGateway: {
+    InvokeAPIOnGateway: {
         parameters: {
             query?: never;
             header?: never;
@@ -9878,7 +9832,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RESTAPIInvokeRequest"];
+                "application/json": components["schemas"]["APIInvokeRequest"];
             };
         };
         responses: {
@@ -9888,14 +9842,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RESTAPIInvokeResponse"];
+                    "application/json": components["schemas"]["APIInvokeResponse"];
                 };
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             /**
-             * @description Forbidden. Either the token lacks the scopes, or the gateway's endpoint is not on the
-             *     control plane's allow list (`REST_API_INVOKE_TARGET_NOT_ALLOWED`).
+             * @description Forbidden. The token lacks the read or manage scope of the API's kind, or the gateway's
+             *     endpoint is not on the control plane's allow list (`REST_API_INVOKE_TARGET_NOT_ALLOWED`,
+             *     `GRAPHQL_API_INVOKE_TARGET_NOT_ALLOWED`).
              */
             403: {
                 headers: {
@@ -9913,9 +9868,9 @@ export interface operations {
                 };
             };
             /**
-             * @description Not Found. The REST API does not exist in the caller's organization
-             *     (`REST_API_NOT_FOUND`), or it is not deployed to the gateway
-             *     (`REST_API_INVOKE_GATEWAY_NOT_DEPLOYED`).
+             * @description Not Found. The API does not exist in the caller's organization (`REST_API_NOT_FOUND`,
+             *     `GRAPHQL_API_NOT_FOUND`), or it is not deployed to the gateway
+             *     (`REST_API_INVOKE_GATEWAY_NOT_DEPLOYED`, `GRAPHQL_API_INVOKE_GATEWAY_NOT_DEPLOYED`).
              */
             404: {
                 headers: {
@@ -9935,8 +9890,10 @@ export interface operations {
             413: components["responses"]["PayloadTooLarge"];
             415: components["responses"]["UnsupportedMediaType"];
             /**
-             * @description Unprocessable Entity. The gateway has no endpoint (`REST_API_INVOKE_GATEWAY_NO_ENDPOINT`),
-             *     or its endpoint is not an http or https address (`REST_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME`).
+             * @description Unprocessable Entity. The gateway has no endpoint (`REST_API_INVOKE_GATEWAY_NO_ENDPOINT`,
+             *     `GRAPHQL_API_INVOKE_GATEWAY_NO_ENDPOINT`), or its endpoint is not an http or https
+             *     address (`REST_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME`,
+             *     `GRAPHQL_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME`).
              */
             422: {
                 headers: {
@@ -9954,7 +9911,10 @@ export interface operations {
                 };
             };
             500: components["responses"]["InternalServerError"];
-            /** @description Bad Gateway. The gateway could not be reached (`REST_API_INVOKE_UPSTREAM_UNREACHABLE`). */
+            /**
+             * @description Bad Gateway. The gateway could not be reached (`REST_API_INVOKE_UPSTREAM_UNREACHABLE`,
+             *     `GRAPHQL_API_INVOKE_UPSTREAM_UNREACHABLE`).
+             */
             502: {
                 headers: {
                     [name: string]: unknown;
@@ -9973,7 +9933,7 @@ export interface operations {
             };
             /**
              * @description Service Unavailable. Too many test requests are in flight on this replica
-             *     (`REST_API_INVOKE_BUSY`); retry shortly.
+             *     (`REST_API_INVOKE_BUSY`, `GRAPHQL_API_INVOKE_BUSY`); retry shortly.
              */
             503: {
                 headers: {
@@ -9991,7 +9951,10 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Gateway Timeout. The gateway did not respond in time (`REST_API_INVOKE_UPSTREAM_TIMEOUT`). */
+            /**
+             * @description Gateway Timeout. The gateway did not respond in time (`REST_API_INVOKE_UPSTREAM_TIMEOUT`,
+             *     `GRAPHQL_API_INVOKE_UPSTREAM_TIMEOUT`).
+             */
             504: {
                 headers: {
                     [name: string]: unknown;
@@ -10001,147 +9964,6 @@ export interface operations {
                      * @example {
                      *       "status": "error",
                      *       "code": "REST_API_INVOKE_UPSTREAM_TIMEOUT",
-                     *       "message": "The gateway did not respond in time.",
-                     *       "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
-                     *     }
-                     */
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    InvokeGraphQLAPIOnGateway: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["GraphQLAPIInvokeRequest"];
-            };
-        };
-        responses: {
-            /** @description The gateway answered; its response is in `response` */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RESTAPIInvokeResponse"];
-                };
-            };
-            400: components["responses"]["BadRequest"];
-            401: components["responses"]["Unauthorized"];
-            /**
-             * @description Forbidden. Either the token lacks the scopes, or the gateway's endpoint is not on the
-             *     control plane's allow list (`GRAPHQL_API_INVOKE_TARGET_NOT_ALLOWED`).
-             */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "status": "error",
-                     *       "code": "GRAPHQL_API_INVOKE_TARGET_NOT_ALLOWED",
-                     *       "message": "This gateway cannot be reached from the control plane."
-                     *     }
-                     */
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /**
-             * @description Not Found. The GraphQL API does not exist in the caller's organization
-             *     (`GRAPHQL_API_NOT_FOUND`), or it is not deployed to the gateway
-             *     (`GRAPHQL_API_INVOKE_GATEWAY_NOT_DEPLOYED`).
-             */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "status": "error",
-                     *       "code": "GRAPHQL_API_INVOKE_GATEWAY_NOT_DEPLOYED",
-                     *       "message": "This GraphQL API is not deployed to the selected gateway."
-                     *     }
-                     */
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            413: components["responses"]["PayloadTooLarge"];
-            415: components["responses"]["UnsupportedMediaType"];
-            /**
-             * @description Unprocessable Entity. The gateway has no endpoint (`GRAPHQL_API_INVOKE_GATEWAY_NO_ENDPOINT`),
-             *     or its endpoint is not an http or https address (`GRAPHQL_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME`).
-             */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "status": "error",
-                     *       "code": "GRAPHQL_API_INVOKE_GATEWAY_NO_ENDPOINT",
-                     *       "message": "The selected gateway has no endpoint configured."
-                     *     }
-                     */
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            500: components["responses"]["InternalServerError"];
-            /** @description Bad Gateway. The gateway could not be reached (`GRAPHQL_API_INVOKE_UPSTREAM_UNREACHABLE`). */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "status": "error",
-                     *       "code": "GRAPHQL_API_INVOKE_UPSTREAM_UNREACHABLE",
-                     *       "message": "The gateway could not be reached.",
-                     *       "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
-                     *     }
-                     */
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /**
-             * @description Service Unavailable. Too many test requests are in flight on this replica
-             *     (`GRAPHQL_API_INVOKE_BUSY`); retry shortly.
-             */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "status": "error",
-                     *       "code": "GRAPHQL_API_INVOKE_BUSY",
-                     *       "message": "Too many test requests are in flight; try again shortly.",
-                     *       "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
-                     *     }
-                     */
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Gateway Timeout. The gateway did not respond in time (`GRAPHQL_API_INVOKE_UPSTREAM_TIMEOUT`). */
-            504: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    /**
-                     * @example {
-                     *       "status": "error",
-                     *       "code": "GRAPHQL_API_INVOKE_UPSTREAM_TIMEOUT",
                      *       "message": "The gateway did not respond in time.",
                      *       "trackingId": "4f1c6f2e-8a4b-4c93-b1de-9f2f6f0c2a11"
                      *     }

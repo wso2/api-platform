@@ -339,7 +339,7 @@ describe('GraphqlTestConsolePage — once deployed', () => {
 
 describe('GraphqlTestConsolePage — through the proxy or directly', () => {
   const deployment = aDeployment({ gatewayId: 'edge-gateway', status: 'DEPLOYED' });
-  const RELAY = '/gateway-relay/invoke-graphql';
+  const RELAY = '/gateway-relay/invoke';
   const relayed = {
     outcome: 'response',
     response: {
@@ -410,9 +410,10 @@ describe('GraphqlTestConsolePage — through the proxy or directly', () => {
     expect(window.localStorage.getItem('apicp.test.callMode')).toBe('direct');
   });
 
-  it('offers no switch, and sends directly, to a caller who may not relay', async () => {
+  it('relays for a caller who may only read the API', async () => {
     serveApi([deployment]);
-    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(gatewayResponse());
+    const requests = recorder();
+    server.use(accepts('post', RELAY, relayed, { record: requests, status: 200 }));
 
     renderPage({
       scopes: [
@@ -421,6 +422,18 @@ describe('GraphqlTestConsolePage — through the proxy or directly', () => {
         'ap:graphql_api:deployment:read',
       ],
     });
+    await screen.findByText('GraphiQL ready with schema');
+    await runFetcher({ query: '{ hello }' });
+
+    expect(screen.getByRole('button', { name: 'Through proxy' })).toBeInTheDocument();
+    expect(requests.count()).toBe(1);
+  });
+
+  it('offers no switch, and sends directly, to a caller who may not relay', async () => {
+    serveApi([deployment]);
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(gatewayResponse());
+
+    renderPage({ scopes: ['ap:gateway:read'] });
     await screen.findByText('GraphiQL ready with schema');
     await runFetcher({ query: '{ hello }' });
 
@@ -488,7 +501,7 @@ describe('GraphqlTestConsolePage — with an api-key-auth policy', () => {
     server.use(
       accepts(
         'post',
-        '/gateway-relay/invoke-graphql',
+        '/gateway-relay/invoke',
         {
           outcome: 'response',
           response: {

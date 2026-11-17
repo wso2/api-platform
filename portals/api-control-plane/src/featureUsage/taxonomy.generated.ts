@@ -1010,7 +1010,7 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
       code: 'apip.manage-apis.api-test-invoke',
       name: 'API Test Invocation',
       description:
-        "Invoke a deployed API through the console's relay (POST /gateway-relay/invoke, InvokeRESTAPIOnGateway; POST /gateway-relay/invoke-graphql, InvokeGraphQLAPIOnGateway). Emitted by Platform API.",
+        "Invoke a deployed API through the console's relay (POST /gateway-relay/invoke, InvokeAPIOnGateway). Emitted by Platform API.",
       category: 'manage-apis',
       tier: 'core',
       status: 'stable',
