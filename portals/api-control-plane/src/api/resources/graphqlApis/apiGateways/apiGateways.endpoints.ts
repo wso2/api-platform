@@ -17,7 +17,7 @@
  */
 
 import { http, type RequestOptions } from '../../../core/http';
-import type { ItemOf, PathOf, QueryOf, ResponseOf } from '../../../core/spec';
+import type { BodyOf, ItemOf, PathOf, QueryOf, ResponseOf } from '../../../core/spec';
 
 /**
  * Wire calls for a GraphQL API's gateway associations — the read side of
@@ -29,6 +29,8 @@ import type { ItemOf, PathOf, QueryOf, ResponseOf } from '../../../core/spec';
 export type GraphQLApiGatewayListResponse = ResponseOf<'GetGraphQLAPIGateways'>;
 export type GraphQLApiGateway = ItemOf<'GetGraphQLAPIGateways'>;
 export type ListGraphQLApiGatewaysQuery = QueryOf<'GetGraphQLAPIGateways'>;
+export type InvokeGraphQLApiOnGatewayBody = BodyOf<'InvokeGraphQLAPIOnGateway'>;
+export type InvokeGraphQLApiOnGatewayResponse = ResponseOf<'InvokeGraphQLAPIOnGateway'>;
 
 const collectionPath = (graphqlApiId: PathOf<'GetGraphQLAPIGateways'>['graphqlApiId']): string =>
   `/graphql-apis/${encodeURIComponent(graphqlApiId)}/gateways`;
@@ -40,5 +42,21 @@ export const listGraphQLApiGateways = async (
   return http.get<GraphQLApiGatewayListResponse>(collectionPath(graphqlApiId), {
     ...options,
     operationName: 'GetGraphQLAPIGateways',
+  });
+};
+
+/**
+ * Sends one GraphQL request to the GraphQL API (`body.graphqlApiId`) as deployed
+ * on the gateway (`body.gatewayId`). Any answer from the gateway, whatever its
+ * status, resolves: it is carried in `response`. A rejection means the request
+ * was not relayed.
+ */
+export const invokeGraphQLApiOnGateway = async (
+  body: InvokeGraphQLApiOnGatewayBody,
+  options?: RequestOptions,
+): Promise<InvokeGraphQLApiOnGatewayResponse> => {
+  return http.post<InvokeGraphQLApiOnGatewayResponse>('/gateway-relay/invoke-graphql', body, {
+    ...options,
+    operationName: 'InvokeGraphQLAPIOnGateway',
   });
 };

@@ -18,10 +18,18 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { aGateway, collection, recorder, type Recorder } from '../../../../test/msw';
+import {
+  aGateway,
+  accepts,
+  collection,
+  failure,
+  recorder,
+  type Recorder,
+} from '../../../../test/msw';
 import { server } from '../../../../test/server';
+import { ApiError } from '../../../core/errors';
 import { resetHttpClient } from '../../../core/http';
-import { listGraphQLApiGateways } from './apiGateways.endpoints';
+import { invokeGraphQLApiOnGateway, listGraphQLApiGateways } from './apiGateways.endpoints';
 
 /** Contract tests for `/graphql-apis/{graphqlApiId}/gateways`. */
 
@@ -50,5 +58,46 @@ describe('listGraphQLApiGateways', () => {
     await listGraphQLApiGateways('a/b');
 
     expect(requests.last()?.url.pathname).toBe('/api/v0.9/graphql-apis/a%2Fb/gateways');
+  });
+});
+
+describe('invokeGraphQLApiOnGateway', () => {
+  const INVOKE = '/gateway-relay/invoke-graphql';
+  const request = {
+    graphqlApiId: 'countries-api',
+    gatewayId: 'prod-gw',
+    body: '{"query":"{ __typename }"}',
+  };
+  const relayed = {
+    outcome: 'response',
+    response: {
+      status: 200,
+      statusText: 'OK',
+      headers: [],
+      body: '{"data":{"__typename":"Query"}}',
+      bodyEncoding: 'utf8',
+      truncated: false,
+      durationMs: 3,
+    },
+  };
+
+  it('POSTs the GraphQL request, naming the API and gateway in the body', async () => {
+    server.use(accepts('post', INVOKE, relayed, { record: requests, status: 200 }));
+
+    const result = await invokeGraphQLApiOnGateway(request);
+
+    expect(requests.last()?.method).toBe('POST');
+    expect(requests.last()?.url.pathname).toBe('/api/v0.9/gateway-relay/invoke-graphql');
+    expect(JSON.parse(requests.last()!.body)).toEqual(request);
+    expect(result.response.status).toBe(200);
+  });
+
+  it('rejects with the code when the request was not relayed', async () => {
+    server.use(failure('post', INVOKE, 404, 'GRAPHQL_API_INVOKE_GATEWAY_NOT_DEPLOYED'));
+
+    const error = await invokeGraphQLApiOnGateway(request).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).code).toBe('GRAPHQL_API_INVOKE_GATEWAY_NOT_DEPLOYED');
   });
 });

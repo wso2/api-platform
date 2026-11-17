@@ -16,10 +16,17 @@
  * under the License.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 
+import type { ApiError } from '../../../core/errors';
+import { HANDLED_LOCALLY } from '../../../core/queryClient';
 import { useApiScope } from '../../../core/scope';
-import type { ListGraphQLApiGatewaysQuery } from './apiGateways.endpoints';
+import {
+  invokeGraphQLApiOnGateway,
+  type InvokeGraphQLApiOnGatewayBody,
+  type InvokeGraphQLApiOnGatewayResponse,
+  type ListGraphQLApiGatewaysQuery,
+} from './apiGateways.endpoints';
 import { apiGatewayQueries } from './apiGateways.queries';
 
 /** A GraphQL API's gateways, each flagged with whether the API is deployed there. */
@@ -33,5 +40,28 @@ export const useGraphQLApiGateways = (
   return useQuery({
     ...apiGatewayQueries.list(org!, graphqlApiId!, filters),
     enabled: Boolean(org && graphqlApiId),
+  });
+};
+
+export type InvokeGraphQLApiOnGatewayVariables = {
+  body: InvokeGraphQLApiOnGatewayBody;
+  signal?: AbortSignal;
+};
+
+/**
+ * Sends one GraphQL request to the API as deployed on a gateway (the Test
+ * console), as `useInvokeRestApiOnGateway` does for a REST API.
+ */
+export const useInvokeGraphQLApiOnGateway = (overrides: { orgId?: string } = {}) => {
+  const { orgId } = useApiScope(overrides);
+
+  return useMutation<
+    InvokeGraphQLApiOnGatewayResponse,
+    ApiError,
+    InvokeGraphQLApiOnGatewayVariables
+  >({
+    mutationFn: ({ body, signal }) => invokeGraphQLApiOnGateway(body, { orgId, signal }),
+    meta: HANDLED_LOCALLY,
+    retry: false,
   });
 };

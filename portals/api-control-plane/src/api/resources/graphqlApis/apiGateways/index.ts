@@ -21,6 +21,14 @@
  * Import from `api/resources/graphqlApis/apiGateways` only.
  */
 
-export type { GraphQLApiGateway, ListGraphQLApiGatewaysQuery } from './apiGateways.endpoints';
+export type {
+  GraphQLApiGateway,
+  InvokeGraphQLApiOnGatewayResponse,
+  ListGraphQLApiGatewaysQuery,
+} from './apiGateways.endpoints';
 
-export { useGraphQLApiGateways } from './apiGateways.hooks';
+export {
+  useGraphQLApiGateways,
+  useInvokeGraphQLApiOnGateway,
+  type InvokeGraphQLApiOnGatewayVariables,
+} from './apiGateways.hooks';

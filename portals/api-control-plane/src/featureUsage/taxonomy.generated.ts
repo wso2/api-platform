@@ -967,8 +967,7 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
             type: 'enum',
             values: ['proxy', 'direct'],
             required: false,
-            description:
-              'REST only: proxy is relayed by the console server, direct is sent from the browser.',
+            description: 'proxy: relayed by the Platform API; direct: sent from the browser.',
           },
           {
             name: 'outcome',
@@ -1011,7 +1010,7 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
       code: 'apip.manage-apis.api-test-invoke',
       name: 'API Test Invocation',
       description:
-        "Invoke a deployed API through the console's relay (POST /gateway-relay/invoke, InvokeRESTAPIOnGateway). Emitted by Platform API.",
+        "Invoke a deployed API through the console's relay (POST /gateway-relay/invoke, InvokeRESTAPIOnGateway; POST /gateway-relay/invoke-graphql, InvokeGraphQLAPIOnGateway). Emitted by Platform API.",
       category: 'manage-apis',
       tier: 'core',
       status: 'stable',
