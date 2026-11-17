@@ -192,6 +192,10 @@ type UpstreamCluster struct {
 	Endpoints      []Endpoint
 	TLS            *UpstreamTLS
 	ConnectTimeout *time.Duration // ConnectTimeout is the per-upstream TCP connect timeout
+	// HostTemplate is set for a templated Backend: its endpoint as scheme://host[:port] with the
+	// {key} placeholder. Such a cluster is a dynamic forward proxy cluster with no fixed
+	// endpoints: the host each request reaches is the one its key expands to.
+	HostTemplate string
 }
 
 // Endpoint is a single upstream host:port target.

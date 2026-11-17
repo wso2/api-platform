@@ -41,6 +41,9 @@ const (
 	KindLlmProviderTemplate ArtifactKind = "LlmProviderTemplate"
 	KindAgent               ArtifactKind = "Agent"
 	KindGraphQLApi          ArtifactKind = "GraphQLApi"
+	// KindBackend is a gateway-wide backend that APIs route to through the dynamic-endpoint
+	// policy. It is not an API: it has no routes and never enters GetAllConfigs.
+	KindBackend ArtifactKind = "Backend"
 )
 
 // DesiredState represents the intended deployment state of an API configuration.

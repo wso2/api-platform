@@ -154,6 +154,19 @@ CREATE TABLE IF NOT EXISTS llm_provider_templates (
     UNIQUE(gateway_id, handle)
 );
 
+-- Global Backends table (gateway-wide backends routed to by dynamic-endpoint)
+CREATE TABLE IF NOT EXISTS backends (
+    uuid TEXT NOT NULL,
+    gateway_id TEXT NOT NULL,
+    handle TEXT NOT NULL,
+    configuration TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (gateway_id, uuid),
+    UNIQUE(gateway_id, handle),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
 -- Table for API keys
 CREATE TABLE IF NOT EXISTS api_keys (
     uuid TEXT NOT NULL,

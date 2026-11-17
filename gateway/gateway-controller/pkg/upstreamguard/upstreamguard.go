@@ -17,8 +17,8 @@
  */
 
 // Package upstreamguard applies controller.server.network_security.access_control
-// to the URLs an artifact asks the gateway to reach: its upstream URLs, which
-// the router dials, and the URL-typed parameters of the policies attached to
+// to the URLs an artifact asks the gateway to reach: its upstream URLs (and a
+// gateway-wide Backend's endpoint URLs), which the router dials, and the URL-typed parameters of the policies attached to
 // it, which the policy engine dials. It runs on the rendered artifact (see
 // templateengine.SetPostRenderCheck), so a URL produced by {{ env }} or
 // {{ secret }} is checked as resolved.
@@ -154,8 +154,16 @@ func (g *Guard) CheckArtifact(kind string, rendered any) error {
 		return nil
 	}
 
-	for _, target := range g.collect(spec, kind != string(models.KindLlmProxy)) {
-		if err := g.checkURL(target.path, target.url); err != nil {
+	targets := g.collect(spec, kind != string(models.KindLlmProxy))
+	if kind == string(models.KindBackend) {
+		targets = append(collectBackendEndpoints(spec), targets...)
+	}
+	for _, target := range targets {
+		check := g.checkURL
+		if target.template {
+			check = g.checkTemplateURL
+		}
+		if err := check(target.path, target.url); err != nil {
 			return err
 		}
 	}
@@ -166,6 +174,8 @@ func (g *Guard) CheckArtifact(kind string, rendered any) error {
 type target struct {
 	path string
 	url  string
+	// template marks a templated Backend endpoint, whose url is the template's sample.
+	template bool
 }
 
 // collect gathers every URL-typed policy parameter in spec, and every upstream
@@ -212,6 +222,34 @@ func (g *Guard) collectUpstreams(spec map[string]any, add func(path string, v an
 			}
 		}
 	}
+}
+
+// collectBackendEndpoints returns the endpoint URLs of a gateway-wide Backend,
+// spec.endpoints[].url, which the router dials like any upstream URL.
+func collectBackendEndpoints(spec map[string]any) []target {
+	var out []target
+	endpoints, _ := spec["endpoints"].([]any)
+	for i, e := range endpoints {
+		endpoint, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		url, ok := endpoint["url"].(string)
+		if !ok || strings.TrimSpace(url) == "" {
+			continue
+		}
+		path := fmt.Sprintf("spec.endpoints[%d].url", i)
+		if models.IsEndpointTemplate(url) {
+			// The host is chosen per request, so the template's fixed part is what can be
+			// checked here; the router checks every address it resolves at request time.
+			if tmpl, err := models.ParseEndpointTemplate(strings.TrimSpace(url)); err == nil {
+				out = append(out, target{path: path, url: tmpl.Sample(), template: true})
+			}
+			continue // a broken template is the validators' to report
+		}
+		out = append(out, target{path: path, url: strings.TrimSpace(url)})
+	}
+	return out
 }
 
 // collectPolicyURLs walks v for policy attachments — objects carrying a
@@ -316,6 +354,20 @@ func collectURLParams(path string, value any, schema map[string]any, out *[]targ
 			collectURLParams(fmt.Sprintf("%s[%d]", path, i), child, items, out)
 		}
 	}
+}
+
+// checkTemplateURL checks a templated Backend endpoint, given as the template's sample URL.
+// The host a request reaches is chosen per request and always ends in the template's fixed
+// domain, so the scheme and the hostname rules are checked against that fixed part, without a
+// DNS lookup: the sample host need not exist. The router enforces the address rules on every
+// address it resolves for the endpoint at request time.
+func (g *Guard) checkTemplateURL(path, sample string) error {
+	if err := g.policy.CheckURL(context.Background(), sample, false); errors.Is(err, netguard.ErrDestinationNotAllowed) {
+		g.logger.Warn("Templated Backend endpoint refused by network access control",
+			slog.String("field", path), slog.String("reason", err.Error()))
+		return &RefusedError{FieldPath: path}
+	}
+	return nil
 }
 
 // dialableScheme reports whether Envoy or a policy's HTTP client would dial a

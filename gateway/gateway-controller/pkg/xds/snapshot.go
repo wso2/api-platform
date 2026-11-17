@@ -73,6 +73,7 @@ type SnapshotManager struct {
 	statusCallback   StatusUpdateCallback
 	sdsSecretManager *SDSSecretManager
 	afterGetAll      func() // nil in production; test hook for deterministic race testing
+	afterApply       func() // called after a snapshot is applied; see SetAfterApply
 }
 
 // NewSnapshotManager creates a new snapshot manager. It returns an error
@@ -109,6 +110,15 @@ func (sm *SnapshotManager) SetStatusCallback(callback StatusUpdateCallback) {
 
 // UpdateSnapshot generates a new xDS snapshot from all configurations and updates the cache
 // The correlationID parameter is optional and used for request tracing in logs
+// SetAfterApply registers a function called after each snapshot is applied to the cache, while
+// the snapshot lock is still held. The global-backend syncer uses it to learn which Backend
+// revisions Envoy now has clusters for. It must return quickly and must not update the snapshot.
+func (sm *SnapshotManager) SetAfterApply(fn func()) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.afterApply = fn
+}
+
 func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID string) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
@@ -229,6 +239,10 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 			}
 		}
 		return fmt.Errorf("failed to set snapshot: %w", err)
+	}
+
+	if sm.afterApply != nil {
+		sm.afterApply()
 	}
 
 	log.Info("Updated xDS snapshot",

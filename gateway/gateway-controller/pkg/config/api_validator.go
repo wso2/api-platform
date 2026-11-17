@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -368,6 +369,17 @@ func validateUpstreamDefinitionsList(fieldPrefix string, definitions *[]api.Upst
 						Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
 						Message: "URL must not include a fragment; only host[:port] is used",
 					})
+				}
+
+				// url.Parse checks a port's syntax but not its range. An out-of-range port would
+				// reach the cluster as an invalid port value and Envoy would reject the update.
+				if port := parsedURL.Port(); port != "" {
+					if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
+						errors = append(errors, ValidationError{
+							Field:   fmt.Sprintf("%s[%d].upstreams[%d].url", fieldPrefix, i, j),
+							Message: "URL port must be between 1 and 65535",
+						})
+					}
 				}
 			}
 

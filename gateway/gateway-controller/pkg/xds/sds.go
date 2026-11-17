@@ -22,12 +22,14 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	tlsv3 "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/certstore"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 )
 
 const (
@@ -67,6 +69,12 @@ type UpstreamTLSSecretRef struct {
 	// ValidationContext secret (UpstreamCAValidationContextSecretName).
 	APIHandle      string
 	DefinitionName string
+	// ValidationContextSecret, when set, names the ValidationContext secret
+	// directly instead (a gateway-wide Backend's, see
+	// BackendCAValidationContextSecretName). ValidationContextSubject then
+	// describes the owner in logs.
+	ValidationContextSecret  string
+	ValidationContextSubject string
 	// TrustedCANames lists the usage: upstream certificates trusted for this
 	// definition. Empty means the gateway-wide bundle applies.
 	TrustedCANames []string
@@ -81,7 +89,26 @@ type UpstreamTLSSecretRef struct {
 const (
 	SecretNamePrefixGatewayIdentity = "gateway_identity:"
 	SecretNamePrefixUpstreamCA      = "upstream_ca:"
+	SecretNamePrefixBackendCA       = "backend_ca:"
 )
+
+// BackendCAValidationContextSecretName builds the SDS secret name for the trust
+// bundle of one Backend cluster, from the cluster name without its "backend_"
+// prefix (name_revision). Each revision has its own secret, so two revisions
+// in the same snapshot never share one. Its prefix differs from the per-API
+// upstream_ca: secrets, so the two can never collide.
+func BackendCAValidationContextSecretName(clusterName string) string {
+	return SecretNamePrefixBackendCA + strings.TrimPrefix(clusterName, models.BackendClusterPrefix)
+}
+
+// validationContextSecretName returns the ValidationContext secret a ref
+// points its cluster at.
+func (ref UpstreamTLSSecretRef) validationContextSecretName() string {
+	if ref.ValidationContextSecret != "" {
+		return ref.ValidationContextSecret
+	}
+	return UpstreamCAValidationContextSecretName(ref.APIHandle, ref.DefinitionName)
+}
 
 // GatewayIdentitySecretName builds the SDS secret name carrying a gateway
 // identity's certificate chain and private key.
@@ -256,7 +283,7 @@ func (sm *SDSSecretManager) GetSecrets(upstreamTLSRefs []UpstreamTLSSecretRef) (
 		if len(ref.TrustedCANames) == 0 {
 			continue
 		}
-		secretName := UpstreamCAValidationContextSecretName(ref.APIHandle, ref.DefinitionName)
+		secretName := ref.validationContextSecretName()
 		if seenValidationContexts[secretName] {
 			continue
 		}
@@ -267,6 +294,7 @@ func (sm *SDSSecretManager) GetSecrets(upstreamTLSRefs []UpstreamTLSSecretRef) (
 			sm.logger.Error("Failed to load per-upstream trust bundle for SDS secret; skipping this secret only",
 				slog.String("api_handle", ref.APIHandle),
 				slog.String("definition", ref.DefinitionName),
+				slog.String("owner", ref.ValidationContextSubject),
 				slog.Any("error", err))
 			continue
 		}

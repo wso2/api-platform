@@ -568,9 +568,17 @@ func (s *APIServer) DeleteCertificate(w http.ResponseWriter, r *http.Request, id
 				httputil.WriteJSON(w, statusCode, errResp)
 				return
 			}
+			if errResp, statusCode, blocked := s.checkBackendCertificateReferences(preDeleteCert.Name, false); blocked {
+				httputil.WriteJSON(w, statusCode, errResp)
+				return
+			}
 		}
 		if usage == models.CertificateUsageIdentity {
 			if errResp, statusCode, blocked := s.checkGatewayIdentityDeletable(preDeleteCert); blocked {
+				httputil.WriteJSON(w, statusCode, errResp)
+				return
+			}
+			if errResp, statusCode, blocked := s.checkBackendCertificateReferences(preDeleteCert.Name, true); blocked {
 				httputil.WriteJSON(w, statusCode, errResp)
 				return
 			}

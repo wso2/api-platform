@@ -137,6 +137,46 @@ type Translator struct {
 	// transform.GatewayJWKSRuntimeConfig), so Envoy never routes to a chain the
 	// policy engine does not have.
 	gatewayJWKSRoute bool
+
+	// backendSource lists the gateway-wide Backends; each becomes one cluster,
+	// backend_<name>, in every snapshot. Nil when the binary serves none.
+	backendSource BackendClusterSource
+
+	// dynamicHostBackends is set when the current TranslateConfigs call built the cluster of a
+	// templated Backend, so the listeners get the dynamic forward proxy filter and the route
+	// configuration points it at the host header. Without one, both stay as they were.
+	dynamicHostBackends bool
+}
+
+// BackendCluster is one gateway-wide Backend, already converted to the upstream-cluster model
+// an upstreamDefinitions entry is converted to.
+type BackendCluster struct {
+	// Name is the Backend's metadata.name.
+	Name string
+	// ClusterName is the Envoy cluster name of this revision, backend_<name>_<revision>.
+	ClusterName string
+	// Upstream is the cluster's targets, TLS and connect timeout.
+	Upstream *models.UpstreamCluster
+}
+
+// BackendClusterSource lists the gateway-wide Backends to emit as clusters. Implementations
+// skip (and log) a Backend that cannot be converted, so one bad Backend never blocks the
+// snapshot.
+type BackendClusterSource interface {
+	BackendClusters() []BackendCluster
+}
+
+// BackendClusterObserver is implemented by a BackendClusterSource that needs to know which
+// Backend clusters a translation built, by cluster name. A cluster that was skipped is left out,
+// so nothing treats it as being in the snapshot.
+type BackendClusterObserver interface {
+	BackendClustersBuilt(clusterNames []string)
+}
+
+// SetBackendSource sets where the translator reads the gateway-wide Backends from. Set once at
+// startup, before the first snapshot.
+func (t *Translator) SetBackendSource(source BackendClusterSource) {
+	t.backendSource = source
 }
 
 // SetGatewayJWKSRoute enables the gateway JWKS route on every virtual host. Set
@@ -313,35 +353,12 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 		if len(uc.Endpoints) == 0 {
 			continue
 		}
-		// Per-upstream connect timeout resolved by the transformer from
-		// upstreamDefinitions.timeout.connect; nil falls back to the router default
-		// inside createCluster/createWeightedCluster.
-		connectTimeout := uc.ConnectTimeout
-
 		// "" means the definition uses the gateway-wide trust bundle.
 		var validationSecretName string
 		if uc.TLS != nil && uc.TLS.HasTLSBlock && len(uc.TLS.TrustedCANames) > 0 {
 			validationSecretName = UpstreamCAValidationContextSecretName(rdc.Metadata.Handle, uc.Name)
 		}
-
-		if len(uc.Endpoints) == 1 {
-			ep := uc.Endpoints[0]
-			parsedURL := &url.URL{
-				Scheme: "http",
-				Host:   net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port)),
-				Path:   uc.BasePath,
-			}
-			if uc.TLS != nil && uc.TLS.Enabled {
-				parsedURL.Scheme = "https"
-			}
-			c, err := t.createCluster(clusterName, parsedURL, nil, connectTimeout, uc.TLS, validationSecretName)
-			if err != nil {
-				return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
-			}
-			clusters = append(clusters, c)
-			continue
-		}
-		c, err := t.createWeightedCluster(clusterName, uc.Endpoints, uc.TLS, connectTimeout, validationSecretName)
+		c, err := t.buildUpstreamCluster(clusterName, uc, validationSecretName)
 		if err != nil {
 			return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
 		}
@@ -369,6 +386,81 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 	}
 
 	return routes, clusters, nil
+}
+
+// buildUpstreamCluster turns one upstream-cluster model — an upstreamDefinitions entry or a
+// gateway-wide Backend — into an Envoy cluster: a plain cluster for one target, a weighted
+// cluster for several. validationSecretName is the SDS secret for a non-empty
+// tls.TrustedCANames, or "" when the gateway-wide trust bundle applies.
+func (t *Translator) buildUpstreamCluster(clusterName string, uc *models.UpstreamCluster, validationSecretName string) (*cluster.Cluster, error) {
+	if uc != nil && uc.HostTemplate != "" {
+		return t.createDynamicHostCluster(clusterName, uc, validationSecretName)
+	}
+	if uc == nil || len(uc.Endpoints) == 0 {
+		return nil, fmt.Errorf("upstream cluster %q has no targets", clusterName)
+	}
+	// Per-upstream connect timeout resolved from timeout.connect; nil falls back to the router
+	// default inside createCluster/createWeightedCluster.
+	connectTimeout := uc.ConnectTimeout
+
+	if len(uc.Endpoints) == 1 {
+		ep := uc.Endpoints[0]
+		parsedURL := &url.URL{
+			Scheme: "http",
+			Host:   net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port)),
+			Path:   uc.BasePath,
+		}
+		if uc.TLS != nil && uc.TLS.Enabled {
+			parsedURL.Scheme = "https"
+		}
+		return t.createCluster(clusterName, parsedURL, nil, connectTimeout, uc.TLS, validationSecretName)
+	}
+	return t.createWeightedCluster(clusterName, uc.Endpoints, uc.TLS, connectTimeout, validationSecretName)
+}
+
+// addBackendClusters emits one cluster per gateway-wide Backend, whether or not any API can
+// reach it yet, and records the SDS secrets their tls blocks reference. A Backend whose cluster
+// cannot be built is skipped and logged; the rest of the snapshot is unaffected. A source that
+// observes the result is told which Backends' clusters were built.
+func (t *Translator) addBackendClusters(log *slog.Logger, clusterMap map[string]*cluster.Cluster) {
+	if t.backendSource == nil {
+		return
+	}
+	built := []string{}
+	if observer, ok := t.backendSource.(BackendClusterObserver); ok {
+		defer func() { observer.BackendClustersBuilt(built) }()
+	}
+	for _, ec := range t.backendSource.BackendClusters() {
+		if ec.Upstream == nil {
+			log.Error("Skipping a global backend without an upstream; requests routed to it get 503",
+				slog.String("backend", ec.Name))
+			continue
+		}
+		var validationSecretName string
+		tls := ec.Upstream.TLS
+		if tls != nil && tls.HasTLSBlock && len(tls.TrustedCANames) > 0 {
+			validationSecretName = BackendCAValidationContextSecretName(ec.ClusterName)
+		}
+		c, err := t.buildUpstreamCluster(ec.ClusterName, ec.Upstream, validationSecretName)
+		if err != nil {
+			log.Error("Failed to build the cluster of a global backend; requests routed to it get 503 until it is fixed",
+				slog.String("backend", ec.Name), slog.Any("error", err))
+			continue
+		}
+		clusterMap[c.Name] = c
+		built = append(built, ec.ClusterName)
+		if ec.Upstream.HostTemplate != "" {
+			t.dynamicHostBackends = true
+		}
+		if tls != nil && tls.HasTLSBlock && (tls.IdentityName != "" || len(tls.TrustedCANames) > 0) {
+			t.tlsSecretRefs = append(t.tlsSecretRefs, UpstreamTLSSecretRef{
+				IdentityName:             tls.IdentityName,
+				TrustedCANames:           tls.TrustedCANames,
+				ValidationContextSecret:  validationSecretName,
+				ValidationContextSubject: "backend " + ec.Name,
+			})
+		}
+	}
 }
 
 // routeTimeoutOrDefault returns the per-route timeout when configured (including an
@@ -915,6 +1007,7 @@ func (t *Translator) TranslateConfigs(
 	resources := make(map[resource.Type][]types.Resource)
 
 	t.tlsSecretRefs = nil
+	t.dynamicHostBackends = false
 
 	defaultClientCert, err := t.resolveDefaultClientCertificate()
 	if err != nil {
@@ -1006,6 +1099,9 @@ func (t *Translator) TranslateConfigs(
 			clusterMap[c.Name] = c
 		}
 	}
+
+	// Gateway-wide Backends: one cluster each, independent of any API.
+	t.addBackendClusters(log, clusterMap)
 
 	// Group routes by vhost. Pre-seed the wildcard vhost so no-api-found is
 	// always present even when no APIs are deployed.
@@ -1566,6 +1662,16 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 	}
 	httpFilters = append(httpFilters, luaFilter)
 
+	// A templated Backend's cluster resolves its host per request through the dynamic forward
+	// proxy filter, after the policy engine and Lua have set the host and path.
+	if t.dynamicHostBackends {
+		dfpFilter, err := t.dynamicForwardProxyFilter()
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to create dynamic forward proxy filter: %w", err)
+		}
+		httpFilters = append(httpFilters, dfpFilter)
+	}
+
 	// Add router filter (must be last)
 	httpFilters = append(httpFilters, &hcm.HttpFilter{
 		Name: wellknown.Router,
@@ -1738,10 +1844,21 @@ func (t *Translator) createListenerWithCertRequest(virtualHosts []*route.Virtual
 // createRouteConfiguration creates a route configuration
 // Uses SharedRouteConfigName so it can be discovered via RDS
 func (t *Translator) createRouteConfiguration(virtualHosts []*route.VirtualHost) *route.RouteConfiguration {
-	return &route.RouteConfiguration{
+	rc := &route.RouteConfiguration{
 		Name:         SharedRouteConfigName,
 		VirtualHosts: virtualHosts,
 	}
+	if t.dynamicHostBackends {
+		// The dynamic forward proxy resolves the host the policy engine put in
+		// TargetUpstreamHostHeader, and the router strips the header before forwarding.
+		if dfpRoute, err := dynamicForwardProxyRouteConfig(); err == nil {
+			rc.TypedPerFilterConfig = map[string]*anypb.Any{dynamicForwardProxyFilterName: dfpRoute}
+		} else {
+			t.logger.Error("Failed to encode the dynamic forward proxy route config", slog.Any("error", err))
+		}
+		rc.RequestHeadersToRemove = append(rc.RequestHeadersToRemove, constants.TargetUpstreamHostHeader)
+	}
+	return rc
 }
 
 // getValueFromSourceConfig extracts a value from sourceConfig using a key path.
@@ -2244,6 +2361,18 @@ func (t *Translator) createCluster(
 	return c, nil
 }
 
+// effectiveConnectTimeout is a cluster's connect timeout: its own when set, else the router's
+// default, else 5s, as createCluster resolves it.
+func (t *Translator) effectiveConnectTimeout(connectTimeout *time.Duration) time.Duration {
+	if connectTimeout != nil {
+		return *connectTimeout
+	}
+	if ms := t.routerConfig.Upstream.Timeouts.ConnectTimeoutMs; ms != 0 {
+		return time.Duration(ms) * time.Millisecond
+	}
+	return 5 * time.Second
+}
+
 // createPolicyEngineCluster creates an Envoy cluster for the policy engine ext_proc service
 func (t *Translator) createPolicyEngineCluster() *cluster.Cluster {
 	policyEngine := t.routerConfig.PolicyEngine
@@ -2541,6 +2670,14 @@ func (t *Translator) createOTELCollectorCluster() *cluster.Cluster {
 // tlsOpts.TrustedCANames. It errors when a tls block has no trust source, since
 // a context without one would silently skip chain and hostname validation.
 func (t *Translator) createUpstreamTLSContext(certificate []byte, address string, tlsOpts *models.UpstreamTLS, validationSecretName string) (*tlsv3.UpstreamTlsContext, error) {
+	return t.buildUpstreamTLSContext(certificate, address, false, tlsOpts, validationSecretName)
+}
+
+// buildUpstreamTLSContext is createUpstreamTLSContext for a fixed host (address) or, with
+// dynamicHost, for a templated Backend whose host each request chooses: address is then the
+// template, used only in messages, and the context sets no server name or SAN matcher, since the
+// cluster's auto SNI and SAN validation take both from the host a request resolves.
+func (t *Translator) buildUpstreamTLSContext(certificate []byte, address string, dynamicHost bool, tlsOpts *models.UpstreamTLS, validationSecretName string) (*tlsv3.UpstreamTlsContext, error) {
 	// Create TLS context with base configuration
 	upstreamTLSContext := &tlsv3.UpstreamTlsContext{
 		CommonTlsContext: &tlsv3.CommonTlsContext{
@@ -2558,8 +2695,8 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 	}
 
 	// Determine if address is IP or hostname and set SNI accordingly
-	isIP := net.ParseIP(address) != nil
-	if !isIP {
+	isIP := !dynamicHost && net.ParseIP(address) != nil
+	if !isIP && !dynamicHost {
 		upstreamTLSContext.Sni = address
 	}
 
@@ -2667,7 +2804,7 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 
 		// Every branch reachable with a tls block sets a
 		// CombinedValidationContext, so verifyHostName always takes effect.
-		if effectiveVerifyHostName {
+		if effectiveVerifyHostName && !dynamicHost {
 			sanType := tlsv3.SubjectAltNameMatcher_DNS
 			if isIP {
 				sanType = tlsv3.SubjectAltNameMatcher_IP_ADDRESS
@@ -2700,6 +2837,26 @@ func (t *Translator) createUpstreamTLSContext(certificate []byte, address string
 	return upstreamTLSContext, nil
 }
 
+// upstreamTLSReferencesSecret reports whether an upstream TLS transport socket references the
+// SDS secret named secretName, as its client certificate or its validation context.
+func upstreamTLSReferencesSecret(ts *core.TransportSocket, secretName string) bool {
+	typedConfig := ts.GetTypedConfig()
+	if typedConfig == nil {
+		return false
+	}
+	var tlsCtx tlsv3.UpstreamTlsContext
+	if err := typedConfig.UnmarshalTo(&tlsCtx); err != nil {
+		return false
+	}
+	for _, tc := range tlsCtx.GetCommonTlsContext().GetTlsCertificateSdsSecretConfigs() {
+		if tc.GetName() == secretName {
+			return true
+		}
+	}
+	combined, ok := tlsCtx.GetCommonTlsContext().GetValidationContextType().(*tlsv3.CommonTlsContext_CombinedValidationContext)
+	return ok && combined.CombinedValidationContext.GetValidationContextSdsSecretConfig().GetName() == secretName
+}
+
 // SnapshotReferencesSDSSecret reports whether any cluster or listener
 // references the SDS secret named secretName, as a validation context or a
 // TLS certificate. Envoy watches only referenced secrets, so an unreferenced
@@ -2710,25 +2867,13 @@ func SnapshotReferencesSDSSecret(clusters, listeners []types.Resource, secretNam
 		if !ok {
 			continue
 		}
+		// A cluster carries TLS in its transport socket matches, or, for a templated Backend's
+		// dynamic forward proxy cluster, in its own transport socket.
+		if upstreamTLSReferencesSecret(c.GetTransportSocket(), secretName) {
+			return true
+		}
 		for _, tsm := range c.GetTransportSocketMatches() {
-			typedConfig := tsm.GetTransportSocket().GetTypedConfig()
-			if typedConfig == nil {
-				continue
-			}
-			var tlsCtx tlsv3.UpstreamTlsContext
-			if err := typedConfig.UnmarshalTo(&tlsCtx); err != nil {
-				continue
-			}
-			for _, tc := range tlsCtx.GetCommonTlsContext().GetTlsCertificateSdsSecretConfigs() {
-				if tc.GetName() == secretName {
-					return true
-				}
-			}
-			combined, ok := tlsCtx.GetCommonTlsContext().GetValidationContextType().(*tlsv3.CommonTlsContext_CombinedValidationContext)
-			if !ok {
-				continue
-			}
-			if combined.CombinedValidationContext.GetValidationContextSdsSecretConfig().GetName() == secretName {
+			if upstreamTLSReferencesSecret(tsm.GetTransportSocket(), secretName) {
 				return true
 			}
 		}

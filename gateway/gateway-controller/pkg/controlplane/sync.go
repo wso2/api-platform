@@ -706,6 +706,11 @@ func (c *Client) pushGatewayArtifacts() {
 	// The query returns metadata only; load each full config to push.
 	full := make([]*models.StoredConfig, 0, len(configs))
 	for _, meta := range configs {
+		if meta.Kind == models.KindBackend {
+			// Gateway-wide Backends are not imported by the control plane yet; they stay
+			// gateway-local until it can manage them.
+			continue
+		}
 		cfg, err := c.db.GetConfig(meta.UUID)
 		if err != nil || cfg == nil {
 			c.logger.Warn("Failed to load full config for control plane push",
