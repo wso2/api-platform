@@ -93,26 +93,6 @@ cd platform-api
 go run ./cmd/main.go -config config/config.toml
 ```
 
-#### Organizations that share an identity-provider reference
-
-Only one organization may be registered per identity-provider organization, enforced by the
-unique index `uq_organizations_idp_org_ref`. Databases created before that index can hold
-organizations that share a reference. On such a database Platform API still starts, but it
-does not create the index, and it logs a warning until the records are reconciled. No record
-is changed or removed automatically.
-
-To find them:
-
-```sql
-SELECT idp_organization_ref_uuid, COUNT(*) AS holders FROM organizations
-WHERE idp_organization_ref_uuid <> '' GROUP BY idp_organization_ref_uuid HAVING COUNT(*) > 1;
-```
-
-For each reference, decide which organization belongs to it, and change or clear
-`idp_organization_ref_uuid` on the others, or remove them if they hold nothing. The index is
-created on the next start once the query returns no rows. Until then, registering another
-organization for a reference that is already taken is still refused with 409 Conflict.
-
 ### Step-by-Step Workflow
 
 Across the API, resources with a handle expose it as `id` (an immutable, URL-safe

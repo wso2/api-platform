@@ -215,34 +215,14 @@ func TestOrganizationService_RegisterOrganization_RefusesTakenHandle(t *testing.
 	}
 }
 
-// The database enforces one organization per non-empty identity-provider
-// reference, which covers concurrent registrations that both pass the service check.
-func TestOrganizationSchema_UniqueIdpOrgReference(t *testing.T) {
-	svc, _, cleanup := setupOrganizationTestEnv(t)
-	t.Cleanup(cleanup)
-
-	create := func(id, handle, ref string) error {
-		return svc.orgRepo.CreateOrganization(&model.Organization{ID: id, Handle: handle, Name: handle, Region: "us", IdpOrganizationRefUUID: ref})
-	}
-	if err := create("org-uuid-1", "org-one", "idp-org-1"); err != nil {
-		t.Fatalf("CreateOrganization failed: %v", err)
-	}
-	err := create("org-uuid-2", "org-two", "idp-org-1")
-	if !repository.IsUniqueViolation(err) {
-		t.Fatalf("expected a unique violation for a duplicate reference, got %v", err)
-	}
-	if err := create("org-uuid-3", "org-three", ""); err != nil {
-		t.Fatalf("CreateOrganization with an empty reference failed: %v", err)
-	}
-	if err := create("org-uuid-4", "org-four", ""); err != nil {
-		t.Fatalf("second CreateOrganization with an empty reference failed: %v", err)
-	}
-}
-
-// staleOrgLookupRepo hides existing organizations from the reference lookups,
+// staleOrgLookupRepo hides existing organizations from the pre-insert lookups,
 // as a concurrent registration that has not committed yet would.
 type staleOrgLookupRepo struct {
 	repository.OrganizationRepository
+}
+
+func (staleOrgLookupRepo) GetOrganizationByIdOrHandle(string, string) (*model.Organization, error) {
+	return nil, nil
 }
 
 func (staleOrgLookupRepo) GetOrganizationByIdpOrgRefUUID(string) (*model.Organization, error) {
@@ -253,8 +233,9 @@ func (staleOrgLookupRepo) GetOrganizationByUUID(string) (*model.Organization, er
 	return nil, nil
 }
 
-// When the pre-insert check misses a concurrent registration, the database
-// constraint rejects the insert and the caller still gets 409, not 500.
+// When the pre-insert checks miss a concurrent registration of the same handle,
+// the handle's unique constraint rejects the insert and the caller still gets
+// 409, not 500.
 func TestOrganizationService_RegisterOrganization_MapsConstraintViolationToConflict(t *testing.T) {
 	svc, db, cleanup := setupOrganizationTestEnv(t)
 	t.Cleanup(cleanup)
@@ -264,7 +245,7 @@ func TestOrganizationService_RegisterOrganization_MapsConstraintViolationToConfl
 	}
 
 	svc.orgRepo = staleOrgLookupRepo{OrganizationRepository: svc.orgRepo}
-	_, err := svc.RegisterOrganization("org-uuid-2", "second-org", "Second Org", "us", "idp-org-1", "")
+	_, err := svc.RegisterOrganization("org-uuid-2", "first-org", "Second Org", "us", "idp-org-2", "")
 	requireOrganizationExists(t, err)
 
 	if got := countOrganizations(t, db); got != 1 {

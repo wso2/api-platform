@@ -282,62 +282,24 @@ func (db *DB) InitSchema(dbSchemaPath string, slogger *slog.Logger) error {
 	}
 
 	// Read the schema SQL from the external file
-	schemaBytes, err := os.ReadFile(schemaPath)
+	schemaSQL, err := os.ReadFile(schemaPath)
 	if err != nil {
 		return fmt.Errorf("failed to read schema file %s: %w", schemaPath, err)
 	}
-	schemaSQL := db.deferOrgRefIndex(string(schemaBytes), slogger)
 
 	// PostgreSQL and SQL Server drivers are more reliable when schema statements
 	// are executed one-by-one inside a transaction.
 	if isPostgresDriver(db.driver) || isSQLServerDriver(db.driver) {
-		return db.initSchemaTransactional(schemaSQL)
+		return db.initSchemaTransactional(string(schemaSQL))
 	}
 
 	// For SQLite, execute as a single statement (it handles multi-statement well)
-	_, err = db.Exec(schemaSQL)
+	_, err = db.Exec(string(schemaSQL))
 	if err != nil {
 		return fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
 	return nil
-}
-
-// OrgRefIndexName is the unique index that allows one organization per
-// identity-provider organization reference.
-const OrgRefIndexName = "uq_organizations_idp_org_ref"
-
-// DuplicateOrgRefsQuery lists the identity-provider references that more than one
-// organization holds. Records like these can predate the unique index; while any
-// remain, InitSchema leaves the index out. It runs on every supported driver.
-const DuplicateOrgRefsQuery = `SELECT idp_organization_ref_uuid, COUNT(*) AS holders FROM organizations ` +
-	`WHERE idp_organization_ref_uuid <> '' GROUP BY idp_organization_ref_uuid HAVING COUNT(*) > 1`
-
-// orgRefIndexStmt matches the index's statement in every dialect's schema file,
-// including SQL Server's IF NOT EXISTS guard on the line before it.
-var orgRefIndexStmt = regexp.MustCompile(`(?m)^(?:IF NOT EXISTS \([^\n]*` + OrgRefIndexName +
-	`[^\n]*\)[ \t]*\r?\n)?CREATE UNIQUE INDEX (?:IF NOT EXISTS )?` + OrgRefIndexName + `\b[^;]*;`)
-
-// deferOrgRefIndex returns schemaSQL without the OrgRefIndexName statement when
-// existing organizations already share an identity-provider reference, since
-// creating the index would then fail and stop the server from starting. It logs
-// a warning naming the query that finds those records and changes no data; the
-// index is created on the first start after they are reconciled. On a new
-// database the organizations table does not exist yet, the query fails, and the
-// schema is returned unchanged.
-func (db *DB) deferOrgRefIndex(schemaSQL string, slogger *slog.Logger) string {
-	var duplicated int
-	if err := db.QueryRow("SELECT COUNT(*) FROM (" + DuplicateOrgRefsQuery + ") dup").Scan(&duplicated); err != nil {
-		return schemaSQL
-	}
-	if duplicated == 0 || !orgRefIndexStmt.MatchString(schemaSQL) {
-		return schemaSQL
-	}
-	slogger.Warn("Organizations share identity-provider references; the unique index is not created until "+
-		"they are reconciled. List them with the query, keep one organization per reference and change or "+
-		"clear the reference on the others; the index is created on the next start.",
-		"index", OrgRefIndexName, "sharedReferences", duplicated, "query", DuplicateOrgRefsQuery)
-	return orgRefIndexStmt.ReplaceAllString(schemaSQL, "")
 }
 
 // InitSchemaSQL applies the given SQL DDL string against the database using the

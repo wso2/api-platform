@@ -30,13 +30,6 @@ CREATE TABLE dbo.organizations (
     updated_at DATETIME2(7) DEFAULT SYSUTCDATETIME()
 );
 
--- One organization per identity-provider organization. A guarded index rather than an
--- inline UNIQUE, so it is also added to existing databases. Empty references are excluded.
--- Where existing organizations already share a reference, InitSchema leaves this index
--- out and logs a warning until they are reconciled (README, "Database Configuration").
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'uq_organizations_idp_org_ref' AND object_id = OBJECT_ID(N'dbo.organizations'))
-CREATE UNIQUE INDEX uq_organizations_idp_org_ref ON dbo.organizations(idp_organization_ref_uuid) WHERE idp_organization_ref_uuid <> '';
-
 -- Projects table
 IF OBJECT_ID(N'dbo.projects', N'U') IS NULL
 CREATE TABLE dbo.projects (

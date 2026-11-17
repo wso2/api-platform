@@ -143,11 +143,14 @@ func (s *OrganizationService) RegisterOrganization(id string, handle string, nam
 	orgModel.UpdatedBy = performedBy
 	err = s.orgRepo.CreateOrganization(orgModel)
 	if err != nil {
-		// A concurrent registration can pass the checks above; the unique
-		// constraints on handle and idp_organization_ref_uuid catch it here.
+		// A concurrent registration can pass the checks above. The unique
+		// constraint on handle catches a second registration of the same
+		// handle here. Two concurrent registrations for the same
+		// identity-provider organization with different handles are not
+		// caught: idp_organization_ref_uuid has no unique constraint.
 		if repository.IsUniqueViolation(err) {
 			return nil, apperror.OrganizationExists.Wrap(err).
-				WithLogMessage("an organization with this handle or identity-provider organization already exists")
+				WithLogMessage("an organization with this UUID or handle already exists")
 		}
 		return nil, err
 	}
