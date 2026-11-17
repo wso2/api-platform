@@ -193,14 +193,15 @@ const extensionFor = (contentType: string | undefined, json: boolean): string =>
   return 'txt';
 };
 
-/** Saves text as a file. A Blob URL to local text, revoked immediately: nothing is fetched or executed. */
+/** Saves text as a file. A Blob URL to local text, revoked right after: nothing is fetched or executed. */
 const downloadText = (text: string, filename: string, mime: string) => {
   const url = URL.createObjectURL(new Blob([text], { type: mime }));
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
   link.click();
-  URL.revokeObjectURL(url);
+  // Some browsers start the download after the click returns, so revoke on the next tick.
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 };
 
 const statusChipColor = (status: number): 'success' | 'warning' | 'error' =>

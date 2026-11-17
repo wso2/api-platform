@@ -27,6 +27,9 @@
  * Throws `SyntaxError` when the text is not valid JSON, so callers can keep
  * the original on failure.
  */
+/** Indentation grows with nesting, so output is capped to keep a deep document from blocking render. */
+const MAX_OUTPUT_CHARS = 8 * 1024 * 1024;
+
 export const prettyPrintJson = (text: string, indent = '  '): string => {
   // Validation only: the result is discarded, so nothing is lost to rounding.
   JSON.parse(text);
@@ -39,6 +42,7 @@ export const prettyPrintJson = (text: string, indent = '  '): string => {
   let justOpened = false;
 
   for (const char of text) {
+    if (out.length > MAX_OUTPUT_CHARS) throw new SyntaxError('Formatted JSON is too large');
     if (inString) {
       out += char;
       if (escaped) escaped = false;

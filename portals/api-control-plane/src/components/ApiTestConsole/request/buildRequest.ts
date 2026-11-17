@@ -104,10 +104,10 @@ const ARRAY_DELIMITERS: Record<string, string> = {
 
 /** Validates one parameter value; `undefined` when it is acceptable. */
 const parameterProblem = (parameter: ConsoleParameter, value: string): Problem | undefined => {
-  if (value === '') return parameter.required ? { code: 'required' } : undefined;
+  if (value.trim() === '') return parameter.required ? { code: 'required' } : undefined;
 
   if (parameter.type === 'integer' && !/^-?\d+$/.test(value)) return { code: 'integer' };
-  if (parameter.type === 'number' && !(value.trim() !== '' && Number.isFinite(Number(value)))) {
+  if (parameter.type === 'number' && !(value === value.trim() && Number.isFinite(Number(value)))) {
     return { code: 'number' };
   }
   if (parameter.type === 'boolean' && value !== 'true' && value !== 'false') {
@@ -180,9 +180,9 @@ export const buildSendRequest = ({
     // Content-Type is owned by the body editor's media-type choice.
     if (parameter.in === 'header' && parameter.name.toLowerCase() === 'content-type') return;
 
-    // Trimmed only to judge it; what is sent is what was typed.
+    // Blank is judged on the trimmed text; typed values are validated exactly as they are sent.
     const value = own(draft.params, paramKey(parameter)) ?? '';
-    const problem = parameterProblem(parameter, value.trim());
+    const problem = parameterProblem(parameter, value);
     if (problem) {
       problems[paramProblemKey(parameter)] = problem;
       return;

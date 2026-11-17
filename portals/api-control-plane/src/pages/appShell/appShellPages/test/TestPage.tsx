@@ -17,7 +17,7 @@
  */
 
 import { useCallback, useMemo, useState } from 'react';
-import { Button, Card, PageTitle, Stack } from '@wso2/oxygen-ui';
+import { Box, Button, Card, PageTitle, Stack } from '@wso2/oxygen-ui';
 import { Download, LucideBookOpenCheck, Rocket, SquareTerminal } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { useNavigate } from 'react-router-dom';
@@ -509,44 +509,35 @@ function TestConsole() {
 
         {!spec && !definitionMissing ? (
           <ErrorState title={intl.formatMessage(messages.definitionUnavailable)} />
-        ) : spec && activeView === 'console' ? (
-          // Legacy Swagger-UI console, kept in ./console but no longer shown. To bring it back,
-          // import TestConsoleSpecViewer from './console/TestConsoleSpecViewer' and render it here
-          // in place of ApiTestConsole:
-          // <Card sx={{ p: 2 }} variant="outlined">
-          //   <TestConsoleSpecViewer
-          //     baseUrl={baseUrl}
-          //     callMode={callMode}
-          //     extraHeaders={extraHeaders}
-          //     extraQueryParams={extraQueryParams}
-          //     gatewayId={selectedGateway?.id ?? ''}
-          //     onCallModeChange={setCallMode}
-          //     onRequestChange={handleConsoleRequestChange}
-          //     orgHandle={params.orgHandle ?? ''}
-          //     restApiId={restApiId ?? ''}
-          //     secretHeaderName={headerName}
-          //     spec={spec}
-          //   />
-          // </Card>
-          <ApiTestConsole
-            autoHeaders={autoHeaders}
-            autoQuery={autoQuery}
-            baseUrl={baseUrl}
-            onRequestChange={handleConsoleRequestChange}
-            routeLabel={intl.formatMessage(
-              callMode === 'direct' ? messages.routeDirect : messages.routeProxy,
-            )}
-            spec={spec}
-            transport={transport}
-          />
         ) : (
-          <CurlBuilder
-            onChange={handleBuilderChange}
-            onRegenerateSecret={testApiKey.regenerate}
-            regenerating={testApiKey.isRegenerating}
-            request={effectiveRequest}
-            spec={spec}
-          />
+          <>
+            {spec && (
+              // Kept mounted while the cURL view is shown, so the selected operation and the
+              // drafts survive a switch of view; it is only hidden.
+              <Box sx={{ display: activeView === 'console' ? 'block' : 'none' }}>
+                <ApiTestConsole
+                  autoHeaders={autoHeaders}
+                  autoQuery={autoQuery}
+                  baseUrl={baseUrl}
+                  onRequestChange={handleConsoleRequestChange}
+                  routeLabel={intl.formatMessage(
+                    callMode === 'direct' ? messages.routeDirect : messages.routeProxy,
+                  )}
+                  spec={spec}
+                  transport={transport}
+                />
+              </Box>
+            )}
+            {(!spec || activeView !== 'console') && (
+              <CurlBuilder
+                onChange={handleBuilderChange}
+                onRegenerateSecret={testApiKey.regenerate}
+                regenerating={testApiKey.isRegenerating}
+                request={effectiveRequest}
+                spec={spec}
+              />
+            )}
+          </>
         )}
       </Stack>
     </>

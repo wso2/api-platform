@@ -660,10 +660,10 @@ describe('TestPage — proxy or direct', () => {
     await user.click(screen.getByRole('button', { name: /cURL view/i }));
 
     // A copied command leaves from the user's own terminal, so neither mode
-    // applies to it — and the switch lives inside the console view, which is
-    // not rendered here at all.
+    // applies to it — and the switch lives inside the console view, which stays
+    // mounted (to keep its drafts) but is hidden.
     await waitFor(() => expect(curlText()).toContain('curl -X'));
-    expect(screen.queryByTestId('spec-viewer')).toBeNull();
+    expect(screen.getByTestId('spec-viewer')).not.toBeVisible();
     expect(screen.queryByRole('button', { name: /Through proxy/i })).toBeNull();
     expectNoRenderLoop();
   });

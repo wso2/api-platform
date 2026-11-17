@@ -96,12 +96,19 @@ export const curlSummary = (
   method: request.method,
 });
 
+/** curl's `-F` reads `,` and `;` as separators, so such a filename goes in double quotes. */
+const formFileRef = (filename: string): string =>
+  /[,;"\\]/.test(filename)
+    ? `@"${filename.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+    : `@${filename}`;
+
 /**
  * Returns curl body flags, preserving raw bodies and encoding form fields
  * safely. Multipart fields use `-F` so curl generates the boundary.
  */
 const bodyFlags = (request: ConsoleRequest, options: ToCurlOptions): string[] => {
-  if (request.binaryFile) return [`--data-binary ${shellQuote(`@${request.binaryFile}`)}`];
+  // A binary upload only applies while no other body mode has been chosen.
+  if (request.binaryFile && request.bodyMode === 'none') return [`--data-binary ${shellQuote(`@${request.binaryFile}`)}`];
   if (!hasBody(request)) return [];
 
   if (request.bodyMode === 'raw') {
@@ -112,7 +119,7 @@ const bodyFlags = (request: ConsoleRequest, options: ToCurlOptions): string[] =>
   return activeRows(request.formFields).map((field) => {
     const name = field.name.trim();
     const value = displayValue(field, options);
-    if (field.file) return `-F ${shellQuote(`${name}=@${value}`)}`;
+    if (field.file) return `-F ${shellQuote(`${name}=${formFileRef(value)}`)}`;
     if (request.bodyMode === 'form-data') return `--form-string ${shellQuote(`${name}=${value}`)}`;
     // curl encodes the value of --data-urlencode but not the name.
     return `--data-urlencode ${shellQuote(`${encodeURIComponent(name)}=${value}`)}`;
