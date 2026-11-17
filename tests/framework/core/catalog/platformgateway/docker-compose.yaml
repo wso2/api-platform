@@ -69,6 +69,7 @@ services:
     volumes:
       - ./config.toml:/etc/policy-engine/config.toml:ro
       - ./testbench-ca/jev.pem:/etc/testbench-ca/jev.pem:ro
+      - ./testbench-ca/oidc.pem:/etc/testbench-ca/oidc.pem:ro
       - ./llm-pricing/model_prices.json:/etc/policy-engine/llm-pricing/model_prices.json:ro
       - ./aws-credentials:/etc/aws/credentials:ro
     ports:

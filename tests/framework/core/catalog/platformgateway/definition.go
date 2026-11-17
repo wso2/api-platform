@@ -204,5 +204,8 @@ func gatewayGeneratedFiles() map[string][]byte {
 		// The testbench Jev service's certificate, which the runtime trusts through
 		// SSL_CERT_DIR so a Jev policy can call the mock over HTTPS.
 		"testbench-ca/jev.pem": shared.JevTLS().CertPEM,
+		// The testbench OIDC identity provider's certificate, trusted the same way so a policy
+		// can fetch the provider's keys over HTTPS without disabling certificate verification.
+		"testbench-ca/oidc.pem": shared.IdentityProviderTLS().CertPEM,
 	}
 }
