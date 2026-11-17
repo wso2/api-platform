@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"sync"
@@ -60,6 +61,7 @@ type SubscriptionPlanRepo struct {
 	schemaMu      sync.Mutex
 	planSchema    planSchema
 	schemaUpdated bool
+	schemaWarned  bool
 }
 
 // NewSubscriptionPlanRepo creates a new subscription plan repository
@@ -90,6 +92,13 @@ func (r *SubscriptionPlanRepo) schema() (planSchema, error) {
 	}
 	r.planSchema = found
 	r.schemaUpdated = found.conditions && found.description
+	if !r.schemaUpdated && !r.schemaWarned {
+		// Once per process: until the upgrade script runs, only request limits and no description are saved.
+		r.schemaWarned = true
+		slog.Warn("Database not upgraded for subscription plan conditions; using legacy request limits",
+			"conditionsTable", found.conditions, "descriptionColumn", found.description,
+			"legacyLimitsTable", found.legacyLimits)
+	}
 	return found, nil
 }
 

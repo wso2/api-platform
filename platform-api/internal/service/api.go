@@ -180,6 +180,7 @@ func (s *APIService) CreateAPI(req *api.CreateRESTAPIRequest, orgUUID, createdBy
 
 	// Get the generated UUID from the model (set by CreateAPI)
 	apiUUID := apiModel.ID
+	logAttachedPlanChanges(s.slogger, orgUUID, apiUUID, "rest", createdBy, nil, apiModel.Configuration.SubscriptionPlans)
 
 	s.refreshCustomPolicyUsages(apiUUID, orgUUID, apiModel)
 
@@ -475,6 +476,8 @@ func (s *APIService) UpdateAPI(apiUUID string, req *api.RESTAPI, orgUUID, update
 	if err := s.apiRepo.UpdateAPI(updatedAPIModel); err != nil {
 		return nil, err
 	}
+	logAttachedPlanChanges(s.slogger, orgUUID, apiUUID, "rest", updatedBy,
+		existingAPIModel.Configuration.SubscriptionPlans, updatedAPIModel.Configuration.SubscriptionPlans)
 
 	// Best-effort: delete secrets rotated away from on Main/Sandbox auth. Must
 	// run after the update above persists the new reference, so the in-use

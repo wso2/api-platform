@@ -19,7 +19,10 @@
 package service
 
 import (
+	"bytes"
 	"database/sql"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -149,5 +152,24 @@ func TestGraphQLCreate_RefusesUnknownAndInactivePlans(t *testing.T) {
 	}
 	if got := repo.created.Configuration.SubscriptionPlans; len(got) != 1 || got[0].DisplayName != "Gold" {
 		t.Errorf("stored plans = %+v", got)
+	}
+}
+
+func TestLogAttachedPlanChanges_LogsOnlyWhatChanged(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	before := model.AttachedPlansFromHandles([]string{"gold", "silver"})
+
+	logAttachedPlanChanges(logger, "org", "api-1", "rest", "alice", before, model.AttachedPlansFromHandles([]string{"silver", "gold"}))
+	if buf.Len() != 0 {
+		t.Fatalf("expected no log when the plans are the same, got %q", buf.String())
+	}
+
+	logAttachedPlanChanges(logger, "org", "api-1", "rest", "alice", before, model.AttachedPlansFromHandles([]string{"silver", "bronze"}))
+	out := buf.String()
+	for _, want := range []string{"level=INFO", "Subscription plans attached to the API changed", "apiId=api-1", "attached=[bronze]", "detached=[gold]", "actor=alice"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log %q is missing %q", out, want)
+		}
 	}
 }

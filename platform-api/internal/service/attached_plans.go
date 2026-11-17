@@ -19,6 +19,8 @@
 package service
 
 import (
+	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/wso2/api-platform/platform-api/api"
@@ -49,6 +51,31 @@ func stampAttachedPlans(planRepo repository.SubscriptionPlanRepository, plans mo
 		stamped = append(stamped, out)
 	}
 	return stamped, nil
+}
+
+// logAttachedPlanChanges records the plans attached to or detached from an API by a save, when any
+// were: attaching or detaching a plan changes what developers can subscribe to and are billed on.
+func logAttachedPlanChanges(slogger *slog.Logger, orgUUID, apiID, apiKind, actor string, before, after model.AttachedPlans) {
+	if slogger == nil {
+		return
+	}
+	was, now := before.Handles(), after.Handles()
+	var attached, detached []string
+	for _, h := range now {
+		if !slices.Contains(was, h) {
+			attached = append(attached, h)
+		}
+	}
+	for _, h := range was {
+		if !slices.Contains(now, h) {
+			detached = append(detached, h)
+		}
+	}
+	if len(attached) == 0 && len(detached) == 0 {
+		return
+	}
+	slogger.Info("Subscription plans attached to the API changed",
+		"orgId", orgUUID, "apiId", apiID, "apiKind", apiKind, "attached", attached, "detached", detached, "actor", actor)
 }
 
 // annotatePlanRefs fills in each reference's displayName and sourceStatus against the catalog, by the

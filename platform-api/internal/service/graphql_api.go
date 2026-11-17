@@ -325,6 +325,8 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 		return nil, fmt.Errorf("failed to create GraphQL API: %w", err)
 	}
 
+	logAttachedPlanChanges(s.slogger, orgUUID, m.ID, "graphql", createdBy, nil, subscriptionPlans)
+
 	if s.auditRepo != nil {
 		_ = s.auditRepo.Record("CREATE", m.ID, "graphql_api", orgUUID, createdBy)
 	}
@@ -780,6 +782,7 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 	existing.Version = req.Version
 	existing.Description = utils.ValueOrEmpty(req.Description)
 	existing.UpdatedBy = updatedBy
+	previousPlans := existing.Configuration.SubscriptionPlans
 	existing.Configuration = model.GraphQLAPIConfig{
 		Name:              req.DisplayName,
 		Version:           req.Version,
@@ -798,6 +801,7 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 		}
 		return nil, fmt.Errorf("failed to update GraphQL API: %w", err)
 	}
+	logAttachedPlanChanges(s.slogger, orgUUID, existing.ID, "graphql", updatedBy, previousPlans, subscriptionPlans)
 
 	if s.auditRepo != nil {
 		_ = s.auditRepo.Record("UPDATE", existing.ID, "graphql_api", orgUUID, updatedBy)

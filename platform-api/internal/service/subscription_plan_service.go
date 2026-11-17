@@ -529,6 +529,9 @@ func portalConditions(current []model.SubscriptionPlanCondition, conditions *[]m
 		var params model.ConditionLimits
 		if err := json.Unmarshal(c.Params, &params); err == nil {
 			stopOnQuotaReach = params.OnExceed != model.ConditionOnExceedAllow
+		} else {
+			slog.Warn("Stored request-count condition params are unreadable; the synced limit rejects requests over it",
+				"condition", c.ID, "error", err)
 		}
 	}
 	requestLimit := model.NewRequestCountCondition(requestWindows, stopOnQuotaReach)
