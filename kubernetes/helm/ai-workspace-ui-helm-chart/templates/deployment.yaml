@@ -134,14 +134,19 @@ spec:
               containerPort: {{ $cfg.server.http.port }}
               protocol: TCP
             {{- end }}
+          {{- /* A probe set to null is left out. */}}
+          {{- with $deployment.livenessProbe }}
           livenessProbe:
-            {{- include "apip.aiWorkspace.probe" (dict "probe" $deployment.livenessProbe "plainHttp" (not $https)) | nindent 12 }}
+            {{- include "apip.aiWorkspace.probe" (dict "probe" . "plainHttp" (not $https) "httpListener" $httpEnabled) | nindent 12 }}
+          {{- end }}
           {{- with $deployment.startupProbe }}
           startupProbe:
-            {{- include "apip.aiWorkspace.probe" (dict "probe" . "plainHttp" (not $https)) | nindent 12 }}
+            {{- include "apip.aiWorkspace.probe" (dict "probe" . "plainHttp" (not $https) "httpListener" $httpEnabled) | nindent 12 }}
           {{- end }}
+          {{- with $deployment.readinessProbe }}
           readinessProbe:
-            {{- include "apip.aiWorkspace.probe" (dict "probe" $deployment.readinessProbe "plainHttp" (not $https)) | nindent 12 }}
+            {{- include "apip.aiWorkspace.probe" (dict "probe" . "plainHttp" (not $https) "httpListener" $httpEnabled) | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml ($deployment.resources | default dict) | nindent 12 }}
           volumeMounts:

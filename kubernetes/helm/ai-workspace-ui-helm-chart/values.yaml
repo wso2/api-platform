@@ -287,8 +287,8 @@ deployment:
   podAnnotations: {}
   podLabels: {}
   priorityClassName: ""
-  # With config.server.https.enabled=false all probes are rendered with scheme HTTP,
-  # and `port: https` becomes `port: http` (the plain-HTTP listener).
+  # With config.server.https.enabled=false, httpGet probes use scheme HTTP and a probe
+  # port named `https` (httpGet or tcpSocket) becomes `http`. Set a probe to null to drop it.
   livenessProbe:
     httpGet:
       path: /healthz

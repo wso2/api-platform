@@ -231,21 +231,38 @@ that component's secret. Fails the render when a required secret is unset.
 {{- if or (not (include "apip.aiWorkspace.httpsEnabled" .)) (dig "server" "http" "enabled" false .Values.config) }}true{{ end -}}
 {{- end -}}
 
-{{- /* Renders a probe against the listener that runs. With HTTPS off: scheme HTTP, port "https" -> "http".
-       With HTTPS on, port "http" + scheme HTTPS is a probe written when "http" named the HTTPS port: -> "https". */ -}}
+{{- /* Renders a probe against the listeners that run; a null probe renders nothing. HTTPS off: port "https" -> "http"
+       and httpGet scheme HTTP. HTTPS on: a 1.0.x port name "http" (then the HTTPS port) -> "https" for an HTTPS
+       httpGet probe, or for a tcpSocket probe while no plain-HTTP listener runs. */ -}}
 {{- define "apip.aiWorkspace.probe" -}}
+{{- if .probe -}}
 {{- $probe := deepCopy .probe -}}
 {{- $get := $probe.httpGet -}}
-{{- if $get -}}
-{{- $port := toString $get.port -}}
+{{- $tcp := $probe.tcpSocket -}}
 {{- if .plainHttp -}}
+{{- if $get -}}
 {{- $_ := set $get "scheme" "HTTP" -}}
-{{- if eq $port "https" -}}
+{{- if eq (toString $get.port) "https" -}}
 {{- $_ := set $get "port" "http" -}}
 {{- end -}}
-{{- else if and (eq $port "http") (eq (upper (toString $get.scheme)) "HTTPS") -}}
+{{- end -}}
+{{- if $tcp -}}
+{{- if eq (toString $tcp.port) "https" -}}
+{{- $_ := set $tcp "port" "http" -}}
+{{- end -}}
+{{- end -}}
+{{- else -}}
+{{- if $get -}}
+{{- if and (eq (toString $get.port) "http") (eq (upper (toString $get.scheme)) "HTTPS") -}}
 {{- $_ := set $get "port" "https" -}}
 {{- end -}}
 {{- end -}}
+{{- if $tcp -}}
+{{- if and (eq (toString $tcp.port) "http") (not .httpListener) -}}
+{{- $_ := set $tcp "port" "https" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- toYaml $probe -}}
+{{- end -}}
 {{- end -}}

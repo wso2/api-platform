@@ -3,7 +3,6 @@
 {{- $ap := index .Values "api-portal-ui" -}}
 {{- $apScheme := ternary "http" "https" (eq (dig "tls" "certificateProvider" "cert-manager" (default (dict) $ap)) "none") -}}
 {{- $aiwHttps := dig "config" "server" "https" "enabled" true (default (dict) $aiw) -}}
-{{- $aiwScheme := ternary "https" "http" $aiwHttps -}}
 {{- $aiwPort := ternary (dig "service" "port" 9643 (default (dict) $aiw)) (dig "service" "httpPort" 9080 (default (dict) $aiw)) $aiwHttps -}}
 Thank you for installing {{ .Chart.Name }} ({{ .Chart.Version }})!
 
@@ -43,21 +42,23 @@ AI Workspace UI:
   - Platform API URL: {{ default (include "apip.platformApi.internalURL" .) (dig "config" "controlPlane" "url" "" $aiw) }}
 
 To access it:
-  {{- if eq (dig "service" "type" "LoadBalancer" $aiw) "NodePort" }}
+  {{- if not $aiwHttps }}
+    The UI serves plain HTTP on port {{ $aiwPort }} (ai-workspace-ui.config.server.https.enabled=false).
+    Open it through the Route or Ingress that terminates TLS, not through the Service
+    address: the session cookies are Secure, and a login over plain HTTP would cross the
+    network unencrypted. For a quick check from this machine only:
+    $ kubectl port-forward svc/{{ include "apip.aiWorkspace.fullname" . }} {{ $aiwPort }}:{{ $aiwPort }} -n {{ .Release.Namespace }}
+    Then visit: http://localhost:{{ $aiwPort }}
+  {{- else if eq (dig "service" "type" "LoadBalancer" $aiw) "NodePort" }}
     $ export NODE_PORT=$(kubectl get svc {{ include "apip.aiWorkspace.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.spec.ports[0].nodePort}')
     $ export NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
-    $ echo {{ $aiwScheme }}://$NODE_IP:$NODE_PORT
+    $ echo https://$NODE_IP:$NODE_PORT
   {{- else if eq (dig "service" "type" "LoadBalancer" $aiw) "LoadBalancer" }}
     $ kubectl get svc {{ include "apip.aiWorkspace.fullname" . }} -n {{ .Release.Namespace }} -w   # wait for EXTERNAL-IP
-    $ echo {{ $aiwScheme }}://<EXTERNAL-IP>:{{ $aiwPort }}
+    $ echo https://<EXTERNAL-IP>:{{ $aiwPort }}
   {{- else }}
     $ kubectl port-forward svc/{{ include "apip.aiWorkspace.fullname" . }} {{ $aiwPort }}:{{ $aiwPort }} -n {{ .Release.Namespace }}
-    Then visit: {{ $aiwScheme }}://localhost:{{ $aiwPort }}
-  {{- end }}
-  {{- if not $aiwHttps }}
-
-  The UI serves plain HTTP (ai-workspace-ui.config.server.https.enabled=false). Users
-  must reach it through the proxy that terminates TLS: the session cookies are Secure.
+    Then visit: https://localhost:{{ $aiwPort }}
   {{- end }}
 {{- if eq (dig "config" "auth" "mode" "basic" $aiw) "basic" }}
 

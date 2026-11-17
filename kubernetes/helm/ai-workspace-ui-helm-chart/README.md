@@ -205,14 +205,18 @@ helm upgrade ai-workspace-ui ./ai-workspace-ui-helm-chart -n ai-workspace -f cus
 
 Earlier releases named the HTTPS port `http`. It is now `https`, and `http` names the
 plain-HTTP port (9080), which exists only while that listener is on. The port numbers are
-unchanged. Before upgrading, update anything you created yourself that refers to the port by
-name:
+unchanged, so before upgrading, switch anything you created yourself that refers to the port
+by the name `http` to the number `9643`. The number works with both releases. The name
+`https` doesn't exist until the upgrade, and the name `http` stops reaching HTTPS once it is
+done. After the upgrade you can switch to the name `https`.
 
-- an Ingress with `backend.service.port.name: http`: use `https`, or `number: 9643`;
-- a Route, `ServiceMonitor` or `NetworkPolicy` with `targetPort: http`: use `https`.
+- an Ingress backend: `service.port.number: 9643` instead of `service.port.name: http`;
+- a Route: `spec.port.targetPort: 9643` instead of `http`;
+- a `NetworkPolicy` rule: `port: 9643` instead of `http`.
 
-The chart's own Route and probes are updated for you. A probe override still written as
-`port: http` with `scheme: HTTPS` is rendered against `https`.
+The chart's own Route and probes are updated for you. A probe override still written for the
+old names is rendered against `https`: an HTTPS `httpGet` probe on `port: http`, or a
+`tcpSocket` probe on `port: http` while no plain-HTTP listener runs.
 
 ## Verifying the Installation
 
