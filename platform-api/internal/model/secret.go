@@ -68,3 +68,9 @@ type SecretReference struct {
 	Handle string `json:"handle"`
 	Name   string `json:"name"`
 }
+
+// SecretUpdatedEvent is the payload of the "secret.updated" gateway event. It
+// carries the handle only; the gateway fetches the value itself.
+type SecretUpdatedEvent struct {
+	Handle string `json:"handle"`
+}

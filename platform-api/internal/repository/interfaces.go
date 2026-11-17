@@ -550,6 +550,8 @@ type SecretRepository interface {
 	Update(s *model.Secret) error
 	FindRefsAndSoftDelete(orgID, handle, updatedBy string) ([]model.SecretReference, error)
 	FindRefs(orgID, handle string) ([]model.SecretReference, error)
+	// FindDeployedGatewayIDs returns the gateways with a deployed artifact referencing handle.
+	FindDeployedGatewayIDs(orgID, handle string) ([]string, error)
 	Exists(orgID, handle string) (bool, error)
 }
 

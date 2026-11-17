@@ -19,12 +19,21 @@
 package controlplane
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/common/eventhub"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
@@ -53,6 +62,14 @@ func (m *mockSecretSyncer) UpsertFromPlatform(handle, _, plaintext string) error
 	}
 	m.upserted[handle] = plaintext
 	return nil
+}
+
+func (m *mockSecretSyncer) Get(handle, _ string) (*models.Secret, error) {
+	v, ok := m.upserted[handle]
+	if !ok {
+		return nil, storage.ErrNotFound
+	}
+	return &models.Secret{Handle: handle, DisplayName: handle, Value: v}, nil
 }
 
 // stubClient builds the minimal Client needed for syncSecrets* methods.
@@ -498,6 +515,133 @@ func TestSecretHashCache_IsolatedPerHandle(t *testing.T) {
 	vb2, _ := c.secretHashCache.Load("b")
 	assert.Equal(t, "hash-a-v2", va2)
 	assert.Equal(t, "hash-b", vb2)
+}
+
+// ---------------------------------------------------------------------------
+// Rotation: secret.updated event, deploy-path refetch, reconnect re-render
+// ---------------------------------------------------------------------------
+
+// rotationHarness wires a Client to a fake Platform API serving the "rot"
+// secret, and to stored artifacts: one deployed artifact using "rot", one
+// using another secret, and one undeployed artifact using "rot".
+type rotationHarness struct {
+	client *Client
+	syncer *mockSecretSyncer
+	hub    *mockControlPlaneEventHub
+	value  string // the Platform API's current value of "rot"
+}
+
+func newRotationHarness(t *testing.T) *rotationHarness {
+	t.Helper()
+	h := &rotationHarness{syncer: newMockSecretSyncer(), hub: &mockControlPlaneEventHub{}, value: "value-TWO"}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/secrets/rot/value":
+			_ = json.NewEncoder(w).Encode(map[string]string{"value": h.value})
+		case "/secrets":
+			_, _ = w.Write([]byte(`{"count":1,"list":[{"handle":"rot","name":"rot","hash":"hash-2","status":"ACTIVE"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	source := func(handle string) any {
+		return map[string]any{"kind": "RestApi", "spec": map[string]any{"value": `{{ secret "` + handle + `" }}`}}
+	}
+	db := newMockStorageForDeletion()
+	db.configs["uses-rot"] = &models.StoredConfig{UUID: "uses-rot", Kind: models.KindRestApi, DesiredState: models.StateDeployed, SourceConfiguration: source("rot")}
+	db.configs["uses-other"] = &models.StoredConfig{UUID: "uses-other", Kind: models.KindRestApi, DesiredState: models.StateDeployed, SourceConfiguration: source("other")}
+	db.configs["undeployed"] = &models.StoredConfig{UUID: "undeployed", Kind: models.KindRestApi, DesiredState: models.StateUndeployed, SourceConfiguration: source("rot")}
+
+	h.syncer.upserted["rot"] = "value-ONE"
+	h.client = stubClient(h.syncer)
+	h.client.db = db
+	h.client.eventHub = h.hub
+	h.client.gatewayID = "test-gateway"
+	h.client.ctx = context.Background()
+	h.client.apiUtilsService = utils.NewAPIUtilsService(utils.PlatformAPIConfig{BaseURL: srv.URL, Token: "t"}, srv.Client(), slog.Default())
+	return h
+}
+
+// rerendered returns the artifact ids that got a replica-sync UPDATE event.
+func (h *rotationHarness) rerendered() []string {
+	var ids []string
+	for _, e := range h.hub.publishedEvents {
+		if e.event.EventType == eventhub.EventTypeAPI && e.event.Action == "UPDATE" {
+			ids = append(ids, e.event.EntityID)
+		}
+	}
+	return ids
+}
+
+func secretUpdatedMessage(handle string) []byte {
+	return []byte(`{"type":"secret.updated","correlationId":"corr-1","payload":{"handle":"` + handle + `"}}`)
+}
+
+// A secret.updated event stores the new value and re-renders only the deployed
+// artifact that uses the secret; a repeat of the event changes nothing.
+func TestHandleSecretUpdatedEvent_RefreshesValueAndRerendersConsumers(t *testing.T) {
+	h := newRotationHarness(t)
+
+	h.client.handleMessage(websocket.TextMessage, secretUpdatedMessage("rot"))
+
+	assert.Equal(t, "value-TWO", h.syncer.upserted["rot"])
+	assert.Equal(t, []string{"uses-rot"}, h.rerendered())
+	cached, ok := h.client.secretHashCache.Load("rot")
+	require.True(t, ok)
+	assert.Equal(t, "", cached, "hash unknown after a by-handle fetch, so the next reconnect re-checks it")
+
+	h.client.handleMessage(websocket.TextMessage, secretUpdatedMessage("rot"))
+	assert.Len(t, h.rerendered(), 1, "an unchanged value must not re-render again")
+}
+
+func TestHandleSecretUpdatedEvent_NoHandle_Ignored(t *testing.T) {
+	h := newRotationHarness(t)
+
+	h.client.handleMessage(websocket.TextMessage, []byte(`{"type":"secret.updated","payload":{}}`))
+
+	assert.Equal(t, "value-ONE", h.syncer.upserted["rot"])
+	assert.Empty(t, h.hub.publishedEvents)
+}
+
+// A deployment fetches a referenced secret even when it is already cached, so
+// it never renders a value rotated since the last sync.
+func TestSyncSecretRefsFromYAML_RefetchesCachedSecret(t *testing.T) {
+	h := newRotationHarness(t)
+	h.client.secretHashCache.Store("rot", "hash-1")
+
+	h.client.syncSecretRefsFromYAML([]byte(`value: '{{ secret "rot" }}'`), "corr-2")
+
+	assert.Equal(t, "value-TWO", h.syncer.upserted["rot"])
+	assert.Equal(t, []string{"uses-rot"}, h.rerendered())
+}
+
+// A reconnect sync that brings in a changed value re-renders the deployed
+// artifacts that use it.
+func TestSyncSecretsIncremental_ChangedValue_RerendersConsumers(t *testing.T) {
+	h := newRotationHarness(t)
+	h.client.secretHashCache.Store("rot", "hash-1")
+
+	h.client.syncSecretsIncremental()
+
+	assert.Equal(t, "value-TWO", h.syncer.upserted["rot"])
+	assert.Equal(t, []string{"uses-rot"}, h.rerendered())
+	cached, _ := h.client.secretHashCache.Load("rot")
+	assert.Equal(t, "hash-2", cached)
+}
+
+// A reconnect sync that finds a new hash but the same value (the event already
+// applied it) does not re-render.
+func TestSyncSecretsIncremental_SameValue_NoRerender(t *testing.T) {
+	h := newRotationHarness(t)
+	h.syncer.upserted["rot"] = "value-TWO"
+	h.client.secretHashCache.Store("rot", "")
+
+	h.client.syncSecretsIncremental()
+
+	assert.Empty(t, h.rerendered())
 }
 
 // Stub to make compilation succeed — the real time.Time argument is used by

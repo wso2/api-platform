@@ -90,7 +90,7 @@ func NewEnvRefusedUndeployer(db ConfigUpdater, publisher EventPublisher, gateway
 			return fmt.Errorf("failed to persist undeploy of %s %q: %w", cfg.Kind, cfg.Handle, err)
 		}
 
-		eventType, ok := replicaSyncEventType(cfg.Kind)
+		eventType, ok := ReplicaSyncEventType(cfg.Kind)
 		if publisher == nil || !ok {
 			return nil
 		}
@@ -113,8 +113,8 @@ func NewEnvRefusedUndeployer(db ConfigUpdater, publisher EventPublisher, gateway
 	}
 }
 
-// replicaSyncEventType maps an artifact kind to the event type replicas listen on.
-func replicaSyncEventType(kind string) (eventhub.EventType, bool) {
+// ReplicaSyncEventType maps an artifact kind to the event type replicas listen on.
+func ReplicaSyncEventType(kind string) (eventhub.EventType, bool) {
 	switch kind {
 	case models.KindRestApi, models.KindGraphQLApi:
 		return eventhub.EventTypeAPI, true
