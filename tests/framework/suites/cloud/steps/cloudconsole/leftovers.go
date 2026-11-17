@@ -50,8 +50,7 @@ const finalizerDeleteTimeout = 90 * time.Second
 const finalizerCollectionBudget = 2 * time.Minute
 
 // finalizerCollections are the organisation-wide collections the finalizer reads, in deletion
-// order: a secret goes after the REST APIs that reference it, a gateway before the environment it
-// runs in, and a project before the pipeline it is bound to. Managed API Portals are not here: the
+// order: a secret goes after the REST APIs that reference it. Managed API Portals are not here: the
 // finalizer empties the portals the run published to and never deletes one, see portalSweeps.
 // idFields name the list-item fields that identify a resource in its own route. REST APIs are
 // listed per project, so projectScopedSweep reads them and runs ahead of these: each goes before
@@ -59,7 +58,6 @@ const finalizerCollectionBudget = 2 * time.Minute
 var finalizerCollections = []struct {
 	collection string
 	idFields   []string
-	wait       bool
 	// budget bounds the collection's time; zero selects finalizerCollectionBudget.
 	budget time.Duration
 }{
@@ -68,8 +66,6 @@ var finalizerCollections = []struct {
 	{collection: managedGatewaysCollection, idFields: []string{"id"}},
 	// Each project is retried for finalizerDeleteTimeout, so the budget holds several of them.
 	{collection: "/projects", idFields: []string{"id"}, budget: projectDeleteTimeout},
-	{collection: "/pipelines", idFields: []string{"id", "name"}, wait: true},
-	{collection: environmentsCollection, idFields: []string{"name"}, wait: true},
 }
 
 // nameFields are the list-item fields a generated name can appear in.
@@ -197,7 +193,7 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 				if entry.collection == "/projects" {
 					return deleteProjectThroughCloudAPI(ctx, client, base, token, id, finalizerDeleteTimeout)
 				}
-				return deleteLeftover(ctx, client, base, token, entry.collection, id, entry.wait)
+				return deleteLeftover(ctx, client, base, token, entry.collection, id)
 			},
 		})
 	}
@@ -219,7 +215,7 @@ func projectScopedSweep(client *httpx.Client, base, token string, owns func(name
 			return leftoversOf(items, []string{"id"}), err
 		},
 		Delete: func(ctx context.Context, id string) error {
-			return deleteLeftover(ctx, client, base, token, collection, id, false)
+			return deleteLeftover(ctx, client, base, token, collection, id)
 		},
 	}
 }
@@ -316,7 +312,7 @@ func portalSweeps(client *httpx.Client, base, token string, owns func(names []st
 				return leftoversOf(built, []string{"id"}), err
 			},
 			Delete: func(ctx context.Context, id string) error {
-				return deleteLeftover(ctx, client, base, token, managedPortalsCollection, id, false)
+				return deleteLeftover(ctx, client, base, token, managedPortalsCollection, id)
 			},
 		},
 	}
@@ -509,11 +505,11 @@ func listPaging(resp *httpx.Response) *pageInfo {
 }
 
 // deleteLeftover deletes one resource, retrying a refusal for a while: a gateway that is still
-// being built or an environment that still holds one is refused until it settles.
-func deleteLeftover(ctx context.Context, client *httpx.Client, base, token, collection, id string, wait bool) error {
+// being built is refused until it settles.
+func deleteLeftover(ctx context.Context, client *httpx.Client, base, token, collection, id string) error {
 	return retry.Await(ctx, retry.Options{Timeout: finalizerDeleteTimeout, Interval: 5 * time.Second},
 		func(ctx context.Context) (bool, error) {
-			if err := deleteCloudResource(ctx, client, base, token, collection, id, wait); err != nil {
+			if err := deleteCloudResource(ctx, client, base, token, collection, id); err != nil {
 				return false, retry.Transient(err)
 			}
 			return true, nil
