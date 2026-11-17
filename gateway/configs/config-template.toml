@@ -831,6 +831,12 @@ client_key_file = ""
 # (skipTlsVerify, tlsSkipVerify, tlsInsecureSkipVerify) are ignored while this shared client is
 # in use, so this is the one place the setting is made.
 insecure_skip_verify = false
+# Skips only the check that a server's certificate names the host being dialed. The certificate
+# chain, validity dates and server-auth usage are still verified against root_ca_file (or the
+# system roots), so a certificate no trusted CA signed is still refused. Off by default; for a
+# private CA whose certificates do not carry the names policies dial. Rejected at startup if set
+# together with insecure_skip_verify, which already skips every check.
+insecure_skip_hostname_verify = false
 
 [policy_engine.http_client.proxy]
 # "none" (default) | "environment" (HTTP_PROXY/HTTPS_PROXY/NO_PROXY) | "url"

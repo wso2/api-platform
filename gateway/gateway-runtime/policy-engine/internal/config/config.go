@@ -729,6 +729,12 @@ type HTTPClientTLSConfig struct {
 	// root_ca_file to trust a specific private CA; this is for development and test
 	// environments.
 	InsecureSkipVerify bool `koanf:"insecure_skip_verify"`
+	// InsecureSkipHostnameVerify skips only the check that a server's certificate names the
+	// host being dialed. The certificate chain, validity dates and server-auth usage are
+	// still verified against root_ca_file (or the system roots). Off by default; it suits a
+	// private CA whose certificates do not carry the names the policies dial. Setting it
+	// together with insecure_skip_verify is rejected, since that already skips every check.
+	InsecureSkipHostnameVerify bool `koanf:"insecure_skip_hostname_verify"`
 }
 
 // HTTPClientProxyConfig mirrors the TOML-expressible subset of httpclient.ProxyConfig.
