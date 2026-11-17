@@ -32,6 +32,7 @@ import { PageErrorFallback, SidebarErrorFallback } from '../../components/errors
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
 import { useAuth } from '../../contexts/auth/AuthProvider';
+import { useTrackFeatureByName } from '../../featureUsage';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle';
 import { useResourceLimits } from '../../hooks/useResourceLimits';
 import { usePageTitle } from '../../navigation/usePageTitle';
@@ -56,6 +57,7 @@ export default function AppLayout() {
   const { params } = useConsoleScope();
   const { notify } = useNotifications();
   const { hasScope } = usePermissions();
+  const trackFeature = useTrackFeatureByName();
 
   // Every page inside the shell gets its tab title from here, so a new route
   // is named by its sidebar entry without touching the page itself.
@@ -148,6 +150,9 @@ export default function AppLayout() {
     // so a cloud control disables under the conditions a built-in one does.
     permissions: { canAny: (scopes) => scopes.some(hasScope) },
     user: auth.user ? { email: auth.user.email, name: auth.user.name } : undefined,
+    // A cloud page that replaces a built-in one (Gateways, Deploy) reports the
+    // same features, so they reach Moesif whichever page the deployment shows.
+    trackFeature,
   };
 
   return (

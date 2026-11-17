@@ -38,6 +38,7 @@ const port: CloudHostPort = {
   resourceLimits: NO_RESOURCE_LIMITS,
   resources: { invalidate: () => {} },
   permissions: { canAny: () => true },
+  trackFeature: () => undefined,
 };
 
 const headerEntry: ApiControlPlaneHeaderAction = {
