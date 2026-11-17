@@ -137,5 +137,8 @@ func (r *Redis) Sync(ctx context.Context, source, reportID string, adds []counte
 	return totals, nil
 }
 
+// Ping checks Redis answers.
+func (r *Redis) Ping(ctx context.Context) error { return r.client.Ping(ctx).Err() }
+
 // Close closes the connection.
 func (r *Redis) Close() error { return r.client.Close() }

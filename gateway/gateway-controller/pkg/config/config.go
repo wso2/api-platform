@@ -271,6 +271,19 @@ type CountersRedisConfig struct {
 	KeyPrefix   string        `koanf:"key_prefix"`
 	TLS         bool          `koanf:"tls"`
 	DialTimeout time.Duration `koanf:"dial_timeout"`
+	// Retry is the reconnect while Redis cannot be reached; counting goes on in memory.
+	Retry CountersRedisRetryConfig `koanf:"retry"`
+}
+
+// CountersRedisRetryConfig controls reconnecting to Redis after it cannot be reached, at
+// start or later. Meanwhile the counters are kept in this controller's memory, from the
+// last totals Redis returned. The wait before each attempt starts at InitialDuration and is
+// multiplied by ProgressionFactor after every attempt, up to MaxDuration; attempts go on
+// until Redis is back.
+type CountersRedisRetryConfig struct {
+	InitialDuration   time.Duration `koanf:"initial_duration"`   // Wait before the first attempt (default: 1s)
+	ProgressionFactor float64       `koanf:"progression_factor"` // Factor the wait is multiplied by after each attempt; 1 = constant (default: 2)
+	MaxDuration       time.Duration `koanf:"max_duration"`       // Longest wait between attempts (default: 30s)
 }
 
 // MetricsConfig holds Prometheus metrics server configuration
@@ -1691,6 +1704,11 @@ func defaultConfig() *Config {
 				Address:     "localhost:6379",
 				KeyPrefix:   "apip:counters:",
 				DialTimeout: 5 * time.Second,
+				Retry: CountersRedisRetryConfig{
+					InitialDuration:   1 * time.Second,
+					ProgressionFactor: 2,
+					MaxDuration:       30 * time.Second,
+				},
 			},
 		},
 		Analytics: AnalyticsConfig{
@@ -3151,6 +3169,19 @@ func (c CountersConfig) validate() error {
 	}
 	if c.Redis.Enabled && strings.TrimSpace(c.Redis.Address) == "" {
 		return fmt.Errorf("counters.redis.address is required when counters.redis.enabled is true")
+	}
+	if !c.Redis.Enabled {
+		return nil
+	}
+	r := c.Redis.Retry
+	if r.InitialDuration <= 0 {
+		return fmt.Errorf("counters.redis.retry.initial_duration must be positive, got: %s", r.InitialDuration)
+	}
+	if r.ProgressionFactor < 1 {
+		return fmt.Errorf("counters.redis.retry.progression_factor must be at least 1, got: %g", r.ProgressionFactor)
+	}
+	if r.MaxDuration < r.InitialDuration {
+		return fmt.Errorf("counters.redis.retry.max_duration (%s) must be at least counters.redis.retry.initial_duration (%s)", r.MaxDuration, r.InitialDuration)
 	}
 	return nil
 }

@@ -646,11 +646,7 @@ func main() {
 		serverOpts = append(serverOpts, policyxds.WithMTLS(policyXDSTLSConfig, cfg.Controller.PolicyServer.TLS.AllowedClientIdentities))
 	}
 	// The shared counter store the policy engines report to (budgets count spend in it).
-	counterStore, err := newCounterStore(cfg.Counters, log)
-	if err != nil {
-		log.Error("Refusing to start: the counter store is not reachable", slog.Any("error", err))
-		os.Exit(1)
-	}
+	counterStore := newCounterStore(cfg.Counters, log)
 	defer func() { _ = counterStore.Close() }()
 	serverOpts = append(serverOpts, policyxds.WithCounterStore(counterStore))
 	// Budget spend and AI cost stats are reported to the control plane only when on.
@@ -1327,16 +1323,13 @@ func deprecatedManagementPathMiddleware(newBasePath string) api.MiddlewareFunc {
 }
 
 // newCounterStore returns the Redis counter store when it is enabled, and otherwise an
-// in-memory one shared only by this controller's policy engines.
-func newCounterStore(cfg config.CountersConfig, log *slog.Logger) (counters.Store, error) {
+// in-memory one shared only by this controller's policy engines. While Redis cannot be
+// reached, at start or later, the Redis store counts in memory and reconnects.
+func newCounterStore(cfg config.CountersConfig, log *slog.Logger) counters.Store {
 	if !cfg.Redis.Enabled {
 		log.Info("Counters are kept in memory: shared by this controller's policy engines only and lost on restart")
-		return counters.NewMemory(cfg.Retention), nil
-	}
-	store, err := counters.NewRedis(cfg.Redis, cfg.Retention)
-	if err != nil {
-		return nil, err
+		return counters.NewMemory(cfg.Retention)
 	}
 	log.Info("Counters are kept in Redis", slog.String("address", cfg.Redis.Address))
-	return store, nil
+	return counters.NewFailover(cfg.Redis, cfg.Retention, log)
 }

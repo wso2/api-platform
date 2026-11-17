@@ -3138,6 +3138,33 @@ func TestLoadConfig_ShippedRouterHealthSectionIsValid(t *testing.T) {
 	assert.Equal(t, ClientList{"127.0.0.1", "::1"}, cfg.Router.Health.AllowedClients)
 }
 
+var defaultRedisRetry = CountersRedisRetryConfig{InitialDuration: time.Second, ProgressionFactor: 2, MaxDuration: 30 * time.Second}
+
+// With Redis enabled, the reconnect needs a positive first wait, a factor of at least 1
+// and a longest wait no shorter than the first.
+func TestCountersConfigRedisRetry(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		retry CountersRedisRetryConfig
+		field string
+	}{
+		{"defaults", defaultRedisRetry, ""},
+		{"constant wait", CountersRedisRetryConfig{InitialDuration: 5 * time.Second, ProgressionFactor: 1, MaxDuration: 5 * time.Second}, ""},
+		{"no first wait", CountersRedisRetryConfig{ProgressionFactor: 2, MaxDuration: time.Minute}, "counters.redis.retry.initial_duration"},
+		{"shrinking wait", CountersRedisRetryConfig{InitialDuration: time.Second, ProgressionFactor: 0.5, MaxDuration: time.Minute}, "counters.redis.retry.progression_factor"},
+		{"longest under first", CountersRedisRetryConfig{InitialDuration: time.Minute, ProgressionFactor: 2, MaxDuration: time.Second}, "counters.redis.retry.max_duration"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := CountersConfig{Redis: CountersRedisConfig{Enabled: true, Address: "redis:6379", Retry: tc.retry}}.validate()
+			if tc.field == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.ErrorContains(t, err, tc.field)
+			}
+		})
+	}
+}
+
 func TestCountersConfigRetention(t *testing.T) {
 	for _, tc := range []struct {
 		retention time.Duration
@@ -3185,6 +3212,7 @@ address = "redis:6379"
 	assert.True(t, cfg.AICostStats.Enabled)
 	assert.Equal(t, 48*time.Hour, cfg.Counters.Retention)
 	assert.True(t, cfg.Counters.Redis.Enabled)
+	assert.Equal(t, defaultRedisRetry, cfg.Counters.Redis.Retry, "the reconnect defaults apply when the file leaves them out")
 	assert.Equal(t, "redis:6379", cfg.Counters.Redis.Address)
 	assert.Equal(t, "apip:counters:", cfg.Counters.Redis.KeyPrefix, "defaults kept")
 

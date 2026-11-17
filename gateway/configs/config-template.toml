@@ -1053,6 +1053,19 @@ key_prefix = "apip:counters:"
 tls = false
 dial_timeout = "5s"
 
+# Reconnect while Redis cannot be reached, at start or later. Meanwhile the counters are
+# kept in the gateway-controller's memory, from the last totals Redis returned, and what
+# was counted is added to Redis once it is back. The wait before each attempt starts at
+# initial_duration and is multiplied by progression_factor after every attempt, up to
+# max_duration; attempts go on until Redis is back.
+[counters.redis.retry]
+# Wait before the first attempt
+initial_duration = "1s"
+# Factor the wait is multiplied by after each attempt (1 = constant wait)
+progression_factor = 2
+# Longest wait between attempts
+max_duration = "30s"
+
 # =============================================================================
 # ANALYTICS CONFIGURATION (consumer — enabling it activates the collector)
 # =============================================================================
