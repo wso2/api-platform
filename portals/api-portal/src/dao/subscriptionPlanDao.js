@@ -19,6 +19,7 @@
 
 const crypto = require('crypto');
 const db = require('../db/driver');
+const logger = require('../config/logger');
 const { groupBy } = require('../db/rows');
 const { CustomError, ValidationError } = require('../utils/errors/customErrors');
 const { getPortalId } = require('../utils/orgContext');
@@ -94,6 +95,8 @@ const hasTable = async (name, exec) => {
   return Boolean(await exec.queryOne(sql, [name]));
 };
 
+let schemaWarned = false;
+
 const planSchema = async (exec) => {
   if (planTables) return planTables;
   const tables = {
@@ -101,15 +104,36 @@ const planSchema = async (exec) => {
     legacyLimits: await hasTable(SUBSCRIPTION_PLAN_LIMITS_TABLE, exec),
   };
   if (tables.conditions) planTables = tables;
+  else if (!schemaWarned) {
+    // Once per process: until the upgrade script runs, plans keep only their request and token limits.
+    schemaWarned = true;
+    logger.warn('Database not upgraded for subscription plan conditions; using legacy limits', {
+      legacyLimitsTable: tables.legacyLimits,
+    });
+  }
   return tables;
 };
 
 const inPlaceholders = (n) => Array.from({ length: n }, () => '?').join(', ');
 
+// Logs which plan and condition hold params that can't be read, then fails as before.
+const parseParams = (row) => {
+  try {
+    return JSON.parse(bufferToUtf8(row.params) || '{}');
+  } catch (error) {
+    logger.warn('Unreadable subscription plan condition params', {
+      planId: row.plan_uuid,
+      conditionId: row.condition_id,
+      error: error.message,
+    });
+    throw error;
+  }
+};
+
 const toCondition = (row) => ({
   id: row.condition_id,
   type: row.condition_type,
-  params: JSON.parse(bufferToUtf8(row.params) || '{}'),
+  params: parseParams(row),
 });
 
 const WINDOW_MINUTES = { MINUTE: 1, HOUR: 60, DAY: 24 * 60, MONTH: 31 * 24 * 60 };

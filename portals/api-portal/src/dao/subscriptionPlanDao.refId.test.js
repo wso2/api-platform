@@ -31,6 +31,7 @@ const path = require('node:path');
 const PATHS = {
     driver: path.resolve(__dirname, '../db/driver.js'),
     orgContext: path.resolve(__dirname, '../utils/orgContext.js'),
+    logger: path.resolve(__dirname, '../config/logger.js'),
     dao: path.resolve(__dirname, './subscriptionPlanDao.js'),
 };
 
@@ -45,6 +46,7 @@ function loadDao(statements) {
             binaryParam: (value) => value,
         },
         orgContext: { getPortalId: () => 'portal-a' },
+        logger: { warn() {}, info() {}, error() {}, debug() {} },
     };
     for (const [k, exports] of Object.entries(stubs)) {
         require.cache[PATHS[k]] = { id: PATHS[k], filename: PATHS[k], loaded: true, exports };
