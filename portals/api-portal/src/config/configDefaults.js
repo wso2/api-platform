@@ -67,6 +67,24 @@ const DEFAULTS = {
             // js-post-quantum-cryptography.md.
             ecdhCurves: 'X25519,P-256',
         },
+        // Outbound access control for destinations that come from tenant or user
+        // input: try-it targets, key managers created through the API, webhook
+        // subscriber URLs and the developer token proxy. Destinations configured in
+        // this file (IdP, Platform API, billing, [[key_manager]] entries) are never
+        // subject to it. See utils/destinationGuard.js.
+        networkSecurity: {
+            accessControl: {
+                enabled: true,
+                mode: 'deny',           // deny: listed hosts refused; allow: only listed hosts permitted
+                hostnames: [],          // RE2 patterns, matched against the whole hostname
+                // Tightens, never widens, each feature's own allow_private_endpoints.
+                denyPrivateNetworks: false,
+                // The portal follows no redirects on these calls; kept for parity
+                // with the other components' access_control sections.
+                maxRedirects: 0,
+                allowedSchemes: ['http', 'https'],
+            },
+        },
     },
     logging: {
         level: 'info',   // debug | info | warn | error
@@ -76,7 +94,7 @@ const DEFAULTS = {
     // Outbound HTTP(S) client settings for this portal's own server-side calls to
     // other services: Platform API login, IDP/key-manager token endpoints, and
     // webhook delivery. See src/config/httpClientOptions.js. The "Try It" proxy
-    // (tryout.* above/below) keeps its own SSRF-guarded client but layers this
+    // (tryout.* above/below) keeps its own destination-guarded client but layers this
     // same tls block on top — see tryoutProxyService.js.
     httpClient: {
         // Reuse TCP+TLS handshakes across requests to the same host instead of

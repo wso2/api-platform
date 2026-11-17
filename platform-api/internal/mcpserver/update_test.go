@@ -34,7 +34,7 @@ func TestAPIOutput_LeavesOutTheOpenAPIDocument(t *testing.T) {
 	assert.NotContains(t, text, "openapi")
 	assert.Contains(t, f.api, "openapi", "the stored object is not changed")
 
-	res, text = call(t, cs, "update_api", map[string]any{"apiType": "llm-provider", "apiId": "openai",
+	res, text = call(t, cs, "update_api", map[string]any{"confirm": true, "apiType": "llm-provider", "apiId": "openai",
 		"payload": map[string]any{"description": "new"}})
 	require.False(t, res.IsError, text)
 	assert.NotContains(t, text, "openapi")
@@ -47,7 +47,7 @@ func TestUpdateAPI_NullRemovesAField(t *testing.T) {
 		"upstream": map[string]any{"main": map[string]any{"url": "http://x", "auth": map[string]any{"type": "api-key", "value": "{{ secret \"k\" }}"}}}}
 	cs := connect(t, s, who(testOrg, "ap:agent_proxy:manage"))
 
-	res, text := call(t, cs, "update_api", map[string]any{"apiType": "agent-proxy", "apiId": "a1",
+	res, text := call(t, cs, "update_api", map[string]any{"confirm": true, "apiType": "agent-proxy", "apiId": "a1",
 		"payload": map[string]any{"vhost": nil, "upstream": map[string]any{"main": map[string]any{"auth": map[string]any{"value": nil}}}}})
 	require.False(t, res.IsError, text)
 	assert.NotContains(t, f.updated, "vhost")
@@ -64,7 +64,7 @@ func TestUpdateAPI_RESTAPIDescriptionMatchesTheRESTAPI(t *testing.T) {
 		t.Helper()
 		f.api = current()
 		cs := connect(t, s, who(testOrg, scope))
-		res, text := call(t, cs, "update_api", map[string]any{"apiType": apiType, "apiId": "r1",
+		res, text := call(t, cs, "update_api", map[string]any{"confirm": true, "apiType": apiType, "apiId": "r1",
 			"payload": map[string]any{"description": description}})
 		require.False(t, res.IsError, text)
 	}
@@ -92,16 +92,16 @@ func TestUpdateAPI_RefusesAnIDChange(t *testing.T) {
 		cs := connect(t, s, who(testOrg, tc.scope))
 		for _, id := range []any{"other", ""} {
 			for _, key := range []string{"id", "ID"} {
-				res, text := call(t, cs, "update_api", map[string]any{"apiType": tc.apiType, "apiId": "a1", "payload": map[string]any{key: id}})
+				res, text := call(t, cs, "update_api", map[string]any{"confirm": true, "apiType": tc.apiType, "apiId": "a1", "payload": map[string]any{key: id}})
 				assert.True(t, res.IsError, "%s %s %v", tc.apiType, key, id)
 				assert.Contains(t, text, "id cannot change")
 			}
 		}
-		res, text := call(t, cs, "update_api", map[string]any{"apiType": tc.apiType, "apiId": "a1", "payload": map[string]any{"id": "a1"}})
+		res, text := call(t, cs, "update_api", map[string]any{"confirm": true, "apiType": tc.apiType, "apiId": "a1", "payload": map[string]any{"id": "a1"}})
 		assert.False(t, res.IsError, "the same id is fine: %s", text)
 		for _, key := range []string{"id", "ID"} {
 			f.updated = nil
-			res, text = call(t, cs, "update_api", map[string]any{"apiType": tc.apiType, "apiId": "a1", "payload": map[string]any{key: nil}})
+			res, text = call(t, cs, "update_api", map[string]any{"confirm": true, "apiType": tc.apiType, "apiId": "a1", "payload": map[string]any{key: nil}})
 			assert.False(t, res.IsError, "%s %s null removes the id from the body: %s", tc.apiType, key, text)
 			assert.NotContains(t, f.updated, "id")
 			assert.NotContains(t, f.updated, "ID")

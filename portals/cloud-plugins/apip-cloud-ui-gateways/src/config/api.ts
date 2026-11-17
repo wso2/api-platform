@@ -17,7 +17,12 @@
  */
 
 import type { ApiFetch } from '../hostPort';
-import type { ConfigValues, GatewayConfiguration } from '../types';
+import type {
+  ConfigValues,
+  GatewayConfiguration,
+  GatewayKeyManager,
+  KeyManagerDiscovery,
+} from '../types';
 
 const configurationPath = (gatewayId: string) =>
   `/managed-gateways/${encodeURIComponent(gatewayId)}/configuration`;
@@ -43,9 +48,10 @@ export const readConfiguration = (apiFetch: ApiFetch, gatewayId: string) =>
   required(apiFetch<GatewayConfiguration>('GET', configurationPath(gatewayId)));
 
 /**
- * A SPARSE PATCH: send only the settings that changed. `values` must name at
- * least one — `{}` and `{"values":{}}` are both a 400 — and no other top-level
- * key may appear, which is also a 400.
+ * A SPARSE PATCH: send only the settings that changed; `values` is required and
+ * may be `{}`. `keyManagers`, when given, replaces the whole list the gateway
+ * trusts; left out, the list stays. Both are checked before anything is written,
+ * so a save is applied whole or not at all.
  *
  * The response is the WHOLE configuration after the write, in the GET's shape.
  * Use it as the confirmation and as the new baseline; do not re-GET.
@@ -55,10 +61,32 @@ export const readConfiguration = (apiFetch: ApiFetch, gatewayId: string) =>
 export const writeConfiguration = (
   apiFetch: ApiFetch,
   gatewayId: string,
-  values: ConfigValues
+  values: ConfigValues,
+  keyManagers?: GatewayKeyManager[]
 ) =>
   required(
     apiFetch<GatewayConfiguration>('PUT', configurationPath(gatewayId), {
       values,
+      ...(keyManagers ? { keyManagers } : {}),
     })
   );
+
+/**
+ * Reads an issuer's discovery document through the platform, which the browser
+ * could not fetch past most identity providers' CORS policies. `wellKnownUrl`
+ * overrides `<issuer>/.well-known/openid-configuration`.
+ */
+export async function discoverKeyManager(
+  apiFetch: ApiFetch,
+  gatewayId: string,
+  issuer: string,
+  wellKnownUrl?: string
+): Promise<KeyManagerDiscovery> {
+  const found = await apiFetch<KeyManagerDiscovery>(
+    'POST',
+    `/managed-gateways/${encodeURIComponent(gatewayId)}/key-managers/discover`,
+    { issuer, ...(wellKnownUrl ? { wellKnownUrl } : {}) }
+  );
+  if (!found) throw new Error('The discovery service returned an empty response.');
+  return found;
+}

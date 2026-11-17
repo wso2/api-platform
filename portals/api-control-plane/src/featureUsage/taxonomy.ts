@@ -35,9 +35,9 @@
  * name, a URL, an identifier) into analytics.
  */
 
-import { CONSOLE_FEATURES, CONSOLE_PORTAL } from './taxonomy.generated';
+import { API_PLATFORM_PRODUCT, CONSOLE_FEATURES, CONSOLE_PORTAL } from './taxonomy.generated';
 
-export { API_PLATFORM_TAXONOMY, CONSOLE_PORTAL } from './taxonomy.generated';
+export { API_PLATFORM_PRODUCT, API_PLATFORM_TAXONOMY, CONSOLE_PORTAL } from './taxonomy.generated';
 
 type DimensionSpec = { readonly values: readonly string[]; readonly required: boolean };
 
@@ -51,8 +51,15 @@ type FeatureSpec = {
   readonly dimensions: Readonly<Record<string, DimensionSpec>>;
 };
 
-/** `product.id` of the API Platform taxonomy. */
-export const API_PLATFORM_PRODUCT_ID = 'apip';
+/** `product.id` of the API Platform taxonomy, the first segment of every code. */
+export const API_PLATFORM_PRODUCT_ID = API_PLATFORM_PRODUCT.id;
+
+/**
+ * `metadata.source` on every console action. Platform API's endpoint events
+ * send "api", as Agent Manager's console and API records send "console" and
+ * "api", so one query can span both or isolate one.
+ */
+export const CONSOLE_SOURCE = 'console';
 
 /** The API types the console manages, spelled as the taxonomy's `api_type`. */
 const API_TYPES = ['rest-api', 'graphql-api'] as const;
@@ -159,9 +166,16 @@ export const policyFeatureOf = (policyName: string): PolicyFeatureCode | undefin
 
 /**
  * The metadata an action carries: the feature's declared dimensions whose
- * values are in their enum, plus the taxonomy fields from the registry. Used
- * both to build an action and, by the PII filter, to rebuild one, so nothing a
- * caller (or the SDK) adds can survive.
+ * values are in their enum, plus the fields every API Platform record carries
+ * (as Platform API's endpoint events and Agent Manager's records do):
+ *
+ * - `growth_action`: the feature code;
+ * - `platform`: the product name, "API Platform";
+ * - `source`: "console" (Platform API sends "api");
+ *
+ * and the console's own: `portal`, and the taxonomy entry's `action` (name),
+ * `category`, `tier` and `event_category`. These are set last, so a dimension
+ * can never replace one (the generator also rejects a dimension named after one).
  */
 export function featureMetadata(
   code: ApiPlatformFeatureCode,
@@ -180,12 +194,13 @@ export function featureMetadata(
   }
   return {
     ...metadata,
+    growth_action: code,
+    platform: API_PLATFORM_PRODUCT.name,
+    source: CONSOLE_SOURCE,
+    portal: CONSOLE_PORTAL,
     action: spec.name,
     category: spec.category,
     tier: spec.tier,
     event_category: spec.eventCategory,
-    initiating_product: API_PLATFORM_PRODUCT_ID,
-    platform: 'web',
-    portal: CONSOLE_PORTAL,
   };
 }

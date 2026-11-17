@@ -57,12 +57,15 @@ func BuildHTTPClientConfig(hc HTTPClientConfig) (httpclient.Config, error) {
 	cfg.TLS.RootCAFile = hc.TLS.RootCAFile
 	cfg.TLS.ClientCertFile = hc.TLS.ClientCertFile
 	cfg.TLS.ClientKeyFile = hc.TLS.ClientKeyFile
-	// InsecureSkipVerify is intentionally not exposed here: this shared client is
-	// used by arbitrary policies against arbitrary operator-configured (and
-	// potentially tenant/request-influenced) backends, so there is no single
-	// existing trust-boundary boolean to reuse the way gateway-controller reuses
-	// controller.controlplane.insecure_skip_verify. It stays at its safe default
-	// (verified).
+	// Skip-verify is off by default. httpclient.New requires an acknowledgement alongside
+	// it, which this single operator-facing flag supplies, as the gateway controller's
+	// shared client does.
+	if hc.TLS.InsecureSkipVerify && hc.TLS.InsecureSkipHostnameVerify {
+		return httpclient.Config{}, fmt.Errorf("policy_engine.http_client.tls: insecure_skip_verify and insecure_skip_hostname_verify are both set; use only one (insecure_skip_verify already skips every certificate check)")
+	}
+	cfg.TLS.InsecureSkipVerify = hc.TLS.InsecureSkipVerify
+	cfg.TLS.InsecureSkipVerifyAcknowledged = hc.TLS.InsecureSkipVerify
+	cfg.TLS.InsecureSkipHostnameVerify = hc.TLS.InsecureSkipHostnameVerify
 
 	switch hc.Proxy.Mode {
 	case "", "none":
@@ -88,18 +91,18 @@ func BuildHTTPClientConfig(hc HTTPClientConfig) (httpclient.Config, error) {
 		return httpclient.Config{}, fmt.Errorf("policy_engine.http_client.proxy.mode: unrecognized value %q (want \"none\", \"environment\", or \"url\")", hc.Proxy.Mode)
 	}
 
-	if hc.SSRF.Enabled {
-		cfg.SSRF.Enabled = true
-		switch hc.SSRF.Preset {
+	if hc.DestinationGuard.Enabled {
+		cfg.DestinationGuard.Enabled = true
+		switch hc.DestinationGuard.Preset {
 		case "permit_private_block_metadata":
-			cfg.SSRF.Policy = netguard.PermitPrivateBlockMetadata()
+			cfg.DestinationGuard.Policy = netguard.PermitPrivateBlockMetadata()
 		case "public_only":
-			cfg.SSRF.Policy = netguard.PublicOnly()
+			cfg.DestinationGuard.Policy = netguard.PublicOnly()
 		default:
-			return httpclient.Config{}, fmt.Errorf("policy_engine.http_client.ssrf.preset: unrecognized value %q (want \"permit_private_block_metadata\" or \"public_only\")", hc.SSRF.Preset)
+			return httpclient.Config{}, fmt.Errorf("policy_engine.http_client.destination_guard.preset: unrecognized value %q (want \"permit_private_block_metadata\" or \"public_only\")", hc.DestinationGuard.Preset)
 		}
-		cfg.SSRF.Policy.AllowedSchemes = hc.SSRF.AllowedSchemes
-		cfg.SSRF.MaxRedirects = hc.SSRF.MaxRedirects
+		cfg.DestinationGuard.Policy.AllowedSchemes = hc.DestinationGuard.AllowedSchemes
+		cfg.DestinationGuard.MaxRedirects = hc.DestinationGuard.MaxRedirects
 
 		if cfg.Proxy.Mode != "" && cfg.Proxy.Mode != "none" {
 			switch hc.Proxy.Egress {

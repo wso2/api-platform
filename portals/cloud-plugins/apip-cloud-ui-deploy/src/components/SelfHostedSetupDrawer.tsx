@@ -40,8 +40,10 @@ import {
   GatewaySetupStepsV1_2Plus,
   isGatewayV12OrAbove,
   RELEASE_PATH,
+  type SetupCommandStep,
 } from './GatewaySetupSteps';
-import type { GatewayVersionEntry } from '../hostPort';
+import { GATEWAY_SETUP_COMMAND_COPY, GATEWAY_TOKEN_REGENERATE_CLICK } from '../featureUsage';
+import type { CloudHostPort, GatewayVersionEntry } from '../hostPort';
 
 export type SelfHostedSetupDrawerProps = {
   open: boolean;
@@ -63,6 +65,8 @@ export type SelfHostedSetupDrawerProps = {
   onReconfigureToken: () => Promise<string>;
   onError: (message: string) => void;
   onClose: () => void;
+  /** The host's feature-usage reporter, when it has one; see `CloudHostPort.trackFeature`. */
+  trackFeature?: CloudHostPort['trackFeature'];
 };
 
 const SUCCESS = '#5cc98f';
@@ -112,6 +116,7 @@ const SelfHostedSetupDrawer: FC<SelfHostedSetupDrawerProps> = ({
   onReconfigureToken,
   onError,
   onClose,
+  trackFeature,
 }) => {
   const [token, setToken] = useState<string | null>(initialToken);
   const [regenerated, setRegenerated] = useState(false);
@@ -148,6 +153,7 @@ const SelfHostedSetupDrawer: FC<SelfHostedSetupDrawerProps> = ({
 
   const handleReconfigure = async () => {
     setConfirmOpen(false);
+    trackFeature?.(GATEWAY_TOKEN_REGENERATE_CLICK);
     setRegenerating(true);
     try {
       setToken(await onReconfigureToken());
@@ -172,6 +178,10 @@ const SelfHostedSetupDrawer: FC<SelfHostedSetupDrawerProps> = ({
     hasJustRegeneratedToken: regenerated,
     isRegeneratingToken: regenerating,
     onRegenerateToken: () => setConfirmOpen(true),
+    // The drawer offers one path, the zip under Docker Compose: the Gateways page's
+    // default Quick Start, and reported as that.
+    onCommandCopied: (step: SetupCommandStep) =>
+      trackFeature?.(GATEWAY_SETUP_COMMAND_COPY, { install_method: 'quick-start', setup_step: step }),
   };
 
   return (

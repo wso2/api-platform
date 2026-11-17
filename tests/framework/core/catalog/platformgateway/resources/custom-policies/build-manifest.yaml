@@ -1,0 +1,40 @@
+# The gateway marks a loaded policy as custom when this file lists its name and version with a
+# filePath. it-builtin is left out, so the gateway reports it as built in.
+version: v1
+policies:
+  - name: it-custom-basic
+    version: v1.0.0
+    filePath: ./policies/it-custom-basic
+  - name: it-custom-minor
+    version: v1.0.0
+    filePath: ./policies/it-custom-minor
+  - name: it-custom-minor
+    version: v1.1.0
+    filePath: ./policies/it-custom-minor
+  - name: it-custom-patch
+    version: v1.0.0
+    filePath: ./policies/it-custom-patch
+  - name: it-custom-patch
+    version: v1.0.1
+    filePath: ./policies/it-custom-patch
+  - name: it-custom-major
+    version: v1.0.0
+    filePath: ./policies/it-custom-major
+  - name: it-custom-major
+    version: v2.0.0
+    filePath: ./policies/it-custom-major
+  - name: it-custom-repeat
+    version: v1.0.0
+    filePath: ./policies/it-custom-repeat
+  - name: it-custom-downgrade
+    version: v1.0.0
+    filePath: ./policies/it-custom-downgrade
+  - name: it-custom-downgrade
+    version: v1.1.0
+    filePath: ./policies/it-custom-downgrade
+  - name: it-custom-control
+    version: v1.0.0
+    filePath: ./policies/it-custom-control
+  - name: it-custom-versioned
+    version: v1.0.0
+    filePath: ./policies/it-custom-versioned

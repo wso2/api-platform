@@ -575,6 +575,25 @@ blocks:
         features:
           - features/gateway/observability/mcp_analytics.feature
 
+  # New block: the gateway is configured with a public gateway URL for Agent Card rewriting
+  # (agent-card-gateway-url.toml). The setting is gateway-wide and changes every rewritten card,
+  # so it cannot join mcp-agent-policies-analytics, whose agent-card runner asserts the
+  # request-derived URLs of a gateway that leaves it unset.
+  - name: agent-card-gateway-url
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/agent-card-gateway-url.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+      - name: a2a-trip-planner
+    runners:
+      - name: agent-card-gateway-url
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/ai-workspace-gateway/agent/agent_card_gateway_url.feature
+
   # The listener's request header timeout is 5s (backend-timeout.toml), a gateway-wide setting
   # gateway-core's runners must not see.
   - name: backend-timeout

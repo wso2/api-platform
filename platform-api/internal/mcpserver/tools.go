@@ -24,9 +24,9 @@ import "github.com/modelcontextprotocol/go-sdk/mcp"
 // destructive tool also takes confirm=true; add adds it.
 var (
 	read              = &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true}
-	write             = &mcp.ToolAnnotations{DestructiveHint: ptr(false)}
-	writeRepeat       = &mcp.ToolAnnotations{DestructiveHint: ptr(false), IdempotentHint: true}
-	destructiveRepeat = &mcp.ToolAnnotations{DestructiveHint: ptr(true), IdempotentHint: true}
+	write             = &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: ptr(false)}
+	writeRepeat       = &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: ptr(false), IdempotentHint: true}
+	destructiveRepeat = &mcp.ToolAnnotations{ReadOnlyHint: false, DestructiveHint: ptr(true), IdempotentHint: true}
 )
 
 func ptr[T any](v T) *T { return &v }
@@ -61,13 +61,13 @@ func (s *Server) addTools(srv *mcp.Server) {
 	}, []string{"POST {c}"}, s.createAPI)
 
 	add(s, srv, &mcp.Tool{
-		Name: "update_api", Title: "Update API", Annotations: writeRepeat,
-		Description: "Change some fields of an API. Fields left out stay as they are; an array replaces the old one, so read it with get_api first; null removes a field, but a rest-api keeps its description: send an empty string to clear it. To empty a list, send []. Running deployments do not change until the API is deployed again. The result shows what was saved; some fields can't change after create.",
+		Name: "update_api", Title: "Update API", Annotations: destructiveRepeat,
+		Description: "Change some fields of an API; omitted fields stay. An array replaces the old one, so read it with get_api first, and send [] to empty a list; null removes a field (a rest-api keeps its description: send \"\" to clear it). Deployments change only when deployed again. Some fields can't change after create. Destructive: set confirm=true only for the exact API the user asked for.",
 	}, []string{"GET {c}/{id}", "PUT {c}/{id}"}, s.updateAPI)
 
 	add(s, srv, &mcp.Tool{
-		Name: "deploy_api", Title: "Deploy API", Annotations: writeRepeat,
-		Description: "Deploy an API, as it is now, to a gateway from list_gateways. Use the exact gateway the user named; if it isn't listed, say so. It finishes later: poll list_api_deployments. Call it again after update_api to put the changes live.",
+		Name: "deploy_api", Title: "Deploy API", Annotations: destructiveRepeat,
+		Description: "Deploy an API, as it is now, to a gateway from list_gateways. Use the exact gateway the user named; if it isn't listed, say so. It finishes later: poll list_api_deployments. Call it again after update_api to put the changes live. Destructive: it replaces the deployment running on that gateway; set confirm=true only for the exact API and gateway the user asked for.",
 	}, []string{"POST {c}/{id}/deployments"}, s.deployAPI)
 
 	add(s, srv, &mcp.Tool{

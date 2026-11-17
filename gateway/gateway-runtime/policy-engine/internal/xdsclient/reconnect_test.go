@@ -31,6 +31,8 @@ func TestNewReconnectManager(t *testing.T) {
 	config := &Config{
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	rm := NewReconnectManager(config)
@@ -46,6 +48,8 @@ func TestNextDelay_FirstCall(t *testing.T) {
 	config := &Config{
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	rm := NewReconnectManager(config)
@@ -62,6 +66,8 @@ func TestNextDelay_ExponentialIncrease(t *testing.T) {
 	config := &Config{
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	rm := NewReconnectManager(config)
@@ -92,6 +98,8 @@ func TestNextDelay_MaxCapReached(t *testing.T) {
 	config := &Config{
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     5 * time.Second, // Low max for testing
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	rm := NewReconnectManager(config)
@@ -116,6 +124,8 @@ func TestReset(t *testing.T) {
 	config := &Config{
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	rm := NewReconnectManager(config)
@@ -140,6 +150,8 @@ func TestWaitWithContext_Success(t *testing.T) {
 	config := &Config{
 		InitialReconnectDelay: 10 * time.Millisecond, // Short delay for test
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	rm := NewReconnectManager(config)
@@ -160,6 +172,8 @@ func TestWaitWithContext_ContextCancellation(t *testing.T) {
 	config := &Config{
 		InitialReconnectDelay: 5 * time.Second, // Long delay
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	rm := NewReconnectManager(config)
@@ -186,6 +200,8 @@ func TestWaitWithContext_AlreadyCancelled(t *testing.T) {
 	config := &Config{
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	rm := NewReconnectManager(config)
@@ -207,6 +223,8 @@ func TestGetReconnectCount(t *testing.T) {
 	config := &Config{
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	rm := NewReconnectManager(config)
@@ -228,6 +246,8 @@ func TestGetCurrentDelay(t *testing.T) {
 	config := &Config{
 		InitialReconnectDelay: 1 * time.Second,
 		MaxReconnectDelay:     60 * time.Second,
+		KeepaliveTime:         30 * time.Second,
+		KeepaliveTimeout:      10 * time.Second,
 	}
 
 	rm := NewReconnectManager(config)

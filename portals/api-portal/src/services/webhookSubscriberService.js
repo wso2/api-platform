@@ -26,6 +26,7 @@ const util = require('../utils/util');
 const crypto = require('crypto');
 const logger = require('../config/logger');
 const { logUserAction } = require('../middlewares/auditLogger');
+const { assertUserUrl } = require('../utils/destinationGuard');
 
 function _validateRequiredFields(payload) {
     // `handle` is intentionally absent: it is either supplied by the caller as `id`
@@ -37,6 +38,22 @@ function _validateRequiredFields(payload) {
     return null;
 }
 
+
+/**
+ * Check a subscriber's target URL when it is saved: http(s) only, permitted by
+ * [api_portal.server.network_security.access_control]'s host rule, and not an IP
+ * literal in a refused range. Deliveries check it again, and a hostname's resolved
+ * addresses are checked when a delivery dials it. Returns a generic message, or null.
+ */
+function _validateTargetUrl(targetUrl) {
+    try {
+        assertUserUrl(String(targetUrl), { allowHttp: true, allowPrivate: true });
+        return null;
+    } catch (err) {
+        logger.warn('Webhook subscriber target URL refused', { reason: err.message });
+        return 'targetUrl is not a permitted destination.';
+    }
+}
 
 /**
  * Build a specific conflict message for the handle unique constraint.
@@ -63,7 +80,7 @@ const createWebhookSubscriber = async (req, res) => {
         // we never rewrite the caller's id or invent a variant.
         payload.handle = payload.id ? payload.id : crypto.randomUUID();
 
-        const validationError = _validateRequiredFields(payload);
+        const validationError = _validateRequiredFields(payload) || _validateTargetUrl(payload.targetUrl);
         if (validationError) {
             return util.sendError(res, 400, validationError);
         }
@@ -94,6 +111,12 @@ const updateWebhookSubscriber = async (req, res) => {
         const payload = req.body;
         if (payload && payload.id) {
             payload.handle = payload.id;
+        }
+        if (payload && payload.targetUrl !== undefined) {
+            const targetError = _validateTargetUrl(payload.targetUrl);
+            if (targetError) {
+                return util.sendError(res, 400, targetError);
+            }
         }
 
         const userId = util.resolveActor(req);

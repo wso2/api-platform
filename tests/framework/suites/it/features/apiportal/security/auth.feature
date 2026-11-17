@@ -23,7 +23,7 @@ Feature: Users sign in to the API Portal with file-based credentials
   I want only correct credentials to open a session, and signing out to end it
   So that nobody reaches the protected API Portal REST API without a valid session
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API
   # level: the file-based login form backed by platform-api's file users. A session is proven usable
   # or unusable by calling an authenticated endpoint with the cookies the login returned; every
   # refused login is followed by that call, so a failed login can never leave a working session.

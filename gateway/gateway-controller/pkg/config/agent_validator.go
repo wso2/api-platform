@@ -448,7 +448,9 @@ func (v *AgentValidator) validateA2A(context string, contextUsable bool, a2a *ap
 			transports, transportsUsable,
 			managedCardContent(EffectiveProtectedCardMode(protected) == api.A2AProtectedAgentCardModeManaged,
 				protected.Content))...)
-		errors = append(errors, validateExtendedCardCapability(public)...)
+		if enforceExtendedCardCapability {
+			errors = append(errors, validateExtendedCardCapability(public)...)
+		}
 	}
 
 	return errors
@@ -790,6 +792,14 @@ func validateProtectedAgentCard(protected *api.A2AProtectedAgentCard) []Validati
 	return errors
 }
 
+// enforceExtendedCardCapability gates validateExtendedCardCapability.
+//
+// The check is switched off for now: an Agent that configures a protected card
+// deploys whether or not its managed public card declares
+// capabilities.extendedAgentCard. The check itself is kept, with its tests, so
+// turning it back on is this one value.
+var enforceExtendedCardCapability = false
+
 // validateExtendedCardCapability checks that a managed public card admits the
 // extended card the Agent configures.
 //
@@ -1013,24 +1023,30 @@ func validateCardSize(contentField string, content map[string]interface{}) []Val
 	return nil
 }
 
-// validateCardNotPreSigned rejects a card that arrives carrying a signatures
-// field.
+// validateCardNotPreSigned rejects a card that arrives carrying signatures.
 //
 // The field is the gateway's to write: it signs the card it serves, over the
 // content the author supplied. A signature already in the document was computed
 // by someone else over a different document — at best it is stale the moment
 // the gateway stores it, and a client that verifies it would reject the card.
-// Rejecting the field's presence, rather than only a non-empty value, keeps the
-// contract in one direction: the author writes card content, the gateway writes
-// signatures.
+//
+// Only an actual signature is rejected. A null or empty list carries nothing a
+// client could verify, and is what a card serialized from a typed A2A model
+// looks like when it was never signed, so refusing it would turn away cards
+// that are not pre-signed at all. Any other value — a non-empty list, or
+// something that is not a list — is rejected.
 func validateCardNotPreSigned(contentField string, content map[string]interface{}) []ValidationError {
-	if _, present := content[cardFieldSignatures]; !present {
+	value, present := content[cardFieldSignatures]
+	if !present || value == nil {
+		return nil
+	}
+	if list, ok := value.([]interface{}); ok && len(list) == 0 {
 		return nil
 	}
 	return []ValidationError{{
 		Field: contentField + "." + cardFieldSignatures,
 		Message: "Agent Card content must not carry signatures; the gateway computes them for the card it serves. " +
-			"Remove the field",
+			"Remove the signatures or leave the list empty",
 	}}
 }
 

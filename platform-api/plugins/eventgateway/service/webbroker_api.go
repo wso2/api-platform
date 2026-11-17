@@ -33,6 +33,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	coreservice "github.com/wso2/api-platform/platform-api/internal/service"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
+	"github.com/wso2/api-platform/platform-api/plugins/eventgateway/brokersecret"
 )
 
 // WebBrokerAPIService handles business logic for WebBroker API operations
@@ -290,6 +291,16 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api
 		subscriptionPlans = *req.SubscriptionPlans
 	}
 
+	// A read blanks credential properties, so an update that echoes back what it
+	// read carries blanks where the credentials were. Resolve them against the
+	// stored properties before the configuration is replaced wholesale.
+	receiver := mapWebBrokerReceiverAPIToModel(req.Receiver)
+	receiver.Properties = brokersecret.Preserve(
+		receiver.Type, receiver.Properties, existing.Configuration.Receiver.Properties)
+	broker := mapWebBrokerBrokerAPIToModel(req.Broker)
+	broker.Properties = brokersecret.Preserve(
+		broker.Type, broker.Properties, existing.Configuration.Broker.Properties)
+
 	existing.Name = req.DisplayName
 	existing.Version = req.Version
 	existing.Description = utils.ValueOrEmpty(req.Description)
@@ -301,8 +312,8 @@ func (s *WebBrokerAPIService) Update(orgUUID, handle, updatedBy string, req *api
 		Context:           req.Context,
 		Transport:         transport,
 		Channels:          mapWebBrokerChannelsAPIToModel(req.Channels),
-		Receiver:          mapWebBrokerReceiverAPIToModel(req.Receiver),
-		Broker:            mapWebBrokerBrokerAPIToModel(req.Broker),
+		Receiver:          receiver,
+		Broker:            broker,
 		AllChannels:       mapWebBrokerAllChannelPoliciesAPIToModel(req.AllChannels),
 		SubscriptionPlans: subscriptionPlans,
 	}
@@ -448,7 +459,12 @@ func mapWebBrokerReceiverAPIToModel(in struct {
 	return r
 }
 
-// mapWebBrokerReceiverModelToAPI converts model receiver to API receiver
+// mapWebBrokerReceiverModelToAPI converts model receiver to API receiver.
+//
+// This is a read-response mapper: it blanks credential properties. The
+// deployment artifact is built from the model directly
+// (buildWebBrokerDeployReceiver) and must keep the real values, so do not reuse
+// this mapper there.
 func mapWebBrokerReceiverModelToAPI(in model.WebBrokerReceiver) struct {
 	Name       string                       `json:"name" yaml:"name"`
 	Properties *map[string]interface{}      `json:"properties,omitempty" yaml:"properties,omitempty"`
@@ -463,7 +479,8 @@ func mapWebBrokerReceiverModelToAPI(in model.WebBrokerReceiver) struct {
 		Type: api.WebBrokerAPIReceiverType(in.Type),
 	}
 	if in.Properties != nil {
-		out.Properties = &in.Properties
+		redacted := brokersecret.Blank(in.Type, in.Properties)
+		out.Properties = &redacted
 	}
 	return out
 }
@@ -485,7 +502,12 @@ func mapWebBrokerBrokerAPIToModel(in struct {
 	}
 }
 
-// mapWebBrokerBrokerModelToAPI converts model broker to API broker
+// mapWebBrokerBrokerModelToAPI converts model broker to API broker.
+//
+// This is a read-response mapper: it blanks credential properties such as the
+// Kafka SASL password. The deployment artifact is built from the model directly
+// (buildWebBrokerDeployBroker) and must keep the real values, so do not reuse
+// this mapper there.
 func mapWebBrokerBrokerModelToAPI(in model.WebBrokerBroker) struct {
 	Name       string                     `json:"name" yaml:"name"`
 	Properties *map[string]interface{}    `json:"properties,omitempty" yaml:"properties,omitempty"`
@@ -493,7 +515,8 @@ func mapWebBrokerBrokerModelToAPI(in model.WebBrokerBroker) struct {
 } {
 	var properties *map[string]interface{}
 	if len(in.Properties) > 0 {
-		properties = &in.Properties
+		redacted := brokersecret.Blank(in.Type, in.Properties)
+		properties = &redacted
 	}
 	return struct {
 		Name       string                     `json:"name" yaml:"name"`

@@ -23,7 +23,7 @@ Feature: The limits of a subscription plan, and a plan that subscriptions still 
   I want a plan to hold exactly the limits I give it, and to stay while anything uses it
   So that subscribers are never left on a plan that no longer exists
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level. Plan
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level. Plan
   # create, update, delete and access are covered by this feature's tests. Every refused create or
   # delete is followed by a read that shows what is stored.
 

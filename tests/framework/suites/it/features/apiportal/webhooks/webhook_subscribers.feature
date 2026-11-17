@@ -23,7 +23,7 @@ Feature: Webhook subscribers are managed through the API Portal REST API
   I want to register, inspect, change and remove the endpoints the portal sends its events to
   So that only the systems I trust receive credential and subscription changes, signed with their secret
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level.
   # Webhook subscribers are administrator-only and organization-wide, which is why this block runs
   # one runner at a time. A subscriber's secret is write-only: responses report hasSecret, never the
   # secret. Every refusal is followed by a read showing nothing was stored or changed.

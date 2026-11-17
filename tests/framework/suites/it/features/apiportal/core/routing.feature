@@ -22,7 +22,7 @@ Feature: The API Portal answers health checks and unknown paths predictably
   I want health checks to answer without a session and unknown paths to be refused cleanly
   So that probes see a live portal and nothing outside the portal is ever served by it
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the HTTP level:
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the HTTP level:
   # requests are sent to the portal host exactly as written ("root path"), with no session and no
   # Management API prefix. Every not-found answer is paired with a page of the configured organization that loads.
 

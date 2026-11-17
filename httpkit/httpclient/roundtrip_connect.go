@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -49,7 +50,7 @@ func newConnectRoundTripper(cfg Config, dialFn func(context.Context, string, str
 	if cfg.Proxy.URL == "" {
 		return nil, fmt.Errorf("httpclient: Proxy.Mode \"url\" requires Proxy.URL to be set")
 	}
-	if !cfg.SSRF.Enabled {
+	if !cfg.DestinationGuard.Enabled {
 		return nil, fmt.Errorf("httpclient: Proxy.Egress == ProxyEgressManualCONNECT requires SSRF.Enabled (this mode exists to validate the origin against SSRF.Policy)")
 	}
 
@@ -64,7 +65,7 @@ func newConnectRoundTripper(cfg Config, dialFn func(context.Context, string, str
 	return &connectRoundTripper{
 		proxyURL:            proxyURL,
 		dialProxy:           dialFn,
-		originPolicy:        cfg.SSRF.Policy,
+		originPolicy:        cfg.DestinationGuard.Policy,
 		originTLS:           originTLS,
 		connectHeader:       cfg.Proxy.ConnectHeader,
 		tlsHandshakeTimeout: cfg.Timeouts.TLSHandshake,
@@ -78,6 +79,9 @@ func (c *connectRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	// the entire point of this mode. A generic error is returned; the
 	// resolved address/reason is not, so as not to leak internal topology.
 	if err := netguard.Validate(ctx, c.originPolicy, req.URL.Hostname()); err != nil {
+		if errors.Is(err, netguard.ErrDestinationNotAllowed) {
+			return nil, fmt.Errorf("httpclient: origin destination rejected: %w", netguard.ErrDestinationNotAllowed)
+		}
 		return nil, fmt.Errorf("httpclient: origin destination rejected")
 	}
 

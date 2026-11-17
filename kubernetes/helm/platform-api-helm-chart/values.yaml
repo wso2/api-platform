@@ -349,6 +349,7 @@ config:
       # - https://workspace.example.com
     websocket:
       maxConnections: 1000
+      maxConnectionsPerGateway: -1  # concurrent connections per gateway across all its tokens; -1 = unlimited
       connectionTimeout: 30      # seconds before an idle connection closes
       rateLimitPerMin: 1000
       metricsLogEnabled: true
