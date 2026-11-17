@@ -320,6 +320,11 @@ type Definition struct {
 	// AliasIsFixed prevents the alias from being suffixed for replicas.
 	AliasIsFixed bool
 
+	// ExtraAliases are further DNS names for a single-replica container component on its
+	// networks, for a test that reaches it under a host name it computes (a templated Backend's
+	// host, for example). A replica set has no single container to give them to.
+	ExtraAliases []string
+
 	// Endpoints are the component's addressable ports.
 	Endpoints []Endpoint
 

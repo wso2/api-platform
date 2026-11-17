@@ -1718,3 +1718,15 @@ func TestRepeatedHaltWithAnUnreadableStateKeepsTheEarlierStop(t *testing.T) {
 		require.NoError(t, c.Stop(ctx))
 	}))
 }
+
+// A single container carries its definition's extra aliases next to its alias; a replica of a
+// set carries only its own suffixed alias.
+func TestNetworkAliases(t *testing.T) {
+	def := &components.Definition{Name: "testbench", Alias: "testbench", ExtraAliases: []string{"env-dev.testbench"}}
+	if got := networkAliases(def, "testbench", 1); len(got) != 2 || got[0] != "testbench" || got[1] != "env-dev.testbench" {
+		t.Fatalf("single replica: %v", got)
+	}
+	if got := networkAliases(def, "testbench-2", 3); len(got) != 1 || got[0] != "testbench-2" {
+		t.Fatalf("replica set: %v", got)
+	}
+}

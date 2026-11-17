@@ -111,11 +111,19 @@ var OIDCIssuer = "https://" + shared.IdentityProviderHost + ":" + strconv.Itoa(o
 // The PORTS BELOW ARE THE CONTAINER PORTS, and they are what a feature writes into an upstream
 // URL (http://testbench:3001) for the gateway to resolve over docker DNS. Host ports are
 // ephemeral and reached through the instance accessors instead.
+// TemplatedHosts are the extra testbench host names a templated Backend's key expands to in a
+// test: env-{key}.testbench with the keys dev and prod.
+var TemplatedHosts = []string{"env-dev.testbench", "env-prod.testbench"}
+
 func Testbench() *components.Definition {
 	d := &components.Definition{
 		Name:  "testbench",
 		Image: shared.Image(EnvImageTestbench, defaultImage()),
 		Alias: "testbench",
+		// Hosts a templated Backend (http://env-{key}.testbench:<port>) reaches per request
+		// key. They name the same container: the echoed Host header tells them apart. These
+		// are not per-service aliases; the port still identifies the service.
+		ExtraAliases: TemplatedHosts,
 		Endpoints: []components.Endpoint{
 			{Name: "backend", Port: backend.Port, Scheme: "http", AwaitListening: true},
 			{Name: "jwks", Port: jwks.Port, Scheme: "http", AwaitListening: true},

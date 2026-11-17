@@ -89,6 +89,10 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/gateway/core/subscription_plan_management.feature
+      - name: backend-management
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/backend_management.feature
       # The ap CLI built from this checkout, driving the gateway through its management and
       # admin APIs. The CLI follows the current contracts, so it is not run against 1.1.0.
       - name: ap-cli-gateway
@@ -648,6 +652,23 @@ blocks:
         tags: "gateway-version>1.2.0"
         features:
           - features/ai-workspace-gateway/agent/agent_card_gateway_url.feature
+
+  # Network access control refuses private networks and one domain (backend-access-control.toml),
+  # so the router drops a templated Backend's addresses inside the container network. gateway-core's
+  # runners reach testbench at a private address and must not see this.
+  - name: backend-access-control
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/backend-access-control.toml
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: testbench
+    runners:
+      - name: backend-templated-access-control
+        tags: "gateway-version>1.2.0"
+        features:
+          - features/gateway/core/backend_templated_access_control.feature
 
   # The listener's request header timeout is 5s (backend-timeout.toml), a gateway-wide setting
   # gateway-core's runners must not see.

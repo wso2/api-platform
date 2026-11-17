@@ -75,7 +75,12 @@ var (
 	KindSubscriptionPlan = Kind{Name: "subscription-plan", Order: 57}
 	KindPolicy           = Kind{Name: "policy", Order: 60}
 	KindSharedScope      = Kind{Name: "shared-scope", Order: 70}
-	KindCertificate      = Kind{Name: "certificate", Order: 80}
+	// KindBackend is a gateway-wide Backend (kind: Backend). The gateway refuses to delete one
+	// while a deployed API names it as a fixed target, so it goes after the API kinds; and a
+	// Backend's tls block can name a certificate, which the gateway refuses to delete while it
+	// is named, so it goes before KindCertificate.
+	KindBackend     = Kind{Name: "backend", Order: 79}
+	KindCertificate = Kind{Name: "certificate", Order: 80}
 	// LLMProxy and LLMProvider both delete before Secret: either can hold a credential as a
 	// {{ secret "handle" }} placeholder, and platform-api refuses to delete a secret still
 	// referenced by one (409 SECRET_IN_USE). LLMProxy also deletes before LLMProvider, since

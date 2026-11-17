@@ -230,7 +230,7 @@ func buildRequest(
 		ExposedPorts:    exposed,
 		Env:             env,
 		Networks:        []string{opts.Network.Name()},
-		NetworkAliases:  map[string][]string{opts.Network.Name(): {alias}},
+		NetworkAliases:  map[string][]string{opts.Network.Name(): networkAliases(def, alias, replicas)},
 		Files:           files,
 		WaitingFor:      strategy,
 		Labels: map[string]string{
@@ -716,7 +716,17 @@ func CloseSharedLogs() {
 	}
 }
 
-// AttachTo connects a shared container to a block network under its alias.
+// networkAliases is the container's alias, then the definition's extra aliases for a single
+// replica.
+func networkAliases(def *components.Definition, alias string, replicas int) []string {
+	if replicas > 1 {
+		return []string{alias}
+	}
+	return append([]string{alias}, def.ExtraAliases...)
+}
+
+// AttachTo connects a shared container to a block network under its alias and the definition's
+// extra aliases.
 func (c *Container) AttachTo(ctx context.Context, nw *Network, alias string) error {
 	if c == nil || c.container == nil {
 		return fmt.Errorf("runtime: no container to attach")
@@ -733,7 +743,7 @@ func (c *Container) AttachTo(ctx context.Context, nw *Network, alias string) err
 
 	_, err = provider.Client().NetworkConnect(ctx, nw.inner.ID, client.NetworkConnectOptions{
 		Container:      c.container.GetContainerID(),
-		EndpointConfig: &dockernet.EndpointSettings{Aliases: []string{alias}},
+		EndpointConfig: &dockernet.EndpointSettings{Aliases: networkAliases(c.def, alias, 1)},
 	})
 	if err != nil {
 		return fmt.Errorf("runtime: attaching %s to network %q: %w", c.def, nw.Name(), err)
