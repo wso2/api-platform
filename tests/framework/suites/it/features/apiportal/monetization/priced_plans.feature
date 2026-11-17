@@ -23,7 +23,7 @@ Feature: Subscription plans and their prices in the API Portal
   I want to define plans with limits, and give a plan a price, flat or by usage, when I create it
   So that the portal can sell it, and the price a subscriber agreed to never changes under them
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml)
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml)
   # at the API level. Plans are written by administrators only. Every refused create or change is
   # followed by a read that shows nothing was stored or changed.
 

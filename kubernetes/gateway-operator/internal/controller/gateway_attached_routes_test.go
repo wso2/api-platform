@@ -194,7 +194,7 @@ func TestComputeAttachedHTTPRoutesByListener(t *testing.T) {
 			want: map[gatewayv1.SectionName]int32{"https": 0, "http": 0},
 		},
 		{
-			name:    "two accepted routes increment count",
+			name: "two accepted routes increment count",
 			gateway: func() *gatewayv1.Gateway {
 				gw := baseGateway()
 				gw.Spec.Listeners = gw.Spec.Listeners[1:] // http only

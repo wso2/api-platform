@@ -60,7 +60,7 @@ export function PoliciesPage() {
     <ErrorState title={intl.formatMessage(messages.notFound)} />
   ) : (
     <Box sx={{ mt: 2 }}>
-      <PolicyPanel api={apiQuery.data} />
+      <PolicyPanel key={apiQuery.data.id ?? params.apiHandler} api={apiQuery.data} />
     </Box>
   );
 

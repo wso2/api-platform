@@ -488,6 +488,13 @@ To add a feature to the suite:
 - Block names are unique across all the files; the loader rejects a duplicate.
 - Feature paths in a block file are relative to `suites/it`, the same as in `it-suite.yaml`.
 - Find the block that runs a feature with `grep -rn "<feature>.feature" suites/it/blocks/`.
+- The API Portal release workflow (`.github/workflows/devportal-release.yml`) runs
+  `make test-api-portal`, which runs the blocks listed in `API_PORTAL_IT_BLOCKS` and
+  `API_PORTAL_UI_BLOCKS` in `tests/framework/Makefile`. Adding, renaming or removing a block in
+  `blocks/api-portal.yaml`, or an `api-portal-*` block in `suites/ui/ui-suite.yaml`, updates
+  those lists in the same change; a block missing from them is never run at release. Blocks that
+  combine the API Portal with other products (`blocks/platform-api-gateway-api-portal.yaml`) or
+  start it only as a dependency (`management-portal-publish`) do not belong in the lists.
 
 ## Scenario Lists
 

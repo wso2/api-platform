@@ -29,4 +29,12 @@
 // choice; New returns an error if it is left at its zero value
 // (ProxyEgressUnset), so that a caller can never end up believing the
 // origin is SSRF-protected when it silently isn't.
+//
+// The proxy is operator configuration, not a destination taken from tenant
+// or user input, so its own address is dialed under the policy's ProxyHop:
+// only link-local/metadata, unspecified and multicast/broadcast addresses
+// are refused for it, never the host rule or the private-network categories.
+// The host rule (netguard.Policy.Hosts) and an explicit scheme list are
+// applied to every request's URL before any proxy is involved, so they hold
+// in every proxy mode.
 package httpclient

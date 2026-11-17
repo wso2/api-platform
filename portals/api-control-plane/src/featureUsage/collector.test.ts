@@ -120,7 +120,12 @@ describe('trackFeatureUsage', () => {
     expect(action).toMatchObject({
       action_name: 'apip.manage-apis.rest-api-create-click',
       company_id: ORG,
-      metadata: { creation_method: 'scratch', initiating_product: 'apip' },
+      metadata: {
+        creation_method: 'scratch',
+        growth_action: 'apip.manage-apis.rest-api-create-click',
+        platform: 'API Platform',
+        source: 'console',
+      },
       request: { uri: `${window.location.origin}${routes.newApi()}` },
       user_id: USER,
     });

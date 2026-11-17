@@ -23,7 +23,7 @@ Feature: API key changes are delivered to webhook subscribers, with the key only
   I want an event for every key generated, rotated, revoked or linked to an application
   So that gateways accept exactly the keys the portal issued, and a key never travels in plain text
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level. A
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level. A
   # subscriber without a secret is sent no key at all; one with a secret is sent the key encrypted
   # with that secret, and never in plain text. A refused change sends no event.
 

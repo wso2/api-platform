@@ -51,7 +51,7 @@ type TLSClientOptions struct {
 //
 // This transport only ever talks to the fixed, operator-configured Platform
 // API (cfg.ControlPlane.URL) — never a tenant/end-user-supplied destination —
-// so no SSRF guard (httpclient's Config.SSRF) is enabled here.
+// so no destination guard (httpclient's Config.DestinationGuard) is enabled here.
 //
 // The return type is the interface, not the concrete *http.Transport:
 // hc.Timeouts.MaxResponseBytes >= 0 (see HTTPClientTimeoutsConfig's doc

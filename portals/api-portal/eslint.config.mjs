@@ -21,8 +21,8 @@ export default [
     },
     js.configs.recommended,
     {
-        // Server-side application code and build tooling (Node.js, CommonJS).
-        files: ['src/**/*.js', 'tools/**/*.js'],
+        // Server-side application code, build tooling and unit-test helpers (Node.js, CommonJS).
+        files: ['src/**/*.js', 'tools/**/*.js', 'test-support/**/*.js'],
         languageOptions: {
             ecmaVersion: 2023,
             sourceType: 'commonjs',
@@ -32,30 +32,6 @@ export default [
             'no-unused-vars': ['warn', { args: 'none', caughtErrors: 'none', varsIgnorePattern: '^_' }],
             'no-empty': ['error', { allowEmptyCatch: true }],
         },
-    },
-    {
-        // Integration tests: Cypress + Jest-style globals on top of Node.
-        files: ['it/**/*.js'],
-        languageOptions: {
-            ecmaVersion: 2023,
-            sourceType: 'commonjs',
-            globals: {
-                ...globals.node,
-                ...globals.jest,
-                ...globals.mocha,
-                cy: 'readonly',
-                Cypress: 'readonly',
-            },
-        },
-        rules: {
-            'no-unused-vars': ['warn', { args: 'none', caughtErrors: 'none', varsIgnorePattern: '^_' }],
-            'no-empty': ['error', { allowEmptyCatch: true }],
-        },
-    },
-    {
-        // Cypress support files are authored as ES modules.
-        files: ['it/ui/**/support/**/*.js'],
-        languageOptions: { sourceType: 'module' },
     },
     {
         // Browser-side scripts served to the client. Their top-level functions

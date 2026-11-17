@@ -34,6 +34,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -324,10 +325,16 @@ func (c *Client) dial() (*grpc.ClientConn, error) {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	// Add keepalive parameters
+	// The ADS stream is idle between config pushes, and the client only
+	// writes after it receives a response. Without keepalive a connection
+	// that dies silently (controller restart, dropped conntrack/NAT entry)
+	// leaves processStream blocked in Recv forever and the engine stops
+	// receiving config. The PING makes gRPC close the dead connection so
+	// Recv returns an error and run() reconnects.
 	opts = append(opts,
 		grpc.WithBlock(),
 		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxRecvMsgSize)),
+		grpc.WithKeepaliveParams(keepaliveParams(c.config)),
 	)
 
 	conn, err := grpc.DialContext(ctx, c.config.ServerAddress, opts...)
@@ -339,6 +346,17 @@ func (c *Client) dial() (*grpc.ClientConn, error) {
 }
 
 // loadTLSConfig loads TLS configuration from files
+// keepaliveParams returns the client keepalive settings for the xDS
+// connection. PermitWithoutStream keeps pinging between the dial and the
+// stream being opened; gateway-controller's EnforcementPolicy allows it.
+func keepaliveParams(cfg *Config) keepalive.ClientParameters {
+	return keepalive.ClientParameters{
+		Time:                cfg.KeepaliveTime,
+		Timeout:             cfg.KeepaliveTimeout,
+		PermitWithoutStream: true,
+	}
+}
+
 func (c *Client) loadTLSConfig() (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(c.config.TLSCertPath, c.config.TLSKeyPath)
 	if err != nil {

@@ -23,7 +23,7 @@ Feature: Developers subscribe to APIs through the API Portal REST API
   I want to subscribe to an API under one of its plans, switch, suspend, rotate and end it
   So that I hold exactly one working subscription token per API
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API
   # level. The fixture API offers the Gold and Silver plans. Every refused change is followed by a
   # read that shows the subscription is unchanged. Subscriptions belong to the user who created them,
   # so the administrator, who holds every subscription scope, is the second user of the ownership

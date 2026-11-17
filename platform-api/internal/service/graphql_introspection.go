@@ -214,6 +214,12 @@ func fetchAndConvertGraphQLSchema(upstreamURL string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), graphQLIntrospectionTimeout)
 	defer cancel()
 
+	// Refuse a destination server.network_security.access_control does not permit before
+	// sending anything; its resolved addresses are checked again when it is dialed.
+	if err := utils.CheckUserURL(ctx, upstreamURL); err != nil {
+		return "", fmt.Errorf("GraphQL endpoint refused by network access control: %w", err)
+	}
+
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("failed to build introspection request: %w", err)

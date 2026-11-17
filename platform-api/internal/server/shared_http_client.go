@@ -19,6 +19,7 @@ package server
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/wso2/api-platform/httpkit/httpclient"
 	"github.com/wso2/api-platform/httpkit/netguard"
@@ -38,7 +39,58 @@ func InitSharedHTTPClient(cfg *config.Server) error {
 	if err := utils.InitSharedHTTPClientFromConfig(clientCfg, cfg.MCPResponseMaxBytes); err != nil {
 		return fmt.Errorf("failed to build shared outbound HTTP client: %w", err)
 	}
+
+	userCfg, enabled, err := buildAccessControlClientConfig(clientCfg, cfg.HTTPClient, cfg.Listeners.NetworkSecurity.AccessControl)
+	if err != nil {
+		return fmt.Errorf("invalid platform_api.server.network_security.access_control configuration: %w", err)
+	}
+	if enabled {
+		if err := utils.InitUserURLClientFromConfig(userCfg); err != nil {
+			return fmt.Errorf("failed to build outbound HTTP client for tenant-supplied URLs: %w", err)
+		}
+	}
 	return nil
+}
+
+// buildAccessControlClientConfig derives the client configuration for destinations taken
+// from tenant or user input. It reuses the shared client's pooling, timeout, TLS and proxy
+// settings and replaces its policy with server.network_security.access_control, combined
+// with the existing [platform_api.http_client] destination preset when that is enabled, so the existing setting can only
+// make the result stricter (netguard.Stricter). enabled is false when access control is
+// off; those destinations then keep using the shared client.
+func buildAccessControlClientConfig(shared httpclient.Config, hc config.HTTPClientConfig, ac config.AccessControl) (httpclient.Config, bool, error) {
+	if !ac.Enabled {
+		return httpclient.Config{}, false, nil
+	}
+	policy, err := ac.GuardConfig().Build()
+	if err != nil {
+		return httpclient.Config{}, false, err
+	}
+	var redirectSchemes []string
+	if shared.DestinationGuard.Enabled {
+		policy = netguard.Stricter(policy, shared.DestinationGuard.Policy)
+		// The existing preset's scheme list governs redirect hops only (empty means
+		// https), so it narrows redirects here without restricting first requests.
+		redirectSchemes = intersectSchemes(policy.AllowedSchemes, effectiveRedirectSchemes(shared.DestinationGuard.Policy.AllowedSchemes))
+		if len(redirectSchemes) == 0 {
+			return httpclient.Config{}, false, fmt.Errorf("allowed_schemes shares no scheme with the redirect schemes of [platform_api.http_client]; no redirect could be followed")
+		}
+	}
+
+	out := shared
+	out.DestinationGuard = httpclient.DestinationGuardConfig{Enabled: true, Policy: policy, MaxRedirects: ac.MaxRedirects, RedirectSchemes: redirectSchemes}
+	if out.Proxy.Mode != "" && out.Proxy.Mode != "none" && out.Proxy.Egress == httpclient.ProxyEgressUnset {
+		switch hc.Proxy.Egress {
+		case "manual_connect":
+			out.Proxy.Egress = httpclient.ProxyEgressManualCONNECT
+		default:
+			// The existing destination preset is off, so egress was never required. Delegated
+			// keeps such a deployment working: the proxy's own egress controls govern the
+			// destination's address, while the host rule and schemes are still enforced here.
+			out.Proxy.Egress = httpclient.ProxyEgressDelegated
+		}
+	}
+	return out, true, nil
 }
 
 // buildSharedHTTPClientConfig translates platform-api's HTTPClientConfig (sourced from
@@ -101,18 +153,18 @@ func buildSharedHTTPClientConfig(hc config.HTTPClientConfig) (httpclient.Config,
 		return httpclient.Config{}, fmt.Errorf("platform_api.http_client.proxy.mode: unrecognized value %q (want \"none\", \"environment\", or \"url\")", hc.Proxy.Mode)
 	}
 
-	if hc.SSRF.Enabled {
-		cfg.SSRF.Enabled = true
-		switch hc.SSRF.Preset {
+	if hc.DestinationGuard.Enabled {
+		cfg.DestinationGuard.Enabled = true
+		switch hc.DestinationGuard.Preset {
 		case "permit_private_block_metadata":
-			cfg.SSRF.Policy = netguard.PermitPrivateBlockMetadata()
+			cfg.DestinationGuard.Policy = netguard.PermitPrivateBlockMetadata()
 		case "public_only":
-			cfg.SSRF.Policy = netguard.PublicOnly()
+			cfg.DestinationGuard.Policy = netguard.PublicOnly()
 		default:
-			return httpclient.Config{}, fmt.Errorf("platform_api.http_client.ssrf.preset: unrecognized value %q (want \"permit_private_block_metadata\" or \"public_only\")", hc.SSRF.Preset)
+			return httpclient.Config{}, fmt.Errorf("platform_api.http_client.destination_guard.preset: unrecognized value %q (want \"permit_private_block_metadata\" or \"public_only\")", hc.DestinationGuard.Preset)
 		}
-		cfg.SSRF.Policy.AllowedSchemes = hc.SSRF.AllowedSchemes
-		cfg.SSRF.MaxRedirects = hc.SSRF.MaxRedirects
+		cfg.DestinationGuard.Policy.AllowedSchemes = hc.DestinationGuard.AllowedSchemes
+		cfg.DestinationGuard.MaxRedirects = hc.DestinationGuard.MaxRedirects
 
 		if cfg.Proxy.Mode != "" && cfg.Proxy.Mode != "none" {
 			switch hc.Proxy.Egress {
@@ -127,4 +179,28 @@ func buildSharedHTTPClientConfig(hc config.HTTPClientConfig) (httpclient.Config,
 	}
 
 	return cfg, nil
+}
+
+// effectiveRedirectSchemes is the redirect scheme list a destination preset
+// enforces: its own list, or https alone when it lists none.
+func effectiveRedirectSchemes(schemes []string) []string {
+	if len(schemes) == 0 {
+		return []string{"https"}
+	}
+	return schemes
+}
+
+// intersectSchemes returns the schemes of a also in b, case-insensitively, in
+// a's order.
+func intersectSchemes(a, b []string) []string {
+	var out []string
+	for _, x := range a {
+		for _, y := range b {
+			if strings.EqualFold(x, y) {
+				out = append(out, strings.ToLower(x))
+				break
+			}
+		}
+	}
+	return out
 }

@@ -50,17 +50,20 @@ description: |
   names the host the Agent was published under, while the port is only knowable
   per request. A wildcard vhost names no dialable host, so the request's own
   authority is used whole; a request carrying neither fails closed rather than
-  being answered with a guess. Nothing else in the document is touched, and nothing is signed: the
+  being answered with a guess. The `gatewayUrl` system parameter, when
+  configured, replaces that derivation altogether: its scheme, host, port and
+  path prefix are used as they stand, for a gateway that is not the edge and
+  whose public address neither the vhost nor the request names. Nothing else in the document is touched, and nothing is signed: the
   card's security declarations remain the upstream's unverifiable claim. Without
   the block, no response is buffered and a proxied card is forwarded byte for
   byte.
 
-  Only the bindings this gateway serves are rewritten. An interface whose
-  protocol binding no configured transport exposes keeps the URL the upstream
-  wrote, since there is no gateway endpoint to name for it — and a client that
-  selects that binding therefore reaches the agent directly, outside the
-  gateway's policies. A card whose interfaces are all on such bindings is
-  forwarded unchanged, signatures included.
+  Every interface is rewritten. An interface whose protocol binding no
+  configured transport exposes has no gateway endpoint of its own, so it is
+  given the endpoint of the first configured transport rather than keeping the
+  URL the upstream wrote — the agent's own address is never published, and a
+  client that selects that binding reaches the gateway, which does not serve it,
+  instead of reaching the agent directly.
 
   A successful response the gateway cannot safely rewrite fails with a sterile
   gateway error rather than being forwarded or partially rewritten: a body that
@@ -255,4 +258,21 @@ parameters:
 
 systemParameters:
   type: object
-  properties: {}
+  properties:
+    gatewayUrl:
+      type: string
+      format: uri
+      description: >
+        Externally reachable base URL of the gateway (scheme, host, optional
+        port, optional path prefix), used as the origin of every interface URL a
+        passthrough Agent Card is rewritten to. Optional. When set it takes
+        precedence over the Agent's vhost and over the scheme and authority of
+        the request, which describe how a client reached this gateway and are
+        the right address to advertise only when the gateway is the edge. Set it
+        when the gateway sits behind a load balancer, ingress or API front door
+        whose public address differs. It must be an absolute http or https URL
+        with no userinfo, query string or fragment; an unusable value makes
+        rewriting instances fail closed rather than fall back to the derived
+        origin. Read only by instances that carry a `rewriteUrls` block.
+      example: https://agents.example.com
+      "wso2/defaultValue": "${config.policy_configurations.a2a_v1.gateway_url}"

@@ -1048,29 +1048,45 @@
     "defaultMessage": "Create project",
     "description": "Browser tab title for the project creation page."
   },
-  "apiControlPlane.pages.appShell.APIQuickSelector.apis": {
-    "defaultMessage": "APIs"
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.apiKindGraphql": {
+    "defaultMessage": "GraphQL",
+    "description": "Badge on an API in the header API menu: a GraphQL API. Product name, keep as is."
   },
-  "apiControlPlane.pages.appShell.APIQuickSelector.failed.to.load.apis": {
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.apiKindRest": {
+    "defaultMessage": "REST",
+    "description": "Badge on an API in the header API menu: a REST API. Technical term, usually kept as is."
+  },
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.apiLevel": {
+    "defaultMessage": "API",
+    "description": "Name of the API level in the header breadcrumb. Singular noun."
+  },
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.apisFailed": {
     "defaultMessage": "Failed to load APIs"
   },
-  "apiControlPlane.pages.appShell.APIQuickSelector.loading": {
-    "defaultMessage": "Loading..."
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.apisPartial": {
+    "defaultMessage": "APIs (some failed to load)",
+    "description": "Title of the header API menu when one kind of API (REST or GraphQL) could not be loaded but the other could."
   },
-  "apiControlPlane.pages.appShell.APIQuickSelector.no.apis.available": {
-    "defaultMessage": "No APIs available"
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.breadcrumbAria": {
+    "defaultMessage": "Organization, project and API",
+    "description": "Accessible name of the header breadcrumb trail that switches organization, project and API."
   },
-  "apiControlPlane.pages.appShell.ProjectQuickSelector.failed.to.load.projects": {
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.newApi": {
+    "defaultMessage": "New API"
+  },
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.newProject": {
+    "defaultMessage": "New project"
+  },
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.orgLevel": {
+    "defaultMessage": "Organization",
+    "description": "Name of the organization level in the header breadcrumb. Singular noun."
+  },
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.projectLevel": {
+    "defaultMessage": "Project",
+    "description": "Name of the project level in the header breadcrumb. Singular noun."
+  },
+  "apiControlPlane.pages.appShell.HeaderScopeSwitchers.projectsFailed": {
     "defaultMessage": "Failed to load projects"
-  },
-  "apiControlPlane.pages.appShell.ProjectQuickSelector.loading": {
-    "defaultMessage": "Loading..."
-  },
-  "apiControlPlane.pages.appShell.ProjectQuickSelector.no.projects.available": {
-    "defaultMessage": "No projects available"
-  },
-  "apiControlPlane.pages.appShell.ProjectQuickSelector.projects": {
-    "defaultMessage": "Projects"
   },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.by.label": {
     "defaultMessage": "by",
@@ -2081,6 +2097,13 @@
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.categoriesSelected": {
     "defaultMessage": "{count} categories",
     "description": "Shown in the category dropdown when several categories are selected. {count} is a number."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.custom": {
+    "defaultMessage": "Custom",
+    "description": "Chip on a catalog entry that is one of the organization’s custom policies, synced from a gateway. Adjective."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.customLoadError": {
+    "defaultMessage": "Unable to load the organization’s custom policies."
   },
   "apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.emptyDescription": {
     "defaultMessage": "No policies match the filter."
@@ -5889,9 +5912,17 @@
   "appLayout.breadcrumb.home": {
     "defaultMessage": "Home"
   },
+  "appLayout.footer.documentation": {
+    "defaultMessage": "Documentation",
+    "description": "Footer link to the product documentation"
+  },
   "appLayout.footer.privacyPolicy": {
     "defaultMessage": "Privacy Policy",
     "description": "Footer link to the Privacy Policy page"
+  },
+  "appLayout.footer.support": {
+    "defaultMessage": "Support",
+    "description": "Footer link to the community support channel"
   },
   "appLayout.footer.termsOfUse": {
     "defaultMessage": "Terms of Use",
@@ -5910,26 +5941,14 @@
   "appShell.compliancePage.feature": {
     "defaultMessage": "Compliance reporting for this API"
   },
-  "appShell.header.api.aria": {
-    "defaultMessage": "APIs"
-  },
   "appShell.header.api.empty": {
     "defaultMessage": "No APIs found"
-  },
-  "appShell.header.api.goToProjectLevel": {
-    "defaultMessage": "Go to project level"
   },
   "appShell.header.api.label": {
     "defaultMessage": "APIs"
   },
-  "appShell.header.api.noResults": {
-    "defaultMessage": "No matching APIs"
-  },
   "appShell.header.api.placeholder": {
     "defaultMessage": "Search APIs..."
-  },
-  "appShell.header.api.search": {
-    "defaultMessage": "Search"
   },
   "appShell.header.api.select": {
     "defaultMessage": "Select API"
@@ -5937,35 +5956,20 @@
   "appShell.header.brand.aria": {
     "defaultMessage": "Go to organization overview"
   },
-  "appShell.header.org.aria": {
-    "defaultMessage": "Organizations"
-  },
   "appShell.header.org.empty": {
     "defaultMessage": "No organizations found"
   },
   "appShell.header.org.label": {
     "defaultMessage": "Organizations"
   },
-  "appShell.header.org.noResults": {
-    "defaultMessage": "No matching organizations"
-  },
   "appShell.header.org.placeholder": {
     "defaultMessage": "Search organizations..."
-  },
-  "appShell.header.project.aria": {
-    "defaultMessage": "Projects"
   },
   "appShell.header.project.empty": {
     "defaultMessage": "No projects found"
   },
-  "appShell.header.project.goToOrganization": {
-    "defaultMessage": "Go to organization level"
-  },
   "appShell.header.project.label": {
     "defaultMessage": "Projects"
-  },
-  "appShell.header.project.noResults": {
-    "defaultMessage": "No matching projects"
   },
   "appShell.header.project.placeholder": {
     "defaultMessage": "Search projects..."
@@ -6004,9 +6008,6 @@
   },
   "components.comingSoon.title": {
     "defaultMessage": "Coming Soon"
-  },
-  "components.common.searchableComplexSelect.dropdownClickAriaLabel": {
-    "defaultMessage": "Open {label}"
   },
   "develop.definition.DefinitionPage.scopePrompt": {
     "defaultMessage": "The API definition is specific to a single API."
@@ -6474,11 +6475,18 @@
   "gateways.detail.Header.name.required": {
     "defaultMessage": "Enter a gateway name."
   },
+  "gateways.detail.Policies.clearFilters": {
+    "defaultMessage": "Clear search and filter"
+  },
   "gateways.detail.Policies.column.description": {
     "defaultMessage": "Description"
   },
   "gateways.detail.Policies.column.name": {
     "defaultMessage": "Name"
+  },
+  "gateways.detail.Policies.column.organization": {
+    "defaultMessage": "Sync status",
+    "description": "Column stating whether a custom policy has been synced to the organization, which is what lets its APIs use it."
   },
   "gateways.detail.Policies.column.type": {
     "defaultMessage": "Policy Type",
@@ -6496,6 +6504,21 @@
   "gateways.detail.Policies.error": {
     "defaultMessage": "Unable to load the policies on this gateway."
   },
+  "gateways.detail.Policies.filter.all": {
+    "defaultMessage": "All",
+    "description": "Policy Type filter option that shows every policy."
+  },
+  "gateways.detail.Policies.filter.custom": {
+    "defaultMessage": "Custom",
+    "description": "Policy Type filter option that shows only custom policies."
+  },
+  "gateways.detail.Policies.filter.label": {
+    "defaultMessage": "Filter by policy type"
+  },
+  "gateways.detail.Policies.filter.policyHub": {
+    "defaultMessage": "Policy Hub",
+    "description": "Policy Type filter option that shows only Policy Hub policies. Product name — do not translate “Policy Hub”."
+  },
   "gateways.detail.Policies.loading": {
     "defaultMessage": "Loading policies"
   },
@@ -6503,8 +6526,68 @@
     "defaultMessage": "No description",
     "description": "Stands in for a policy description when the manifest carries none. Rendered as an absence, not a value."
   },
+  "gateways.detail.Policies.noMatches.description": {
+    "defaultMessage": "Try a different search term or filter."
+  },
+  "gateways.detail.Policies.noMatches.title": {
+    "defaultMessage": "No matching policies"
+  },
+  "gateways.detail.Policies.organizationVersion": {
+    "defaultMessage": "Organization version: {version}",
+    "description": "Under a synced custom policy, when the organization holds a different version of it than this gateway runs. {version} is backend data, e.g. \"v1.2.0\"."
+  },
+  "gateways.detail.Policies.pagination.next": {
+    "defaultMessage": "Next page"
+  },
+  "gateways.detail.Policies.pagination.previous": {
+    "defaultMessage": "Previous page"
+  },
+  "gateways.detail.Policies.pagination.range": {
+    "defaultMessage": "{from}–{to} of {count, number}",
+    "description": "Pager summary: the policy rows shown on this page out of the total."
+  },
+  "gateways.detail.Policies.pagination.rowsPerPage": {
+    "defaultMessage": "Policies per page"
+  },
+  "gateways.detail.Policies.replacesVersion": {
+    "defaultMessage": "Replaces {version}",
+    "description": "Under Sync, when syncing replaces the lower version the organization holds. {version} is backend data, e.g. \"v1.2.0\"."
+  },
+  "gateways.detail.Policies.searchPlaceholder": {
+    "defaultMessage": "Search policies"
+  },
   "gateways.detail.Policies.subtitle": {
-    "defaultMessage": "Mediation policies installed on this gateway, as reported by its last manifest sync."
+    "defaultMessage": "Policies installed on this gateway, as reported when it last connected."
+  },
+  "gateways.detail.Policies.sync": {
+    "defaultMessage": "Sync",
+    "description": "Button copying a custom policy from this gateway into the organization, so that its APIs can use the policy. Verb."
+  },
+  "gateways.detail.Policies.syncHint": {
+    "defaultMessage": "Sync a custom policy to make it available to your organization’s APIs."
+  },
+  "gateways.detail.Policies.syncNotNeeded": {
+    "defaultMessage": "Built-in",
+    "description": "Sync status value for a Policy Hub policy: APIs can use it without a sync."
+  },
+  "gateways.detail.Policies.syncStatusUnavailable": {
+    "defaultMessage": "The organization’s custom policies could not be loaded, so whether each one is synced is not shown."
+  },
+  "gateways.detail.Policies.syncSucceeded": {
+    "defaultMessage": "Synced {policyName} {version} to the organization.",
+    "description": "Toast after a sync. {policyName} and {version} are backend data, e.g. \"hmac-signer\" and \"v1.0.0\"."
+  },
+  "gateways.detail.Policies.syncUnknown": {
+    "defaultMessage": "Unknown",
+    "description": "Organization column value when the organization’s custom policies could not be read."
+  },
+  "gateways.detail.Policies.synced": {
+    "defaultMessage": "Synced",
+    "description": "Organization column value: the custom policy is in the organization. Adjective."
+  },
+  "gateways.detail.Policies.syncing": {
+    "defaultMessage": "Syncing",
+    "description": "Label of the Sync button while its request is in flight."
   },
   "gateways.detail.Policies.title": {
     "defaultMessage": "Policies"
