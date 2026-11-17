@@ -28,7 +28,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
-	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/upstreamguard"
 )
 
 // processAPIEvent dispatches API events by action
@@ -80,8 +80,8 @@ func (l *EventListener) handleAPICreateOrUpdate(event eventhub.Event) {
 	// Render template expressions in the spec (e.g. {{ secret "..." }}, {{ env "..." }}).
 	// storedConfig.Configuration is set to the resolved version; SourceConfiguration stays unrendered.
 	if err := templateengine.RenderSpec(storedConfig, l.secretResolver, l.logger); err != nil {
-		if funcs.IsEnvAccessError(err) {
-			l.undeployAfterEnvRefusal(storedConfig, event.EventID)
+		if upstreamguard.IsArtifactRefusal(err) {
+			l.undeployAfterRefusal(storedConfig, event.EventID, err)
 			return
 		}
 		l.logger.Error("Failed to render config templates for API",
@@ -226,18 +226,20 @@ func (l *EventListener) handleAPIDelete(event eventhub.Event) {
 		slog.String("event_id", event.EventID))
 }
 
-// undeployAfterEnvRefusal applies, on this replica, the undeploy of an artifact
-// whose spec reads an environment variable outside the env access allow list:
-// the artifact is kept in the in-memory store as undeployed, then its route and
-// runtime config (policy chain) are dropped, or, for WebSubApi and WebBrokerApi,
-// its event channel. Nothing is written to the database; the replica that refused the
-// read persists the undeploy.
-func (l *EventListener) undeployAfterEnvRefusal(cfg *models.StoredConfig, eventID string) {
+// undeployAfterRefusal applies, on this replica, the undeploy of an artifact the
+// gateway configuration refuses (cause): its spec reads an environment variable
+// outside the env access allow list, or names a URL network access control does
+// not permit. The artifact is kept in the in-memory store as undeployed, then its
+// route and runtime config (policy chain) are dropped, or, for WebSubApi and
+// WebBrokerApi, its event channel. Nothing is written to the database; the replica
+// that refused the artifact persists the undeploy.
+func (l *EventListener) undeployAfterRefusal(cfg *models.StoredConfig, eventID string, cause error) {
 	cfg.DesiredState = models.StateUndeployed
-	l.logger.Warn("Undeploying artifact: its spec reads an environment variable outside policy_engine.env_access.allow_list",
+	l.logger.Warn("Undeploying artifact: refused by the gateway configuration",
 		slog.String("id", cfg.UUID),
 		slog.String("kind", cfg.Kind),
 		slog.String("handle", cfg.Handle),
+		slog.String("refused_by", upstreamguard.RefusalReason(cause)),
 		slog.String("event_id", eventID))
 
 	existing, _ := l.store.Get(cfg.UUID)

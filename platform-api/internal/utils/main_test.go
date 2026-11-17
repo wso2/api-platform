@@ -40,16 +40,16 @@ func TestMain(m *testing.M) {
 	cfg := httpclient.DefaultConfig()
 	cfg.Pooling.DisableKeepAlives = true
 	cfg.Timeouts.MaxResponseBytes = -1
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = policy
-	cfg.SSRF.MaxRedirects = 5
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = policy
+	cfg.DestinationGuard.MaxRedirects = 5
 
-	client, err := httpclient.New(cfg)
-	if err != nil {
+	// Installed with its config, as production does (server.InitSharedHTTPClient), so
+	// clients with other timeouts can be derived from it.
+	if err := InitSharedHTTPClientFromConfig(cfg, 0); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to build test double for the shared HTTP client: %v\n", err)
 		os.Exit(1)
 	}
-	InitSharedHTTPClient(client, 0)
 
 	os.Exit(m.Run())
 }

@@ -211,8 +211,14 @@ func (sm *SnapshotManager) UpdateSnapshot(ctx context.Context, correlationID str
 		return fmt.Errorf("snapshot is inconsistent: %w", err)
 	}
 
-	// Update cache with new snapshot
-	if err := sm.cache.SetSnapshot(ctx, sm.nodeID, snapshot); err != nil {
+	// Update cache with new snapshot. The caller's deadline must not reach
+	// SetSnapshot: it stores the snapshot first and then notifies each open
+	// Envoy watch with a select on the watch channel and ctx.Done(). If the
+	// deadline already passed (spent waiting for sm.mu or translating), Go
+	// picks either case at random, so a watch can be left un-notified and that
+	// Envoy keeps its old config until a later update. The watch channels are
+	// buffered, so the notification never blocks without a deadline.
+	if err := sm.cache.SetSnapshot(context.WithoutCancel(ctx), sm.nodeID, snapshot); err != nil {
 		log.Error("Failed to set snapshot", slog.Any("error", err))
 		metrics.SnapshotGenerationTotal.WithLabelValues("main", "error", trigger).Inc()
 		metrics.TranslationErrorsTotal.WithLabelValues("cache_set_failed").Inc()

@@ -46,7 +46,7 @@ const (
 //     netguard.PermitPrivateBlockMetadata(), which permits private/loopback/in-cluster
 //     upstreams (a Kubernetes ClusterIP, a service-DNS name, localhost) and refuses only
 //     link-local/metadata/unspecified/multicast addresses. See InitSharedHTTPClient /
-//     Server.HTTPClient.SSRF for the operator-configurable policy.
+//     Server.HTTPClient.DestinationGuard for the operator-configurable policy.
 //   - Redirects are bounded, may not leave the original host, and each hop is dialed
 //     through the same guarded dialer.
 //   - The response body is read through an io.LimitReader capped at maxBytes.
@@ -78,6 +78,10 @@ func FetchDocumentFromURL(ctx context.Context, rawURL string, maxBytes int64, do
 		return "", fmt.Errorf("%s URL must include a host", docLabel)
 	}
 
+	if err := CheckUserURL(ctx, parsed.String()); err != nil {
+		return "", err
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, openAPISpecFetchTimeout)
 	defer cancel()
 
@@ -96,6 +100,9 @@ func FetchDocumentFromURL(ctx context.Context, rawURL string, maxBytes int64, do
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if refused := DestinationNotAllowedError(err); refused != nil {
+			return "", refused
+		}
 		// Do not surface the underlying net error (it can leak resolved IPs/hosts).
 		return "", fmt.Errorf("failed to fetch %s", docLabel)
 	}

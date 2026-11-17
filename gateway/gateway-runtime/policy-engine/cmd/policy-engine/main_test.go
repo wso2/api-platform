@@ -298,6 +298,8 @@ func TestInitializeXDSClient_InvalidConfig(t *testing.T) {
 				RequestTimeout:        5 * time.Second,
 				InitialReconnectDelay: 1 * time.Second,
 				MaxReconnectDelay:     30 * time.Second,
+				KeepaliveTime:         30 * time.Second,
+				KeepaliveTimeout:      10 * time.Second,
 			},
 		},
 	}
@@ -319,6 +321,8 @@ func TestInitializeXDSClient_ValidConfig(t *testing.T) {
 				RequestTimeout:        1 * time.Second,
 				InitialReconnectDelay: 1 * time.Second,
 				MaxReconnectDelay:     5 * time.Second,
+				KeepaliveTime:         30 * time.Second,
+				KeepaliveTimeout:      10 * time.Second,
 				TLS: config.XDSTLSConfig{
 					Enabled: false,
 				},

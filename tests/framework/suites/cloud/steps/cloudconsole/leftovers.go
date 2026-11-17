@@ -51,7 +51,8 @@ const finalizerCollectionBudget = 2 * time.Minute
 
 // finalizerCollections are the organisation-wide collections the finalizer reads, in deletion
 // order: a secret goes after the REST APIs that reference it, a gateway before the environment it
-// runs in, and a project before the pipeline it is bound to.
+// runs in, and a project before the pipeline it is bound to. Managed API Portals are not here: the
+// finalizer empties the portals the run published to and never deletes one, see portalSweeps.
 // idFields name the list-item fields that identify a resource in its own route. REST APIs are
 // listed per project, so projectScopedSweep reads them and runs ahead of these: each goes before
 // the gateway it is deployed to and the project it belongs to.
@@ -63,7 +64,7 @@ var finalizerCollections = []struct {
 	budget time.Duration
 }{
 	{collection: secretsCollection, idFields: []string{"id", "handle"}},
-	{collection: managedPortalsCollection, idFields: []string{"id"}},
+	{collection: selfHostedGatewaysPath, idFields: []string{"id"}},
 	{collection: managedGatewaysCollection, idFields: []string{"id"}},
 	// Each project is retried for finalizerDeleteTimeout, so the budget holds several of them.
 	{collection: "/projects", idFields: []string{"id"}, budget: projectDeleteTimeout},
@@ -164,7 +165,10 @@ func (f *Finalizer) Finalize(ctx context.Context) ([]string, error) {
 // cloudSweeps describes the organisation's collections to the framework's finalizer. owns reports
 // whether a resource's names belong to a tracked run.
 func cloudSweeps(client *httpx.Client, base, token string, owns func(names []string) bool) []finalizer.Collection {
-	sweeps := make([]finalizer.Collection, 0, len(finalizerCollections)+1)
+	sweeps := make([]finalizer.Collection, 0, len(finalizerCollections)+4)
+	// The listings go first: the platform removes a listing only through its API, which the sweeps
+	// below delete.
+	sweeps = append(sweeps, portalSweeps(client, base, token, owns)...)
 	for _, collection := range projectScopedCollections {
 		sweeps = append(sweeps, projectScopedSweep(client, base, token, owns, collection))
 	}
@@ -211,37 +215,166 @@ func projectScopedSweep(client *httpx.Client, base, token string, owns func(name
 		Name:    collection,
 		Timeout: finalizerCollectionBudget,
 		List: func(ctx context.Context) ([]finalizer.Leftover, error) {
-			projects, err := listCollection(ctx, client, base, token, "/projects")
-			if errors.Is(err, errCollectionNotServed) {
-				return nil, nil
-			}
-			var errs []error
-			if err != nil {
-				errs = append(errs, fmt.Errorf("listing the projects that hold %s: %w", collection, err))
-			}
-			scopes := []string{defaultProjectID}
-			for _, project := range projects {
-				if id := firstString(project, []string{"id"}); id != "" && id != defaultProjectID && owns(namesOf(project)) {
-					scopes = append(scopes, id)
-				}
-			}
-			var leftovers []finalizer.Leftover
-			for _, project := range scopes {
-				items, err := listCollectionQuery(ctx, client, base, token, collection, url.Values{"projectId": {project}})
-				if errors.Is(err, errCollectionNotServed) {
-					continue
-				}
-				leftovers = append(leftovers, leftoversOf(items, []string{"id"})...)
-				if err != nil {
-					errs = append(errs, fmt.Errorf("project %s: %w", project, err))
-				}
-			}
-			return leftovers, errors.Join(errs...)
+			items, err := projectScopedItems(ctx, client, base, token, owns, collection)
+			return leftoversOf(items, []string{"id"}), err
 		},
 		Delete: func(ctx context.Context, id string) error {
 			return deleteLeftover(ctx, client, base, token, collection, id, false)
 		},
 	}
+}
+
+// projectScopedItems reads a collection the platform lists per project, for the default project
+// and every project a tracked run created. A failure part way returns the items already read with
+// the error.
+func projectScopedItems(ctx context.Context, client *httpx.Client, base, token string, owns func(names []string) bool, collection string) ([]map[string]any, error) {
+	projects, err := listCollection(ctx, client, base, token, "/projects")
+	if errors.Is(err, errCollectionNotServed) {
+		return nil, nil
+	}
+	var errs []error
+	if err != nil {
+		errs = append(errs, fmt.Errorf("listing the projects that hold %s: %w", collection, err))
+	}
+	scopes := []string{defaultProjectID}
+	for _, project := range projects {
+		if id := firstString(project, []string{"id"}); id != "" && id != defaultProjectID && owns(namesOf(project)) {
+			scopes = append(scopes, id)
+		}
+	}
+	var items []map[string]any
+	for _, project := range scopes {
+		listed, err := listCollectionQuery(ctx, client, base, token, collection, url.Values{"projectId": {project}})
+		if errors.Is(err, errCollectionNotServed) {
+			continue
+		}
+		items = append(items, listed...)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("project %s: %w", project, err))
+		}
+	}
+	return items, errors.Join(errs...)
+}
+
+// publishedAPICollections are the API collections whose APIs a portal can list, by the API type
+// the publication routes use.
+var publishedAPICollections = []struct{ apiType, collection string }{
+	{"rest-api", "/rest-apis"},
+	{"graphql-api", "/graphql-apis"},
+}
+
+// portalSweeps empties the managed API Portals of what the run put in them, and never deletes a
+// portal: the starter's portal and every portal the organisation already had stay. It unpublishes
+// each API of the run from every active portal that lists it. The only portals it deletes are
+// those a scenario built for itself, which carry syntheticPortalPrefix.
+func portalSweeps(client *httpx.Client, base, token string, owns func(names []string) bool) []finalizer.Collection {
+	return []finalizer.Collection{
+		{
+			Name:    "portal-publications",
+			Timeout: finalizerCollectionBudget,
+			List: func(ctx context.Context) ([]finalizer.Leftover, error) {
+				return portalPublications(ctx, client, base, token, owns)
+			},
+			Delete: func(ctx context.Context, id string) error {
+				method, path, settled, err := unpublishRequest(id)
+				if err != nil {
+					return err
+				}
+				return retry.Await(ctx, retry.Options{Timeout: finalizerDeleteTimeout, Interval: 5 * time.Second},
+					func(ctx context.Context) (bool, error) {
+						resp, err := client.Do(ctx, httpx.Request{
+							Method:  method,
+							URL:     cloudAPIURL(base, path),
+							Headers: map[string]string{"Authorization": "Bearer " + token},
+						}, 0, 0)
+						if err != nil {
+							return false, retry.Transient(err)
+						}
+						if !settled(resp) {
+							return false, retry.Transient(responseError(resp))
+						}
+						return true, nil
+					},
+					func(done bool) bool { return done },
+					"unpublishing "+id)
+			},
+		},
+		{
+			Name:    managedPortalsCollection,
+			Timeout: finalizerCollectionBudget,
+			List: func(ctx context.Context) ([]finalizer.Leftover, error) {
+				items, err := listCollection(ctx, client, base, token, managedPortalsCollection)
+				if errors.Is(err, errCollectionNotServed) {
+					return nil, nil
+				}
+				var built []map[string]any
+				for _, item := range items {
+					if id, _ := item["id"].(string); strings.HasPrefix(id, syntheticPortalPrefix) {
+						built = append(built, item)
+					}
+				}
+				return leftoversOf(built, []string{"id"}), err
+			},
+			Delete: func(ctx context.Context, id string) error {
+				return deleteLeftover(ctx, client, base, token, managedPortalsCollection, id, false)
+			},
+		},
+	}
+}
+
+// portalPublications lists, as publication ids, the listings the run's APIs hold in the active
+// portals. An API that no portal lists has no publication route to read, so it is not a leftover.
+func portalPublications(ctx context.Context, client *httpx.Client, base, token string, owns func(names []string) bool) ([]finalizer.Leftover, error) {
+	portals, err := listCollection(ctx, client, base, token, managedPortalsCollection)
+	if errors.Is(err, errCollectionNotServed) {
+		return nil, nil
+	}
+	var errs []error
+	if err != nil {
+		errs = append(errs, fmt.Errorf("listing the managed API Portals: %w", err))
+	}
+	var active []string
+	for _, portal := range portals {
+		if status, _ := portal["status"].(string); status == portalStatusActive {
+			if id := firstString(portal, []string{"id"}); id != "" {
+				active = append(active, id)
+			}
+		}
+	}
+	if len(active) == 0 {
+		return nil, errors.Join(errs...)
+	}
+	var leftovers []finalizer.Leftover
+	for _, kind := range publishedAPICollections {
+		items, err := projectScopedItems(ctx, client, base, token, owns, kind.collection)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("listing %s: %w", kind.collection, err))
+		}
+		for _, item := range items {
+			api := firstString(item, []string{"id"})
+			if api == "" || !owns(namesOf(item)) {
+				continue
+			}
+			for _, portal := range active {
+				target := publicationTarget{portal: portal, apiType: kind.apiType, api: api}
+				resp, err := client.Do(ctx, httpx.Request{
+					Method:  http.MethodGet,
+					URL:     cloudAPIURL(base, target.path("/publication")),
+					Headers: map[string]string{"Authorization": "Bearer " + token},
+				}, 0, 0)
+				switch {
+				case err != nil:
+					errs = append(errs, fmt.Errorf("reading the publication %s: %w", target.id(), err))
+				case resp.StatusCode == http.StatusNotFound:
+				case resp.StatusCode == http.StatusOK:
+					leftovers = append(leftovers, finalizer.Leftover{ID: target.id(), Names: namesOf(item)})
+				default:
+					errs = append(errs, fmt.Errorf("reading the publication %s: %w", target.id(), responseError(resp)))
+				}
+			}
+		}
+	}
+	return leftovers, errors.Join(errs...)
 }
 
 // defaultGatewayLast moves the default gateway the starter created behind every other gateway. The

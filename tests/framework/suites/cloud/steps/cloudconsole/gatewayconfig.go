@@ -45,10 +45,10 @@ const (
 	// is rejected as a conflict.
 	concurrentWriteTimeout = 90 * time.Second
 	// concurrentWritePath is the setting the simultaneous writers each give a value of their own.
-	concurrentWritePath = "gateway.config.policy_configurations.ratelimit_v1.memory.max_entries"
-	// concurrentWriteBase is the lowest value a simultaneous writer sends; the setting accepts
-	// 1000 to 1000000.
-	concurrentWriteBase = 10000
+	concurrentWritePath = "gateway.config.policy_configurations.jwtauth_v1.jwkscachettl"
+	// concurrentWriteBase is the lowest number of minutes a simultaneous writer sends; the
+	// setting accepts 1m to 24h, which the rounds within concurrentWriteTimeout stay below.
+	concurrentWriteBase = 60
 
 	keyConfigTarget = "cloudConfigTargetGatewayID"
 )
@@ -329,21 +329,6 @@ func (s *Steps) assertConfigurationDocument(ctx context.Context) error {
 	return nil
 }
 
-// writeGatewayConfiguration writes the settings of a table to the synthetic gateway and
-// publishes the response without requiring success.
-func (s *Steps) writeGatewayConfiguration(ctx context.Context, table *godog.Table) error {
-	id, err := configurationGateway(ctx)
-	if err != nil {
-		return err
-	}
-	values, err := configValuesFromTable(table)
-	if err != nil {
-		return err
-	}
-	_, err = s.doAuthenticated(ctx, http.MethodPut, configurationPath(id), map[string]any{"values": values})
-	return err
-}
-
 // writeLongString writes a string of the given length to one setting and publishes the response.
 func (s *Steps) writeLongString(ctx context.Context, path string, length int) error {
 	id, err := configurationGateway(ctx)
@@ -597,7 +582,7 @@ func (s *Steps) writeConcurrently(ctx context.Context, writers int) error {
 
 // sendConfigurationWrite sends one writer's value without publishing the response.
 func (s *Steps) sendConfigurationWrite(ctx context.Context, token, id string, value int) (*httpx.Response, error) {
-	raw, err := json.Marshal(map[string]any{"values": map[string]any{concurrentWritePath: value}})
+	raw, err := json.Marshal(map[string]any{"values": map[string]any{concurrentWritePath: fmt.Sprintf("%dm", value)}})
 	if err != nil {
 		return nil, err
 	}

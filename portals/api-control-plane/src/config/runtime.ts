@@ -158,8 +158,12 @@ export type RuntimeConfig = {
    */
   apiDesignerVsCodeUrl: string;
   apiDesignerDocsUrl: string;
+  /** Footer "Documentation" link. */
+  documentationLink: string;
   privacyPolicyLink: string;
   projectApiBaseUrl: string;
+  /** Footer "Support" link. */
+  supportLink: string;
   termsOfUseLink: string;
   toSServiceName: string;
   usersManagementApiUrl: string;
@@ -228,8 +232,10 @@ type LegacyWindowConfig = Partial<{
   MOESIF_WEB_URL: string;
   API_DESIGNER_VSCODE_URL: string;
   API_DESIGNER_DOCS_URL: string;
+  DOCUMENTATION_LINK: string;
   PRIVACY_POLICY_LINK: string;
   PROJECT_API_BASE_URL: string;
+  SUPPORT_LINK: string;
   TERMS_OF_USE_LINK: string;
   TOS_SERVICE_NAME: string;
   USERS_MANAGEMENT_API_URL: string;
@@ -254,8 +260,10 @@ type LegacyWindowConfig = Partial<{
   environmentName: string;
   apiPlatformHomePage: string;
   organizationApiUrl: string;
+  documentationLink: string;
   privacyPolicyLink: string;
   projectApiBaseUrl: string;
+  supportLink: string;
   termsOfUseLink: string;
   toSServiceName: string;
   usersManagementApiUrl: string;
@@ -535,21 +543,31 @@ export const runtimeConfig: RuntimeConfig = {
     fromWindow().API_DESIGNER_DOCS_URL ||
     import.meta.env.VITE_API_DESIGNER_DOCS_URL ||
     'https://wso2.com/api-platform/docs/tools/vscode-api-design/getting-started/',
+  documentationLink:
+    fromWindow().DOCUMENTATION_LINK ||
+    fromWindow().documentationLink ||
+    import.meta.env.VITE_DOCUMENTATION_LINK ||
+    'https://wso2.com/api-platform/docs/',
   privacyPolicyLink:
     fromWindow().PRIVACY_POLICY_LINK ||
     fromWindow().privacyPolicyLink ||
     import.meta.env.VITE_PRIVACY_POLICY_LINK ||
-    'https://wso2.com/api-platform/privacy-policy',
+    'https://wso2.com/privacy-policy',
   projectApiBaseUrl:
     fromWindow().PROJECT_API_BASE_URL ||
     fromWindow().projectApiBaseUrl ||
     import.meta.env.VITE_PROJECT_API_BASE_URL ||
     '',
+  supportLink:
+    fromWindow().SUPPORT_LINK ||
+    fromWindow().supportLink ||
+    import.meta.env.VITE_SUPPORT_LINK ||
+    'https://discord.com/invite/wso2',
   termsOfUseLink:
     fromWindow().TERMS_OF_USE_LINK ||
     fromWindow().termsOfUseLink ||
     import.meta.env.VITE_TERMS_OF_USE_LINK ||
-    'https://wso2.com/api-platform/terms-of-use',
+    'https://wso2.com/api-platform/terms-of-use/',
   toSServiceName:
     fromWindow().TOS_SERVICE_NAME ||
     fromWindow().toSServiceName ||

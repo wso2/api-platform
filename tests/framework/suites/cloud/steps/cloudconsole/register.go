@@ -52,6 +52,11 @@ const (
 	keyEnvironmentName  = "cloudEnvironmentName"
 	keyManagedGatewayID = "cloudManagedGatewayID"
 
+	keySelfHostedGatewayID = "cloudSelfHostedGatewayID"
+	// keyRevokedTokenIDs holds the comma-joined ids of the registration tokens a reconfigure
+	// revoked. Only token ids are ever stored; a token's secret value never enters the context.
+	keyRevokedTokenIDs = "cloudRevokedRegistrationTokenIDs"
+
 	keyAPIDefinition        = "cloudAPIDefinition"
 	keyAPIKey               = "cloudAPIKey"
 	keyRejectedAPIID        = "cloudRejectedAPIID"
@@ -115,9 +120,41 @@ type Steps struct {
 	dataPlaneURLResolver func(context.Context, string) (string, error)
 }
 
+// stepDefinition pairs a Gherkin step pattern with its handler.
+type stepDefinition struct {
+	pattern string
+	handler any
+}
+
+// stepRegistrar is the part of godog.ScenarioContext the step registration needs, so a test can
+// record the registered patterns instead of running a scenario.
+type stepRegistrar interface {
+	Step(expr, stepFunc any)
+}
+
+// stepRecorder collects the steps registered through it.
+type stepRecorder struct {
+	definitions []stepDefinition
+}
+
+func (r *stepRecorder) Step(expr, stepFunc any) {
+	r.definitions = append(r.definitions, stepDefinition{pattern: expr.(string), handler: stepFunc})
+}
+
 // Register binds APIP cloud-specific Gherkin steps.
 func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel *httpx.Funnel) {
 	s := &Steps{topo: topo, funnel: funnel, client: funnel.Client()}
+	s.registerSteps(sc)
+}
+
+// stepDefinitions lists every step pattern Register binds.
+func (s *Steps) stepDefinitions() []stepDefinition {
+	recorder := &stepRecorder{}
+	s.registerSteps(recorder)
+	return recorder.definitions
+}
+
+func (s *Steps) registerSteps(sc stepRegistrar) {
 	sc.Step(`^I obtain an APIP cloud console token$`, s.obtainToken)
 	sc.Step(`^I find the default APIP project$`, s.findDefaultProject)
 	sc.Step(`^I find an active APIP gateway$`, s.findActiveGateway)
@@ -148,6 +185,7 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	s.registerProjectSteps(sc)
 	s.registerPortalSteps(sc)
 	s.registerPortalSignInSteps(sc)
+	s.registerSelfHostedGatewaySteps(sc)
 	sc.Step(`^the cloud API response should report:$`, s.assertResponseReports)
 
 	sc.Step(`^I create a synthetic APIP project$`, s.createProject)
@@ -159,12 +197,12 @@ func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel
 	sc.Step(`^I delete the synthetic APIP environment$`, s.deleteEnvironment)
 	sc.Step(`^deleting the synthetic APIP environment should eventually return not found$`, s.verifyEnvironmentDeleted)
 
-	sc.Step(`^I select an existing APIP environment for a managed gateway$`, s.selectGatewayEnvironment)
+	sc.Step(`^I select an existing APIP environment for a (?:managed|self-hosted) gateway$`, s.selectGatewayEnvironment)
 }
 
 // registerIdentitySteps binds the steps that inspect the console token and send requests with
 // controlled credentials.
-func (s *Steps) registerIdentitySteps(sc *godog.ScenarioContext) {
+func (s *Steps) registerIdentitySteps(sc stepRegistrar) {
 	sc.Step(`^the APIP cloud console token should be a JWT that has not expired$`, s.assertTokenIsLiveJWT)
 	sc.Step(`^the APIP cloud console token should carry an organisation claim$`, s.assertTokenCarriesOrganisation)
 	sc.Step(`^I send an authenticated "([^"]*)" request to the APIP cloud path "([^"]*)"$`, s.sendAuthenticatedRequest)
@@ -182,7 +220,7 @@ func (s *Steps) registerIdentitySteps(sc *godog.ScenarioContext) {
 }
 
 // registerDeploymentSteps binds the build and deployment steps.
-func (s *Steps) registerDeploymentSteps(sc *godog.ScenarioContext) {
+func (s *Steps) registerDeploymentSteps(sc stepRegistrar) {
 	sc.Step(`^I prepare a build of the synthetic REST API with metadata:$`, s.prepareBuild)
 	sc.Step(`^the prepared build should have a day-and-index identifier$`, s.assertBuildIDShape)
 	sc.Step(`^the synthetic REST API builds should include the prepared build$`, s.assertBuildListed)
@@ -201,7 +239,7 @@ func (s *Steps) registerDeploymentSteps(sc *godog.ScenarioContext) {
 
 // registerPromotionSteps binds the steps that build a pipeline over synthetic environments, bind a
 // project to it and check what a promotion along it does to each environment.
-func (s *Steps) registerPromotionSteps(sc *godog.ScenarioContext) {
+func (s *Steps) registerPromotionSteps(sc stepRegistrar) {
 	sc.Step(`^I create (\d+) synthetic non-production APIP environments?$`, s.createSyntheticEnvironments)
 	sc.Step(`^I have (\d+) synthetic non-production APIP environments? for the runner with an active gateway each$`, s.ensureRunnerEnvironments)
 	sc.Step(`^I create a synthetic deployment pipeline with the promotion paths:$`, s.createPipeline)
@@ -221,7 +259,7 @@ func (s *Steps) registerPromotionSteps(sc *godog.ScenarioContext) {
 
 // registerGatewaySteps binds the steps that list the managed gateways and request a gateway the
 // platform refuses.
-func (s *Steps) registerGatewaySteps(sc *godog.ScenarioContext) {
+func (s *Steps) registerGatewaySteps(sc stepRegistrar) {
 	sc.Step(`^I choose a synthetic managed APIP gateway name$`, s.chooseGatewayName)
 	sc.Step(`^I request a synthetic managed APIP gateway with:$`, s.requestManagedGateway)
 	sc.Step(`^I list the managed APIP gateways$`, s.listManagedGateways)
@@ -233,12 +271,11 @@ func (s *Steps) registerGatewaySteps(sc *godog.ScenarioContext) {
 
 // registerGatewayConfigSteps binds the steps that read the active gateway's configuration and
 // write settings the platform refuses.
-func (s *Steps) registerGatewayConfigSteps(sc *godog.ScenarioContext) {
+func (s *Steps) registerGatewayConfigSteps(sc stepRegistrar) {
 	sc.Step(`^I read the configuration of the active APIP gateway$`, s.readGatewayConfiguration)
 	sc.Step(`^the active APIP gateway's configuration should be readable$`, s.awaitConfigurationReadable)
 	sc.Step(`^the configuration of the selected gateway should become readable$`, s.awaitConfigurationReadable)
 	sc.Step(`^the gateway configuration should be a valid document$`, s.assertConfigurationDocument)
-	sc.Step(`^I write the gateway configuration with:$`, s.writeGatewayConfiguration)
 	sc.Step(`^I write the gateway configuration path "([^"]*)" with a string of (\d+) characters$`, s.writeLongString)
 	sc.Step(`^I write each of these gateway configuration values separately:$`, s.writeEachValue)
 	sc.Step(`^I work with the configuration of synthetic managed APIP gateway (\d+)$`, s.selectConfigurationGateway)
@@ -252,7 +289,7 @@ func (s *Steps) registerGatewayConfigSteps(sc *godog.ScenarioContext) {
 
 // registerSecretSteps binds the steps that create, rotate, read and delete a secret and read back
 // what a gateway sends upstream with it.
-func (s *Steps) registerSecretSteps(sc *godog.ScenarioContext) {
+func (s *Steps) registerSecretSteps(sc stepRegistrar) {
 	sc.Step(`^I create a synthetic secret$`, s.createSecret)
 	sc.Step(`^I choose a synthetic secret handle without creating the secret$`, s.chooseSecretHandle)
 	sc.Step(`^I rotate the synthetic secret$`, s.rotateSecret)
@@ -263,6 +300,9 @@ func (s *Steps) registerSecretSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the synthetic secret should be described by a hash$`, s.assertSecretHash)
 	sc.Step(`^the echoed request header "([^"]*)" should carry the synthetic secret's value$`, s.assertEchoedSecret)
 	sc.Step(`^a "([^"]*)" request to "([^"]*)" should echo the header "([^"]*)" with the rotated secret value$`, s.sendUntilEchoesRotated)
+	for _, step := range s.publicationStepDefinitions() {
+		sc.Step(step.pattern, step.handler)
+	}
 }
 
 // RegisterDeleters installs cloud-target cleanup handlers for a block containing cloud-console.
@@ -295,7 +335,25 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 	if err := reg.RegisterDeleter(kindDefaultRestore, restoreDefaultDeleter(topo, client)); err != nil {
 		return err
 	}
+	if err := reg.RegisterDeleter(cleanup.KindGraphQLAPI, cloudDeleter(topo, client, "/graphql-apis", false)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(cleanup.KindSubscriptionPlan, cloudDeleter(topo, client, "/subscription-plans", false)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(cloudPublicationKind, cloudRequestDeleter(topo, client, unpublishRequest)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(cloudDocumentKind, cloudRequestDeleter(topo, client, deleteDocumentRequest)); err != nil {
+		return err
+	}
 	if err := reg.RegisterDeleter(kindAPIPortal, portalDeleter(topo, client)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(kindPortalRestore, portalRestoreDeleter(topo, client)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(kindSelfHostedGateway, cloudDeleter(topo, client, selfHostedGatewaysPath, false)); err != nil {
 		return err
 	}
 	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, managedGatewaysCollection, false))
@@ -331,6 +389,40 @@ func emptyEnvironment(ctx context.Context, client *httpx.Client, base, bearer, e
 		}
 	}
 	return nil
+}
+
+// cloudRequestDeleter sends the request toRequest builds from a resource id, and accepts the
+// answers settled reports as leaving nothing behind.
+func cloudRequestDeleter(
+	topo *frameworkruntime.Topology, client *httpx.Client,
+	toRequest func(id string) (method, path string, settled func(*httpx.Response) bool, err error),
+) cleanup.Deleter {
+	return func(ctx context.Context, resource cleanup.Resource) error {
+		method, path, settled, err := toRequest(resource.ID)
+		if err != nil {
+			return err
+		}
+		base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+		if err != nil {
+			return err
+		}
+		bearer, err := bearerToken(ctx)
+		if err != nil {
+			return err
+		}
+		resp, err := client.Do(ctx, httpx.Request{
+			Method:  method,
+			URL:     cloudAPIURL(base, path),
+			Headers: map[string]string{"Authorization": "Bearer " + bearer},
+		}, 0, 0)
+		if err != nil {
+			return err
+		}
+		if !settled(resp) {
+			return responseError(resp)
+		}
+		return nil
+	}
 }
 
 func cloudDeleter(topo *frameworkruntime.Topology, client *httpx.Client, collection string, waitForNotFound bool) cleanup.Deleter {

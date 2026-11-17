@@ -422,9 +422,11 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 	// Control-plane and API Portal templates are publisher-API payloads, which carry no gateway
 	// envelope. Each names the payload block that identifies the resource.
 	controlPlaneBlocks := map[string]string{
-		"agent-proxy.yaml":     "a2a",
-		"api-portal-api.yaml":  "endPoints",
-		"llm-provider-cp.yaml": "upstream",
+		"agent-proxy.yaml":              "a2a",
+		"api-portal-api.yaml":           "endPoints",
+		"llm-provider-cp.yaml":          "upstream",
+		"llm-provider-template-cp.yaml": "metadata",
+		"rest-api-cp.yaml":              "upstream",
 	}
 	// Control-plane payloads without a protocol block name the fields every request carries.
 	controlPlaneFields := map[string][]string{
@@ -457,6 +459,10 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 				require.Equal(t, "a2a", document["protocol"], "template %q", name)
 			}
 			for _, envelope := range []string{"apiVersion", "kind", "metadata", "spec"} {
+				if envelope == blockName {
+					// The payload's own block, such as an LLM provider template's metadata.
+					continue
+				}
 				require.NotContains(t, document, envelope, "control-plane template %q must not carry a gateway envelope", name)
 			}
 			block, ok := document[blockName].(map[string]any)

@@ -74,16 +74,16 @@ func evaluateListeners(ctx context.Context, cl client.Client, gw *gatewayv1.Gate
 				SupportedKinds: []gatewayv1.RouteGroupKind{},
 				Conditions: listenerConditions(gw.Generation,
 					metav1.Condition{
-						Type:               string(gatewayv1.ListenerConditionAccepted),
-						Status:             metav1.ConditionFalse,
-						Reason:             string(gatewayv1.ListenerReasonUnsupportedProtocol),
-						Message:            fmt.Sprintf("Protocol %q is not supported; supported protocols are HTTP and HTTPS", l.Protocol),
+						Type:    string(gatewayv1.ListenerConditionAccepted),
+						Status:  metav1.ConditionFalse,
+						Reason:  string(gatewayv1.ListenerReasonUnsupportedProtocol),
+						Message: fmt.Sprintf("Protocol %q is not supported; supported protocols are HTTP and HTTPS", l.Protocol),
 					},
 					metav1.Condition{
-						Type:               string(gatewayv1.ListenerConditionResolvedRefs),
-						Status:             metav1.ConditionFalse,
-						Reason:             string(gatewayv1.ListenerReasonInvalid),
-						Message:            "Listener has unsupported protocol",
+						Type:    string(gatewayv1.ListenerConditionResolvedRefs),
+						Status:  metav1.ConditionFalse,
+						Reason:  string(gatewayv1.ListenerReasonInvalid),
+						Message: "Listener has unsupported protocol",
 					},
 					listenerProgrammedCondition(metav1.ConditionFalse, string(gatewayv1.ListenerReasonInvalid), "Listener has unsupported protocol"),
 				),
@@ -243,7 +243,7 @@ func validateTLSCertificateRefs(ctx context.Context, cl client.Client, gwNamespa
 
 	for _, certRef := range l.TLS.CertificateRefs {
 		// Validate the cert ref group/kind
-		if certRef.Group != nil && string(*certRef.Group) != "" && string(*certRef.Group) != "core" {
+		if !isCoreAPIGroup(certRef.Group) {
 			return false, string(gatewayv1.ListenerReasonInvalidCertificateRef),
 				fmt.Sprintf("Unsupported group %q for certificateRef", *certRef.Group), nil
 		}

@@ -442,9 +442,10 @@ func TestAnInterfaceStatingNoVersionIsRewritten(t *testing.T) {
 }
 
 // A version this gateway does not serve is only a failure on a binding it does
-// front. On a binding it does not, the entry is left alone before the version is
-// ever considered — the operator did not expose that transport at any version.
-func TestAnUnservedBindingIsLeftAloneRegardlessOfItsVersion(t *testing.T) {
+// front. On a binding it does not, there is no endpoint for the version to
+// disagree with — the operator did not expose that transport at any version —
+// so the entry is pointed at the gateway like any other unserved binding.
+func TestAnUnservedBindingIsRewrittenRegardlessOfItsVersion(t *testing.T) {
 	grpcOldVersion := `{
 	  "name": "Trip Planner",
 	  "supportedInterfaces": [
@@ -457,8 +458,9 @@ func TestAnUnservedBindingIsLeftAloneRegardlessOfItsVersion(t *testing.T) {
 	mods := requireModifications(t, runResponse(t, instance, params,
 		schemeHTTPS, "agents.example.com", "", 200, grpcOldVersion))
 
-	if mods.Body != nil {
-		t.Errorf("the response body was replaced: %s", mods.Body)
+	urls := interfaceURLs(t, decodeCard(t, mods.Body))
+	if got, want := urls["GRPC"], "https://agents.example.com/trips/rpc"; got != want {
+		t.Errorf("GRPC url = %q, want the first configured transport's endpoint %q", got, want)
 	}
 }
 
@@ -474,44 +476,65 @@ func jsonrpcOnlyParams() map[string]any {
 	}})
 }
 
-// An interface whose binding no configured transport serves keeps the URL the
-// upstream wrote; the ones the gateway does serve are still rewritten.
+// An interface whose binding no configured transport serves is pointed at the
+// gateway as well, at the endpoint of the transport that is configured.
 //
-// Exposing one of an agent's two transports is a deliberate configuration, not
-// an error, and the gateway has no endpoint to offer for the transport it was
-// not asked to carry. The consequence is real and is the operator's to accept: a
-// client selecting the untouched binding talks to the agent directly, outside
-// every policy on this gateway.
-func TestRewriteLeavesABindingNoTransportServesAlone(t *testing.T) {
+// Exposing one of an agent's two transports is a deliberate configuration, and
+// the gateway has no endpoint of its own for the other. Leaving the upstream's
+// URL there would publish the agent's backend address and hand every client a
+// route around the gateway's policies, so the entry borrows the configured
+// transport's URL instead. Its binding is left as the upstream wrote it.
+func TestRewritePointsABindingNoTransportServesAtTheGateway(t *testing.T) {
 	params := jsonrpcOnlyParams()
 	instance := rewritingPolicy(t, params)
 	mods := requireModifications(t, runResponse(t, instance, params,
 		schemeHTTPS, "agents.example.com", "", 200, upstreamCard))
 
+	if strings.Contains(string(mods.Body), "agent.internal") {
+		t.Errorf("the upstream's own address survived the rewrite: %s", mods.Body)
+	}
 	urls := interfaceURLs(t, decodeCard(t, mods.Body))
 	if got, want := urls[transportJSONRPC], "https://agents.example.com/trips/rpc"; got != want {
 		t.Errorf("JSONRPC url = %q, want the gateway endpoint %q", got, want)
 	}
-	if got, want := urls[transportHTTPJSON], "https://agent.internal/v1"; got != want {
-		t.Errorf("HTTP+JSON url = %q, want the upstream's own %q — no transport serves it", got, want)
+	if got, want := urls[transportHTTPJSON], "https://agents.example.com/trips/rpc"; got != want {
+		t.Errorf("HTTP+JSON url = %q, want the configured transport's endpoint %q", got, want)
+	}
+}
+
+// With several transports configured, an unserved binding takes the first one's
+// endpoint — the same one on every request, not whichever a map yields.
+func TestAnUnservedBindingTakesTheFirstConfiguredTransport(t *testing.T) {
+	withGRPC := `{
+	  "name": "Trip Planner",
+	  "supportedInterfaces": [
+	    {"protocolBinding": "GRPC", "url": "https://agent.internal:9000"},
+	    {"protocolBinding": "HTTP+JSON", "url": "https://agent.internal/v1"},
+	    {"protocolBinding": "JSONRPC", "url": "https://agent.internal/"}
+	  ]
+	}`
+
+	params := publicRewriteParams()
+	instance := rewritingPolicy(t, params)
+	for range 20 {
+		mods := requireModifications(t, runResponse(t, instance, params,
+			schemeHTTPS, "agents.example.com", "", 200, withGRPC))
+
+		urls := interfaceURLs(t, decodeCard(t, mods.Body))
+		if got, want := urls["GRPC"], "https://agents.example.com/trips/rpc"; got != want {
+			t.Fatalf("GRPC url = %q, want the first configured transport's endpoint %q", got, want)
+		}
+		if got, want := urls[transportHTTPJSON], "https://agents.example.com/trips/v1"; got != want {
+			t.Fatalf("HTTP+JSON url = %q, want its own endpoint %q", got, want)
+		}
 	}
 }
 
 // A card whose every interface is on a binding this gateway does not front is
-// forwarded exactly as it arrived, signatures and caching headers included.
-//
-// Nothing in the document was changed, so there is nothing for the gateway to
-// invalidate: dropping the signature or the validators here would degrade a
-// response the gateway decided not to touch.
-//
-// This is the one shape that is forwarded rather than refused, and it is a
-// well-formed card describing transports the operator did not expose — not a
-// document the gateway failed to read. A card it cannot read as a card fails
-// closed instead; see TestUnsafeRewriteFailsClosed.
-func TestCardWithNoServedBindingIsForwardedUnchanged(t *testing.T) {
-	// A2A defines a gRPC binding this gateway does not expose, so a card carrying
-	// only that one is the realistic shape — and it must not be mistaken for a
-	// malformed card.
+// still rewritten: it is a well-formed card, and its interfaces name the agent's
+// backend like any other. The signature goes with the rewrite, since it no
+// longer covers the returned document.
+func TestCardWithNoServedBindingIsRewritten(t *testing.T) {
 	// A2A defines a gRPC binding this gateway does not expose, so a card carrying
 	// only that one is the realistic shape — and it must not be mistaken for a
 	// malformed card.
@@ -528,21 +551,18 @@ func TestCardWithNoServedBindingIsForwardedUnchanged(t *testing.T) {
 	mods := requireModifications(t, runResponse(t, instance, params,
 		schemeHTTPS, "agents.example.com", "", 200, grpcOnly))
 
-	if mods.Body != nil {
-		t.Errorf("the response body was replaced: %s", mods.Body)
+	card := decodeCard(t, mods.Body)
+	if got, want := interfaceURLs(t, card)["GRPC"], "https://agents.example.com/trips/rpc"; got != want {
+		t.Errorf("GRPC url = %q, want %q", got, want)
 	}
-	if len(mods.HeadersToSet) != 0 {
-		t.Errorf("HeadersToSet = %v, want none for an unchanged response", mods.HeadersToSet)
-	}
-	if len(mods.HeadersToRemove) != 0 {
-		t.Errorf("HeadersToRemove = %v, want none for an unchanged response", mods.HeadersToRemove)
+	if _, present := card[cardFieldSignatures]; present {
+		t.Error("the upstream signature survived a rewrite it no longer covers")
 	}
 }
 
-// The same on the protected card's JSON-RPC binding: an untouched card leaves
-// its envelope untouched too, rather than being re-encoded around identical
-// bytes.
-func TestProtectedJSONRPCResponseWithNoServedBindingIsForwardedUnchanged(t *testing.T) {
+// The same on the protected card's JSON-RPC binding: the card inside the
+// envelope is rewritten, and the envelope's id comes back as it arrived.
+func TestProtectedJSONRPCResponseWithNoServedBindingIsRewritten(t *testing.T) {
 	body := `{"jsonrpc":"2.0","id":7,"result":{"supportedInterfaces":[` +
 		`{"protocolBinding":"GRPC","url":"https://agent.internal:9000"}]}}`
 
@@ -551,8 +571,14 @@ func TestProtectedJSONRPCResponseWithNoServedBindingIsForwardedUnchanged(t *test
 	mods := requireModifications(t, runResponse(t, instance, params,
 		schemeHTTPS, "agents.example.com", transportJSONRPC, 200, body))
 
-	if mods.Body != nil {
-		t.Errorf("the response body was replaced: %s", mods.Body)
+	if strings.Contains(string(mods.Body), "agent.internal") {
+		t.Errorf("the upstream's own address survived the rewrite: %s", mods.Body)
+	}
+	if !strings.Contains(string(mods.Body), `"id":7`) {
+		t.Errorf("the envelope id did not survive as a number: %s", mods.Body)
+	}
+	if !strings.Contains(string(mods.Body), "https://agents.example.com/trips/rpc") {
+		t.Errorf("the interface was not pointed at the gateway: %s", mods.Body)
 	}
 }
 
@@ -980,5 +1006,160 @@ func TestRewriteParameterNamesMatchTheControllerContract(t *testing.T) {
 		if testCase.got != testCase.want {
 			t.Errorf("parameter name = %q, want %q", testCase.got, testCase.want)
 		}
+	}
+}
+
+// ─── The configured gateway URL ──────────────────────────────────────────────
+
+// withGatewayURL adds the gatewayUrl system parameter the way the policy engine
+// does: resolved from configuration and merged at the top level, beside the card
+// block the controller wrote.
+func withGatewayURL(params map[string]any, gatewayURL any) map[string]any {
+	params[ParamGatewayURL] = gatewayURL
+	return params
+}
+
+// A configured gateway URL decides the whole origin, ahead of the request.
+//
+// This is the deployment the parameter exists for: the gateway sits behind
+// something else, so the request arrives over plaintext on an internal
+// authority, and neither is an address a client outside can use.
+func TestConfiguredGatewayURLTakesPrecedenceOverTheRequest(t *testing.T) {
+	params := withGatewayURL(publicRewriteParams(), "https://agents.example.com")
+	instance := rewritingPolicy(t, params)
+	mods := requireModifications(t, runResponse(t, instance, params,
+		schemeHTTP, "gateway.internal.svc:8080", "", 200, upstreamCard))
+
+	if strings.Contains(string(mods.Body), "gateway.internal.svc") {
+		t.Errorf("the internal authority was published: %s", mods.Body)
+	}
+	urls := interfaceURLs(t, decodeCard(t, mods.Body))
+	if got, want := urls[transportJSONRPC], "https://agents.example.com/trips/rpc"; got != want {
+		t.Errorf("JSONRPC url = %q, want %q", got, want)
+	}
+	if got, want := urls[transportHTTPJSON], "https://agents.example.com/trips/v1"; got != want {
+		t.Errorf("HTTP+JSON url = %q, want %q", got, want)
+	}
+}
+
+// The configured URL is used as written: a non-standard port and a path prefix
+// are both part of the address the operator published, and a trailing slash is
+// not a second separator.
+func TestConfiguredGatewayURLKeepsItsPortAndPathPrefix(t *testing.T) {
+	bases := map[string]string{
+		"a port":                      "https://edge.example.com:8443",
+		"a path prefix":               "https://edge.example.com:8443/gateway",
+		"a trailing slash":            "https://edge.example.com:8443/gateway/",
+		"surrounding whitespace":      "  https://edge.example.com:8443/gateway  ",
+		"a plaintext public address":  "http://edge.example.com:8443/gateway",
+		"an IPv6 literal with a port": "https://[2001:db8::1]:8443/gateway",
+		"the highest port":            "https://edge.example.com:65535",
+		// %2F is a slash inside one segment, not a separator. An entry point that
+		// tells the two apart would route the decoded form somewhere else.
+		"an escaped separator in the prefix": "https://edge.example.com/team%2Fblue/",
+	}
+	want := map[string]string{
+		"a port":                             "https://edge.example.com:8443/trips/rpc",
+		"a path prefix":                      "https://edge.example.com:8443/gateway/trips/rpc",
+		"a trailing slash":                   "https://edge.example.com:8443/gateway/trips/rpc",
+		"surrounding whitespace":             "https://edge.example.com:8443/gateway/trips/rpc",
+		"a plaintext public address":         "http://edge.example.com:8443/gateway/trips/rpc",
+		"an IPv6 literal with a port":        "https://[2001:db8::1]:8443/gateway/trips/rpc",
+		"the highest port":                   "https://edge.example.com:65535/trips/rpc",
+		"an escaped separator in the prefix": "https://edge.example.com/team%2Fblue/trips/rpc",
+	}
+
+	for name, base := range bases {
+		t.Run(name, func(t *testing.T) {
+			params := withGatewayURL(publicRewriteParams(), base)
+			instance := rewritingPolicy(t, params)
+			mods := requireModifications(t, runResponse(t, instance, params,
+				schemeHTTPS, "agents.example.com", "", 200, upstreamCard))
+
+			urls := interfaceURLs(t, decodeCard(t, mods.Body))
+			if got := urls[transportJSONRPC]; got != want[name] {
+				t.Errorf("JSONRPC url = %q, want %q", got, want[name])
+			}
+		})
+	}
+}
+
+// With the origin configured, the request no longer has to supply a usable one:
+// a request with no scheme or authority, which fails closed otherwise, is
+// rewritten.
+func TestConfiguredGatewayURLNeedsNothingFromTheRequest(t *testing.T) {
+	params := withGatewayURL(publicRewriteParams(), "https://agents.example.com")
+	instance := rewritingPolicy(t, params)
+	mods := requireModifications(t, runResponse(t, instance, params,
+		"", "", "", 200, upstreamCard))
+
+	urls := interfaceURLs(t, decodeCard(t, mods.Body))
+	if got, want := urls[transportJSONRPC], "https://agents.example.com/trips/rpc"; got != want {
+		t.Errorf("JSONRPC url = %q, want %q", got, want)
+	}
+}
+
+// The parameter is optional. Absent, null or empty, the origin is derived from
+// the request as before.
+func TestAbsentGatewayURLFallsBackToTheRequest(t *testing.T) {
+	unset := map[string]any{"null": nil, "empty": "", "blank": "   "}
+
+	for name, value := range unset {
+		t.Run(name, func(t *testing.T) {
+			params := withGatewayURL(publicRewriteParams(), value)
+			instance := rewritingPolicy(t, params)
+			mods := requireModifications(t, runResponse(t, instance, params,
+				schemeHTTPS, "agents.example.com", "", 200, upstreamCard))
+
+			urls := interfaceURLs(t, decodeCard(t, mods.Body))
+			if got, want := urls[transportJSONRPC], "https://agents.example.com/trips/rpc"; got != want {
+				t.Errorf("JSONRPC url = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// A configured value that cannot be published is refused, not ignored: falling
+// back to the derived origin would advertise the very address the operator set
+// this to replace.
+func TestUnusableGatewayURLIsRejected(t *testing.T) {
+	unusable := map[string]any{
+		"not a string":      8080,
+		"no scheme":         "agents.example.com",
+		"a relative path":   "/gateway",
+		"an unusual scheme": "ftp://agents.example.com",
+		"no host":           "https:///gateway",
+		"userinfo":          "https://user:pass@agents.example.com",
+		"a query string":    "https://agents.example.com?tenant=a",
+		"a fragment":        "https://agents.example.com#top",
+		"a wildcard host":   "https://*.example.com",
+		"port zero":         "https://agents.example.com:0",
+		"a port past 65535": "https://agents.example.com:65536",
+	}
+
+	for name, value := range unusable {
+		t.Run(name, func(t *testing.T) {
+			if base, err := parseGatewayBase(map[string]any{ParamGatewayURL: value}); err == nil {
+				t.Fatalf("parseGatewayBase accepted %v as %v", value, base)
+			}
+
+			instance := rewritingPolicy(t, withGatewayURL(publicRewriteParams(), value))
+			if instance.configErr == nil {
+				t.Error("the instance carries no configuration error, so it would serve")
+			}
+		})
+	}
+}
+
+// Only a rewriting instance reads the parameter. It is merged into every
+// instance of the policy, so a bad value must not break the chains that never
+// build a gateway URL — a managed card, above all.
+func TestGatewayURLIsIgnoredByAnInstanceThatDoesNotRewrite(t *testing.T) {
+	instance := rewritingPolicy(t, withGatewayURL(cardParams(), "not a url"))
+	if instance.configErr != nil {
+		t.Errorf("a managed card instance failed on gatewayUrl: %v", instance.configErr)
+	}
+	if instance.rewrite != nil {
+		t.Error("a managed card instance was given a rewrite configuration")
 	}
 }

@@ -23,7 +23,7 @@ Feature: API Portal role authorization
   So that administrators run the portal, developers manage their own applications, and a narrow
   role only reads
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level, in
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level, in
   # the api-portal-auth-role block (authorization.mode = role). The token's scope claim is ignored;
   # the portal expands the token's roles through its own mapping, where ap_admin grants every
   # operation, ap_subscriber manages applications, keys and subscriptions and reads the rest, and

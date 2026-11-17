@@ -36,12 +36,12 @@ func TestBuildHTTPClientConfigDefaultsAlwaysEnableSSRFGuard(t *testing.T) {
 		t.Fatalf("BuildHTTPClientConfig returned error: %v", err)
 	}
 
-	if !cfg.SSRF.Enabled {
+	if !cfg.DestinationGuard.Enabled {
 		t.Fatal("expected SSRF.Enabled to always be true, got false")
 	}
 	wantPolicy := netguard.PermitPrivateBlockMetadata()
-	if !reflect.DeepEqual(cfg.SSRF.Policy, wantPolicy) {
-		t.Fatalf("expected SSRF.Policy to be PermitPrivateBlockMetadata, got %+v", cfg.SSRF.Policy)
+	if !reflect.DeepEqual(cfg.DestinationGuard.Policy, wantPolicy) {
+		t.Fatalf("expected DestinationGuard.Policy to be PermitPrivateBlockMetadata, got %+v", cfg.DestinationGuard.Policy)
 	}
 	if cfg.Proxy.Mode != "" {
 		t.Fatalf("expected no proxy mode by default, got %q", cfg.Proxy.Mode)
@@ -53,8 +53,8 @@ func TestBuildHTTPClientConfigCarriesPoolingTimeoutsAndTLS(t *testing.T) {
 	hc.Pooling.MaxIdleConns = 42
 	hc.Timeouts.Dial = 5 * time.Second
 	hc.TLS.MinVersion = "TLS1_3"
-	hc.SSRF.MaxRedirects = 3
-	hc.SSRF.AllowedSchemes = []string{"https", "http"}
+	hc.DestinationGuard.MaxRedirects = 3
+	hc.DestinationGuard.AllowedSchemes = []string{"https", "http"}
 
 	cfg, err := BuildHTTPClientConfig(hc)
 	if err != nil {
@@ -70,11 +70,11 @@ func TestBuildHTTPClientConfigCarriesPoolingTimeoutsAndTLS(t *testing.T) {
 	if cfg.TLS.MinVersion != "TLS1_3" {
 		t.Errorf("expected TLS.MinVersion=TLS1_3, got %q", cfg.TLS.MinVersion)
 	}
-	if cfg.SSRF.MaxRedirects != 3 {
-		t.Errorf("expected SSRF.MaxRedirects=3, got %d", cfg.SSRF.MaxRedirects)
+	if cfg.DestinationGuard.MaxRedirects != 3 {
+		t.Errorf("expected DestinationGuard.MaxRedirects=3, got %d", cfg.DestinationGuard.MaxRedirects)
 	}
-	if len(cfg.SSRF.Policy.AllowedSchemes) != 2 || cfg.SSRF.Policy.AllowedSchemes[0] != "https" {
-		t.Errorf("expected SSRF.Policy.AllowedSchemes=[https http], got %v", cfg.SSRF.Policy.AllowedSchemes)
+	if len(cfg.DestinationGuard.Policy.AllowedSchemes) != 2 || cfg.DestinationGuard.Policy.AllowedSchemes[0] != "https" {
+		t.Errorf("expected DestinationGuard.Policy.AllowedSchemes=[https http], got %v", cfg.DestinationGuard.Policy.AllowedSchemes)
 	}
 }
 

@@ -24,8 +24,8 @@ func TestEmbeddedTaxonomyParses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("embedded taxonomy: %v", err)
 	}
-	if tax.ProductID != "apip" || tax.ProductName != "WSO2 API Platform" {
-		t.Errorf("product = %q / %q, want apip / WSO2 API Platform", tax.ProductID, tax.ProductName)
+	if tax.ProductID != "apip" || tax.ProductName != "API Platform" {
+		t.Errorf("product = %q / %q, want apip / API Platform", tax.ProductID, tax.ProductName)
 	}
 	if tax.Len() == 0 {
 		t.Fatal("embedded taxonomy has no features")
@@ -73,7 +73,7 @@ func TestEnabledFeaturesAreInTaxonomy(t *testing.T) {
 }
 
 func TestParseTaxonomyRejectsMalformedDocuments(t *testing.T) {
-	const header = "product:\n  id: \"apip\"\n  name: \"WSO2 API Platform\"\nfeatures:\n"
+	const header = "product:\n  id: \"apip\"\n  name: \"API Platform\"\nfeatures:\n"
 	featureOn := func(platforms, code, dims string) string {
 		return "  - code: \"" + code + "\"\n    name: \"N\"\n    category: \"c\"\n    tier: \"core\"\n" +
 			"    tracking:\n      event_name: \"" + code + "\"\n      event_category: \"lifecycle\"\n" +

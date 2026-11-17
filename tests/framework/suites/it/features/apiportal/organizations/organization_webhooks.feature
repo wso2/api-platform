@@ -23,7 +23,7 @@ Feature: Webhook events name the organization by its control plane reference
   I want every webhook event to carry the organization's control plane reference ID
   So that I can resolve the organization an event belongs to, even after the reference changes
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level. It runs
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level. It runs
   # in the api-portal-webhooks block, one runner at a time, because the reference is organization-wide
   # state that every event of every runner carries. The organization's settings are written back
   # when the scenario ends, pass or fail.

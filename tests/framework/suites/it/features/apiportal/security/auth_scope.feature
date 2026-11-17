@@ -22,7 +22,7 @@ Feature: API Portal scope authorization
   I want each Management API operation allowed only to a token carrying its scope
   So that a caller can do exactly what its token was granted, and nothing more
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level, in
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level, in
   # the api-portal-auth-scope block (authorization.mode = scope). Tokens are issued by platform-api,
   # whose role-to-scope mapping gives the narrow actor read scopes plus dp:application:create, and no
   # label scope. Every refusal is paired with the same operation succeeding for an actor that holds

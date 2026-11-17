@@ -22,7 +22,7 @@ Feature: Buying a flat rate plan in the API Portal
   I want to pay for a plan through checkout and stop paying when I unsubscribe
   So that I get the plan I paid for, and the portal follows what Stripe says about my payments
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the
   # API level. The paid plan is published from the control plane with billing set up in this
   # runner's own portal; Stripe and Moesif are the testbench services, reset before every scenario.
   # The api-portal-billing block has no gateway: the gateway's handling of a paid subscription is
