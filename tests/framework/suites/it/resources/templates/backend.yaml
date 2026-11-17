@@ -1,0 +1,5 @@
+apiVersion: ${VALUE:apiVersion}
+kind: Backend
+metadata:
+  name: ${VALUE:name}
+spec: {}

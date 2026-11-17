@@ -1,0 +1,94 @@
+# Scenario list: Gateway Global Backends (GWBE).
+#
+# A Backend (kind: Backend, apiVersion gateway.choreolabs.com/v1) is a backend defined once for
+# the whole gateway through the management API (/backends). APIs route to it with the
+# dynamic-endpoint policy, by a fixed targetUpstream or by a backendExpression. Backends are
+# local to each gateway; the control plane and the console do not manage them.
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: GWBE
+title: Gateway Global Backends
+scenarios:
+  - id: GWBE-001
+    title: "Create a Backend with labels, a base path, a timeout and two weighted endpoints; 201 with status.id equal to its name, and it can be read, listed, updated (labels, base path, endpoints) and deleted, after which a read returns 404."
+    priority: P0
+    ui:
+      status: exempt
+      reason: Backends are managed through the gateway management API only; no portal or console page creates or deploys them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/backend_management.feature
+          scenario: "A Backend is created, read, listed, updated and deleted"
+  - id: GWBE-002
+    title: "Create a Backend with the wrong apiVersion, an invalid name, mixed http and https endpoints, a base path ending in /, or no endpoints; each is 400 naming the field at fault and nothing is created, while a valid Backend with the same name is then created with 201."
+    priority: P1
+    ui:
+      status: exempt
+      reason: Backends are managed through the gateway management API only; no portal or console page creates or deploys them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/backend_management.feature
+          scenario: "An invalid Backend is rejected with the field at fault"
+  - id: GWBE-003
+    title: "Create a second Backend with an existing name; 409. Update a Backend with a different metadata.name; 400 cannot be renamed, while updating it under its own name succeeds with 200, and updating a Backend that does not exist returns 404."
+    priority: P1
+    ui:
+      status: exempt
+      reason: Backends are managed through the gateway management API only; no portal or console page creates or deploys them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/backend_management.feature
+          scenario: "A duplicate name is refused, and a Backend cannot be renamed"
+  - id: GWBE-004
+    title: "As a developer, read a Backend (200) but create one or delete one (403 each), while an admin creates the same Backend (201) and deletes the same one (200)."
+    priority: P1
+    ui:
+      status: exempt
+      reason: Backends are managed through the gateway management API only; no portal or console page creates or deploys them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/backend_management.feature
+          scenario: "Developers can read Backends, and only administrators can change them"
+  - id: GWBE-005
+    title: "Delete a Backend that a deployed API names in dynamic-endpoint's targetUpstream; 409 naming the API and the parameter, while the API routes to the Backend's base path; after the API is deleted the Backend is deleted with 200."
+    priority: P0
+    ui:
+      status: exempt
+      reason: Backends are managed through the gateway management API only; no portal or console page creates or deploys them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/backend_management.feature
+          scenario: "A Backend a deployed API names as its fixed target cannot be deleted until the API is gone"
+  - id: GWBE-006
+    title: "Deploy an API whose own upstream definition has the same name as a Backend and whose targetUpstream names it; requests reach the API's upstream definition, and the Backend can be deleted with 200 without changing that routing."
+    priority: P0
+    ui:
+      status: exempt
+      reason: Backends are managed through the gateway management API only; no portal or console page creates or deploys them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/backend_management.feature
+          scenario: "An API's own upstream definition takes precedence over a Backend of the same name"
+  - id: GWBE-007
+    title: "Deploy an API that routes by a backendExpression over a request header, limited by a label selector; a header naming a Backend that does not exist yet gets 400, and once the Backend is created the same request reaches it with no API change and without the routing header; a Backend outside the selector gets 400."
+    priority: P0
+    ui:
+      status: exempt
+      reason: Backends are managed through the gateway management API only; no portal or console page creates or deploys them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/backend_management.feature
+          scenario: "An API routes by backendExpression to a Backend added after it was deployed"
