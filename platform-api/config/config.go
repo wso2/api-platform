@@ -294,7 +294,7 @@ type AgentCardCache struct {
 	MaxBytes int64 `koanf:"max_bytes"`
 }
 
-// GatewayRelay configures POST /gateway-relay/invoke and /gateway-relay/invoke-graphql.
+// GatewayRelay configures POST /gateway-relay/invoke.
 // Its client is not the shared one: it never follows redirects, and Egress
 // decides which gateway addresses it may dial.
 type GatewayRelay struct {

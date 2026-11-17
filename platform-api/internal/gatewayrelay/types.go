@@ -15,9 +15,9 @@
  */
 
 // Package gatewayrelay sends the Test console's request to a REST or GraphQL API
-// deployed on a gateway (POST /gateway-relay/invoke, /gateway-relay/invoke-graphql)
-// and returns the gateway's response as data. A browser often cannot call the
-// gateway itself: CORS, mixed content, or a network it cannot reach.
+// deployed on a gateway (POST /gateway-relay/invoke) and returns the gateway's
+// response as data. A browser often cannot call the gateway itself: CORS, mixed
+// content, or a network it cannot reach.
 //
 // The caller never supplies a URL (see BuildTarget), the egress policy decides
 // which addresses may be dialed, and only the request's own sanitized headers

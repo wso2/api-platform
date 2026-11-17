@@ -28,6 +28,7 @@ import (
 
 	"github.com/wso2/api-platform/httpkit/httputil"
 	"github.com/wso2/api-platform/platform-api/api"
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay"
@@ -84,21 +85,23 @@ var (
 	}
 )
 
-// invokeKind is what differs between the REST and GraphQL invoke operations.
-// label ("REST API") and idKey ("restApiId") name the API in log lines.
+// invokeKind is what differs between a REST and a GraphQL API's test request.
+// label ("REST API") and idKey ("restApiId") name the API in log lines, and the
+// caller needs one of scopes.
 type invokeKind struct {
 	label   string
 	idKey   string
+	scopes  []string
 	targets invokeTargets
 	errs    invokeErrors
-	decode  func(w http.ResponseWriter, r *http.Request) (apiID, gatewayID string, req gatewayrelay.Request, err error)
 }
 
-// APIInvokeHandler serves POST /gateway-relay/invoke and /gateway-relay/invoke-graphql.
+// APIInvokeHandler serves POST /gateway-relay/invoke.
 type APIInvokeHandler struct {
 	rest           invokeKind
 	graphql        invokeKind
 	relay          relayer
+	authz          config.Authorization
 	maxBodyBytes   int64
 	requestTimeout time.Duration
 	slogger        *slog.Logger
@@ -106,9 +109,24 @@ type APIInvokeHandler struct {
 
 // NewAPIInvokeHandler builds the handler. maxRequestBytes is the relay's limit
 // on the decoded request body, and requestTimeout the limit on one test request.
-func NewAPIInvokeHandler(restTargets, graphqlTargets invokeTargets, relay relayer, maxRequestBytes int64, requestTimeout time.Duration, slogger *slog.Logger) *APIInvokeHandler {
-	h := &APIInvokeHandler{
+func NewAPIInvokeHandler(restTargets, graphqlTargets invokeTargets, relay relayer, authz config.Authorization, maxRequestBytes int64, requestTimeout time.Duration, slogger *slog.Logger) *APIInvokeHandler {
+	return &APIInvokeHandler{
+		rest: invokeKind{
+			label:   "REST API",
+			idKey:   "restApiId",
+			scopes:  []string{constants.ScopeRESTAPIRead, constants.ScopeRESTAPIManage},
+			targets: restTargets,
+			errs:    restInvokeErrors,
+		},
+		graphql: invokeKind{
+			label:   "GraphQL API",
+			idKey:   "graphqlApiId",
+			scopes:  []string{constants.ScopeGraphQLAPIRead, constants.ScopeGraphQLAPIManage},
+			targets: graphqlTargets,
+			errs:    graphqlInvokeErrors,
+		},
 		relay: relay,
+		authz: authz,
 		// The body travels as a JSON string. Base64 makes a binary body a third
 		// larger; escaping doubles a quote, a backslash, \n, \r or \t in a text one.
 		// Only the decoded body is held to maxRequestBytes (Relay.Do), so this
@@ -117,23 +135,10 @@ func NewAPIInvokeHandler(restTargets, graphqlTargets invokeTargets, relay relaye
 		requestTimeout: requestTimeout,
 		slogger:        slogger,
 	}
-	h.rest = invokeKind{label: "REST API", idKey: "restApiId", targets: restTargets, errs: restInvokeErrors, decode: h.decodeRESTRequest}
-	h.graphql = invokeKind{label: "GraphQL API", idKey: "graphqlApiId", targets: graphqlTargets, errs: graphqlInvokeErrors, decode: h.decodeGraphQLRequest}
-	return h
 }
 
 // InvokeAPI handles POST /api/v0.9/gateway-relay/invoke.
 func (h *APIInvokeHandler) InvokeAPI(w http.ResponseWriter, r *http.Request) error {
-	return h.invoke(w, r, h.rest)
-}
-
-// InvokeGraphQLAPI handles POST /api/v0.9/gateway-relay/invoke-graphql.
-func (h *APIInvokeHandler) InvokeGraphQLAPI(w http.ResponseWriter, r *http.Request) error {
-	return h.invoke(w, r, h.graphql)
-}
-
-// invoke relays one test request for an API of kind.
-func (h *APIInvokeHandler) invoke(w http.ResponseWriter, r *http.Request, kind invokeKind) error {
 	// The answer describes one caller's gateway; nothing on the way may cache it.
 	w.Header().Set("Cache-Control", "no-store")
 
@@ -151,9 +156,14 @@ func (h *APIInvokeHandler) invoke(w http.ResponseWriter, r *http.Request, kind i
 			WithLogMessage("organization claim not found in token")
 	}
 
-	apiID, gatewayID, req, err := kind.decode(w, r)
+	kind, apiID, gatewayID, req, err := h.decodeRequest(w, r)
 	if err != nil {
 		return err
+	}
+	// The route admits either kind's scopes; this keeps each caller to its own kind.
+	if !middleware.HoldsAnyScope(r, h.authz, kind.scopes...) {
+		return apperror.Forbidden.New().
+			WithLogMessage(fmt.Sprintf("test request for %s %s without one of %v", kind.label, apiID, kind.scopes))
 	}
 
 	invokeTarget, err := kind.targets.GetAPIInvokeTarget(apiID, gatewayID, orgID)
@@ -187,23 +197,37 @@ func (h *APIInvokeHandler) invoke(w http.ResponseWriter, r *http.Request, kind i
 	return nil
 }
 
-// decodeRESTRequest reads the REST API and gateway to invoke, and the request to send.
-func (h *APIInvokeHandler) decodeRESTRequest(w http.ResponseWriter, r *http.Request) (apiID, gatewayID string, req gatewayrelay.Request, err error) {
-	var body api.RESTAPIInvokeRequest
-	if err := h.decodeBody(w, r, &body); err != nil {
-		return "", "", req, err
+// decodeRequest reads the bounded JSON request: the API and gateway to invoke,
+// and the request to send. Content-Type must be JSON, which a page on another
+// site cannot send without a CORS preflight.
+func (h *APIInvokeHandler) decodeRequest(w http.ResponseWriter, r *http.Request) (kind invokeKind, apiID, gatewayID string, req gatewayrelay.Request, err error) {
+	if r.Header.Get("Content-Type") == "" {
+		return kind, "", "", req, apperror.UnsupportedMediaType.New().
+			WithLogMessage("invoke request without a Content-Type")
 	}
-	if body.RestApiId == "" || body.GatewayId == "" {
-		return "", "", req, apperror.ValidationFailed.New("restApiId and gatewayId are required.")
+	if err := requireJSONContentType(r); err != nil {
+		return kind, "", "", req, err
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, h.maxBodyBytes)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	var body api.APIInvokeRequest
+	if err := dec.Decode(&body); err != nil {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+			return kind, "", "", req, apperror.PayloadTooLarge.New("The request body exceeds the maximum allowed size.")
+		}
+		return kind, "", "", req, apperror.ValidationFailed.Wrap(err, "The request body is not a valid invoke request.")
+	}
+	restAPIID, graphqlAPIID := strOrEmpty(body.RestApiId), strOrEmpty(body.GraphqlApiId)
+	if body.GatewayId == "" || (restAPIID == "") == (graphqlAPIID == "") {
+		return kind, "", "", req, apperror.ValidationFailed.New("gatewayId and exactly one of restApiId or graphqlApiId are required.")
 	}
 
 	req = gatewayrelay.Request{
 		Method: strOrEmpty(body.Method),
 		Path:   strOrEmpty(body.Path),
 		Body:   strOrEmpty(body.Body),
-	}
-	if req.Path == "" {
-		req.Path = "/"
 	}
 	if body.BodyEncoding != nil {
 		req.BodyEncoding = string(*body.BodyEncoding)
@@ -214,51 +238,19 @@ func (h *APIInvokeHandler) decodeRESTRequest(w http.ResponseWriter, r *http.Requ
 	if body.Headers != nil {
 		req.Headers = toRelayHeaders(*body.Headers)
 	}
-	return body.RestApiId, body.GatewayId, req, nil
-}
 
-// decodeGraphQLRequest reads the GraphQL API and gateway to invoke, and the
-// request to send: a POST to the API's context, its only route on the gateway.
-func (h *APIInvokeHandler) decodeGraphQLRequest(w http.ResponseWriter, r *http.Request) (apiID, gatewayID string, req gatewayrelay.Request, err error) {
-	var body api.GraphQLAPIInvokeRequest
-	if err := h.decodeBody(w, r, &body); err != nil {
-		return "", "", req, err
-	}
-	if body.GraphqlApiId == "" || body.GatewayId == "" || body.Body == "" {
-		return "", "", req, apperror.ValidationFailed.New("graphqlApiId, gatewayId and body are required.")
-	}
-
-	req = gatewayrelay.Request{Method: http.MethodPost, Body: body.Body}
-	if body.Query != nil {
-		req.Query = toRelayHeaders(*body.Query)
-	}
-	if body.Headers != nil {
-		req.Headers = toRelayHeaders(*body.Headers)
-	}
-	return body.GraphqlApiId, body.GatewayId, req, nil
-}
-
-// decodeBody reads the bounded JSON request into dst. Content-Type must be JSON,
-// which a page on another site cannot send without a CORS preflight.
-func (h *APIInvokeHandler) decodeBody(w http.ResponseWriter, r *http.Request, dst any) error {
-	if r.Header.Get("Content-Type") == "" {
-		return apperror.UnsupportedMediaType.New().
-			WithLogMessage("invoke request without a Content-Type")
-	}
-	if err := requireJSONContentType(r); err != nil {
-		return err
-	}
-
-	r.Body = http.MaxBytesReader(w, r.Body, h.maxBodyBytes)
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(dst); err != nil {
-		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
-			return apperror.PayloadTooLarge.New("The request body exceeds the maximum allowed size.")
+	if graphqlAPIID != "" {
+		if body.Method != nil || body.Path != nil || req.Body == "" {
+			return kind, "", "", req, apperror.ValidationFailed.New("A GraphQL API's test request takes a body, and no method or path.")
 		}
-		return apperror.ValidationFailed.Wrap(err, "The request body is not a valid invoke request.")
+		// An empty path is the context itself: a GraphQL API's only route on the gateway.
+		req.Method = http.MethodPost
+		return h.graphql, graphqlAPIID, body.GatewayId, req, nil
 	}
-	return nil
+	if req.Path == "" {
+		req.Path = "/"
+	}
+	return h.rest, restAPIID, body.GatewayId, req, nil
 }
 
 // relayError maps a failed relay to its response. The address and the check
@@ -310,7 +302,7 @@ func isInvalidRelayRequest(err error) bool {
 	return false
 }
 
-func toRelayHeaders(in []api.RESTAPIInvokeHeader) []gatewayrelay.Header {
+func toRelayHeaders(in []api.APIInvokeHeader) []gatewayrelay.Header {
 	out := make([]gatewayrelay.Header, len(in))
 	for i, h := range in {
 		out[i] = gatewayrelay.Header{Name: h.Name, Value: h.Value}
@@ -318,27 +310,26 @@ func toRelayHeaders(in []api.RESTAPIInvokeHeader) []gatewayrelay.Header {
 	return out
 }
 
-func toInvokeResponse(r gatewayrelay.Relayed) api.RESTAPIInvokeResponse {
-	headers := make([]api.RESTAPIInvokeHeader, len(r.Headers))
+func toInvokeResponse(r gatewayrelay.Relayed) api.APIInvokeResponse {
+	headers := make([]api.APIInvokeHeader, len(r.Headers))
 	for i, h := range r.Headers {
-		headers[i] = api.RESTAPIInvokeHeader{Name: h.Name, Value: h.Value}
+		headers[i] = api.APIInvokeHeader{Name: h.Name, Value: h.Value}
 	}
-	return api.RESTAPIInvokeResponse{
+	return api.APIInvokeResponse{
 		Outcome: api.Response,
-		Response: api.RESTAPIInvokeResult{
+		Response: api.APIInvokeResult{
 			Status:       r.Status,
 			StatusText:   r.StatusText,
 			Headers:      headers,
 			Body:         r.Body,
-			BodyEncoding: api.RESTAPIInvokeBodyEncoding(r.BodyEncoding),
+			BodyEncoding: api.APIInvokeBodyEncoding(r.BodyEncoding),
 			Truncated:    r.Truncated,
 			DurationMs:   r.DurationMs,
 		},
 	}
 }
 
-// RegisterRoutes registers the invoke routes.
+// RegisterRoutes registers the invoke route.
 func (h *APIInvokeHandler) RegisterRoutes(mux router.Router) {
 	mux.HandleFunc("POST "+constants.APIBasePath+"/gateway-relay/invoke", middleware.MapErrors(h.slogger, h.InvokeAPI))
-	mux.HandleFunc("POST "+constants.APIBasePath+"/gateway-relay/invoke-graphql", middleware.MapErrors(h.slogger, h.InvokeGraphQLAPI))
 }

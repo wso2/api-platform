@@ -259,7 +259,7 @@ const (
 	CodeGraphQLAPIDeploymentValidationFailed = "GRAPHQL_API_DEPLOYMENT_VALIDATION_FAILED"
 
 	// Sending a test request to a GraphQL API through a gateway it is deployed to
-	// (POST /gateway-relay/invoke-graphql).
+	// (POST /gateway-relay/invoke).
 	CodeGraphQLAPIInvokeGatewayNotDeployed       = "GRAPHQL_API_INVOKE_GATEWAY_NOT_DEPLOYED"
 	CodeGraphQLAPIInvokeGatewayNoEndpoint        = "GRAPHQL_API_INVOKE_GATEWAY_NO_ENDPOINT"
 	CodeGraphQLAPIInvokeGatewayUnsupportedScheme = "GRAPHQL_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME"
