@@ -184,6 +184,15 @@ export type CloudHostPort = {
   permissions: PermissionsPort;
   /** The signed-in user, from the session the host already holds. */
   user?: { name?: string; email?: string };
+  /**
+   * Reports one use of a console feature from the API Platform taxonomy, as a
+   * built-in page would: `code` is its feature code
+   * (`apip.lifecycle.api-deploy-click`), `dimensions` its declared dimensions.
+   * Sent with the console's own batches, attributed to the signed-in user and
+   * organization. An unknown code, dimension or value is dropped; nothing is
+   * sent when the deployment has feature-usage tracking off. Never throws.
+   */
+  trackFeature: (code: string, dimensions?: Readonly<Record<string, string>>) => void;
 };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

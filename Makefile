@@ -57,7 +57,7 @@ help: ## Show this help message
 	@echo '  make test-event-gateway               - Run event gateway tests'
 	@echo '  make test-platform-api                - Run platform-api tests'
 	@echo '  make test-cli                         - Run CLI tests'
-	@echo '  make test-api-portal                  - Run API Portal integration tests'
+	@echo '  make test-api-portal                  - Run API Portal integration and UI tests (tests/framework)'
 	@echo '  make test-ai-workspace                - Run AI Workspace E2E tests'
 	@echo '  make build-and-push-api-control-plane-multiarch - Build and push API Control Plane image for multiple architectures'
 	@echo '  make test-api-control-plane            - Run API Control Plane tests'
@@ -147,15 +147,16 @@ package-event-gateway: ## Package event gateway as a self-contained zip (wso2api
 	 mkdir -p \
 	   "$$DIST/configs/gateway-controller" \
 	   "$$DIST/configs/event-gateway" \
-	   "$$DIST/certificates" \
-	   "$$DIST/listener-certs" && \
+	   "$$DIST/certificates" && \
 	 cp gateway/configs/config.toml "$$DIST/configs/gateway-controller/config.toml" && \
 	 cp event-gateway/gateway-runtime/configs/config.toml "$$DIST/configs/event-gateway/config.toml" && \
 	 cp event-gateway/gateway-runtime/configs/channels.yaml "$$DIST/configs/event-gateway/channels.yaml" && \
 	 cp gateway/gateway-controller/certificates/default-listener.crt "$$DIST/certificates/" && \
-	 cp gateway/gateway-controller/listener-certs/default-listener.crt "$$DIST/listener-certs/" && \
-	 cp gateway/gateway-controller/listener-certs/default-listener.key "$$DIST/listener-certs/" && \
 	 cp event-gateway/docker-compose.yaml "$$DIST/docker-compose.yaml" && \
+	 mkdir -p "$$DIST/scripts" && \
+	 cp event-gateway/scripts/setup.sh "$$DIST/scripts/setup.sh" && \
+	 chmod +x "$$DIST/scripts/setup.sh" && \
+	 rm -f "$(CURDIR)/wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION).zip" && \
 	 cd "$$STAGE" && zip -r "$(CURDIR)/wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION).zip" wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION)/ && \
 	 rm -rf "$$STAGE"
 	@echo "Created: wso2apip-event-gateway-$(EVENT_GATEWAY_VERSION).zip"
@@ -176,10 +177,11 @@ test-platform-api: ## Run platform-api tests
 	@echo "Running platform-api tests..."
 	$(MAKE) -C platform-api test
 
+# The block lists live in tests/framework/Makefile, next to the blocks they name.
 .PHONY: test-api-portal
-test-api-portal: ## Run API Portal integration tests
-	@echo "Running API Portal integration tests..."
-	$(MAKE) -C portals/api-portal/it test
+test-api-portal: ## Run API Portal integration and UI tests (tests/framework)
+	@echo "Running API Portal integration and UI tests..."
+	$(MAKE) -C tests/framework test-api-portal
 
 .PHONY: test-ai-workspace
 test-ai-workspace: ## Run AI Workspace E2E tests

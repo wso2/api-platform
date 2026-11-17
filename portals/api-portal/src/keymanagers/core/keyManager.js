@@ -332,7 +332,7 @@ class KeyManager {
                 throw err;
             }
             // Transport-level: DNS failure, refused connection, TLS mismatch, or
-            // the SSRF guard refusing the resolved address at dial time.
+            // the destination guard refusing the resolved address at dial time.
             throw new KeyManagerCallError(
                 'unreachable',
                 `${this.type} ${method} ${url}: ${err.message}`,

@@ -169,6 +169,23 @@ func (s *APIPortalService) CreateAPIPortal(req *api.CreateApiPortalRequest, orgI
 // Go-embedding callers can reach it. The status value is validated against
 // the platform-api constants set.
 func (s *APIPortalService) CreateAPIPortalWithStatus(req *api.CreateApiPortalRequest, orgID, createdBy, status string) (*api.ApiPortalResponse, error) {
+	return s.createAPIPortal(req, orgID, createdBy, status, uuid.New().String())
+}
+
+// CreateAPIPortalWithStatusAndID is CreateAPIPortalWithStatus with the row's UUID
+// chosen by the caller, for a caller that hands the same UUID to the portal it
+// provisions before the row exists (the cloud plugin uses it as the portal's
+// tenant id, so the two cannot drift). The id must be a UUID; a duplicate is
+// refused by the primary key. Not exposed via REST.
+func (s *APIPortalService) CreateAPIPortalWithStatusAndID(req *api.CreateApiPortalRequest, orgID, createdBy, status, id string) (*api.ApiPortalResponse, error) {
+	parsed, err := uuid.Parse(strings.TrimSpace(id))
+	if err != nil || parsed == uuid.Nil {
+		return nil, apperror.ValidationFailed.New("The portal id must be a UUID.")
+	}
+	return s.createAPIPortal(req, orgID, createdBy, status, parsed.String())
+}
+
+func (s *APIPortalService) createAPIPortal(req *api.CreateApiPortalRequest, orgID, createdBy, status, id string) (*api.ApiPortalResponse, error) {
 	if req == nil {
 		return nil, apperror.ValidationFailed.New("The request body is required.")
 	}
@@ -212,7 +229,7 @@ func (s *APIPortalService) CreateAPIPortalWithStatus(req *api.CreateApiPortalReq
 
 	actor := strings.TrimSpace(createdBy)
 	portal := &model.APIPortal{
-		ID:              uuid.New().String(),
+		ID:              id,
 		OrganizationID:  orgID,
 		Handle:          strings.TrimSpace(req.Handle),
 		Name:            name,

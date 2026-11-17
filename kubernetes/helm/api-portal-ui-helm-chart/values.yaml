@@ -253,7 +253,7 @@ config:
     maxZipEntries: 500
     maxDepth: 10
 
-  # --- "Try It" console (calls user-supplied endpoints; SSRF-sensitive) ---
+  # --- "Try It" console (calls user-supplied endpoints; its destinations are restricted) ---
   tryout:
     enabled: true
     # false → only https:// endpoints may be called.
@@ -267,6 +267,25 @@ config:
     timeoutMs: 15000
     maxRequestBytes: 1048576     # 1 MiB
     maxResponseBytes: 5242880    # 5 MiB
+
+  # --- Outbound access control for tenant/user-supplied destinations ---
+  # Applies to "Try It" targets, key managers created through the API, webhook
+  # subscriber URLs and the developer token proxy; never to URLs set in this
+  # chart's own config (IdP, Platform API, billing, key managers listed here).
+  networkSecurity:
+    accessControl:
+      enabled: true
+      # deny: a host matching an entry in hostnames is refused.
+      # allow: only a host matching an entry is permitted (hostnames must not be empty).
+      mode: deny
+      # RE2 regular expressions, each matched case-insensitively against the
+      # whole hostname, e.g. ['api\.example\.com', '[a-z0-9-]+\.svc\.cluster\.local'].
+      hostnames: []
+      # Also refuse private, loopback, carrier-grade NAT and unique-local addresses.
+      # Only tightens tryout.allowPrivateEndpoints; link-local/cloud-metadata
+      # addresses are refused regardless.
+      denyPrivateNetworks: false
+      allowedSchemes: ["http", "https"]
 
 # Escape hatch: raw config.toml appended verbatim (env vars still override it).
 configToml: ""

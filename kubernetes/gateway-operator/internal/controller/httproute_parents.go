@@ -18,30 +18,29 @@
 package controller
 
 import (
-	"fmt"
-
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// distinctParentGatewayKeys returns unique Gateway object keys from parent targets.
-func distinctParentGatewayKeys(targets []gatewayParentTarget) []client.ObjectKey {
-	seen := make(map[client.ObjectKey]struct{}, len(targets))
-	out := make([]client.ObjectKey, 0, len(targets))
-	for _, t := range targets {
-		if _, ok := seen[t.key]; ok {
-			continue
-		}
-		seen[t.key] = struct{}{}
-		out = append(out, t.key)
-	}
-	return out
+// parentGatewayGroup is every parentRef of a route that points at one Gateway. Refs to the same
+// Gateway with different sectionNames or ports stay together, since they share one deployment.
+type parentGatewayGroup struct {
+	key     client.ObjectKey
+	targets []gatewayParentTarget
 }
 
-// validateParentGatewayTargets ensures all parentRefs target at most one distinct Gateway.
-func validateParentGatewayTargets(targets []gatewayParentTarget) error {
-	keys := distinctParentGatewayKeys(targets)
-	if len(keys) > 1 {
-		return fmt.Errorf("HTTPRoute with multiple distinct Gateway parentRefs is not supported; use parentRefs on a single Gateway")
+// groupParentTargetsByGateway groups parent targets by Gateway, in the order the Gateways first
+// appear in spec.parentRefs.
+func groupParentTargetsByGateway(targets []gatewayParentTarget) []parentGatewayGroup {
+	index := make(map[client.ObjectKey]int, len(targets))
+	out := make([]parentGatewayGroup, 0, len(targets))
+	for _, t := range targets {
+		i, ok := index[t.key]
+		if !ok {
+			i = len(out)
+			index[t.key] = i
+			out = append(out, parentGatewayGroup{key: t.key})
+		}
+		out[i].targets = append(out[i].targets, t)
 	}
-	return nil
+	return out
 }

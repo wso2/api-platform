@@ -48,6 +48,9 @@ func (w *PlatformGatewayWiring) Validate() error {
 	if w.Controllers < 0 || w.Controllers > 2 {
 		return fmt.Errorf("controllers must be 1 or 2, got %d", w.Controllers)
 	}
+	if w.CustomPolicies && w.Controllers == 2 {
+		return fmt.Errorf("customPolicies needs the one-controller gateway, got controllers: 2")
+	}
 	seen := map[int]bool{}
 	for _, replica := range w.SecondOrganizationReplicas {
 		if replica < 1 {
@@ -62,7 +65,8 @@ func (w *PlatformGatewayWiring) Validate() error {
 }
 
 // applyPlatformGatewayWiring selects the two-controller gateway for controllers: 2, adds the
-// gateway signing keys for signingKeys: true, and keeps the registered definition otherwise.
+// gateway signing keys for signingKeys: true and the integration-test custom policies for
+// customPolicies: true, and keeps the registered definition otherwise.
 func applyPlatformGatewayWiring(def *components.Definition, wiring any) (*components.Definition, error) {
 	w, ok := wiring.(*PlatformGatewayWiring)
 	if !ok {
@@ -76,7 +80,13 @@ func applyPlatformGatewayWiring(def *components.Definition, wiring any) (*compon
 		}
 	}
 	if w.SigningKeys {
-		return withSigningKeys(out)
+		var err error
+		if out, err = withSigningKeys(out); err != nil {
+			return nil, err
+		}
+	}
+	if w.CustomPolicies {
+		return withCustomPolicies(out)
 	}
 	return out, nil
 }

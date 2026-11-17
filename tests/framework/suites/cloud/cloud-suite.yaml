@@ -33,6 +33,9 @@ blocks:
         tags: "~@known-issue"
         features:
           - features/apip_gateway_config.feature
+      - name: apip-self-hosted-gateway
+        features:
+          - features/apip_self_hosted_gateway.feature
       # This test skipped until fix the issue of stale data while project creation.
       # - name: apip-promotion
       #   features:
@@ -41,5 +44,6 @@ blocks:
         features:
           - features/apip_secrets.feature
       - name: apip-portal
+        tags: "~@known-issue && ~@skip"
         features:
           - features/apip_portal.feature

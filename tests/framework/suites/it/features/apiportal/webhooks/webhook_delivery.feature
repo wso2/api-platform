@@ -23,7 +23,7 @@ Feature: The API Portal delivers each event once, signed, and records how every 
   I want to see whether each event reached each subscriber, and to stop a subscriber receiving any
   So that I can tell a working integration from a failing one, and trust that deliveries are genuine
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level. A
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level. A
   # target ending in ?status=500 makes the testbench sink fail the delivery. Delivery is attempted
   # once; an event is ALL_DELIVERED only when every matching subscriber accepted it.
 

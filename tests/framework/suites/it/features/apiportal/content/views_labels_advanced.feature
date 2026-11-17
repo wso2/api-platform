@@ -23,7 +23,7 @@ Feature: Views are relabelled, renamed and protected through the API Portal REST
   I want to change which labels a view shows and rename it without losing them
   So that each audience's catalogue follows my changes, and no change can break another view
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API
   # level. Views and labels are administrator resources; every refused change is followed by a read
   # that shows the view is unchanged.
 

@@ -1,0 +1,368 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com) All Rights Reserved.
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+'use strict';
+
+/*
+ * Regression coverage for the destination guard. Uses node:test (Node's built-in
+ * runner) rather than adding a test dependency — these are pure functions with
+ * no server, DB, or fixture needs, so they do not belong in the integration
+ * suite (tests/framework), which boots a live portal.
+ *
+ * Run with: npm test
+ */
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+const { isDenied, createGuardedLookup, assertAllowedScheme, assertAllowedHost } = require('./destinationGuard');
+
+test('assertAllowedHost: IP literals are checked (dns.lookup never runs for them)', async (t) => {
+    // Node skips DNS resolution when the host is already a literal, so the Agent
+    // lookup hook is never invoked and cannot be the only control. Without this
+    // check "http://169.254.169.254/" would connect with the denylist unconsulted.
+    await t.test('denied literals throw with a 422', () => {
+        for (const ip of ['169.254.169.254', '127.0.0.1', '10.0.0.5', '0.0.0.0']) {
+            assert.throws(() => assertAllowedHost(ip), (err) => err.statusCode === 422, `${ip} must be rejected`);
+        }
+    });
+
+    await t.test('bracketed IPv6 literals are unwrapped before matching', () => {
+        // URL.hostname keeps the brackets; a naive check would see "[::1]",
+        // fail net.isIP, and skip the address entirely.
+        assert.throws(() => assertAllowedHost('[::1]'));
+        assert.throws(() => assertAllowedHost('[fd00:ec2::254]'));
+        assert.throws(() => assertAllowedHost('[::ffff:169.254.169.254]'));
+    });
+
+    await t.test('allowPrivate permits private literals but never metadata', () => {
+        assert.doesNotThrow(() => assertAllowedHost('127.0.0.1', { allowPrivate: true }));
+        assert.doesNotThrow(() => assertAllowedHost('10.0.0.5', { allowPrivate: true }));
+        assert.throws(() => assertAllowedHost('169.254.169.254', { allowPrivate: true }));
+    });
+
+    await t.test('public literals pass, and hostnames are left to the lookup hook', () => {
+        assert.doesNotThrow(() => assertAllowedHost('8.8.8.8'));
+        assert.doesNotThrow(() => assertAllowedHost('gateway.example.com'));
+        assert.doesNotThrow(() => assertAllowedHost('localhost')); // not a literal — hook's job
+        assert.doesNotThrow(() => assertAllowedHost(''));
+    });
+});
+
+test('isDenied: IPv4-mapped IPv6 is normalized before matching', async (t) => {
+    // The bug this guards: ipaddr reports kind() === 'ipv6' for ::ffff:a.b.c.d,
+    // so without normalization these slip past every IPv4 CIDR in the denylist.
+    await t.test('mapped loopback is denied', () => {
+        assert.equal(isDenied('::ffff:127.0.0.1'), true);
+        assert.equal(isDenied('::ffff:127.0.0.1', { allowPrivate: false }), true);
+    });
+
+    await t.test('mapped RFC 1918 is denied', () => {
+        assert.equal(isDenied('::ffff:10.0.0.5'), true);
+        assert.equal(isDenied('::ffff:192.168.1.1'), true);
+        assert.equal(isDenied('::ffff:172.16.0.1'), true);
+    });
+
+    await t.test('mapped cloud metadata is denied', () => {
+        assert.equal(isDenied('::ffff:169.254.169.254'), true);
+    });
+
+    await t.test('mapped public address is allowed', () => {
+        assert.equal(isDenied('::ffff:8.8.8.8'), false);
+    });
+});
+
+test('isDenied: allowPrivate governs private ranges only', async (t) => {
+    // fec0::1 is IPv6 site-local: deprecated by RFC 3879, but still routed on
+    // some networks, so it belongs in the private set rather than being allowed.
+    const privateAddrs = ['10.0.0.5', '172.16.0.1', '192.168.1.1', '127.0.0.1', '::1', 'fc00::1', 'fec0::1', '100.64.1.1'];
+
+    await t.test('private ranges denied when allowPrivate is false', () => {
+        for (const ip of privateAddrs) {
+            assert.equal(isDenied(ip, { allowPrivate: false }), true, `${ip} should be denied`);
+        }
+    });
+
+    await t.test('private ranges permitted when allowPrivate is true', () => {
+        for (const ip of privateAddrs) {
+            assert.equal(isDenied(ip, { allowPrivate: true }), false, `${ip} should be permitted`);
+        }
+    });
+
+    await t.test('allowPrivate never unlocks metadata or link-local', () => {
+        for (const ip of ['169.254.169.254', '::ffff:169.254.169.254', 'fd00:ec2::254', 'fe80::1', '0.0.0.0', '::']) {
+            assert.equal(isDenied(ip, { allowPrivate: true }), true, `${ip} must stay denied`);
+        }
+    });
+
+    await t.test('defaults to denying private ranges', () => {
+        assert.equal(isDenied('10.0.0.5'), true);
+    });
+});
+
+test('isDenied: public addresses pass, unparseable input fails closed', () => {
+    assert.equal(isDenied('8.8.8.8'), false);
+    assert.equal(isDenied('2001:4860:4860::8888'), false);
+
+    for (const bad of ['not-an-ip', '', '999.999.999.999', 'localhost']) {
+        assert.equal(isDenied(bad), true, `${JSON.stringify(bad)} must fail closed`);
+    }
+});
+
+test('createGuardedLookup: rejects a denied resolution', (t, done) => {
+    const lookup = createGuardedLookup({ allowPrivate: false });
+    // localhost resolves into 127.0.0.0/8 (or ::1), both denied.
+    lookup('localhost', {}, (err, address) => {
+        assert.ok(err, `expected rejection, got address ${address}`);
+        assert.match(err.message, /not allowed/);
+        done();
+    });
+});
+
+test('createGuardedLookup: allows a permitted resolution', (t, done) => {
+    // No DNS: the guard is fed a resolver result directly by stubbing the
+    // hostname to a literal, which dns.lookup returns verbatim.
+    const lookup = createGuardedLookup({ allowPrivate: false });
+    lookup('8.8.8.8', {}, (err, address) => {
+        assert.equal(err, null, err && err.message);
+        assert.equal(address, '8.8.8.8');
+        done();
+    });
+});
+
+test('createGuardedLookup: allowPrivate permits a private resolution', (t, done) => {
+    const lookup = createGuardedLookup({ allowPrivate: true });
+    lookup('127.0.0.1', {}, (err, address) => {
+        assert.equal(err, null, err && err.message);
+        assert.equal(address, '127.0.0.1');
+        done();
+    });
+});
+
+test('createGuardedLookup: options.all checks every candidate', async (t) => {
+    // Node's Happy Eyeballs (autoSelectFamily, default-on since v20) calls a
+    // custom lookup with { all: true }, where the result is an array. The socket
+    // may connect to ANY entry, so one denied candidate must fail the whole
+    // resolution — this is the path a naive implementation forgets.
+    const dns = require('node:dns');
+    const realLookup = dns.lookup;
+
+    const withStub = (entries, fn) => new Promise((resolve) => {
+        dns.lookup = (hostname, options, callback) => callback(null, entries);
+        const lookup = createGuardedLookup({ allowPrivate: false });
+        lookup('stub.invalid', { all: true }, (err, address) => {
+            dns.lookup = realLookup;
+            fn(err, address);
+            resolve();
+        });
+    });
+
+    await t.test('all-public candidates are allowed through unchanged', () => withStub(
+        [{ address: '8.8.8.8', family: 4 }, { address: '1.1.1.1', family: 4 }],
+        (err, address) => {
+            assert.equal(err, null, err && err.message);
+            assert.deepEqual(address, [{ address: '8.8.8.8', family: 4 }, { address: '1.1.1.1', family: 4 }]);
+        }
+    ));
+
+    await t.test('a single denied candidate rejects the whole resolution', () => withStub(
+        [{ address: '8.8.8.8', family: 4 }, { address: '169.254.169.254', family: 4 }],
+        (err) => {
+            assert.ok(err, 'a denied candidate must reject');
+            assert.match(err.message, /not allowed/);
+        }
+    ));
+
+    await t.test('a denied mapped-IPv6 candidate is caught', () => withStub(
+        [{ address: '::ffff:10.0.0.5', family: 6 }],
+        (err) => {
+            assert.ok(err, 'mapped private candidate must reject');
+        }
+    ));
+});
+
+test('assertAllowedScheme: only http(s), and http only when opted in', () => {
+    assert.doesNotThrow(() => assertAllowedScheme('https://gw.example.com/x'));
+
+    for (const raw of ['http://gw.example.com/x', 'file:///etc/passwd', 'gopher://x/', 'javascript:alert(1)', 'not a url']) {
+        assert.throws(() => assertAllowedScheme(raw), (err) => err.statusCode === 422, `${raw} must be rejected`);
+    }
+
+    assert.doesNotThrow(() => assertAllowedScheme('http://gw.example.com/x', { allowHttp: true }));
+    assert.throws(() => assertAllowedScheme('file:///etc/passwd', { allowHttp: true }));
+});
+
+/*
+ * Network access control: [api_portal.server.network_security.access_control].
+ */
+const {
+    compileAccessControl,
+    isHostAllowed,
+    effectiveAllowPrivate,
+    assertUserUrl,
+    normalizeHost,
+} = require('./destinationGuard');
+
+test('compileAccessControl: refuses invalid configuration', () => {
+    const tooMany = Array.from({ length: 257 }, () => 'a');
+    const invalid = [
+        [{ enabled: true, mode: 'block' }, /mode must be/],
+        [{ enabled: true, mode: 'allow' }, /requires at least one entry/],
+        [{ enabled: true, hostnames: ['api.(example'] }, /not a valid regular expression/],
+        [{ enabled: true, hostnames: ['(?!internal).*'] }, /not a valid regular expression/], // lookahead is not RE2
+        [{ enabled: true, hostnames: ['(?<=a)b'] }, /not a valid regular expression/],       // nor is lookbehind
+        [{ enabled: true, hostnames: ['  '] }, /is empty/],
+        [{ enabled: true, hostnames: ['a'.repeat(256)] }, /longer than/],
+        [{ enabled: true, hostnames: tooMany }, /at most/],
+        [{ enabled: true, allowedSchemes: ['ftp'] }, /allowed_schemes/],
+        [{ enabled: true, hostnames: 'api\\.example\\.com' }, /must be an array/],
+    ];
+    for (const [cfg, message] of invalid) {
+        assert.throws(() => compileAccessControl(cfg), message, JSON.stringify(cfg));
+    }
+    // A disabled section is never validated and permits everything.
+    const off = compileAccessControl({ enabled: false, mode: 'nonsense' });
+    assert.equal(off.enabled, false);
+    assert.equal(isHostAllowed('anything.example', off), true);
+});
+
+test('isHostAllowed: patterns are anchored, case-insensitive and match the hostname only', () => {
+    const allow = compileAccessControl({
+        enabled: true,
+        mode: 'allow',
+        hostnames: ['api\\.example\\.com', '[a-z0-9-]+\\.svc\\.cluster\\.local', 'a\\.com|b\\.com'],
+    });
+    const cases = [
+        ['api.example.com', true],
+        ['API.Example.COM', true],
+        ['api.example.com.', true],                // trailing dot normalized
+        ['api.example.com.evil.com', false],       // no suffix extension
+        ['evil-api.example.com', false],           // no prefix extension
+        ['orders.svc.cluster.local', true],
+        ['a.b.svc.cluster.local', false],          // a label class does not cross dots
+        ['b.com.evil', false],                     // alternation is grouped before anchoring
+        ['api.example.com\u3002', true],           // Unicode label separator, after IDNA
+        ['api.example.com\uff0e', true],
+        ['evil.example.com\u3002', false],
+        ['api.example.com..', true],                // repeated trailing dots
+        ['', false],
+    ];
+    for (const [host, want] of cases) {
+        assert.equal(isHostAllowed(host, allow), want, host);
+    }
+
+    const deny = compileAccessControl({ enabled: true, mode: 'deny', hostnames: ['[a-z]+\\.internal\\.example'] });
+    assert.equal(isHostAllowed('billing.internal.example', deny), false);
+    assert.equal(isHostAllowed('billing.internal.example\u3002', deny), false, 'a Unicode separator must not bypass deny');
+    assert.equal(isHostAllowed('billing.internal.example\uff61', deny), false);
+    assert.equal(isHostAllowed('api.example.com', deny), true);
+});
+
+test('normalizeHost: brackets, trailing dot, case and IDN', () => {
+    assert.equal(normalizeHost('[::1]'), '::1');
+    assert.equal(normalizeHost('API.Example.COM.'), 'api.example.com');
+    assert.equal(normalizeHost('bücher.example'), 'xn--bcher-kva.example');
+    const idn = compileAccessControl({ enabled: true, mode: 'allow', hostnames: ['xn--bcher-kva\\.example'] });
+    assert.equal(isHostAllowed('bücher.example', idn), true);
+});
+
+test('effectiveAllowPrivate: access control only tightens a feature flag', () => {
+    const permit = compileAccessControl({ enabled: true });
+    const deny = compileAccessControl({ enabled: true, denyPrivateNetworks: true });
+    assert.equal(effectiveAllowPrivate(true, permit), true);
+    assert.equal(effectiveAllowPrivate(false, permit), false, 'never widens a feature that denies private addresses');
+    assert.equal(effectiveAllowPrivate(true, deny), false);
+    assert.equal(effectiveAllowPrivate(undefined, permit), false, 'an unset flag denies');
+});
+
+test('isDenied: 6to4 and NAT64 addresses are judged by the IPv4 address they carry', () => {
+    assert.equal(isDenied('2002:a9fe:a9fe::', { allowPrivate: true }), true, '6to4 of 169.254.169.254');
+    assert.equal(isDenied('64:ff9b::a9fe:a9fe', { allowPrivate: true }), true, 'NAT64 of 169.254.169.254');
+    assert.equal(isDenied('2002:0a00:0005::', { allowPrivate: false }), true, '6to4 of 10.0.0.5');
+    assert.equal(isDenied('2002:0a00:0005::', { allowPrivate: true }), false);
+    assert.equal(isDenied('64:ff9b::808:808'), false, 'NAT64 of a public address');
+});
+
+test('assertUserUrl: scheme, host rule and literal ranges, with a generic error', () => {
+    const ac = compileAccessControl({ enabled: true, mode: 'deny', hostnames: ['blocked\\.example'], allowedSchemes: ['https'] });
+    const refused = [
+        'http://api.example/',            // scheme outside allowed_schemes
+        'https://blocked.example/x',      // host rule
+        'https://169.254.169.254/latest', // always-refused literal
+    ];
+    for (const raw of refused) {
+        assert.throws(() => assertUserUrl(raw, { accessControl: ac }), (err) => {
+            assert.equal(err.statusCode, 422);
+            assert.doesNotMatch(err.message, /169\.254|blocked/);
+            return true;
+        }, raw);
+    }
+    assert.doesNotThrow(() => assertUserUrl('https://10.0.0.5:8443/hook', { accessControl: ac }), 'private permitted by default');
+
+    const denyPrivate = compileAccessControl({ enabled: true, denyPrivateNetworks: true });
+    assert.throws(() => assertUserUrl('http://10.0.0.5/', { accessControl: denyPrivate }), { code: 'DESTINATION_NOT_ALLOWED' });
+});
+
+test('createGuardedLookup: the host rule is applied before any DNS lookup', async () => {
+    const ac = compileAccessControl({ enabled: true, mode: 'allow', hostnames: ['ok\\.example'] });
+    const lookup = createGuardedLookup({ allowPrivate: true, accessControl: ac });
+    const err = await new Promise((resolve) => lookup('evil.example', {}, (e) => resolve(e)));
+    assert.equal(err.code, 'DESTINATION_NOT_ALLOWED');
+});
+
+test('isDenied: multicast and broadcast are refused whatever the private-network setting', () => {
+    for (const ip of ['224.0.0.1', '239.255.255.250', '255.255.255.255', 'ff02::1', 'ff05::1:3', '::ffff:224.0.0.1']) {
+        assert.equal(isDenied(ip, { allowPrivate: true }), true, `${ip} with private networks permitted`);
+        assert.equal(isDenied(ip, { allowPrivate: false }), true, `${ip} with private networks denied`);
+    }
+    // Positive control: the neighbouring unicast addresses pass when private networks are permitted.
+    for (const ip of ['223.255.255.255', '240.0.0.1', 'fe00::1']) {
+        assert.equal(isDenied(ip, { allowPrivate: true }), false, ip);
+    }
+});
+
+test('createGuardedLookup: a hostname that resolves to a multicast address is refused', async () => {
+    // The literal stands in for a resolver answer: dns.lookup returns it verbatim.
+    for (const allowPrivate of [true, false]) {
+        const lookup = createGuardedLookup({ allowPrivate });
+        const err = await new Promise((resolve) => lookup('224.0.0.251', {}, (e) => resolve(e)));
+        assert.ok(err, `allowPrivate=${allowPrivate}: expected a refusal`);
+        assert.match(err.message, /not allowed/);
+    }
+});
+
+test('assertUserUrl: a multicast or broadcast literal is refused', () => {
+    const policy = compileAccessControl({ enabled: true, denyPrivateNetworks: false });
+    for (const target of ['http://224.0.0.1/', 'http://255.255.255.255/', 'http://[ff02::1]/']) {
+        assert.throws(() => assertUserUrl(target, { accessControl: policy, allowPrivate: true }), undefined, target);
+    }
+    assertUserUrl('https://api.example.com/', { accessControl: policy, allowPrivate: true });
+});
+
+test('compileAccessControl: enabled and deny_private_networks must be booleans', () => {
+    for (const cfg of [{ enabled: 'true' }, { enabled: 1 }, { enabled: true, denyPrivateNetworks: 'true' }, { enabled: true, denyPrivateNetworks: 0 },
+        // A quoted value never disables the check silently, even with the control off.
+        { enabled: false, denyPrivateNetworks: 'yes' }]) {
+        assert.throws(() => compileAccessControl(cfg), /must be true or false/, JSON.stringify(cfg));
+    }
+    // Positive controls: booleans keep their value, and an omitted value is false.
+    assert.equal(compileAccessControl({ enabled: true, denyPrivateNetworks: true }).denyPrivateNetworks, true);
+    assert.equal(compileAccessControl({ enabled: true }).denyPrivateNetworks, false);
+    assert.equal(compileAccessControl({}).enabled, false);
+    assert.equal(compileAccessControl({ enabled: true }).enabled, true);
+});

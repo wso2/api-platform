@@ -51,13 +51,18 @@ const (
 	// HTTPRoute rest API handle for gateway-controller (default: derived from ns+name).
 	AnnHTTPRouteAPIHandle = "gateway.api-platform.wso2.com/api-handle"
 
-	// AnnHTTPRouteLastDeployedParentGateway records the Gateway used for the last successful DeployRestAPI
-	// as "namespace/name" so deletion can target the correct registry entry even if spec.parentRefs change.
+	// AnnHTTPRouteDeployedGateways records every Gateway the route is deployed to, as JSON
+	// {"namespace/name": {"hash": "...", "handle": "..."}}. The hash lets the reconciler skip
+	// redeploying unchanged config (which would re-snapshot and churn xDS); the handle lets it
+	// remove the old API when the api-handle annotation changes.
+	AnnHTTPRouteDeployedGateways = "gateway.api-platform.wso2.com/deployed-gateways"
+
+	// AnnHTTPRouteLastDeployedParentGateway is the legacy single-Gateway record ("namespace/name").
+	// It seeds AnnHTTPRouteDeployedGateways on upgrade and is still written for routes deployed to
+	// exactly one Gateway, so a downgraded operator can find the deployment.
 	AnnHTTPRouteLastDeployedParentGateway = "gateway.api-platform.wso2.com/last-deployed-parent-gateway"
 
-	// AnnHTTPRouteLastDeployedConfigHash records a hash of the RestApi payload from the last successful
-	// DeployRestAPI. The reconciler skips re-deploying when the freshly built payload hashes to the same
-	// value (and the API still exists on the gateway), so repeated reconciles of an unchanged HTTPRoute do
-	// not re-push identical config to the gateway-controller (which would re-snapshot and churn xDS).
+	// AnnHTTPRouteLastDeployedConfigHash is the legacy payload hash paired with
+	// AnnHTTPRouteLastDeployedParentGateway, kept on the same terms.
 	AnnHTTPRouteLastDeployedConfigHash = "gateway.api-platform.wso2.com/last-deployed-config-hash"
 )

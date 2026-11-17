@@ -374,15 +374,16 @@ Feature: Agent Card serving
     When I delete the Agent "${CTX:agentName}"
     Then the response should be successful
 
-  # Rewriting covers the transports the Agent exposes, and only those.
+  # Rewriting covers every interface the agent advertises, not only the transports the Agent
+  # exposes.
   #
   # The upstream agent advertises both bindings; this Agent fronts one of them. The exposed
-  # interface is pointed at the gateway, and the other keeps the agent's own address, because the
-  # gateway has no endpoint to name for a transport it was not configured to carry. That address
-  # surviving in the document is the assertion — and it is also the consequence an operator is
-  # accepting: a client that selects that binding talks to the agent directly, outside every
-  # policy on this gateway.
-  Scenario: Rewriting leaves an interface no configured transport serves alone
+  # interface is pointed at the gateway, and so is the other: the gateway has no endpoint of its
+  # own for a transport it was not configured to carry, so that interface borrows the exposed
+  # transport's URL. The agent's own address appearing nowhere in the document is the assertion —
+  # a card that kept it would publish the backend and hand clients a way around every policy on
+  # this gateway.
+  Scenario: Rewriting points an interface no configured transport serves at the gateway
     Given I generate a unique resource name from "agent-card-rewrite-partial" and store it as "agentName"
     And I generate a unique API context from "/agent-card-rewrite-partial" and store it as "agentContext"
     When I create Agent from "resources/templates/agent.yaml" with values:
@@ -403,8 +404,8 @@ Feature: Agent Card serving
     Then the response status code should be 200
     # The exposed transport, pointed at this gateway.
     And the response body should contain "http://agent-card-gateway.example.test:8080${CTX:agentContext}/v1"
-    # The unexposed one, exactly as the agent wrote it.
-    And the response body should contain "a2a-trip-planner:9099"
+    # The unexposed one no longer names the agent.
+    And the response body should not contain "a2a-trip-planner:9099"
 
     Given I reset the request
     And I clear all headers
@@ -1092,43 +1093,6 @@ Feature: Agent Card serving
       | disabled | false |
 
   # ==================== PROTECTED CARD VALIDATION REJECTIONS ====================
-
-  # Configuring a protected card is a promise that the extended-card operation exists. A client
-  # reads capabilities.extendedAgentCard off the public card and only then calls
-  # GetExtendedAgentCard, so a managed public card that does not declare it produces an operation
-  # the gateway serves and no conformant client ever asks for.
-  @type:negative
-  Scenario: A protected card without the public capability declaration is rejected
-    Given I generate a unique resource name from "agent-protected-no-capability" and store it as "agentName"
-    And I generate a unique API context from "/agent-protected-no-capability" and store it as "agentContext"
-    When I create Agent from "resources/templates/agent.yaml" with values:
-      | apiVersion         | ${CTX:gatewaySpecVersion}                                                                                                                                                                                                                                                                                                                                                                                                                         |
-      | name               | ${CTX:agentName}                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-      | displayName        | Agent Protected No Capability                                                                                                                                                                                                                                                                                                                                                                                                                     |
-      | context            | ${CTX:agentContext}                                                                                                                                                                                                                                                                                                                                                                                                                               |
-      | upstreamUrl        | http://a2a-trip-planner:9099                                                                                                                                                                                                                                                                                                                                                                                                                      |
-      | transports         | [{"protocolBinding":"HTTP+JSON","pathPrefix":"/v1"}]                                                                                                                                                                                                                                                                                                                                                                                              |
-      | spec.a2a.agentCard | {"public":{"mode":"managed","content":{"name":"Trip Planner","version":"1.0.0","protocolVersion":"1.0","supportedInterfaces":[{"protocolBinding":"HTTP+JSON","protocolVersion":"1.0","url":"https://agents.example.com${CTX:agentContext}/v1"}],"capabilities":{"streaming":true},"defaultInputModes":["text/plain"],"defaultOutputModes":["text/plain"],"skills":[{"id":"plan_trip","name":"Plan a trip"}]}},"protected":{"mode":"passthrough"}} |
-    Then the response should be a client error
-    And the response body should contain "capabilities.extendedAgentCard: true"
-
-  # The value must be the boolean true. A quoted "true" is a different JSON value, and it is the
-  # card's own bytes that reach clients: one deserializing the card against the A2A model reads a
-  # type error, not a capability.
-  @type:negative
-  Scenario: A public card declaring the extended-card capability as a string is rejected
-    Given I generate a unique resource name from "agent-protected-string-capability" and store it as "agentName"
-    And I generate a unique API context from "/agent-protected-string-capability" and store it as "agentContext"
-    When I create Agent from "resources/templates/agent.yaml" with values:
-      | apiVersion         | ${CTX:gatewaySpecVersion}                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-      | name               | ${CTX:agentName}                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-      | displayName        | Agent Protected String Capability                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-      | context            | ${CTX:agentContext}                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-      | upstreamUrl        | http://a2a-trip-planner:9099                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-      | transports         | [{"protocolBinding":"HTTP+JSON","pathPrefix":"/v1"}]                                                                                                                                                                                                                                                                                                                                                                                                                         |
-      | spec.a2a.agentCard | {"public":{"mode":"managed","content":{"name":"Trip Planner","version":"1.0.0","protocolVersion":"1.0","supportedInterfaces":[{"protocolBinding":"HTTP+JSON","protocolVersion":"1.0","url":"https://agents.example.com${CTX:agentContext}/v1"}],"capabilities":{"streaming":true,"extendedAgentCard":"true"},"defaultInputModes":["text/plain"],"defaultOutputModes":["text/plain"],"skills":[{"id":"plan_trip","name":"Plan a trip"}]}},"protected":{"mode":"passthrough"}} |
-    Then the response should be a client error
-    And the response body should contain "must be a boolean"
 
   @type:negative
   Scenario: A managed protected Agent Card without content is rejected

@@ -20,6 +20,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -436,6 +437,9 @@ func extractEndpointURLOverride(metadata map[string]interface{}) (*string, error
 	if err := validateEndpointURL(eu); err != nil {
 		return nil, apperror.MCPProxyDeploymentValidationFailed.Wrap(err,
 			"The endpointUrl in metadata is not a valid URL.")
+	}
+	if err := checkURLField(context.Background(), "", "metadata."+constants.MetadataKeyEndpointUrl, eu); err != nil {
+		return nil, err
 	}
 	return &eu, nil
 }

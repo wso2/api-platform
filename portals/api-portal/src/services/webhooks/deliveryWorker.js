@@ -29,21 +29,43 @@ const { openAtRest, SEALED_AT_REST_KEY } = require('./fieldAtRest');
 const logger = require('../../config/logger');
 const orgContext = require('../../utils/orgContext');
 const { buildOutboundAgents } = require('../../config/httpClientOptions');
+const {
+    createGuardedLookup,
+    assertUserUrl,
+    getAccessControl,
+    effectiveAllowPrivate,
+} = require('../../utils/destinationGuard');
 
 let running = false;
-let insecureDeliveryAgent = null;
+// Keyed by whether TLS verification is skipped.
+const deliveryAgents = new Map();
 
-// Webhook delivery's HTTPS agent. tlsSkipVerify gets its own agent so the shared
-// one that other outbound calls use keeps verifying certificates.
+/*
+ * Webhook delivery's agents. Subscriber URLs come from tenant input, so these
+ * agents carry the guarded lookup: a target hostname is checked against the
+ * address ranges and [api_portal.server.network_security.access_control] at the
+ * moment it resolves. Private networks are permitted unless access control
+ * denies them; link-local and cloud-metadata addresses never are. tlsSkipVerify
+ * only affects these agents, so the shared ones keep verifying certificates.
+ * Built once, so deliveries to the same subscriber reuse connections.
+ */
+function agentsFor(cfg) {
+    const skipVerify = cfg.webhooks?.delivery?.tlsSkipVerify === true;
+    if (!deliveryAgents.has(skipVerify)) {
+        const { tlsOptions, pooling } = buildOutboundAgents(cfg);
+        const accessControl = getAccessControl();
+        const lookup = createGuardedLookup({ allowPrivate: effectiveAllowPrivate(true, accessControl), accessControl });
+        deliveryAgents.set(skipVerify, {
+            http: new http.Agent({ ...pooling, lookup }),
+            https: new https.Agent({ ...pooling, ...tlsOptions, lookup, rejectUnauthorized: !skipVerify }),
+        });
+    }
+    return deliveryAgents.get(skipVerify);
+}
+
+// Kept for the TLS tests: the HTTPS agent a delivery uses.
 function deliveryHttpsAgent(cfg) {
-    const { httpsAgent, tlsOptions, pooling } = buildOutboundAgents(cfg);
-    if (cfg.webhooks?.delivery?.tlsSkipVerify !== true) {
-        return httpsAgent;
-    }
-    if (!insecureDeliveryAgent) {
-        insecureDeliveryAgent = new https.Agent({ ...pooling, ...tlsOptions, rejectUnauthorized: false });
-    }
-    return insecureDeliveryAgent;
+    return agentsFor(cfg).https;
 }
 
 /** The organization to claim work for, or null for every organization (multi-organization mode). */
@@ -136,6 +158,16 @@ async function post(delivery, event) {
         headers['X-Api-Portal-Signature'] = sigHeader;
     }
 
+    // An IP-literal host never reaches the agents' lookup hook, so it (and access
+    // control's host rule, and the scheme) is checked here before anything is sent.
+    // The refusal reason stays in the log; the delivery record gets a generic one.
+    try {
+        assertUserUrl(delivery.target_url, { allowHttp: true, allowPrivate: true, accessControl: getAccessControl() });
+    } catch (err) {
+        logger.warn('Webhook delivery refused: destination not permitted', { deliveryId, reason: err.message });
+        return { ok: false, error: 'Destination is not allowed' };
+    }
+
     return new Promise((resolve) => {
         const parsedUrl = new URL(delivery.target_url);
         const isHttps = parsedUrl.protocol === 'https:';
@@ -149,7 +181,7 @@ async function post(delivery, event) {
             timeout: timeoutMs,
             // Pooled agents: reuse TCP+TLS handshakes across deliveries to the same
             // subscriber and carry the configured cipher/curve/version tuning.
-            agent: isHttps ? deliveryHttpsAgent(config) : buildOutboundAgents(config).httpAgent,
+            agent: isHttps ? agentsFor(config).https : agentsFor(config).http,
         };
 
         const req = transport.request(options, (res) => {
@@ -158,7 +190,11 @@ async function post(delivery, event) {
         });
 
         req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'timeout' }); });
-        req.on('error', (err) => resolve({ ok: false, error: err.message }));
+        req.on('error', (err) => resolve({
+            ok: false,
+            // A guarded-lookup refusal names no address; keep it generic either way.
+            error: err.code === 'DESTINATION_NOT_ALLOWED' ? 'Destination is not allowed' : err.message,
+        }));
         req.write(body);
         req.end();
     });

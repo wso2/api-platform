@@ -71,26 +71,30 @@ var (
 	platformGraphQLAPIKind       = cleanup.Kind{Name: "platform-api-graphql-api", Order: 55}
 	platformServiceAccountKind   = cleanup.Kind{Name: "platform-api-service-account", Order: 62}
 	platformWebhookSecretKind    = cleanup.Kind{Name: "platform-api-webhook-secret", Order: 94}
+	// An LLM provider template outlives the providers created from it, so it is removed after
+	// them (platformProviderKind, 84).
+	platformLLMTemplateKind = cleanup.Kind{Name: "platform-api-llm-provider-template", Order: 86}
 )
 
 // platformCollectionKinds maps a top-level control-plane collection to the cleanup kind of a
 // resource the request funnel sees created in it. Resources nested under one of these, such
 // as API keys, subscriptions and builds, are removed with their parent.
 var platformCollectionKinds = map[string]cleanup.Kind{
-	"projects":           platformProjectKind,
-	"rest-apis":          platformRESTAPIKind,
-	"graphql-apis":       platformGraphQLAPIKind,
-	"mcp-proxies":        platformMCPKind,
-	"llm-providers":      platformProviderKind,
-	"llm-proxies":        platformProxyKind,
-	"gateways":           platformGatewayKind,
-	"subscription-plans": platformSubscriptionPlanKind,
-	"meters":             platformMeterKind,
-	"applications":       platformApplicationKind,
-	"secrets":            platformSecretKind,
-	"api-portals":        platformAPIPortalKind,
-	"service-accounts":   platformServiceAccountKind,
-	"webhook-secrets":    platformWebhookSecretKind,
+	"projects":               platformProjectKind,
+	"rest-apis":              platformRESTAPIKind,
+	"graphql-apis":           platformGraphQLAPIKind,
+	"mcp-proxies":            platformMCPKind,
+	"llm-providers":          platformProviderKind,
+	"llm-proxies":            platformProxyKind,
+	"gateways":               platformGatewayKind,
+	"subscription-plans":     platformSubscriptionPlanKind,
+	"meters":                 platformMeterKind,
+	"applications":           platformApplicationKind,
+	"secrets":                platformSecretKind,
+	"api-portals":            platformAPIPortalKind,
+	"service-accounts":       platformServiceAccountKind,
+	"webhook-secrets":        platformWebhookSecretKind,
+	"llm-provider-templates": platformLLMTemplateKind,
 }
 
 // platformResourcePattern parses a control-plane resource path: a top-level resource, or one

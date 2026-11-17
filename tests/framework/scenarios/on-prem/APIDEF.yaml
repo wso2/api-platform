@@ -157,7 +157,7 @@ scenarios:
         - feature: suites/it/features/management-portal/api-definitions/limits.feature
           scenario: "A definition just over the configured size is refused as too large, as a file and from a URL, and creates nothing"
   - id: APIDEF-013
-    title: "Import from the cloud metadata address (http://169.254.169.254/...) and from a file:// URL; 400 with a generic fetch error that names no internal host or address, and no API is created."
+    title: "Import from the cloud metadata address (http://169.254.169.254/...) and from a file:// URL; 400 each time and no API is created: the metadata address with DESTINATION_NOT_ALLOWED and a message that names no host or address, the file URL with the generic fetch error."
     priority: P0
     ui:
       status: exempt
@@ -166,7 +166,7 @@ scenarios:
       status: automated
       refs:
         - feature: suites/it/features/management-portal/api-definitions/limits.feature
-          scenario: "Importing from the cloud metadata address or a file URL is refused with a generic error and creates nothing"
+          scenario: "Importing from the cloud metadata address or a file URL is refused and creates nothing"
   - id: APIDEF-014
     title: "With a token holding only ap:rest_api:read, and with one holding no scope, call validate, import and PUT /openapi; 403 each time, while GET /openapi works with read."
     priority: P1

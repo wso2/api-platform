@@ -40,3 +40,32 @@ blocks:
       - name: webhook-legacy-disabled
         features:
           - features/management-portal/webhook-secrets/webhook_secret_legacy_disabled.feature
+
+  # Network access control in allow mode (NETAC): the platform-api only reaches testbench through a
+  # tenant- or user-supplied URL. That setting would refuse every other host the shared blocks'
+  # scenarios use, so it gets its own instance. A single engine is enough: the check is on the
+  # outbound HTTP client, not storage-engine-specific.
+  - name: platform-api-access-control-allow
+    components:
+      - name: platform-api
+        db: sqlite
+        overlay: tests/framework/core/catalog/overlays/platform-api-access-control-allow.toml
+      - name: testbench
+    runners:
+      - name: network-access-control-allow
+        features:
+          - features/management-portal/network-access-control/allow_mode.feature
+
+  # Network access control in deny mode with deny_private_networks on (NETAC): every private
+  # address is refused, testbench included, which no other runner could work with. A single engine
+  # is enough, for the same reason as the allow-mode block.
+  - name: platform-api-access-control-deny
+    components:
+      - name: platform-api
+        db: sqlite
+        overlay: tests/framework/core/catalog/overlays/platform-api-access-control-deny.toml
+      - name: testbench
+    runners:
+      - name: network-access-control-deny
+        features:
+          - features/management-portal/network-access-control/deny_mode.feature

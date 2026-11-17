@@ -30,8 +30,8 @@ func TestNew_ManualCONNECT_Succeeds(t *testing.T) {
 	cfg.Proxy.Mode = "url"
 	cfg.Proxy.URL = "http://" + proxyAddr
 	cfg.Proxy.Egress = ProxyEgressManualCONNECT
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = netguard.PermitPrivateBlockMetadata() // permits loopback
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = netguard.PermitPrivateBlockMetadata() // permits loopback
 
 	client, err := New(cfg)
 	if err != nil {
@@ -68,8 +68,8 @@ func TestNew_ManualCONNECT_RejectsDisallowedOrigin(t *testing.T) {
 	cfg.Proxy.Mode = "url"
 	cfg.Proxy.URL = "http://" + proxyAddr
 	cfg.Proxy.Egress = ProxyEgressManualCONNECT
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = netguard.PublicOnly() // blocks loopback -- origin must be rejected
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = netguard.PublicOnly() // blocks loopback -- origin must be rejected
 
 	client, err := New(cfg)
 	if err != nil {
@@ -90,8 +90,8 @@ func TestNewConnectRoundTripper_ValidatesConfig(t *testing.T) {
 	t.Run("requires Mode url", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Proxy.Mode = "environment"
-		cfg.SSRF.Enabled = true
-		cfg.SSRF.Policy = netguard.PermitPrivateBlockMetadata()
+		cfg.DestinationGuard.Enabled = true
+		cfg.DestinationGuard.Policy = netguard.PermitPrivateBlockMetadata()
 		if _, err := newConnectRoundTripper(cfg, nil, baseTLS); err == nil {
 			t.Fatal("expected an error when Proxy.Mode is not \"url\"")
 		}
@@ -109,8 +109,8 @@ func TestNewConnectRoundTripper_ValidatesConfig(t *testing.T) {
 	t.Run("requires Proxy.URL", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Proxy.Mode = "url"
-		cfg.SSRF.Enabled = true
-		cfg.SSRF.Policy = netguard.PermitPrivateBlockMetadata()
+		cfg.DestinationGuard.Enabled = true
+		cfg.DestinationGuard.Policy = netguard.PermitPrivateBlockMetadata()
 		if _, err := newConnectRoundTripper(cfg, nil, baseTLS); err == nil {
 			t.Fatal("expected an error when Proxy.URL is empty")
 		}

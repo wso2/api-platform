@@ -47,8 +47,8 @@ Makefile
 VERSION
 target/
 
-# ── Integration tests (not needed at runtime) ─────────────────────
-it/
+# ── Unit-test helpers (not needed at runtime) ─────────────────────
+test-support/
 
 # ── Documentation (markdown only — keep the OpenAPI spec for the validator) ───
 README.md
