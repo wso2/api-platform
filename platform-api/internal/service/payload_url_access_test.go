@@ -50,7 +50,7 @@ func useRequestAccessControl(t *testing.T, gc netguard.GuardConfig) {
 		t.Fatalf("Build: %v", err)
 	}
 	cfg := testSharedHTTPClientConfig()
-	cfg.SSRF.Policy = policy
+	cfg.DestinationGuard.Policy = policy
 	if err := utils.InitUserURLClientFromConfig(cfg); err != nil {
 		t.Fatalf("InitUserURLClientFromConfig: %v", err)
 	}

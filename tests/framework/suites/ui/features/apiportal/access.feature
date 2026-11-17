@@ -16,52 +16,40 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal access
+@APIPORTAL
+Feature: API Portal sign-in and page access
+  Journey APIPUI-018: signing in with the local form, signing out, and which pages need sign-in or
+  admin rights. Anonymous users can read the catalogues; Applications and API keys send them to
+  login and back; Settings is for administrators only.
 
-  Background:
+  @APIP-031 @APIP-033
+  Scenario: Journey: a developer signs in and out, and pages that need sign-in or admin rights are protected
     Given the user is signed in to the API Portal
     And the API Portal has portal-access fixtures
-
-  Scenario: Portal home loads and shows the hero section
-    When the user opens the API Portal
-    Then the API Portal hero section is visible
-
-  Scenario: Browsing the APIs listing opens an API detail page
+    And the user signs out of the API Portal
+    When the user submits the API Portal login with an incorrect password
+    Then the API Portal local login error is visible
+    And the user shows and hides the password on the API Portal login form
+    When the developer signs in to the API Portal through the local form
+    And the user signs out of the API Portal through the profile menu
+    Then the API Portal login form is visible
     When the user browses the API listing and opens the seeded API
     Then the API Portal API detail page is visible
-
-  Scenario: Browsing the MCP servers listing shows a server
     When the user browses the MCP servers listing
     Then the API Portal MCP listing is visible with a server
-
-  Scenario: Opening API Workflows shows a valid page
     When the user opens the API Workflows page
-    Then the API Portal page is visible
-    And the API Portal page does not contain "Cannot GET"
+    Then the API Portal page does not contain "Cannot GET"
     And the API Portal page does not contain "500"
-
-  Scenario: Applications redirects to login and returns after signing in
     When the user opens the Applications page while signed out
     Then the API Portal login form is visible
-    When the user signs in and returns to Applications
+    When the developer signs in and returns to Applications
     Then the API Portal Applications page is visible
-
-  Scenario: An API's API Keys page redirects to login and returns after signing in
     When the user opens the seeded API's API Keys page while signed out
     Then the API Portal login form is visible
-    When the user signs in and returns to the seeded API's API Keys page
+    When the developer signs in and returns to the seeded API's API Keys page
     Then the API Portal API Keys page is visible
-
-  Scenario: The collapsed sidebar lists the navigation items
-    When the user opens the API Portal
-    Then the API Portal sidebar is collapsed by default and lists navigation items
-
-  Scenario: The sidebar stays expanded across navigation and reload
-    When the user opens the API Portal
-    And the user pins the API Portal sidebar open and it persists across APIs navigation and reload
-
-  Scenario: The sidebar can be force-collapsed
-    When the user opens the API Portal
-    And the user pins the API Portal sidebar open and it persists across APIs navigation and reload
-    When the user collapses the API Portal sidebar
-    Then the API Portal sidebar is force-collapsed
+    When the user opens the API Portal settings
+    Then the API Portal shows the Access denied page
+    When the administrator signs in to the API Portal
+    And the administrator opens the API Portal settings from the sidebar
+    Then the API Portal settings page is shown

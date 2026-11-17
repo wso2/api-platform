@@ -542,49 +542,48 @@ export const createRelayFetch =
     return toResponseLike(parsed, gatewayUrl);
   };
 
-type SwaggerExecute = (request: unknown) => Promise<{ status?: unknown } | undefined>;
-type SwaggerSystem = { fn: { execute: SwaggerExecute } & Record<string, unknown> };
-
-const isAbort = (error: unknown): boolean =>
-  typeof error === 'object' &&
-  error !== null &&
-  (error as { name?: unknown }).name === 'AbortError';
+/** The one piece of swagger-ui's system the outcome is read from. */
+type SwaggerSystem = {
+  specSelectors: {
+    /** The stored response of one operation: an Immutable map, or null before any. */
+    responseFor: (path: unknown, method: unknown) => { get: (key: string) => unknown } | null;
+  };
+};
 
 /** `success` for an HTTP status below 400; anything else, or no status, is a failure. */
 const outcomeOf = (status: unknown): ExecuteOutcome =>
   typeof status === 'number' && status > 0 && status < 400 ? 'success' : 'failure';
 
+const isThenable = (value: unknown): value is PromiseLike<unknown> =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as { then?: unknown }).then === 'function';
+
 /**
- * Wraps the thunk swagger-ui's `executeRequest` returns so the one
- * `fn.execute` call it makes reports its outcome. swagger-client resolves for
- * a 2xx and rejects with the response's `status` for any other, and rejects
- * with no status when nothing came back (a network error, or a relay failure
- * thrown by `createRelayFetch`); swagger-ui then swallows the rejection to
- * show it, which is why the outcome is read here rather than from the action.
+ * Reports the outcome of one Execute once it is over. `oriAction` is
+ * swagger-ui's bound action: calling it dispatches the request at once and
+ * returns the thunk's Promise, which never rejects and resolves to nothing —
+ * swagger-ui stores the result with `setResponse` before it settles. So the
+ * outcome is read from that stored response: `status` for an answer (swagger
+ * spreads the error response's fields in for a non-2xx), none for a network or
+ * relay failure. An aborted request is the user leaving, not a call, and is not
+ * reported.
  */
-const reportingOutcome = (action: unknown, report: (outcome: ExecuteOutcome) => void): unknown => {
-  if (typeof action !== 'function') return action;
-  return (system: SwaggerSystem) => {
-    const { fn } = system;
-    const execute: SwaggerExecute = (request) =>
-      fn.execute.call(fn, request).then(
-        (response) => {
-          report(outcomeOf(response?.status));
-          return response;
-        },
-        (error: unknown) => {
-          if (!isAbort(error)) {
-            const { status, response } = (error ?? {}) as {
-              status?: unknown;
-              response?: { status?: unknown };
-            };
-            report(outcomeOf(status ?? response?.status));
-          }
-          throw error;
-        },
-      );
-    return (action as (system: SwaggerSystem) => unknown)({ ...system, fn: { ...fn, execute } });
-  };
+const reportWhenSettled = (
+  dispatched: unknown,
+  system: SwaggerSystem | undefined,
+  { method, pathName }: Record<string, unknown>,
+  report: (outcome: ExecuteOutcome) => void,
+): void => {
+  if (!isThenable(dispatched)) return;
+  dispatched.then(
+    () => {
+      const response = system?.specSelectors?.responseFor(pathName, method);
+      if (!response || response.get('name') === 'AbortError') return;
+      report(outcomeOf(response.get('status') ?? response.get('statusCode')));
+    },
+    () => undefined,
+  );
 };
 
 /**
@@ -602,7 +601,7 @@ export const testConsoleRelayPlugin = (contextRef: RelayContextRef) => {
       spec: {
         wrapActions: {
           executeRequest:
-            (oriAction: (payload: Record<string, unknown>) => unknown) =>
+            (oriAction: (payload: Record<string, unknown>) => unknown, system?: SwaggerSystem) =>
             (payload: Record<string, unknown>) => {
               // Direct mode is the absence of a transport override, not a
               // second one: leaving `userFetch` off the payload is exactly what
@@ -610,13 +609,14 @@ export const testConsoleRelayPlugin = (contextRef: RelayContextRef) => {
               // calls the gateway itself. Read per dispatch, so flipping the
               // switch takes effect on the next Execute without a remount.
               const { mode } = contextRef.current;
-              const action =
+              const dispatched =
                 mode === 'direct' ? oriAction(payload) : oriAction({ ...payload, userFetch });
               // Both modes pass through here once per Execute, so this is where
               // its outcome is counted, under the mode it was sent with.
-              return reportingOutcome(action, (outcome) =>
+              reportWhenSettled(dispatched, system, payload, (outcome) =>
                 contextRef.current.onExecuted?.(mode, outcome),
               );
+              return dispatched;
             },
         },
       },

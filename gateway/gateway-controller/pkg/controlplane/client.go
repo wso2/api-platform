@@ -48,6 +48,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/service/agent"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/upstreamguard"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/version"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/workerpool"
@@ -1679,7 +1680,7 @@ func (c *Client) handleGraphQLAPIDeployedEvent(event map[string]interface{}) {
 	result, err := c.fetchAndDeployGraphQLAPI(apiID, deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID)
 	if err != nil {
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "graphqlapi", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			deployedEvent.Payload.PerformedAt, deployFailureCode(err))
 		return
 	}
 
@@ -1952,7 +1953,7 @@ func (c *Client) handleAPIDeployedEvent(event map[string]interface{}) {
 	result, err := c.fetchAndDeployAPI(apiID, deployedEvent.Payload.DeploymentID, &performedAt, deployedEvent.CorrelationID)
 	if err != nil {
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, apiID, "api", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			deployedEvent.Payload.PerformedAt, deployFailureCode(err))
 		return
 	}
 
@@ -2477,7 +2478,7 @@ func (c *Client) handleLLMProxyDeployedEvent(event map[string]interface{}) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "llmproxy", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			deployedEvent.Payload.PerformedAt, deployFailureCode(err))
 		return
 	}
 
@@ -2590,7 +2591,7 @@ func (c *Client) handleLLMProviderDeployedEvent(event map[string]interface{}) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, providerID, "llmprovider", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			deployedEvent.Payload.PerformedAt, deployFailureCode(err))
 		return
 	}
 
@@ -3125,7 +3126,7 @@ func (c *Client) handleMCPProxyDeploymentEvent(event map[string]any) {
 			slog.Any("error", err),
 		)
 		c.sendDeploymentAck(deployedEvent.Payload.DeploymentID, proxyID, "mcpproxy", "deploy", "failed",
-			deployedEvent.Payload.PerformedAt, "GATEWAY_PROCESSING_ERROR")
+			deployedEvent.Payload.PerformedAt, deployFailureCode(err))
 		return
 	}
 
@@ -3328,7 +3329,21 @@ const (
 	ackCodeAgentValidationFailed    = "AGENT_VALIDATION_FAILED"
 	ackCodeAgentRenderFailed        = "AGENT_CONFIG_RENDER_FAILED"
 	ackCodeAgentConflict            = "AGENT_CONFLICT"
+	// ackCodeUpstreamURLNotAllowed reports an artifact whose upstream or policy URL
+	// controller.server.network_security.access_control refuses — a definition the
+	// gateway rejects by configuration, not a gateway fault.
+	ackCodeUpstreamURLNotAllowed = "UPSTREAM_URL_NOT_ALLOWED"
 )
+
+// deployFailureCode classifies a deploy failure for the deployment ack: a URL
+// network access control refuses is UPSTREAM_URL_NOT_ALLOWED, anything else
+// GATEWAY_PROCESSING_ERROR.
+func deployFailureCode(err error) string {
+	if upstreamguard.IsRefused(err) {
+		return ackCodeUpstreamURLNotAllowed
+	}
+	return ackCodeGatewayProcessingError
+}
 
 // agentAckFailureCode classifies an Agent apply failure into the code the
 // deployment ack reports, so a definition the gateway rejects is distinguishable
@@ -3344,6 +3359,8 @@ func agentAckFailureCode(err error) string {
 	switch {
 	case err == nil:
 		return ""
+	case upstreamguard.IsRefused(err):
+		return ackCodeUpstreamURLNotAllowed
 	case errors.As(err, &validationErr), errors.As(err, &parseErr),
 		errors.As(err, &kindErr), errors.As(err, &handleErr):
 		return ackCodeAgentValidationFailed

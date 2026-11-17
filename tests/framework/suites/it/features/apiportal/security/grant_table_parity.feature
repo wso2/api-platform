@@ -22,7 +22,7 @@ Feature: API Portal authorization grant-table parity
   I want no shared role to be granted more by platform-api than by the portal
   So that a role is never wider where it is checked second
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml). The role-to-scope mappings staged for the
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml). The role-to-scope mappings staged for the
   # portal and for platform-api are compared. The portal owns scopes platform-api never checks, so
   # the portal's grants may be wider; dp_narrow_it is the one role allowed to differ the other way.
 

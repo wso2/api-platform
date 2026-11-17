@@ -97,6 +97,8 @@ func RegisterAgentProxy(sc *godog.ScenarioContext, s *Steps) {
 		s.sendControlPlaneStep)
 	sc.Step(`^I send a "GET" request to the control plane at "([^"]*)"(?: as "([^"]*)")? until the JSON field "([^"]*)" is "([^"]*)"$`,
 		s.pollControlPlaneJSONField)
+	sc.Step(`^I send a "GET" request to the control plane at "([^"]*)"(?: as "([^"]*)")? until the JSON array "([^"]*)" contains an item with "([^"]*)" equal to "([^"]*)"$`,
+		s.pollControlPlaneJSONArrayItem)
 	sc.Step(`^I send a "([^"]*)" request to the control plane at "([^"]*)" until the response header "([^"]*)" matches "([^"]*)" with body:$`,
 		s.pollControlPlaneHeader)
 	sc.Step(`^I create an? (Agent proxy|LLM provider template|LLM provider|REST API) via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
@@ -308,9 +310,9 @@ func callHeaders(ctx context.Context, call controlPlaneCall, token string) (map[
 	return headers, nil
 }
 
-// trackControlPlaneResource registers what a successful create produced and deregisters what a
-// successful delete removed, so cleanup follows the product's own answer rather than the
-// scenario's expectation of it.
+// trackControlPlaneResource registers what a successful create or custom policy sync produced
+// and deregisters what a successful delete removed, so cleanup follows the product's own answer
+// rather than the scenario's expectation of it.
 func (s *Steps) trackControlPlaneResource(ctx context.Context, method string, body []byte, resp *httpx.Response) error {
 	switch {
 	case method == http.MethodPost && resp.StatusCode == http.StatusCreated:
@@ -340,8 +342,13 @@ func (s *Steps) trackControlPlaneResource(ctx context.Context, method string, bo
 				return s.deleteAgentAPIKey(ctx, record)
 			}, s.registerAgentAPIKeyDeleter)
 		}
+	case method == http.MethodPost && resp.StatusCode == http.StatusOK && locationPath(resp.URL) == customPolicySyncPath:
+		return s.trackSyncedCustomPolicy(ctx, resp)
 	case method == http.MethodDelete && resp.StatusCode == http.StatusNoContent:
 		if err := deregisterDeleted(ctx, resp.URL); err != nil {
+			return err
+		}
+		if err := deregisterDeletedCustomPolicy(ctx, resp.URL); err != nil {
 			return err
 		}
 		return deregisterDeletedPlatformResource(ctx, resp.URL)
@@ -564,8 +571,29 @@ func (s *Steps) pollControlPlaneJSONField(ctx context.Context, path, who, field,
 	if err != nil {
 		return err
 	}
+	return s.pollControlPlane(ctx, path, who, fmt.Sprintf("%s %q", field, expected),
+		func(resp *httpx.Response) bool { return jsonFieldEquals(resp, field, expected) })
+}
+
+// pollControlPlaneJSONArrayItem repeats a read until a JSON array holds an item whose key field
+// is the wanted value, publishing the matching response. A gateway pushes its policy manifest
+// after it connects, so a read taken straight after boot may not list the policy yet.
+func (s *Steps) pollControlPlaneJSONArrayItem(ctx context.Context, path, who, field, key, want string) error {
+	expected, err := stepscommon.Expand(ctx, want)
+	if err != nil {
+		return err
+	}
+	return s.pollControlPlane(ctx, path, who, fmt.Sprintf("an item of %s with %s %q", field, key, expected),
+		func(resp *httpx.Response) bool { return jsonArrayHasItem(resp, field, key, expected) })
+}
+
+// pollControlPlane repeats a GET until done accepts the response, which it publishes; awaited
+// describes the condition in the timeout error.
+func (s *Steps) pollControlPlane(
+	ctx context.Context, path, who, awaited string, done func(*httpx.Response) bool,
+) error {
 	last := "no response"
-	err = retry.Await(ctx, retry.Options{Interval: time.Second},
+	err := retry.Await(ctx, retry.Options{Interval: time.Second},
 		func(ctx context.Context) (*httpx.Response, error) {
 			resp, sendErr := s.sendControlPlane(ctx, controlPlaneCall{method: http.MethodGet, path: path, who: who})
 			if sendErr != nil {
@@ -574,8 +602,8 @@ func (s *Steps) pollControlPlaneJSONField(ctx context.Context, path, who, field,
 			last = resp.Describe()
 			return resp, nil
 		},
-		func(resp *httpx.Response) bool { return jsonFieldEquals(resp, field, expected) },
-		fmt.Sprintf("waiting for GET %s to report %s %q", path, field, expected))
+		done,
+		fmt.Sprintf("waiting for GET %s to report %s", path, awaited))
 	if err != nil {
 		return fmt.Errorf("%w (last %s)", err, last)
 	}

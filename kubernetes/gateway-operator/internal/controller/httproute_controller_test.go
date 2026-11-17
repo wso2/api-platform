@@ -53,12 +53,13 @@ func TestLastDeployedParentGatewayKeyFromAnnotation(t *testing.T) {
 		t.Fatalf("annotation parse: ok=%v key=%+v", ok, key)
 	}
 
-	got := deletionParentGatewayKey(route)
-	if got != key {
-		t.Fatalf("deletionParentGatewayKey want %+v got %+v", key, got)
+	// Spec cleared: the legacy annotation still points deletion at the deployed Gateway.
+	got := deletionCleanupCandidates(route, deployedGatewaysFromRoute(route))
+	if len(got) != 1 || got[0].key != key || !got[0].recorded {
+		t.Fatalf("deletion candidates from annotation: got %+v", got)
 	}
 
-	// Live spec wins when annotation missing
+	// Without the annotation, the spec parent is still cleaned up.
 	route2 := &gatewayv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "routes", Name: "r2"},
 		Spec: gatewayv1.HTTPRouteSpec{
@@ -69,15 +70,19 @@ func TestLastDeployedParentGatewayKeyFromAnnotation(t *testing.T) {
 	}
 	ns := gatewayv1.Namespace("infra")
 	route2.Spec.CommonRouteSpec.ParentRefs[0].Namespace = &ns
-	if k := deletionParentGatewayKey(route2); k != (client.ObjectKey{Namespace: "infra", Name: "gw"}) {
-		t.Fatalf("spec fallback: got %+v", k)
+	got = deletionCleanupCandidates(route2, deployedGatewaysFromRoute(route2))
+	if len(got) != 1 || got[0].key != (client.ObjectKey{Namespace: "infra", Name: "gw"}) || got[0].recorded || !got[0].specParent {
+		t.Fatalf("spec fallback: got %+v", got)
 	}
 
-	// Annotation takes precedence over spec when both present
+	// Both present: the deployed Gateway and the spec parent are both cleaned up.
 	route3 := route2.DeepCopy()
 	route3.Annotations = map[string]string{AnnHTTPRouteLastDeployedParentGateway: "other/gw2"}
-	if k := deletionParentGatewayKey(route3); k != (client.ObjectKey{Namespace: "other", Name: "gw2"}) {
-		t.Fatalf("annotation precedence: got %+v", k)
+	got = deletionCleanupCandidates(route3, deployedGatewaysFromRoute(route3))
+	if len(got) != 2 ||
+		got[0].key != (client.ObjectKey{Namespace: "other", Name: "gw2"}) || !got[0].recorded ||
+		got[1].key != (client.ObjectKey{Namespace: "infra", Name: "gw"}) || !got[1].specParent {
+		t.Fatalf("annotation and spec: got %+v", got)
 	}
 }
 

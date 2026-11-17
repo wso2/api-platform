@@ -35,7 +35,7 @@ func resetSharedHTTPClient(t *testing.T) {
 func TestInitSharedHTTPClientMakesClientAvailable(t *testing.T) {
 	resetSharedHTTPClient(t)
 	cfg := &config.Server{}
-	cfg.HTTPClient.SSRF = config.HTTPClientSSRFConfig{
+	cfg.HTTPClient.DestinationGuard = config.HTTPClientDestinationGuardConfig{
 		Enabled:        true,
 		Preset:         "permit_private_block_metadata",
 		AllowedSchemes: []string{"https"},
@@ -53,8 +53,8 @@ func TestInitSharedHTTPClientMakesClientAvailable(t *testing.T) {
 
 func TestInitSharedHTTPClientRejectsInvalidConfig(t *testing.T) {
 	cases := map[string]config.HTTPClientConfig{
-		"unknown proxy mode":  {Proxy: config.HTTPClientProxyConfig{Mode: "socks"}},
-		"unknown ssrf preset": {SSRF: config.HTTPClientSSRFConfig{Enabled: true, Preset: "everything"}},
+		"unknown proxy mode":               {Proxy: config.HTTPClientProxyConfig{Mode: "socks"}},
+		"unknown destination guard preset": {DestinationGuard: config.HTTPClientDestinationGuardConfig{Enabled: true, Preset: "everything"}},
 	}
 	for name, hc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -81,16 +81,16 @@ func TestBuildAccessControlClientConfig(t *testing.T) {
 
 	t.Run("a legacy public_only preset can only tighten", func(t *testing.T) {
 		shared := httpclient.DefaultConfig()
-		shared.SSRF = httpclient.SSRFConfig{Enabled: true, Policy: netguard.PublicOnly()}
+		shared.DestinationGuard = httpclient.DestinationGuardConfig{Enabled: true, Policy: netguard.PublicOnly()}
 		out, on, err := buildAccessControlClientConfig(shared, config.HTTPClientConfig{}, enabled)
 		if err != nil || !on {
 			t.Fatalf("got enabled=%v err=%v", on, err)
 		}
-		if !out.SSRF.Policy.BlockPrivate || !out.SSRF.Policy.BlockLoopback {
+		if !out.DestinationGuard.Policy.BlockPrivate || !out.DestinationGuard.Policy.BlockLoopback {
 			t.Fatal("deny_private_networks=false must not re-open private addresses a public_only preset refused")
 		}
-		if out.SSRF.MaxRedirects != 5 {
-			t.Fatalf("MaxRedirects = %d, want access control's 5", out.SSRF.MaxRedirects)
+		if out.DestinationGuard.MaxRedirects != 5 {
+			t.Fatalf("MaxRedirects = %d, want access control's 5", out.DestinationGuard.MaxRedirects)
 		}
 	})
 
@@ -121,25 +121,25 @@ func TestBuildAccessControlClientConfig(t *testing.T) {
 		}
 		for _, tc := range cases {
 			shared := httpclient.DefaultConfig()
-			shared.SSRF = httpclient.SSRFConfig{Enabled: true, Policy: netguard.PermitPrivateBlockMetadata()}
-			shared.SSRF.Policy.AllowedSchemes = tc.legacy
+			shared.DestinationGuard = httpclient.DestinationGuardConfig{Enabled: true, Policy: netguard.PermitPrivateBlockMetadata()}
+			shared.DestinationGuard.Policy.AllowedSchemes = tc.legacy
 			out, _, err := buildAccessControlClientConfig(shared, config.HTTPClientConfig{}, enabled)
 			if err != nil {
 				t.Fatalf("legacy %v: %v", tc.legacy, err)
 			}
-			if !reflect.DeepEqual(out.SSRF.RedirectSchemes, tc.want) {
-				t.Fatalf("legacy %v: RedirectSchemes = %v, want %v", tc.legacy, out.SSRF.RedirectSchemes, tc.want)
+			if !reflect.DeepEqual(out.DestinationGuard.RedirectSchemes, tc.want) {
+				t.Fatalf("legacy %v: RedirectSchemes = %v, want %v", tc.legacy, out.DestinationGuard.RedirectSchemes, tc.want)
 			}
-			if !reflect.DeepEqual(out.SSRF.Policy.AllowedSchemes, []string{"http", "https"}) {
-				t.Fatalf("legacy %v: first-request schemes = %v, want access control's http and https", tc.legacy, out.SSRF.Policy.AllowedSchemes)
+			if !reflect.DeepEqual(out.DestinationGuard.Policy.AllowedSchemes, []string{"http", "https"}) {
+				t.Fatalf("legacy %v: first-request schemes = %v, want access control's http and https", tc.legacy, out.DestinationGuard.Policy.AllowedSchemes)
 			}
 		}
 	})
 
 	t.Run("no common redirect scheme is a configuration error", func(t *testing.T) {
 		shared := httpclient.DefaultConfig()
-		shared.SSRF = httpclient.SSRFConfig{Enabled: true, Policy: netguard.PermitPrivateBlockMetadata()}
-		shared.SSRF.Policy.AllowedSchemes = []string{"https"}
+		shared.DestinationGuard = httpclient.DestinationGuardConfig{Enabled: true, Policy: netguard.PermitPrivateBlockMetadata()}
+		shared.DestinationGuard.Policy.AllowedSchemes = []string{"https"}
 		httpOnly := enabled
 		httpOnly.AllowedSchemes = []string{"http"}
 		if _, _, err := buildAccessControlClientConfig(shared, config.HTTPClientConfig{}, httpOnly); err == nil {
@@ -159,7 +159,7 @@ func TestBuildAccessControlClientConfig(t *testing.T) {
 func TestInitSharedHTTPClientKeepsConfiguredDestinationsOffAccessControl(t *testing.T) {
 	resetSharedHTTPClient(t)
 	cfg := &config.Server{}
-	cfg.HTTPClient.SSRF = config.HTTPClientSSRFConfig{Enabled: true, Preset: "permit_private_block_metadata", AllowedSchemes: []string{"http", "https"}}
+	cfg.HTTPClient.DestinationGuard = config.HTTPClientDestinationGuardConfig{Enabled: true, Preset: "permit_private_block_metadata", AllowedSchemes: []string{"http", "https"}}
 	cfg.Listeners.NetworkSecurity.AccessControl = config.AccessControl{Enabled: true, Mode: "allow", Hostnames: []string{`api\.example\.com`}}
 
 	if err := InitSharedHTTPClient(cfg); err != nil {

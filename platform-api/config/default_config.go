@@ -192,11 +192,12 @@ func defaultConfig() *Server {
 				},
 			},
 			WebSocket: WebSocket{
-				MaxConnections:     1000,
-				ConnectionTimeout:  30,
-				RateLimitPerMin:    1000,
-				MetricsLogEnabled:  true,
-				MetricsLogInterval: 10,
+				MaxConnections:           1000,
+				MaxConnectionsPerGateway: -1, // unlimited
+				ConnectionTimeout:        30,
+				RateLimitPerMin:          1000,
+				MetricsLogEnabled:        true,
+				MetricsLogInterval:       10,
 			},
 		},
 		Security: Security{
@@ -248,7 +249,7 @@ func defaultConfig() *Server {
 			Proxy: HTTPClientProxyConfig{
 				Mode: "none",
 			},
-			SSRF: HTTPClientSSRFConfig{
+			DestinationGuard: HTTPClientDestinationGuardConfig{
 				Enabled:        true,
 				Preset:         "permit_private_block_metadata",
 				MaxRedirects:   5,

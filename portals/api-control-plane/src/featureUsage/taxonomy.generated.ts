@@ -205,6 +205,7 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
               'api-list-empty-state',
               'org-home',
               'project-quick-actions',
+              'header-breadcrumb',
               'direct',
             ],
             required: true,
@@ -5148,7 +5149,14 @@ export const CONSOLE_FEATURES = {
     dimensions: {
       entry_point: {
         required: true,
-        values: ['api-list', 'api-list-empty-state', 'org-home', 'project-quick-actions', 'direct'],
+        values: [
+          'api-list',
+          'api-list-empty-state',
+          'org-home',
+          'project-quick-actions',
+          'header-breadcrumb',
+          'direct',
+        ],
       },
     },
   },

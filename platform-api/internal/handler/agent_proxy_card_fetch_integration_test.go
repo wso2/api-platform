@@ -203,9 +203,9 @@ func initSharedHTTPClientForTests(t *testing.T) {
 	cfg := httpclient.DefaultConfig()
 	cfg.Pooling.DisableKeepAlives = true
 	cfg.Timeouts.MaxResponseBytes = -1
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = policy
-	cfg.SSRF.MaxRedirects = 5
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = policy
+	cfg.DestinationGuard.MaxRedirects = 5
 
 	client, err := httpclient.New(cfg)
 	if err != nil {
@@ -1147,7 +1147,7 @@ func TestFetchAgentCard_StoredRefusedDestinationIsNotCached(t *testing.T) {
 	}
 	cfg := httpclient.DefaultConfig()
 	cfg.Timeouts.MaxResponseBytes = -1
-	cfg.SSRF = httpclient.SSRFConfig{Enabled: true, Policy: policy}
+	cfg.DestinationGuard = httpclient.DestinationGuardConfig{Enabled: true, Policy: policy}
 	if err := utils.InitUserURLClientFromConfig(cfg); err != nil {
 		t.Fatalf("InitUserURLClientFromConfig: %v", err)
 	}

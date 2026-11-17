@@ -1,0 +1,19 @@
+# Integration-test policy definition. The runtime has no implementation for it, so an API that
+# attaches it cannot be deployed; tests only read and sync the definition.
+name: it-custom-versioned
+version: v1.0.0
+displayName: IT Custom Versioned
+description: Sets a header on each upstream request.
+parameters:
+  type: object
+  additionalProperties: false
+  properties:
+    headerValue:
+      type: string
+      description: Value of the header.
+  required:
+    - headerValue
+systemParameters:
+  type: object
+  additionalProperties: false
+  properties: {}

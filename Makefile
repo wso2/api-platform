@@ -57,7 +57,7 @@ help: ## Show this help message
 	@echo '  make test-event-gateway               - Run event gateway tests'
 	@echo '  make test-platform-api                - Run platform-api tests'
 	@echo '  make test-cli                         - Run CLI tests'
-	@echo '  make test-api-portal                  - Run API Portal integration tests'
+	@echo '  make test-api-portal                  - Run API Portal integration and UI tests (tests/framework)'
 	@echo '  make test-ai-workspace                - Run AI Workspace E2E tests'
 	@echo '  make build-and-push-api-control-plane-multiarch - Build and push API Control Plane image for multiple architectures'
 	@echo '  make test-api-control-plane            - Run API Control Plane tests'
@@ -177,10 +177,11 @@ test-platform-api: ## Run platform-api tests
 	@echo "Running platform-api tests..."
 	$(MAKE) -C platform-api test
 
+# The block lists live in tests/framework/Makefile, next to the blocks they name.
 .PHONY: test-api-portal
-test-api-portal: ## Run API Portal integration tests
-	@echo "Running API Portal integration tests..."
-	$(MAKE) -C portals/api-portal/it test
+test-api-portal: ## Run API Portal integration and UI tests (tests/framework)
+	@echo "Running API Portal integration and UI tests..."
+	$(MAKE) -C tests/framework test-api-portal
 
 .PHONY: test-ai-workspace
 test-ai-workspace: ## Run AI Workspace E2E tests

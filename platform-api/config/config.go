@@ -40,6 +40,7 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
+	"github.com/wso2/api-platform/common/configcompat"
 	"github.com/wso2/api-platform/common/configinterpolate"
 	"github.com/wso2/api-platform/httpkit/netguard"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
@@ -350,11 +351,11 @@ type GatewayRelayEgress struct {
 // controlplane.insecure_skip_verify setting), platform-api has no equivalent existing trust
 // setting to reuse, so HTTPClientTLSConfig.InsecureSkipVerify is its own field here.
 type HTTPClientConfig struct {
-	Pooling  HTTPClientPoolingConfig  `koanf:"pooling"`
-	Timeouts HTTPClientTimeoutsConfig `koanf:"timeouts"`
-	TLS      HTTPClientTLSConfig      `koanf:"tls"`
-	Proxy    HTTPClientProxyConfig    `koanf:"proxy"`
-	SSRF     HTTPClientSSRFConfig     `koanf:"ssrf"`
+	Pooling          HTTPClientPoolingConfig          `koanf:"pooling"`
+	Timeouts         HTTPClientTimeoutsConfig         `koanf:"timeouts"`
+	TLS              HTTPClientTLSConfig              `koanf:"tls"`
+	Proxy            HTTPClientProxyConfig            `koanf:"proxy"`
+	DestinationGuard HTTPClientDestinationGuardConfig `koanf:"destination_guard"`
 }
 
 // HTTPClientPoolingConfig mirrors httpclient.PoolingConfig.
@@ -424,12 +425,12 @@ type HTTPClientProxyTLSConfig struct {
 	InsecureSkipVerify bool   `koanf:"insecure_skip_verify"`
 }
 
-// HTTPClientSSRFConfig mirrors the TOML-expressible subset of httpclient.SSRFConfig.
+// HTTPClientDestinationGuardConfig mirrors the TOML-expressible subset of httpclient.DestinationGuardConfig.
 // Enabled by default: unlike gateway-controller's shared client (whose callers all target a
 // single fixed, operator-configured host), every current caller of this platform-api client
 // fetches a user/tenant-supplied URL (an MCP proxy's upstream, a template's OpenAPI spec
 // URL) — exactly the scenario ssrf-prevention.md targets — so the guard defaults on.
-type HTTPClientSSRFConfig struct {
+type HTTPClientDestinationGuardConfig struct {
 	Enabled bool `koanf:"enabled"`
 	// Preset selects a built-in netguard policy: "permit_private_block_metadata" (default —
 	// a backend that is normally private — a ClusterIP, a service-DNS name, localhost —
@@ -841,11 +842,15 @@ func (j *JWT) LoadPrivateKey() (*rsa.PrivateKey, error) {
 
 // WebSocket holds WebSocket-specific configuration.
 type WebSocket struct {
-	MaxConnections     int  `koanf:"max_connections"`
-	ConnectionTimeout  int  `koanf:"connection_timeout"`
-	RateLimitPerMin    int  `koanf:"rate_limit_per_min"`
-	MetricsLogEnabled  bool `koanf:"metrics_log_enabled"`
-	MetricsLogInterval int  `koanf:"metrics_log_interval"`
+	MaxConnections int `koanf:"max_connections"`
+	// MaxConnectionsPerGateway caps the concurrent WebSocket connections one
+	// gateway may hold across all of its registration tokens. -1 means unlimited
+	// (the default); otherwise it must be a positive number.
+	MaxConnectionsPerGateway int  `koanf:"max_connections_per_gateway"`
+	ConnectionTimeout        int  `koanf:"connection_timeout"`
+	RateLimitPerMin          int  `koanf:"rate_limit_per_min"`
+	MetricsLogEnabled        bool `koanf:"metrics_log_enabled"`
+	MetricsLogInterval       int  `koanf:"metrics_log_interval"`
 }
 
 // Database holds database-specific configuration.
@@ -1141,6 +1146,17 @@ func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
 	expanded, stats, err := configinterpolate.Expand(k.Raw(), opts)
 	if err != nil {
 		return nil, fmt.Errorf("config interpolation failed: %w", err)
+	}
+
+	// http_client.destination_guard shipped under an earlier name; a config that
+	// still uses it keeps working, with a deprecation warning.
+	deprecated, err := configcompat.MigrateDestinationGuard(expanded)
+	if err != nil {
+		return nil, err
+	}
+	if deprecated != "" {
+		slog.Warn("Deprecated configuration key; rename it to http_client.destination_guard",
+			slog.String("key", "platform_api."+deprecated))
 	}
 
 	out := koanf.New(".")
@@ -1650,6 +1666,9 @@ func validateListenersConfig(l *ServerListeners) error {
 	}
 	if err := l.NetworkSecurity.AccessControl.GuardConfig().Validate(); err != nil {
 		return fmt.Errorf("server.network_security.access_control: %w", err)
+	}
+	if l.WebSocket.MaxConnectionsPerGateway == 0 || l.WebSocket.MaxConnectionsPerGateway < -1 {
+		return fmt.Errorf("server.websocket.max_connections_per_gateway must be -1 (unlimited) or positive (got %d)", l.WebSocket.MaxConnectionsPerGateway)
 	}
 	return nil
 }

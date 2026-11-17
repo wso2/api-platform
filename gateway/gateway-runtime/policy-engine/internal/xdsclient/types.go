@@ -43,6 +43,13 @@ const (
 	DefaultRequestTimeout        = 5 * time.Second
 	DefaultMaxReconnectDelay     = 60 * time.Second
 	DefaultInitialReconnectDelay = 1 * time.Second
+	DefaultKeepaliveTime         = 30 * time.Second
+	DefaultKeepaliveTimeout      = 10 * time.Second
+
+	// MinKeepaliveTime is gateway-controller's keepalive
+	// EnforcementPolicy.MinTime; pinging more often than this gets the
+	// connection closed with GOAWAY "too_many_pings".
+	MinKeepaliveTime = 5 * time.Second
 )
 
 // ClientState represents the current state of the xDS client

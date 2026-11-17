@@ -22,7 +22,7 @@ import { describe, expect, it } from "vitest";
 import ManageProjectButton from "./ManageProjectButton";
 
 describe("ManageProjectButton", () => {
-  it("is a plain link to the project's manage page in the Cloud console", () => {
+  it("is a plain link, labelled Settings, to the project's manage page in the Cloud console", () => {
     render(
       <ManageProjectButton
         consoleUrl="https://cloud-console.example"
@@ -30,7 +30,7 @@ describe("ManageProjectButton", () => {
       />,
     );
 
-    const link = screen.getByRole("link", { name: "Manage project" });
+    const link = screen.getByRole("link", { name: "Settings" });
     expect(link.getAttribute("href")).toBe(
       "https://cloud-console.example/projects/default/manage",
     );
@@ -43,7 +43,7 @@ describe("ManageProjectButton", () => {
 
     expect(
       screen
-        .getByRole("link", { name: "Manage project" })
+        .getByRole("link", { name: "Settings" })
         .getAttribute("href"),
     ).toBe(`${window.location.origin}/projects/default/manage`);
   });

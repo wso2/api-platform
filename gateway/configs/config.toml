@@ -11,6 +11,11 @@ gateway_host = "*"
 [router.access_logs]
 enabled = true
 
+# Clients allowed to reach /_gateway-health/*. "*" (the default) allows every client; list IPs or
+# CIDR ranges, comma-separated, to restrict it.
+[router.health]
+allowed_clients = '{{ env "APIP_GW_ROUTER_HEALTH_ALLOWED_CLIENTS" "*" }}'
+
 [controller.server]
 gateway_id = '{{ env "APIP_GW_CONTROLLER_SERVER_GATEWAY_ID" "platform-gateway-id" }}'
 
@@ -25,6 +30,11 @@ level = "info"
 
 [controller.logging]
 level = '{{ env "APIP_GW_CONTROLLER_LOGGING_LEVEL" "info" }}'
+
+# Clients allowed to reach the admin health endpoints. "*" (the default) allows every client;
+# list IPs or CIDR ranges, comma-separated, to restrict it.
+[controller.health]
+allowed_clients = '{{ env "APIP_GW_CONTROLLER_HEALTH_ALLOWED_CLIENTS" "*" }}'
 
 [controller.controlplane]
 host = '{{ env "APIP_GW_CONTROLLER_CONTROLPLANE_HOST" "" }}'

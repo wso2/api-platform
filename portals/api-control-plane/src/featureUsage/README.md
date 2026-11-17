@@ -442,10 +442,21 @@ documentation links, and the test key minted automatically on page load.
 
 **Pages WSO2 Cloud replaces.** In the cloud build, the Gateways pages and both
 Deploy pages are cloud-plugin pages (`page.gateways`, `page.apiDeploy`,
-`page.graphqlApiDeploy`). The built-in pages above are tracked, but in WSO2
-Cloud the gateway features, `gateway-policies-view`, `api-deploy`, the
-`deployment-*` features and `deployment-history-view` only appear once the
-cloud plugins report them too.
+`page.graphqlApiDeploy`). They report the same features through the host port's
+`trackFeature(code, dimensions)` (`useTrackFeatureByName`, built into the port in
+`AppLayout`), which drops any code or value the taxonomy doesn't list:
+
+| Cloud page                              | Reports                                                                                                  |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Gateways: Add or Save                   | `gateway-register-click` (`gateway_hosting`, `gateway_type`), `gateway-update-click`                     |
+| Gateway overview                        | `gateway-setup-command-copy` (`install_method`, `setup_step`), `gateway-token-regenerate-click`          |
+| Deploy: Deploy or promote, Stop         | `api-deploy-click` (no `gateway_hosting`), `deployment-undeploy-click`                                   |
+| Deploy: add a gateway, its setup drawer | `gateway-register-click`, `gateway-setup-command-copy` (`quick-start`), `gateway-token-regenerate-click` |
+
+The cloud pages have no redeploy, restore, deployment delete or deployment
+history, and their gateway Policies tab shows no policies yet, so
+`deployment-redeploy-click`, `deployment-restore-click`, `deployment-delete-click`,
+`deployment-history-view` and `gateway-policies-view` never come from WSO2 Cloud.
 
 ---
 
@@ -458,7 +469,7 @@ cloud plugins report them too.
 | `taxonomy.generated.ts`      | Generated from the YAML (`npm run taxonomy:codegen`); never edit by hand         |
 | `taxonomy.ts`                | The console's features from the generated file, the types, and `featureMetadata` |
 | `policies.ts`                | `trackPolicyAttachment`: a policy name to its capability feature                 |
-| `useTrackFeature.ts`         | The hook UI code calls; attaches the user and organization                       |
+| `useTrackFeature.ts`         | The hook UI code calls, and `useTrackFeatureByName` for the host port            |
 | `actions.ts`                 | Builds each action from the allowlist; masks page URLs to route templates        |
 | `collector.ts`               | The enable switch, the queue, and the batched send to the collector route        |
 | `*.test.ts`                  | Unit tests                                                                       |

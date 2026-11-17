@@ -16,40 +16,44 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal billing
+@APIPORTAL
+Feature: API Portal subscription plans, billing and paid subscriptions
+  Journey APIPUI-012: an administrator adds a free plan with limits, offers it on an API and cannot
+  delete it while it has a subscriber.
+  Journey APIPUI-019: an administrator sets up billing with Stripe and Moesif, adds meters and
+  prices plans.
+  Journey APIPUI-020: a developer pays for plans, follows invoices and usage, and ends paid
+  subscriptions.
+  Billing is portal-wide: these journeys run one at a time on their own stack, and bill through the
+  testbench's Stripe and Moesif services.
 
-  # Billing is portal-wide: these scenarios run one at a time on their own stack, and bill through
-  # the testbench's Stripe and Moesif services.
-
-  Scenario: An administrator sets up billing, moves its webhook host and removes it
+  Background:
     Given the user is signed in to the API Portal
+
+  @APIP-023
+  Scenario: Journey: an administrator adds a free plan with limits and offers it on an API
+    When the administrator adds a free plan with a per-minute and a per-day limit in the settings
+    And the administrator raises that plan's per-minute limit
+    And the administrator offers that plan on an API in the settings
+    Then the API page shows that plan's card with both of its limits
+    And that plan cannot be deleted while a developer subscribes to it
+
+  @APIP-039 @APIP-040 @APIP-041
+  Scenario: Journey: an administrator sets up billing, adds meters and prices plans
+    Then the administrator is sent to set up billing when pricing a plan without it
     When the administrator sets up billing in the settings, correcting the keys the form and Stripe refuse
     Then the administrator moves the billing webhook host and removes billing in the settings
-
-  Scenario: An administrator adds a meter, edits it and deletes it
-    Given the user is signed in to the API Portal
+    Given billing is set up in the API Portal
     When the administrator adds a Tokens meter with a suggested and a custom property in the settings
     Then the administrator edits that meter, and deletes it
-
-  Scenario: A plan can be paid only once billing is set up
-    Given the user is signed in to the API Portal
-    Then the administrator is sent to set up billing when pricing a plan without it
-
-  Scenario: An administrator prices a flat rate plan, edits it and deletes it
-    Given the user is signed in to the API Portal
-    And billing is set up in the API Portal
     When the administrator prices a flat rate plan in the settings, correcting its limits and amount
     Then the administrator edits that plan, and deletes it
-
-  Scenario: An administrator prices a usage based plan with two prices on one meter
-    Given the user is signed in to the API Portal
-    And billing is set up in the API Portal
-    And the API Portal has a meter of requests by status and method
+    Given the API Portal has a meter of requests by status and method
     Then the administrator prices a usage based plan in the settings, correcting each price
 
-  Scenario: A developer pays for a flat rate plan on an API page, and ends the subscription
-    Given the user is signed in to the API Portal
-    And billing is set up in the API Portal
+  @APIP-042 @APIP-043
+  Scenario: Journey: a developer pays for a flat rate and a usage based plan, follows them and ends them
+    Given billing is set up in the API Portal
     And the API Portal has an API with a free plan and a paid flat rate plan
     And the developer signs in to the API Portal
     When the developer starts paying for the flat rate plan, after checkouts that fail or are not paid
@@ -59,10 +63,7 @@ Feature: API Portal billing
     And the administrator reads the revenue of the paid plan by month
     And the developer signs in to the API Portal
     And the developer unsubscribes from the flat rate plan, and ends it now in Subscriptions
-
-  Scenario: A developer pays for a usage based plan on an MCP server page, and follows its usage
-    Given the user is signed in to the API Portal
-    And billing is set up in the API Portal
+    Given the administrator signs in to the API Portal
     And the API Portal has a meter of requests by status and method
     And the API Portal has an MCP server with a paid usage based plan
     And the developer signs in to the API Portal

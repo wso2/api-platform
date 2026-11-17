@@ -213,6 +213,18 @@ data:
     timeout_ms = {{ $cfg.tryout.timeoutMs | int }}
     max_request_bytes = {{ $cfg.tryout.maxRequestBytes | int }}
     max_response_bytes = {{ $cfg.tryout.maxResponseBytes | int }}
+
+    {{- with $cfg.networkSecurity }}
+    {{- with .accessControl }}
+
+    [api_portal.server.network_security.access_control]
+    enabled = {{ .enabled }}
+    mode = {{ .mode | default "deny" | quote }}
+    hostnames = {{ .hostnames | default list | toJson }}
+    deny_private_networks = {{ .denyPrivateNetworks | default false }}
+    allowed_schemes = {{ .allowedSchemes | default (list "http" "https") | toJson }}
+    {{- end }}
+    {{- end }}
     {{- with $ap.configToml }}
 
     {{ . | nindent 4 | trim }}

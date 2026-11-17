@@ -10,7 +10,7 @@ portal's native extension contract.
 
 - `src/hosts/api-control-plane.tsx` is the API Control Plane (console) registry.
   It registers the trial-status header action, the settings header icon, the
-  project overview's Manage project button (`project.header.actions`, a link to
+  project overview's Settings button (`project.header.actions`, a link to
   the WSO2 Cloud console's project manage page) and the entitlements gate, the
   Gateways page override (`page.gateways`), the API and GraphQL API Deploy page
   overrides, Observability (an organization-level Logs/Metrics disclosure, a

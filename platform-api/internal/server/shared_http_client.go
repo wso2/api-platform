@@ -67,18 +67,18 @@ func buildAccessControlClientConfig(shared httpclient.Config, hc config.HTTPClie
 		return httpclient.Config{}, false, err
 	}
 	var redirectSchemes []string
-	if shared.SSRF.Enabled {
-		policy = netguard.Stricter(policy, shared.SSRF.Policy)
+	if shared.DestinationGuard.Enabled {
+		policy = netguard.Stricter(policy, shared.DestinationGuard.Policy)
 		// The existing preset's scheme list governs redirect hops only (empty means
 		// https), so it narrows redirects here without restricting first requests.
-		redirectSchemes = intersectSchemes(policy.AllowedSchemes, effectiveRedirectSchemes(shared.SSRF.Policy.AllowedSchemes))
+		redirectSchemes = intersectSchemes(policy.AllowedSchemes, effectiveRedirectSchemes(shared.DestinationGuard.Policy.AllowedSchemes))
 		if len(redirectSchemes) == 0 {
 			return httpclient.Config{}, false, fmt.Errorf("allowed_schemes shares no scheme with the redirect schemes of [platform_api.http_client]; no redirect could be followed")
 		}
 	}
 
 	out := shared
-	out.SSRF = httpclient.SSRFConfig{Enabled: true, Policy: policy, MaxRedirects: ac.MaxRedirects, RedirectSchemes: redirectSchemes}
+	out.DestinationGuard = httpclient.DestinationGuardConfig{Enabled: true, Policy: policy, MaxRedirects: ac.MaxRedirects, RedirectSchemes: redirectSchemes}
 	if out.Proxy.Mode != "" && out.Proxy.Mode != "none" && out.Proxy.Egress == httpclient.ProxyEgressUnset {
 		switch hc.Proxy.Egress {
 		case "manual_connect":
@@ -153,18 +153,18 @@ func buildSharedHTTPClientConfig(hc config.HTTPClientConfig) (httpclient.Config,
 		return httpclient.Config{}, fmt.Errorf("platform_api.http_client.proxy.mode: unrecognized value %q (want \"none\", \"environment\", or \"url\")", hc.Proxy.Mode)
 	}
 
-	if hc.SSRF.Enabled {
-		cfg.SSRF.Enabled = true
-		switch hc.SSRF.Preset {
+	if hc.DestinationGuard.Enabled {
+		cfg.DestinationGuard.Enabled = true
+		switch hc.DestinationGuard.Preset {
 		case "permit_private_block_metadata":
-			cfg.SSRF.Policy = netguard.PermitPrivateBlockMetadata()
+			cfg.DestinationGuard.Policy = netguard.PermitPrivateBlockMetadata()
 		case "public_only":
-			cfg.SSRF.Policy = netguard.PublicOnly()
+			cfg.DestinationGuard.Policy = netguard.PublicOnly()
 		default:
-			return httpclient.Config{}, fmt.Errorf("platform_api.http_client.ssrf.preset: unrecognized value %q (want \"permit_private_block_metadata\" or \"public_only\")", hc.SSRF.Preset)
+			return httpclient.Config{}, fmt.Errorf("platform_api.http_client.destination_guard.preset: unrecognized value %q (want \"permit_private_block_metadata\" or \"public_only\")", hc.DestinationGuard.Preset)
 		}
-		cfg.SSRF.Policy.AllowedSchemes = hc.SSRF.AllowedSchemes
-		cfg.SSRF.MaxRedirects = hc.SSRF.MaxRedirects
+		cfg.DestinationGuard.Policy.AllowedSchemes = hc.DestinationGuard.AllowedSchemes
+		cfg.DestinationGuard.MaxRedirects = hc.DestinationGuard.MaxRedirects
 
 		if cfg.Proxy.Mode != "" && cfg.Proxy.Mode != "none" {
 			switch hc.Proxy.Egress {

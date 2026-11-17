@@ -26,6 +26,7 @@ import { createGatewaysClient } from './gatewaysApi';
 import { CONTROL_PLANE_HOST_PLACEHOLDER } from './components/GatewaySetupSteps';
 import { createSelfHostedGatewaysClient } from './selfHostedGatewaysApi';
 import type { AIWorkspaceHostPort } from './hostPort';
+import { GATEWAY_REGISTER_CLICK, GATEWAY_UPDATE_CLICK } from './featureUsage';
 import { GATEWAY_OPERATIONS, permissionsOf } from './permissions';
 import { hostingBlocked } from './utils/limits';
 import type {
@@ -358,6 +359,12 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes, renderP
   }
 
   if (view === 'create' || view === 'edit') {
+    // The form's Add or Save click, once the form has accepted it: registering a
+    // gateway on create, updating one on edit, as on the built-in Gateways page.
+    const reportSubmit = (hosting: GatewayHosting, type: GatewayType) => {
+      if (view === 'edit') port.trackFeature?.(GATEWAY_UPDATE_CLICK, { gateway_type: type });
+      else port.trackFeature?.(GATEWAY_REGISTER_CLICK, { gateway_hosting: hosting, gateway_type: type });
+    };
     const editingGateway =
       view === 'edit' ? visibleGateways.find((gateway) => gateway.id === editingGatewayId) : undefined;
     return (
@@ -378,6 +385,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes, renderP
           // Rechecked here, not only when the form opened: the scope can be lost
           // while it is open, before the effect above has closed it.
           if (!formPermitted) return;
+          reportSubmit('managed', input.type);
           const saved = await submitGateway(input, view === 'edit' ? editingGatewayId ?? undefined : undefined);
           if (saved) {
             setView('list');
@@ -386,6 +394,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes, renderP
         }}
         onSubmitSelfHosted={async (input) => {
           if (!formPermitted) return;
+          reportSubmit('self-hosted', input.type);
           const saved = await submitSelfHostedGateway(
             input,
             view === 'edit' ? editingGatewayId ?? undefined : undefined
@@ -429,6 +438,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes, renderP
         canManageTokens={canManageTokens}
         canEdit={canUpdate}
         renderPolicies={renderPolicies}
+        trackFeature={port.trackFeature}
       />
     );
   }

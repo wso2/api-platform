@@ -45,10 +45,10 @@ const (
 	// is rejected as a conflict.
 	concurrentWriteTimeout = 90 * time.Second
 	// concurrentWritePath is the setting the simultaneous writers each give a value of their own.
-	concurrentWritePath = "gateway.config.policy_configurations.ratelimit_v1.memory.max_entries"
-	// concurrentWriteBase is the lowest value a simultaneous writer sends; the setting accepts
-	// 1000 to 1000000.
-	concurrentWriteBase = 10000
+	concurrentWritePath = "gateway.config.policy_configurations.jwtauth_v1.jwkscachettl"
+	// concurrentWriteBase is the lowest number of minutes a simultaneous writer sends; the
+	// setting accepts 1m to 24h, which the rounds within concurrentWriteTimeout stay below.
+	concurrentWriteBase = 60
 
 	keyConfigTarget = "cloudConfigTargetGatewayID"
 )
@@ -582,7 +582,7 @@ func (s *Steps) writeConcurrently(ctx context.Context, writers int) error {
 
 // sendConfigurationWrite sends one writer's value without publishing the response.
 func (s *Steps) sendConfigurationWrite(ctx context.Context, token, id string, value int) (*httpx.Response, error) {
-	raw, err := json.Marshal(map[string]any{"values": map[string]any{concurrentWritePath: value}})
+	raw, err := json.Marshal(map[string]any{"values": map[string]any{concurrentWritePath: fmt.Sprintf("%dm", value)}})
 	if err != nil {
 		return nil, err
 	}

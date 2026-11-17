@@ -134,3 +134,19 @@ func TestUndeployEnvRefusedAtStartup(t *testing.T) {
 	UndeployEnvRefusedAtStartup(other, nil, nil)
 	assert.Equal(t, models.StateUndeployed, other.DesiredState)
 }
+
+func TestUndeployRefusedAtStartup_PersistFailureKeepsTheInMemoryUndeploy(t *testing.T) {
+	cfg := &models.StoredConfig{UUID: "id-3", Kind: models.KindLlmProxy, DesiredState: models.StateDeployed}
+	calls := 0
+	failing := func(*models.StoredConfig) error { calls++; return errors.New("db down") }
+
+	UndeployRefusedAtStartup(cfg, failing, "controller.server.network_security.access_control", discardLogger())
+	assert.Equal(t, 1, calls)
+	assert.Equal(t, models.StateUndeployed, cfg.DesiredState, "the artifact stays undeployed for this run")
+
+	// Without a logger the failure is still tolerated.
+	other := &models.StoredConfig{UUID: "id-4", Kind: models.KindLlmProxy, DesiredState: models.StateDeployed}
+	UndeployRefusedAtStartup(other, failing, "controller.server.network_security.access_control", nil)
+	assert.Equal(t, 2, calls)
+	assert.Equal(t, models.StateUndeployed, other.DesiredState)
+}
