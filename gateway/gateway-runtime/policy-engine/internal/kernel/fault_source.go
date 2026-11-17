@@ -123,6 +123,12 @@ const (
 	// braces — "upstream_reset_before_response_started{connection_failure}" and siblings.
 	// Matched by prefix because the suffix set grows between Envoy versions.
 	codeDetailsUpstreamResetPrefix = "upstream_reset"
+	// The dynamic forward proxy that serves a templated Backend answers these itself: the host
+	// a key expanded to did not resolve (or resolved only to addresses the gateway refuses), or
+	// the DNS cache or its pending lookups are full.
+	codeDetailsDNSResolutionFailure = "dns_resolution_failure"
+	codeDetailsDNSCacheOverflow     = "dns_cache_overflow"
+	codeDetailsDNSPendingOverflow   = "dynamic_forward_proxy_pending_request_overflow"
 )
 
 // Error codes for failures the gateway produces itself.
@@ -172,6 +178,10 @@ const (
 	codeResolutionBadRequest = policy.FaultCodeResolutionBadRequest // 905006
 	// codeResolutionUnsupportedEncoding is a content coding the gateway cannot decode.
 	codeResolutionUnsupportedEncoding = policy.FaultCodeResolutionUnsupportedEncoding // 905007
+	// codeBackendUnavailable is a request a policy routed to a global Backend the gateway does
+	// not hold. Request-independent from the caller's side (the name was already accepted by
+	// the policy), so naming it discloses nothing a caller could probe.
+	codeBackendUnavailable = policy.FaultCodeBackendUnavailable // 905008
 )
 
 // routerErrorFor describes a router-generated failure, or returns nil when the error was not
@@ -195,8 +205,11 @@ func routerErrorFor(src faultSource, codeDetails string) *policy.FaultDetails {
 		code, message = codeUpstreamUnavailable, "The upstream service is unavailable."
 	case codeDetails == codeDetailsResponseTimeout:
 		code, message = codeUpstreamTimeout, "The upstream service did not respond in time."
-	case strings.HasPrefix(codeDetails, codeDetailsUpstreamResetPrefix):
+	case strings.HasPrefix(codeDetails, codeDetailsUpstreamResetPrefix),
+		codeDetails == codeDetailsDNSResolutionFailure:
 		code, message = codeUpstreamUnreachable, "The upstream service could not be reached."
+	case codeDetails == codeDetailsDNSCacheOverflow, codeDetails == codeDetailsDNSPendingOverflow:
+		code, message = codeUpstreamUnavailable, "The upstream service is unavailable."
 	}
 
 	return &policy.FaultDetails{

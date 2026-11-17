@@ -19,6 +19,7 @@
 package kernel
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -65,48 +66,179 @@ type Mutations struct {
 	BodyMutation   *extprocv3.BodyMutation
 }
 
-// upstreamRedirectDirective captures the last dynamic-routing directive (a named upstream
-// definition) set by any policy in a chain — last-write-wins across the chain.
+// backendLabelPrefix marks a TargetUpstreamNameKey label that names a global Backend rather
+// than one of the API's upstream definitions. Definition names cannot contain ':', so the two
+// never collide.
+const backendLabelPrefix = "backend:"
+
+// lookupBackend resolves a global Backend by name. A variable so tests can substitute it.
+var lookupBackend = policy.LookupBackend
+
+// upstreamRedirectDirective captures the last dynamic-routing directive set by any policy in a
+// chain — a named upstream definition of the API, a global Backend, or both. They share one
+// last-write-wins slot: a policy result that sets either replaces the whole directive.
 type upstreamRedirectDirective struct {
-	name *string
+	name    *string
+	backend *string
+	// backendCluster, when set, is the cluster of the Backend revision the policy checked. The
+	// request is routed to the Backend only while the Backend's record still names that cluster.
+	backendCluster *string
+	// backendKey fills a templated Backend's host. It is ignored for any other target.
+	backendKey *string
 }
 
-// set records name as the new live directive. Call once per policy result; a nil/empty name
-// leaves it unchanged.
-func (d *upstreamRedirectDirective) set(name *string) {
-	if name != nil && *name != "" {
+// set records one policy result's routing mutation as the new live directive. Call once per
+// policy result; nil/empty values leave it unchanged. A result that sets both is resolved by
+// resolveUpstreamRedirect: the API's upstream definition when the API has one of that name,
+// else the Backend. backendCluster and backendKey apply only with backend. For backendCluster,
+// nil leaves the Backend unpinned, and any other value pins it, even an empty one, which no
+// revision matches.
+func (d *upstreamRedirectDirective) set(name, backend, backendCluster, backendKey *string) {
+	hasName := name != nil && *name != ""
+	hasBackend := backend != nil && *backend != ""
+	if !hasName && !hasBackend {
+		return
+	}
+	d.name, d.backend, d.backendCluster, d.backendKey = nil, nil, nil, nil
+	if hasName {
 		d.name = name
+	}
+	if hasBackend {
+		d.backend = backend
+		d.backendCluster = backendCluster
+		d.backendKey = backendKey
 	}
 }
 
 func (d upstreamRedirectDirective) isSet() bool {
-	return d.name != nil
+	return d.name != nil || d.backend != nil
 }
 
-// resolveUpstreamRedirect resolves a directive into a concrete UpstreamInfo. ok=false means
-// the directive could not be resolved — callers must leave routing untouched and fall back to
-// the route's default, exactly as if no directive had been set.
-func resolveUpstreamRedirect(execCtx *PolicyExecutionContext, d upstreamRedirectDirective) (info policyenginev1.UpstreamInfo, label string, basePathKnown bool, ok bool) {
+// settle narrows a directive that names both an upstream definition and a Backend to the one it
+// routes to. A policy that named both (dynamic-endpoint's targetUpstream) lets the API's own
+// upstream definition take precedence, so creating a Backend can never redirect an API away from
+// a definition it declares.
+func (d upstreamRedirectDirective) settle(execCtx *PolicyExecutionContext) upstreamRedirectDirective {
+	if d.name != nil && d.backend != nil {
+		if _, local := execCtx.upstreamDefinitionPaths[*d.name]; local {
+			d.backend, d.backendCluster, d.backendKey = nil, nil, nil
+		} else {
+			d.name = nil
+		}
+	}
+	return d
+}
+
+// backendUnavailableError is a directive that named a global Backend this gateway does not
+// hold, no longer holds at the revision the policy checked, or can't reach without a valid key.
+// The request fails closed with a 503 (a 400 for a missing key, a request error): falling back
+// to the route's default upstream would send it to a backend the policy explicitly did not
+// choose, and routing to the Backend's new revision would skip the policy's checks.
+type backendUnavailableError struct {
+	name string
+	// revisionChanged reports that the Backend exists but has moved off the revision the policy
+	// checked.
+	revisionChanged bool
+	// keyRejected reports that the Backend is templated and the directive carried no valid key.
+	keyRejected bool
+}
+
+func (e *backendUnavailableError) Error() string {
+	switch {
+	case e.revisionChanged:
+		return fmt.Sprintf("global backend %q changed after the policy checked it", e.name)
+	case e.keyRejected:
+		return fmt.Sprintf("global backend %q is templated and the request has no valid key for it", e.name)
+	}
+	return fmt.Sprintf("global backend %q is not available on this gateway", e.name)
+}
+
+// upstreamRedirect is a directive resolved to the route it takes.
+type upstreamRedirect struct {
+	info          policyenginev1.UpstreamInfo
+	label         string
+	basePathKnown bool
+	// host is the authority a templated Backend's key expanded to, which the gateway's dynamic
+	// forward proxy resolves and connects to. It is empty for every other target.
+	host string
+}
+
+// resolveUpstreamRedirect resolves a directive into a concrete route. ok=false with a nil error
+// means an upstream-definition directive could not be resolved — callers must leave routing
+// untouched and fall back to the route's default, exactly as if no directive had been set. A
+// non-nil error (an *backendUnavailableError) means the request must fail closed.
+func resolveUpstreamRedirect(execCtx *PolicyExecutionContext, d upstreamRedirectDirective) (r upstreamRedirect, ok bool, err error) {
+	d = d.settle(execCtx)
+	if d.backend != nil {
+		backend, found := lookupBackend(*d.backend)
+		if !found {
+			return upstreamRedirect{}, false, &backendUnavailableError{name: *d.backend}
+		}
+		if d.backendCluster != nil && backend.ClusterName != *d.backendCluster {
+			// The Backend changed between the policy's check and this lookup. The check held for
+			// the revision the policy saw, not for this one.
+			return upstreamRedirect{}, false, &backendUnavailableError{name: *d.backend, revisionChanged: true}
+		}
+		var url, host string
+		if backend.Templated() {
+			// The key can only fill the placeholder inside the host's first label, so every host
+			// the request can reach ends in the template's fixed domain. Without a valid key the
+			// request fails closed: the dynamic forward proxy must never fall back to resolving
+			// the client's own Host.
+			key := ""
+			if d.backendKey != nil {
+				key = *d.backendKey
+			}
+			var expanded bool
+			if url, host, expanded = backend.URLTemplate.Expand(key); !expanded {
+				return upstreamRedirect{}, false, &backendUnavailableError{name: *d.backend, keyRejected: true}
+			}
+		}
+		// The cluster is the one the Backend's record names, which the SDK accepts only as one of
+		// that Backend's own clusters (BackendClusterPrefix + its name, optionally with a revision),
+		// so a policy can never steer a request to another API's cluster or an internal one. The
+		// record and its cluster come from the same revision, so the base path matches the endpoints.
+		basePath := backend.BasePath
+		if basePath == "" {
+			// An empty target base path makes the Lua rewrite keep the API's own base path;
+			// "/" tells it to forward the API-relative path as is.
+			basePath = "/"
+		}
+		return upstreamRedirect{
+			info:          policyenginev1.UpstreamInfo{ClusterName: backend.ClusterName, URL: url, BasePath: basePath},
+			label:         backendLabelPrefix + backend.Name,
+			basePathKnown: true,
+			host:          host,
+		}, true, nil
+	}
 	if d.name != nil {
 		apiKind := execCtx.sharedCtx.APIKind
 		apiId := execCtx.sharedCtx.APIId
 		sanitizedDefName := sanitizeUpstreamDefinitionName(*d.name)
 		clusterName := constants.UpstreamDefinitionClusterPrefix + string(apiKind) + "_" + apiId + "_" + sanitizedDefName
-		info = policyenginev1.UpstreamInfo{ClusterName: clusterName}
+		r = upstreamRedirect{info: policyenginev1.UpstreamInfo{ClusterName: clusterName}, label: *d.name}
 		if execCtx.upstreamDefinitionPaths != nil {
 			if bp, found := execCtx.upstreamDefinitionPaths[*d.name]; found {
-				info.BasePath = bp
-				basePathKnown = true
+				r.info.BasePath = bp
+				r.basePathKnown = true
 			}
 		}
-		if !basePathKnown {
+		if !r.basePathKnown {
 			slog.Warn("UpstreamName: target upstream base path not found in upstreamDefinitionPaths",
 				"target_upstream", *d.name)
 		}
-		return info, *d.name, basePathKnown, true
+		return r, true, nil
 	}
 
-	return policyenginev1.UpstreamInfo{}, "", false, false
+	return upstreamRedirect{}, false, nil
+}
+
+// routingDecidedInBodyPhase reports whether the request's routing is settled in the request-body
+// phase rather than the header phase: the chain buffers the request body, so Envoy forwards
+// nothing until the body-phase policies have run. A streamed request is routed at the header
+// phase, so its routing is never deferred.
+func routingDecidedInBodyPhase(chain *registry.PolicyChain, execCtx *PolicyExecutionContext) bool {
+	return chain != nil && chain.RequiresRequestBody && !execCtx.isStreamingRequest
 }
 
 // applyUpstreamRedirect writes a resolved dynamic-routing override to header ops and dynamic
@@ -118,16 +250,16 @@ func applyUpstreamRedirect(
 	headerOps map[string][]*headerOp,
 	localDynamicMetadata map[string]map[string]interface{},
 	pathMutation **string,
-	info policyenginev1.UpstreamInfo,
-	label string,
-	basePathKnown bool,
+	r upstreamRedirect,
 ) {
 	extProcNS := constants.ExtProcFilterName
+	info, label, basePathKnown := r.info, r.label, r.basePathKnown
 
 	headerOps[constants.TargetUpstreamHeader] = append(headerOps[constants.TargetUpstreamHeader], &headerOp{
 		opType: "set",
 		value:  info.ClusterName,
 	})
+	setTargetUpstreamHost(execCtx, headerOps, r.host)
 
 	if execCtx.dynamicMetadata[extProcNS] == nil {
 		execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
@@ -157,6 +289,24 @@ func applyUpstreamRedirect(
 	}
 }
 
+// setTargetUpstreamHost sets the host a templated Backend's key expanded to. When the request
+// goes anywhere else it removes the header if the client sent it or a policy set it, so only the
+// engine ever chooses the host the dynamic forward proxy resolves. The engine's op is the last
+// one for the header, so a policy's HeadersToSet can't override it.
+func setTargetUpstreamHost(execCtx *PolicyExecutionContext, headerOps map[string][]*headerOp, host string) {
+	name := constants.TargetUpstreamHostHeader
+	if host != "" {
+		headerOps[name] = append(headerOps[name], &headerOp{opType: "set", value: host})
+		return
+	}
+	_, setByPolicy := headerOps[name]
+	sentByClient := execCtx.requestBodyCtx != nil && execCtx.requestBodyCtx.Headers != nil &&
+		len(execCtx.requestBodyCtx.Headers.Get(name)) > 0
+	if setByPolicy || sentByClient {
+		headerOps[name] = append(headerOps[name], &headerOp{opType: "remove"})
+	}
+}
+
 // applyDefaultUpstream writes the route's compiled-in default upstream to header ops and
 // dynamic metadata when no dynamic-routing policy overrode it — mirrors applyUpstreamRedirect
 // for the no-override path, so CurrentUpstreamKey is always present either way.
@@ -171,6 +321,7 @@ func applyDefaultUpstream(
 		opType: "set",
 		value:  execCtx.defaultUpstreamCluster,
 	})
+	setTargetUpstreamHost(execCtx, headerOps, "")
 
 	if execCtx.dynamicMetadata[extProcNS] == nil {
 		execCtx.dynamicMetadata[extProcNS] = make(map[string]interface{})
@@ -271,17 +422,13 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	headerOps := make(map[string][]*headerOp)
 	var finalBodyLength int
 	bodyModified := false
-	var directive upstreamRedirectDirective // Track the last dynamic-routing directive
-
 	// A routing directive selected during request headers remains active during
 	// request-body processing unless a body-phase policy explicitly replaces it.
 	// UpstreamName == nil means "no change"; applying the default upstream here
-	// would otherwise undo a header-phase additional-provider selection.
-	if namespace := execCtx.dynamicMetadata[constants.ExtProcFilterName]; namespace != nil {
-		if name, ok := namespace[constants.TargetUpstreamNameKey].(string); ok && name != "" {
-			directive.set(&name)
-		}
-	}
+	// would otherwise undo a header-phase additional-provider selection. The
+	// directive, with any Backend revision pin, comes from the engine's own
+	// per-request state, not from dynamic metadata, which policies can write.
+	directive := execCtx.routing // Track the last dynamic-routing directive
 
 	// Seed analyticsData from execution context so data set in a previous phase
 	// (e.g. request_headers captured during the request-headers phase) is carried
@@ -375,8 +522,8 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 					execCtx.analyticsMetadata[analytics.RequestHeadersKey] = finalizedHeaders
 				}
 
-				// Handle UpstreamName for dynamic cluster routing (last one wins)
-				directive.set(mods.UpstreamName)
+				// Handle UpstreamName / BackendName for dynamic cluster routing (last one wins)
+				directive.set(mods.UpstreamName, mods.BackendName, mods.BackendClusterName, mods.BackendKey)
 			}
 		}
 	}
@@ -387,8 +534,12 @@ func translateRequestActionsCore(result *executor.RequestExecutionResult, execCt
 	// enabled so Envoy can re-evaluate routing.
 	applied := false
 	if directive.isSet() {
-		if info, label, basePathKnown, ok := resolveUpstreamRedirect(execCtx, directive); ok {
-			applyUpstreamRedirect(execCtx, headerOps, out.DynamicMetadata, &out.Mutations.Path, info, label, basePathKnown)
+		redirect, ok, err := resolveUpstreamRedirect(execCtx, directive)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			applyUpstreamRedirect(execCtx, headerOps, out.DynamicMetadata, &out.Mutations.Path, redirect)
 			applied = true
 		}
 	}
@@ -643,7 +794,7 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 		if mods.Method != nil {
 			mutations.Method = mods.Method
 		}
-		directive.set(mods.UpstreamName)
+		directive.set(mods.UpstreamName, mods.BackendName, mods.BackendClusterName, mods.BackendKey)
 		if mods.AnalyticsMetadata != nil {
 			for key, value := range mods.AnalyticsMetadata {
 				analyticsData[key] = value
@@ -666,8 +817,21 @@ func TranslateRequestHeaderActions(result *executor.RequestHeaderExecutionResult
 	// Handle dynamic cluster routing
 	applied := false
 	if directive.isSet() {
-		if info, label, basePathKnown, ok := resolveUpstreamRedirect(execCtx, directive); ok {
-			applyUpstreamRedirect(execCtx, headerOps, dynamicMetadata, &mutations.Path, info, label, basePathKnown)
+		directive = directive.settle(execCtx)
+		redirect, ok, err := resolveUpstreamRedirect(execCtx, directive)
+		var missing *backendUnavailableError
+		switch {
+		case errors.As(err, &missing) && routingDecidedInBodyPhase(chain, execCtx):
+			// A body-phase policy runs before the request is forwarded and may still choose
+			// another target, so the missing Backend is decided there: execCtx.routing carries
+			// the choice and its pin into the body phase, which fails closed if nothing
+			// replaced it.
+			execCtx.routing = directive
+		case err != nil:
+			return nil, err
+		case ok:
+			applyUpstreamRedirect(execCtx, headerOps, dynamicMetadata, &mutations.Path, redirect)
+			execCtx.routing = directive
 			applied = true
 		}
 	}
@@ -879,7 +1043,7 @@ func mergeRequestHeaderAndBodyResults(
 		if mods.Method != nil {
 			mutations.Method = mods.Method
 		}
-		directive.set(mods.UpstreamName)
+		directive.set(mods.UpstreamName, mods.BackendName, mods.BackendClusterName, mods.BackendKey)
 		if mods.AnalyticsMetadata != nil {
 			for key, value := range mods.AnalyticsMetadata {
 				analyticsData[key] = value
@@ -939,7 +1103,7 @@ func mergeRequestHeaderAndBodyResults(
 		if mods.Method != nil {
 			mutations.Method = mods.Method
 		}
-		directive.set(mods.UpstreamName)
+		directive.set(mods.UpstreamName, mods.BackendName, mods.BackendClusterName, mods.BackendKey)
 		if mods.AnalyticsMetadata != nil {
 			for key, value := range mods.AnalyticsMetadata {
 				analyticsData[key] = value
@@ -962,8 +1126,12 @@ func mergeRequestHeaderAndBodyResults(
 	// Handle dynamic cluster routing (last directive wins across both phases).
 	applied := false
 	if directive.isSet() {
-		if info, label, basePathKnown, ok := resolveUpstreamRedirect(execCtx, directive); ok {
-			applyUpstreamRedirect(execCtx, headerOps, dynamicMetadata, &mutations.Path, info, label, basePathKnown)
+		redirect, ok, err := resolveUpstreamRedirect(execCtx, directive)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			applyUpstreamRedirect(execCtx, headerOps, dynamicMetadata, &mutations.Path, redirect)
 			applied = true
 		}
 	}
