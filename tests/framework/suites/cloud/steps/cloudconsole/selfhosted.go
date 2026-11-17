@@ -19,6 +19,7 @@ package cloudconsole
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -123,15 +124,33 @@ func (s *Steps) createSelfHostedGateway(ctx context.Context) error {
 		return fmt.Errorf("creating APIP self-hosted gateway: %w", err)
 	}
 	if id != cleanupID {
-		deregister(ctx, kindSelfHostedGateway, cleanupID)
+		// Register the id the platform answered with before dropping the guess, so the gateway
+		// is never left without a registration. If that fails, nothing would clean it up, so
+		// delete it now and fail the step.
 		if err := cleanup.Register(ctx, cleanup.Resource{
 			Kind: kindSelfHostedGateway, ID: id, Actor: resourceActor,
 			Description: "self-hosted gateway " + id,
 		}); err != nil {
-			return fmt.Errorf("registering self-hosted gateway %q for cleanup: %w", id, err)
+			err = fmt.Errorf("registering self-hosted gateway %q for cleanup: %w", id, err)
+			return errors.Join(err, s.removeUnregisteredSelfHostedGateway(ctx, id))
 		}
+		deregister(ctx, kindSelfHostedGateway, cleanupID)
 	}
 	return tcontext.Set(ctx, keySelfHostedGatewayID, id)
+}
+
+// removeUnregisteredSelfHostedGateway is the best-effort delete of a gateway that could not be
+// registered for cleanup. It returns nil when the gateway is gone, and an error naming the
+// gateway when it may still exist.
+func (s *Steps) removeUnregisteredSelfHostedGateway(ctx context.Context, id string) error {
+	resp, err := s.doAuthenticatedRaw(ctx, http.MethodDelete, selfHostedGatewayPath(id), nil)
+	if err != nil {
+		return fmt.Errorf("deleting unregistered self-hosted gateway %q: %w", id, err)
+	}
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("deleting unregistered self-hosted gateway %q: %w", id, responseError(resp))
+	}
+	return nil
 }
 
 // getSelfHostedGatewayAwaitingConnection reads the gateway back by id. It also proves the

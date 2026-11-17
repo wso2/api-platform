@@ -4878,3 +4878,32 @@ func TestSelfHostedGatewayPathsEscapeID(t *testing.T) {
 	require.Equal(t, "/self-hosted-gateways/id%2Fwith%20separator", selfHostedGatewayPath("id/with separator"))
 	require.Equal(t, "/self-hosted-gateways/gw-1/tokens", selfHostedGatewayTokensPath("gw-1"))
 }
+
+func TestRemoveUnregisteredSelfHostedGatewayDeletesItAndReportsWhenItMayRemain(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	for _, tc := range []struct {
+		status  int
+		wantErr bool
+	}{
+		{status: http.StatusNoContent},
+		{status: http.StatusNotFound},
+		{status: http.StatusInternalServerError, wantErr: true},
+	} {
+		var deleted []string
+		topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, http.MethodDelete, r.Method)
+			deleted = append(deleted, r.URL.Path)
+			w.WriteHeader(tc.status)
+		})
+		steps := &Steps{topo: topo, client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})}
+		ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+
+		err := steps.removeUnregisteredSelfHostedGateway(ctx, "development-shgw-1")
+		require.Equal(t, []string{"/self-hosted-gateways/development-shgw-1"}, deleted, "status %d", tc.status)
+		if tc.wantErr {
+			require.ErrorContains(t, err, `"development-shgw-1"`)
+		} else {
+			require.NoError(t, err, "status %d", tc.status)
+		}
+	}
+}
