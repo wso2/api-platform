@@ -48,6 +48,7 @@ import { useApiScope } from '@/api/core/scope';
 import { SecondaryText } from '@/components/common/SecondaryText';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, ForbiddenState, LoadingState } from '@/components/StateViews';
+import { useTrackFeature } from '@/featureUsage';
 import { Can } from '@/permissions';
 import { routes } from '@/routes/paths';
 import { DEFAULT_ROLE } from './components/RolePicker';
@@ -255,6 +256,7 @@ function CreateForm() {
   const rolesQuery = useRoles();
   const createMutation = useCreateServiceAccount();
   const pending = createMutation.isPending;
+  const trackFeature = useTrackFeature();
 
   const [displayName, setDisplayName] = useState('');
   const [description, setDescription] = useState('');
@@ -307,6 +309,7 @@ function CreateForm() {
     setSubmitted(true);
     if (!valid || pending) return;
     const name = displayName.trim();
+    trackFeature('apip.security.service-account-create-click', {});
     createMutation.mutate(
       {
         displayName: name,

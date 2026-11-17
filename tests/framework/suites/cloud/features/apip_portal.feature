@@ -62,8 +62,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And the synthetic managed API Portal should report an HTTPS URL
     And the managed API Portal list should include the synthetic managed API Portal
 
-  # Skipped on an organisation whose plan allows a single portal: the second create is refused for
-  # the plan, with 402, before the handle is checked.
   @ID_APIP_PORTAL_004
   Scenario: A portal whose handle is already in use is refused
     Given I obtain an APIP cloud console token

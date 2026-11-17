@@ -32,8 +32,9 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useUpdateGateway, type Gateway } from '@/api/resources/gateways';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { useFormatters } from '@/i18n/useFormatters';
-import { gatewayInitials } from '../utils/gatewayDisplay';
+import { gatewayInitials, type GatewayFunctionality } from '../utils/gatewayDisplay';
 import {
   GatewayFunctionalityChip,
   GatewayModeChip,
@@ -99,6 +100,9 @@ const AVATAR_ICON_SIZE = 32;
 /** Keeps the editor from stretching across a wide screen. */
 const EDIT_FIELD_MAX_WIDTH = 560;
 
+/** The gateway types feature usage may report; anything else the server sends is left out. */
+const TRACKED_GATEWAY_TYPES: readonly GatewayFunctionality[] = ['regular', 'ai', 'event'];
+
 /** What the pencil opens for editing. */
 type Draft = {
   description: string;
@@ -121,6 +125,7 @@ export function GatewayDetailHeader({ gateway, gatewayId }: GatewayDetailHeaderP
   const { notify } = useNotifications();
   const { dateTime, relativeTime } = useFormatters();
   const updateGateway = useUpdateGateway();
+  const trackFeature = useTrackFeature();
 
   // `null` is the read state. A draft object is the edit state, so opening the
   // editor and its contents are one piece of state rather than two that can
@@ -161,6 +166,11 @@ export function GatewayDetailHeader({ gateway, gatewayId }: GatewayDetailHeaderP
       closeEditor();
       return;
     }
+
+    const gatewayType = TRACKED_GATEWAY_TYPES.find((type) => type === gateway.functionalityType);
+    trackFeature('apip.gateway.gateway-update-click', {
+      ...(gatewayType && { gateway_type: gatewayType }),
+    });
 
     // The spec's update body is the whole gateway, so the fetched object is
     // spread back with only these two fields replaced.

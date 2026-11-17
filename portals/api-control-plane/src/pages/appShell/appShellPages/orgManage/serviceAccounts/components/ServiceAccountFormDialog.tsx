@@ -54,6 +54,7 @@ import {
 } from '@/api/resources/serviceAccounts';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
+import { useTrackFeature } from '@/featureUsage';
 import { DEFAULT_ROLE, RolePicker } from './RolePicker';
 import { CredentialsPanel, SectionLabel, ServiceAccountHeader } from './ServiceAccountEditParts';
 
@@ -244,6 +245,7 @@ function ServiceAccountForm({
   const rolesQuery = useRoles();
   const createMutation = useCreateServiceAccount();
   const updateMutation = useUpdateServiceAccount();
+  const trackFeature = useTrackFeature();
   const pending = createMutation.isPending || updateMutation.isPending;
 
   // What the edit is diffed against; replaced by a fresh copy after a 409.
@@ -326,6 +328,7 @@ function ServiceAccountForm({
         onClose();
         return;
       }
+      trackFeature('apip.security.service-account-update-click', {});
       updateMutation.mutate(
         { body, id: base.id },
         {

@@ -29,7 +29,7 @@ import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { ApiOverviewHeader } from './ApiOverviewHeader';
 import { OverviewTab } from './OverviewTab';
 import { ProgressBanner } from './ProgressBanner';
-import { useCloudDeployments } from './useCloudDeployments';
+import { useCloudDeployments } from '@/api/resources/cloudDeployments';
 import { useCan } from '@/permissions/useCan';
 import { PAGE_API_DEPLOY_SLOT } from '@/extensions';
 

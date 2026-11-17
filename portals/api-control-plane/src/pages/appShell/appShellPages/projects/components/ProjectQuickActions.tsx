@@ -24,6 +24,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { routes } from '@/routes/paths';
 import { preloadApiCreationWizard } from '@/routes/preloadApiCreate';
+import { apiCreationEntry } from '../../apis/create/entryPoint';
 
 const messages = defineMessages({
   importApi: {
@@ -57,7 +58,9 @@ export function ProjectQuickActions({ orgHandle, projectId }: ProjectQuickAction
           spacing={1}
         >
           <Button
-            onClick={() => navigate(routes.newApi(orgHandle, projectId))}
+            onClick={() =>
+              navigate(routes.newApi(orgHandle, projectId), apiCreationEntry('project-quick-actions'))
+            }
             startIcon={<FileUp size={16} />}
             variant="text"
           >

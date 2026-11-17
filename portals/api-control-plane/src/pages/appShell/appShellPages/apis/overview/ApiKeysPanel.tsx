@@ -36,6 +36,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useMyApiKeys } from '@/api/resources/apiKeys';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature } from '@/featureUsage';
 import { useFormatters } from '@/i18n/useFormatters';
 
 import { API_KEY_KINDS, useRevokeApiKeyForKind, type ApiKeyApiKind } from './apiKeyKinds';
@@ -173,6 +174,7 @@ export function ApiKeysPanel({ apiId, apiKind = 'rest' }: ApiKeysPanelProps) {
   const intl = useIntl();
   const { dateTime, relativeTime } = useFormatters();
   const { notify } = useNotifications();
+  const trackFeature = useTrackFeature();
   // The spec has no per-API key listing — the only read is the caller's own
   // inventory across artifacts, so this narrows to this kind's keys server-side
   // and to this API here. It therefore shows the signed-in user's keys only.
@@ -198,6 +200,9 @@ export function ApiKeysPanel({ apiId, apiKind = 'rest' }: ApiKeysPanelProps) {
   const revoke = () => {
     if (!revokeTarget) return;
     const { displayName: name } = revokeTarget;
+    trackFeature('apip.security.api-key-revoke-click', {
+      artifact_kind: apiKind === 'graphql' ? 'graphql-api' : 'rest-api',
+    });
     revokeMutation.mutate(apiId, revokeTarget.id, {
       onSuccess: () => {
         notify(intl.formatMessage(messages.revokeSucceeded, { name }), 'success');

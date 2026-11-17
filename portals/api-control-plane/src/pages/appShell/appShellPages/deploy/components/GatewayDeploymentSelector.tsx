@@ -33,6 +33,7 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import type { Deployment } from '@/api/resources/restApis/deployments';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature, type FeatureDimensions } from '@/featureUsage';
 import { useFormatters } from '@/i18n/useFormatters';
 import { DeploymentStatusChip } from './GatewayDeploymentRow';
 
@@ -74,6 +75,9 @@ const messages = defineMessages({
   },
 });
 
+/** The kind of API whose deployments these components manage, for usage analytics. */
+export type DeployArtifactKind = FeatureDimensions<'apip.lifecycle.api-deploy-click'>['artifact_kind'];
+
 /**
  * What a per-deployment action mutation (restore/undeploy/delete) needs to
  * expose — REST's and GraphQL's own hooks each expect a differently keyed
@@ -93,6 +97,7 @@ export type UseDeploymentMutationHook = () => {
 };
 
 type GatewayDeploymentSelectorProps = {
+  artifactKind: DeployArtifactKind;
   /** Handle of the API these deployments belong to. */
   apiId: string;
   /** Deployments on this gateway, newest first. */
@@ -113,6 +118,7 @@ type GatewayDeploymentSelectorProps = {
  */
 export function GatewayDeploymentSelector({
   apiId,
+  artifactKind,
   deployments,
   open,
   onClose,
@@ -124,6 +130,7 @@ export function GatewayDeploymentSelector({
   // that one freezes its locale at import, so it never follows a locale switch.
   const { dateTime, relativeTime } = useFormatters();
   const { notify } = useNotifications();
+  const trackFeature = useTrackFeature();
   const restoreMutation = useRestore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -136,6 +143,7 @@ export function GatewayDeploymentSelector({
     if (readOnly) return;
     const deployment = deployments.find((item) => item.deploymentId === selectedId);
     if (!deployment) return;
+    trackFeature('apip.lifecycle.deployment-restore-click', { artifact_kind: artifactKind });
     restoreMutation.mutate(
       { apiId, deploymentId: deployment.deploymentId, gatewayId: deployment.gatewayId },
       // No `onError`: the query client's `onMutationError` already notifies.

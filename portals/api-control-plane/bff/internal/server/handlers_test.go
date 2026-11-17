@@ -269,6 +269,44 @@ func TestHandlers_OIDC_LoginRedirectsToIdP(t *testing.T) {
 	}
 }
 
+func TestHandlers_OIDC_CallbackErrorIsEncodedInLoginRedirect(t *testing.T) {
+	idp := newMockIDP(t)
+	defer idp.Close()
+
+	cfg := newTestConfig("https://unused.example.com")
+	cfg.Auth.Mode = "oidc"
+	cfg.Auth.OIDC = config.OIDCConfig{
+		Enabled: true, Discovery: true, Authority: idp.URL, Issuer: idp.URL,
+		ClientID: "client-1", ClientSecret: "s3cret", ClientAuthMethod: "client_secret_post",
+		RedirectURL: "http://bff.example.com/api/auth/callback", Scopes: "openid",
+	}
+
+	srv, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer srv.Close()
+	bff := httptest.NewServer(srv.Handler())
+	defer bff.Close()
+
+	client := &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }}
+	cases := []struct{ query, wantLoc string }{
+		{"error=access_denied", "/login?error=access_denied"},
+		{"error=a%26b%23c", "/login?error=a%26b%23c"},
+		{"error=a%20b%3Dc", "/login?error=a+b%3Dc"},
+	}
+	for _, tc := range cases {
+		res, err := client.Get(bff.URL + "/api/auth/callback?" + tc.query)
+		if err != nil {
+			t.Fatalf("callback request %q: %v", tc.query, err)
+		}
+		assertStatus(t, res, http.StatusFound)
+		if loc := res.Header.Get("Location"); loc != tc.wantLoc {
+			t.Errorf("query %q: Location = %q, want %q", tc.query, loc, tc.wantLoc)
+		}
+	}
+}
+
 func TestHandlers_OIDC_DisabledModeRejectsOIDCEndpoints(t *testing.T) {
 	cfg := newTestConfig("https://unused.example.com") // Auth.Mode defaults to "basic"
 	srv, err := New(context.Background(), cfg)

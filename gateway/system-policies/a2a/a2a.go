@@ -204,7 +204,8 @@ type A2ASystemPolicy struct {
 	// interface URL rewriting. It is also what Mode() consults.
 	rewrite *rewriteConfig
 
-	// configErr records a rewriteUrls block that was present but unusable.
+	// configErr records a rewriteUrls block, or a gatewayUrl system parameter on
+	// an instance carrying one, that was present but unusable.
 	//
 	// It is held rather than returned from the factory on purpose. Returning an
 	// error there fails the whole chain build, which takes down every route in
@@ -235,6 +236,13 @@ func GetPolicy(
 	if rewrite == nil {
 		return ins, nil
 	}
+	// Read only by an instance that rewrites: nothing else builds a gateway URL,
+	// so a bad value must not take down the chains that never use it.
+	gatewayBase, err := parseGatewayBase(params)
+	if err != nil {
+		return &A2ASystemPolicy{configErr: err}, nil
+	}
+	rewrite.gatewayBase = gatewayBase
 	return &A2ASystemPolicy{rewrite: rewrite}, nil
 }
 
@@ -705,10 +713,10 @@ func (a *A2ASystemPolicy) OnResponseBody(
 		return unavailableResponse()
 	}
 	if rewritten == nil {
-		// Nothing was rewritten: a JSON-RPC error response, or a card advertising
-		// only bindings this gateway does not front. Either way the upstream's
-		// bytes are unchanged, so they are forwarded as they stand — including the
-		// caching headers, which still describe the response being returned.
+		// Nothing was rewritten: a JSON-RPC error response, which holds no card.
+		// The upstream's bytes are unchanged, so they are forwarded as they stand
+		// — including the caching headers, which still describe the response
+		// being returned.
 		return policy.DownstreamResponseModifications{}
 	}
 

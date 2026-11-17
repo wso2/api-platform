@@ -20,16 +20,10 @@ import type { ConfigStatus } from '../types';
 import { absoluteTime, relativeTime } from '../utils/time';
 
 /**
- * The reconcile phase turned into the one line of text the drawer shows beside
- * the gateway name.
- *
- * There is deliberately no phase chip. A chip is a badge you are meant to
- * notice, and three of the four phases are things nobody can act on: `healthy`
- * is the resting state of every gateway that has ever been configured, so a
- * green "Healthy" on the drawer is decoration. What a reader actually wants to
- * know is *when the configuration last landed* — so `healthy` spends the line on
- * the timestamp, and only a phase that is still moving or has gone wrong spends
- * it on a word.
+ * The reconcile phase turned into the line of text at the right of the drawer's
+ * header. The phase itself is the chip beside the gateway name, so `healthy`
+ * spends this line on *when the configuration last landed*, and only a phase
+ * that is still moving or has gone wrong spends it on a word.
  */
 
 /** `error` is for a phase the reader has to act on; everything else is quiet. */

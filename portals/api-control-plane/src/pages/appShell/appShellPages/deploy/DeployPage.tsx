@@ -106,6 +106,7 @@ function Deploy() {
       api={apiQuery.data}
       apiId={apiQuery.data?.id ?? params.apiHandler ?? ''}
       apiPending={apiQuery.isPending}
+      artifactKind="rest-api"
       deployments={deploymentsQuery.data?.list ?? []}
       deploymentsFetching={deploymentsQuery.isFetching}
       mutations={REST_DEPLOY_MUTATIONS}

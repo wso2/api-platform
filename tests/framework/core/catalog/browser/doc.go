@@ -17,5 +17,6 @@
  */
 
 // Package browser declares the headless-browser component used by UI suites,
-// including the Playwright image and its version-match check against the module.
+// including the Playwright image and its version-match check against the module, and
+// the opt-in headed mode (UI_HEADED) that swaps it for a proxy a host browser uses.
 package browser

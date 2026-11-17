@@ -41,9 +41,10 @@ import { AppPage } from '@/components/AppPage';
 import { useCreateGateway, type CreateGatewayBody } from '@/api/resources/gateways';
 import { useNotifications } from '@/components/Notifications';
 import { runtimeConfig, type GatewayVersionEntry } from '@/config/runtime';
+import { useTrackFeature } from '@/featureUsage';
 import { routes } from '@/routes/paths';
 import { GatewayTypeSelector } from './components/GatewayTypeSelector';
-import type { GatewayFunctionality } from './utils/gatewayDisplay';
+import type { GatewayFunctionality, GatewayMode } from './utils/gatewayDisplay';
 import { MOCK_ENVIRONMENTS } from './utils/gatewayEnvironments';
 import { distributionName } from './utils/gatewaySetup';
 import { versionsForType } from './utils/gatewayVersions';
@@ -181,6 +182,9 @@ const ENDPOINT_PROTOCOLS = ['http:', 'https:', 'ws:', 'wss:'];
 
 const HANDLE_MAX_LENGTH = 64;
 
+/** This flow only registers gateways the customer runs. */
+const REGISTERED_GATEWAY_MODE: GatewayMode = 'self-hosted';
+
 type GatewayFormState = {
   description: string;
   displayName: string;
@@ -282,6 +286,7 @@ function GatewayCreatePageContent() {
   const intl = useIntl();
   const { notify } = useNotifications();
   const createGateway = useCreateGateway();
+  const trackFeature = useTrackFeature();
 
   const catalog = runtimeConfig.gatewayVersions;
 
@@ -342,12 +347,16 @@ function GatewayCreatePageContent() {
       // is what the listing reads to tell self-hosted from WSO2-managed. The
       // environment rides along the same way until a real environment service
       // exists to associate it with.
-      properties: { environment: formState.environment, gatewayMode: 'self-hosted' },
+      properties: { environment: formState.environment, gatewayMode: REGISTERED_GATEWAY_MODE },
       // A type with no configured release has nothing to choose, so it is
       // registered at the spec's own default for the field.
       version: formState.version || SPEC_DEFAULT_VERSION,
     };
 
+    trackFeature('apip.gateway.gateway-register-click', {
+      gateway_hosting: REGISTERED_GATEWAY_MODE,
+      gateway_type: formState.functionalityType,
+    });
     createGateway.mutate(body, {
       onSuccess: (gateway) => {
         notify(

@@ -49,3 +49,17 @@ const safeOrigin = (consoleUrl?: string): string | null => {
 export function organizationsUrl(consoleUrl?: string): string {
   return `${safeOrigin(consoleUrl) ?? window.location.origin}${ORGANIZATIONS_PATH}`;
 }
+
+/**
+ * The WSO2 Cloud console's manage page for one project, where it is edited and
+ * deleted. A project's handle here is its name in the WSO2 Cloud console (both
+ * are the OpenChoreo project's name), so the handle names the page. It is
+ * encoded as one path segment, so no handle can reach another path.
+ */
+export function projectManageUrl(
+  projectHandle: string,
+  consoleUrl?: string,
+): string {
+  const origin = safeOrigin(consoleUrl) ?? window.location.origin;
+  return `${origin}/projects/${encodeURIComponent(projectHandle)}/manage`;
+}

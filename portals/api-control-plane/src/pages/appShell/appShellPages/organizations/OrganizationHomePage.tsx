@@ -52,7 +52,9 @@ import { useRestApiCounts } from '@/api/resources/restApis';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
 import { ErrorState, LoadingState } from '@/components/StateViews';
+import { useTrackFeature } from '@/featureUsage';
 import { routes } from '@/routes/paths';
+import { apiCreationEntry } from '../apis/create/entryPoint';
 import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { relativeTime } from '@/utils/relativeTime';
 import ExploreMoreCard from './components/ExploreMoreCard';
@@ -307,6 +309,7 @@ function OrganizationHomePageContent() {
   const gatewaysQuery = useGateways({ limit: 100 });
   const portalsQuery = useApiPortals();
   const deleteProjectMutation = useDeleteProject();
+  const trackFeature = useTrackFeature();
   const restApiCountsQuery = useRestApiCounts(projects.map((project) => project.id));
   const graphqlApiCountsQuery = useGraphQLApiCounts(projects.map((project) => project.id));
   const apiCountsPending = restApiCountsQuery.isPending || graphqlApiCountsQuery.isPending;
@@ -334,7 +337,7 @@ function OrganizationHomePageContent() {
 
   const createApi = () => {
     if (sortedProjects.length === 1) {
-      navigate(routes.newApi(orgHandle, sortedProjects[0].id));
+      navigate(routes.newApi(orgHandle, sortedProjects[0].id), apiCreationEntry('org-home'));
       return;
     }
     setSelectedProject(sortedProjects[0]?.id ?? '');
@@ -344,12 +347,13 @@ function OrganizationHomePageContent() {
   const continueToApiCreation = () => {
     if (!selectedProject) return;
     setProjectSelectorOpen(false);
-    navigate(routes.newApi(orgHandle, selectedProject));
+    navigate(routes.newApi(orgHandle, selectedProject), apiCreationEntry('org-home'));
   };
 
   const confirmDeleteProject = () => {
     if (!projectToDelete) return;
     const { displayName, id } = projectToDelete;
+    trackFeature('apip.admin.project-delete-click', {});
     deleteProjectMutation.mutate(
       { projectId: id },
       {

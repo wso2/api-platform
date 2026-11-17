@@ -16,175 +16,218 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal API definition types
+@APIPORTAL @apiportal-api-types
+Feature: GraphQL, SOAP, WebSocket and WebSub APIs are managed through the API Portal REST API
+  As an API publisher
+  I want every API type the portal supports to be created, updated and deleted with its own definition
+  So that developers find each API with the right type and contract
 
-  Scenario: A publisher creates and retrieves a GraphQL API
-    Given I generate a unique resource name from "portal-graphql" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "graphql" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"GraphQL ${CTX:apiId}","version":"v1.0","type":"GRAPHQL","status":"PUBLISHED","endPoints":{"productionURL":"https://graphql.invalid","sandboxURL":"https://graphql-sandbox.invalid"}}
-      """
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level:
+  # the /api-portal/api/v0.9/apis endpoints. REST APIs are covered in rest_apis.feature. Every API is
+  # rendered from resources/templates/api-portal-api.yaml with its type set in the values table; the
+  # portal reports the stored type (GRAPHQL, SOAP, WS, WebSubApi), which the scenarios assert exactly.
+
+  @APIP-004 @type:negative
+  Scenario: GraphQL, WebSocket, WebSub and SOAP APIs are managed with their own definitions and refused without one
+    # A publisher manages a GraphQL API from creation to deletion
+    Given I generate a unique resource name from "portal-graphql-api" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "graphql" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | GRAPHQL       |
+    Then the response status code should be 201
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
     Then the response status code should be 200
-    And the response body should contain "GraphQL"
+    And the JSON response field "type" should be "GRAPHQL"
 
-  Scenario: A publisher updates a GraphQL API and its schema
-    Given I generate a unique resource name from "portal-graphql" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "graphql" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"GraphQL ${CTX:apiId}","version":"v1.0","type":"GRAPHQL","status":"PUBLISHED","endPoints":{"productionURL":"https://graphql.invalid","sandboxURL":"https://graphql-sandbox.invalid"}}
-      """
-    When I send an authenticated API Portal "PUT" multipart request to "/apis/${CTX:apiId}" as "publisher" with metadata and definition "graphql":
-      """
-      {"name":"Updated GraphQL","version":"v1.0","type":"GRAPHQL","status":"PUBLISHED","endPoints":{"productionURL":"https://updated.invalid","sandboxURL":"https://updated-sandbox.invalid"}}
-      """
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with definition "graphql" with values:
+      | id   | ${CTX:apiId}         |
+      | name | ${CTX:apiId}-renamed |
+      | type | GRAPHQL               |
     Then the response status code should be 200
-    And the JSON response field "name" should be "Updated GraphQL"
+    And the JSON response field "name" should be "${CTX:apiId}-renamed"
 
-  Scenario: A GraphQL API requires a definition
-    When I generate a unique resource name from "portal-graphql-missing" and store it as "apiId"
-    And I send an authenticated API Portal "POST" multipart request to "/apis" as "publisher" with metadata only:
-      """
-      {"id":"${CTX:apiId}","name":"Missing GraphQL","version":"v1.0","type":"GRAPHQL","status":"PUBLISHED","endPoints":{"productionURL":"https://graphql.invalid","sandboxURL":"https://graphql.invalid"}}
-      """
-    Then the response status code should be 400
+    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until status 404
+    Then the response status code should be 404
 
-  Scenario: A publisher retrieves a GraphQL schema
+    # A publisher manages a SOAP API from creation to deletion
+    Given I generate a unique resource name from "portal-soap-api" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "soap" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | SOAP       |
+    Then the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+    And the JSON response field "type" should be "SOAP"
+
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with definition "soap" with values:
+      | id   | ${CTX:apiId}         |
+      | name | ${CTX:apiId}-renamed |
+      | type | SOAP               |
+    Then the response status code should be 200
+    And the JSON response field "name" should be "${CTX:apiId}-renamed"
+
+    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until status 404
+    Then the response status code should be 404
+
+    # A publisher manages a WebSocket API from creation to deletion
+    Given I generate a unique resource name from "portal-websocket-api" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "websocket" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | WS       |
+    Then the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+    And the JSON response field "type" should be "WS"
+
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with definition "websocket" with values:
+      | id   | ${CTX:apiId}         |
+      | name | ${CTX:apiId}-renamed |
+      | type | WS               |
+    Then the response status code should be 200
+    And the JSON response field "name" should be "${CTX:apiId}-renamed"
+
+    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until status 404
+    Then the response status code should be 404
+
+    # A publisher manages a WebSub API from creation to deletion
+    Given I generate a unique resource name from "portal-websub-api" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "websub" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | WEBSUB       |
+    Then the response status code should be 201
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+    And the JSON response field "type" should be "WebSubApi"
+
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with definition "websub" with values:
+      | id   | ${CTX:apiId}         |
+      | name | ${CTX:apiId}-renamed |
+      | type | WEBSUB               |
+    Then the response status code should be 200
+    And the JSON response field "name" should be "${CTX:apiId}-renamed"
+
+    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 200
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until status 404
+    Then the response status code should be 404
+
+    # A GraphQL API's schema is stored as its definition
     Given I generate a unique resource name from "portal-graphql-schema" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "graphql" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"GraphQL Schema ${CTX:apiId}","version":"v1.0","type":"GRAPHQL","status":"PUBLISHED","endPoints":{"productionURL":"https://graphql.invalid","sandboxURL":"https://graphql.invalid"}}
-      """
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "graphql" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | GRAPHQL      |
+    Then the response status code should be 201
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=API_DEFINITION&fileName=definition.graphql" as "publisher"
     Then the response status code should be 200
     And the response body should contain "type Query"
-
-  Scenario: A publisher deletes a GraphQL API
-    Given I generate a unique resource name from "portal-graphql-delete" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "graphql" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"GraphQL Delete ${CTX:apiId}","version":"v1.0","type":"GRAPHQL","status":"PUBLISHED","endPoints":{"productionURL":"https://graphql.invalid","sandboxURL":"https://graphql.invalid"}}
-      """
-    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
-    Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until status 404
-    Then the response status code should be 404
-
-  Scenario: A missing GraphQL schema returns not found
-    Given I generate a unique resource name from "portal-graphql-no-schema" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "graphql" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"GraphQL No Schema ${CTX:apiId}","version":"v1.0","type":"GRAPHQL","status":"PUBLISHED","endPoints":{"productionURL":"https://graphql.invalid","sandboxURL":"https://graphql.invalid"}}
-      """
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=API_DEFINITION&fileName=missing.graphql" as "publisher"
     Then the response status code should be 404
 
-  Scenario: A publisher creates and retrieves a SOAP API
-    Given I generate a unique resource name from "portal-soap" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "soap" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"SOAP ${CTX:apiId}","version":"v1.0","type":"SOAP","status":"PUBLISHED","endPoints":{"productionURL":"https://soap.invalid","sandboxURL":"https://soap-sandbox.invalid"}}
-      """
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with definition "graphql updated" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | GRAPHQL      |
     Then the response status code should be 200
-    And the response body should contain "SOAP"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/assets?type=API_DEFINITION&fileName=definition.graphql" as "publisher"
+    Then the response status code should be 200
+    And the response body should contain "updatedField"
 
-  Scenario: A SOAP API requires a definition
-    When I generate a unique resource name from "portal-soap-missing" and store it as "apiId"
-    And I send an authenticated API Portal "POST" multipart request to "/apis" as "publisher" with metadata only:
-      """
-      {"id":"${CTX:apiId}","name":"Missing SOAP","version":"v1.0","type":"SOAP","status":"PUBLISHED","endPoints":{"productionURL":"https://soap.invalid","sandboxURL":"https://soap.invalid"}}
-      """
+    # A GraphQL API without a definition is refused and stores nothing
+    Given I generate a unique resource name from "portal-graphql-no-definition" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "none" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | GRAPHQL       |
     Then the response status code should be 400
-
-  Scenario: A publisher updates a SOAP API
-    Given I generate a unique resource name from "portal-soap-update" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "soap" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"SOAP Original ${CTX:apiId}","version":"v1.0","type":"SOAP","status":"PUBLISHED","endPoints":{"productionURL":"https://soap.invalid","sandboxURL":"https://soap.invalid"}}
-      """
-    When I send an authenticated API Portal "PUT" multipart request to "/apis/${CTX:apiId}" as "publisher" with metadata and definition "soap":
-      """
-      {"name":"SOAP Updated ${CTX:apiId}","version":"v1.0","type":"SOAP","status":"PUBLISHED","endPoints":{"productionURL":"https://soap-updated.invalid","sandboxURL":"https://soap-updated.invalid"}}
-      """
-    Then the response status code should be 200
-    And the JSON response field "name" should contain "SOAP Updated"
-
-  Scenario: A publisher deletes a SOAP API
-    Given I generate a unique resource name from "portal-soap-delete" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "soap" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"SOAP Delete ${CTX:apiId}","version":"v1.0","type":"SOAP","status":"PUBLISHED","endPoints":{"productionURL":"https://soap.invalid","sandboxURL":"https://soap.invalid"}}
-      """
-    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
-    Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until status 404
-    Then the response status code should be 404
-
-  Scenario: A publisher creates and retrieves a WebSocket API
-    Given I generate a unique resource name from "portal-websocket" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "websocket" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"WebSocket ${CTX:apiId}","version":"v1.0","type":"WS","status":"PUBLISHED","endPoints":{"productionURL":"https://websocket.invalid","sandboxURL":"https://websocket-sandbox.invalid"}}
-      """
+    And the response body should not contain "stack"
+    And the response body should not contain "node_modules"
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
-    Then the response status code should be 200
-    And the response body should contain "WebSocket"
-
-  Scenario: A publisher updates a WebSocket API
-    Given I generate a unique resource name from "portal-websocket-update" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "websocket" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"WebSocket Original ${CTX:apiId}","version":"v1.0","type":"WS","status":"PUBLISHED","endPoints":{"productionURL":"https://websocket.invalid","sandboxURL":"https://websocket.invalid"}}
-      """
-    When I send an authenticated API Portal "PUT" multipart request to "/apis/${CTX:apiId}" as "publisher" with metadata and definition "websocket":
-      """
-      {"name":"WebSocket Updated ${CTX:apiId}","version":"v1.0","type":"WS","status":"PUBLISHED","endPoints":{"productionURL":"https://websocket-updated.invalid","sandboxURL":"https://websocket-updated.invalid"}}
-      """
-    Then the response status code should be 200
-    And the JSON response field "name" should contain "WebSocket Updated"
-
-  Scenario: A publisher deletes a WebSocket API
-    Given I generate a unique resource name from "portal-websocket-delete" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "websocket" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"WebSocket Delete ${CTX:apiId}","version":"v1.0","type":"WS","status":"PUBLISHED","endPoints":{"productionURL":"https://websocket.invalid","sandboxURL":"https://websocket.invalid"}}
-      """
-    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
-    Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until status 404
     Then the response status code should be 404
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "graphql" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | GRAPHQL       |
+    Then the response status code should be 201
 
-  Scenario: A publisher creates and retrieves a WebSub API
-    Given I generate a unique resource name from "portal-websub" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "websub" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"WebSub ${CTX:apiId}","version":"v1.0","type":"WEBSUB","status":"PUBLISHED","endPoints":{"productionURL":"https://websub.invalid","sandboxURL":"https://websub-sandbox.invalid"}}
-      """
+    # A SOAP API without a definition is refused and stores nothing
+    Given I generate a unique resource name from "portal-soap-no-definition" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "none" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | SOAP       |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    And the response body should not contain "node_modules"
     When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
-    Then the response status code should be 200
-    And the response body should contain "WebSub"
-
-  Scenario: A publisher updates a WebSub API
-    Given I generate a unique resource name from "portal-websub-update" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "websub" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"WebSub Original ${CTX:apiId}","version":"v1.0","type":"WEBSUB","status":"PUBLISHED","endPoints":{"productionURL":"https://websub.invalid","sandboxURL":"https://websub.invalid"}}
-      """
-    When I send an authenticated API Portal "PUT" multipart request to "/apis/${CTX:apiId}" as "publisher" with metadata and definition "websub":
-      """
-      {"name":"WebSub Updated ${CTX:apiId}","version":"v1.0","type":"WEBSUB","status":"PUBLISHED","endPoints":{"productionURL":"https://websub-updated.invalid","sandboxURL":"https://websub-updated.invalid"}}
-      """
-    Then the response status code should be 200
-    And the JSON response field "name" should contain "WebSub Updated"
-
-  Scenario: A publisher deletes a WebSub API
-    Given I generate a unique resource name from "portal-websub-delete" and store it as "apiId"
-    And a unique API Portal multipart resource is created at "/apis" as "publisher" with metadata and definition "websub" stored as "apiId":
-      """
-      {"id":"${CTX:apiId}","name":"WebSub Delete ${CTX:apiId}","version":"v1.0","type":"WEBSUB","status":"PUBLISHED","endPoints":{"productionURL":"https://websub.invalid","sandboxURL":"https://websub.invalid"}}
-      """
-    When I send an authenticated API Portal "DELETE" request to "/apis/${CTX:apiId}" as "publisher"
-    Then the response status code should be 200
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher" until status 404
     Then the response status code should be 404
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "soap" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | SOAP       |
+    Then the response status code should be 201
+
+    # A WebSocket API without a definition is refused and stores nothing
+    Given I generate a unique resource name from "portal-websocket-no-definition" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "none" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | WS       |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    And the response body should not contain "node_modules"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 404
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "websocket" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | WS       |
+    Then the response status code should be 201
+
+    # A WebSub API without a definition is refused and stores nothing
+    Given I generate a unique resource name from "portal-websub-no-definition" and store it as "apiId"
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "none" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | WEBSUB       |
+    Then the response status code should be 400
+    And the response body should not contain "stack"
+    And the response body should not contain "node_modules"
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the response status code should be 404
+    When I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "websub" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | WEBSUB       |
+    Then the response status code should be 201
+
+    # A GraphQL API cannot be changed into a REST API
+    Given I generate a unique resource name from "portal-graphql-retype" and store it as "apiId"
+    And I create an API Portal API from "resources/templates/api-portal-api.yaml" as "publisher" with definition "graphql" with values:
+      | id   | ${CTX:apiId} |
+      | name | ${CTX:apiId} |
+      | type | GRAPHQL      |
+    And the response status code should be 201
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with values:
+      | id   | ${CTX:apiId}         |
+      | name | ${CTX:apiId}-changed |
+      | type | REST                 |
+    Then the response status code should be 409
+    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}" as "publisher"
+    Then the JSON response field "type" should be "GRAPHQL"
+    And the JSON response field "name" should be "${CTX:apiId}"
+    When I update the API Portal API "${CTX:apiId}" from "resources/templates/api-portal-api.yaml" as "publisher" with definition "graphql" with values:
+      | id   | ${CTX:apiId}         |
+      | name | ${CTX:apiId}-changed |
+      | type | GRAPHQL              |
+    Then the response status code should be 200

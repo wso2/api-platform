@@ -29,7 +29,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import { Globe, Route, Search } from '@wso2/oxygen-ui-icons-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useIsPolicyHubConfigured, type PolicySummary } from '@/api/resources/policyHub';
@@ -37,6 +37,7 @@ import { useUpdateRestApi, type Policy, type RestApi } from '@/api/resources/res
 import { SecondaryText } from '@/components/common/SecondaryText';
 import { hairline, iconTileSx } from '@/theme/receipes';
 import { useNotifications } from '@/components/Notifications';
+import { trackPolicyAttachment, useTrackFeature } from '@/featureUsage';
 import { PolicyIndicator, SwaggerResourceRow } from '@/components/SwaggerOperationsView';
 import { useCan } from '@/permissions';
 import { AttachedPolicyList } from './AttachedPolicyList';
@@ -49,6 +50,7 @@ import {
   toEditableOperations,
   withPolicyEdits,
 } from '../../apis/utils/developEdit';
+import { newlyAttachedPolicies, type PolicyAttachments } from './newlyAttachedPolicies';
 import { countPolicyChanges } from './policyChanges';
 import { getDraggedPolicy, type PolicyScope, scopeId } from './policyDnd';
 import { PolicyConfigDrawer, type PolicyRef } from './PolicyConfigDrawer';
@@ -234,6 +236,11 @@ export function PolicyPanel({ api }: { api: RestApi }) {
   // Only the fields `save` actually submits count towards "unsaved" — not the
   // resource search/filter or which config drawer is open.
   const { dirty, markSaved, saved } = useDirtyTracking({ apiPolicies, operations });
+  const trackFeature = useTrackFeature();
+  // The policies as last submitted, starting from the API as loaded: a policy
+  // counts as attached on the Save that first submits it, so retrying a
+  // rejected save does not report it again.
+  const lastSubmitted = useRef<PolicyAttachments>({ apiPolicies, operations });
   // A dirty page always has at least one edit, even if the diff cannot see which.
   const changeCount = dirty
     ? Math.max(1, countPolicyChanges(saved, { apiPolicies, operations }))
@@ -342,6 +349,17 @@ export function PolicyPanel({ api }: { api: RestApi }) {
     // because the spec marks it optional and a PUT to `/rest-apis/` would
     // otherwise be issued against the collection.
     if (!restApiId) return;
+    const submitted = { apiPolicies, operations };
+    for (const { name, scope: policyScope } of newlyAttachedPolicies(
+      lastSubmitted.current,
+      submitted,
+    )) {
+      trackPolicyAttachment(trackFeature, name, {
+        artifact_kind: 'rest-api',
+        policy_scope: policyScope,
+      });
+    }
+    lastSubmitted.current = submitted;
     update.mutate(
       { restApiId, body: withPolicyEdits(api, { policies: apiPolicies, operations }) },
       // No `onError`: the query client's `onMutationError` already notifies, and
@@ -553,7 +571,11 @@ export function PolicyPanel({ api }: { api: RestApi }) {
           <Box sx={{ flexShrink: 0, width: { xs: '100%', md: 400 } }}>
             <Card sx={{ height: '100%', overflow: 'hidden' }}>
               <CardContent sx={{ height: 620, p: 2 }}>
-                <AvailablePoliciesPanel disabled={readOnly} onSelect={pickFromCatalog} />
+                <AvailablePoliciesPanel
+                  artifactKind="rest-api"
+                  disabled={readOnly}
+                  onSelect={pickFromCatalog}
+                />
               </CardContent>
             </Card>
           </Box>

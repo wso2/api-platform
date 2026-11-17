@@ -33,6 +33,7 @@ const roleScopeMap = require('./roleScopeMap');
 require('../keymanagers/drivers'); // fills the driver registry before `type` is checked
 const { validateKeyManagerConfig } = require('./keyManagerConfig');
 const { assertDialable } = require('../keymanagers/core/httpClient');
+const { compileAccessControl, setAccessControl } = require('../utils/destinationGuard');
 // utils/constants.js imports nothing from this project, so pulling the route constants in here
 // cannot create a cycle back through the config loader.
 const routeConstants = require('../utils/constants');
@@ -889,6 +890,24 @@ function validateIdpConfig(cfg) {
 validateIdpConfig(config);
 
 /**
+ * Compiles [api_portal.server.network_security.access_control] and installs it for
+ * every outbound call to a tenant- or user-supplied destination (see
+ * utils/destinationGuard.js). An invalid section — an unknown mode, allow mode with no
+ * hostnames, or a pattern that is not valid RE2 — refuses startup.
+ */
+function validateAccessControlConfig(cfg) {
+    try {
+        setAccessControl(compileAccessControl(cfg.server && cfg.server.networkSecurity
+            ? cfg.server.networkSecurity.accessControl
+            : undefined));
+    } catch (err) {
+        fatalConfig(`server.network_security.access_control: ${err.message}`);
+    }
+}
+
+validateAccessControlConfig(config);
+
+/**
  * Normalizes multi_organization.enabled to a boolean and refuses anything that isn't
  * one — a misspelt value silently reading as "off" (or "on") would change which
  * organizations this portal serves. Warns when it is set outside IDP mode, where it has
@@ -1306,5 +1325,20 @@ function warnWebhookDeliveryTlsSkip(cfg) {
 }
 
 warnWebhookDeliveryTlsSkip(config);
+
+/**
+ * Surfaces auth.local.tls_skip_verify in the startup log whenever it is on. Local auth is
+ * the first-run mode; skipping certificate checks for the Platform API is for that setup only.
+ */
+function warnLocalAuthTlsSkip(cfg) {
+    if (cfg.auth?.mode === 'local' && cfg.auth?.local?.tlsSkipVerify === true) {
+        process.stderr.write(
+            '[WARN] auth.local.tls_skip_verify = true: logins do not verify the Platform ' +
+            "API's TLS certificate. First-run / development only.\n"
+        );
+    }
+}
+
+warnLocalAuthTlsSkip(config);
 
 module.exports = { config, KNOWN_ARTIFACT_TYPES, AUTHORIZATION_MODES, ORG_HANDLE_PATTERN, RESERVED_ORG_HANDLES };

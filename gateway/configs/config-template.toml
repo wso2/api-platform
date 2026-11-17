@@ -73,6 +73,48 @@ maximum_protocol_version = "TLS1_3"
 ciphers = ""
 ecdh_curves = "X25519,P-256"
 
+[controller.server.network_security.access_control]
+# Restricts the destinations an artifact may point the gateway at: its upstream
+# URLs (spec.upstream, spec.upstreamDefinitions), which the router dials, and the
+# URL parameters of the policies attached to it, which the policy engine dials.
+# URLs set in this file -- the control plane, the IdP, collectors, policy system
+# parameters -- are never restricted by it.
+#
+# Enforced like policy_engine.env_access: a deployment through the management API
+# or from the control plane that breaks it is refused (400 / a failed deployment
+# with UPSTREAM_URL_NOT_ALLOWED), and after a change to this section and a restart,
+# a stored artifact that now breaks it is undeployed.
+#
+# mode                  "deny":  a host matching an entry in hostnames is refused.
+#                       "allow": only a host matching an entry is permitted
+#                                (hostnames must not be empty).
+# hostnames             RE2 regular expressions, matched case-insensitively against
+#                       the whole hostname (never the port or path), e.g.
+#                       ['api\.example\.com', '[a-z0-9-]+\.svc\.cluster\.local'].
+#                       A TOML array; at most 256 entries, each up to 255 characters.
+# deny_private_networks Also refuse private (RFC 1918), loopback, carrier-grade NAT
+#                       and unique-local addresses. In allow mode a listed host must
+#                       pass this check too. Link-local (cloud metadata), unspecified
+#                       and multicast addresses are always refused.
+# max_redirects         Redirect hops a policy follows; each hop is checked again.
+# allowed_schemes       "http" and/or "https".
+#
+# Limitation: the router keeps re-resolving upstream hostnames. Their addresses are
+# checked when an artifact is deployed and on every restart, not in between, and a
+# hostname the controller cannot resolve at deploy time is not refused.
+#
+# Enabled by default with no hostnames and deny_private_networks = false, which
+# refuses only the always-refused addresses above. On upgrade, a stored artifact
+# whose upstream or policy URL is one of them (for example the cloud metadata
+# address 169.254.169.254) is undeployed at the first start; set enabled = false
+# to keep the previous behaviour.
+enabled = true
+mode = "deny"
+hostnames = []
+deny_private_networks = false
+max_redirects = 5
+allowed_schemes = ["http", "https"]
+
 [controller.admin_server]
 # Dedicated admin/debug HTTP server for config dump and xDS sync endpoints.
 # Kept enabled by default because it also serves /health, used by Kubernetes
@@ -284,7 +326,7 @@ url = ""
 username = ""
 password = ""
 no_proxy = []
-# Required ("delegated" or "manual_connect") only when mode != "none" AND ssrf.enabled below
+# Required ("delegated" or "manual_connect") only when mode != "none" AND destination_guard.enabled below
 # — see pkg/config.HTTPClientProxyConfig's doc comment.
 egress = ""
 
@@ -296,11 +338,11 @@ client_cert_file = ""
 client_key_file = ""
 insecure_skip_verify = false
 
-[controller.http_client.ssrf]
-# Off by default: this shared client's current callers (control plane, platform API,
-# on-prem APIM) all target a single fixed, operator-configured host, not a user/tenant-
-# supplied URL — the scenario ssrf-prevention.md targets — so there is nothing to guard
-# against today. Exposed for completeness / any future caller that fetches a tenant-supplied
+[controller.http_client.destination_guard]
+# Its previous name is still read, with a deprecation
+# warning. Off by default: this shared client's current callers (control plane, platform
+# API, on-prem APIM) all target a single fixed, operator-configured host, not a user/
+# tenant-supplied URL, so there is nothing to guard against today. Exposed for completeness / any future caller that fetches a tenant-supplied
 # URL. When enabling, preset must be "permit_private_block_metadata" or "public_only".
 enabled = false
 preset = ""
@@ -635,6 +677,19 @@ skip_verify = false
 # POLICY ENGINE CONFIGURATION
 # =============================================================================
 
+# Environment variables that {{ env "NAME" }} in API / LLM / MCP / agent artifact
+# specs (e.g. policy params, upstream URLs) may read. Rendering happens in the
+# gateway-controller, so this is read by the controller, not the policy engine.
+# When allow_list is not set, artifacts may read any environment variable (the
+# behaviour of earlier releases). When it is set, only the listed variables are
+# readable, and an artifact that references any other one fails to deploy with
+# a 400. Entries are exact names ("BACKEND_URL") or a prefix ending in "*"
+# ("BACKEND_*"); an empty list permits none. May also be given as one
+# comma-separated string, e.g. allow_list = '{{ env "ARTIFACT_ENV_ALLOW_LIST" "" }}'
+# (a blank value leaves access unrestricted).
+[policy_engine.env_access]
+# allow_list = ["BACKEND_URL", "BACKEND_*"]
+
 # handle_upstream_faults routes a failure the UPSTREAM or the ROUTER produced through
 # the fault flow instead of the ordinary response policies.
 #
@@ -847,7 +902,7 @@ url = ""
 username = ""
 password = ""
 no_proxy = []
-# Required ("delegated" or "manual_connect") only when mode != "none" AND ssrf.enabled below
+# Required ("delegated" or "manual_connect") only when mode != "none" AND destination_guard.enabled below
 # — see internal/config.HTTPClientProxyConfig's doc comment.
 egress = ""
 
@@ -859,10 +914,11 @@ client_cert_file = ""
 client_key_file = ""
 insecure_skip_verify = false
 
-[policy_engine.http_client.ssrf]
-# Off by default. Enable (and pick a preset) when a policy's outbound target is derived
-# from tenant/request data rather than a single fixed, operator-configured backend — see
-# ssrf-prevention.md. preset must be "permit_private_block_metadata" or "public_only".
+[policy_engine.http_client.destination_guard]
+# Its previous name is still read, with a deprecation
+# warning. Off by default. Enable (and pick a preset) when a policy's outbound target is
+# derived from tenant/request data rather than a single fixed, operator-configured backend.
+# preset must be "permit_private_block_metadata" or "public_only".
 enabled = false
 preset = ""
 max_redirects = 0
@@ -1424,6 +1480,19 @@ pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 
 [policy_configurations.azure_llm_cost_v1]
 pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
+
+# A2A Agent Card URL rewriting.
+#
+# gateway_url is the externally reachable base URL of the gateway (scheme, host,
+# optional port, optional path prefix). When set, every interface URL a
+# passthrough Agent Card is rewritten to is built on it, ahead of the Agent's
+# vhost and the scheme and authority of the request. Leave it unset when the
+# gateway is the edge. Set it when the gateway sits behind a load balancer,
+# ingress or API front door whose public address differs from the one requests
+# arrive on. It must be an absolute http or https URL with no userinfo, query
+# string or fragment; an unusable value makes card rewriting fail closed.
+# [policy_configurations.a2a_v1]
+# gateway_url = "https://agents.example.com"
 
 # =============================================================================
 # GATEWAY SIGNING KEYS

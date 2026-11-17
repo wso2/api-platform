@@ -614,7 +614,8 @@ paths:
         request field; another step Moesif or Stripe refuses returns `400` with code `BILLING_SETUP_FAILED` or
         `BILLING_CATALOG_FAILED`; a provider that cannot be reached returns `502`. A billing configuration cannot be
         changed: when billing is already set up this returns `409`, and changing it means removing it and setting it
-        up again.
+        up again. When the portal's config disables monetization (`monetization.disabled`), this returns `409` with
+        code `MONETIZATION_DISABLED`.
       operationId: createBillingConfiguration
       requestBody:
         required: true
@@ -1096,7 +1097,9 @@ paths:
       summary: Create a meter
       description: >-
         Creates a meter. When `id` is omitted, it is derived from `displayName`. A request with `conditions`, or
-        with any field the meter does not have, is refused.
+        with any field the meter does not have, is refused. When the portal's config disables monetization
+        (`monetization.disabled`), only the Platform API creates meters; any other caller gets `409` with code
+        `MONETIZATION_DISABLED`.
       operationId: createMeter
       requestBody:
         required: true
@@ -6474,7 +6477,9 @@ components:
             Optional, and only when the request creates the plan: the plan and this pricing are saved together, or
             neither is. Refused with `400` for an unknown meter or values the meter does not take. Pricing can't
             change once a plan is created: sent for a plan that already exists, it is refused with `409` and code
-            `PLAN_PRICING_LOCKED`. Leave it out to keep the plan's pricing.
+            `PLAN_PRICING_LOCKED`. Leave it out to keep the plan's pricing. When the portal's config disables
+            monetization (`monetization.disabled`), only the Platform API creates plans with pricing; any other
+            caller gets `409` with code `MONETIZATION_DISABLED`.
         displayName:
           type: string
         description:

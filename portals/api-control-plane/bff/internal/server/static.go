@@ -17,9 +17,10 @@
 package server
 
 import (
+	"io/fs"
 	"net/http"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
 )
 
@@ -28,34 +29,29 @@ import (
 // try_files $uri /index.html). index.html is served no-store; hashed assets
 // are cacheable.
 func spaHandler(staticDir string) http.Handler {
-	indexPath := filepath.Join(staticDir, "index.html")
-	fileServer := http.FileServer(http.Dir(staticDir))
+	// Everything is read through an fs.FS rooted at staticDir, so a request can
+	// only ever name a file inside it.
+	fsys := os.DirFS(staticDir)
+	fileServer := http.FileServerFS(fsys)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Clean and resolve the requested path within staticDir.
-		clean := filepath.Clean(r.URL.Path)
-		full := filepath.Join(staticDir, clean)
+		// Resolve the URL path to a slash-separated name relative to staticDir.
+		// fs.ValidPath rejects "..", empty and absolute elements.
+		clean := path.Clean("/" + r.URL.Path)
+		name := strings.TrimPrefix(clean, "/")
 
-		// Prevent path traversal outside staticDir. Assert containment against
-		// the root with a trailing separator so a sibling dir whose name merely
-		// shares the prefix (e.g. root "/var/www" vs "/var/www-secret") cannot
-		// pass a bare HasPrefix check.
-		root := filepath.Clean(staticDir)
-		if full != root && !strings.HasPrefix(full, root+string(filepath.Separator)) {
-			http.NotFound(w, r)
-			return
-		}
-
-		if info, err := os.Stat(full); err == nil && !info.IsDir() {
-			if clean == "/index.html" || strings.HasSuffix(clean, "/index.html") {
-				w.Header().Set("Cache-Control", "no-store")
+		if fs.ValidPath(name) && name != "." {
+			if info, err := fs.Stat(fsys, name); err == nil && !info.IsDir() {
+				if strings.HasSuffix(clean, "/index.html") {
+					w.Header().Set("Cache-Control", "no-store")
+				}
+				fileServer.ServeHTTP(w, r)
+				return
 			}
-			fileServer.ServeHTTP(w, r)
-			return
 		}
 
 		// Fallback to index.html for SPA routes.
 		w.Header().Set("Cache-Control", "no-store")
-		http.ServeFile(w, r, indexPath)
+		http.ServeFileFS(w, r, fsys, "index.html")
 	})
 }

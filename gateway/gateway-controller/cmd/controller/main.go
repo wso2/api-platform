@@ -157,6 +157,13 @@ func main() {
 		slog.Bool("skip_invalid_deployments_on_startup", cfg.Controller.Server.SkipInvalidDeploymentsOnStartup),
 	)
 
+	// Install the {{ env }} access policy for artifact specs before anything
+	// renders an artifact (startup bootstrap, REST handlers, control-plane events).
+	if err := cfg.InstallArtifactEnvAccessPolicy(log); err != nil {
+		log.Error("Invalid artifact env access configuration", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	if !cfg.Controller.Auth.Basic.Enabled && !cfg.Controller.Auth.IDP.Enabled {
 		log.Warn("No authentication configured: both basic auth and IDP are disabled. Gateway Controller API will allow all requests without authentication")
 	}
@@ -350,6 +357,14 @@ func main() {
 	// Built early so the startup rehydration below can use it too.
 	policyVersionResolver := utils.NewLoadedPolicyVersionResolver(policyDefinitions)
 
+	// Install network access control for artifact URLs before anything renders an
+	// artifact: every render (startup load, REST handlers, control-plane events, replica
+	// sync) then refuses an upstream or policy URL it does not permit.
+	if err := installArtifactAccessControl(cfg, policyDefinitions, log); err != nil {
+		log.Error("Invalid network access control configuration", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	// MCP proxies and LLM artifacts are stored in source form and need to be
 	// rehydrated into their derived RestAPI representations before startup
 	// snapshot and policy work.
@@ -476,6 +491,22 @@ func main() {
 		translator.SetTransformers(envoyTransformers)
 	}
 
+	// Load runtime configs from existing API configurations on startup, before the
+	// initial router snapshot. Loading renders each stored artifact, and an artifact the
+	// gateway configuration now refuses (an environment variable outside
+	// policy_engine.env_access, or a URL network access control does not permit) is
+	// undeployed here, so the first snapshot the router receives never routes it.
+	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;
+	// the initial snapshots below cover all of them.
+	runtimeStore := storage.NewRuntimeConfigStore()
+	log.Info("Loading runtime configs from existing API configurations")
+	if err := loadStartupRuntimeConfigs(configStore.GetAll(), runtimeStore, secretsService, transformerRegistry,
+		&cfg.Router, gatewayJWKSEnabled, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
+		utils.NewEnvRefusedUndeployer(db, eventHubInstance, gatewayID, log), log); err != nil {
+		log.Error("Failed to load runtime configs from API configurations", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	// Generate initial xDS snapshot
 	log.Info("Generating initial xDS snapshot")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -522,9 +553,8 @@ func main() {
 	// Initialize policy xDS server
 	log.Info("Initializing Policy xDS server", slog.Int("port", cfg.Controller.PolicyServer.Port))
 
-	// Initialize policy snapshot manager and runtime config store
+	// Initialize policy snapshot manager
 	policySnapshotManager := policyxds.NewSnapshotManager(log)
-	runtimeStore := storage.NewRuntimeConfigStore()
 	policySnapshotManager.SetRuntimeStore(runtimeStore)
 	policySnapshotManager.SetConfigStore(configStore)
 	if gatewayJWKSEnabled {
@@ -542,36 +572,6 @@ func main() {
 	// comment there for why that ordering is load-bearing rather than incidental) with the
 	// policy manager so both snapshot paths key resources identically.
 	policyManager.SetTransformers(transformerRegistry)
-
-	// Load runtime configs from existing API configurations on startup.
-	// We write directly to runtimeStore to avoid triggering N separate snapshot updates;
-	// the single UpdateSnapshot call below covers all of them.
-	log.Info("Loading runtime configs from existing API configurations")
-	loadedAPIs := configStore.GetAll()
-	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
-		loadedAPIs,
-		runtimeStore,
-		secretsService,
-		transformerRegistry,
-		log,
-		cfg.Controller.Server.SkipInvalidDeploymentsOnStartup,
-	)
-	if err != nil {
-		log.Error("Failed to load runtime configs from API configurations", slog.Any("error", err))
-		os.Exit(1)
-	}
-	log.Info("Loaded runtime configs from API configurations",
-		slog.Int("total_apis", len(loadedAPIs)),
-		slog.Int("configs_loaded", loadedCount))
-	warnMtlsAPIsWithoutDedicatedHostname(loadedAPIs, &cfg.Router, log)
-	if gatewayJWKSEnabled {
-		if conflicts := transform.GatewayJWKSConflicts(runtimeStore.GetAll()); len(conflicts) > 0 {
-			log.Warn("Deployed routes use the gateway JWKS path and are shadowed by the gateway JWKS endpoint; "+
-				"move them to another path, or set [signing] jwks_endpoint_enabled = false to keep serving them",
-				slog.String("path", constants.GatewayJWKSPath),
-				slog.Any("routes", conflicts))
-		}
-	}
 
 	// Generate initial policy snapshot
 	log.Info("Generating initial policy xDS snapshot")

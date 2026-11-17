@@ -27,6 +27,11 @@ export type AuthOrg = {
 };
 
 export type AuthUser = {
+  /**
+   * The IdP's subject (`sub`): an opaque user ID, never displayed. Feature-usage
+   * tracking identifies the user to Moesif by it.
+   */
+  id?: string;
   name: string;
   email: string;
   /**

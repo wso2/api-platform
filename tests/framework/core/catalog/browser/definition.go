@@ -39,7 +39,7 @@ const svcBrowser = "browser"
 
 // Browser returns the Playwright server component definition used by the UI suite.
 func Browser() *components.Definition {
-	return &components.Definition{
+	def := &components.Definition{
 		Name:  svcBrowser,
 		Image: shared.Image(EnvImageBrowser, imgPlaywright()),
 		Alias: svcBrowser,
@@ -52,6 +52,10 @@ func Browser() *components.Definition {
 		},
 		Limits: components.ResourceLimits{CPUs: 2, MemoryMB: 4000},
 	}
+	if Headed() {
+		return headed(def)
+	}
+	return def
 }
 
 func imgPlaywright() string {

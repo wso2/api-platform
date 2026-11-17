@@ -533,6 +533,9 @@ func CheckURLReachability(rawURL string, timeout time.Duration) error {
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if refused := DestinationNotAllowedError(err); refused != nil {
+			return refused
+		}
 		return fmt.Errorf("URL is not reachable")
 	}
 	defer resp.Body.Close() //nolint:errcheck

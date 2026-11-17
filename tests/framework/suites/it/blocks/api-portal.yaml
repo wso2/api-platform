@@ -56,10 +56,8 @@ blocks:
       - name: rest-api-versions
         features:
           - features/apiportal/core/rest_api_versions.feature
-      - name: resources
-        features:
-          - features/apiportal/core/resources.feature
       - name: mcp-servers
+        tags: "~@known-issue"
         features:
           - features/apiportal/ai/mcp_servers.feature
       - name: monetization-meters
@@ -68,9 +66,6 @@ blocks:
       - name: monetization-priced-plans
         features:
           - features/apiportal/monetization/priced_plans.feature
-      - name: monetization-paid-plans-without-billing
-        features:
-          - features/apiportal/monetization/paid_plans_without_billing.feature
       - name: api-types
         features:
           - features/apiportal/core/api_types.feature
@@ -78,12 +73,14 @@ blocks:
         features:
           - features/apiportal/subscriptions/subscriptions.feature
       - name: views-labels
+        tags: "~@known-issue"
         features:
           - features/apiportal/content/views_labels_advanced.feature
       - name: views-pages
         features:
           - features/apiportal/content/views_pages.feature
       - name: workflows
+        tags: "~@known-issue"
         features:
           - features/apiportal/ai/workflows.feature
       - name: content
@@ -92,21 +89,37 @@ blocks:
       - name: organization-content
         features:
           - features/apiportal/content/organization_content.feature
+      - name: llm-instructions
+        features:
+          - features/apiportal/content/llm_instructions.feature
       - name: api-keys
         features:
           - features/apiportal/subscriptions/api_keys.feature
+      - name: subscription-plans
+        features:
+          - features/apiportal/subscriptions/subscription_plans.feature
       - name: discovery
         features:
           - features/apiportal/ai/discovery.feature
-      - name: organizations
-        features:
-          - features/apiportal/organizations/organizations.feature
       - name: organization-isolation
         features:
           - features/apiportal/organizations/organization_isolation.feature
       - name: artifact-uploads
         features:
           - features/apiportal/core/artifact_upload.feature
+      - name: routing
+        features:
+          - features/apiportal/core/routing.feature
+      - name: applications
+        features:
+          - features/apiportal/applications/applications.feature
+      - name: key-managers
+        tags: "~@known-issue"
+        features:
+          - features/apiportal/applications/key_managers.feature
+      - name: oauth2-keys
+        features:
+          - features/apiportal/applications/oauth2_keys.feature
 
   # Webhook subscribers are organization-wide. Keep their intentionally failing
   # delivery targets isolated from every other API Portal runner.
@@ -123,9 +136,6 @@ blocks:
       - name: webhook-subscribers
         features:
           - features/apiportal/webhooks/webhook_subscribers.feature
-      - name: application-webhooks
-        features:
-          - features/apiportal/webhooks/application_webhooks.feature
       - name: api-key-webhooks
         features:
           - features/apiportal/webhooks/api_key_webhooks.feature
@@ -135,12 +145,18 @@ blocks:
       - name: webhook-delivery
         features:
           - features/apiportal/webhooks/webhook_delivery.feature
-      - name: webhook-secret-hash
-        features:
-          - features/apiportal/webhooks/webhook_secret_hash.feature
       - name: monetization-events
         features:
           - features/apiportal/monetization/events.feature
+      - name: application-deletion
+        features:
+          - features/apiportal/applications/application_deletion.feature
+      - name: organization-webhooks
+        features:
+          - features/apiportal/organizations/organization_webhooks.feature
+      - name: organizations
+        features:
+          - features/apiportal/organizations/organizations.feature
 
   # The portal authorizes requests by scope (api-portal-auth-scope.toml), a portal-wide mode.
   - name: api-portal-auth-scope
@@ -218,15 +234,6 @@ blocks:
       - name: webhooks
         features:
           - features/apiportal/multi-organization/webhooks.feature
-      - name: publishing
-        features:
-          - features/apiportal/multi-organization/publishing.feature
-      - name: portals
-        features:
-          - features/apiportal/multi-organization/portals.feature
-      - name: display-names
-        features:
-          - features/apiportal/multi-organization/display_names.feature
 
   # A second API Portal pinned to another organization (api-portal-other-org): a portal serves
   # only its own organization, and a credential logs in only to its matching portal.

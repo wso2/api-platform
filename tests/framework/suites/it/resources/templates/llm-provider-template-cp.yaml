@@ -1,0 +1,5 @@
+displayName: ${VALUE:displayName}
+version: v1.0
+metadata:
+  endpointUrl: ${VALUE:endpointUrl}
+  openapiSpecUrl: ${VALUE:openapiSpecUrl}

@@ -320,7 +320,7 @@ class MutualTLS extends Authenticator {
             this.caFile ? readFile(this.caFile) : Promise.resolve(undefined),
         ]);
         // The cert material is handed to buildClient rather than assembled here,
-        // so this path keeps the same SSRF-guarded lookup, pooling and TLS
+        // so this path keeps the same destination-guarded lookup, pooling and TLS
         // tuning as every other key-manager client.
         const client = buildClient({ ...this.clientPolicy, clientCert: { cert, key, ca } });
         return (url, opts = {}) => client.request({ url, ...opts });

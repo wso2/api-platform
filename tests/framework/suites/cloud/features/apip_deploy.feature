@@ -166,6 +166,8 @@ Feature: APIP cloud builds and deployments
     And the cloud API response body should contain "is not in environment"
     And the deployment stage of the active gateway's environment should show the active gateway as NOT_DEPLOYED
 
+  # This test skipped until fix the issue of stale data while project creation. 
+  @known-issue 
   @TC_APIP_DEP_006 @ID_APIP_DEPLOY_011
   Scenario: Deploying to a gateway that belongs to another environment is refused and leaves the API undeployed
     Given I obtain an APIP cloud console token

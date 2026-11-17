@@ -520,6 +520,15 @@ gateway:
       # Service name reported to the tracing backend
       tracing_service_name: policy-engine
 
+      # Restrict which environment variables {{ env "NAME" }} in API / LLM / MCP /
+      # agent artifact specs (e.g. policy params, upstream URLs) may read; the
+      # gateway-controller resolves them when it renders an artifact. When
+      # allow_list is not set, any variable is readable (earlier behaviour). When
+      # set, only the listed names are: exact names, or a prefix ending in "*"
+      # (e.g. "BACKEND_*"). An empty list permits none.
+      env_access: {}
+        # allow_list: ["BACKEND_URL", "BACKEND_*"]
+
       # Which failures reach an API's fault policies
       fault_policies:
         # Route a failure the UPSTREAM or the ROUTER produced through the fault

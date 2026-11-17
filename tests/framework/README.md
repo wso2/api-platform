@@ -63,7 +63,25 @@ product coverage-image target.
 The UI suite builds the `ai-workspace` and `platform-api` images through the framework when
 coverage is selected and pulls `mcr.microsoft.com/playwright` for the in-network browser;
 the playwright driver installs itself on first run. Failing scenarios leave a full-page
-screenshot and the DOM under `suites/ui/artifacts/`.
+screenshot, the DOM and a Playwright trace under `suites/ui/artifacts/`; open a trace with
+`npx playwright show-trace <file>-trace.zip`.
+
+To watch the journeys locally, set `UI_HEADED=1`. Each block then opens a visible Chromium
+on your machine instead of using the headless one in its container, and `UI_SLOWMO=<ms>`
+pauses between actions. Narrow the run to the scenarios you are working on, because every
+running scenario opens its own window:
+
+```sh
+UI_HEADED=1 UI_SLOWMO=300 go test ./suites/ui -run TestUISuite -count=1 -timeout=30m \
+  -args -blocks=management-portal-deploy -feature-tags=@APIDEF
+```
+
+Headed mode installs Chromium for the pinned Playwright version on first use. The block's
+`browser` container then runs a small forward proxy (`core/catalog/browser/headed-proxy.js`)
+in place of the Playwright server, and the local browser browses through it, so it reaches
+the same container names and URLs the headless browser does. With `UI_HEADED` unset, which
+includes CI, nothing changes. A slowed, visible browser can expose timing a CI run hides,
+and the other way round, so confirm a fix with a headless run too.
 
 ## Layout
 
@@ -290,6 +308,27 @@ policy images built on it are re-pulled each run because the tag moves.
 go test -gateway-version latest -blocks gateway-core/sqlite
 ```
 
+`-components` runs only the blocks that start at least one of the named components, and
+`-require-components` only the blocks that start all of them. The Platform Tests workflow uses
+`-require-components platform-gateway` to run only the blocks with a Gateway on the released
+Gateway legs, since a block without one runs the same on every Gateway version. A name no block
+starts is an error, and a selection that leaves no block is reported as a skip.
+
+For a pull request, the workflow runs only the blocks the change can affect, chosen by
+`cmd/affectedblocks` from the changed files: the blocks listing a changed feature, the blocks
+declared in a changed block file, the blocks using a changed step package (plus the first block
+of each block file as a sample), and every block starting a changed product. Shared code runs
+every block. To see what a change would run:
+
+```bash
+git diff --name-only main | go run ./cmd/affectedblocks
+```
+
+```bash
+go test -components api-portal                       # every block that starts the API Portal
+go test -gateway-version 1.2.0 -require-components platform-gateway   # only blocks with a Gateway
+```
+
 Two flags are deliberately NOT named after their `go test` counterparts, because the go tool
 consumes any flag it recognises and forwards only the rest:
 
@@ -298,8 +337,8 @@ consumes any flag it recognises and forwards only the rest:
 | `-feature-tags` | `-tags` | build-constraint flag: the filter never arrives and the suite silently runs EVERYTHING |
 | `-block-parallel` | `-parallel` | caps `t.Parallel`: the engine nests parallel subtests, so a low value DEADLOCKS the suite after boot |
 
-`-blocks`, `-skip-blocks` and `-runner-parallel` have no builtin of that name and are forwarded
-to the binary as normal.
+`-blocks`, `-skip-blocks`, `-components`, `-require-components` and `-runner-parallel` have no
+builtin of that name and are forwarded to the binary as normal.
 
 Runner `tags` may begin with a framework Gateway-release selector, followed by `;` and an
 ordinary Godog expression: `gateway-version>1.2.0;~@known-issue`. The selector accepts only
@@ -365,6 +404,16 @@ non-root user, cannot open it, and exits immediately. Its container is created w
 `"Started" matched 0 times` — a readiness message mentioning neither the socket nor the
 permission error behind it. This was once recorded here as an upstream Ryuk defect. It is not
 one.
+
+**On Rancher Desktop with Kubernetes enabled, images can vanish mid-run.** Its kubelet
+garbage-collects Docker images once the VM disk passes 85% and deletes any image no running
+container uses, such as a freshly built `testbench:test` or a pulled
+`mcr.microsoft.com/playwright` that the block has not started yet. A run then fails with
+`unauthorized` pulling an image you built, or a boot timeout while the browser image
+downloads again. `~/Library/Logs/rancher-desktop/k3s.log` shows it as
+`image_gc_manager ... "Removing image to free bytes"`. Turn Kubernetes off if you do not use
+it, or keep the disk well below 85%: `docker system df` usually shows build cache as the
+largest reclaimable part, and `docker builder prune` frees it.
 
 The framework previously set both variables itself, by shelling out to `docker context
 inspect`. That was deleted: it is developer environment setup, not something a test framework

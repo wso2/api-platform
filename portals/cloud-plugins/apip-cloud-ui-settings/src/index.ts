@@ -18,4 +18,10 @@
 
 export { default as SettingsButton } from "./SettingsButton";
 export type { SettingsButtonProps } from "./SettingsButton";
-export { ORGANIZATIONS_PATH, organizationsUrl } from "./cloudConsoleUrl";
+export { default as ManageProjectButton } from "./ManageProjectButton";
+export type { ManageProjectButtonProps } from "./ManageProjectButton";
+export {
+  ORGANIZATIONS_PATH,
+  organizationsUrl,
+  projectManageUrl,
+} from "./cloudConsoleUrl";

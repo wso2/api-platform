@@ -416,6 +416,12 @@ func TestExchangeStaleFingerprintForcesReExchange(t *testing.T) {
 // they must collapse into one exchange rather than one per request.
 func TestExchangeSingleFlight(t *testing.T) {
 	h := newExchangeHarness(t, nil)
+	gate := newBurstGate(t)
+	granted := h.idpStatus
+	h.idpStatus = func() (int, any) {
+		gate.hold()
+		return granted()
+	}
 	subject := h.subjectSession(t)
 
 	const parallel = 12
@@ -424,9 +430,11 @@ func TestExchangeSingleFlight(t *testing.T) {
 	for i := 0; i < parallel; i++ {
 		go func() {
 			defer wg.Done()
+			gate.start()
 			h.proxyRequest(subject)
 		}()
 	}
+	gate.openWhenOverlapping(t, parallel)
 	wg.Wait()
 
 	if got := h.idpCalls.Load(); got != 1 {

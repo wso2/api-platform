@@ -85,18 +85,18 @@ subscriptions_topic_name = "__subscriptions"
 # Shared HTTP client configuration for WebSub's outbound calls to subscriber-supplied
 # CallbackURLs: intent verification (subscribe/unsubscribe challenge — see
 # internal/connectors/receiver/websub/verification.go) and message delivery (see
-# .../delivery.go). Both clients share this same pooling/TLS/proxy/SSRF posture; each
+# .../delivery.go). Both clients share this same pooling/TLS/proxy/destination-guard posture; each
 # keeps its own existing timeout (websub.verification_timeout_seconds above for
 # verification; a fixed 30s delivery timeout for delivery) which always overrides
 # http_client.timeouts.overall below for that client.
 #
-# SSRF guarding is ALWAYS enabled for both clients and is not configurable off: every
-# CallbackURL dialed here is tenant/subscriber-supplied, exactly the scenario
-# ssrf-prevention.md targets. netguard.PermitPrivateBlockMetadata() is applied
+# The destination guard is ALWAYS enabled for both clients and is not configurable off:
+# every CallbackURL dialed here is tenant/subscriber-supplied, so its destination is
+# checked before it is dialed. netguard.PermitPrivateBlockMetadata() is applied
 # unconditionally in code (private/loopback backends stay reachable — in-cluster
 # subscribers are the common case — while link-local/metadata/unspecified/multicast
 # destinations are refused at dial time). Only the redirect/scheme knobs below
-# (http_client.ssrf) are configurable.
+# (http_client.destination_guard) are configurable.
 
 [http_client.pooling]
 max_idle_conns = 100
@@ -146,8 +146,8 @@ url = ""
 username = ""
 password = ""
 no_proxy = []
-# Required ("delegated" or "manual_connect") whenever mode != "none" — SSRF guarding is
-# always enabled for this client, see this section's header comment above.
+# Required ("delegated" or "manual_connect") whenever mode != "none" — the destination
+# guard is always enabled for this client, see this section's header comment above.
 egress = ""
 
 [http_client.proxy.tls]
@@ -162,9 +162,10 @@ insecure_skip_verify = false
 # silently satisfy its own safety acknowledgement.
 insecure_skip_verify_acknowledged = false
 
-[http_client.ssrf]
-# SSRF guarding itself is always enabled in code (not configurable off — see this
-# section's header comment above); only the redirect/scheme knobs are exposed here.
+[http_client.destination_guard]
+# Its previous name is still read, with a deprecation warning.
+# The guard itself is always enabled in code (not configurable off — see this section's
+# header comment above); only the redirect/scheme knobs are exposed here.
 # 0 uses netguard's own default (5 redirects); empty allowed_schemes defaults to {"https"}.
 max_redirects = 0
 allowed_schemes = []

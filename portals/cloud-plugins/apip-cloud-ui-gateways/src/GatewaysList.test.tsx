@@ -21,6 +21,7 @@ import { describe, expect, it } from 'vitest';
 
 import GatewaysList from './GatewaysList';
 import type { AIWorkspaceHostPort } from './hostPort';
+import { NO_PERMISSION_TOOLTIP } from './permissions';
 import type { Gateway } from './types';
 
 const gateway: Gateway = {
@@ -64,9 +65,9 @@ const all = (held: boolean): Can => ({
   writeConfiguration: held,
 });
 
-const listWith = (can: Can) => (
+const listWith = (can: Can, gateways: Gateway[] = [gateway]) => (
     <GatewaysList
-      gateways={[gateway]}
+      gateways={gateways}
       environments={[{ id: 'dev', name: 'dev' }]}
       port={port}
       canCreate={can.create}
@@ -118,10 +119,50 @@ describe('GatewaysList permissions', () => {
   it('closes the configuration drawer when configuration-read access is lost', async () => {
     const { rerender } = renderWith(all(true));
     fireEvent.click(screen.getByRole('button', { name: 'Configure Dev edge' }));
-    expect(await screen.findByText('Gateway Configuration')).toBeTruthy();
+    expect(await screen.findByText('Gateway configuration')).toBeTruthy();
 
     rerender(listWith({ ...all(true), readConfiguration: false }));
 
-    await waitFor(() => expect(screen.queryByText('Gateway Configuration')).toBeNull());
+    await waitFor(() => expect(screen.queryByText('Gateway configuration')).toBeNull());
+  });
+});
+
+describe('GatewaysList while a gateway is provisioning', () => {
+  // Every scope held, so a disabled control can only be the provisioning state.
+  it('disables Edit and Configure, and says why', async () => {
+    render(listWith(all(true), [{ ...gateway, status: 'provisioning' }]));
+
+    const edit = screen.getByRole('button', { name: 'Edit Dev edge' });
+    const configure = screen.getByRole('button', { name: 'Configure Dev edge' });
+    expect(isDisabled(edit)).toBe(true);
+    expect(isDisabled(configure)).toBe(true);
+
+    // The tooltip sits on the wrapping span: a disabled button fires no events.
+    fireEvent.mouseOver(configure.parentElement as HTMLElement);
+    expect(await screen.findByText('Available once the gateway finishes provisioning.')).toBeTruthy();
+  });
+
+  // A provisioning that never finishes must still be removable.
+  it('leaves Delete available', () => {
+    render(listWith(all(true), [{ ...gateway, status: 'provisioning' }]));
+
+    expect(isDisabled(screen.getByRole('button', { name: 'Delete Dev edge' }))).toBe(false);
+  });
+
+  it('enables Edit and Configure once the gateway is active', () => {
+    const { rerender } = render(listWith(all(true), [{ ...gateway, status: 'provisioning' }]));
+
+    rerender(listWith(all(true), [{ ...gateway, status: 'active' }]));
+
+    expect(isDisabled(screen.getByRole('button', { name: 'Edit Dev edge' }))).toBe(false);
+    expect(isDisabled(screen.getByRole('button', { name: 'Configure Dev edge' }))).toBe(false);
+  });
+
+  // A missing scope outlasts provisioning, so it is the reason shown.
+  it('names the missing permission rather than provisioning', async () => {
+    render(listWith({ ...all(true), update: false }, [{ ...gateway, status: 'provisioning' }]));
+
+    fireEvent.mouseOver(screen.getByRole('button', { name: 'Edit Dev edge' }).parentElement as HTMLElement);
+    expect(await screen.findByText(NO_PERMISSION_TOOLTIP)).toBeTruthy();
   });
 });

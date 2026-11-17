@@ -67,6 +67,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
 import { ServiceAccountsIllustration } from '@/components/illustrations/ServiceAccountsIllustration';
 import { EmptyState, ErrorState, ForbiddenState, LoadingState } from '@/components/StateViews';
+import { useTrackFeature } from '@/featureUsage';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useFormatters } from '@/i18n/useFormatters';
 import { Can } from '@/permissions';
@@ -332,6 +333,7 @@ function ServiceAccountList() {
   const updateMutation = useUpdateServiceAccount();
   const regenerateMutation = useRegenerateServiceAccountSecret();
   const deleteMutation = useDeleteServiceAccount();
+  const trackFeature = useTrackFeature();
   const [formTarget, setFormTarget] = useState<ServiceAccount | null>(null);
   const [credentials, setCredentials] = useState<ServiceAccountCredentials | null>(null);
   const [tokenTarget, setTokenTarget] = useState<{
@@ -374,8 +376,10 @@ function ServiceAccountList() {
     if (!confirm) return;
     const { account, kind } = confirm;
     if (kind === 'disable') {
+      trackFeature('apip.security.service-account-disable-click', {});
       setStatus(account, 'disabled', () => setConfirm(null));
     } else if (kind === 'regenerate') {
+      trackFeature('apip.security.service-account-secret-regenerate-click', {});
       regenerateMutation.mutate(
         { id: account.id },
         {
@@ -390,6 +394,7 @@ function ServiceAccountList() {
         },
       );
     } else {
+      trackFeature('apip.security.service-account-delete-click', {});
       deleteMutation.mutate(
         { id: account.id },
         {
@@ -590,8 +595,10 @@ function ServiceAccountList() {
                         onAction={(action) => {
                           if (action === 'edit') setFormTarget(account);
                           else if (action === 'token') setTokenTarget({ account });
-                          else if (action === 'enable') setStatus(account, 'active');
-                          else setConfirm({ account, kind: action });
+                          else if (action === 'enable') {
+                            trackFeature('apip.security.service-account-enable-click', {});
+                            setStatus(account, 'active');
+                          } else setConfirm({ account, kind: action });
                         }}
                       />
                     ))}

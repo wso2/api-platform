@@ -50,7 +50,7 @@ $ProjectName = ''
 # [router.downstream_tls] in config.toml as ./listener-certs/default-listener.{crt,key}
 # and mounted into the gateway-controller. The repo checkout keeps these under
 # gateway-controller/listener-certs; the distribution zip stages them under resources/.
-if (Test-Path -LiteralPath 'gateway-controller/listener-certs' -PathType Container) {
+if (Test-Path -LiteralPath 'gateway-controller' -PathType Container) {
     $CertsDir = 'gateway-controller/listener-certs'
 } else {
     $CertsDir = 'resources/listener-certs'

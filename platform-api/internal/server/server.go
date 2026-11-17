@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/client"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
+	"github.com/wso2/api-platform/platform-api/internal/featureusage"
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay"
 	"github.com/wso2/api-platform/platform-api/internal/gatewayrelay/egress"
 	"github.com/wso2/api-platform/platform-api/internal/handler"
@@ -74,6 +75,7 @@ type Server struct {
 	markStarted    func()          // ends the health check's startup phase once the full API serves
 	revocations    *service.RevocationCache
 	revocationPoll time.Duration
+	featureUsage   featureusage.Reporter
 }
 
 // validateServerConfig enforces request-security requirements at startup that
@@ -88,7 +90,12 @@ func validateServerConfig(cfg *config.Server) error {
 	// settings may be unset; they take their defaults rather than leaving the database
 	// check with no time to answer.
 	config.ApplyHealthDefaults(&cfg.Health)
-	return config.ValidateHealth(&cfg.Health)
+	if err := config.ValidateHealth(&cfg.Health); err != nil {
+		return err
+	}
+	// The same applies to feature usage: without this, a code-built config
+	// would reach the reporter without the loader's queue and worker limits.
+	return config.ValidateFeatureUsage(&cfg.FeatureUsage)
 }
 
 // StartPlatformAPIServer creates a new server instance with all dependencies
@@ -257,11 +264,12 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// Initialize WebSocket manager first (needed for GatewayEventsService)
 	wsConfig := websocket.ManagerConfig{
-		MaxConnections:     cfg.Listeners.WebSocket.MaxConnections,
-		HeartbeatInterval:  20 * time.Second,
-		HeartbeatTimeout:   time.Duration(cfg.Listeners.WebSocket.ConnectionTimeout) * time.Second,
-		MetricsLogEnabled:  cfg.Listeners.WebSocket.MetricsLogEnabled,
-		MetricsLogInterval: time.Duration(cfg.Listeners.WebSocket.MetricsLogInterval) * time.Second,
+		MaxConnections:           cfg.Listeners.WebSocket.MaxConnections,
+		MaxConnectionsPerGateway: cfg.Listeners.WebSocket.MaxConnectionsPerGateway,
+		HeartbeatInterval:        20 * time.Second,
+		HeartbeatTimeout:         time.Duration(cfg.Listeners.WebSocket.ConnectionTimeout) * time.Second,
+		MetricsLogEnabled:        cfg.Listeners.WebSocket.MetricsLogEnabled,
+		MetricsLogInterval:       time.Duration(cfg.Listeners.WebSocket.MetricsLogInterval) * time.Second,
 	}
 	wsManager := websocket.NewManager(wsConfig, slogger)
 
@@ -737,6 +745,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	cfg.Auth.SkipPaths = append(cfg.Auth.SkipPaths, wiring.authSkipPaths...)
 
 	// The MCP server checks scopes per tool.
+	// The feature-usage reporter is built last (below); the MCP server looks it
+	// up on every tool call, as the feature-usage middleware does.
+	var featureUsage featureusage.Reporter
 	var mcpWrap func(http.Handler) http.Handler
 	if cfg.MCPServer.Enabled {
 		var mcpSkipPaths []string
@@ -750,6 +761,9 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 			Identity:    identityService,
 			Logger:      slogger,
 			PluginTools: wiring.mcpTools,
+			FeatureUsage: func() featureusage.Reporter {
+				return featureUsage
+			},
 
 			LLMProviders:           llmProviderService,
 			LLMProviderDeployments: llmProviderDeploymentService,
@@ -809,7 +823,8 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 
 	// Build the middleware chain that wraps the mux.
 	// Order: [plugin preChain] → CORS → auth → org resolver → scope enforcer →
-	//        read-only guard (TEMP-READ-ONLY-MODE) → [plugin postChain] → mux
+	//        read-only guard (TEMP-READ-ONLY-MODE) → [plugin postChain] →
+	//        feature usage → mux
 	var chain []func(http.Handler) http.Handler
 
 	// Plugin "before" middleware — outermost, before CORS/auth. No authenticated
@@ -935,8 +950,26 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 		chain = append(chain, mw)
 	}
 
+	// Feature usage — innermost, directly around the mux: every call to a REST
+	// API operation bound in featureusage/bindings.go is reported. It reads the
+	// organization this chain resolved, and the form a handler parsed on the
+	// same request. The reporter is built last (below) and looked up per call.
+	if cfg.FeatureUsage.Enabled && cfg.FeatureUsage.Configured() {
+		usageIndex, err := newFeatureUsageIndex(cfg.OpenAPISpecPath, mux, slogger)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize feature usage reporting: %w", err)
+		}
+		chain = append(chain, featureusage.Middleware(featureusage.MiddlewareConfig{
+			Reporter: func() featureusage.Reporter { return featureUsage },
+			Index:    usageIndex,
+			Routes:   mux,
+			Identity: featureUsageIdentity,
+		}))
+	}
+
 	slogger.Info("WebSocket manager initialized",
 		slog.Int("maxConnections", cfg.Listeners.WebSocket.MaxConnections),
+		slog.Int("maxConnectionsPerGateway", cfg.Listeners.WebSocket.MaxConnectionsPerGateway),
 		slog.Int("heartbeatTimeout", cfg.Listeners.WebSocket.ConnectionTimeout),
 		slog.Int("rateLimitPerMin", cfg.Listeners.WebSocket.RateLimitPerMin),
 	)
@@ -945,9 +978,21 @@ func StartPlatformAPIServer(cfg *config.Server, slogger *slog.Logger,
 	// checker that answered during the startup wait, so failure tracking carries over.
 	registerHealthRoutes(mux, serving.health)
 
+	// Built last, so no earlier startup failure leaves its delivery workers
+	// running; no request is served before Start, so nothing is missed. It
+	// comes before the success markers below, so a failure here still stops
+	// the plugins and releases what startServing acquired.
+	featureUsage, err = featureusage.NewFromConfig(cfg.FeatureUsage,
+		service.NewFeatureUsageAttributor(orgRepo), slogger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize feature usage reporting: %w", err)
+	}
+
 	startupOK = true
 	built = true
+
 	return &Server{
+		featureUsage:   featureUsage,
 		mux:            mux,
 		handler:        gohttpkit.Chain(chain...)(mux),
 		orgRepo:        orgRepo,
@@ -1087,11 +1132,11 @@ func buildAuthenticator(cfg *config.Server, slogger *slog.Logger, roleScopeMap m
 	if len(cfg.Auth.IDP.Audience) > 0 {
 		idpCfg.Audience = &cfg.Auth.IDP.Audience
 	}
-	// JWKS fetching is an outbound request to a tenant-configured URL (auth.idp.jwks_url),
-	// so it must go through the same SSRF-guarded shared client as every other
-	// tenant/operator-configured upstream call this process makes, rather than falling
-	// back to net/http's unguarded default client.
-	sharedClient, err := utils.NewUpstreamFetchClient(0)
+	// JWKS fetching goes to auth.idp.jwks_url, a destination configured in config.toml, so it
+	// uses the shared client with platform_api.http_client's own policy rather than
+	// net/http's unguarded default client. It is deliberately not subject to
+	// server.network_security.access_control, which governs tenant- and user-supplied URLs.
+	sharedClient, err := utils.NewConfiguredDestinationClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to obtain shared HTTP client for JWKS fetching: %w", err)
 	}
@@ -1231,6 +1276,25 @@ func (s *Server) buildTLSConfig(httpsCfg config.HTTPSListener) (*tls.Config, err
 	}, nil
 }
 
+// featureUsageShutdownTimeout bounds how long shutdown waits for queued feature
+// usage events, out of the 10s shutdown deadline. Usage reporting is best
+// effort; the plugins shut down after it and keep the rest.
+const featureUsageShutdownTimeout = 3 * time.Second
+
+// featureUsageShutdownBudget is how long the reporter may take to flush, out
+// of what is left of ctx: featureUsageShutdownTimeout, or half the remaining
+// time when less than twice that is left, so the plugins shutting down after
+// it always keep at least the other half.
+func featureUsageShutdownBudget(ctx context.Context) time.Duration {
+	budget := featureUsageShutdownTimeout
+	if deadline, ok := ctx.Deadline(); ok {
+		if half := time.Until(deadline) / 2; half < budget {
+			budget = half
+		}
+	}
+	return budget
+}
+
 // Start switches the listeners bound during startup to the full API and blocks until
 // a listener fails or a shutdown signal arrives, then shuts everything down.
 func (s *Server) Start() error {
@@ -1251,6 +1315,17 @@ func (s *Server) Start() error {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
 		s.listeners.shutdown(shutdownCtx)
+		// After the listeners: no request can record usage any more, so what is
+		// queued is everything left to deliver. It gets only part of what is
+		// left of the shutdown deadline, so a stalled collector cannot leave the
+		// plugins below none.
+		if s.featureUsage != nil {
+			usageCtx, usageCancel := context.WithTimeout(shutdownCtx, featureUsageShutdownBudget(shutdownCtx))
+			if err := s.featureUsage.Close(usageCtx); err != nil {
+				s.logger.Warn("Feature usage reporter shutdown", "error", err)
+			}
+			usageCancel()
+		}
 		for _, p := range s.plugins {
 			if err := p.Shutdown(shutdownCtx); err != nil {
 				s.logger.Error("Plugin shutdown error", "plugin", p.Name(), "error", err)
@@ -1365,7 +1440,9 @@ func newPortalPublisher(authRegistry *service.APIPortalAuthRegistry, cfg *config
 }
 
 // newAPIInvokeHandler builds the gateway relay behind the invoke route. An
-// invalid allow_hosts entry fails startup.
+// invalid allow_hosts entry fails startup. A gateway's endpoints are deployment
+// configuration, so server.network_security.access_control does not apply to the
+// relay; gateway_relay.egress.allow_hosts and the relay's own dial guard do.
 func newAPIInvokeHandler(cfg *config.GatewayRelay, apiService *service.APIService, slogger *slog.Logger) (*handler.APIInvokeHandler, error) {
 	policy, err := egress.Parse(egress.Spec{AllowHosts: cfg.Egress.AllowHosts, Logger: slogger})
 	if err != nil {
@@ -1386,4 +1463,32 @@ func newAPIInvokeHandler(cfg *config.GatewayRelay, apiService *service.APIServic
 	}
 	slogger.Info("Gateway relay ready", "egress", policy.Describe())
 	return handler.NewAPIInvokeHandler(apiService, relay, cfg.MaxRequestBytes, cfg.RequestTimeout, slogger), nil
+}
+
+// newFeatureUsageIndex resolves the REST API operations bound in
+// featureusage/bindings.go to the routes mux serves, using the OpenAPI
+// document at specPath for their paths.
+func newFeatureUsageIndex(specPath string, mux *http.ServeMux, logger *slog.Logger) (*featureusage.RouteIndex, error) {
+	spec, err := os.ReadFile(specPath)
+	if err != nil {
+		return nil, fmt.Errorf("read the OpenAPI document %q: %w", specPath, err)
+	}
+	tax, err := featureusage.DefaultTaxonomy()
+	if err != nil {
+		return nil, fmt.Errorf("embedded taxonomy: %w", err)
+	}
+	index, err := featureusage.NewRouteIndex(spec, mux, tax, logger)
+	if err != nil {
+		return nil, err
+	}
+	logger.Info("Feature usage: reporting calls to bound REST API operations", slog.Int("routes", index.Len()))
+	return index, nil
+}
+
+// featureUsageIdentity returns the platform organization and the acting
+// user's subject from the authenticated request context.
+func featureUsageIdentity(r *http.Request) (orgUUID, actorSubject string) {
+	orgUUID, _ = middleware.GetOrganizationFromRequest(r)
+	actorSubject, _ = middleware.GetActorIdentityFromRequest(r)
+	return orgUUID, actorSubject
 }

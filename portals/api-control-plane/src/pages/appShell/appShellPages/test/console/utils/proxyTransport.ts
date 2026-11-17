@@ -100,12 +100,14 @@ const messages = defineMessages({
   },
   gatewayNotDeployed: {
     id: 'apiControlPlane.pages.test.console.proxyTransport.gatewayNotDeployed',
-    defaultMessage: 'This API is not deployed to the selected gateway. Deploy it first, then try again.',
+    defaultMessage:
+      'This API is not deployed to the selected gateway. Deploy it first, then try again.',
     description: 'Actionable: the gateway exists but the API has not been deployed to it.',
   },
   gatewayUnsupportedScheme: {
     id: 'apiControlPlane.pages.test.console.proxyTransport.gatewayUnsupportedScheme',
-    defaultMessage: 'The selected gateway’s endpoint is not an HTTP address, so it cannot be called from here.',
+    defaultMessage:
+      'The selected gateway’s endpoint is not an HTTP address, so it cannot be called from here.',
   },
   invalidRequest: {
     id: 'apiControlPlane.pages.test.console.proxyTransport.invalidRequest',
@@ -193,7 +195,15 @@ export type RelayContext = {
    * only the first `plugins` value it is given.
    */
   mode: TestCallMode;
+  /**
+   * Told once per Execute, after its response (or its failure to get one),
+   * in either mode: `success` for an HTTP status below 400, `failure` for any
+   * other status or for no response at all. Not called for an aborted request.
+   */
+  onExecuted?: (mode: TestCallMode, outcome: ExecuteOutcome) => void;
 };
+
+export type ExecuteOutcome = 'success' | 'failure';
 
 /** A ref so the caller can keep the context current without remounting. */
 export type RelayContextRef = { readonly current: RelayContext };
@@ -532,6 +542,51 @@ export const createRelayFetch =
     return toResponseLike(parsed, gatewayUrl);
   };
 
+type SwaggerExecute = (request: unknown) => Promise<{ status?: unknown } | undefined>;
+type SwaggerSystem = { fn: { execute: SwaggerExecute } & Record<string, unknown> };
+
+const isAbort = (error: unknown): boolean =>
+  typeof error === 'object' &&
+  error !== null &&
+  (error as { name?: unknown }).name === 'AbortError';
+
+/** `success` for an HTTP status below 400; anything else, or no status, is a failure. */
+const outcomeOf = (status: unknown): ExecuteOutcome =>
+  typeof status === 'number' && status > 0 && status < 400 ? 'success' : 'failure';
+
+/**
+ * Wraps the thunk swagger-ui's `executeRequest` returns so the one
+ * `fn.execute` call it makes reports its outcome. swagger-client resolves for
+ * a 2xx and rejects with the response's `status` for any other, and rejects
+ * with no status when nothing came back (a network error, or a relay failure
+ * thrown by `createRelayFetch`); swagger-ui then swallows the rejection to
+ * show it, which is why the outcome is read here rather than from the action.
+ */
+const reportingOutcome = (action: unknown, report: (outcome: ExecuteOutcome) => void): unknown => {
+  if (typeof action !== 'function') return action;
+  return (system: SwaggerSystem) => {
+    const { fn } = system;
+    const execute: SwaggerExecute = (request) =>
+      fn.execute.call(fn, request).then(
+        (response) => {
+          report(outcomeOf(response?.status));
+          return response;
+        },
+        (error: unknown) => {
+          if (!isAbort(error)) {
+            const { status, response } = (error ?? {}) as {
+              status?: unknown;
+              response?: { status?: unknown };
+            };
+            report(outcomeOf(status ?? response?.status));
+          }
+          throw error;
+        },
+      );
+    return (action as (system: SwaggerSystem) => unknown)({ ...system, fn: { ...fn, execute } });
+  };
+};
+
 /**
  * The swagger-ui plugin that installs the relay.
  *
@@ -548,15 +603,21 @@ export const testConsoleRelayPlugin = (contextRef: RelayContextRef) => {
         wrapActions: {
           executeRequest:
             (oriAction: (payload: Record<string, unknown>) => unknown) =>
-            (payload: Record<string, unknown>) =>
+            (payload: Record<string, unknown>) => {
               // Direct mode is the absence of a transport override, not a
               // second one: leaving `userFetch` off the payload is exactly what
               // sends swagger-client back to the global `fetch`, so the browser
               // calls the gateway itself. Read per dispatch, so flipping the
               // switch takes effect on the next Execute without a remount.
-              contextRef.current.mode === 'direct'
-                ? oriAction(payload)
-                : oriAction({ ...payload, userFetch }),
+              const { mode } = contextRef.current;
+              const action =
+                mode === 'direct' ? oriAction(payload) : oriAction({ ...payload, userFetch });
+              // Both modes pass through here once per Execute, so this is where
+              // its outcome is counted, under the mode it was sent with.
+              return reportingOutcome(action, (outcome) =>
+                contextRef.current.onExecuted?.(mode, outcome),
+              );
+            },
         },
       },
     },

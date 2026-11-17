@@ -193,20 +193,31 @@
              (p.planName||'').toLowerCase().indexOf(q) >= 0 ||
              (p.description||'').toLowerCase().indexOf(q) >= 0;
     });
+    dd.textContent = '';
     if (!matches.length) {
-      dd.innerHTML = '<div class="cfg-chip-dd-empty">No matching plans</div>';
+      var empty = document.createElement('div');
+      empty.className = 'cfg-chip-dd-empty';
+      empty.textContent = 'No matching plans';
+      dd.appendChild(empty);
     } else {
-      dd.innerHTML = matches.map(function(p) {
-        return '<div class="cfg-chip-dd-item" data-name="'+esc(p.planName)+'">' +
-          '<div class="cfg-chip-dd-name">'+esc(p.displayName||p.planName)+'</div>' +
-          (p.description ? '<div class="cfg-chip-dd-desc">'+esc(p.description)+'</div>' : '') +
-          '</div>';
-      }).join('');
-      dd.querySelectorAll('.cfg-chip-dd-item').forEach(function(item) {
+      matches.forEach(function(p) {
+        var item = document.createElement('div');
+        item.className = 'cfg-chip-dd-item';
+        item.dataset.name = String(p.planName || '');
+        var nameEl = document.createElement('div');
+        nameEl.className = 'cfg-chip-dd-name';
+        nameEl.textContent = p.displayName || p.planName;
+        item.appendChild(nameEl);
+        if (p.description) {
+          var descEl = document.createElement('div');
+          descEl.className = 'cfg-chip-dd-desc';
+          descEl.textContent = p.description;
+          item.appendChild(descEl);
+        }
         item.addEventListener('mousedown', function(e) {
           e.preventDefault();
           var name = item.dataset.name;
-          var pol = allPolicies.find(function(p){ return p.planName === name; });
+          var pol = allPolicies.find(function(x){ return x.planName === name; });
           if (pol && !policyChips.some(function(c){ return c.planName === name; })) {
             policyChips.push(pol);
             renderPolicyChips();
@@ -214,6 +225,7 @@
           document.getElementById('wz-policy-search').value = '';
           dd.style.display = 'none';
         });
+        dd.appendChild(item);
       });
     }
     dd.style.display = 'block';

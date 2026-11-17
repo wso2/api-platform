@@ -1,0 +1,198 @@
+# --------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except in compliance
+# with the License. You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# --------------------------------------------------------------------
+
+# Scenario list: APIP Cloud Managed Gateway Configuration (GATEWAY-CONFIGURATIONS).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. The single layer (cloud) records how the suite covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but the product does not meet it yet, `issue` says why
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: GATEWAY-CONFIGURATIONS
+title: APIP Cloud Managed Gateway Configuration
+scenarios:
+  - id: ID_APIP_GATEWAY_CONFIG_001
+    title: "A gateway's configuration lists what it sets and what may be changed."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "A gateway's configuration lists what it sets and what may be changed"
+  - id: ID_APIP_GATEWAY_CONFIG_002
+    title: "A setting that is not in the allowlist is refused."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "A setting that is not in the allowlist is refused"
+  - id: ID_APIP_GATEWAY_CONFIG_003
+    title: "An enum setting refuses a value outside its value set."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "An enum setting refuses a value outside its value set"
+  - id: ID_APIP_GATEWAY_CONFIG_004
+    title: "A boolean setting refuses a value that is not a boolean."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "A boolean setting refuses a value that is not a boolean"
+  - id: ID_APIP_GATEWAY_CONFIG_005
+    title: "An integer setting refuses a value below its minimum."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "An integer setting refuses a value below its minimum"
+  - id: ID_APIP_GATEWAY_CONFIG_006
+    title: "An integer setting refuses a value above its maximum."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "An integer setting refuses a value above its maximum"
+  - id: ID_APIP_GATEWAY_CONFIG_007
+    title: "A duration setting refuses a value that is not a duration."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "A duration setting refuses a value that is not a duration"
+  - id: ID_APIP_GATEWAY_CONFIG_008
+    title: "A duration setting refuses a value outside its bounds."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "A duration setting refuses a value outside its bounds"
+  - id: ID_APIP_GATEWAY_CONFIG_009
+    title: "A quantity setting refuses a value that is not a Kubernetes quantity."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "A quantity setting refuses a value that is not a Kubernetes quantity"
+  - id: ID_APIP_GATEWAY_CONFIG_010
+    title: "A quantity setting refuses a value outside its bounds."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "A quantity setting refuses a value outside its bounds"
+  - id: ID_APIP_GATEWAY_CONFIG_011
+    title: "A string setting refuses a value longer than its character maximum."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "A string setting refuses a value longer than its character maximum"
+  - id: ID_APIP_GATEWAY_CONFIG_012
+    title: "A CPU request above the CPU limit is refused by the cross-field constraint."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "A CPU request above the CPU limit is refused by the cross-field constraint"
+  - id: ID_APIP_GATEWAY_CONFIG_013
+    title: "A memory request above the memory limit is refused."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "A memory request above the memory limit is refused"
+  - id: ID_APIP_GATEWAY_CONFIG_014
+    title: "Raw TOML with control characters or line separators is refused."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "Raw TOML with control characters or line separators is refused"
+  - id: ID_APIP_GATEWAY_CONFIG_015
+    title: "A setting the gateway does not read is refused rather than accepted and dropped."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "A setting the gateway does not read is refused rather than accepted and dropped"
+  - id: ID_APIP_GATEWAY_CONFIG_016
+    title: "A written setting is reflected when the configuration is read."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "A written setting is reflected when the configuration is read"
+  - id: ID_APIP_GATEWAY_CONFIG_017
+    title: "A limit is judged against the request that is already stored."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "A limit is judged against the request that is already stored"
+  - id: ID_APIP_GATEWAY_CONFIG_018
+    title: "Clearing a setting returns the gateway to the platform default."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "Clearing a setting returns the gateway to the platform default"
+  - id: ID_APIP_GATEWAY_CONFIG_019
+    title: "Raw TOML that redefines a configured section is refused."
+    priority: P0
+    cloud:
+      status: known-issue
+      issue: "apim-saas (ISS-03): the gateway configuration wrapper stores gateway.config_toml without parsing or checking it, so the raw TOML is saved instead of being refused. No tracker link yet."
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "Raw TOML that redefines a configured section is refused"
+  - id: ID_APIP_GATEWAY_CONFIG_020
+    title: "Raw TOML cannot repoint the gateway at another organisation's database."
+    priority: P0
+    cloud:
+      status: known-issue
+      issue: "apim-saas (ISS-03): the gateway configuration wrapper stores gateway.config_toml without parsing or checking it, so the raw TOML is saved instead of being refused. No tracker link yet."
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "Raw TOML cannot repoint the gateway at another organisation's database"
+  - id: ID_APIP_GATEWAY_CONFIG_021
+    title: "Simultaneous writes to a gateway's configuration are not silently overwritten."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_gateway_config.feature
+          scenario: "Simultaneous writes to a gateway's configuration are not silently overwritten"

@@ -481,10 +481,20 @@ To add a feature to the suite:
    `blocks/<products>.yaml` with the same header as the other files, list it in
    `blockFiles`, and add it to the table above.
 
+- Keep a general-purpose block first in each block file. When a step package changes, CI runs
+  the first block of every file as a sample (`cmd/affectedblocks`), to catch a step hook that
+  fails in blocks without that package's product.
 - Do not put blocks back in `it-suite.yaml`.
 - Block names are unique across all the files; the loader rejects a duplicate.
 - Feature paths in a block file are relative to `suites/it`, the same as in `it-suite.yaml`.
 - Find the block that runs a feature with `grep -rn "<feature>.feature" suites/it/blocks/`.
+- The API Portal release workflow (`.github/workflows/devportal-release.yml`) runs
+  `make test-api-portal`, which runs the blocks listed in `API_PORTAL_IT_BLOCKS` and
+  `API_PORTAL_UI_BLOCKS` in `tests/framework/Makefile`. Adding, renaming or removing a block in
+  `blocks/api-portal.yaml`, or an `api-portal-*` block in `suites/ui/ui-suite.yaml`, updates
+  those lists in the same change; a block missing from them is never run at release. Blocks that
+  combine the API Portal with other products (`blocks/platform-api-gateway-api-portal.yaml`) or
+  start it only as a dependency (`management-portal-publish`) do not belong in the lists.
 
 ## Scenario Lists
 

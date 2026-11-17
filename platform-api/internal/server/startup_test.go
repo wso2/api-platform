@@ -885,3 +885,60 @@ func TestValidateServerConfigAppliesHealthDefaults(t *testing.T) {
 		t.Fatalf("validateServerConfig() = %v, want a failure_window error", err)
 	}
 }
+
+// A config built in code (platform.WithConfig) gets the loader's feature-usage
+// limits, so an oversized queue is rejected before the reporter is built.
+func TestValidateServerConfigAppliesFeatureUsageLimits(t *testing.T) {
+	cfg := &config.Server{}
+	cfg.FeatureUsage = config.FeatureUsage{
+		Enabled:        true,
+		CollectorURL:   "http://collector.example",
+		Token:          config.FeatureUsageToken{TokenURL: "http://idp.example/token", ClientID: "id", ClientSecret: "s3cr3t-value"},
+		QueueSize:      1 << 30,
+		Workers:        2,
+		RequestTimeout: time.Second,
+		MaxAttempts:    3,
+		OverallTimeout: 10 * time.Second,
+	}
+	err := validateServerConfig(cfg)
+	if err == nil || !strings.Contains(err.Error(), "feature_usage.queue_size") {
+		t.Fatalf("validateServerConfig() = %v, want a feature_usage.queue_size error", err)
+	}
+	if strings.Contains(err.Error(), "s3cr3t-value") {
+		t.Error("the validation error must not echo the client secret")
+	}
+
+	// Left off, the section is not checked.
+	if err := validateServerConfig(&config.Server{}); err != nil {
+		t.Fatalf("validateServerConfig() with reporting off = %v, want nil", err)
+	}
+}
+
+// The reporter's flush never takes more than half of what is left of the
+// shutdown deadline, so the plugins after it keep a usable context.
+func TestFeatureUsageShutdownBudget(t *testing.T) {
+	for name, tc := range map[string]struct {
+		remaining time.Duration
+		max       time.Duration
+	}{
+		"plenty of time left":   {10 * time.Second, featureUsageShutdownTimeout},
+		"less than 2x the cap":  {4 * time.Second, 2 * time.Second},
+		"almost nothing left":   {100 * time.Millisecond, 50 * time.Millisecond},
+		"deadline already past": {-time.Second, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), tc.remaining)
+			defer cancel()
+			got := featureUsageShutdownBudget(ctx)
+			if got > tc.max || (tc.remaining > 0 && got <= 0) {
+				t.Errorf("budget = %s with %s left, want at most %s and positive", got, tc.remaining, tc.max)
+			}
+			if deadline, _ := ctx.Deadline(); tc.remaining > 0 && got > time.Until(deadline)/2+time.Millisecond {
+				t.Errorf("budget %s leaves the plugins less than half of what is left", got)
+			}
+		})
+	}
+	if got := featureUsageShutdownBudget(context.Background()); got != featureUsageShutdownTimeout {
+		t.Errorf("budget without a deadline = %s, want %s", got, featureUsageShutdownTimeout)
+	}
+}

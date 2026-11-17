@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { organizationsUrl } from "./cloudConsoleUrl";
+import { organizationsUrl, projectManageUrl } from "./cloudConsoleUrl";
 
 describe("organizationsUrl", () => {
   it("defaults to this page's own origin, which deployments share with the Cloud console", () => {
@@ -56,4 +56,32 @@ describe("organizationsUrl", () => {
       );
     },
   );
+});
+
+describe("projectManageUrl", () => {
+  it("names the project's manage page on this page's own origin by default", () => {
+    expect(projectManageUrl("default")).toBe(
+      `${window.location.origin}/projects/default/manage`,
+    );
+  });
+
+  it("uses the given console origin, ignoring trailing slashes", () => {
+    expect(
+      projectManageUrl("orders", "https://cloud-console.example/"),
+    ).toBe("https://cloud-console.example/projects/orders/manage");
+  });
+
+  it("encodes the handle as a single path segment", () => {
+    expect(
+      projectManageUrl("../organizations?x=1#y", "https://cloud-console.example"),
+    ).toBe(
+      "https://cloud-console.example/projects/..%2Forganizations%3Fx%3D1%23y/manage",
+    );
+  });
+
+  it("ignores a console URL that is not http(s), and keeps this origin", () => {
+    expect(projectManageUrl("default", "javascript:alert(1)")).toBe(
+      `${window.location.origin}/projects/default/manage`,
+    );
+  });
 });

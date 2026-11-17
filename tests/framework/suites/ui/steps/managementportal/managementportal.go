@@ -91,6 +91,7 @@ func (s *Steps) Register(sc *godog.ScenarioContext) {
 	s.registerTestSteps(sc)
 	s.registerPublishSteps(sc)
 	s.registerGatewaySteps(sc)
+	s.registerGatewayPolicySteps(sc)
 }
 
 // generateHandle stores a unique name the control plane accepts as a handle: lowercase

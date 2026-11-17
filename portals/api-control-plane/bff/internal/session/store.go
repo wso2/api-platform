@@ -36,6 +36,9 @@ const (
 // User holds the pre-decoded claims surfaced by GET /api/session. The browser
 // never receives the token itself — only these display fields.
 type User struct {
+	// ID is the token's subject ("sub"): an opaque user ID the SPA never
+	// displays. Feature-usage tracking identifies the user to Moesif by it.
+	ID     string   `json:"id,omitempty"`
 	Name   string   `json:"name"`
 	Email  string   `json:"email"`
 	Role   string   `json:"role,omitempty"`

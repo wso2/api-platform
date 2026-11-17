@@ -40,7 +40,9 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 
+	"github.com/wso2/api-platform/common/configcompat"
 	"github.com/wso2/api-platform/common/configinterpolate"
+	"github.com/wso2/api-platform/httpkit/netguard"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/health"
 	"github.com/wso2/api-platform/platform-api/internal/logger"
@@ -210,6 +212,7 @@ type Server struct {
 	ReadOnly             ReadOnly             `koanf:"read_only"` // TEMP-READ-ONLY-MODE: remove with config/readonly.go
 	MCPServer            MCPServer            `koanf:"mcp_server"`
 	Organizations        Organizations        `koanf:"organizations"`
+	FeatureUsage         FeatureUsage         `koanf:"feature_usage"`
 }
 
 // APIPortalPublication sets the time and retry limits of the calls made to an API Portal
@@ -348,11 +351,11 @@ type GatewayRelayEgress struct {
 // controlplane.insecure_skip_verify setting), platform-api has no equivalent existing trust
 // setting to reuse, so HTTPClientTLSConfig.InsecureSkipVerify is its own field here.
 type HTTPClientConfig struct {
-	Pooling  HTTPClientPoolingConfig  `koanf:"pooling"`
-	Timeouts HTTPClientTimeoutsConfig `koanf:"timeouts"`
-	TLS      HTTPClientTLSConfig      `koanf:"tls"`
-	Proxy    HTTPClientProxyConfig    `koanf:"proxy"`
-	SSRF     HTTPClientSSRFConfig     `koanf:"ssrf"`
+	Pooling          HTTPClientPoolingConfig          `koanf:"pooling"`
+	Timeouts         HTTPClientTimeoutsConfig         `koanf:"timeouts"`
+	TLS              HTTPClientTLSConfig              `koanf:"tls"`
+	Proxy            HTTPClientProxyConfig            `koanf:"proxy"`
+	DestinationGuard HTTPClientDestinationGuardConfig `koanf:"destination_guard"`
 }
 
 // HTTPClientPoolingConfig mirrors httpclient.PoolingConfig.
@@ -422,12 +425,12 @@ type HTTPClientProxyTLSConfig struct {
 	InsecureSkipVerify bool   `koanf:"insecure_skip_verify"`
 }
 
-// HTTPClientSSRFConfig mirrors the TOML-expressible subset of httpclient.SSRFConfig.
+// HTTPClientDestinationGuardConfig mirrors the TOML-expressible subset of httpclient.DestinationGuardConfig.
 // Enabled by default: unlike gateway-controller's shared client (whose callers all target a
 // single fixed, operator-configured host), every current caller of this platform-api client
 // fetches a user/tenant-supplied URL (an MCP proxy's upstream, a template's OpenAPI spec
 // URL) — exactly the scenario ssrf-prevention.md targets — so the guard defaults on.
-type HTTPClientSSRFConfig struct {
+type HTTPClientDestinationGuardConfig struct {
 	Enabled bool `koanf:"enabled"`
 	// Preset selects a built-in netguard policy: "permit_private_block_metadata" (default —
 	// a backend that is normally private — a ClusterIP, a service-DNS name, localhost —
@@ -614,11 +617,56 @@ type Gateway struct {
 // cross-cutting settings — timeouts, CORS, WebSocket — that apply to
 // whichever listener(s) are serving requests.
 type ServerListeners struct {
-	HTTP      HTTPListener  `koanf:"http"`
-	HTTPS     HTTPSListener `koanf:"https"`
-	Timeouts  Timeouts      `koanf:"timeouts"`
-	CORS      CORS          `koanf:"cors"`
-	WebSocket WebSocket     `koanf:"websocket"`
+	HTTP            HTTPListener    `koanf:"http"`
+	HTTPS           HTTPSListener   `koanf:"https"`
+	Timeouts        Timeouts        `koanf:"timeouts"`
+	CORS            CORS            `koanf:"cors"`
+	WebSocket       WebSocket       `koanf:"websocket"`
+	NetworkSecurity NetworkSecurity `koanf:"network_security"`
+}
+
+// NetworkSecurity groups outbound network controls.
+type NetworkSecurity struct {
+	AccessControl AccessControl `koanf:"access_control"`
+}
+
+// AccessControl restricts the destinations platform-api connects to when the
+// URL comes from tenant or user input: an OpenAPI/SDL spec URL, an MCP server
+// or agent-card URL, a GraphQL introspection endpoint, an API portal URL, or a
+// gateway endpoint reached through the gateway relay. URLs configured in this
+// file (the IdP JWKS URL, the feature-usage collector, the proxy) are never
+// subject to it.
+//
+// When enabled it is combined with the existing [platform_api.http_client]
+// destination preset, which can only make it stricter: an operator who chose
+// the "public_only" preset keeps private addresses refused. When disabled,
+// those URLs keep the [platform_api.http_client] behaviour alone.
+type AccessControl struct {
+	Enabled bool `koanf:"enabled"`
+	// Mode is "deny" (a host matching Hostnames is refused) or "allow" (only a
+	// host matching Hostnames is permitted).
+	Mode string `koanf:"mode"`
+	// Hostnames are RE2 regular expressions, each matched case-insensitively
+	// against the whole hostname of a destination (never its port or path).
+	Hostnames []string `koanf:"hostnames"`
+	// DenyPrivateNetworks also refuses private, loopback, carrier-grade NAT and
+	// unique-local addresses. Link-local (cloud metadata), unspecified and
+	// multicast addresses are refused regardless.
+	DenyPrivateNetworks bool     `koanf:"deny_private_networks"`
+	MaxRedirects        int      `koanf:"max_redirects"`
+	AllowedSchemes      []string `koanf:"allowed_schemes"`
+}
+
+// GuardConfig returns the shared netguard representation of a.
+func (a AccessControl) GuardConfig() netguard.GuardConfig {
+	return netguard.GuardConfig{
+		Enabled:             a.Enabled,
+		Mode:                a.Mode,
+		Hostnames:           a.Hostnames,
+		DenyPrivateNetworks: a.DenyPrivateNetworks,
+		MaxRedirects:        a.MaxRedirects,
+		AllowedSchemes:      a.AllowedSchemes,
+	}
 }
 
 // HTTPListener configures the plain-HTTP listener. Enable it only when a trusted
@@ -794,11 +842,15 @@ func (j *JWT) LoadPrivateKey() (*rsa.PrivateKey, error) {
 
 // WebSocket holds WebSocket-specific configuration.
 type WebSocket struct {
-	MaxConnections     int  `koanf:"max_connections"`
-	ConnectionTimeout  int  `koanf:"connection_timeout"`
-	RateLimitPerMin    int  `koanf:"rate_limit_per_min"`
-	MetricsLogEnabled  bool `koanf:"metrics_log_enabled"`
-	MetricsLogInterval int  `koanf:"metrics_log_interval"`
+	MaxConnections int `koanf:"max_connections"`
+	// MaxConnectionsPerGateway caps the concurrent WebSocket connections one
+	// gateway may hold across all of its registration tokens. -1 means unlimited
+	// (the default); otherwise it must be a positive number.
+	MaxConnectionsPerGateway int  `koanf:"max_connections_per_gateway"`
+	ConnectionTimeout        int  `koanf:"connection_timeout"`
+	RateLimitPerMin          int  `koanf:"rate_limit_per_min"`
+	MetricsLogEnabled        bool `koanf:"metrics_log_enabled"`
+	MetricsLogInterval       int  `koanf:"metrics_log_interval"`
 }
 
 // Database holds database-specific configuration.
@@ -1074,6 +1126,9 @@ func LoadConfig(configPaths ...string) (*Server, error) {
 	if err := validateCORSConfig(&cfg.Listeners.CORS); err != nil {
 		return nil, err
 	}
+	if err := validateFeatureUsageConfig(&cfg.FeatureUsage); err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }
@@ -1091,6 +1146,17 @@ func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
 	expanded, stats, err := configinterpolate.Expand(k.Raw(), opts)
 	if err != nil {
 		return nil, fmt.Errorf("config interpolation failed: %w", err)
+	}
+
+	// http_client.destination_guard shipped under an earlier name; a config that
+	// still uses it keeps working, with a deprecation warning.
+	deprecated, err := configcompat.MigrateDestinationGuard(expanded)
+	if err != nil {
+		return nil, err
+	}
+	if deprecated != "" {
+		slog.Warn("Deprecated configuration key; rename it to http_client.destination_guard",
+			slog.String("key", "platform_api."+deprecated))
 	}
 
 	out := koanf.New(".")
@@ -1597,6 +1663,12 @@ func validateListenersConfig(l *ServerListeners) error {
 		if _, err := ParseHTTPSEcdhCurves(l.HTTPS.EcdhCurves); err != nil {
 			return fmt.Errorf("server.https.ecdh_curves: %w", err)
 		}
+	}
+	if err := l.NetworkSecurity.AccessControl.GuardConfig().Validate(); err != nil {
+		return fmt.Errorf("server.network_security.access_control: %w", err)
+	}
+	if l.WebSocket.MaxConnectionsPerGateway == 0 || l.WebSocket.MaxConnectionsPerGateway < -1 {
+		return fmt.Errorf("server.websocket.max_connections_per_gateway must be -1 (unlimited) or positive (got %d)", l.WebSocket.MaxConnectionsPerGateway)
 	}
 	return nil
 }

@@ -203,9 +203,9 @@ func initSharedHTTPClientForTests(t *testing.T) {
 	cfg := httpclient.DefaultConfig()
 	cfg.Pooling.DisableKeepAlives = true
 	cfg.Timeouts.MaxResponseBytes = -1
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = policy
-	cfg.SSRF.MaxRedirects = 5
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = policy
+	cfg.DestinationGuard.MaxRedirects = 5
 
 	client, err := httpclient.New(cfg)
 	if err != nil {
@@ -1130,4 +1130,36 @@ func mustEncrypt(t *testing.T, env *agentProxyTestEnv, plaintext string) []byte 
 		t.Fatalf("encrypt %q: %v", plaintext, err)
 	}
 	return ciphertext
+}
+
+// A refused destination is a configuration answer, not an upstream failure: it is
+// the same 400 on every call, never cached and replayed as a 503, and the upstream
+// is never contacted.
+func TestFetchAgentCard_StoredRefusedDestinationIsNotCached(t *testing.T) {
+	env := newAgentProxyTestEnv(t, cardCacheConfig(time.Minute, time.Minute))
+	agent := newCardServingAgent(t)
+	seedUpstreamSecret(t, env, agentProxyOrg)
+	createAgentProxyPointingAt(t, env, agentProxyOrg, "weather-agent", agent.url(), true)
+
+	policy, err := netguard.GuardConfig{Enabled: true, DenyPrivateNetworks: true}.Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	cfg := httpclient.DefaultConfig()
+	cfg.Timeouts.MaxResponseBytes = -1
+	cfg.DestinationGuard = httpclient.DestinationGuardConfig{Enabled: true, Policy: policy}
+	if err := utils.InitUserURLClientFromConfig(cfg); err != nil {
+		t.Fatalf("InitUserURLClientFromConfig: %v", err)
+	}
+	t.Cleanup(func() { initSharedHTTPClientForTests(t) }) // also drops the access-control client
+
+	for i := 0; i < 2; i++ {
+		rec := callFetchAgentCard(t, env, `{"agentProxyId":"weather-agent"}`)
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "DESTINATION_NOT_ALLOWED") {
+			t.Fatalf("call %d: status %d body %s, want 400 DESTINATION_NOT_ALLOWED", i+1, rec.Code, rec.Body.String())
+		}
+	}
+	if agent.count() != 0 {
+		t.Fatalf("the refused upstream was contacted %d time(s)", agent.count())
+	}
 }

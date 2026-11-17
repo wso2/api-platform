@@ -105,7 +105,7 @@ func TestWarnMtlsAPIsWithoutDedicatedHostname(t *testing.T) {
 
 	runtimeStore := storage.NewRuntimeConfigStore()
 	loaded, err := loadRuntimeConfigsFromExistingAPIConfigurations(configs, runtimeStore, nil,
-		&fakeRuntimeTransformer{}, newDiscardLogger(), false)
+		&fakeRuntimeTransformer{}, newDiscardLogger(), false, nil)
 	require.NoError(t, err)
 	assert.Equal(t, len(configs), loaded)
 

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FC, type ReactNode } from 'react';
 import { Alert, Box, CircularProgress, PageContent, PageTitle } from '@wso2/oxygen-ui';
 import GatewayForm from './GatewayForm';
 import GatewayOverview from './components/GatewayOverview';
@@ -47,6 +47,8 @@ export type GatewaysFeatureProps = {
    * has to state which kinds of gateway it is for.
    */
   gatewayTypes: GatewayType[];
+  /** Content of a gateway's Policies tab; the tab shows a placeholder without it. */
+  renderPolicies?: (gatewayId: string) => ReactNode;
 };
 
 /**
@@ -66,7 +68,7 @@ export type GatewaysFeatureProps = {
  */
 const STATUS_POLL_INTERVAL_MS = 5000;
 
-const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
+const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes, renderPolicies }) => {
   const { apiFetch, notify, resourceLimits } = port;
   const permissions = permissionsOf(port);
   const client = useMemo(() => createGatewaysClient(apiFetch), [apiFetch]);
@@ -426,6 +428,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         notify={notify}
         canManageTokens={canManageTokens}
         canEdit={canUpdate}
+        renderPolicies={renderPolicies}
       />
     );
   }

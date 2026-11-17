@@ -65,11 +65,16 @@ function loadWorker() {
 
 const cfg = (tlsSkipVerify) => ({ httpClient: DEFAULTS.httpClient, webhooks: { delivery: { tlsSkipVerify } } });
 
-test('delivery uses the shared verifying agent by default', () => {
+test('delivery uses its own guarded agent, which verifies by default', () => {
     const { worker, shared } = loadWorker();
     const agent = worker.deliveryHttpsAgent(cfg(false));
-    assert.strictEqual(agent, shared.buildOutboundAgents(cfg(false)).httpsAgent);
     assert.notStrictEqual(agent.options.rejectUnauthorized, false);
+    // Subscriber URLs are tenant input: the agent resolves through the guarded lookup,
+    // which the shared agent does not carry.
+    assert.strictEqual(typeof agent.options.lookup, 'function');
+    assert.notStrictEqual(agent, shared.buildOutboundAgents(cfg(false)).httpsAgent);
+    // Memoized: deliveries share one pool.
+    assert.strictEqual(worker.deliveryHttpsAgent(cfg(false)), agent);
 });
 
 test('tlsSkipVerify gives delivery its own agent and leaves the shared one verifying', () => {

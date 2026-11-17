@@ -1354,8 +1354,9 @@ async function saveApiWorkflow(orgId, viewName, status) {
             credentials: 'same-origin'
         });
         if (response.ok) {
-            // Preserve ?view= so a non-default selected view survives the reload.
-            window.location.href = window.location.pathname + window.location.search + '#apiworkflows';
+            // Land back on the workflows tab after the reload. Setting only the
+            // hash keeps the current path and ?view= query untouched.
+            window.location.hash = 'apiworkflows';
             window.location.reload();
         } else {
             const err = await response.json().catch(() => ({ message: 'Save failed' }));

@@ -182,6 +182,13 @@ func main() {
 		slog.Bool("event_gateway_enabled", eventGatewayCfg.Enabled),
 	)
 
+	// Install the {{ env }} access policy for artifact specs before anything
+	// renders an artifact; the shared deployment code refuses every read until then.
+	if err := cfg.InstallArtifactEnvAccessPolicy(log); err != nil {
+		log.Error("Invalid artifact env access configuration", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	if !cfg.Controller.Auth.Basic.Enabled && !cfg.Controller.Auth.IDP.Enabled {
 		log.Warn("No authentication configured: both basic auth and IDP are disabled. Event-Gateway-Controller API will allow all requests without authentication")
 	}
@@ -502,9 +509,27 @@ func main() {
 	policyManager.SetTransformers(transformerRegistry)
 
 	loadedAPIs := configStore.GetAll()
-	if _, err := loadRuntimeConfigsFromExistingAPIConfigurations(loadedAPIs, runtimeStore, secretsService, transformerRegistry, log, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup); err != nil {
+	persistEnvRefusedUndeploy := utils.NewEnvRefusedUndeployer(db, eventHubInstance, gatewayID, log)
+	envRefusedUndeployed := 0
+	onEnvRefused := func(c *models.StoredConfig) error {
+		envRefusedUndeployed++
+		return persistEnvRefusedUndeploy(c)
+	}
+	if _, err := loadRuntimeConfigsFromExistingAPIConfigurations(loadedAPIs, runtimeStore, secretsService, transformerRegistry, log, cfg.Controller.Server.SkipInvalidDeploymentsOnStartup, onEnvRefused); err != nil {
 		log.Error("Failed to load runtime configs from API configurations", slog.Any("error", err))
 		os.Exit(1)
+	}
+	// The initial router snapshot above was built before the loader undeployed
+	// artifacts that read a refused environment variable; rebuild it so their
+	// routes are dropped along with their policy chains.
+	if envRefusedUndeployed > 0 {
+		log.Info("Refreshing xDS snapshot after undeploying artifacts that read refused environment variables",
+			slog.Int("undeployed", envRefusedUndeployed))
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := snapshotManager.UpdateSnapshot(ctx, ""); err != nil {
+			log.Warn("Failed to refresh xDS snapshot after startup undeploys", slog.Any("error", err))
+		}
+		cancel()
 	}
 
 	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)

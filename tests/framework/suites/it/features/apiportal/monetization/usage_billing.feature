@@ -16,13 +16,19 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@api-portal-usage-billing
+@APIPORTAL @api-portal-usage-billing
 Feature: Billing a plan by usage in the API Portal
   As an API Portal administrator selling a plan charged by usage
   I want the plan's meter and price created in Moesif when the plan goes on sale, and its usage billed
   So that what a developer sees as used is what Stripe charges, and a plan Moesif can't create is never sold
 
-  Background:
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
+  # Moesif's usage is reported through the testbench Moesif service, which bills it to the
+  # testbench Stripe service against the plan's price.
+
+  @APIP-043
+  Scenario: Usage Moesif counts is shown to the developer and billed by Stripe when they unsubscribe
+    # Usage Moesif counts is shown to the developer and billed by Stripe when they unsubscribe
     Given I send a "POST" request to the "stripe" service at "/test/reset"
     And I send a "POST" request to the "moesif" service at "/test/reset"
     And I authenticate using basic auth as "admin"
@@ -52,8 +58,6 @@ Feature: Billing a plan by usage in the API Portal
       | displayName         | ${CTX:apiHandle}      |
       | version             | ${CTX:apiVersion}     |
       | subscriptionPlanIds | ["${CTX:planHandle}"] |
-
-  Scenario: Usage Moesif counts is shown to the developer and billed by Stripe when they unsubscribe
     When I publish the "RestApi" "${CTX:apiHandle}" to the API Portal "${CTX:portalHandle}" through the control plane
     Then the response status code should be 201
     And I register API Portal resource "${CTX:planHandle}" at "/subscription-plans" for cleanup
@@ -98,8 +102,38 @@ Feature: Billing a plan by usage in the API Portal
     Then the response status code should be 200
     And the JSON response array "invoices" should contain an item with "total" equal to "5.00"
 
-  @type:negative
+  @APIP-041 @type:negative
   Scenario: A plan Moesif can't create is not put on sale, and nothing made for it is left in Moesif
+    # A plan Moesif can't create is not put on sale, and nothing made for it is left in Moesif
+    Given I send a "POST" request to the "stripe" service at "/test/reset"
+    And I send a "POST" request to the "moesif" service at "/test/reset"
+    And I authenticate using basic auth as "admin"
+    And I generate a unique resource name from "usage-billing-project" and store it as "projectHandle"
+    And I create a project "${CTX:projectHandle}" on the control plane
+    And I generate a unique resource name from "billed-calls" and store it as "meterId"
+    And I generate a unique resource name from "usage-plan" and store it as "planHandle"
+    And I send a "POST" request to the control plane at "/meters" with body:
+      """
+      {"id":"${CTX:meterId}","displayName":"Billed calls ${CTX:meterId}","type":"REQUEST_COUNT","filterFields":[{"field":"Status","eventKey":"response.status"}]}
+      """
+    And the response status code should be 201
+    And I send a "POST" request to the control plane at "/subscription-plans" with body:
+      """
+      {"id":"${CTX:planHandle}","displayName":"Metered ${CTX:planHandle}","status":"ACTIVE","limits":[{"limitType":"REQUEST_COUNT","timeUnit":"MINUTE","limitCount":600}],"pricing":{"pricingType":"USAGE_BASED","currency":"USD","billingPeriod":"MONTH","prices":[{"meterId":"${CTX:meterId}","filters":[{"field":"Status","operator":"EQUALS","values":["200"]}],"pricingModel":"PER_UNIT","unitAmount":"0.02","unitQuantity":1}]}}
+      """
+    And the response status code should be 201
+    And I generate a unique resource name from "usage-billing-api" and store it as "apiHandle"
+    And I generate a unique API context from "/usage-billing" and store it as "apiContext"
+    And I generate a unique API version from "v" and store it as "apiVersion"
+    And I create a secured REST API "${CTX:apiHandle}" via the control plane in project "${CTX:projectHandle}" with context "${CTX:apiContext}" offering plan "${CTX:planHandle}"
+    And I generate a unique resource name from "usage-billing-portal" and store it as "portalHandle"
+    And I register the API Portal "${CTX:portalHandle}" with the control plane
+    And I set up billing in the API Portal
+    And the response status code should be 201
+    And I save a publishable draft of the "RestApi" "${CTX:apiHandle}" on the API Portal "${CTX:portalHandle}" with values:
+      | displayName         | ${CTX:apiHandle}      |
+      | version             | ${CTX:apiVersion}     |
+      | subscriptionPlanIds | ["${CTX:planHandle}"] |
     Given I send a "POST" request to the "moesif" service at "/test/fail" with body:
       """
       {"method":"POST","path":"/v1/~/billing/meters","status":503}
