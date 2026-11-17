@@ -278,7 +278,7 @@ scenarios:
       refs:
         - feature: suites/it/features/gateway/routes/sandbox_routing.feature
           scenario: "Path params should route correctly with sandbox ref"
-        - feature: suites/it/features/gateway/routes/sandbox_routing.feature
+        - feature: suites/it/features/gateway/routes/sandbox_routing_wildcard.feature
           scenario: "Wildcard route should work with sandbox ref"
   - id: SVR-024
     title: "Send sandbox-host requests to an API with a policy for each upstream combination (url and url, ref and url, url and ref, ref and ref); the policy takes effect on sandbox requests in every combination, as on main."

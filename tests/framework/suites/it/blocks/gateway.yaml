@@ -123,6 +123,10 @@ blocks:
         tags: "~@known-issue"
         features:
           - features/gateway/routes/sandbox_routing.feature
+      - name: sandbox-routing-wildcard
+        tags: "gateway-version>=1.2.0"
+        features:
+          - features/gateway/routes/sandbox_routing_wildcard.feature
       - name: sandbox-upstream-first-url
         tags: "gateway-version<1.2.0"
         features:
