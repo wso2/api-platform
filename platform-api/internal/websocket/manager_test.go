@@ -230,3 +230,46 @@ func TestRegisterStillEnforcesTheGlobalLimit(t *testing.T) {
 		t.Fatalf("Register(gw-3) = %v, want ErrMaxConnectionsReached", err)
 	}
 }
+
+// TestCloseConnectionsForTokenClosesOnlyThatTokensSessions: revoking one token
+// ends the sessions it opened and leaves the gateway's other-token sessions open.
+func TestCloseConnectionsForTokenClosesOnlyThatTokensSessions(t *testing.T) {
+	m, _ := newTestManager(t, 10, -1)
+	revoked1, err := m.Register("gw-1", stubTransport{}, "token-a", "org-1")
+	if err != nil {
+		t.Fatalf("Register = %v", err)
+	}
+	revoked2, err := m.Register("gw-1", stubTransport{}, "token-a", "org-1")
+	if err != nil {
+		t.Fatalf("Register = %v", err)
+	}
+	kept, err := m.Register("gw-1", stubTransport{}, "token-b", "org-1")
+	if err != nil {
+		t.Fatalf("Register = %v", err)
+	}
+	other, err := m.Register("gw-2", stubTransport{}, "token-a", "org-1")
+	if err != nil {
+		t.Fatalf("Register = %v", err)
+	}
+
+	if got := m.CloseConnectionsForToken("gw-1", "token-a"); got != 2 {
+		t.Fatalf("CloseConnectionsForToken = %d, want 2", got)
+	}
+	for _, c := range []*Connection{revoked1, revoked2} {
+		if !c.IsClosed() {
+			t.Errorf("connection %s opened with the revoked token is still open", c.ConnectionID)
+		}
+		if err := c.Send([]byte("event")); !errors.Is(err, ErrConnectionClosed) {
+			t.Errorf("Send on revoked session = %v, want ErrConnectionClosed", err)
+		}
+	}
+	if kept.IsClosed() || other.IsClosed() {
+		t.Fatal("a session not opened with the revoked token of that gateway was closed")
+	}
+	if conns := m.GetConnections("gw-1"); len(conns) != 1 || conns[0] != kept {
+		t.Fatalf("gw-1 connections = %v, want only the token-b session", conns)
+	}
+	if got := m.CloseConnectionsForToken("gw-1", "token-a"); got != 0 {
+		t.Fatalf("second CloseConnectionsForToken = %d, want 0", got)
+	}
+}

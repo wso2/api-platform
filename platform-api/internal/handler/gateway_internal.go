@@ -123,7 +123,7 @@ func (h *GatewayInternalAPIHandler) authenticateRequest(w http.ResponseWriter, r
 		return "", "", false
 	}
 
-	gateway, err := h.gatewayService.VerifyToken(apiKey)
+	gateway, _, err := h.gatewayService.VerifyToken(apiKey)
 	if err != nil {
 		var appErr *apperror.Error
 		if errors.As(err, &appErr) && appErr.HTTPStatus == http.StatusUnauthorized {

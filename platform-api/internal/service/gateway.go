@@ -36,6 +36,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/utils"
+	ws "github.com/wso2/api-platform/platform-api/internal/websocket"
 
 	"github.com/google/uuid"
 )
@@ -80,6 +81,7 @@ type GatewayService struct {
 	enableFunctionalityTypeVerification bool
 	auditRepo                           repository.AuditRepository
 	identity                            *IdentityService
+	connections                         *ws.Manager
 }
 
 // NewGatewayService creates a new gateway service
@@ -100,6 +102,12 @@ func NewGatewayService(gatewayRepo repository.GatewayRepository, orgRepo reposit
 		auditRepo:                           auditRepo,
 		identity:                            identity,
 	}
+}
+
+// SetConnectionManager wires this replica's gateway WebSocket connections, so that
+// RevokeToken closes the sessions opened with a revoked token here before returning.
+func (s *GatewayService) SetConnectionManager(m *ws.Manager) {
+	s.connections = m
 }
 
 // GetStoredManifest returns the latest gateway manifest. Public gateway routes
@@ -855,33 +863,43 @@ func (s *GatewayService) DeleteGateway(gatewayID, orgID, deletedBy string) error
 	return nil
 }
 
-// VerifyToken verifies a plain-text token and returns the associated gateway
-func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, error) {
+// VerifyToken verifies a plain-text token and returns the associated gateway and the
+// ID of the matched token.
+func (s *GatewayService) VerifyToken(plainToken string) (*model.Gateway, string, error) {
 	if plainToken == "" {
-		return nil, apperror.Unauthorized.New().WithLogMessage("gateway token missing from request")
+		return nil, "", apperror.Unauthorized.New().WithLogMessage("gateway token missing from request")
 	}
 
 	// Hash the token and look it up directly in the database
 	tokenHash := hashToken(plainToken)
 	token, err := s.gatewayRepo.GetActiveTokenByHash(tokenHash)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query token: %w", err)
+		return nil, "", fmt.Errorf("failed to query token: %w", err)
 	}
 	if token == nil {
-		return nil, apperror.Unauthorized.New().WithLogMessage("no active gateway token matches the presented token hash")
+		return nil, "", apperror.Unauthorized.New().WithLogMessage("no active gateway token matches the presented token hash")
 	}
 
 	// Fetch the associated gateway
 	gateway, err := s.gatewayRepo.GetByUUID(token.GatewayID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query gateway: %w", err)
+		return nil, "", fmt.Errorf("failed to query gateway: %w", err)
 	}
 	if gateway == nil {
-		return nil, apperror.Unauthorized.New().
+		return nil, "", apperror.Unauthorized.New().
 			WithLogMessage(fmt.Sprintf("gateway %s referenced by an active token no longer exists", token.GatewayID))
 	}
 
-	return gateway, nil
+	return gateway, token.ID, nil
+}
+
+// IsTokenActive reports whether the gateway token with tokenID exists and is still active.
+func (s *GatewayService) IsTokenActive(tokenID string) (bool, error) {
+	token, err := s.gatewayRepo.GetTokenByUUID(tokenID)
+	if err != nil {
+		return false, fmt.Errorf("failed to query token: %w", err)
+	}
+	return token != nil && token.Status == constants.GatewayTokenStatusActive, nil
 }
 
 // ListTokens retrieves the active tokens for a gateway as a paginated list response.
@@ -1008,6 +1026,17 @@ func (s *GatewayService) RevokeToken(gatewayId, tokenId, orgId, revokedBy string
 
 	if err := s.gatewayRepo.RevokeToken(tokenId, revokedBy); err != nil {
 		return fmt.Errorf("failed to revoke token: %w", err)
+	}
+
+	// End the sessions opened with this token, and only those: here before returning,
+	// and on every other replica through the EventHub signal.
+	if s.connections != nil {
+		s.connections.CloseConnectionsForToken(gateway.ID, tokenId)
+	}
+	if err := s.gatewayEventsService.PublishGatewayTokenRevoked(gateway.ID, tokenId); err != nil {
+		// The token is revoked, but another replica may still hold a session opened with
+		// it; fail so the caller retries, which re-publishes the signal.
+		return fmt.Errorf("failed to signal replicas to close sessions of revoked token: %w", err)
 	}
 
 	return nil
