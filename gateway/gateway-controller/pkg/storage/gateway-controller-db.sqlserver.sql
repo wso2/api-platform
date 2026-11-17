@@ -192,6 +192,20 @@ CREATE TABLE dbo.llm_provider_templates (
     UNIQUE(gateway_id, handle)
 );
 
+-- Global Backends table (gateway-wide backends routed to by dynamic-endpoint)
+IF OBJECT_ID(N'dbo.backends', N'U') IS NULL
+CREATE TABLE dbo.backends (
+    uuid NVARCHAR(64) NOT NULL,
+    gateway_id NVARCHAR(64) NOT NULL,
+    handle NVARCHAR(255) NOT NULL,
+    configuration NVARCHAR(MAX) NOT NULL,
+    created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    PRIMARY KEY (gateway_id, uuid),
+    UNIQUE(gateway_id, handle),
+    FOREIGN KEY(gateway_id, uuid) REFERENCES dbo.artifacts(gateway_id, uuid) ON DELETE CASCADE
+);
+
 -- Table for API keys
 IF OBJECT_ID(N'dbo.api_keys', N'U') IS NULL
 CREATE TABLE dbo.api_keys (

@@ -16,6 +16,7 @@ import (
 	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/common/webhooksecret"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/apikeyxds"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/backend"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/encryption/aesgcm"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/eventlistener"
@@ -436,6 +437,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Global backends are loaded before the first snapshot, so the first CDS
+	// and lazy-resource pushes already hold every Backend.
+	backendStore := storage.NewBackendStore()
+	var backendSyncer *backend.Syncer
+	backendDB, backendsSupported := storage.AsBackendStorage(db)
+	if backendsSupported {
+		backendPublisher := backend.NewPublisher(backendStore, lazyResourceXDSManager)
+		backendSyncer = backend.NewSyncer(backendDB, backendStore, snapshotManager, backendPublisher, log)
+		if err := backendSyncer.LoadAll(); err != nil {
+			log.Error("Refusing to start: global backends could not be loaded", slog.Any("error", err))
+			os.Exit(1)
+		}
+		if err := backendPublisher.Publish(""); err != nil {
+			log.Error("Refusing to start: global backends could not be published", slog.Any("error", err))
+			os.Exit(1)
+		}
+	} else {
+		log.Warn("Storage backend does not support global backends; /backends is disabled")
+	}
+
 	// The SDS secret manager serves the listener certificate, gateway
 	// identities and the upstream trust bundle from the certificate store.
 	// Without an encryption provider, gateway identity secrets fail to build
@@ -520,6 +541,14 @@ func main() {
 			envoyTransformers[kind] = transformerRegistry
 		}
 		translator.SetTransformers(envoyTransformers)
+		if backendSyncer != nil {
+			translator.SetBackendSource(transform.NewBackendClusterSource(backendSyncer.ClusterView(), log))
+			// Records are published only for Backend revisions in an applied snapshot, so the
+			// syncer learns about every applied snapshot, whichever change triggered it.
+			snapshotManager.SetAfterApply(backendSyncer.SnapshotApplied)
+		} else {
+			translator.SetBackendSource(transform.NewBackendClusterSource(backendStore, log))
+		}
 	}
 
 	// Load runtime configs from existing API configurations on startup, before the
@@ -737,7 +766,26 @@ func main() {
 	)
 	agentSvc.SetControlPlanePusher(cpClient, cfg.Controller.ControlPlane.DeploymentSyncEnabled)
 
+	var backendService *backend.Service
+	if backendSyncer != nil {
+		// The trust-bundle check backs the TLS_NO_TRUST_SOURCE warning on create and update.
+		backendValidator := config.NewBackendValidator(upstreamTLSValidator).WithTrustBundleCheck(func() bool {
+			return len(certStore.GetCombinedCertificates()) > 0
+		})
+		backendService = backend.NewService(backend.ServiceConfig{
+			DB:                backendDB,
+			Validator:         backendValidator,
+			PolicyDefinitions: policyDefinitions,
+			DeployedRestAPIs:  backend.DeployedRestAPIsFrom(db, configStore),
+			Syncer:            backendSyncer,
+			Events:            eventHubInstance,
+			GatewayID:         gatewayID,
+			Logger:            log,
+		})
+	}
+
 	igw := immutable.NewImmutableGW(cfg.ImmutableGateway, restAPIService, llmSvc, mcpSvc, agentSvc)
+	igw.SetBackendService(backendService)
 
 	// Per-route middlewares: auth runs first, then authz (needs r.Pattern set by mux).
 	// The generated wrapper applies middlewares via `handler = mw(handler)`, so the
@@ -767,6 +815,9 @@ func main() {
 		secretsService,
 		policyVersionResolver,
 	)
+	if backendSyncer != nil {
+		evtListener.SetBackendEventHandler(backendSyncer)
+	}
 	if err := evtListener.Start(); err != nil {
 		log.Error("Failed to start event listener", slog.Any("error", err))
 		os.Exit(1)
@@ -801,6 +852,9 @@ func main() {
 	}
 	// Without an encryption provider, gateway identity uploads are refused.
 	apiServer.SetEncryptionManager(encryptionProviderManager)
+	if backendService != nil {
+		apiServer.SetBackendService(backendService)
+	}
 
 	// Recompute certificate metrics and expiry warnings at startup and then
 	// every 24h.
@@ -1100,6 +1154,12 @@ func generateAuthConfig(config *config.Config) (commonmodels.AuthConfig, error) 
 		"GET /graphql-apis/{id}":    {"admin", "developer"},
 		"PUT /graphql-apis/{id}":    {"admin", "developer"},
 		"DELETE /graphql-apis/{id}": {"admin", "developer"},
+
+		"POST /backends":        {"admin"},
+		"GET /backends":         {"admin", "developer"},
+		"GET /backends/{id}":    {"admin", "developer"},
+		"PUT /backends/{id}":    {"admin"},
+		"DELETE /backends/{id}": {"admin"},
 
 		"POST /llm-provider-templates":        {"admin"},
 		"GET /llm-provider-templates":         {"admin"},

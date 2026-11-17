@@ -137,6 +137,41 @@ type Translator struct {
 	// transform.GatewayJWKSRuntimeConfig), so Envoy never routes to a chain the
 	// policy engine does not have.
 	gatewayJWKSRoute bool
+
+	// backendSource lists the gateway-wide Backends; each becomes one cluster,
+	// backend_<name>, in every snapshot. Nil when the binary serves none.
+	backendSource BackendClusterSource
+}
+
+// BackendCluster is one gateway-wide Backend, already converted to the upstream-cluster model
+// an upstreamDefinitions entry is converted to.
+type BackendCluster struct {
+	// Name is the Backend's metadata.name.
+	Name string
+	// ClusterName is the Envoy cluster name, backend_<name>.
+	ClusterName string
+	// Upstream is the cluster's targets, TLS and connect timeout.
+	Upstream *models.UpstreamCluster
+}
+
+// BackendClusterSource lists the gateway-wide Backends to emit as clusters. Implementations
+// skip (and log) a Backend that cannot be converted, so one bad Backend never blocks the
+// snapshot.
+type BackendClusterSource interface {
+	BackendClusters() []BackendCluster
+}
+
+// BackendClusterObserver is implemented by a BackendClusterSource that needs to know which
+// Backends' clusters a translation built. A Backend whose cluster was skipped is left out, so
+// nothing treats it as being in the snapshot.
+type BackendClusterObserver interface {
+	BackendClustersBuilt(names []string)
+}
+
+// SetBackendSource sets where the translator reads the gateway-wide Backends from. Set once at
+// startup, before the first snapshot.
+func (t *Translator) SetBackendSource(source BackendClusterSource) {
+	t.backendSource = source
 }
 
 // SetGatewayJWKSRoute enables the gateway JWKS route on every virtual host. Set
@@ -313,35 +348,12 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 		if len(uc.Endpoints) == 0 {
 			continue
 		}
-		// Per-upstream connect timeout resolved by the transformer from
-		// upstreamDefinitions.timeout.connect; nil falls back to the router default
-		// inside createCluster/createWeightedCluster.
-		connectTimeout := uc.ConnectTimeout
-
 		// "" means the definition uses the gateway-wide trust bundle.
 		var validationSecretName string
 		if uc.TLS != nil && uc.TLS.HasTLSBlock && len(uc.TLS.TrustedCANames) > 0 {
 			validationSecretName = UpstreamCAValidationContextSecretName(rdc.Metadata.Handle, uc.Name)
 		}
-
-		if len(uc.Endpoints) == 1 {
-			ep := uc.Endpoints[0]
-			parsedURL := &url.URL{
-				Scheme: "http",
-				Host:   net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port)),
-				Path:   uc.BasePath,
-			}
-			if uc.TLS != nil && uc.TLS.Enabled {
-				parsedURL.Scheme = "https"
-			}
-			c, err := t.createCluster(clusterName, parsedURL, nil, connectTimeout, uc.TLS, validationSecretName)
-			if err != nil {
-				return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
-			}
-			clusters = append(clusters, c)
-			continue
-		}
-		c, err := t.createWeightedCluster(clusterName, uc.Endpoints, uc.TLS, connectTimeout, validationSecretName)
+		c, err := t.buildUpstreamCluster(clusterName, uc, validationSecretName)
 		if err != nil {
 			return nil, nil, fmt.Errorf("upstream cluster %q: %w", clusterName, err)
 		}
@@ -369,6 +381,75 @@ func (t *Translator) translateRuntimeConfig(rdc *models.RuntimeDeployConfig) ([]
 	}
 
 	return routes, clusters, nil
+}
+
+// buildUpstreamCluster turns one upstream-cluster model — an upstreamDefinitions entry or a
+// gateway-wide Backend — into an Envoy cluster: a plain cluster for one target, a weighted
+// cluster for several. validationSecretName is the SDS secret for a non-empty
+// tls.TrustedCANames, or "" when the gateway-wide trust bundle applies.
+func (t *Translator) buildUpstreamCluster(clusterName string, uc *models.UpstreamCluster, validationSecretName string) (*cluster.Cluster, error) {
+	if uc == nil || len(uc.Endpoints) == 0 {
+		return nil, fmt.Errorf("upstream cluster %q has no targets", clusterName)
+	}
+	// Per-upstream connect timeout resolved from timeout.connect; nil falls back to the router
+	// default inside createCluster/createWeightedCluster.
+	connectTimeout := uc.ConnectTimeout
+
+	if len(uc.Endpoints) == 1 {
+		ep := uc.Endpoints[0]
+		parsedURL := &url.URL{
+			Scheme: "http",
+			Host:   net.JoinHostPort(ep.Host, strconv.Itoa(ep.Port)),
+			Path:   uc.BasePath,
+		}
+		if uc.TLS != nil && uc.TLS.Enabled {
+			parsedURL.Scheme = "https"
+		}
+		return t.createCluster(clusterName, parsedURL, nil, connectTimeout, uc.TLS, validationSecretName)
+	}
+	return t.createWeightedCluster(clusterName, uc.Endpoints, uc.TLS, connectTimeout, validationSecretName)
+}
+
+// addBackendClusters emits one cluster per gateway-wide Backend, whether or not any API can
+// reach it yet, and records the SDS secrets their tls blocks reference. A Backend whose cluster
+// cannot be built is skipped and logged; the rest of the snapshot is unaffected. A source that
+// observes the result is told which Backends' clusters were built.
+func (t *Translator) addBackendClusters(log *slog.Logger, clusterMap map[string]*cluster.Cluster) {
+	if t.backendSource == nil {
+		return
+	}
+	built := []string{}
+	if observer, ok := t.backendSource.(BackendClusterObserver); ok {
+		defer func() { observer.BackendClustersBuilt(built) }()
+	}
+	for _, ec := range t.backendSource.BackendClusters() {
+		if ec.Upstream == nil {
+			log.Error("Skipping a global backend without an upstream; requests routed to it get 503",
+				slog.String("backend", ec.Name))
+			continue
+		}
+		var validationSecretName string
+		tls := ec.Upstream.TLS
+		if tls != nil && tls.HasTLSBlock && len(tls.TrustedCANames) > 0 {
+			validationSecretName = BackendCAValidationContextSecretName(ec.Name)
+		}
+		c, err := t.buildUpstreamCluster(ec.ClusterName, ec.Upstream, validationSecretName)
+		if err != nil {
+			log.Error("Failed to build the cluster of a global backend; requests routed to it get 503 until it is fixed",
+				slog.String("backend", ec.Name), slog.Any("error", err))
+			continue
+		}
+		clusterMap[c.Name] = c
+		built = append(built, ec.Name)
+		if tls != nil && tls.HasTLSBlock && (tls.IdentityName != "" || len(tls.TrustedCANames) > 0) {
+			t.tlsSecretRefs = append(t.tlsSecretRefs, UpstreamTLSSecretRef{
+				IdentityName:             tls.IdentityName,
+				TrustedCANames:           tls.TrustedCANames,
+				ValidationContextSecret:  validationSecretName,
+				ValidationContextSubject: "backend " + ec.Name,
+			})
+		}
+	}
 }
 
 // routeTimeoutOrDefault returns the per-route timeout when configured (including an
@@ -1006,6 +1087,9 @@ func (t *Translator) TranslateConfigs(
 			clusterMap[c.Name] = c
 		}
 	}
+
+	// Gateway-wide Backends: one cluster each, independent of any API.
+	t.addBackendClusters(log, clusterMap)
 
 	// Group routes by vhost. Pre-seed the wildcard vhost so no-api-found is
 	// always present even when no APIs are deployed.

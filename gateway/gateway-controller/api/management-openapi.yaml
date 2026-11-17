@@ -2637,6 +2637,230 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /backends:
+    post:
+      summary: Create a global backend
+      description: >
+        Add a gateway-wide Backend. The gateway turns it into one Envoy cluster,
+        backend_<name>, that any API using the dynamic-endpoint policy can route to
+        without the API being edited or redeployed.
+      operationId: createBackend
+      x-basicauth-roles: [admin]
+      tags:
+        - Backend Management
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/BackendRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BackendRequest'
+      responses:
+        '201':
+          description: Backend created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Backend'
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - a Backend with the same name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: List global backends
+      description: List the gateway-wide Backends. Developers can read them to see the names and labels their APIs can select.
+      operationId: listBackends
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Backend Management
+      responses:
+        '200':
+          description: List of Backends
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  count:
+                    type: integer
+                    example: 1
+                  backends:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Backend'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /backends/{id}:
+    get:
+      summary: Get a global backend
+      description: Get a gateway-wide Backend by its name.
+      operationId: getBackendById
+      x-basicauth-roles: [admin, developer]
+      tags:
+        - Backend Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The Backend name (metadata.name)
+          schema:
+            type: string
+          example: tenant-a
+      responses:
+        '200':
+          description: Backend details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Backend'
+        '404':
+          description: Backend not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Update a global backend
+      description: >
+        Update a gateway-wide Backend. The gateway rebuilds the Backend's cluster from
+        its endpoints, weights, TLS settings and timeout, and then reconciles the record
+        the policy engine reads (name, base path and labels), pushing it again only when
+        it changed. The APIs that route to the Backend pick up the change without being
+        edited or redeployed.
+      operationId: updateBackend
+      x-basicauth-roles: [admin]
+      tags:
+        - Backend Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The Backend name (metadata.name)
+          schema:
+            type: string
+          example: tenant-a
+      requestBody:
+        required: true
+        content:
+          application/yaml:
+            schema:
+              $ref: '#/components/schemas/BackendRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BackendRequest'
+      responses:
+        '200':
+          description: Backend updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Backend'
+        '400':
+          description: Invalid configuration (validation failed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Backend not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete a global backend
+      description: >
+        Delete a gateway-wide Backend. Refused with 409 while a deployed API names it
+        as a fixed target (a policy parameter such as dynamic-endpoint's targetUpstream)
+        and has no upstream definition of that name. Requests whose backendExpression
+        selects a deleted Backend get 400 afterwards and are never misrouted.
+      operationId: deleteBackend
+      x-basicauth-roles: [admin]
+      tags:
+        - Backend Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The Backend name (metadata.name)
+          schema:
+            type: string
+          example: tenant-a
+      responses:
+        '200':
+          description: Backend deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Backend deleted successfully
+                  id:
+                    type: string
+                    example: tenant-a
+        '404':
+          description: Backend not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict - the Backend is the fixed target of deployed APIs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /llm-providers:
     post:
       summary: Create a new LLM provider
@@ -4063,6 +4287,7 @@ components:
             - MTLS_HOSTNAME_NOT_SCOPED
             - TLS_VERIFY_HOSTNAME_DISABLED
             - TLS_IDENTITY_EXPIRED
+            - TLS_NO_TRUST_SOURCE
           example: TLS_VERIFY_HOSTNAME_DISABLED
         field:
           type: string
@@ -4531,6 +4756,151 @@ components:
             identity: partner-identity
             trustedCAs: [partner-ca]
             verifyHostName: true
+
+    BackendRequest:
+      type: object
+      required:
+        - apiVersion
+        - kind
+        - metadata
+        - spec
+      properties:
+        apiVersion:
+          type: string
+          description: Backend specification version
+          example: gateway.choreolabs.com/v1
+          enum:
+            - gateway.choreolabs.com/v1
+        kind:
+          type: string
+          description: Resource kind
+          example: Backend
+          enum:
+            - Backend
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        spec:
+          $ref: '#/components/schemas/BackendConfiguration'
+      example:
+        apiVersion: gateway.choreolabs.com/v1
+        kind: Backend
+        metadata:
+          name: tenant-a
+          labels:
+            team: orders
+        spec:
+          displayName: Orders backend for tenant A
+          basePath: /v1
+          endpoints:
+            - url: http://orders-tenant-a:9080
+          timeout:
+            connect: 2s
+
+    Backend:
+      allOf:
+        - $ref: '#/components/schemas/BackendRequest'
+        - type: object
+          properties:
+            status:
+              readOnly: true
+              description: >
+                Server-managed lifecycle fields. Populated on responses. status.id is
+                the Backend's metadata.name. Create and update responses add
+                status.warnings when the Backend's tls settings warrant one.
+              allOf:
+                - $ref: '#/components/schemas/ResourceStatus'
+      example:
+        apiVersion: gateway.choreolabs.com/v1
+        kind: Backend
+        metadata:
+          name: tenant-a
+          labels:
+            team: orders
+        spec:
+          displayName: Orders backend for tenant A
+          basePath: /v1
+          endpoints:
+            - url: http://orders-tenant-a:9080
+          timeout:
+            connect: 2s
+        status:
+          id: tenant-a
+          state: deployed
+          createdAt: 2026-04-24T07:21:13Z
+          updatedAt: 2026-04-24T07:21:13Z
+
+    BackendConfiguration:
+      type: object
+      required:
+        - endpoints
+      description: >
+        A gateway-wide backend. It carries the fields of an upstreamDefinitions entry,
+        with its target URLs under `endpoints`. metadata.name names it: 3 to 40
+        characters matching ^[a-z0-9]+(-[a-z0-9]+)*$ (lowercase letters and digits, with
+        single hyphens between them). metadata.labels are what a dynamic-endpoint
+        backendSelector matches.
+      properties:
+        displayName:
+          type: string
+          description: Human-readable name
+          maxLength: 253
+          example: Orders backend for tenant A
+        description:
+          type: string
+          description: Free-form description
+          maxLength: 1023
+        basePath:
+          type: string
+          description: Base path prefixed to every request routed to this Backend, after the API context is stripped. Must start with '/' and must not end with '/'; omit for root.
+          pattern: '^/[a-zA-Z0-9\-._~!$&''()*+,;=:@%/]*[^/]$'
+          example: /v1
+        timeout:
+          $ref: "#/components/schemas/UpstreamTimeout"
+        endpoints:
+          type: array
+          description: >
+            The Backend's endpoint URLs, with optional weights for load balancing. All
+            endpoints of a Backend must use the same scheme, all http:// or all https://,
+            with or without `tls`; a Backend carrying `tls` must use https://.
+          minItems: 1
+          items:
+            type: object
+            required:
+              - url
+            properties:
+              url:
+                type: string
+                format: uri
+                description: Backend URL (host and port only, path comes from basePath)
+                example: http://prod-backend-1:5000
+              weight:
+                type: integer
+                description: Relative weight of this endpoint; requests are spread across all of the Backend's endpoints in proportion to their weights. Omitted or 0 counts as 1.
+                minimum: 0
+                maximum: 100
+                example: 80
+        tls:
+          type: object
+          description: >
+            Optional mutual-TLS presentation and trust for this backend, with the
+            same keys as an upstreamDefinitions entry: `identity`, `trustedCAs` and
+            `verifyHostName`. Every endpoint of a Backend carrying `tls` must use
+            https://. Unknown keys are rejected.
+          additionalProperties: true
+      example:
+        displayName: Billing backend (EU)
+        basePath: /v2
+        timeout:
+          connect: 2s
+        endpoints:
+          - url: https://billing-eu-1.internal.example.com:8443
+            weight: 70
+          - url: https://billing-eu-2.internal.example.com:8443
+            weight: 30
+        tls:
+          identity: gateway-billing
+          trustedCAs: [billing-ca]
+          verifyHostName: true
 
     UpstreamTimeout:
       type: object
@@ -7818,6 +8188,8 @@ tags:
     description: Manage custom TLS certificates for HTTPS upstream verification
   - name: LLM Provider Template Management
     description: CRUD operations for LLM Provider Template configurations
+  - name: Backend Management
+    description: CRUD operations for gateway-wide Backends that APIs route to through the dynamic-endpoint policy
   - name: LLM Provider Management
     description: CRUD operations for LLM Provider configurations
   - name: LLM Proxy Management
