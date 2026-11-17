@@ -4237,3 +4237,33 @@ func TestWaitForAnalyticsEventWaitsForTheStatus(t *testing.T) {
 	defer cancel()
 	require.Error(t, gateway.waitForAnalyticsEvent(short, "/shop/v1.0/items/42", 500))
 }
+
+func TestReplaceTOMLStringChangesOnlyTheKeyInItsSection(t *testing.T) {
+	content := "[router.vhosts.main]\ndefault = \"*.wso2.com\"\n\n[router.vhosts.sandbox]\ndefault = '*-sandbox.wso2.com'\n"
+	got, err := replaceTOMLString(content, "router.vhosts.main.default", "*.wso2.com", "*.example.org")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "[router.vhosts.main]\ndefault = \"*.example.org\"\n\n[router.vhosts.sandbox]\ndefault = '*-sandbox.wso2.com'\n"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	got, err = replaceTOMLString(content, "router.vhosts.sandbox.default", "*-sandbox.wso2.com", "*-sandbox.example.org")
+	if err != nil || got != "[router.vhosts.main]\ndefault = \"*.wso2.com\"\n\n[router.vhosts.sandbox]\ndefault = \"*-sandbox.example.org\"\n" {
+		t.Fatalf("single-quoted value: got %q, %v", got, err)
+	}
+}
+
+func TestReplaceTOMLStringRefusesWhatItCannotChangeExactly(t *testing.T) {
+	for name, tc := range map[string]struct{ content, key, from string }{
+		"missing key":     {"[router.vhosts.main]\nother = \"x\"\n", "router.vhosts.main.default", "x"},
+		"other section":   {"[router.vhosts.sandbox]\ndefault = \"x\"\n", "router.vhosts.main.default", "x"},
+		"different value": {"[router.vhosts.main]\ndefault = \"y\"\n", "router.vhosts.main.default", "x"},
+		"set twice":       {"[router.vhosts.main]\ndefault = \"x\"\ndefault = \"x\"\n", "router.vhosts.main.default", "x"},
+		"no section":      {"default = \"x\"\n", "default", "x"},
+	} {
+		if _, err := replaceTOMLString(tc.content, tc.key, tc.from, "z"); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+}

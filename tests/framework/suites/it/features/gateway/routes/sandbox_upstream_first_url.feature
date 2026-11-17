@@ -16,7 +16,7 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@sandbox-upstream-first-url
+@SVR @sandbox-upstream-first-url
 Feature: Sandbox upstream first URL selection
   As an API developer
   I want the first configured upstream URL to serve sandbox traffic
@@ -26,6 +26,7 @@ Feature: Sandbox upstream first URL selection
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
 
+  @SVR-022
   Scenario: Sandbox ref with multiple URLs should use the first URL
     Given I generate a unique value from "sandbox-routing-first-url-multi" and store it as "firstURLAPIName"
     And I generate a unique API context from "/sandbox-routing-first-url-multi" and store it as "firstURLAPIContext"
