@@ -155,6 +155,10 @@ type PlatformGatewayWiring struct {
 	// SigningKeys gives the runtime the fixed integration-test signing keys at
 	// /secrets/gateway-runtime/signing. The block's overlay configures them under [signing].
 	SigningKeys bool `yaml:"signingKeys"`
+	// CustomPolicies makes the controller load the integration-test policy definitions under
+	// resources/custom-policies, and report all but it-builtin as custom policies. It needs the
+	// one-controller gateway.
+	CustomPolicies bool `yaml:"customPolicies"`
 	// SecondOrganizationReplicas lists the replicas, numbered from 1 as in platform-gateway#2,
 	// that register in the control plane's second organization instead of the default one.
 	SecondOrganizationReplicas []int `yaml:"secondOrganizationReplicas"`

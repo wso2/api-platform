@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -883,6 +884,9 @@ func applyUpstreamURLOverride(
 	if err := validateEndpointURL(endpoint); err != nil {
 		return apperror.LLMProviderDeploymentValidationFailed.New(fmt.Sprintf(
 			"Metadata %q is not a valid endpoint URL: %s.", constants.MetadataKeyEndpointUrl, err))
+	}
+	if err := checkURLField(context.Background(), "", "metadata."+constants.MetadataKeyEndpointUrl, endpoint); err != nil {
+		return err
 	}
 	providerDeployment.Spec.Upstream.URL = endpoint
 	providerDeployment.Spec.Upstream.Ref = ""

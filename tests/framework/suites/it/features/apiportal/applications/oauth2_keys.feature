@@ -23,7 +23,7 @@ Feature: Developers obtain OAuth2 credentials and tokens through the API Portal
   I want to link the OAuth2 clients I own to my applications and get tokens with them
   So that I can call OAuth2-secured APIs in production and sandbox, and the portal never keeps my secret
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level.
   # Key managers point at this scenario's partition of the testbench OAuth2 mock, whose fixed client is
   # "test-client" / "test-secret" — a mock credential, never a real one. The portal must never echo
   # or store the secret. Importing a client uses a "provision" key manager, which registers nothing

@@ -15,11 +15,27 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-const axios = require('axios');
 const logger = require('../config/logger');
 const { CustomError } = require('../utils/errors/customErrors');
-const { config } = require('../config/configLoader');
-const { buildOutboundAgents } = require('../config/httpClientOptions');
+const { buildClient } = require('../keymanagers/core/httpClient');
+const { DB_CLIENT_POLICY } = require('./keyManagerDriverBuilder');
+
+/*
+ * The token endpoint comes from a key manager created through the API, so the
+ * request goes through the same guarded client as every other call to one:
+ * address ranges checked when the host resolves, network access control
+ * applied, no redirects followed (the developer's client secret must not follow
+ * a 3xx to another host), and a bounded response. Built once and reused.
+ */
+let tokenClient = null;
+function client() {
+    if (!tokenClient) tokenClient = buildClient(DB_CLIENT_POLICY);
+    return tokenClient;
+}
+
+function isRefusedDestination(error) {
+    return error?.code === 'DESTINATION_NOT_ALLOWED' || error?.cause?.code === 'DESTINATION_NOT_ALLOWED';
+}
 
 /**
  * Proxy a client_credentials token request to a key manager's token endpoint.
@@ -45,16 +61,16 @@ async function generateToken(tokenEndpoint, clientId, clientSecret, scopes, vali
     }
 
     try {
-        const agents = buildOutboundAgents(config);
-        const response = await axios.post(tokenEndpoint, params, {
+        const response = await client().post(tokenEndpoint, params, {
             auth: {
                 username: clientId,
                 password: clientSecret,
             },
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             timeout: 5000,
-            httpAgent: agents.httpAgent,
-            httpsAgent: agents.httpsAgent,
+            // The shared client hands every status back; this caller treats a
+            // non-2xx (including an unfollowed 3xx) as a failure.
+            validateStatus: (status) => status >= 200 && status < 300,
         });
         return {
             accessToken: response.data.access_token,
@@ -75,6 +91,9 @@ async function generateToken(tokenEndpoint, clientId, clientSecret, scopes, vali
         // fault, so they surface as a 500.
         // The reply names no host or client error text, which can reveal internal addresses; the log
         // above has the details.
+        if (isRefusedDestination(error)) {
+            throw new CustomError(422, 'Token generation failed: the key manager endpoint is not permitted.');
+        }
         const upstreamStatus = error.response?.status;
         const clientError = upstreamStatus >= 400 && upstreamStatus < 500;
         throw new CustomError(clientError ? upstreamStatus : 500, clientError

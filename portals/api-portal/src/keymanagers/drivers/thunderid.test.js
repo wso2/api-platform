@@ -353,7 +353,7 @@ test('the upstream URL and body stay in detail, never in the public reason', asy
 });
 
 test('a transport failure is reported as unreachable, not as a rejection', async () => {
-    // DNS failure, refused connection, TLS mismatch, or the SSRF guard refusing
+    // DNS failure, refused connection, TLS mismatch, or the destination guard refusing
     // the resolved address at dial time all land here.
     const { km } = driver(new Error('getaddrinfo ENOTFOUND idp.example.com'));
     await assert.rejects(() => km.createKey({ client_name: 'x' }), (err) => {

@@ -22,18 +22,19 @@ package apperror
 // the fallback used by NewErrorResponse when a handler hasn't been
 // migrated to a more specific domain code via NewErrorResponseWithCode.
 const (
-	CodeCommonValidationFailed     = "VALIDATION_FAILED"
-	CodeCommonUnauthorized         = "UNAUTHORIZED"
-	CodeCommonForbidden            = "FORBIDDEN"
-	CodeCommonNotFound             = "NOT_FOUND"
-	CodeCommonConflict             = "CONFLICT"
-	CodeCommonNotAcceptable        = "NOT_ACCEPTABLE"
-	CodeCommonUnprocessableEntity  = "UNPROCESSABLE_ENTITY"
-	CodeCommonInternalError        = "INTERNAL_ERROR"
-	CodeCommonServiceUnavailable   = "SERVICE_UNAVAILABLE"
-	CodeCommonTooManyRequests      = "TOO_MANY_REQUESTS"
-	CodeCommonPayloadTooLarge      = "PAYLOAD_TOO_LARGE"
-	CodeCommonUnsupportedMediaType = "UNSUPPORTED_MEDIA_TYPE"
+	CodeCommonValidationFailed      = "VALIDATION_FAILED"
+	CodeCommonUnauthorized          = "UNAUTHORIZED"
+	CodeCommonForbidden             = "FORBIDDEN"
+	CodeCommonNotFound              = "NOT_FOUND"
+	CodeCommonConflict              = "CONFLICT"
+	CodeCommonNotAcceptable         = "NOT_ACCEPTABLE"
+	CodeCommonUnprocessableEntity   = "UNPROCESSABLE_ENTITY"
+	CodeCommonInternalError         = "INTERNAL_ERROR"
+	CodeCommonServiceUnavailable    = "SERVICE_UNAVAILABLE"
+	CodeCommonTooManyRequests       = "TOO_MANY_REQUESTS"
+	CodeCommonPayloadTooLarge       = "PAYLOAD_TOO_LARGE"
+	CodeCommonUnsupportedMediaType  = "UNSUPPORTED_MEDIA_TYPE"
+	CodeCommonDestinationNotAllowed = "DESTINATION_NOT_ALLOWED"
 )
 
 // LLM provider/proxy domain codes, matching the examples documented in

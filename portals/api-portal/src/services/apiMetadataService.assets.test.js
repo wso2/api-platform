@@ -48,7 +48,7 @@ process.argv.push('--config', cfgFile);
 const db = require('../db/driver');
 const apiDao = require('../dao/apiDao');
 const apiFileDao = require('../dao/apiFileDao');
-const { createZip } = require('../../it/rest-api/support/zipBuilder');
+const { createZip } = require('../../test-support/zipBuilder');
 const {
     extractApiContentFromUploadedZip,
     createAPIMetadata,

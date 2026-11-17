@@ -16,17 +16,25 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal API listing
+@APIPORTAL
+Feature: API Portal catalogue browsing and search
+  Journey APIPUI-002: a developer browses and searches the APIs page. Cards show each API's type,
+  tags, plan count and AI Ready and Deprecated badges; search finds only the matching API and never
+  an MCP server; a view without APIs shows an empty state.
 
-  Background:
+  @APIP-006 @APIP-007
+  Scenario: Journey: a developer browses and searches the API catalogue
     Given the user is signed in to the API Portal
-    And the API Portal has API listing fixtures
-
-  Scenario: The API listing shows REST and GraphQL APIs but not MCP
-    When the API listing shows REST and GraphQL APIs but not MCP
-
-  Scenario: Searching the API listing returns only the GraphQL API
-    When the API listing search returns only the GraphQL API
-
-  Scenario: Searching the API listing excludes the MCP server
-    When the API listing search excludes the MCP server
+    And the API Portal has catalogue fixtures
+    When the developer signs in to the API Portal
+    And the developer subscribes to the catalogue REST API
+    And the user opens the API listing
+    Then each catalogue API card shows its type, tags, plan count and badges, and no MCP server is listed
+    When the user searches the API listing for the catalogue GraphQL API
+    Then the API listing shows only the catalogue GraphQL API, counted once
+    When the user clears the API listing search
+    Then the API listing shows every catalogue API again
+    When the user searches the API listing for the catalogue MCP server
+    Then the API listing shows no catalogue API
+    When the user opens the API listing of a view with no APIs
+    Then the API listing shows that no APIs are available yet

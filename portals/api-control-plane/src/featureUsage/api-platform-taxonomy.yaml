@@ -16,7 +16,7 @@ schema:
 
 product:
   id: "apip"
-  name: "WSO2 API Platform"
+  name: "API Platform"
   version: "0.9.0"
   description: "AI-ready, GitOps-driven API platform for full lifecycle management across cloud, hybrid, and on-premises deployments."
   category: "api-management"
@@ -116,7 +116,7 @@ features:
           description: "The API Platform UI the action was taken in."
         - name: "entry_point"
           type: "enum"
-          values: ["api-list", "api-list-empty-state", "org-home", "project-quick-actions", "direct"]
+          values: ["api-list", "api-list-empty-state", "org-home", "project-quick-actions", "header-breadcrumb", "direct"]
           required: true
       aggregations:
         - type: "count"
@@ -1119,6 +1119,36 @@ features:
         - type: "count_distinct"
           label: "Distinct Install Methods Used"
           dimension: "install_method"
+
+  - code: "apip.gateway.custom-policy-sync-click"
+    name: "Gateway Custom Policy Sync Click"
+    description: "Sync a custom policy installed on a gateway into the organization, from the gateway's Policies tab, so that APIs can use it. Emitted by the console."
+    category: "gateway"
+    tier: "core"
+    status: "stable"
+    availability:
+      introduced_in: "0.9.0"
+    tracking:
+      event_name: "apip.gateway.custom-policy-sync-click"
+      event_category: "adoption"
+      platforms: ["web"]
+      dimensions:
+        - name: "portal"
+          type: "enum"
+          values: ["api-control-plane"]
+          required: true
+          description: "The API Platform UI the action was taken in."
+        - name: "sync_kind"
+          type: "enum"
+          values: ["add", "update"]
+          required: true
+          description: "add for a major version the organization does not hold yet; update for a higher minor version of one it holds."
+      aggregations:
+        - type: "count"
+          label: "Gateway Custom Policy Sync Click"
+        - type: "count_distinct"
+          label: "Sync Kinds"
+          dimension: "sync_kind"
 
   - code: "apip.gateway.download-manifest"
     name: "Gateway Manifest Download"

@@ -20,7 +20,12 @@ import { useCallback } from 'react';
 
 import { useAuth } from '@/contexts/auth/AuthProvider';
 import { trackFeatureUsage } from './collector';
-import type { ApiPlatformFeatureCode, FeatureDimensionArgs } from './taxonomy';
+import {
+  isFeatureCode,
+  type ApiPlatformFeatureCode,
+  type FeatureDimensionArgs,
+  type FeatureDimensions,
+} from './taxonomy';
 
 export type TrackFeature = <C extends ApiPlatformFeatureCode>(
   code: C,
@@ -43,6 +48,34 @@ export function useTrackFeature(): TrackFeature {
 
   return useCallback<TrackFeature>(
     (code, ...[dimensions]) => trackFeatureUsage(code, dimensions, { companyId, userId }),
+    [companyId, userId],
+  );
+}
+
+/** {@link TrackFeature} for code that cannot see the taxonomy's types. */
+export type TrackFeatureByName = (
+  code: string,
+  dimensions?: Readonly<Record<string, string>>,
+) => void;
+
+/**
+ * Returns `trackFeature(code, dimensions)` taking the code as a plain string,
+ * for the extensions the host port is handed to (cloud pages that replace a
+ * built-in one and report its features). A code the taxonomy doesn't list as a
+ * console feature is dropped, and so is any dimension or value the feature
+ * doesn't declare (`featureMetadata`), so an extension can report only what a
+ * built-in page could.
+ */
+export function useTrackFeatureByName(): TrackFeatureByName {
+  const { user } = useAuth();
+  const userId = user?.id;
+  const companyId = user?.org?.id;
+
+  return useCallback<TrackFeatureByName>(
+    (code, dimensions) => {
+      if (!isFeatureCode(code)) return;
+      trackFeatureUsage(code, dimensions as FeatureDimensions<typeof code>, { companyId, userId });
+    },
     [companyId, userId],
   );
 }

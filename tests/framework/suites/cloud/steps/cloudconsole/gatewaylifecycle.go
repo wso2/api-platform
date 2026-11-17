@@ -63,7 +63,7 @@ var handleBudgetPattern = regexp.MustCompile(`(\d+) characters or fewer`)
 
 // registerManagedGatewayLifecycleSteps binds the steps that create gateways for a runner to share
 // and check what the platform reports about them while they are built, used, and deleted.
-func (s *Steps) registerManagedGatewayLifecycleSteps(sc *godog.ScenarioContext) {
+func (s *Steps) registerManagedGatewayLifecycleSteps(sc stepRegistrar) {
 	sc.Step(`^I choose a synthetic managed APIP gateway name at the handle limit of the active gateway's environment and the synthetic environment$`,
 		s.chooseGatewayNameAtLimit)
 	sc.Step(`^I request a synthetic managed APIP gateway that lasts for the runner with:$`, s.requestRunnerManagedGateway)
@@ -932,7 +932,10 @@ func (s *Steps) gatewayEndpoint(ctx context.Context, id string) (string, error) 
 		return "", err
 	}
 	endpoints, _ := document["endpoints"].([]any)
-	endpoint, ok := firstApprovedDataPlaneEndpoint(ctx, s, endpoints)
+	endpoint, ok, err := firstApprovedDataPlaneEndpoint(ctx, s, endpoints)
+	if err != nil {
+		return "", err
+	}
 	if !ok {
 		return "", fmt.Errorf("managed gateway %q lists no endpoint that passed the data-plane host check: %v", id, endpoints)
 	}

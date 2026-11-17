@@ -22,7 +22,7 @@ Feature: Billing a plan by usage in the API Portal
   I want the plan's meter and price created in Moesif when the plan goes on sale, and its usage billed
   So that what a developer sees as used is what Stripe charges, and a plan Moesif can't create is never sold
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level.
   # Moesif's usage is reported through the testbench Moesif service, which bills it to the
   # testbench Stripe service against the plan's price.
 

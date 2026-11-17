@@ -20,6 +20,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -220,6 +221,12 @@ func (s *MCPProxyService) Create(orgUUID, createdBy string, req *api.MCPProxy) (
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
 		}
+	}
+
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
 	}
 
 	// Resolve any associated gateways up-front so they can be persisted within the
@@ -434,6 +441,12 @@ func (s *MCPProxyService) Update(orgUUID, handle, updatedBy string, req *api.MCP
 		if err := s.secretService.ValidateSecretRefs(orgUUID, configJSON); err != nil {
 			return nil, err
 		}
+	}
+
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLsForUpdate).
+	if err := CheckRequestURLsForUpdate(context.Background(), orgUUID, existing.Origin, req); err != nil {
+		return nil, err
 	}
 
 	// Store existing upstream config for auth preservation
@@ -665,7 +678,15 @@ func (s *MCPProxyService) FetchServerInfo(orgUUID string, req *api.MCPServerInfo
 			WithLogMessage(fmt.Sprintf("invalid MCP server URL: %s", url))
 	}
 
+	// No request context reaches FetchServerInfo; this check does no I/O.
+	if err := utils.CheckUserURL(context.Background(), url); err != nil {
+		return nil, err
+	}
+
 	if err := utils.CheckURLReachability(url, 10*time.Second); err != nil {
+		if apperror.DestinationNotAllowed.Is(err) {
+			return nil, err
+		}
 		return nil, apperror.ValidationFailed.Wrap(err, "The provided URL is unreachable.").
 			WithLogMessage(fmt.Sprintf("MCP server URL is unreachable: %s", url))
 	}

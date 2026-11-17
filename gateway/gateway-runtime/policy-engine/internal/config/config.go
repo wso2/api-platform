@@ -37,6 +37,7 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"github.com/wso2/api-platform/common/collector"
+	"github.com/wso2/api-platform/common/configcompat"
 	"github.com/wso2/api-platform/common/configinterpolate"
 )
 
@@ -678,17 +679,17 @@ type BodyConfig struct {
 // context.WithTimeout, since http.Client.Do honors a request's context
 // deadline independent of the client-level Timeout.
 //
-// SSRF guarding is off by default (see HTTPClientSSRFConfig) since not every
+// The destination guard is off by default (see HTTPClientDestinationGuardConfig) since not every
 // policy dials a tenant/user-supplied URL. A policy whose outbound target
 // comes from request-derived or tenant-configured data — as opposed to a
 // fixed, operator-configured backend — should have its operator enable SSRF
 // guarding here; see ssrf-prevention.md.
 type HTTPClientConfig struct {
-	Pooling  HTTPClientPoolingConfig  `koanf:"pooling"`
-	Timeouts HTTPClientTimeoutsConfig `koanf:"timeouts"`
-	TLS      HTTPClientTLSConfig      `koanf:"tls"`
-	Proxy    HTTPClientProxyConfig    `koanf:"proxy"`
-	SSRF     HTTPClientSSRFConfig     `koanf:"ssrf"`
+	Pooling          HTTPClientPoolingConfig          `koanf:"pooling"`
+	Timeouts         HTTPClientTimeoutsConfig         `koanf:"timeouts"`
+	TLS              HTTPClientTLSConfig              `koanf:"tls"`
+	Proxy            HTTPClientProxyConfig            `koanf:"proxy"`
+	DestinationGuard HTTPClientDestinationGuardConfig `koanf:"destination_guard"`
 }
 
 // HTTPClientPoolingConfig mirrors httpclient.PoolingConfig.
@@ -754,9 +755,9 @@ type HTTPClientProxyTLSConfig struct {
 	InsecureSkipVerify bool   `koanf:"insecure_skip_verify"`
 }
 
-// HTTPClientSSRFConfig mirrors the TOML-expressible subset of httpclient.SSRFConfig. Off by
+// HTTPClientDestinationGuardConfig mirrors the TOML-expressible subset of httpclient.DestinationGuardConfig. Off by
 // default — see HTTPClientConfig's doc comment on when a policy's operator should enable it.
-type HTTPClientSSRFConfig struct {
+type HTTPClientDestinationGuardConfig struct {
 	Enabled bool `koanf:"enabled"`
 	// Preset selects a built-in netguard policy: "permit_private_block_metadata" (a
 	// backend that is normally private — a ClusterIP, a service-DNS name, localhost —
@@ -999,6 +1000,16 @@ type XDSConfig struct {
 	// MaxReconnectDelay is the maximum delay between reconnection attempts
 	MaxReconnectDelay time.Duration `koanf:"max_reconnect_delay"`
 
+	// KeepaliveTime is how long the connection to the xDS server may be idle
+	// before the client sends an HTTP/2 PING. Without it a connection that
+	// dies silently leaves the client blocked in Recv and it stops receiving
+	// config. Must be at least gateway-controller's keepalive MinTime (5s).
+	KeepaliveTime time.Duration `koanf:"keepalive_time"`
+
+	// KeepaliveTimeout is how long the client waits for the PING ack before
+	// closing the connection and reconnecting.
+	KeepaliveTimeout time.Duration `koanf:"keepalive_timeout"`
+
 	// TLS configuration
 	TLS XDSTLSConfig `koanf:"tls"`
 }
@@ -1147,6 +1158,10 @@ func Load(configPaths ...string) (*Config, error) {
 	// Uses the interpolated instance so ${config} expressions resolve to the
 	// materialized values, not the literal {{ ... }} tokens.
 	cfg.PolicyEngine.RawConfig = k.Raw()
+	// A policy parameter may still reference the destination guard under its
+	// previous name (${config.policy_engine.http_client.ssrf...}); keep that path
+	// resolving to the migrated table. Raw() is a copy, so k is unaffected.
+	configcompat.AliasLegacyDestinationGuard(cfg.PolicyEngine.RawConfig, "policy_engine")
 
 	// Validate
 	if err := cfg.Validate(); err != nil {
@@ -1169,6 +1184,17 @@ func interpolate(k *koanf.Koanf) (*koanf.Koanf, error) {
 	expanded, stats, err := configinterpolate.Expand(k.Raw(), opts)
 	if err != nil {
 		return nil, fmt.Errorf("config interpolation failed: %w", err)
+	}
+
+	// http_client.destination_guard shipped under an earlier name; a config that
+	// still uses it keeps working, with a deprecation warning.
+	deprecated, err := configcompat.MigrateDestinationGuard(expanded, "policy_engine")
+	if err != nil {
+		return nil, err
+	}
+	if deprecated != "" {
+		slog.Warn("Deprecated configuration key; rename it to http_client.destination_guard",
+			slog.String("key", deprecated))
 	}
 
 	out := koanf.New(".")
@@ -1322,6 +1348,8 @@ func defaultConfig() *Config {
 				RequestTimeout:        5 * time.Second,
 				InitialReconnectDelay: 1 * time.Second,
 				MaxReconnectDelay:     60 * time.Second,
+				KeepaliveTime:         30 * time.Second,
+				KeepaliveTimeout:      10 * time.Second,
 				TLS: XDSTLSConfig{
 					Enabled:    false,
 					EcdhCurves: "X25519MLKEM768,X25519,P-256",
@@ -1365,7 +1393,7 @@ func defaultConfig() *Config {
 				Proxy: HTTPClientProxyConfig{
 					Mode: "none",
 				},
-				SSRF: HTTPClientSSRFConfig{
+				DestinationGuard: HTTPClientDestinationGuardConfig{
 					Enabled: false,
 				},
 			},
@@ -1687,6 +1715,11 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// MinXDSKeepaliveTime is gateway-controller's xDS keepalive
+// EnforcementPolicy.MinTime. A client pinging more often than this is sent
+// GOAWAY "too_many_pings" and loses its connection.
+const MinXDSKeepaliveTime = 5 * time.Second
+
 // validateXDSConfig validates xDS configuration
 func (c *Config) validateXDSConfig() error {
 	if c.PolicyEngine.XDS.ConnectTimeout <= 0 {
@@ -1703,6 +1736,14 @@ func (c *Config) validateXDSConfig() error {
 
 	if c.PolicyEngine.XDS.MaxReconnectDelay <= 0 {
 		return fmt.Errorf("xds.max_reconnect_delay must be positive")
+	}
+
+	if c.PolicyEngine.XDS.KeepaliveTime < MinXDSKeepaliveTime {
+		return fmt.Errorf("xds.keepalive_time must be at least %s", MinXDSKeepaliveTime)
+	}
+
+	if c.PolicyEngine.XDS.KeepaliveTimeout <= 0 {
+		return fmt.Errorf("xds.keepalive_timeout must be positive")
 	}
 
 	if c.PolicyEngine.XDS.TLS.Enabled {

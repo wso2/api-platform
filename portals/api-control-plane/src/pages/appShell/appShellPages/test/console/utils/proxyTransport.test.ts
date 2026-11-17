@@ -453,6 +453,75 @@ describe('testConsoleRelayPlugin', () => {
   });
 });
 
+describe('testConsoleRelayPlugin — reporting each Execute', () => {
+  /*
+   * What swagger-ui really hands the wrapper: `oriAction` is the *bound*
+   * action, so calling it dispatches at once and returns the thunk's Promise,
+   * which resolves to nothing once `setResponse` has stored the result. The
+   * stored response is an Immutable map read with `get`.
+   */
+  const storedResponse = (fields: Record<string, unknown> | null) => ({
+    specSelectors: {
+      responseFor: vi.fn(() => (fields ? { get: (key: string) => fields[key] } : null)),
+    },
+  });
+
+  const execute = async (
+    stored: Record<string, unknown> | null,
+    mode: 'proxy' | 'direct' = 'proxy',
+  ) => {
+    const onExecuted = vi.fn();
+    const system = storedResponse(stored);
+    const original = vi.fn(() => Promise.resolve(undefined));
+    const wrapped = testConsoleRelayPlugin(
+      contextRef({ mode, onExecuted }),
+    )().statePlugins.spec.wrapActions.executeRequest(original, system);
+
+    await wrapped({ pathName: '/order', method: 'get' });
+    // Let the report, chained after the dispatch, run.
+    await Promise.resolve();
+    return { onExecuted, system };
+  };
+
+  it('reports a success, under the mode the call was sent with', async () => {
+    const { onExecuted, system } = await execute({ status: 200 }, 'direct');
+
+    expect(system.specSelectors.responseFor).toHaveBeenCalledWith('/order', 'get');
+    expect(onExecuted.mock.calls).toEqual([['direct', 'success']]);
+  });
+
+  it('reports a gateway error status as a failure', async () => {
+    // swagger spreads the error response's fields, `status` among them, into what it stores.
+    const { onExecuted } = await execute({ error: true, status: 500 });
+
+    expect(onExecuted.mock.calls).toEqual([['proxy', 'failure']]);
+  });
+
+  it('reports a failure when nothing came back', async () => {
+    const { onExecuted } = await execute({ error: true, message: 'Failed to fetch' });
+
+    expect(onExecuted.mock.calls).toEqual([['proxy', 'failure']]);
+  });
+
+  it('does not report an aborted request', async () => {
+    const { onExecuted } = await execute({ error: true, name: 'AbortError' });
+
+    expect(onExecuted).not.toHaveBeenCalled();
+  });
+
+  it('returns what the dispatch returned, so swagger-ui keeps its own Promise', () => {
+    const dispatched = Promise.resolve(undefined);
+    const wrapped = testConsoleRelayPlugin(
+      contextRef(),
+    )().statePlugins.spec.wrapActions.executeRequest(
+      () => dispatched,
+      storedResponse({ status: 200 }),
+    );
+
+    expect(wrapped({ pathName: '/order', method: 'get' })).toBe(dispatched);
+  });
+});
+
 describe('createRelayFetch — a reply that is not a relay envelope', () => {
   it('reports a usable message when headers is not a list', async () => {
     // toResponseLike calls headers.forEach; without the shape check this

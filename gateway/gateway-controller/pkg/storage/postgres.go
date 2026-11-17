@@ -29,9 +29,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
+
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage/observe"
 )
 
 const (
@@ -61,28 +64,15 @@ type PostgresStorage struct {
 	logger *slog.Logger
 }
 
-// newPostgresStorage creates a new PostgreSQL storage instance.
-func newPostgresStorage(cfg PostgresConnectionConfig, logger *slog.Logger) (*PostgresStorage, error) {
+// newPostgresStorage creates a new PostgreSQL storage instance and confirms the database
+// answers. Database operation outcomes are recorded in window.
+func newPostgresStorage(cfg PostgresConnectionConfig, window *observe.Window, logger *slog.Logger) (*PostgresStorage, error) {
 	cfg = withDefaultPostgresConfig(cfg)
-	dsn, err := buildPostgresDSN(cfg)
+	storage, connConfig, err := openPostgresStorage(cfg, window, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build postgres dsn: %w", err)
+		return nil, err
 	}
-
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open postgres database: %w", err)
-	}
-
-	db.SetMaxOpenConns(cfg.MaxOpenConns)
-	db.SetMaxIdleConns(cfg.MaxIdleConns)
-	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
-	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
-
-	storage := &PostgresStorage{
-		db:     db,
-		logger: logger,
-	}
+	db := storage.db
 
 	pingTimeout := cfg.ConnectTimeout
 	if pingTimeout <= 0 {
@@ -95,18 +85,60 @@ func newPostgresStorage(cfg PostgresConnectionConfig, logger *slog.Logger) (*Pos
 		return nil, fmt.Errorf("failed to ping postgres database: %w", err)
 	}
 
-	logger.Info("PostgreSQL storage initialized",
-		slog.String("host", cfg.Host),
-		slog.Int("port", cfg.Port),
-		slog.String("database", cfg.Database),
-		slog.String("sslmode", cfg.SSLMode),
+	logPostgresStorage(logger, cfg, connConfig)
+
+	return storage, nil
+}
+
+// logPostgresStorage logs the storage settings. The connection target is taken from the
+// parsed connection config, so it is right for a supplied DSN too; the DSN itself is
+// never logged, as it can carry the password in several forms.
+func logPostgresStorage(logger *slog.Logger, cfg PostgresConnectionConfig, connConfig *pgx.ConnConfig) {
+	attrs := []any{
+		slog.String("host", connConfig.Host),
+		slog.Int("port", int(connConfig.Port)),
+		slog.String("database", connConfig.Database),
+		slog.String("user", connConfig.User),
+	}
+	if strings.TrimSpace(cfg.DSN) == "" {
+		attrs = append(attrs, slog.String("sslmode", cfg.SSLMode))
+	}
+	attrs = append(attrs,
 		slog.Int("max_open_conns", cfg.MaxOpenConns),
 		slog.Int("max_idle_conns", cfg.MaxIdleConns),
 		slog.Duration("conn_max_lifetime", cfg.ConnMaxLifetime),
-		slog.Duration("conn_max_idle_time", cfg.ConnMaxIdleTime),
-		slog.String("dsn", sanitizePostgresDSN(dsn)))
+		slog.Duration("conn_max_idle_time", cfg.ConnMaxIdleTime))
+	logger.Info("PostgreSQL storage initialized", attrs...)
+}
 
-	return storage, nil
+// openPostgresStorage opens the PostgreSQL connection pool without connecting, so only
+// configuration errors fail here. It also returns the parsed connection config, for
+// logging. Database operation outcomes are recorded in window.
+func openPostgresStorage(cfg PostgresConnectionConfig, window *observe.Window, logger *slog.Logger) (*PostgresStorage, *pgx.ConnConfig, error) {
+	cfg = withDefaultPostgresConfig(cfg)
+	dsn, err := buildPostgresDSN(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to build postgres dsn: %w", err)
+	}
+
+	// Parse the DSN here so an invalid one fails at once; the pgx driver would otherwise
+	// defer parsing to the first connection, and startup would keep retrying it.
+	connConfig, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse postgres dsn: %w", err)
+	}
+	db := sql.OpenDB(observe.Wrap(stdlib.GetConnector(*connConfig), window))
+
+	db.SetMaxOpenConns(cfg.MaxOpenConns)
+	db.SetMaxIdleConns(cfg.MaxIdleConns)
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+
+	storage := &PostgresStorage{
+		db:     db,
+		logger: logger,
+	}
+	return storage, connConfig, nil
 }
 
 func withDefaultPostgresConfig(cfg PostgresConnectionConfig) PostgresConnectionConfig {
@@ -162,20 +194,6 @@ func buildPostgresDSN(cfg PostgresConnectionConfig) (string, error) {
 	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
-}
-
-func sanitizePostgresDSN(dsn string) string {
-	u, err := url.Parse(dsn)
-	if err != nil {
-		return "<redacted>"
-	}
-	if u.User != nil {
-		username := u.User.Username()
-		if username != "" {
-			u.User = url.UserPassword(username, "****")
-		}
-	}
-	return u.String()
 }
 
 func (s *PostgresStorage) rebind(query string) string {

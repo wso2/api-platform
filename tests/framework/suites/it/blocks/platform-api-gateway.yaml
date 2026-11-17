@@ -151,6 +151,9 @@ blocks:
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_cards.feature
         tags: "gateway-version>1.2.0"
+      - name: network-access-control
+        features:
+          - features/management-portal/network-access-control/destination_refusal.feature
       - name: agent-proxy-deployment
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_deployment.feature
@@ -326,6 +329,29 @@ blocks:
       - name: dp-to-cp-sync-disabled
         features:
           - features/gateway/control-plane/dp_to_cp_sync_disabled.feature
+
+  # Gateway custom policies: the gateway loads the integration-test policy definitions and reports
+  # most of them as custom (customPolicies: true), which every other block's gateway manifest must
+  # not show. The definitions have fixed names, so one runner syncs them at a time. The sync rules
+  # are stored per platform-api database engine.
+  - name: gateway-custom-policies
+    parallel: 1
+    components:
+      - name: platform-api
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: sqlite
+      - name: testbench
+    wiring:
+      platform-gateway:
+        customPolicies: true
+    runners:
+      # Scenarios GWCP (scenarios/on-prem/GWCP.yaml).
+      - name: gateway-custom-policy-sync
+        features:
+          - features/management-portal/gateway-policies/custom_policy_sync.feature
 
   # Two gateways (replicas: 2) connected to one Platform API.
   - name: multigateway

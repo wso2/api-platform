@@ -45,6 +45,7 @@ const userIdpReferenceDao = require('../../dao/userIdpReferenceDao');
 const { BillingProviderError } = require('../../billing/http');
 const billingProvider = require('../../billing/billingProvider');
 const { deploymentFields, deploymentSettings, suppliedByDeployment } = require('../../billing/deploymentSettings');
+const { MONETIZATION_DISABLED, monetizationDisabled } = require('../../billing/monetization');
 const constants = require('../../utils/constants');
 const util = require('../../utils/util');
 const logger = require('../../config/logger');
@@ -90,6 +91,7 @@ const NOT_CONNECTED = 'Billing is not set up for this organization.';
 const ALREADY_SET_UP = 'Billing is already set up. Remove it to set it up again.';
 const SUBSCRIPTIONS_ACTIVE = "Billing can't be removed while paid subscriptions are active.";
 const SUPPLIED_BY_DEPLOYMENT = "This portal's deployment sets this value, and it can't be updated.";
+const BILLING_DISABLED = 'Monetization is disabled for this portal, so billing cannot be set up.';
 
 class BillingInputError extends Error {
     /** `field`: the request field the problem is about, shown under it; null for the request. */
@@ -370,6 +372,10 @@ const createBillingConfiguration = async (req, res) => {
     const orgId = req.orgId;
     const done = [];
     try {
+        if (monetizationDisabled()) {
+            logger.warn('Billing not set up: monetization is disabled', { orgId });
+            return util.sendError(res, 409, BILLING_DISABLED, { code: MONETIZATION_DISABLED });
+        }
         if (await billingConfigurationDao.get(orgId)) {
             return util.sendError(res, 409, ALREADY_SET_UP);
         }

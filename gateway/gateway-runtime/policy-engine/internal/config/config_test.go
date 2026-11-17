@@ -54,6 +54,8 @@ func validConfig() *Config {
 				RequestTimeout:        5 * time.Second,
 				InitialReconnectDelay: 1 * time.Second,
 				MaxReconnectDelay:     60 * time.Second,
+				KeepaliveTime:         30 * time.Second,
+				KeepaliveTimeout:      10 * time.Second,
 			},
 			FileConfig: FileConfigConfig{
 				Path: "configs/policy-chains.yaml",
@@ -1112,6 +1114,32 @@ func TestValidate_XDSConfig(t *testing.T) {
 			},
 			expectErr: true,
 			errMsg:    "xds.max_reconnect_delay must be positive",
+		},
+		{
+			name: "xds enabled - keepalive time below controller MinTime",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				cfg.PolicyEngine.XDS.KeepaliveTime = 4 * time.Second
+			},
+			expectErr: true,
+			errMsg:    "xds.keepalive_time must be at least 5s",
+		},
+		{
+			name: "xds enabled - keepalive time at controller MinTime",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				cfg.PolicyEngine.XDS.KeepaliveTime = MinXDSKeepaliveTime
+			},
+			expectErr: false,
+		},
+		{
+			name: "xds enabled - invalid keepalive timeout",
+			setup: func(cfg *Config) {
+				cfg.PolicyEngine.ConfigMode.Mode = "xds"
+				cfg.PolicyEngine.XDS.KeepaliveTimeout = 0
+			},
+			expectErr: true,
+			errMsg:    "xds.keepalive_timeout must be positive",
 		},
 	}
 

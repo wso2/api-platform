@@ -25,6 +25,7 @@ import { runtimeConfig } from '@/config/runtime';
 import {
   aGateway,
   accepts,
+  collection,
   recorder,
   resource,
   type GatewayFixture,
@@ -264,6 +265,7 @@ describe('GatewayDetailPage', () => {
         },
         { record: manifestReads },
       ),
+      collection('/gateway-custom-policies', []),
     );
 
     const { user } = renderPage();

@@ -3,7 +3,7 @@
 # Install everything the WSO2 API Platform gateway needs on the conformance
 # cluster: cert-manager (required by the gateway Helm chart), the gateway operator,
 # and the GatewayClass the suite targets. The operator chart installs the bundled
-# standard-channel Gateway API CRDs (v1.5.1) itself via gatewayApi.installStandardCRDs.
+# standard-channel Gateway API CRDs (v1.6.3) itself via gatewayApi.installStandardCRDs.
 #
 # Run AFTER kind/setup-kind.sh. Assumes kubectl context points at the conformance
 # cluster (setup-kind.sh switches to it).

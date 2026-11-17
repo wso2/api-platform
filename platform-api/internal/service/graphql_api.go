@@ -213,6 +213,12 @@ func (s *GraphQLAPIService) Create(orgUUID, createdBy string, req *api.CreateGra
 		}
 	}
 
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
+	}
+
 	// Resolve the project by handle (req.ProjectId is actually the project's
 	// user-facing handle, e.g. "default-project", not its internal UUID —
 	// mirrors internal/service/api.go's CreateAPI). GO-AUTH-005: org scoping
@@ -403,6 +409,9 @@ type graphQLSchemaResolution struct {
 //     an unreachable sdlUrl, introspection failing/disabled). This never
 //     blocks the request — see the doc comments on Create and Update for how
 //     each handles it.
+//   - DESTINATION_NOT_ALLOWED (naming sdlUrl or upstream.main.url) means
+//     server.network_security.access_control refused the fetch. That blocks the
+//     request: the destination is the caller's to change, not a passing failure.
 func (s *GraphQLAPIService) resolveSchema(schemaSource, suppliedSDL, sdlURL string, upstream *model.UpstreamConfig) (graphQLSchemaResolution, error) {
 	schemaSource = strings.TrimSpace(schemaSource)
 	suppliedSDL = strings.TrimSpace(suppliedSDL)
@@ -493,6 +502,9 @@ func (s *GraphQLAPIService) resolveSchema(schemaSource, suppliedSDL, sdlURL stri
 	case string(api.GraphQLAPISchemaSourceUrl):
 		fetched, err := utils.FetchDocumentFromURL(context.Background(), sdlURL, s.maxSDLFetchBytes, "GraphQL SDL")
 		if err != nil {
+			if refused := refusedSchemaDestination(err, "sdlUrl"); refused != nil {
+				return graphQLSchemaResolution{}, refused
+			}
 			s.slogger.Warn("Failed to fetch GraphQL SDL from sdlUrl", "error", err)
 			return graphQLSchemaResolution{SchemaSource: schemaSource}, nil
 		}
@@ -508,11 +520,29 @@ func (s *GraphQLAPIService) resolveSchema(schemaSource, suppliedSDL, sdlURL stri
 	default: // introspection
 		derived, err := fetchAndConvertGraphQLSchema(upstream.Main.URL)
 		if err != nil {
+			if refused := refusedSchemaDestination(err, "upstream.main.url"); refused != nil {
+				return graphQLSchemaResolution{}, refused
+			}
 			s.slogger.Warn("GraphQL introspection failed", "error", err)
 			return graphQLSchemaResolution{SchemaSource: schemaSource}, nil
 		}
 		return graphQLSchemaResolution{SDL: derived, IntrospectionMode: "ENDPOINT", SchemaSource: schemaSource, Resolved: true}, nil
 	}
+}
+
+// refusedSchemaDestination returns the request's error when a schema fetch failed
+// because network access control refused its destination, naming field, and nil
+// for any other failure. A refusal is the caller's to correct, as on every other
+// URL platform-api fetches, so it is not folded into the best-effort "could not
+// resolve" outcome an unreachable or misbehaving source gets. The check also
+// covers what the request-time check cannot see: a hostname refused only once it
+// resolves, and a refused redirect hop.
+func refusedSchemaDestination(err error, field string) error {
+	var appErr *apperror.Error
+	if !apperror.DestinationNotAllowed.Is(err) || !errors.As(err, &appErr) {
+		return nil
+	}
+	return appErr.WithFieldErrors([]apperror.FieldError{{Field: field, Message: refusedFieldMessage}})
 }
 
 // GraphQLAPIExists messages, one per conflict — worded like REST's
@@ -719,6 +749,12 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 		}
 	}
 
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see CheckRequestURLs).
+	if err := CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
+	}
+
 	existing, err := s.repo.GetByHandle(handle, orgUUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GraphQL API: %w", err)
@@ -733,8 +769,8 @@ func (s *GraphQLAPIService) Update(orgUUID, handle, updatedBy string, req *api.G
 	if req.Id != nil && *req.Id != "" && *req.Id != handle {
 		return nil, apperror.ValidationFailed.New("The id in the request body must match the path parameter.")
 	}
-	// Unlike a REST update, a GraphQL update may change the version as well as
-	// the display name, so the pair checked is the requested one.
+	// An update may change the version as well as the display name, so the pair
+	// checked is the requested one.
 	if err := s.ensureNameVersionAvailable(req.DisplayName, req.Version, orgUUID, handle); err != nil {
 		return nil, err
 	}

@@ -69,8 +69,10 @@ In `wso2cloud-deployment`, add a `RestApi` to
 `controlplane/common/init/layer-3/gateway-bff/api-management/proxy-api-management-restapi.yaml`,
 next to the billing, cloud and marketing-consent routes:
 
-- **Context:** `${apip_console_proxy_context:=/_api/api-management}/feature-usage`,
-  the same value as `featureUsageCollectorPath` below, so the two always match.
+- **Context:** `/_api/api-management/feature-usage`, a fixed path like the
+  billing, cloud and marketing-consent routes beside it. `featureUsageCollectorPath`
+  below is the same fixed path, not derived from `apip_console_proxy_context`,
+  so overriding that variable can't point the console away from the route.
 - **Upstream:** `${internal_gateway_url}/moesif-collector`.
 - **Policy:** the same `oauth2-session-proxy` as the other api-management
   routes.
@@ -87,7 +89,8 @@ In the `apip-console` release binding, add these to `api-platform.env.config.js`
 window.__RUNTIME_CONFIG__ = {
   // …existing keys (authMode, platformApiBaseUrl, …)
   featureUsageTrackingEnabled: '${apip_console_feature_usage_enabled:=false}',
-  featureUsageCollectorPath: '${apip_console_proxy_context:=/_api/api-management}/feature-usage',
+  // Fixed, as the route's context is: it must name exactly that route.
+  featureUsageCollectorPath: '/_api/api-management/feature-usage',
 };
 ```
 
@@ -121,7 +124,7 @@ In Moesif:
 
 4. Open the environment's Moesif application, open the live event log, show
    **Actions**, and filter on an action name that starts with `apip.` (or
-   `metadata.initiating_product` = `apip`). The actions should arrive within a
+   `metadata.platform` = `API Platform` and `metadata.source` = `console`). The actions should arrive within a
    minute.
 
 If nothing is sent at all, check both keys in DevTools
@@ -137,8 +140,10 @@ Tracking never shows an error to the user, so these are the only signs.
 
 ### 5. Build the API Platform dashboards
 
-Every action carries the same metadata, so one filter selects API Platform:
-`metadata.initiating_product = apip`. For the first feature:
+Every record carries the same keys as Platform API's endpoint events and Agent
+Manager's records: `metadata.platform = API Platform` selects API Platform,
+and `metadata.source` (`console` or `api`) isolates the console or the API.
+`metadata.growth_action` is the feature code on both. For the first feature:
 
 | Moesif view              | Set-up                                                                                                                                                                                                                                 |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -185,16 +190,16 @@ don't set the `VITE_` values in a build that ships.
 `actions.ts` builds every action from an allowlist. Nothing a page or the browser
 adds is passed through; a field is sent only if it's in this table.
 
-| Field                       | Value                                                                                                                                                                         |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `action_name`               | A code from `taxonomy.ts`. A code missing from the registry doesn't compile.                                                                                                  |
-| `request.uri`               | The page URL reduced to its route template: org, project and API handles become `:orgHandle`, `:projectHandler` and `:apiHandler`. The query string and fragment are removed. |
-| `request.time`              | When the step happened                                                                                                                                                        |
-| `request.user_agent_string` | The browser's user agent, which Moesif uses for browser and OS breakdowns                                                                                                     |
-| `user_id`                   | The IdP user ID (`sub`), only if it is a UUID                                                                                                                                 |
-| `company_id`                | The organization ID, only if it is a UUID                                                                                                                                     |
-| `session_token`             | A UUID per browser tab session, kept in `sessionStorage`                                                                                                                      |
-| `metadata`                  | The feature's declared dimensions, plus `action`, `category`, `tier`, `event_category`, `initiating_product: apip`, `platform: web` and `portal: api-control-plane`           |
+| Field                       | Value                                                                                                                                                                                           |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `action_name`               | A code from `taxonomy.ts`. A code missing from the registry doesn't compile.                                                                                                                    |
+| `request.uri`               | The page URL reduced to its route template: org, project and API handles become `:orgHandle`, `:projectHandler` and `:apiHandler`. The query string and fragment are removed.                   |
+| `request.time`              | When the step happened                                                                                                                                                                          |
+| `request.user_agent_string` | The browser's user agent, which Moesif uses for browser and OS breakdowns                                                                                                                       |
+| `user_id`                   | The IdP user ID (`sub`), only if it is a UUID                                                                                                                                                   |
+| `company_id`                | The organization ID, only if it is a UUID                                                                                                                                                       |
+| `session_token`             | A UUID per browser tab session, kept in `sessionStorage`                                                                                                                                        |
+| `metadata`                  | The feature's declared dimensions, plus `growth_action` (the code), `platform: API Platform`, `source: console`, `portal: api-control-plane`, `action`, `category`, `tier` and `event_category` |
 
 The browser **never sends** names, emails, org, project or API handles, anything
 the user typed, query strings, fragments, the referrer, or UTM or `gclid`
@@ -407,6 +412,7 @@ search and view toggles report nothing.
 |              | `gateway.gateway-update-click`                                                                                   | Save (name, description)                              | `gateway_type`?                                                              |
 |              | `gateway.gateway-token-regenerate-click`                                                                         | Generate new token confirm                            | —                                                                            |
 |              | `gateway.gateway-setup-command-copy`                                                                             | any copy button in the setup steps                    | `install_method`, `setup_step`                                               |
+|              | `gateway.custom-policy-sync-click`                                                                               | Sync, on a custom policy in the Policies tab          | `sync_kind`                                                                  |
 |              | `policies.gateway-policies-view`                                                                                 | Policies tab, first open per visit                    | —                                                                            |
 | Organization | `admin.project-create-click` / `project-delete-click`                                                            | Create; delete confirm                                | —                                                                            |
 |              | `security.service-account-create-click` / `-update-click` / `-enable-click` / `-disable-click` / `-delete-click` | create, edit, enable, disable confirm, delete confirm | —                                                                            |
@@ -436,10 +442,21 @@ documentation links, and the test key minted automatically on page load.
 
 **Pages WSO2 Cloud replaces.** In the cloud build, the Gateways pages and both
 Deploy pages are cloud-plugin pages (`page.gateways`, `page.apiDeploy`,
-`page.graphqlApiDeploy`). The built-in pages above are tracked, but in WSO2
-Cloud the gateway features, `gateway-policies-view`, `api-deploy`, the
-`deployment-*` features and `deployment-history-view` only appear once the
-cloud plugins report them too.
+`page.graphqlApiDeploy`). They report the same features through the host port's
+`trackFeature(code, dimensions)` (`useTrackFeatureByName`, built into the port in
+`AppLayout`), which drops any code or value the taxonomy doesn't list:
+
+| Cloud page                              | Reports                                                                                                  |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Gateways: Add or Save                   | `gateway-register-click` (`gateway_hosting`, `gateway_type`), `gateway-update-click`                     |
+| Gateway overview                        | `gateway-setup-command-copy` (`install_method`, `setup_step`), `gateway-token-regenerate-click`          |
+| Deploy: Deploy or promote, Stop         | `api-deploy-click` (no `gateway_hosting`), `deployment-undeploy-click`                                   |
+| Deploy: add a gateway, its setup drawer | `gateway-register-click`, `gateway-setup-command-copy` (`quick-start`), `gateway-token-regenerate-click` |
+
+The cloud pages have no redeploy, restore, deployment delete or deployment
+history, and their gateway Policies tab shows no policies yet, so
+`deployment-redeploy-click`, `deployment-restore-click`, `deployment-delete-click`,
+`deployment-history-view` and `gateway-policies-view` never come from WSO2 Cloud.
 
 ---
 
@@ -452,7 +469,7 @@ cloud plugins report them too.
 | `taxonomy.generated.ts`      | Generated from the YAML (`npm run taxonomy:codegen`); never edit by hand         |
 | `taxonomy.ts`                | The console's features from the generated file, the types, and `featureMetadata` |
 | `policies.ts`                | `trackPolicyAttachment`: a policy name to its capability feature                 |
-| `useTrackFeature.ts`         | The hook UI code calls; attaches the user and organization                       |
+| `useTrackFeature.ts`         | The hook UI code calls, and `useTrackFeatureByName` for the host port            |
 | `actions.ts`                 | Builds each action from the allowlist; masks page URLs to route templates        |
 | `collector.ts`               | The enable switch, the queue, and the batched send to the collector route        |
 | `*.test.ts`                  | Unit tests                                                                       |
