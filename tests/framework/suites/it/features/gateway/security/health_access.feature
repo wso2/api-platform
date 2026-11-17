@@ -18,12 +18,13 @@
 
 # The block restricts router.health.allowed_clients to loopback, and the suite calls the
 # runtime from outside the container, so every health probe below comes from a refused client.
-@health
+@HEALTH @health
 Feature: Gateway runtime health access restriction
   As a platform operator
   I want the runtime health routes to answer only the clients I allow
   So that the dependency state they expose is not readable from the traffic listener
 
+  @HEALTH-011
   Scenario Outline: A client outside the allowed list is refused on <path>
     When I send a "GET" request to the gateway runtime health path "<path>"
     Then the response status code should be 403
@@ -36,6 +37,7 @@ Feature: Gateway runtime health access restriction
       | /_gateway-health/ready   |
       | /_gateway-health/healthy |
 
+  @HEALTH-012
   Scenario Outline: A forged <header> header does not admit a refused client
     When I send a "GET" request to the gateway runtime health path "/_gateway-health/ready" with header "<header>" set to "<value>"
     Then the response status code should be 403
@@ -48,12 +50,14 @@ Feature: Gateway runtime health access restriction
       | Forwarded                | for=127.0.0.1 |
       | X-Envoy-External-Address | 127.0.0.1     |
 
+  @HEALTH-013
   Scenario: A refused client is refused on every virtual host
     Given I generate a unique value from "health-access-vhost" and store it as "virtualHost"
     And I set request host to "${CTX:virtualHost}.example.com"
     When I send a "GET" request to the gateway runtime health path "/_gateway-health/ready"
     Then the response status code should be 403
 
+  @HEALTH-014
   Scenario: API traffic is not affected by the health restriction
     Given I authenticate using basic auth as "admin"
     And I generate a unique value from "health-access-api" and store it as "apiName"
@@ -73,6 +77,7 @@ Feature: Gateway runtime health access restriction
     When I send a "GET" request to the gateway runtime health path "/_gateway-health/ready"
     Then the response status code should be 403
 
+  @HEALTH-015
   Scenario: The controller health endpoints keep their own allowed list
     When I send a "GET" request to the gateway controller health path "/api/admin/v1/ready"
     Then the response status code should be 200

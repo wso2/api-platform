@@ -16,12 +16,13 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@health
+@HEALTH @health
 Feature: Gateway liveness and readiness endpoints
   As a platform operator
   I want the gateway controller and runtime to report their own health and their dependencies' health
   So that an orchestrator restarts or stops routing to a gateway that cannot serve
 
+  @HEALTH-001
   Scenario Outline: The controller <role> endpoint reports every check up
     When I send a "GET" request to the gateway controller health path "<path>"
     Then the response status code should be 200
@@ -39,12 +40,14 @@ Feature: Gateway liveness and readiness endpoints
       | liveness  | /api/admin/v1/health |
       | readiness | /api/admin/v1/ready  |
 
+  @HEALTH-002
   Scenario: A HEAD probe of controller readiness gets the status without a body
     When I send a "HEAD" request to the gateway controller health path "/api/admin/v1/ready"
     Then the response status code should be 200
     And the response header "Cache-Control" should be "no-store"
     And the response body should be empty
 
+  @HEALTH-003
   Scenario Outline: Controller readiness refuses the <method> method
     When I send a "<method>" request to the gateway controller health path "/api/admin/v1/ready"
     Then the response status code should be 405
@@ -54,6 +57,7 @@ Feature: Gateway liveness and readiness endpoints
       | POST   |
       | DELETE |
 
+  @HEALTH-004
   Scenario: The legacy controller liveness path still answers and points at its successor
     When I send a "GET" request to the gateway controller health path "/health"
     Then the response status code should be 200
@@ -63,10 +67,12 @@ Feature: Gateway liveness and readiness endpoints
     And the response header "Link" should contain "successor-version"
     And the response header "Warning" should contain "Deprecated API"
 
+  @HEALTH-005
   Scenario: The controller has no legacy readiness path
     When I send a "GET" request to the gateway controller health path "/ready"
     Then the response status code should be 404
 
+  @HEALTH-006
   Scenario: Runtime readiness reports the policy engine and its control-plane connection
     When I send a "GET" request to the gateway runtime health path "/_gateway-health/ready"
     Then the response status code should be 200
@@ -77,6 +83,7 @@ Feature: Gateway liveness and readiness endpoints
     And the JSON response field "checks.policy_engine.status" should be "up"
     And the JSON response field "checks.xds_connection.status" should be "up"
 
+  @HEALTH-007
   Scenario: Runtime liveness reports only the policy engine
     When I send a "GET" request to the gateway runtime health path "/_gateway-health/healthy"
     Then the response status code should be 200
@@ -84,6 +91,7 @@ Feature: Gateway liveness and readiness endpoints
     And the JSON response field "checks.policy_engine.status" should be "up"
     And the JSON response field "checks.xds_connection" should not exist
 
+  @HEALTH-008
   Scenario: Runtime health routes answer on any virtual host
     Given I generate a unique value from "health-vhost" and store it as "virtualHost"
     And I set request host to "${CTX:virtualHost}.example.com"
@@ -91,11 +99,13 @@ Feature: Gateway liveness and readiness endpoints
     Then the response status code should be 200
     And the JSON response field "status" should be "ready"
 
+  @HEALTH-009
   Scenario: A path under the runtime health namespace that is not a health route is not answered as one
     When I send a "GET" request to the gateway runtime health path "/_gateway-health/ready/extra"
     Then the response status code should be 404
     And the response body should not contain "policy_engine"
 
+  @HEALTH-010
   Scenario Outline: An API cannot claim a route in the reserved health namespace (<case>)
     Given I authenticate using basic auth as "admin"
     And I generate a unique value from "health-reserved-api" and store it as "apiName"

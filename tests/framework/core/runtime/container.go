@@ -423,7 +423,9 @@ func (c *Container) Resume(ctx context.Context) error {
 	for _, e := range c.def.Endpoints {
 		p, err := c.container.MappedPort(ctx, strconv.Itoa(e.Port)+"/tcp")
 		if err != nil {
-			continue
+			// Publishing a map without this port would make later calls to it fail with a
+			// misleading missing-port error.
+			return fmt.Errorf("runtime: resolving port %d of resumed %s: %w", e.Port, c.def, err)
 		}
 		mapped[e.Port] = int(p.Num())
 	}

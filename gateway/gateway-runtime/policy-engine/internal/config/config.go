@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -1182,9 +1183,8 @@ func Load(configPaths ...string) (*Config, error) {
 		return nil, err
 	}
 
-	// Health settings that moved into per-dependency sub-tables, and unknown keys in
-	// those sub-tables, would otherwise be silently ignored and leave the defaults in
-	// effect. Fail loudly instead.
+	// Unknown keys in the health tables would otherwise be silently ignored and leave
+	// the defaults in effect. Fail loudly instead.
 	if err := checkHealthKeys(k); err != nil {
 		return nil, err
 	}
@@ -2192,53 +2192,58 @@ func (c *Config) validateAnalyticsConfig() error {
 	return nil
 }
 
-// movedHealthKeys maps each health key that has moved into a per-dependency
-// sub-table to its new location.
-var movedHealthKeys = []struct{ from, to string }{
-	{from: "policy_engine.health.xds_grace", to: "policy_engine.health.xds_connection.grace"},
-	{from: "policy_engine.health.check_timeout", to: "policy_engine.health.python_executor.check_timeout"},
-}
-
-// healthDependencyKeys lists the keys each per-dependency health sub-table accepts.
-var healthDependencyKeys = []struct {
-	table string
-	keys  map[string]bool
-}{
-	{table: "policy_engine.health.xds_connection", keys: map[string]bool{"grace": true}},
-	{table: "policy_engine.health.python_executor", keys: map[string]bool{"check_timeout": true}},
-}
-
-// checkHealthKeys fails on a health key that has moved to a per-dependency sub-table
-// and on an unknown key inside one of those sub-tables. It inspects only the
-// policy_engine subtree, since the gateway configuration file is shared with other
-// components. Keys removed earlier (the health log and backoff settings) are not
-// inspected and stay ignored.
+// checkHealthKeys rejects an unknown key in the policy engine's health tables, which
+// would otherwise be silently ignored and leave the default in effect. It inspects only
+// the policy_engine subtree, since the gateway configuration file is shared with other
+// components.
 func checkHealthKeys(k *koanf.Koanf) error {
-	for _, moved := range movedHealthKeys {
-		if k.Exists(moved.from) {
-			return fmt.Errorf("%s has moved to %s", moved.from, moved.to)
-		}
-	}
-	for _, dep := range healthDependencyKeys {
-		if !k.Exists(dep.table) {
-			continue
-		}
-		table, ok := k.Get(dep.table).(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("%s must be a table", dep.table)
-		}
-		unknown := make([]string, 0, len(table))
-		for key := range table {
-			if !dep.keys[key] {
-				unknown = append(unknown, key)
-			}
-		}
-		if len(unknown) > 0 {
-			sort.Strings(unknown)
-			return fmt.Errorf("%s: unknown key %q", dep.table, unknown[0])
+	for _, table := range []struct {
+		path  string
+		known map[string]bool
+	}{
+		{"policy_engine.health", koanfKeys(reflect.TypeOf(HealthConfig{}))},
+		{"policy_engine.health.xds_connection", koanfKeys(reflect.TypeOf(HealthXDSConnectionConfig{}))},
+		{"policy_engine.health.python_executor", koanfKeys(reflect.TypeOf(HealthPythonExecutorConfig{}))},
+	} {
+		if err := checkTableKeys(k, table.path, table.known); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// checkTableKeys rejects a key in the table at path that is not one of known. A missing
+// table is fine; a value set where the table belongs is not.
+func checkTableKeys(k *koanf.Koanf, path string, known map[string]bool) error {
+	if !k.Exists(path) {
+		return nil
+	}
+	table, ok := k.Get(path).(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("%s must be a table", path)
+	}
+	keys := make([]string, 0, len(table))
+	for key := range table {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if !known[key] {
+			return fmt.Errorf("%s: unknown key %q", path, key)
+		}
+	}
+	return nil
+}
+
+// koanfKeys returns the koanf key names of a struct type's fields.
+func koanfKeys(t reflect.Type) map[string]bool {
+	keys := make(map[string]bool, t.NumField())
+	for i := 0; i < t.NumField(); i++ {
+		if tag := t.Field(i).Tag.Get("koanf"); tag != "" {
+			keys[tag] = true
+		}
+	}
+	return keys
 }
 
 // defaultProbeTimeout is the probe timeout health checkers apply by default;

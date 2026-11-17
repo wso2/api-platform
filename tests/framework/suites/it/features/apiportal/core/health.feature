@@ -16,12 +16,13 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@health
+@HEALTH @health
 Feature: API Portal liveness and readiness endpoints
   As a platform operator
   I want the API Portal to report whether it can reach its database
   So that an orchestrator stops routing to a portal that cannot serve pages
 
+  @HEALTH-024
   Scenario Outline: The API Portal health path <path> reports its database up
     When I send a "GET" request to the API Portal health path "<path>"
     Then the response status code should be 200
@@ -39,12 +40,14 @@ Feature: API Portal liveness and readiness endpoints
       | /api-portal/health |
       | /api-portal/ready  |
 
+  @HEALTH-025
   Scenario: A HEAD probe of API Portal readiness gets the status without a body
     When I send a "HEAD" request to the API Portal health path "/ready"
     Then the response status code should be 200
     And the response header "Cache-Control" should be "no-store"
     And the response body should be empty
 
+  @HEALTH-026
   Scenario Outline: API Portal readiness refuses the <method> method and names the allowed ones
     When I send a "<method>" request to the API Portal health path "/ready"
     Then the response status code should be 405
@@ -56,6 +59,7 @@ Feature: API Portal liveness and readiness endpoints
       | PUT    |
       | DELETE |
 
+  @HEALTH-027
   Scenario: An API Portal health probe starts no session
     When I send a "GET" request to the API Portal health path "/ready"
     Then the response status code should be 200

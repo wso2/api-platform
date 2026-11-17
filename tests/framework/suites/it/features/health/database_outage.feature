@@ -19,12 +19,13 @@
 # The Platform API, the API Portal and the gateway controller in this block share one Postgres
 # server, so a scenario that takes it down takes down the database of all three. The runtime
 # uses no database.
-@health
+@HEALTH @health
 Feature: Health during a database outage
   As a platform operator
   I want every component that needs the database to report itself not ready while the database is unusable
   So that an orchestrator stops routing to it, and routes to it again as soon as the database is back
 
+  @HEALTH-017
   Scenario: Every component is ready while the database is reachable
     When I send a "GET" request to the platform-api health path "/ready"
     Then the response status code should be 200
@@ -38,6 +39,7 @@ Feature: Health during a database outage
     When I send a "GET" request to the gateway runtime health path "/_gateway-health/ready"
     Then the response status code should be 200
 
+  @HEALTH-018
   Scenario: A stopped database fails every component that uses it, and each recovers when it returns
     When I stop the "postgres" database server
     And I send a "GET" request to the platform-api health path "/ready" until status 503
@@ -81,6 +83,7 @@ Feature: Health during a database outage
     When I send a "GET" request to the gateway controller health path "/api/admin/v1/ready" until status 200
     Then the JSON response field "checks.database.status" should be "up"
 
+  @HEALTH-019
   Scenario: A hung database fails readiness within the check timeout instead of hanging the probe
     When I pause the "postgres" database server
     And I send a "GET" request to the platform-api health path "/ready" until status 503

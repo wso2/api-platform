@@ -364,7 +364,7 @@ gateway:
           min_attempts: 5       # operations the window needs before the ratio decides
           idle_period: 10s      # with too few operations to decide, the check pings once per period
           pool_saturation: 0.9  # share of the pool in use, with callers waiting, that counts as saturated
-          pool_wait_limit: 5s   # how long the pool may stay saturated before the check fails
+          pool_wait_limit: 5s   # how long the pool may stay saturated before the check reports a warning
 
     # Router (Envoy) configuration
     router:
@@ -996,9 +996,11 @@ gateway:
       podAnnotations: {}
       podLabels: {}
       priorityClassName: ""
-      # Liveness probes the admin health endpoint; readiness and startup probe the admin
-      # ready endpoint. Both answer 503 while the controller's database is down and while
-      # the controller is still starting. Readiness takes the pod out of the Service after
+      # All three probes use the admin health endpoint, which answers 503 while the
+      # controller's database is down and while it is still starting. Every controller
+      # release serves it. The admin ready endpoint (/api/admin/v1/ready) is newer and adds
+      # only an earlier exit from the Service while the controller shuts down; point
+      # readiness at it once the controller image serves it. Readiness takes the pod out of the Service after
       # about 15 s of failed answers; liveness restarts it only after about 2 minutes, so
       # a short database outage never causes a restart.
       livenessProbe:
@@ -1011,7 +1013,7 @@ gateway:
         failureThreshold: 12
       readinessProbe:
         httpGet:
-          path: /api/admin/v1/ready
+          path: /api/admin/v1/health
           port: admin
         periodSeconds: 5
         timeoutSeconds: 3
@@ -1021,7 +1023,7 @@ gateway:
       # not the probe, decides when a database wait gives up. Set to null to disable.
       startupProbe:
         httpGet:
-          path: /api/admin/v1/ready
+          path: /api/admin/v1/health
           port: admin
         periodSeconds: 5
         timeoutSeconds: 3

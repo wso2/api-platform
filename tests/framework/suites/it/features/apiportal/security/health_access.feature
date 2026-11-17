@@ -18,12 +18,13 @@
 
 # The block restricts api_portal.health.allowed_clients to loopback, and the suite calls the
 # portal from outside its container, so every health probe below comes from a refused client.
-@health
+@HEALTH @health
 Feature: API Portal health access restriction
   As a platform operator
   I want the API Portal health endpoints to answer only the clients I allow
   So that the portal's dependency state is not readable by any caller
 
+  @HEALTH-028
   Scenario Outline: A client outside the allowed list is refused on <path> without any check result
     When I send a "GET" request to the API Portal health path "<path>"
     Then the response status code should be 403
@@ -40,6 +41,7 @@ Feature: API Portal health access restriction
       | /api-portal/health |
       | /api-portal/ready  |
 
+  @HEALTH-029
   Scenario Outline: A forged <header> header does not admit a refused client
     When I send a "GET" request to the API Portal health path "/ready" with header "<header>" set to "<value>"
     Then the response status code should be 403
@@ -51,15 +53,18 @@ Feature: API Portal health access restriction
       | X-Real-IP       | 127.0.0.1     |
       | Forwarded       | for=127.0.0.1 |
 
+  @HEALTH-030
   Scenario: A refused client is refused before its method is considered
     When I send a "POST" request to the API Portal health path "/ready"
     Then the response status code should be 403
     And the response header "Allow" should not exist
 
+  @HEALTH-031
   Scenario: A HEAD probe from a refused client is refused too
     When I send a "HEAD" request to the API Portal health path "/ready"
     Then the response status code should be 403
 
+  @HEALTH-032
   Scenario: The Platform API health endpoints keep their own allowed list
     When I send a "GET" request to the platform-api health path "/ready"
     Then the response status code should be 200

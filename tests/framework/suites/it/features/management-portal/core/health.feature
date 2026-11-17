@@ -16,12 +16,13 @@
 # under the License.
 # --------------------------------------------------------------------
 
-@health
+@HEALTH @health
 Feature: Platform API liveness and readiness endpoints
   As a platform operator
   I want the Platform API to report whether it has started and can reach its database
   So that an orchestrator stops routing to a control plane that cannot serve requests
 
+  @HEALTH-020
   Scenario Outline: The Platform API <role> endpoint reports every check up
     When I send a "GET" request to the platform-api health path "<path>"
     Then the response status code should be 200
@@ -39,12 +40,14 @@ Feature: Platform API liveness and readiness endpoints
       | liveness  | /health |
       | readiness | /ready  |
 
+  @HEALTH-021
   Scenario: A HEAD probe of Platform API readiness gets the status without a body
     When I send a "HEAD" request to the platform-api health path "/ready"
     Then the response status code should be 200
     And the response header "Cache-Control" should be "no-store"
     And the response body should be empty
 
+  @HEALTH-022
   Scenario Outline: Platform API readiness refuses the <method> method and names the allowed ones
     When I send a "<method>" request to the platform-api health path "/ready"
     Then the response status code should be 405
@@ -55,6 +58,7 @@ Feature: Platform API liveness and readiness endpoints
       | POST   |
       | DELETE |
 
+  @HEALTH-023
   Scenario: Platform API health ignores credentials it cannot verify
     When I send a "GET" request to the platform-api health path "/ready" with header "Authorization" set to "Bearer not-a-valid-token"
     Then the response status code should be 200

@@ -117,6 +117,7 @@ check "200 is healthy" "${exit_code}" "0"
 check "ready calls the readiness route" "$(cat "${WORK_DIR}/path")" "/_gateway-health/ready"
 
 run_check healthy "${port}"
+check "healthy returns success" "${exit_code}" "0"
 check "healthy calls the liveness route" "$(cat "${WORK_DIR}/path")" "/_gateway-health/healthy"
 
 set_status 503

@@ -156,7 +156,15 @@ func (s *Steps) stopService(ctx context.Context, service string) error {
 		return err
 	}
 	if err := reg.RegisterDeleter(gatewayServiceStoppedKind, func(ctx context.Context, res cleanup.Resource) error {
-		return s.bringServiceUp(ctx, res.ID)
+		if err := s.bringServiceUp(ctx, res.ID); err != nil {
+			return err
+		}
+		// The gateway resources cleaned after this are deleted through the controller's
+		// management API, so wait until the restarted controller answers before they are.
+		if res.ID == "gateway-controller" {
+			return s.waitForController(ctx)
+		}
+		return nil
 	}); err != nil {
 		return err
 	}

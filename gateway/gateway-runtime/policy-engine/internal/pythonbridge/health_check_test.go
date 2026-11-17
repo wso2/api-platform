@@ -36,13 +36,13 @@ func (f fakeExecutorHealth) HealthCheck(ctx context.Context) (*proto.HealthCheck
 	return f(ctx)
 }
 
-func evaluatePythonCheck(t *testing.T, client executorHealthClient) health.CheckResult {
+func evaluatePythonCheck(t *testing.T, check health.CheckFunc) health.CheckResult {
 	t.Helper()
 	c := health.NewChecker(health.Options{
 		HealthyStatus: "ready",
 		CacheTTL:      time.Nanosecond,
 	})
-	c.Register("python_executor", newHealthCheck(client), health.WithTimeout(200*time.Millisecond))
+	c.Register("python_executor", check, health.WithTimeout(200*time.Millisecond))
 	return c.Evaluate().Checks["python_executor"]
 }
 
@@ -88,7 +88,7 @@ func TestPythonExecutorHealthCheck(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := evaluatePythonCheck(t, tt.client)
+			got := evaluatePythonCheck(t, newHealthCheck(tt.client))
 
 			assert.Equal(t, tt.wantStatus, got.Status)
 			assert.Equal(t, tt.wantError, got.Error)
@@ -99,7 +99,7 @@ func TestPythonExecutorHealthCheck(t *testing.T) {
 func TestNewHealthCheckUsesTheStreamManager(t *testing.T) {
 	// An executor address nothing listens on: the stream manager cannot connect.
 	sm := NewStreamManager("/nonexistent/python-executor.sock", false)
-	got := evaluatePythonCheck(t, sm)
+	got := evaluatePythonCheck(t, NewHealthCheck(sm))
 
 	assert.Equal(t, health.StatusDown, got.Status)
 	assert.Contains(t, []string{"python executor unreachable", "timed out after 200ms"}, got.Error)

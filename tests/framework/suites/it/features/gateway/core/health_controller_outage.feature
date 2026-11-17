@@ -18,12 +18,13 @@
 
 # The scenario stops the gateway controller, so it runs in a block whose other runners never
 # run at the same time.
-@health
+@HEALTH @health
 Feature: Runtime health during a short controller outage
   As a platform operator
   I want the runtime to stay ready while its controller is briefly unavailable
   So that a routine controller restart does not take the data plane out of rotation
 
+  @HEALTH-016
   Scenario: The runtime stays ready and keeps serving its routes while the controller is down
     Given I authenticate using basic auth as "admin"
     And I generate a unique value from "health-xds-api" and store it as "apiName"

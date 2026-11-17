@@ -2463,32 +2463,6 @@ check_timeout = "1s"
 	assert.Equal(t, time.Second, h.PythonExecutor.CheckTimeout)
 }
 
-func TestLoad_HealthIgnoresRemovedKeys(t *testing.T) {
-	tmpDir := t.TempDir()
-	configPath := filepath.Join(tmpDir, "config.toml")
-
-	configContent := `
-[policy_engine.config_mode]
-mode = "file"
-
-[policy_engine.file_config]
-path = "/tmp/policies.yaml"
-
-[policy_engine.health]
-log_file = "relative/health.log"
-log_max_size_mb = 0
-log_max_files = 0
-backoff_initial = "15s"
-backoff_max = "10m"
-`
-	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
-
-	cfg, err := Load(configPath)
-	require.NoError(t, err)
-
-	assert.Equal(t, defaultConfig().PolicyEngine.Health, cfg.PolicyEngine.Health)
-}
-
 func writeHealthTestConfig(t *testing.T, extra string) string {
 	t.Helper()
 	configPath := filepath.Join(t.TempDir(), "config.toml")
@@ -2503,38 +2477,38 @@ path = "/tmp/policies.yaml"
 	return configPath
 }
 
-func TestLoad_HealthRejectsMovedAndUnknownKeys(t *testing.T) {
+func TestLoad_HealthRejectsUnknownKeys(t *testing.T) {
 	tests := []struct {
 		name      string
 		extra     string
 		wantError string
 	}{
 		{
-			name: "xds_grace moved",
+			name: "unknown key in the health table",
 			extra: `
 [policy_engine.health]
 xds_grace = "60s"
 `,
-			wantError: "policy_engine.health.xds_grace has moved to policy_engine.health.xds_connection.grace",
+			wantError: `policy_engine.health: unknown key "xds_grace"`,
 		},
 		{
-			name: "check_timeout moved",
+			name: "dependency setting given at the top of the health table",
 			extra: `
 [policy_engine.health]
 check_timeout = "1s"
 `,
-			wantError: "policy_engine.health.check_timeout has moved to policy_engine.health.python_executor.check_timeout",
+			wantError: `policy_engine.health: unknown key "check_timeout"`,
 		},
 		{
-			name: "moved key set through an env token",
+			name: "unknown key set through an env token",
 			extra: `
 [policy_engine.health]
 xds_grace = '{{ env "APIP_GW_PE_HEALTH_TEST_UNSET_GRACE" "60s" }}'
 `,
-			wantError: "policy_engine.health.xds_grace has moved to policy_engine.health.xds_connection.grace",
+			wantError: `policy_engine.health: unknown key "xds_grace"`,
 		},
 		{
-			name: "moved key alongside the new location",
+			name: "dependency setting given both at the top and in its sub-table",
 			extra: `
 [policy_engine.health]
 check_timeout = "1s"
@@ -2542,7 +2516,7 @@ check_timeout = "1s"
 [policy_engine.health.python_executor]
 check_timeout = "1s"
 `,
-			wantError: "policy_engine.health.check_timeout has moved to policy_engine.health.python_executor.check_timeout",
+			wantError: `policy_engine.health: unknown key "check_timeout"`,
 		},
 		{
 			name: "unknown key under xds_connection",
@@ -2590,7 +2564,7 @@ xds_connection = "5m"
 
 func TestLoad_HealthKeyChecksIgnoreOtherComponents(t *testing.T) {
 	// The gateway configuration file is shared; settings for other components,
-	// including their own moved or unknown health keys, never fail the policy engine.
+	// including their own unknown health keys, never fail the policy engine.
 	cfg, err := Load(writeHealthTestConfig(t, `
 [controller.health]
 check_timeout = "2s"
