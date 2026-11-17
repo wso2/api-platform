@@ -724,6 +724,15 @@ type HTTPClientTLSConfig struct {
 	RootCAFile       string `koanf:"root_ca_file"`      // PEM CA bundle; empty uses the system root pool
 	ClientCertFile   string `koanf:"client_cert_file"`  // mTLS to the origin; both cert and key must be set together
 	ClientKeyFile    string `koanf:"client_key_file"`
+	// InsecureSkipVerify and InsecureSkipVerifyAcknowledged are deliberately separate
+	// fields: httpkit's own acknowledgement gate requires an operator to opt into
+	// disabling verification twice, once per field, so a single "insecure_skip_verify =
+	// true" in TOML can't silently satisfy its own gate. Both must be true for it to take
+	// effect. Off by default. It disables certificate chain and hostname verification for
+	// EVERY outbound call every policy makes through this client, so prefer root_ca_file
+	// to trust a specific private CA; this is for development and test environments.
+	InsecureSkipVerify             bool `koanf:"insecure_skip_verify"`
+	InsecureSkipVerifyAcknowledged bool `koanf:"insecure_skip_verify_acknowledged"`
 }
 
 // HTTPClientProxyConfig mirrors the TOML-expressible subset of httpclient.ProxyConfig.

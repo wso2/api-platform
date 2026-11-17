@@ -19,9 +19,12 @@
 package config
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/wso2/api-platform/httpkit/httpclient"
 	"github.com/wso2/api-platform/httpkit/netguard"
 )
 
@@ -138,5 +141,81 @@ func TestBuildHTTPClientConfigEnvironmentProxyMode(t *testing.T) {
 	}
 	if cfg.Proxy.Mode != "environment" {
 		t.Errorf("expected proxy mode environment, got %q", cfg.Proxy.Mode)
+	}
+}
+
+func TestBuildHTTPClientConfigSkipVerifyIsOffByDefault(t *testing.T) {
+	cfg, err := BuildHTTPClientConfig(defaultHTTPClientConfigForTest())
+	if err != nil {
+		t.Fatalf("BuildHTTPClientConfig returned error: %v", err)
+	}
+	if cfg.TLS.InsecureSkipVerify || cfg.TLS.InsecureSkipVerifyAcknowledged {
+		t.Fatalf("expected skip-verify off by default, got skip=%v acknowledged=%v",
+			cfg.TLS.InsecureSkipVerify, cfg.TLS.InsecureSkipVerifyAcknowledged)
+	}
+}
+
+// The two flags are passed through as set, never mirrored: a lone insecure_skip_verify
+// must reach httpclient.New unacknowledged so it refuses to build the client.
+func TestBuildHTTPClientConfigSkipVerifyNeedsBothFlags(t *testing.T) {
+	hc := defaultHTTPClientConfigForTest()
+	hc.TLS.InsecureSkipVerify = true
+
+	cfg, err := BuildHTTPClientConfig(hc)
+	if err != nil {
+		t.Fatalf("BuildHTTPClientConfig returned error: %v", err)
+	}
+	if !cfg.TLS.InsecureSkipVerify || cfg.TLS.InsecureSkipVerifyAcknowledged {
+		t.Fatalf("expected skip=true acknowledged=false, got skip=%v acknowledged=%v",
+			cfg.TLS.InsecureSkipVerify, cfg.TLS.InsecureSkipVerifyAcknowledged)
+	}
+	if _, err := httpclient.New(cfg); err == nil {
+		t.Fatal("expected httpclient.New to reject skip-verify without acknowledgement")
+	}
+
+	hc.TLS.InsecureSkipVerifyAcknowledged = true
+	cfg, err = BuildHTTPClientConfig(hc)
+	if err != nil {
+		t.Fatalf("BuildHTTPClientConfig returned error: %v", err)
+	}
+	if _, err := httpclient.New(cfg); err != nil {
+		t.Fatalf("expected httpclient.New to accept skip-verify with acknowledgement, got %v", err)
+	}
+}
+
+// Against a server with a certificate no root trusts, the default client must refuse the
+// connection and the acknowledged skip-verify client must complete it.
+func TestSharedHTTPClientSkipVerifyAgainstSelfSignedServer(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	build := func(skip, ack bool) *http.Client {
+		hc := defaultHTTPClientConfigForTest()
+		hc.TLS.InsecureSkipVerify = skip
+		hc.TLS.InsecureSkipVerifyAcknowledged = ack
+		cfg, err := BuildHTTPClientConfig(hc)
+		if err != nil {
+			t.Fatalf("BuildHTTPClientConfig returned error: %v", err)
+		}
+		client, err := httpclient.New(cfg)
+		if err != nil {
+			t.Fatalf("httpclient.New returned error: %v", err)
+		}
+		return client
+	}
+
+	if resp, err := build(false, false).Get(server.URL); err == nil {
+		resp.Body.Close()
+		t.Fatal("expected the default client to reject a self-signed certificate")
+	}
+	resp, err := build(true, true).Get(server.URL)
+	if err != nil {
+		t.Fatalf("expected the skip-verify client to connect, got %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", resp.StatusCode)
 	}
 }
