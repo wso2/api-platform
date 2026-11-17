@@ -136,6 +136,10 @@ type Identity interface {
 	// InternalUserID returns the internal user id for the request's
 	// authenticated user.
 	InternalUserID(r *http.Request) (string, error)
+	// InternalUserIDFor returns the internal user id for a user known by their
+	// IdP id rather than by the request's token, storing the display name when
+	// one is given. An empty IdP id returns an empty id.
+	InternalUserIDFor(idpID, displayName string) (string, error)
 	// DisplayIdentity returns what the platform's own responses show for an
 	// internal user id read back from a created_by / updated_by column — the
 	// user's display name, else their IdP id — so a plugin returning platform
