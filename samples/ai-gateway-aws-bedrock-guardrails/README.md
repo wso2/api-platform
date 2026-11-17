@@ -58,6 +58,17 @@ Each guardrail policy reads one text value from the message body, at its `jsonPa
 
 Clients that send each prompt as a single text block in the last message get full coverage. If your clients send multi-turn history or several content blocks, also apply the guardrails in the application, or call the Amazon Bedrock `ApplyGuardrail` API on the full conversation.
 
+## Cost
+
+The gateway runs on your machine, so the sample has no hourly AWS charges. You pay for Amazon Bedrock model and guardrail usage, the three Secrets Manager secrets (about $0.40 each a month), and the CloudWatch dashboard (about $3 a month after the first three dashboards in an account). Check current prices with the [AWS Pricing Calculator](https://calculator.aws/), and clean up when you finish.
+
+## Security
+
+- **No stored AWS keys.** Your AWS CLI session's temporary credentials reach the gateway container, which uses them only to call `sts:AssumeRole`. The gateway's role trusts only the IAM role or user behind your session, and it allows one inference profile, its model in each Region the profile routes to, and two guardrails. The guardrail policy's allowlist accepts only the `sts-assume-role` mode, that role, and the two guardrails.
+- **Run it on your own machine.** Anyone who can access the container could use your session's credentials. Docker Compose publishes the gateway's ports, including the management API on 9090, on every network interface. On a shared network, publish them on `127.0.0.1` only, or block them.
+- **Secrets.** The application keys and the admin password are in Secrets Manager, and the scripts never print them. The setup regenerates the listener certificate and the encryption key, because the copies in the distribution are public.
+- **For production,** run the gateway on AWS compute with a workload role and `default-credential-chain`, replace basic authentication with JWTs from your identity provider, and turn off `showAssessment`.
+
 ## Clean up
 
 ```bash
