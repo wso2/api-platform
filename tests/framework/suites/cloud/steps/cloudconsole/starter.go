@@ -516,7 +516,7 @@ func createDefaultPortal(ctx context.Context, platform organisationAPI, name str
 	body, err := json.Marshal(map[string]any{
 		"name":        name,
 		"handle":      name,
-		"description": "API Portal the APIP cloud integration tests publish to. Created by the suite's starter and kept between runs.",
+		"description": "API Portal the APIP cloud integration tests publish to, created by the suite's starter and reused by every run. Do not delete.",
 	})
 	if err != nil {
 		return "", err

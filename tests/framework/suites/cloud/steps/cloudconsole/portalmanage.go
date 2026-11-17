@@ -108,6 +108,7 @@ func (s *Steps) registerPortalManageSteps(sc stepRegistrar) {
 	sc.Step(`^the organisation has an environment other than the portal's login environment$`, s.findOtherEnvironment)
 	sc.Step(`^the managed API Portal answer should carry its details$`, s.assertPortalDetails)
 	sc.Step(`^the managed API Portal answer should expose no secret$`, s.assertPortalAnswerHasNoSecret)
+	sc.Step(`^the managed API Portal should report no failed change$`, s.assertNoFailedPortalChange)
 	sc.Step(`^the managed API Portal answer should locate the synthetic managed API Portal$`, s.assertPortalLocation)
 	sc.Step(`^I send a "([^"]*)" request (without a token|with a forged token) to the managed API Portal path "([^"]*)"$`, s.sendWithoutValidToken)
 }
@@ -383,4 +384,27 @@ func (s *Steps) findOtherEnvironment(ctx context.Context) error {
 	slog.Warn("skipping: the organisation has no environment besides the portal's login environment",
 		"environment", loginEnvironment, "environments", len(items))
 	return godog.ErrSkip
+}
+
+// assertNoFailedPortalChange checks the published portal answer carries no failed background
+// change. A change the platform could not finish leaves the portal active with its old setting and
+// records why in lastChangeError, so a read that still shows the old setting names the cause here.
+func (s *Steps) assertNoFailedPortalChange(ctx context.Context) error {
+	resp, err := httpx.Published(ctx)
+	if err != nil {
+		return err
+	}
+	return requireNoFailedChange(resp.Body)
+}
+
+func requireNoFailedChange(body []byte) error {
+	var portal map[string]any
+	if err := json.Unmarshal(body, &portal); err != nil {
+		return fmt.Errorf("the managed API Portal answer is not a JSON object: %w", err)
+	}
+	failed, _ := portal["lastChangeError"].(map[string]any)
+	if failed == nil {
+		return nil
+	}
+	return fmt.Errorf("the portal reports that its last change (%v) failed: %v", failed["op"], failed["message"])
 }

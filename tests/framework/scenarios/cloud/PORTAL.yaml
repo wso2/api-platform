@@ -109,8 +109,7 @@ scenarios:
     priority: P0
     layer: cloud-owned
     cloud:
-      # Written and tagged @skip until the portal runner refactoring is complete: the consumer sign-in needs CP Thunder, which the local cloud lacks.
-      status: planned
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A consumer signs up from the portal's sign-in page and is signed in"
@@ -119,8 +118,7 @@ scenarios:
     priority: P1
     layer: cloud-owned
     cloud:
-      # Written and tagged @skip until the portal runner refactoring is complete: the consumer sign-in needs CP Thunder, which the local cloud lacks.
-      status: planned
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A consumer who signed up signs in again with a username and password"
@@ -129,8 +127,7 @@ scenarios:
     priority: P1
     layer: cloud-owned
     cloud:
-      # Written and tagged @skip until the portal runner refactoring is complete: the consumer sign-in needs CP Thunder, which the local cloud lacks.
-      status: planned
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "A wrong password does not sign the consumer in"
@@ -139,8 +136,7 @@ scenarios:
     priority: P1
     layer: cloud-owned
     cloud:
-      # Written and tagged @skip until the portal runner refactoring is complete: the consumer sign-in needs CP Thunder, which the local cloud lacks.
-      status: planned
+      status: automated
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "Signing out ends the consumer's session"
@@ -407,7 +403,8 @@ scenarios:
     priority: P1
     layer: cloud-owned
     cloud:
-      status: automated
+      status: known-issue
+      issue: "wso2cloud-deployment: the dev apip-platform-api component allowlist (controlplane/common/domains/developers/namespaces/wso2cloud/projects/apip/components/apip-platform-api/component.yaml on upstream/main) has no POST /api/v0.9/managed-api-portals/{apiPortalId}/rotate-key route, so the gateway answers 404 {\"error\":\"Not Found\"} instead of 401 (observed on dev 2026-11-17). The local fork's allowlist has the route. No tracker link yet."
       refs:
         - feature: suites/cloud/features/apip_portal.feature
           scenario: "The rotate-key route refuses a request <credential>"

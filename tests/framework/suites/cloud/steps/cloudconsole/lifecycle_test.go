@@ -5346,6 +5346,15 @@ func TestUpdateRunnerPortalPutsTheTableToThePortalAfterRecordingItsSettings(t *t
 	require.Equal(t, portalRestore{Handle: "portal-1", Fields: map[string]any{"name": "Shared", "selfSignup": true, "loginEnvironment": "development"}}, record)
 }
 
+func TestRequireNoFailedChangeNamesTheChangeThePlatformCouldNotFinish(t *testing.T) {
+	require.NoError(t, requireNoFailedChange([]byte(`{"id":"portal-1","status":"active"}`)))
+	require.NoError(t, requireNoFailedChange([]byte(`{"id":"portal-1","lastChangeError":null}`)))
+	err := requireNoFailedChange([]byte(`{"id":"portal-1","lastChangeError":{"op":"selfSignup","message":"Sign-up could not be turned off. The portal keeps its setting."}}`))
+	require.ErrorContains(t, err, "selfSignup")
+	require.ErrorContains(t, err, "keeps its setting")
+	require.Error(t, requireNoFailedChange([]byte(`not json`)))
+}
+
 func TestPortalChangesNamesOnlyTheSettingsThatDiffer(t *testing.T) {
 	want := portalRestore{Handle: "portal-1", Fields: map[string]any{"name": "Shared", "selfSignup": true}}
 	require.Empty(t, portalChanges(map[string]any{"name": "Shared", "selfSignup": true, "status": "active"}, want))

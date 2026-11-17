@@ -215,6 +215,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And the cloud API response should report:
       | status | pending |
     When the managed API Portal should become active
+    And the managed API Portal should report no failed change
     And I read the managed API Portal
     Then the cloud API response should report:
       | selfSignup | false |
@@ -222,6 +223,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
       | selfSignup | true |
     Then the cloud API response status code should be 202
     And the managed API Portal should become active
+    And the managed API Portal should report no failed change
     When I read the managed API Portal
     Then the cloud API response should report:
       | selfSignup | true |
@@ -280,11 +282,13 @@ Feature: APIP cloud managed API Portal and consumer sign-in
       | selfSignup | false |
     Then the cloud API response status code should be 202
     And the managed API Portal should become active
+    And the managed API Portal should report no failed change
     And the sign-in of the managed API Portal should not offer sign-up
     When I update the managed API Portal with:
       | selfSignup | true |
     Then the cloud API response status code should be 202
     And the managed API Portal should become active
+    And the managed API Portal should report no failed change
     And the sign-in of the managed API Portal should offer sign-up
 
   @TC_APIP_PORTALRT_024 @ID_APIP_PORTAL_006 @layer:cloud-owned
@@ -294,8 +298,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     When I open the sign-in page of the managed API Portal as a new visitor
     Then the visitor should be sent to the portal's identity provider to sign in
 
-  # Skipped until the portal runner refactoring is complete: it needs the consumer sign-in, which the local cloud lacks (no CP Thunder).
-  @skip
   @TC_APIP_PORTALRT_025 @ID_APIP_PORTAL_007 @layer:cloud-owned
   Scenario: A consumer signs up from the portal's sign-in page and is signed in
     Given I obtain an APIP cloud console token
@@ -304,8 +306,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     Then the consumer should be signed in to the managed API Portal
     And a visitor without the consumer's session should be sent to sign in
 
-  # Skipped until the portal runner refactoring is complete: it needs the consumer sign-in, which the local cloud lacks (no CP Thunder).
-  @skip
   @TC_APIP_PORTALRT_019 @ID_APIP_PORTAL_008 @layer:cloud-owned
   Scenario: A consumer who signed up signs in again with a username and password
     Given I obtain an APIP cloud console token
@@ -313,8 +313,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     When I sign in to the managed API Portal as the consumer
     Then the consumer should be signed in to the managed API Portal
 
-  # Skipped until the portal runner refactoring is complete: it needs the consumer sign-in, which the local cloud lacks (no CP Thunder).
-  @skip
   @TC_APIP_PORTALRT_026 @ID_APIP_PORTAL_009 @layer:cloud-owned
   Scenario: A wrong password does not sign the consumer in
     Given I obtain an APIP cloud console token
@@ -325,8 +323,6 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     When I sign in to the managed API Portal as the consumer
     Then the consumer should be signed in to the managed API Portal
 
-  # Skipped until the portal runner refactoring is complete: it needs the consumer sign-in, which the local cloud lacks (no CP Thunder).
-  @skip
   @TC_APIP_PORTALRT_027 @ID_APIP_PORTAL_010 @layer:cloud-owned
   Scenario: Signing out ends the consumer's session
     Given I obtain an APIP cloud console token
@@ -807,6 +803,8 @@ Feature: APIP cloud managed API Portal and consumer sign-in
       | PUT    | with a forged token | /managed-api-portals/absent-portal |
       | DELETE | with a forged token | /managed-api-portals/absent-portal |
 
+  # wso2cloud-deployment: the dev apip-platform-api allowlist has no POST /managed-api-portals/{apiPortalId}/rotate-key route, so the gateway answers 404 instead of 401.
+  @known-issue
   @ID_APIP_PORTAL_046 @layer:cloud-owned
   Scenario Outline: The rotate-key route refuses a request <credential>
     Given I obtain an APIP cloud console token
