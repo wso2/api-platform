@@ -83,6 +83,48 @@ Two findings don't block the deploy, and come back as warnings instead:
 
 After a successful deploy, the identity and trust certificates it names can't be deleted until no deployed API names them. See [Delete an entry](manage-certificates.md#delete-an-entry).
 
+## Add a tls block to a global Backend
+
+A gateway-wide `Backend` is a backend defined once for the whole gateway, which APIs reach through the `dynamic-endpoint` policy. It takes the same `tls` block, directly in its `spec`:
+
+```yaml
+apiVersion: gateway.choreolabs.com/v1
+kind: Backend
+metadata:
+  name: billing-eu
+  labels:
+    team: billing
+spec:
+  basePath: /v2
+  endpoints:
+    - url: https://billing-eu-1.internal.example.com:8443
+      weight: 70
+    - url: https://billing-eu-2.internal.example.com:8443
+      weight: 30
+  tls:
+    identity: gateway-billing
+    trustedCAs: [billing-ca]
+```
+
+```bash
+curl -X POST http://localhost:9090/api/management/v1/backends \
+  -u admin:<password> \
+  -H "Content-Type: application/yaml" \
+  --data-binary "@billing-eu.yaml"
+```
+
+The connection to a Backend always uses the Backend's own `tls` settings, never those of the API whose request was routed there. Two APIs that route to `billing-eu` both present `gateway-billing` and trust only `billing-ca`, whatever their own upstream definitions say.
+
+The fields, defaults, and checks are the ones on this page, with these differences:
+
+- **Errors name the Backend's own fields,** such as `spec.tls.identity` and `spec.endpoints[0].url`, and the create or update returns `400`.
+- **Every endpoint of a Backend must use the same scheme,** with or without a `tls` block: all `https://` or all `http://`.
+- **The create and update responses carry the warnings in `status.warnings`,** and the controller logs each one. Reading the Backend back doesn't repeat them. Besides `TLS_VERIFY_HOSTNAME_DISABLED` and `TLS_IDENTITY_EXPIRED`, a Backend can get **`TLS_NO_TRUST_SOURCE`**: its endpoints are `https://`, it lists no `trustedCAs`, and the gateway trust bundle is empty, so nothing could verify the backend's certificate. Requests routed to it fail with `503` until you set `trustedCAs` or [add an upstream trust certificate](manage-certificates.md#add-an-upstream-trust-certificate). It's a warning rather than a refusal because the bundle can change after the Backend is saved.
+- **Each `https://` endpoint is checked against its own host.** The gateway sends the endpoint's hostname as SNI, and sends no SNI when the endpoint is an IP address. Unless `verifyHostName` is `false`, it also matches the endpoint's hostname, or its IP address, against the names in the backend's certificate; with `verifyHostName: false`, no name is checked. An `http://` endpoint has no TLS, so none of these checks apply. The identity and the trusted certificates apply to every `https://` endpoint. Requests are spread across the endpoints in proportion to their `weight`, and an endpoint with no weight, or `0`, counts as `1`.
+- **A Backend has its own connection pool,** separate from every API's upstream definitions, even when both reach the same backend.
+
+The identity and trust certificates a Backend names can't be deleted while it names them. Rotating the identity with `PUT /certificates/{id}` needs no change to the Backend. See [Backend management](../../rest-apis/gateway/backend-management.md) for the management API operations.
+
 ## Rotate the identity without redeploying
 
 Replace the identity's certificate and key in place with `PUT /certificates/{id}`. The name doesn't change, so every upstream definition that names it keeps working, and new connections to the backend present the new certificate. Connections already open keep the previous certificate until they close. See [Rotate a gateway identity](manage-certificates.md#rotate-a-gateway-identity).

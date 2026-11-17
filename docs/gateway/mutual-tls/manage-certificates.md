@@ -150,12 +150,12 @@ curl -s -X DELETE "http://localhost:9090/api/management/v1/certificates/$ID" \
   -u admin:<password>
 ```
 
-The gateway refuses to delete an entry that a deployed API still depends on, and returns `409`. The response lists each reference by field path and API name, so you know what to change first. An entry is in use when it is:
+The gateway refuses to delete an entry that a deployed API or a global Backend still depends on, and returns `409`. The response lists each reference by field path and API or Backend name, so you know what to change first. An entry is in use when it is:
 
 - a client authority named in an `mtls-auth` `accept` list,
 - the last client authority in the pool while any deployed API attaches `mtls-auth`,
-- an identity named in an upstream definition's `tls.identity`, or
-- an upstream trust certificate named in an upstream definition's `tls.trustedCAs`.
+- an identity named in an upstream definition's `tls.identity`, or in a global Backend's `spec.tls.identity`, or
+- an upstream trust certificate named in an upstream definition's `tls.trustedCAs`, or in a global Backend's `spec.tls.trustedCAs`.
 
 `role: default` doesn't block a delete, because no API refers to an identity by its role. Once the default identity is gone, backends are presented the HTTPS listener certificate instead. A relay entry can always be deleted. Once the last relay entry is gone, relayed headers are no longer believed, unless `trust_any` is on.
 
