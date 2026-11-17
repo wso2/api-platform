@@ -22,7 +22,7 @@ Feature: REST APIs are managed through the API Portal REST API
   I want to create, find, update and delete the REST APIs the portal lists
   So that developers see exactly the APIs I publish, and nobody else can change them
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level:
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level:
   # the /api-portal/api/v0.9/apis endpoints that the portal's admin UI and GitOps flows call.
   # Every API is rendered from resources/templates/api-portal-api.yaml; a value of null leaves
   # that field out of the request. Every refusal is paired with a request that succeeds, and every

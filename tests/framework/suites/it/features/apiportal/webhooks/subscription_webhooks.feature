@@ -23,7 +23,7 @@ Feature: Subscription changes are delivered to webhook subscribers, with the tok
   I want an event for every subscription created, switched, suspended, rotated or ended
   So that gateways honour exactly the subscriptions and tokens the portal holds
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level. The
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level. The
   # fixture API offers the Gold and Silver plans. A subscriber without a secret is sent no token; one
   # with a secret is sent it encrypted. A refused change sends no event and changes nothing.
 

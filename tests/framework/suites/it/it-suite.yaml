@@ -21,8 +21,8 @@
 # combination of products the tests check (helper services such as testbench, tls-backend
 # and a2a-trip-planner do not count):
 #   blocks/gateway.yaml                          gateway
-#   blocks/platform-api-gateway.yaml             Platform API + gateway (also holds the one
-#                                                Platform API-only block)
+#   blocks/platform-api.yaml                     Platform API
+#   blocks/platform-api-gateway.yaml             Platform API + gateway
 #   blocks/api-portal.yaml                       API Portal
 #   blocks/platform-api-gateway-api-portal.yaml  Platform API + API Portal + gateway
 #
@@ -50,6 +50,7 @@ defaults:
 
 blockFiles:
   - blocks/gateway.yaml
+  - blocks/platform-api.yaml
   - blocks/platform-api-gateway.yaml
   - blocks/api-portal.yaml
   - blocks/platform-api-gateway-api-portal.yaml

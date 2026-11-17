@@ -23,7 +23,7 @@ Feature: Administrators register the key managers developers get OAuth2 tokens f
   I want to register, validate, disable and remove key managers safely
   So that developers get tokens only from identity providers I have enabled, and the portal never reaches an address it must not
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level.
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level.
   # Key managers point at this scenario's partition of the testbench OAuth2 mock,
   # whose fixed client is "test-client" / "test-secret" — a mock credential, never a real one. A
   # provisioning credential is generated per run and must never come back in a response.

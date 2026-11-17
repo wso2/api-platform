@@ -460,14 +460,53 @@ idle        = "120s"
 allowed_origins = ""   # comma-separated, e.g. "https://workspace.example.com,https://devportal.example.com"
 
 # ---------------------------------------------------------------------------
+# Outbound access control
+# ---------------------------------------------------------------------------
+# Restricts the destinations platform-api connects to when the URL comes from
+# a tenant or user: an OpenAPI/SDL spec URL, an MCP server or agent-card URL,
+# and a GraphQL introspection endpoint. The same rules refuse, on create,
+# update and deploy, an artifact whose upstream URL, per-gateway endpoint
+# override or LLM provider template endpoint names a refused destination; that
+# check reads the URL itself and does no DNS lookup. Not covered, as deployment
+# configuration rather than tenant destinations: API portal URLs, gateway
+# endpoints (the gateway relay uses gateway_relay.egress.allow_hosts) and
+# vhosts; nor are policy parameters. URLs set in this file (the IdP JWKS URL,
+# the feature-usage collector, the proxy) are never restricted by it.
+#
+# mode                  "deny":  a host matching an entry in hostnames is refused.
+#                       "allow": only a host matching an entry is permitted
+#                                (hostnames must not be empty).
+# hostnames             RE2 regular expressions, matched case-insensitively against
+#                       the whole hostname (never the port or path), e.g.
+#                       ['api\.example\.com', '[a-z0-9-]+\.svc\.cluster\.local'].
+#                       Give them as a TOML array; at most 256, each up to 255 characters.
+# deny_private_networks Also refuse private (RFC 1918), loopback, carrier-grade NAT
+#                       and unique-local addresses. In allow mode a listed host must
+#                       pass this check too. Link-local (cloud metadata), unspecified
+#                       and multicast addresses are always refused.
+# max_redirects         Redirect hops followed; each hop is checked again and must
+#                       stay on the same host.
+# allowed_schemes       "http" and/or "https".
+#
+# A refused destination gets a generic error; the reason is logged only.
+[platform_api.server.network_security.access_control]
+enabled               = true
+mode                  = "deny"
+hostnames             = []
+deny_private_networks = false
+max_redirects         = 5
+allowed_schemes       = ["http", "https"]
+
+# ---------------------------------------------------------------------------
 # WebSocket
 # ---------------------------------------------------------------------------
 [platform_api.server.websocket]
-max_connections      = 1000   # global WebSocket connection limit
-connection_timeout   = 30     # seconds before an idle connection is closed
-rate_limit_per_min   = 1000   # maximum messages per minute per connection
-metrics_log_enabled  = true   # emit WebSocket metrics to the log
-metrics_log_interval = 10     # seconds between metrics log lines
+max_connections             = 1000   # global WebSocket connection limit
+max_connections_per_gateway = -1     # concurrent connections one gateway may hold across all its tokens; -1 = unlimited
+connection_timeout          = 30     # seconds before an idle connection is closed
+rate_limit_per_min          = 1000   # maximum messages per minute per connection
+metrics_log_enabled         = true   # emit WebSocket metrics to the log
+metrics_log_interval        = 10     # seconds between metrics log lines
 
 # ---------------------------------------------------------------------------
 # Gateway
@@ -526,7 +565,7 @@ overall_timeout         = "65s"   # deadline for all portal calls of one publish
 
 # ---------------------------------------------------------------------------
 # HTTP client — the single shared outbound *http.Client used by every
-# SSRF-guarded call this process makes whose destination is not fully trusted:
+# destination-guarded call this process makes whose destination is not fully trusted:
 # MCP reachability probes / JSON-RPC calls (an MCP proxy's own upstream URL),
 # and OpenAPI spec-by-URL fetches (an LLM provider template's spec URL). Built
 # once at startup; every field mirrors github.com/wso2/api-platform/httpkit/httpclient.Config.
@@ -592,7 +631,7 @@ url = ""
 username = ""
 password = ""
 no_proxy = []
-# Required ("delegated" or "manual_connect") only when mode != "none" AND ssrf.enabled below
+# Required ("delegated" or "manual_connect") only when mode != "none" AND destination_guard.enabled below
 # — see config.HTTPClientProxyConfig's doc comment.
 egress = ""
 
@@ -604,10 +643,11 @@ client_cert_file = ""
 client_key_file = ""
 insecure_skip_verify = false
 
-[platform_api.http_client.ssrf]
-# Enabled by default: every current caller of this client fetches a user/tenant-supplied
-# URL (an MCP proxy's upstream, an LLM provider template's OpenAPI spec URL) — exactly the
-# scenario ssrf-prevention.md targets.
+[platform_api.http_client.destination_guard]
+# Its previous name is still read, with a deprecation
+# warning. Enabled by default: callers of this client fetch user/tenant-supplied URLs (an
+# MCP proxy's upstream, an LLM provider template's OpenAPI spec URL), whose destinations
+# must be checked before they are dialed.
 enabled = true
 # "permit_private_block_metadata" (default — a backend that is normally private, e.g. a
 # ClusterIP/service-DNS name/localhost, stays reachable; only link-local/metadata/

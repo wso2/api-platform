@@ -44,6 +44,7 @@ const { PricingValidationError } = require('./billing/planPricingValidation');
 const billingCatalogService = require('./billing/billingCatalogService');
 const checkoutService = require('./billing/checkoutService');
 const sharedKeyAuth = require('../middlewares/sharedKeyAuth');
+const { MONETIZATION_DISABLED, monetizationDisabled } = require('../billing/monetization');
 const { BillingProviderError } = require('../billing/http');
 const billingProvider = require('../billing/billingProvider');
 const billingConfigurationDao = require('../dao/billingConfigurationDao');
@@ -1175,14 +1176,20 @@ function checkNewPlanHandle(plan) {
  * A plan created with `pricing` gets it in the same transaction, so the plan and its pricing are
  * saved together or not at all. Pricing is set only when a plan is created: pricing sent for a plan
  * that already exists is refused (409 PLAN_PRICING_LOCKED), and a plan updated without pricing keeps
- * the pricing it has. It runs before the plan's created event is published, which carries the
- * pricing (`plan.pricing`).
+ * the pricing it has. With monetization disabled, only the Platform API creates a plan with pricing
+ * (409 MONETIZATION_DISABLED otherwise). It runs before the plan's created event is published, which
+ * carries the pricing (`plan.pricing`).
  */
-async function applyNewPlanPricing(orgId, body, plan, created, userId, t) {
+async function applyNewPlanPricing(orgId, body, plan, created, userId, t, fromPlatformApi) {
     if (body.pricing === undefined || body.pricing === null) return;
     if (!created) {
         throw Object.assign(new CustomError(409, planPricingService.pricingLockedMessage(plan.handle)),
             { catalogCode: planPricingService.PRICING_LOCKED });
+    }
+    if (monetizationDisabled() && !fromPlatformApi) {
+        throw Object.assign(new CustomError(409,
+            'Monetization is disabled for this portal, so paid plans cannot be created. Create a free plan instead.'),
+        { catalogCode: MONETIZATION_DISABLED });
     }
     try {
         plan.pricing = await planPricingService.setNewPlanPricing(orgId, plan, body.pricing, t);
@@ -1214,7 +1221,7 @@ const createSubscriptionPlan = async (req, res) => {
             const subscriptionPlanResponse = await subscriptionPlanDao.create(orgId, subscriptionPlan, userId, t);
             if (subscriptionPlanResponse) {
                 createdPlanUuid = subscriptionPlanResponse.uuid;
-                await applyNewPlanPricing(orgId, subscriptionPlan, subscriptionPlanResponse, true, userId, t);
+                await applyNewPlanPricing(orgId, subscriptionPlan, subscriptionPlanResponse, true, userId, t, sharedKeyAuth.madeByPlatformApi(req));
                 if (echo) {
                     await subscriptionPlanEvents.publishPlanUpsert(
                         subscriptionPlanEvents.EVENT.CREATED, orgId, subscriptionPlanResponse, t);
@@ -1266,7 +1273,7 @@ const createSubscriptionPlans = async (req, res) => {
                         `Failed to create plan: ${plan.handle || "unknown"}`
                     );
                 }
-                await applyNewPlanPricing(orgId, plan, created, true, userId, t);
+                await applyNewPlanPricing(orgId, plan, created, true, userId, t, sharedKeyAuth.madeByPlatformApi(req));
                 if (echo) await subscriptionPlanEvents.publishPlanUpsert(subscriptionPlanEvents.EVENT.CREATED, orgId, created, t);
                 createdRecords.push(created);
             }
@@ -1311,7 +1318,7 @@ const updateSubscriptionPlan = async (req, res) => {
             if (statusCode === 201) checkNewPlanHandle(subscriptionPlan);
             if (subscriptionPlanResponse) {
                 updatedPlanUuid = subscriptionPlanResponse.uuid;
-                await applyNewPlanPricing(orgId, subscriptionPlan, subscriptionPlanResponse, statusCode === 201, userId, t);
+                await applyNewPlanPricing(orgId, subscriptionPlan, subscriptionPlanResponse, statusCode === 201, userId, t, sharedKeyAuth.madeByPlatformApi(req));
                 if (echo) {
                     await subscriptionPlanEvents.publishPlanUpsert(
                         statusCode === 201 ? subscriptionPlanEvents.EVENT.CREATED : subscriptionPlanEvents.EVENT.UPDATED,
@@ -1362,7 +1369,7 @@ const updateSubscriptionPlans = async (req, res) => {
                         `Failed to upsert plan: ${plan.handle || "unknown"}`
                     );
                 }
-                await applyNewPlanPricing(orgId, plan, result.subscriptionPlanResponse, result.statusCode === 201, userId, t);
+                await applyNewPlanPricing(orgId, plan, result.subscriptionPlanResponse, result.statusCode === 201, userId, t, sharedKeyAuth.madeByPlatformApi(req));
                 if (echo) {
                     await subscriptionPlanEvents.publishPlanUpsert(
                         result.statusCode === 201 ? subscriptionPlanEvents.EVENT.CREATED : subscriptionPlanEvents.EVENT.UPDATED,

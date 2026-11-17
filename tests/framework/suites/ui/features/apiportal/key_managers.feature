@@ -16,14 +16,36 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal key managers
+@APIPORTAL
+Feature: API Portal settings: key managers, organization and webhooks
+  Journey APIPUI-016: an administrator adds a key manager, which is offered to developers creating
+  an OAuth2 key while it is enabled, and deletes it.
+  Journey APIPUI-011: an administrator edits the organization's details.
+  Journey APIPUI-017: an administrator adds, edits, disables and deletes a webhook.
+  These change portal-wide state, so they run on a stack of their own, one at a time.
 
-  # "Enabled for a developer" no longer means controls appear on their
-  # application: a key manager is not bound to one. It means the developer can
-  # choose that key manager when creating an OAuth2 key, which is what this
-  # asserts.
-
-  Scenario: A key manager is offered to a developer creating an OAuth2 key
+  Background:
     Given the user is signed in to the API Portal
-    When the administrator creates a key manager and a developer application
+
+  @APIP-015
+  Scenario: Journey: an administrator adds a key manager, disables and enables it, and deletes it
+    When the administrator creates a key manager
     Then the developer can choose that key manager when creating an OAuth2 key
+    When the administrator disables that key manager, and it is no longer offered to the developer
+    And the administrator enables that key manager, and it is again offered to the developer
+    And the administrator deletes that key manager
+
+  @APIP-028
+  Scenario: Journey: an administrator edits the organization
+    When the organization form refuses an invalid business owner email
+    And the administrator changes the organization's name and business owner, and they are kept after a reload
+    Then the organization's handle and IdP reference cannot be changed
+
+  @APIP-050
+  Scenario: Journey: an administrator adds, edits, disables and deletes a webhook
+    When the webhook form refuses a webhook without a target URL or secret, or with an invalid URL
+    And the administrator adds a webhook with a URL, secret, timeout and two events
+    Then the webhook is listed with its events, its secret and enabled
+    When the administrator edits the webhook leaving the secret blank, which keeps it
+    And the administrator disables the webhook
+    And the administrator deletes the webhook

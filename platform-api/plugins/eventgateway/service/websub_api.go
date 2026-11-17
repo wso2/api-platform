@@ -20,6 +20,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -100,6 +101,11 @@ func (s *WebSubAPIService) Create(orgUUID, createdBy string, req *api.WebSubAPI)
 	}
 	if req.ProjectId == "" {
 		return nil, apperror.ValidationFailed.New("The projectId field is required.")
+	}
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see coreservice.CheckRequestURLs).
+	if err := coreservice.CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
 	}
 
 	handle := utils.ValueOrEmpty(req.Id)
@@ -257,6 +263,11 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 	}
 	if req.DisplayName == "" || req.Version == "" {
 		return nil, apperror.ValidationFailed.New("The displayName and version fields are required.")
+	}
+	// Apply server.network_security.access_control to the URLs in the request
+	// (see coreservice.CheckRequestURLs).
+	if err := coreservice.CheckRequestURLs(context.Background(), orgUUID, req); err != nil {
+		return nil, err
 	}
 	// Get existing
 	existing, err := s.repo.GetByHandle(handle, orgUUID)

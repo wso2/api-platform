@@ -41,6 +41,7 @@ const util = require('../../utils/util');
 const logger = require('../../config/logger');
 const { logUserAction } = require('../../middlewares/auditLogger');
 const { MeterValidationError, validateMeter } = require('./meterValidation');
+const { MONETIZATION_DISABLED, monetizationDisabled } = require('../../billing/monetization');
 
 const EVENT = Object.freeze({
     CREATED: 'meter.created',
@@ -112,6 +113,10 @@ const getMeter = async (req, res) => {
 
 const createMeter = async (req, res) => {
     const orgId = req.orgId;
+    if (monetizationDisabled() && !sharedKeyAuth.madeByPlatformApi(req)) {
+        return util.sendError(res, 409, 'Monetization is disabled for this portal, so meters cannot be created.',
+            { code: MONETIZATION_DISABLED });
+    }
     let input;
     try {
         input = validateMeter(req.body, { create: true });

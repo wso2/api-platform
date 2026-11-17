@@ -129,4 +129,11 @@ export type AIWorkspaceHostPort = {
    * in `permissions.ts`.
    */
   permissions?: PermissionsPort;
+  /**
+   * Reports one use of an API Platform console feature, by its taxonomy code
+   * (`apip.lifecycle.api-deploy-click`) and declared dimensions, so this page
+   * reports what the built-in page it replaces would. Optional: a host that
+   * reports no feature usage omits it, and nothing is reported.
+   */
+  trackFeature?: (code: string, dimensions?: Readonly<Record<string, string>>) => void;
 };

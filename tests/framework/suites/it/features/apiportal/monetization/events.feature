@@ -23,7 +23,7 @@ Feature: The API Portal reports its meters and priced plans to webhook subscribe
   I want every meter and plan the portal creates, changes or deletes to be delivered to me
   So that the gateway always enforces the plans the portal is selling
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level. The
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level. The
   # subscriber points at this scenario's partition of the testbench webhook sink. A refused create
   # publishes nothing, which is checked after a valid create has been delivered.
 

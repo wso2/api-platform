@@ -7,10 +7,13 @@ import (
 
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/config"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/upstreamguard"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
@@ -92,6 +95,56 @@ func hydrateConfigsByKindForStartup(
 	return nil
 }
 
+// loadStartupRuntimeConfigs loads the stored artifacts into runtimeStore at
+// startup and logs what the loaded set implies. It runs before the initial
+// router snapshot: loading renders each artifact, and one the gateway
+// configuration refuses (an environment variable outside policy_engine.env_access,
+// or a URL network access control does not permit) is undeployed and handed to
+// onRefused to persist, so the first snapshot never routes it.
+func loadStartupRuntimeConfigs(
+	loadedAPIs []*models.StoredConfig,
+	runtimeStore *storage.RuntimeConfigStore,
+	secretResolver funcs.SecretResolver,
+	transformer models.ConfigTransformer,
+	routerConfig *config.RouterConfig,
+	gatewayJWKSEnabled bool,
+	skipInvalidDeployments bool,
+	onRefused func(*models.StoredConfig) error,
+	log *slog.Logger,
+) error {
+	refused := 0
+	loadedCount, err := loadRuntimeConfigsFromExistingAPIConfigurations(
+		loadedAPIs, runtimeStore, secretResolver, transformer, log, skipInvalidDeployments,
+		func(c *models.StoredConfig) error {
+			refused++
+			if onRefused == nil {
+				return nil
+			}
+			return onRefused(c)
+		},
+	)
+	if err != nil {
+		return err
+	}
+	if log == nil {
+		return nil
+	}
+	log.Info("Loaded runtime configs from API configurations",
+		slog.Int("total_apis", len(loadedAPIs)),
+		slog.Int("configs_loaded", loadedCount),
+		slog.Int("undeployed_as_refused", refused))
+	warnMtlsAPIsWithoutDedicatedHostname(loadedAPIs, routerConfig, log)
+	if gatewayJWKSEnabled && runtimeStore != nil {
+		if conflicts := transform.GatewayJWKSConflicts(runtimeStore.GetAll()); len(conflicts) > 0 {
+			log.Warn("Deployed routes use the gateway JWKS path and are shadowed by the gateway JWKS endpoint; "+
+				"move them to another path, or set [signing] jwks_endpoint_enabled = false to keep serving them",
+				slog.String("path", constants.GatewayJWKSPath),
+				slog.Any("routes", conflicts))
+		}
+	}
+	return nil
+}
+
 func loadRuntimeConfigsFromExistingAPIConfigurations(
 	loadedConfigs []*models.StoredConfig,
 	runtimeStore *storage.RuntimeConfigStore,
@@ -113,12 +166,13 @@ func loadRuntimeConfigsFromExistingAPIConfigurations(
 
 		if secretResolver != nil {
 			if err := templateengine.RenderSpec(apiConfig, secretResolver, log); err != nil {
-				// A stored artifact that reads an environment variable outside the
-				// env access allow list is undeployed rather than failing startup or
-				// being left with a route but no policy chain, whatever
-				// skipInvalidDeployments says. Other artifacts keep loading.
-				if funcs.IsEnvAccessError(err) {
-					utils.UndeployEnvRefusedAtStartup(apiConfig, onEnvRefused, log)
+				// A stored artifact the gateway configuration now refuses — it reads
+				// an environment variable outside the env access allow list, or names
+				// a URL network access control does not permit — is undeployed rather
+				// than failing startup or being left with a route but no policy chain,
+				// whatever skipInvalidDeployments says. Other artifacts keep loading.
+				if upstreamguard.IsArtifactRefusal(err) {
+					utils.UndeployRefusedAtStartup(apiConfig, onEnvRefused, upstreamguard.RefusalReason(err), log)
 					continue
 				}
 				if log != nil {
@@ -221,4 +275,28 @@ func warnMtlsAPIsWithoutDedicatedHostname(configs []*models.StoredConfig, router
 			slog.String("handle", cfg.Handle),
 			slog.String("id", cfg.UUID))
 	}
+}
+
+// installArtifactAccessControl installs controller.server.network_security.access_control
+// as RenderSpec's post-render check, or clears the check when it is disabled. It
+// returns an error for an invalid configuration, which cfg.Validate has normally
+// rejected already.
+func installArtifactAccessControl(cfg *config.Config, policyDefinitions map[string]models.PolicyDefinition, log *slog.Logger) error {
+	policy, enabled, err := cfg.ArtifactAccessControlPolicy()
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		templateengine.SetPostRenderCheck(nil)
+		log.Info("Network access control for artifact URLs is disabled")
+		return nil
+	}
+	guard := upstreamguard.New(policy, policyDefinitions, log)
+	templateengine.SetPostRenderCheck(guard.CheckArtifact)
+	ac := cfg.Controller.Server.NetworkSecurity.AccessControl
+	log.Info("Network access control for artifact URLs is enabled",
+		slog.String("mode", ac.Mode),
+		slog.Int("hostname_patterns", len(ac.Hostnames)),
+		slog.Bool("deny_private_networks", ac.DenyPrivateNetworks))
+	return nil
 }

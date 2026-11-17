@@ -23,7 +23,7 @@ Feature: The API Portal's own organization is managed through the API Portal RES
   I want to read and rename the organization the portal serves, and nothing else
   So that the organization cannot be created, removed, re-pointed or reached from another tenant
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml)
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml)
   # at the API level. The portal serves exactly one organization ("default" in this suite), shared
   # by every runner in the block. An organization update replaces every settable field, so each
   # scenario that changes it first registers the organization's current settings to be written back

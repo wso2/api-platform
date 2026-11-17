@@ -148,6 +148,9 @@ blocks:
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_cards.feature
         tags: "gateway-version>1.2.0"
+      - name: network-access-control
+        features:
+          - features/management-portal/network-access-control/destination_refusal.feature
       - name: agent-proxy-deployment
         features:
           - features/ai-workspace-gateway/agent/agent_proxy_deployment.feature
@@ -305,6 +308,29 @@ blocks:
         features:
           - features/gateway/control-plane/dp_to_cp_sync_disabled.feature
 
+  # Gateway custom policies: the gateway loads the integration-test policy definitions and reports
+  # most of them as custom (customPolicies: true), which every other block's gateway manifest must
+  # not show. The definitions have fixed names, so one runner syncs them at a time. The sync rules
+  # are stored per platform-api database engine.
+  - name: gateway-custom-policies
+    parallel: 1
+    components:
+      - name: platform-api
+        db:
+          matrix: [sqlite, postgres, sqlserver]
+      - name: platform-gateway
+        dependsOn: [platform-api]
+        db: sqlite
+      - name: testbench
+    wiring:
+      platform-gateway:
+        customPolicies: true
+    runners:
+      # Scenarios GWCP (scenarios/on-prem/GWCP.yaml).
+      - name: gateway-custom-policy-sync
+        features:
+          - features/management-portal/gateway-policies/custom_policy_sync.feature
+
   # Two gateways (replicas: 2) connected to one Platform API.
   - name: multigateway
     parallel: 1
@@ -361,21 +387,3 @@ blocks:
       - name: tenant-gateway-connection
         features:
           - features/management-portal/tenant-isolation/gateway_connection.feature
-
-  # This block starts only the Platform API: it does not use a gateway. It lives here rather than
-  # in a Platform API-only file of its own, so the suite keeps one block file fewer.
-  # The deny-by-default posture of platform-api-core's shared-secret fallback (its overlay sets
-  # legacy_shared_secret = true, see the webhook-secret-* runners there): a platform-api with the
-  # webhook receiver enabled but legacy_shared_secret left at its default must still refuse a
-  # hash-less delivery outright, so this gets its own instance rather than reusing that block
-  # (which turns the fallback on). A single engine is enough — the setting is HTTP-layer config,
-  # not storage-engine-specific.
-  - name: platform-api-webhook-legacy-disabled
-    components:
-      - name: platform-api
-        db: sqlite
-        overlay: tests/framework/core/catalog/overlays/platform-api-webhook-legacy-disabled.toml
-    runners:
-      - name: webhook-legacy-disabled
-        features:
-          - features/management-portal/webhook-secrets/webhook_secret_legacy_disabled.feature

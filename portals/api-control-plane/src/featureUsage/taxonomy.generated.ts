@@ -205,6 +205,7 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
               'api-list-empty-state',
               'org-home',
               'project-quick-actions',
+              'header-breadcrumb',
               'direct',
             ],
             required: true,
@@ -1273,6 +1274,42 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
             label: 'Distinct Install Methods Used',
             dimension: 'install_method',
           },
+        ],
+      },
+    },
+    {
+      code: 'apip.gateway.custom-policy-sync-click',
+      name: 'Gateway Custom Policy Sync Click',
+      description:
+        "Sync a custom policy installed on a gateway into the organization, from the gateway's Policies tab, so that APIs can use it. Emitted by the console.",
+      category: 'gateway',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.gateway.custom-policy-sync-click',
+        event_category: 'adoption',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'sync_kind',
+            type: 'enum',
+            values: ['add', 'update'],
+            required: true,
+            description:
+              'add for a major version the organization does not hold yet; update for a higher minor version of one it holds.',
+          },
+        ],
+        aggregations: [
+          { type: 'count', label: 'Gateway Custom Policy Sync Click' },
+          { type: 'count_distinct', label: 'Sync Kinds', dimension: 'sync_kind' },
         ],
       },
     },
@@ -5112,7 +5149,14 @@ export const CONSOLE_FEATURES = {
     dimensions: {
       entry_point: {
         required: true,
-        values: ['api-list', 'api-list-empty-state', 'org-home', 'project-quick-actions', 'direct'],
+        values: [
+          'api-list',
+          'api-list-empty-state',
+          'org-home',
+          'project-quick-actions',
+          'header-breadcrumb',
+          'direct',
+        ],
       },
     },
   },
@@ -5291,6 +5335,13 @@ export const CONSOLE_FEATURES = {
         values: ['check-runtime', 'download', 'setup', 'configure', 'start', 'install'],
       },
     },
+  },
+  'apip.gateway.custom-policy-sync-click': {
+    name: 'Gateway Custom Policy Sync Click',
+    category: 'gateway',
+    tier: 'core',
+    eventCategory: 'adoption',
+    dimensions: { sync_kind: { required: true, values: ['add', 'update'] } },
   },
   'apip.policies.client-authentication-attach': {
     name: 'Client Authentication',

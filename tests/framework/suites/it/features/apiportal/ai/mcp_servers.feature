@@ -23,7 +23,7 @@ Feature: MCP servers are managed through the API Portal REST API and its MCP reg
   I want to publish MCP servers with their tools, through the portal's API or its MCP registry
   So that developers and AI agents find each server, and nothing else is mistaken for one
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level. MCP
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API level. MCP
   # servers are rendered from resources/templates/api-portal-api.yaml with type MCP and sent to
   # /mcp-servers; the "mcp" definition holds a single "ping" tool. REST APIs and MCP servers live in
   # separate collections, so each handle resolves only in its own. Registry servers are named

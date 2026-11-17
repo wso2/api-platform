@@ -13,7 +13,7 @@ require (
 	github.com/microsoft/go-mssqldb v1.10.0
 	github.com/stretchr/testify v1.11.1
 	github.com/wso2/api-platform/httpkit v0.0.0-local
-	golang.org/x/crypto v0.54.0
+	golang.org/x/crypto v0.59.0
 )
 
 require (
@@ -28,9 +28,10 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

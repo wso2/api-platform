@@ -62,11 +62,6 @@ help: ## Show this help message
 	@echo ''
 	@echo 'Clean Targets:'
 	@echo '  make clean                       - Clean all build artifacts'
-	@echo ''
-	@echo 'Integration Tests:'
-	@echo '  make it                          - Run Cypress integration tests against SQLite (headless, in Docker)'
-	@echo '  make it-postgres                 - Run Cypress integration tests against PostgreSQL (headless, in Docker)'
-	@echo '  make it-open                     - Open Cypress interactive UI (needs the API Portal running locally)'
 
 # Build Targets
 
@@ -390,14 +385,3 @@ generate-apidocs: ## Generate REST API docs from the API Portal OpenAPI spec
 	@bash $(APIDOCS_TOOLS_DIR)/split-openapi.sh /tmp/dp-openapi.md $(DOCS_OUT_DIR)
 	@echo "REST API docs generated at $(DOCS_OUT_DIR)"
 
-# Integration Test Targets
-
-.PHONY: it it-postgres it-open
-it: ## Run Cypress integration tests against SQLite (headless, in Docker)
-	$(MAKE) -C it test DOCKER_REGISTRY=$(DOCKER_REGISTRY)
-
-it-postgres: ## Run Cypress integration tests against PostgreSQL (headless, in Docker)
-	$(MAKE) -C it test-postgres DOCKER_REGISTRY=$(DOCKER_REGISTRY)
-
-it-open: ## Open Cypress interactive UI against a locally running API Portal
-	$(MAKE) -C it open DOCKER_REGISTRY=$(DOCKER_REGISTRY)

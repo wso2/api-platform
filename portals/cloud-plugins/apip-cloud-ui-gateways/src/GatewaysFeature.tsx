@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FC, type ReactNode } from 'react';
 import { Alert, Box, CircularProgress, PageContent, PageTitle } from '@wso2/oxygen-ui';
 import GatewayForm from './GatewayForm';
 import GatewayOverview from './components/GatewayOverview';
@@ -26,6 +26,7 @@ import { createGatewaysClient } from './gatewaysApi';
 import { CONTROL_PLANE_HOST_PLACEHOLDER } from './components/GatewaySetupSteps';
 import { createSelfHostedGatewaysClient } from './selfHostedGatewaysApi';
 import type { AIWorkspaceHostPort } from './hostPort';
+import { GATEWAY_REGISTER_CLICK, GATEWAY_UPDATE_CLICK } from './featureUsage';
 import { GATEWAY_OPERATIONS, permissionsOf } from './permissions';
 import { hostingBlocked } from './utils/limits';
 import type {
@@ -47,6 +48,8 @@ export type GatewaysFeatureProps = {
    * has to state which kinds of gateway it is for.
    */
   gatewayTypes: GatewayType[];
+  /** Content of a gateway's Policies tab; the tab shows a placeholder without it. */
+  renderPolicies?: (gatewayId: string) => ReactNode;
 };
 
 /**
@@ -66,7 +69,7 @@ export type GatewaysFeatureProps = {
  */
 const STATUS_POLL_INTERVAL_MS = 5000;
 
-const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
+const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes, renderPolicies }) => {
   const { apiFetch, notify, resourceLimits } = port;
   const permissions = permissionsOf(port);
   const client = useMemo(() => createGatewaysClient(apiFetch), [apiFetch]);
@@ -356,6 +359,12 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
   }
 
   if (view === 'create' || view === 'edit') {
+    // The form's Add or Save click, once the form has accepted it: registering a
+    // gateway on create, updating one on edit, as on the built-in Gateways page.
+    const reportSubmit = (hosting: GatewayHosting, type: GatewayType) => {
+      if (view === 'edit') port.trackFeature?.(GATEWAY_UPDATE_CLICK, { gateway_type: type });
+      else port.trackFeature?.(GATEWAY_REGISTER_CLICK, { gateway_hosting: hosting, gateway_type: type });
+    };
     const editingGateway =
       view === 'edit' ? visibleGateways.find((gateway) => gateway.id === editingGatewayId) : undefined;
     return (
@@ -376,6 +385,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
           // Rechecked here, not only when the form opened: the scope can be lost
           // while it is open, before the effect above has closed it.
           if (!formPermitted) return;
+          reportSubmit('managed', input.type);
           const saved = await submitGateway(input, view === 'edit' ? editingGatewayId ?? undefined : undefined);
           if (saved) {
             setView('list');
@@ -384,6 +394,7 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         }}
         onSubmitSelfHosted={async (input) => {
           if (!formPermitted) return;
+          reportSubmit('self-hosted', input.type);
           const saved = await submitSelfHostedGateway(
             input,
             view === 'edit' ? editingGatewayId ?? undefined : undefined
@@ -426,6 +437,8 @@ const GatewaysFeature: FC<GatewaysFeatureProps> = ({ port, gatewayTypes }) => {
         notify={notify}
         canManageTokens={canManageTokens}
         canEdit={canUpdate}
+        renderPolicies={renderPolicies}
+        trackFeature={port.trackFeature}
       />
     );
   }

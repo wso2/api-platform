@@ -305,6 +305,11 @@ jobs:
             --test-reporter=spec --test-reporter-destination=stdout \
             --test-reporter=lcov --test-reporter-destination=unit-test-coverage.info \
             "${test_files[@]}"
+          # node --test writes each SF: path relative to this directory
+          # (src/db/dbSsl.js), which matches no repository file, so Codecov
+          # attaches none of the unit coverage to the api-portal sources.
+          # Make the paths repo-root relative, as the AI Workspace step does.
+          sed -i 's|^SF:|SF:portals/api-portal/|' unit-test-coverage.info
 
       # Prints what the unit run actually produced. The Codecov upload below is
       # continue-on-error, so a report that was never written, or written empty,

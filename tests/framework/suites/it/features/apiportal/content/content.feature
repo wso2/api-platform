@@ -23,7 +23,7 @@ Feature: An API's content is uploaded and served through the API Portal REST API
   I want to upload an API's landing-page content and images, replace them and remove them
   So that developers see the API the way I describe it, and only I can change it
 
-  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API
+  # Scenarios APIPORTAL (scenarios/on-prem/APIPORTAL.yaml) at the API
   # level, plus the public pages that show its icon and documents. Every content archive has one wrapper folder
   # holding web/ (landing page and images, first level only) and docs/<Section>/ (documents; a document
   # directly under docs/ is in section Other). The default fixture holds a marketing page

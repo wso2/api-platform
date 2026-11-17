@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -44,6 +45,7 @@ type Policy struct {
 	// BlockLinkLocal refuses 169.254.0.0/16 and fe80::/10 — this is where
 	// the cloud instance metadata endpoint (169.254.169.254) lives, so this
 	// is refused by every preset regardless of the private-address stance.
+	// It also refuses fd00:ec2::254, the EC2 metadata service's IPv6 address.
 	BlockLinkLocal bool
 	// BlockUnspecified refuses 0.0.0.0 and ::, which the OS can reinterpret
 	// as "local host".
@@ -70,10 +72,58 @@ type Policy struct {
 	// to target. Empty defaults to {"https"} — "http" must be added
 	// explicitly.
 	AllowedSchemes []string
+
+	// Hosts restricts which hostnames a destination may use (see
+	// CompileHostRule). nil permits every hostname. It is applied to the
+	// destination's URL hostname by Validate, CheckURL, CheckRedirect and
+	// httpclient's request wrapper — never by DialContext, which may be
+	// dialing a forward proxy rather than the destination itself.
+	Hosts *HostRule
 }
 
-// allowed reports whether ip is permitted by the policy.
+// allowed reports whether ip is permitted by the policy. An IPv6 address
+// that embeds an IPv4 address (6to4, NAT64) must also have its embedded
+// address permitted, so 2002:a9fe:a9fe:: cannot reach 169.254.169.254.
+// (IPv4-mapped addresses are already normalized by net.IP's own checks.)
 func (p Policy) allowed(ip net.IP) bool {
+	if !p.allowedAddr(ip) {
+		return false
+	}
+	if v4 := embeddedIPv4(ip); v4 != nil {
+		return p.allowedAddr(v4)
+	}
+	return true
+}
+
+// awsIPv6MetadataAddr is the EC2 instance metadata service's IPv6 address.
+// It sits in unique-local space (fc00::/7), not link-local, so BlockLinkLocal
+// names it explicitly to keep "link-local blocks the metadata endpoint" true
+// for IPv6 as well.
+var awsIPv6MetadataAddr = net.ParseIP("fd00:ec2::254")
+
+var (
+	sixToFourPrefix = mustParseCIDR("2002::/16")
+	nat64Prefix     = mustParseCIDR("64:ff9b::/96")
+)
+
+// embeddedIPv4 returns the IPv4 address carried inside a 6to4 (RFC 3056)
+// or NAT64 well-known-prefix (RFC 6052) IPv6 address, or nil.
+func embeddedIPv4(ip net.IP) net.IP {
+	if ip == nil || ip.To4() != nil || len(ip) != net.IPv6len {
+		return nil
+	}
+	switch {
+	case sixToFourPrefix.Contains(ip):
+		return net.IPv4(ip[2], ip[3], ip[4], ip[5])
+	case nat64Prefix.Contains(ip):
+		return net.IPv4(ip[12], ip[13], ip[14], ip[15])
+	}
+	return nil
+}
+
+// allowedAddr applies the policy's address categories and CIDR lists to a
+// single address.
+func (p Policy) allowedAddr(ip net.IP) bool {
 	if ip == nil {
 		return false
 	}
@@ -90,7 +140,7 @@ func (p Policy) allowed(ip net.IP) bool {
 	if p.BlockPrivate && (ip.IsPrivate() || isIPv6ULA(ip)) {
 		return false
 	}
-	if p.BlockLinkLocal && (ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()) {
+	if p.BlockLinkLocal && (ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.Equal(awsIPv6MetadataAddr)) {
 		return false
 	}
 	if p.BlockUnspecified && ip.IsUnspecified() {
@@ -149,6 +199,72 @@ func (p Policy) schemeAllowed(scheme string) bool {
 	return false
 }
 
+// refusal is the error returned when a policy refuses a destination. Its
+// message names the kind of refusal, never the resolved address; errors.Is
+// matches it against ErrDestinationNotAllowed.
+type refusal struct{ msg string }
+
+func (r *refusal) Error() string { return r.msg }
+
+func (r *refusal) Is(target error) bool { return target == ErrDestinationNotAllowed }
+
+func refused(msg string) error { return &refusal{msg: msg} }
+
+// CheckHost reports whether host (a URL hostname, possibly a bracketed IPv6
+// literal) is permitted by p.Hosts. It does not resolve the host.
+func (p Policy) CheckHost(host string) error {
+	if !p.Hosts.Allows(host) {
+		return refused("netguard: host is not allowed")
+	}
+	return nil
+}
+
+// ProxyHop returns the policy a forward proxy's own address is dialed
+// under. A proxy is operator configuration, not a destination taken from
+// tenant or user input, so neither the host rule nor the private-network
+// categories apply to it — only the categories that are never a legitimate
+// peer (link-local/metadata, unspecified, multicast/broadcast), as the
+// policy itself sets them.
+func (p Policy) ProxyHop() Policy {
+	return Policy{
+		BlockLinkLocal:          p.BlockLinkLocal,
+		BlockUnspecified:        p.BlockUnspecified,
+		BlockMulticastBroadcast: p.BlockMulticastBroadcast,
+	}
+}
+
+// CheckURL validates a destination URL taken from tenant or user input,
+// without connecting: the scheme must be allowed, the hostname must pass
+// p.Hosts, and an IP-literal host must be an allowed address. When resolve
+// is true a hostname is also resolved and every address checked (see
+// Validate); pass false when the URL will be dialed from another network
+// (e.g. a gateway's upstream checked by the control plane), where this
+// process's DNS answer is meaningless. Refusals match
+// ErrDestinationNotAllowed; a malformed URL or a failed lookup does not.
+func (p Policy) CheckURL(ctx context.Context, rawURL string, resolve bool) error {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("netguard: invalid URL")
+	}
+	if !p.schemeAllowed(u.Scheme) {
+		return refused("netguard: scheme is not allowed")
+	}
+	host := u.Hostname()
+	if err := p.CheckHost(host); err != nil {
+		return err
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if !p.allowed(ip) {
+			return refused("netguard: address is not allowed")
+		}
+		return nil
+	}
+	if !resolve {
+		return nil
+	}
+	return Validate(ctx, p, host)
+}
+
 // DialContext returns a dial function suitable for http.Transport.DialContext
 // (or direct use with a net.Dialer-shaped caller) that resolves the target
 // host, refuses to dial any candidate address the policy disallows, and then
@@ -180,7 +296,7 @@ func DialContext(policy Policy, timeout time.Duration) func(context.Context, str
 		}
 		for _, ip := range ips {
 			if !policy.allowed(ip.IP) {
-				return nil, fmt.Errorf("netguard: host resolves to a disallowed address")
+				return nil, refused("netguard: host resolves to a disallowed address")
 			}
 		}
 
@@ -208,7 +324,13 @@ func DialContext(policy Policy, timeout time.Duration) func(context.Context, str
 // proxy in a CONNECT request. This is defense-in-depth only: it reflects
 // what THIS process resolves, not necessarily what a downstream proxy will
 // actually connect to.
+//
+// Validate also applies policy.Hosts to host, so a refused hostname is
+// rejected before any lookup.
 func Validate(ctx context.Context, policy Policy, host string) error {
+	if err := policy.CheckHost(host); err != nil {
+		return err
+	}
 	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil {
 		return fmt.Errorf("netguard: failed to resolve host")
@@ -218,7 +340,7 @@ func Validate(ctx context.Context, policy Policy, host string) error {
 	}
 	for _, ip := range ips {
 		if !policy.allowed(ip.IP) {
-			return fmt.Errorf("netguard: host resolves to a disallowed address")
+			return refused("netguard: host resolves to a disallowed address")
 		}
 	}
 	return nil
@@ -252,13 +374,13 @@ func CheckRedirect(policy Policy, maxRedirects int) func(*http.Request, []*http.
 			return fmt.Errorf("netguard: too many redirects")
 		}
 		if !policy.schemeAllowed(req.URL.Scheme) {
-			return fmt.Errorf("netguard: redirect to a disallowed scheme")
+			return refused("netguard: redirect to a disallowed scheme")
 		}
 		// via[0] is the original request; Host carries the port, so a port
 		// change counts as a different host too.
 		if len(via) > 0 && !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
-			return fmt.Errorf("netguard: redirect to a different host")
+			return refused("netguard: redirect to a different host")
 		}
-		return nil
+		return policy.CheckHost(req.URL.Hostname())
 	}
 }
