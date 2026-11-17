@@ -20,9 +20,11 @@ package common
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/cucumber/godog"
@@ -39,6 +41,42 @@ const (
 	// embeddedSuiteRoot is where the framework's own suite sits in the repository.
 	embeddedSuiteRoot = "tests/framework/suites/it"
 )
+
+// RenderResourceTemplateJSON resolves a resource template beneath the suite root, renders it
+// with the values table and encodes the rendered mapping as the JSON document a publisher API
+// accepts.
+func RenderResourceTemplateJSON(ctx context.Context, root, name string, table *godog.Table) ([]byte, error) {
+	path, err := ResourceTemplatePath(root, name)
+	if err != nil {
+		return nil, err
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read resource template %q: %w", name, err)
+	}
+	rendered, err := RenderResourceTemplate(ctx, name, content, table)
+	if err != nil {
+		return nil, fmt.Errorf("resource template %q: %w", name, err)
+	}
+	return YAMLToJSON([]byte(rendered))
+}
+
+// YAMLToJSON converts a YAML mapping document into JSON, keeping scalar types as YAML resolved
+// them. A document whose root is not a mapping is rejected.
+func YAMLToJSON(document []byte) ([]byte, error) {
+	var value any
+	if err := yaml.Unmarshal(document, &value); err != nil {
+		return nil, fmt.Errorf("parse rendered template: %w", err)
+	}
+	if _, ok := value.(map[string]any); !ok {
+		return nil, fmt.Errorf("rendered template is not a mapping")
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil, fmt.Errorf("encode rendered template as JSON: %w", err)
+	}
+	return encoded, nil
+}
 
 // RenderResourceTemplate renders a canonical or legacy suite resource template.
 func RenderResourceTemplate(ctx context.Context, name string, content []byte, table *godog.Table) (string, error) {
@@ -57,6 +95,8 @@ func isCanonicalResourceTemplate(name string) bool {
 	return strings.HasPrefix(clean, "resources/templates/")
 }
 
+// renderCanonicalTemplate substitutes the placeholders of a canonical template, then applies the
+// remaining values as field overrides.
 func renderCanonicalTemplate(ctx context.Context, content []byte, table *godog.Table) (string, error) {
 	values, err := templateValues(table)
 	if err != nil {
@@ -75,11 +115,11 @@ func renderCanonicalTemplate(ctx context.Context, content []byte, table *godog.T
 	if err := replaceCanonicalPlaceholders(ctx, document.Content[0], values, used); err != nil {
 		return "", err
 	}
-	for key, value := range values {
+	for _, key := range parentFirstFieldPaths(values) {
 		if used[key] {
 			continue
 		}
-		if err := setCanonicalField(ctx, document.Content[0], key, value); err != nil {
+		if err := setCanonicalField(ctx, document.Content[0], key, values[key]); err != nil {
 			return "", err
 		}
 	}
@@ -94,6 +134,23 @@ func renderCanonicalTemplate(ctx context.Context, content []byte, table *godog.T
 		return "", fmt.Errorf("close canonical template encoder: %w", err)
 	}
 	return out.String(), nil
+}
+
+// parentFirstFieldPaths orders field paths so that a parent override is applied before the child
+// overrides inside it; map iteration would otherwise let the parent discard them at random.
+func parentFirstFieldPaths(values map[string]string) []string {
+	paths := make([]string, 0, len(values))
+	for path := range values {
+		paths = append(paths, path)
+	}
+	sort.Slice(paths, func(i, j int) bool {
+		di, dj := strings.Count(paths[i], "."), strings.Count(paths[j], ".")
+		if di != dj {
+			return di < dj
+		}
+		return paths[i] < paths[j]
+	})
+	return paths
 }
 
 func replaceCanonicalPlaceholders(

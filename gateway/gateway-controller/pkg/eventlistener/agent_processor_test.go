@@ -37,6 +37,7 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/policyxds"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/storage"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/templateengine/funcs"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/transform"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/xds"
 )
@@ -650,4 +651,50 @@ func TestHandleEvent_AgentEvent_UnknownActionIsIgnored(t *testing.T) {
 // states it as a pointer.
 func publicCardMode(mode api.A2APublicAgentCardMode) *api.A2APublicAgentCardMode {
 	return &mode
+}
+
+// useTemplateEnvPolicy installs an env access policy for the test and restores
+// the previous one afterwards.
+func useTemplateEnvPolicy(t *testing.T, policy *funcs.EnvAccessPolicy) {
+	t.Helper()
+	prev := funcs.SetEnvAccessPolicy(policy)
+	t.Cleanup(func() { funcs.SetEnvAccessPolicy(prev) })
+}
+
+// An Agent deployed before the allow list was set, whose spec reads a variable
+// the list now refuses, is undeployed on the replica when it next re-renders:
+// its routes and policy chains go, and it stays in the store as undeployed.
+func TestHandleEvent_AgentReadingRefusedEnv_IsUndeployed(t *testing.T) {
+	t.Setenv("LISTENER_REFUSED_SECRET", "42")
+	db := setupSQLiteDBForEventListenerTests(t)
+	withEnv := withAgentOperationPolicy(api.Policy{
+		Name:    "rate-limit",
+		Version: "v1",
+		Params:  &map[string]any{"limit": `{{ env "LISTENER_REFUSED_SECRET" }}`},
+	})
+	cfg := testAgentStoredConfig("agent-env-refused-id", "weather-agent", "Weather Agent", "v1.0",
+		models.StateDeployed, withEnv)
+	require.NoError(t, db.SaveConfig(cfg))
+
+	useTemplateEnvPolicy(t, funcs.UnrestrictedEnvAccessPolicy())
+	replica := newAgentReplica(t, db)
+	replica.listener.handleEvent(agentEvent("CREATE", cfg.UUID, "corr-agent-create"))
+	runtimeKey := storage.Key(models.KindAgent, cfg.Handle)
+	_, exists := replica.runtimeStore.Get(runtimeKey)
+	require.True(t, exists, "precondition: the Agent converged while env access was unrestricted")
+	require.NotZero(t, envoyRouteCountFor(t, replica.snapshotManager, "/"+cfg.Handle))
+
+	restricted, err := funcs.NewEnvAccessPolicy([]string{"BACKEND_URL"})
+	require.NoError(t, err)
+	funcs.SetEnvAccessPolicy(restricted)
+
+	replica.listener.handleEvent(agentEvent("UPDATE", cfg.UUID, "corr-agent-env-refused"))
+
+	stored, err := replica.store.Get(cfg.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, models.StateUndeployed, stored.DesiredState)
+	_, exists = replica.runtimeStore.Get(runtimeKey)
+	assert.False(t, exists, "the Agent's policy chains should be gone")
+	assert.Zero(t, envoyRouteCountFor(t, replica.snapshotManager, "/"+cfg.Handle),
+		"the Agent's routes should leave the Envoy snapshot")
 }

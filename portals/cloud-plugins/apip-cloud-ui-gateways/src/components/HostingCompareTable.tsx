@@ -49,7 +49,7 @@ const CONTENT: Record<GatewayHosting, CompareContent> = {
     gatewayLabel: 'WSO2 cloud',
     backendIcons: [Cloud, Cloud, Cloud],
     summary:
-      'Get APIs live instantly on fully managed cloud infrastructure. WSO2 runs, scales, and upgrades the gateway.',
+      'Get APIs live instantly on fully managed cloud infrastructure. WSO2 runs, scales, and upgrades the API gateway.',
     setupTime: 'Instant',
     trafficVia: 'WSO2 cloud',
     bestFor: 'Fast start, POCs',
@@ -59,7 +59,7 @@ const CONTENT: Record<GatewayHosting, CompareContent> = {
     tabIcon: Server,
     gatewayLabel: 'Your infra',
     backendIcons: [Server, Database, Server],
-    summary: 'Run the gateway on your own infrastructure. Traffic and data stay within your network.',
+    summary: 'Run the API gateway on your own infrastructure. Traffic and data stay within your network.',
     setupTime: '1–5 minutes',
     trafficVia: 'Your infrastructure',
     bestFor: 'Enterprise, compliance',
@@ -257,7 +257,7 @@ const HostingCompareTable: FC<HostingCompareTableProps> = ({ onChoose }) => {
               </Box>
             </Box>
             <Typography variant="caption" color="text.secondary">
-              Gateway
+              API Gateway
             </Typography>
           </Box>
 

@@ -75,6 +75,7 @@ func (f *fakePlanService) DeletePlanFromWebhook(orgUUID, handle string, occurred
 func newPlanTestReceiver(t *testing.T) (*Receiver, *fakePlanService, config.Webhook) {
 	t.Helper()
 	cfg := config.Webhook{
+		LegacySharedSecret: true,
 		Enabled:            true,
 		Secret:             "plan-test-secret",
 		SignatureTolerance: 5 * time.Minute,

@@ -50,7 +50,7 @@ func (f *billingSubsFake) ApplyBillingFromWebhook(orgUUID, apiHandle, _, subscri
 
 func newBillingTestReceiver(t *testing.T) (*Receiver, *billingSubsFake, config.Webhook) {
 	t.Helper()
-	cfg := config.Webhook{Enabled: true, Secret: "billing-test-secret", SignatureTolerance: 5 * time.Minute,
+	cfg := config.Webhook{Enabled: true, LegacySharedSecret: true, Secret: "billing-test-secret", SignatureTolerance: 5 * time.Minute,
 		MaxBodySize: 1 << 20, SignatureHeader: "X-Api-Portal-Signature"}
 	subs := &billingSubsFake{}
 	r, err := NewReceiver(cfg, nil, subs, nil, nil, nil, planTestOrgs{}, slog.New(slog.NewTextHandler(io.Discard, nil)))

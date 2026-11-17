@@ -22,7 +22,7 @@ Feature: LLM providers are created through the control plane
   I want a provider created from a template to be validated, uniquely identified and listed
   So that what the AI Workspace and the CLI create is exactly what the platform stores
 
-  # Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-feature "Create" (AIW-PRV-001..005), at the API level: the publisher
+  # Scenarios AIW-LLM (scenarios/on-prem/AIW-LLM.yaml), sub-feature "Create" (AIW-PRV-001..005), at the API level: the publisher
   # REST API the AI Workspace, the CLI and customers all call. The browser journey for the
   # same IDs is suites/ui/features/aiw_llm/provider_creation.feature. Every provider here
   # uses the Azure OpenAI template, which has no built-in endpoint, pointed at the

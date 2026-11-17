@@ -38,9 +38,10 @@ import (
 // readOnlyExemptRoutes lists routes that use a mutating HTTP method but perform
 // no database write, keyed by the full "METHOD /path" route pattern exactly as
 // it is registered on the mux. They stay available in read-only mode.
-// validate-openapi only parses the uploaded spec; fetch-server-info and
-// fetch-agent-card only probe an upstream (the Agent Card fetch goes through an
-// in-process cache) — none of them writes to the database.
+// validate-openapi only parses the uploaded spec; fetch-server-info,
+// fetch-agent-card and a REST API's gateway invoke only call an upstream (the
+// Agent Card fetch goes through an in-process cache) — none of them writes to
+// the database.
 //
 // The two /api/internal/v1 entries are the gateway sync reads. They carry no
 // organization in the request context (gateway-token routes bypass the user-JWT
@@ -57,6 +58,7 @@ var readOnlyExemptRoutes = map[string]struct{}{
 	"POST " + constants.APIBasePath + "/rest-apis/validate-openapi":     {},
 	"POST " + constants.APIBasePath + "/mcp-proxies/fetch-server-info":  {},
 	"POST " + constants.APIBasePath + "/agent-proxies/fetch-agent-card": {},
+	"POST " + constants.APIBasePath + "/gateway-relay/invoke":           {},
 	"POST /api/internal/v1/deployments/fetch-batch":                     {},
 	"POST /api/internal/v1/artifacts/exists":                            {},
 }

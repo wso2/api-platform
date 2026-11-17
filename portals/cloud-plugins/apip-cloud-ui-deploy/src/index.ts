@@ -20,6 +20,12 @@ export { default as DeployFeature } from './DeployFeature';
 export type { DeployFeatureProps } from './DeployFeature';
 export { default as ProviderDeployFeature } from './ProviderDeployFeature';
 export type { ProviderDeployFeatureProps } from './ProviderDeployFeature';
-export type { ApiFetch, CloudHostPort, NotifySeverity } from './hostPort';
+export type { ApiFetch, CloudHostPort, NotifySeverity, PermissionsPort } from './hostPort';
+export {
+  API_DEPLOYMENT_OPERATIONS,
+  NO_PERMISSION_TOOLTIP,
+  PROVIDER_BUILD_OPERATIONS,
+  PROVIDER_DEPLOYMENT_OPERATIONS,
+} from './permissions';
 export type { ArtifactKind } from './deployApi';
 export type { Build, DeploymentStatus, Environment, Gateway, GatewayHealth } from './types';

@@ -31,7 +31,6 @@ export const DEFAULT_API_SKELETON: Record<string, unknown> = {
   info: {
     title: 'Untitled API',
     version: '1.0.0',
-    description: 'A starting point. Edit the operations, or ask AI to refine them.',
   },
   servers: [{ url: PLACEHOLDER_UPSTREAM_URL }],
   paths: {

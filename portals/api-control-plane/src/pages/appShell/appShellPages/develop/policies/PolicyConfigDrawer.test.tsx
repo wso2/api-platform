@@ -19,8 +19,10 @@
 import { http, HttpResponse } from 'msw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiScopeProvider } from '@/api/core/ApiScopeProvider';
 import { resetHttpClient } from '@/api/core/http';
 import { runtimeConfig } from '@/config/runtime';
+import { aCustomPolicy, collection } from '@/test/msw';
 import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor } from '@/test/utils';
 import { PolicyConfigDrawer } from './PolicyConfigDrawer';
@@ -166,5 +168,72 @@ describe('PolicyConfigDrawer', () => {
     );
 
     expect(await screen.findByText('Unable to load the policy definition.')).toBeInTheDocument();
+  });
+});
+
+describe('PolicyConfigDrawer — custom policies', () => {
+  const hmacSigner = aCustomPolicy({
+    name: 'hmac-signer',
+    uuid: 'hmac-signer-uuid',
+    version: 'v1.2.0',
+    policyDefinition: {
+      parameters: {
+        type: 'object',
+        required: ['secretKey'],
+        properties: { secretKey: { type: 'string', title: 'Secret Key' } },
+      },
+    },
+  });
+
+  const renderInOrg = (ref: typeof policy, onConfirm = vi.fn()) =>
+    renderWithProviders(
+      <ApiScopeProvider orgId="acme-org">
+        <PolicyConfigDrawer onClose={vi.fn()} onConfirm={onConfirm} open policy={ref} />
+      </ApiScopeProvider>,
+    );
+
+  it('builds the form from the organization’s custom policy of the same major', async () => {
+    const hubDefinitions: string[] = [];
+    server.use(
+      collection('/gateway-custom-policies', [hmacSigner]),
+      http.get(`${runtimeConfig.policyHubBaseUrl}/policies/hmac-signer/versions`, () =>
+        HttpResponse.json([], { headers: cors }),
+      ),
+      http.get(
+        `${runtimeConfig.policyHubBaseUrl}/policies/hmac-signer/versions/:version/definition`,
+        ({ params }) => {
+          hubDefinitions.push(String(params.version));
+          return new HttpResponse(null, { headers: cors, status: 404 });
+        },
+      ),
+    );
+    const onConfirm = vi.fn();
+    const { user } = renderInOrg(
+      { displayName: 'hmac-signer', name: 'hmac-signer', version: 'v1' },
+      onConfirm,
+    );
+
+    await user.type(await screen.findByTestId('field-secretKey'), 'shh');
+    expect(screen.getByText('v1.2.0')).toBeInTheDocument();
+    await user.click(screen.getByTestId('policy-param-submit'));
+
+    expect(onConfirm).toHaveBeenCalledWith({
+      name: 'hmac-signer',
+      params: expect.objectContaining({ secretKey: 'shh' }),
+      version: 'v1',
+    });
+    expect(hubDefinitions).toEqual([]);
+  });
+
+  it('reads the Policy Hub when the organization holds another major only', async () => {
+    serveDefinition(definition);
+    server.use(
+      collection('/gateway-custom-policies', [
+        aCustomPolicy({ name: 'header-auth', uuid: 'header-auth-uuid', version: 'v2.0.0' }),
+      ]),
+    );
+    renderInOrg(policy);
+
+    expect(await screen.findByTestId('field-headerName')).toBeInTheDocument();
   });
 });

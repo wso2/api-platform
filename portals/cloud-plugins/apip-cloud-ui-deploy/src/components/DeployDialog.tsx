@@ -252,25 +252,33 @@ const DeployDialog: FC<DeployDialogProps> = ({
               <StatusPill tone={gatewayStatusTone(selected[0].status)} />
             </Box>
             {takesEndpoint ? (
-              <TextField
-                fullWidth
-                size="small"
-                required
-                sx={{ mt: 1 }}
-                label="Endpoint URL"
-                placeholder="https://api.example.com"
-                value={endpointFor(selected[0])}
-                onChange={(event) =>
-                  setEndpointDrafts({ ...endpointDrafts, [selected[0].id]: event.target.value })
-                }
-                onBlur={() => setUrlTouched(true)}
-                error={urlTouched && endpointFor(selected[0]).trim().length === 0}
-                helperText={
-                  urlTouched && endpointFor(selected[0]).trim().length === 0
-                    ? 'Endpoint URL is required.'
-                    : ' '
-                }
-              />
+              <Box sx={{ mt: 2.5 }}>
+                <FormLabel
+                  required
+                  htmlFor={`endpoint-url-${selected[0].id}`}
+                  sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}
+                >
+                  Endpoint URL
+                </FormLabel>
+                <TextField
+                  id={`endpoint-url-${selected[0].id}`}
+                  fullWidth
+                  size="small"
+                  required
+                  placeholder="https://api.example.com"
+                  value={endpointFor(selected[0])}
+                  onChange={(event) =>
+                    setEndpointDrafts({ ...endpointDrafts, [selected[0].id]: event.target.value })
+                  }
+                  onBlur={() => setUrlTouched(true)}
+                  error={urlTouched && endpointFor(selected[0]).trim().length === 0}
+                  helperText={
+                    urlTouched && endpointFor(selected[0]).trim().length === 0
+                      ? 'Endpoint URL is required.'
+                      : ' '
+                  }
+                />
+              </Box>
             ) : null}
           </Box>
         ) : (
@@ -330,25 +338,33 @@ const DeployDialog: FC<DeployDialogProps> = ({
                         can serve different backends, so each selected one gets its
                         own field rather than sharing a single value. */}
                     {isSelected && takesEndpoint ? (
-                      <TextField
-                        fullWidth
-                        size="small"
-                        required
-                        sx={{ mt: 1 }}
-                        label="Endpoint URL"
-                        placeholder="https://api.example.com"
-                        value={endpointFor(gateway)}
-                        onChange={(event) =>
-                          setEndpointDrafts({ ...endpointDrafts, [gateway.id]: event.target.value })
-                        }
-                        onBlur={() => setUrlTouched(true)}
-                        error={urlTouched && endpointFor(gateway).trim().length === 0}
-                        helperText={
-                          urlTouched && endpointFor(gateway).trim().length === 0
-                            ? 'Endpoint URL is required.'
-                            : ' '
-                        }
-                      />
+                      <Box sx={{ mt: 2.5 }}>
+                        <FormLabel
+                          required
+                          htmlFor={`endpoint-url-${gateway.id}`}
+                          sx={{ ...sectionLabelSx, display: 'block', mb: 1 }}
+                        >
+                          Endpoint URL
+                        </FormLabel>
+                        <TextField
+                          id={`endpoint-url-${gateway.id}`}
+                          fullWidth
+                          size="small"
+                          required
+                          placeholder="https://api.example.com"
+                          value={endpointFor(gateway)}
+                          onChange={(event) =>
+                            setEndpointDrafts({ ...endpointDrafts, [gateway.id]: event.target.value })
+                          }
+                          onBlur={() => setUrlTouched(true)}
+                          error={urlTouched && endpointFor(gateway).trim().length === 0}
+                          helperText={
+                            urlTouched && endpointFor(gateway).trim().length === 0
+                              ? 'Endpoint URL is required.'
+                              : ' '
+                          }
+                        />
+                      </Box>
                     ) : null}
                   </Box>
                 );

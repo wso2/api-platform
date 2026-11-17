@@ -53,6 +53,16 @@ export type GatewayVersionEntry = {
   channel: 'STS' | 'LTS';
 };
 
+/**
+ * The signed-in user's permissions, as the host answers them. `canAny` takes an
+ * operation's accepted-scope list — the spec's any-of list, `:manage` scopes
+ * included — and says whether the user may be offered it. Mirrors the host's
+ * `PermissionsPort`. Not a security boundary: platform-api decides.
+ */
+export type PermissionsPort = {
+  canAny: (scopes: readonly string[]) => boolean;
+};
+
 export type CloudHostPort = {
   orgHandle: string;
   projectHandle?: string;
@@ -65,4 +75,11 @@ export type CloudHostPort = {
   gatewayVersions?: GatewayVersionEntry[];
   /** `host:port` a self-hosted gateway's controller dials; falls back to this page's own host. */
   gatewayControlPlaneHost?: string;
+  /**
+   * Optional: a host whose Port carries no permission check omits it and
+   * nothing is gated — every control stays enabled exactly as before, and
+   * platform-api still refuses what the user may not do. See `permissionsOf`
+   * in `permissions.ts`.
+   */
+  permissions?: PermissionsPort;
 };

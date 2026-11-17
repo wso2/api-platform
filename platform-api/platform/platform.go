@@ -27,6 +27,7 @@
 package platform
 
 import (
+	"errors"
 	"log/slog"
 
 	"github.com/wso2/api-platform/platform-api/config"
@@ -80,8 +81,12 @@ func New(opts ...Option) (*App, error) {
 // directly by cmd/main.go, so the internal tier passed here is nil.
 func (a *App) Run() error {
 	srv, err := server.StartPlatformAPIServer(a.cfg, a.logger, nil, a.plugins)
+	if errors.Is(err, server.ErrStartupInterrupted) {
+		// A shutdown signal arrived while startup was waiting for the database.
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	return srv.Start(a.cfg.Listeners, a.cfg.Listeners.Timeouts)
+	return srv.Start()
 }

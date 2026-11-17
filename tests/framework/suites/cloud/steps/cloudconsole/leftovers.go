@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,7 +38,7 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/unique"
-	"github.com/wso2/api-platform/tests/framework/suites/cloud/finalizer"
+	"github.com/wso2/api-platform/tests/framework/suites/cloud/setup/finalizer"
 )
 
 // finalizerDeleteTimeout bounds how long the finalizer keeps trying to delete one resource.
@@ -49,8 +50,8 @@ const finalizerDeleteTimeout = 90 * time.Second
 const finalizerCollectionBudget = 2 * time.Minute
 
 // finalizerCollections are the organisation-wide collections the finalizer reads, in deletion
-// order: a gateway goes before the environment it runs in, and a project before the pipeline it
-// is bound to.
+// order: a secret goes after the REST APIs that reference it, a gateway before the environment it
+// runs in, and a project before the pipeline it is bound to.
 // idFields name the list-item fields that identify a resource in its own route. REST APIs are
 // listed per project, so projectScopedSweep reads them and runs ahead of these: each goes before
 // the gateway it is deployed to and the project it belongs to.
@@ -58,9 +59,14 @@ var finalizerCollections = []struct {
 	collection string
 	idFields   []string
 	wait       bool
+	// budget bounds the collection's time; zero selects finalizerCollectionBudget.
+	budget time.Duration
 }{
-	{collection: "/managed-gateways", idFields: []string{"id"}},
-	{collection: "/projects", idFields: []string{"id"}},
+	{collection: secretsCollection, idFields: []string{"id", "handle"}},
+	{collection: managedPortalsCollection, idFields: []string{"id"}},
+	{collection: managedGatewaysCollection, idFields: []string{"id"}},
+	// Each project is retried for finalizerDeleteTimeout, so the budget holds several of them.
+	{collection: "/projects", idFields: []string{"id"}, budget: projectDeleteTimeout},
 	{collection: "/pipelines", idFields: []string{"id", "name"}, wait: true},
 	{collection: environmentsCollection, idFields: []string{"name"}, wait: true},
 }
@@ -112,11 +118,17 @@ func (f *Finalizer) observe(ctx context.Context, topo *frameworkruntime.Topology
 	if err != nil {
 		return err
 	}
-	f.finals.Track(generator.Suffix())
+	f.Watch(base, generator.Suffix())
+	return nil
+}
+
+// Watch records a platform and a name suffix whose resources Finalize must remove from it. It
+// lets a caller that runs no scenarios, such as the manual setup command, say what to look for.
+func (f *Finalizer) Watch(base, suffix string) {
+	f.finals.Track(suffix)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.bases[base] = struct{}{}
-	return nil
 }
 
 // Finalize deletes the run's leftovers from every platform the run talked to. It returns the
@@ -157,9 +169,13 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 		sweeps = append(sweeps, projectScopedSweep(client, base, token, owns, collection))
 	}
 	for _, entry := range finalizerCollections {
+		budget := entry.budget
+		if budget == 0 {
+			budget = finalizerCollectionBudget
+		}
 		sweeps = append(sweeps, finalizer.Collection{
 			Name:    entry.collection,
-			Timeout: finalizerCollectionBudget,
+			Timeout: budget,
 			List: func(ctx context.Context) ([]finalizer.Leftover, error) {
 				items, err := listCollection(ctx, client, base, token, entry.collection)
 				if errors.Is(err, errCollectionNotServed) {
@@ -167,9 +183,16 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 					slog.Default().Warn("the platform does not serve this collection; skipping it", "collection", entry.collection)
 					return nil, nil
 				}
-				return leftoversOf(items, entry.idFields), err
+				leftovers := leftoversOf(items, entry.idFields)
+				if entry.collection == managedGatewaysCollection {
+					defaultGatewayLast(leftovers)
+				}
+				return leftovers, err
 			},
 			Delete: func(ctx context.Context, id string) error {
+				if entry.collection == "/projects" {
+					return deleteProjectThroughCloudAPI(ctx, client, base, token, id, finalizerDeleteTimeout)
+				}
 				return deleteLeftover(ctx, client, base, token, entry.collection, id, entry.wait)
 			},
 		})
@@ -219,6 +242,22 @@ func projectScopedSweep(client *httpx.Client, base, token string, owns func(name
 			return deleteLeftover(ctx, client, base, token, collection, id, false)
 		},
 	}
+}
+
+// defaultGatewayLast moves the default gateway the starter created behind every other gateway. The
+// platform refuses to delete an environment's default gateway while other gateways of its kind
+// remain, and allows the last one to go.
+func defaultGatewayLast(leftovers []finalizer.Leftover) {
+	slices.SortStableFunc(leftovers, func(a, b finalizer.Leftover) int {
+		return boolRank(isStarterGateway(a.Names)) - boolRank(isStarterGateway(b.Names))
+	})
+}
+
+func boolRank(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 // leftoversOf turns list items into the finalizer's entries.

@@ -18,14 +18,16 @@
 
 import { defineMessages, type IntlShape } from 'react-intl';
 
-import { runtimeConfig } from '@/config/runtime';
-import { CSRF_HEADER, CSRF_HEADER_VALUE } from '@/contexts/auth/authConstants';
+import { isApiError, type ApiError } from '@/api/core/errors';
+import type { InvokeRestApiOnGatewayResponse } from '@/api/resources/restApis/apiGateways/apiGateways.endpoints';
+import type { InvokeRestApiOnGatewayVariables } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
 import type { TestCallMode } from '../../utils/callMode';
 import { splitAgainstBase } from './swaggerRequest';
 
 /**
- * Routes the console's test requests through the BFF rather than directly to
- * the gateway, without modifying the request displayed by the console.
+ * Routes the console's test requests through the Platform API's
+ * `POST /gateway-relay/invoke` rather than directly to the gateway, without
+ * modifying the request displayed by the console.
  *
  * ## Why a relay at all
  *
@@ -64,9 +66,9 @@ import { splitAgainstBase } from './swaggerRequest';
  *
  * ## Why it can be turned off
  *
- * The relay is useful only when the BFF can route to the gateway. A self-hosted
+ * The relay is useful only when the Platform API can route to the gateway. A self-hosted
  * gateway registered with this control plane may be accessible from the user's
- * browser but not from the portal server. Therefore, `RelayContext.mode`
+ * browser but not from the control plane. Therefore, `RelayContext.mode`
  * allows the user to select `direct`; in that mode, the plugin installs no
  * transport. This is an explicit user choice rather than a silent server-side
  * fallback. Direct requests require the API to define its own `cors` policy,
@@ -74,19 +76,11 @@ import { splitAgainstBase } from './swaggerRequest';
  *
  * The relay cannot preserve the gateway-only duration. Swagger measures the
  * duration around the entire call, so the displayed value includes both the
- * browser's request to the BFF and the gateway round trip. The BFF reports the
+ * browser's request to the Platform API and the gateway round trip. It reports the
  * gateway time separately in `durationMs`, but Swagger overwrites `duration`
  * after the transport returns. The displayed value therefore represents the
  * total time experienced by the user.
  */
-
-/**
- * The relay endpoint: `runtimeConfig.gatewayRelayUrl`, by default the BFF's,
- * mounted beside /api/login rather than under the proxy prefix. Named for what
- * it is — a relay to a gateway — rather than for this page, since nothing about
- * it is specific to the Test console.
- */
-const INVOKE_URL = runtimeConfig.gatewayRelayUrl;
 
 const messages = defineMessages({
   busy: {
@@ -106,12 +100,14 @@ const messages = defineMessages({
   },
   gatewayNotDeployed: {
     id: 'apiControlPlane.pages.test.console.proxyTransport.gatewayNotDeployed',
-    defaultMessage: 'This API is not deployed to the selected gateway. Deploy it first, then try again.',
+    defaultMessage:
+      'This API is not deployed to the selected gateway. Deploy it first, then try again.',
     description: 'Actionable: the gateway exists but the API has not been deployed to it.',
   },
   gatewayUnsupportedScheme: {
     id: 'apiControlPlane.pages.test.console.proxyTransport.gatewayUnsupportedScheme',
-    defaultMessage: 'The selected gateway’s endpoint is not an HTTP address, so it cannot be called from here.',
+    defaultMessage:
+      'The selected gateway’s endpoint is not an HTTP address, so it cannot be called from here.',
   },
   invalidRequest: {
     id: 'apiControlPlane.pages.test.console.proxyTransport.invalidRequest',
@@ -155,38 +151,28 @@ const messages = defineMessages({
   },
 });
 
-/** Maps each BFF failure code to its own wording. */
+/** The invoke operation's error codes, and the console's own, mapped to their wording. */
 const ERROR_MESSAGES: Record<string, (typeof messages)[keyof typeof messages]> = {
-  API_NOT_FOUND: messages.apiNotFound,
-  GATEWAY_NOT_DEPLOYED: messages.gatewayNotDeployed,
-  GATEWAY_NO_ENDPOINT: messages.gatewayNoEndpoint,
-  GATEWAY_UNSUPPORTED_SCHEME: messages.gatewayUnsupportedScheme,
-  INVALID_REQUEST_BODY: messages.invalidRequest,
-  INVALID_TEST_REQUEST: messages.invalidRequest,
-  RELAY_BUSY: messages.busy,
+  REST_API_NOT_FOUND: messages.apiNotFound,
+  REST_API_INVOKE_GATEWAY_NOT_DEPLOYED: messages.gatewayNotDeployed,
+  REST_API_INVOKE_GATEWAY_NO_ENDPOINT: messages.gatewayNoEndpoint,
+  REST_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME: messages.gatewayUnsupportedScheme,
+  REST_API_INVOKE_REQUEST_INVALID: messages.invalidRequest,
+  VALIDATION_FAILED: messages.invalidRequest,
+  REST_API_INVOKE_BUSY: messages.busy,
+  PAYLOAD_TOO_LARGE: messages.tooLarge,
   REQUEST_TOO_LARGE: messages.tooLarge,
-  SESSION_EXPIRED: messages.sessionExpired,
-  TARGET_NOT_ALLOWED: messages.targetNotAllowed,
-  UPSTREAM_TIMEOUT: messages.upstreamTimeout,
-  UPSTREAM_UNREACHABLE: messages.unreachable,
+  UNAUTHORIZED: messages.sessionExpired,
+  REST_API_INVOKE_TARGET_NOT_ALLOWED: messages.targetNotAllowed,
+  REST_API_INVOKE_UPSTREAM_TIMEOUT: messages.upstreamTimeout,
+  REST_API_INVOKE_UPSTREAM_UNREACHABLE: messages.unreachable,
 };
 
 /** One header or query parameter on the wire. A list, because names repeat. */
 type WirePair = { name: string; value: string };
 
-/** What the BFF returns when the relay reached the gateway. */
-type RelayResult = {
-  outcome: 'response';
-  response: {
-    status: number;
-    statusText: string;
-    headers: WirePair[];
-    body: string;
-    bodyEncoding: 'utf8' | 'base64';
-    truncated: boolean;
-    durationMs: number;
-  };
-};
+/** What the Platform API returns when the relay reached the gateway. */
+type RelayResult = InvokeRestApiOnGatewayResponse;
 
 /**
  * Everything the relay needs that changes after mount.
@@ -198,8 +184,8 @@ type RelayResult = {
 export type RelayContext = {
   /** Invoke URL of the selected gateway — the base the displayed request uses. */
   baseUrl: string;
-  /** Organization handle, forwarded so Platform API can scope the lookup. */
-  orgHandle: string;
+  /** Sends the invoke request: `useInvokeRestApiOnGateway`'s `mutateAsync`. */
+  invoke: (variables: InvokeRestApiOnGatewayVariables) => Promise<InvokeRestApiOnGatewayResponse>;
   restApiId: string;
   gatewayId: string;
   intl: IntlShape;
@@ -209,7 +195,15 @@ export type RelayContext = {
    * only the first `plugins` value it is given.
    */
   mode: TestCallMode;
+  /**
+   * Told once per Execute, after its response (or its failure to get one),
+   * in either mode: `success` for an HTTP status below 400, `failure` for any
+   * other status or for no response at all. Not called for an aborted request.
+   */
+  onExecuted?: (mode: TestCallMode, outcome: ExecuteOutcome) => void;
 };
+
+export type ExecuteOutcome = 'success' | 'failure';
 
 /** A ref so the caller can keep the context current without remounting. */
 export type RelayContextRef = { readonly current: RelayContext };
@@ -246,6 +240,16 @@ const localized = (intl: IntlShape, code: string | undefined): string =>
   intl.formatMessage(ERROR_MESSAGES[code ?? ''] ?? messages.unexpected);
 
 /**
+ * The message for a request that was not relayed. One that never reached the
+ * Platform API, or timed out on the way, has no code of its own.
+ */
+const relayErrorMessage = (intl: IntlShape, error: ApiError): string => {
+  if (error.kind === 'network') return intl.formatMessage(messages.unreachable);
+  if (error.kind === 'timeout') return intl.formatMessage(messages.upstreamTimeout);
+  return localized(intl, error.code);
+};
+
+/**
  * Decodes a base64 body into bytes without assuming a Node Buffer exists.
  *
  */
@@ -259,25 +263,26 @@ const base64ToBytes = (value: string) => {
 /**
  * Browser-side limit for binary bodies, checked before reading any bytes.
  *
- * The BFF's `max_request_bytes` remains authoritative. This higher limit
- * prevents large attachments from being loaded and base64-encoded in memory.
+ * The Platform API's `gateway_relay.max_request_bytes` remains authoritative.
+ * This higher limit prevents large attachments from being loaded and
+ * base64-encoded in memory.
  */
 const MAX_BINARY_BODY_BYTES = 16 * 1024 * 1024;
 
 /** Rough per-part cost of a multipart boundary and its headers. */
 const MULTIPART_PART_OVERHEAD_BYTES = 256;
 
-/** Raised before reading and localized consistently with an oversized BFF envelope. */
+/** Raised before reading, and localized like an oversized request the Platform API refuses. */
 const bodyTooLargeError = () =>
   Object.assign(new Error('request body exceeds the console limit'), {
     code: 'REQUEST_TOO_LARGE',
   });
 
 /**
- * Normalizes the request body for transport in the envelope.
+ * Normalizes the request body for transport in the invoke request.
  *
- * Multipart bodies require an explicit boundary because the BFF, rather than
- * the browser, sends the request. Attachment sizes are checked before reading.
+ * Multipart bodies require an explicit boundary because the Platform API,
+ * rather than the browser, sends the request. Attachment sizes are checked before reading.
  */
 export const encodeRequestBody = async (
   body: unknown,
@@ -403,7 +408,7 @@ const toWirePairs = (headers: Record<string, unknown> | undefined): WirePair[] =
  *
  * The body is cast, not trusted: a 200 carrying something else entirely is a
  * realistic outcome when an intermediary — a corporate proxy, a service-mesh
- * error page, a misconfigured ingress; answers in the BFF's place. Without
+ * error page, a misconfigured ingress; answers in the Platform API's place. Without
  * this, a non-array `headers` reaches `forEach` and surfaces in the console as
  * a raw TypeError rather than as a message anyone can act on.
  */
@@ -500,17 +505,10 @@ export const createRelayFetch =
       headers.push({ name: 'Content-Type', value: encoded.contentType });
     }
 
-    let res: Response;
+    let parsed: unknown;
     try {
-      res = await fetch(INVOKE_URL, {
-        method: 'POST',
-        // The session cookie authenticates the envelope; it is never forwarded
-        // on to the gateway.
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', [CSRF_HEADER]: CSRF_HEADER_VALUE },
-        signal: request.signal,
-        body: JSON.stringify({
-          orgHandle: context.orgHandle,
+      parsed = await context.invoke({
+        body: {
           restApiId: context.restApiId,
           gatewayId: context.gatewayId,
           method: request.method ?? 'GET',
@@ -519,41 +517,75 @@ export const createRelayFetch =
           headers,
           body: encoded.body,
           bodyEncoding: encoded.bodyEncoding,
-        }),
+        },
+        signal: request.signal,
       });
     } catch (error) {
       // An aborted request is the user navigating away, not a failure worth
-      // relabelling — swagger has its own handling for it. The signal is
-      // consulted as well as the error's name because what `fetch` rejects
-      // with on abort is not consistent across runtimes.
-      if (request.signal?.aborted || (error as Error | undefined)?.name === 'AbortError') {
-        throw error;
+      // relabelling — swagger has its own handling for an AbortError.
+      if (request.signal?.aborted || (isApiError(error) && error.kind === 'aborted')) {
+        throw new DOMException('The request was aborted.', 'AbortError');
       }
-      throw new Error(context.intl.formatMessage(messages.unreachable));
-    }
-
-    if (!res.ok) {
       // A failure of the relay, not of the gateway. The two are deliberately
       // distinguishable: a gateway that answered at all comes back as a 200
       // with its own status inside, so "your backend returned 502" and "the
-      // portal could not reach your gateway" never look alike.
-      const body = (await res.json().catch(() => ({}))) as { code?: string };
-      throw new Error(localized(context.intl, body.code));
-    }
-
-    let parsed: unknown;
-    try {
-      parsed = await res.json();
-    } catch {
-      // A 200 whose body is not JSON at all; `json()` would otherwise reject
-      // with an untranslated SyntaxError.
-      throw new Error(context.intl.formatMessage(messages.unexpected));
+      // control plane could not reach your gateway" never look alike.
+      throw new Error(
+        isApiError(error)
+          ? relayErrorMessage(context.intl, error)
+          : context.intl.formatMessage(messages.unexpected),
+      );
     }
     if (!isRelayResult(parsed)) {
       throw new Error(context.intl.formatMessage(messages.unexpected));
     }
     return toResponseLike(parsed, gatewayUrl);
   };
+
+type SwaggerExecute = (request: unknown) => Promise<{ status?: unknown } | undefined>;
+type SwaggerSystem = { fn: { execute: SwaggerExecute } & Record<string, unknown> };
+
+const isAbort = (error: unknown): boolean =>
+  typeof error === 'object' &&
+  error !== null &&
+  (error as { name?: unknown }).name === 'AbortError';
+
+/** `success` for an HTTP status below 400; anything else, or no status, is a failure. */
+const outcomeOf = (status: unknown): ExecuteOutcome =>
+  typeof status === 'number' && status > 0 && status < 400 ? 'success' : 'failure';
+
+/**
+ * Wraps the thunk swagger-ui's `executeRequest` returns so the one
+ * `fn.execute` call it makes reports its outcome. swagger-client resolves for
+ * a 2xx and rejects with the response's `status` for any other, and rejects
+ * with no status when nothing came back (a network error, or a relay failure
+ * thrown by `createRelayFetch`); swagger-ui then swallows the rejection to
+ * show it, which is why the outcome is read here rather than from the action.
+ */
+const reportingOutcome = (action: unknown, report: (outcome: ExecuteOutcome) => void): unknown => {
+  if (typeof action !== 'function') return action;
+  return (system: SwaggerSystem) => {
+    const { fn } = system;
+    const execute: SwaggerExecute = (request) =>
+      fn.execute.call(fn, request).then(
+        (response) => {
+          report(outcomeOf(response?.status));
+          return response;
+        },
+        (error: unknown) => {
+          if (!isAbort(error)) {
+            const { status, response } = (error ?? {}) as {
+              status?: unknown;
+              response?: { status?: unknown };
+            };
+            report(outcomeOf(status ?? response?.status));
+          }
+          throw error;
+        },
+      );
+    return (action as (system: SwaggerSystem) => unknown)({ ...system, fn: { ...fn, execute } });
+  };
+};
 
 /**
  * The swagger-ui plugin that installs the relay.
@@ -571,15 +603,21 @@ export const testConsoleRelayPlugin = (contextRef: RelayContextRef) => {
         wrapActions: {
           executeRequest:
             (oriAction: (payload: Record<string, unknown>) => unknown) =>
-            (payload: Record<string, unknown>) =>
+            (payload: Record<string, unknown>) => {
               // Direct mode is the absence of a transport override, not a
               // second one: leaving `userFetch` off the payload is exactly what
               // sends swagger-client back to the global `fetch`, so the browser
               // calls the gateway itself. Read per dispatch, so flipping the
               // switch takes effect on the next Execute without a remount.
-              contextRef.current.mode === 'direct'
-                ? oriAction(payload)
-                : oriAction({ ...payload, userFetch }),
+              const { mode } = contextRef.current;
+              const action =
+                mode === 'direct' ? oriAction(payload) : oriAction({ ...payload, userFetch });
+              // Both modes pass through here once per Execute, so this is where
+              // its outcome is counted, under the mode it was sent with.
+              return reportingOutcome(action, (outcome) =>
+                contextRef.current.onExecuted?.(mode, outcome),
+              );
+            },
         },
       },
     },

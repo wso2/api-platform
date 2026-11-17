@@ -512,6 +512,12 @@ type OIDCConfig struct {
 	RedirectURL           string `koanf:"redirect_url"` // must equal the IDP-registered redirect, points at /api/auth/callback
 	PostLogoutRedirectURL string `koanf:"post_logout_redirect_url"`
 	Scopes                string `koanf:"scope"` // space-separated
+	// Resource is the RFC 8707 resource indicator sent on /oauth2/authorize. An
+	// IdP that scopes tokens per resource server (WSO2 Thunder) only puts that
+	// server's scopes into the token and sets aud to it; without the parameter
+	// such an IdP issues no product scope at all. Empty sends no parameter, which
+	// is what every other IdP wants.
+	Resource string `koanf:"resource"`
 
 	// RequireHTTPS refuses to send the client secret (and, on revocation, the refresh
 	// token) to a plaintext identity provider endpoint: the token_endpoint and
@@ -701,6 +707,7 @@ func (c *Config) normalize() {
 	c.ControlPlane.MoesifURL = strings.TrimRight(c.ControlPlane.MoesifURL, "/")
 	c.ControlPlane.BillingURL = strings.TrimRight(c.ControlPlane.BillingURL, "/")
 	c.Auth.OIDC.Issuer = strings.TrimRight(c.Auth.OIDC.Issuer, "/")
+	c.Auth.OIDC.Resource = strings.TrimSpace(c.Auth.OIDC.Resource)
 
 	// Lowercased first so the alias lookup is case-insensitive too, then resolved:
 	// the registered URI and the short name are the same protocol, and every check

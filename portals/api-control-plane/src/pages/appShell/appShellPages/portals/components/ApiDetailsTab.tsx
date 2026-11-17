@@ -37,7 +37,7 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import { Boxes, Camera, ChevronDown, Info, List, SquarePen, X } from '@wso2/oxygen-ui-icons-react';
+import { Boxes, Camera, ChevronDown, Info, List, RefreshCw, SquarePen, X } from '@wso2/oxygen-ui-icons-react';
 import { useRef, useState, type ChangeEvent, type MouseEvent } from 'react';
 import { defineMessages, FormattedMessage, useIntl, type MessageDescriptor } from 'react-intl';
 
@@ -98,6 +98,11 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.changeThumbnail',
     defaultMessage: 'Change thumbnail',
   },
+  reloadThumbnail: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.reloadThumbnail',
+    defaultMessage: 'Use the API\u2019s default thumbnail',
+    description: 'Icon button replacing the thumbnail on this page with the API\u2019s own current one.',
+  },
   agentVisibilityDescription: {
     id: 'apiControlPlane.pages.appShell.appShellPages.portals.components.ApiDetailsTab.agentVisibilityDescription',
     defaultMessage: 'Let agents in the API Portal discover and invoke this API on behalf of users.',
@@ -109,6 +114,8 @@ const THUMBNAIL_WIDTH = 72;
 const THUMBNAIL_MIN_HEIGHT = 64;
 const THUMBNAIL_FONT_SIZE = 28;
 const THUMBNAIL_ICON_SIZE = 24;
+/** The overlay's icons, sized as the API Overview's thumbnail icons at the same width. */
+const THUMBNAIL_ACTION_ICON_SIZE = 18;
 
 export type ApiDetailsTabProps = {
   disabled?: boolean;
@@ -119,8 +126,12 @@ export type ApiDetailsTabProps = {
   onChange?: (values: DraftFormValues) => void;
   /** Called with the image picked as the new thumbnail; without it the thumbnail is read-only. */
   onThumbnailPick?: (file: File) => void;
+  /** Replaces the thumbnail with the API's own; the reload icon shows only when this is set. */
+  onThumbnailReload?: () => void;
   /** URLs the Production URL can be picked from; any other URL can still be typed. */
   productionUrlOptions?: GatewayUrlOption[];
+  /** Disables the reload icon while the API's thumbnail is still being read. */
+  thumbnailReloadDisabled?: boolean;
   /** The thumbnail to show; the API name's monogram stands in without one. */
   thumbnailUrl?: string;
   values: DraftFormValues;
@@ -297,11 +308,13 @@ type ThumbnailProps = {
   disabled?: boolean;
   displayName: string;
   onPick?: (file: File) => void;
+  onReload?: () => void;
+  reloadDisabled?: boolean;
   url?: string;
 };
 
 /** The API's portal thumbnail, drawn like the API Overview's avatar; the name's monogram stands in without an image. With `onPick`, hover or focus offers a picker. */
-function Thumbnail({ disabled, displayName, onPick, url }: ThumbnailProps) {
+function Thumbnail({ disabled, displayName, onPick, onReload, reloadDisabled, url }: ThumbnailProps) {
   const intl = useIntl();
   const inputRef = useRef<HTMLInputElement>(null);
   const editable = Boolean(onPick) && !disabled;
@@ -350,6 +363,7 @@ function Thumbnail({ disabled, displayName, onPick, url }: ThumbnailProps) {
               bgcolor: alpha(theme.palette.common.black, 0.5),
               borderRadius: 1,
               display: 'flex',
+              gap: 0.5,
               inset: 0,
               justifyContent: 'center',
               opacity: 0,
@@ -357,14 +371,32 @@ function Thumbnail({ disabled, displayName, onPick, url }: ThumbnailProps) {
               transition: 'opacity 150ms ease',
             })}
           >
-            <IconButton
-              aria-label={intl.formatMessage(messages.changeThumbnail)}
-              onClick={() => inputRef.current?.click()}
-              size="small"
-              sx={{ color: 'common.white' }}
-            >
-              <Camera size={THUMBNAIL_ICON_SIZE} />
-            </IconButton>
+            <Tooltip title={intl.formatMessage(messages.changeThumbnail)}>
+              <IconButton
+                aria-label={intl.formatMessage(messages.changeThumbnail)}
+                onClick={() => inputRef.current?.click()}
+                size="small"
+                sx={{ color: 'common.white' }}
+              >
+                <Camera size={THUMBNAIL_ACTION_ICON_SIZE} />
+              </IconButton>
+            </Tooltip>
+            {onReload && (
+              <Tooltip title={intl.formatMessage(messages.reloadThumbnail)}>
+                {/* Span wrapper lets the Tooltip anchor on a disabled button. */}
+                <span>
+                  <IconButton
+                    aria-label={intl.formatMessage(messages.reloadThumbnail)}
+                    disabled={reloadDisabled}
+                    onClick={onReload}
+                    size="small"
+                    sx={{ color: 'common.white' }}
+                  >
+                    <RefreshCw size={THUMBNAIL_ACTION_ICON_SIZE} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            )}
           </Box>
           <Box
             accept="image/png,image/jpeg"
@@ -390,8 +422,10 @@ export function ApiDetailsTab({
   onBlurField,
   onChange,
   onThumbnailPick,
+  onThumbnailReload,
   productionUrlOptions = [],
   readOnly,
+  thumbnailReloadDisabled,
   thumbnailUrl,
   values,
 }: ApiDetailsTabProps) {
@@ -422,6 +456,8 @@ export function ApiDetailsTab({
               disabled={disabled}
               displayName={values.displayName}
               onPick={readOnly ? undefined : onThumbnailPick}
+              onReload={onThumbnailReload}
+              reloadDisabled={thumbnailReloadDisabled}
               url={thumbnailUrl}
             />
           </Grid>

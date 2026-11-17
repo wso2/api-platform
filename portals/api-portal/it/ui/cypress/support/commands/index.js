@@ -21,5 +21,5 @@
 // any spec runs. Add a new command module here to make it available globally.
 import './portal';       // cy.portalUrl, cy.apiRequest, cy.visitPortal
 import './auth';         // cy.login, cy.completeLoginForm, cy.logout
-import './seed';         // cy.seedApi, cy.seedMcp, cy.deleteApi, cy.deleteMcp, cy.seedKeyManager, cy.deleteKeyManager
+import './seed';         // cy.seedApi, cy.seedMcp, cy.deleteApi, cy.deleteMcp, cy.uploadMcpContent, cy.seedKeyManager, cy.deleteKeyManager
 import './applications'; // cy.createApplication, cy.deleteApplication

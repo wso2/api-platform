@@ -81,7 +81,7 @@ type portalContentSource struct {
 }
 
 // loadPortalContent loads the selected documents and packs them with the thumbnail and
-// landing page; it returns nil when there is nothing to send. The count and running size
+// landing page; with nothing selected the archive is empty. The count and running size
 // are checked here as well as in buildContentArchive, so an oversized selection is refused
 // before every document is read.
 func (s *PublicationService) loadPortalContent(src portalContentSource) (*PortalContent, error) {
@@ -133,8 +133,9 @@ func docsForHandles(handles []string, resolved map[string]*model.Document) ([]*m
 	return docs, nil
 }
 
-// placeDocuments maps each document to its portal path, rejecting an unsafe type or file
-// name and two documents that would land on the same path.
+// placeDocuments maps each document to its portal path, rejecting a type or file name the
+// portal would not keep (isSafePathElement, validateDocFileName) and two documents that would
+// land on the same path.
 func placeDocuments(docs []*model.Document) ([]portalDocument, error) {
 	placed := make([]portalDocument, 0, len(docs))
 	// Case-insensitive because the portal may be on a case-insensitive store.
@@ -146,7 +147,7 @@ func placeDocuments(docs []*model.Document) ([]portalDocument, error) {
 				fmt.Sprintf("document %q has a type that cannot be published", doc.Handle))
 		}
 		fileName := portalFileName(doc)
-		if !isSafePathElement(fileName) {
+		if validateDocFileName(fileName) != nil {
 			return nil, apperror.APIPublicationValidationFailed.New(
 				fmt.Sprintf("document %q has a file name that cannot be published", doc.Handle))
 		}
@@ -172,10 +173,11 @@ func portalFileName(doc *model.Document) string {
 	return name
 }
 
-// isSafePathElement reports whether s is one folder or file name for the ZIP. ".." is
-// refused anywhere in it, because the portal rejects any entry path containing one.
+// isSafePathElement reports whether s is one folder or file name the portal keeps from the
+// ZIP. ".." is refused anywhere in it, because the portal rejects any entry path containing
+// one, and a leading "." because the portal skips hidden paths.
 func isSafePathElement(s string) bool {
-	if s == "" || s == "." || strings.Contains(s, "..") {
+	if s == "" || strings.HasPrefix(s, ".") || strings.Contains(s, "..") {
 		return false
 	}
 	return !strings.ContainsFunc(s, func(r rune) bool {

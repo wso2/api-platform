@@ -31,8 +31,8 @@ import (
 // blocking loopback/link-local/cloud-metadata ranges, per ssrf-prevention.md.
 func NewDefaultJWKSHTTPClient() (*http.Client, error) {
 	cfg := httpclient.DefaultConfig()
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = netguard.PermitPrivateBlockMetadata()
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = netguard.PermitPrivateBlockMetadata()
 
 	client, err := httpclient.New(cfg)
 	if err != nil {

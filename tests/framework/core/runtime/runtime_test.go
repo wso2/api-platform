@@ -68,6 +68,41 @@ func newTestHTTPServer(t *testing.T, handler http.Handler, tls bool) *httptest.S
 	return server
 }
 
+func TestLaunchComposeInstanceRefusesWhatItCannotStart(t *testing.T) {
+	container := &components.Definition{Name: "platform-api"}
+	block := &topology.ResolvedBlock{
+		Name:       "management-portal-deploy",
+		Components: []topology.ResolvedComponent{{Def: container}},
+	}
+	tests := []struct {
+		name      string
+		topology  *Topology
+		component string
+		suffix    string
+		wantErr   string
+	}{
+		{name: "nil topology", component: "platform-gateway", suffix: "-x", wantErr: "topology is required"},
+		{name: "no suffix", topology: &Topology{Block: block}, component: "platform-gateway", wantErr: "needs a suffix"},
+		{name: "not in the block", topology: &Topology{Block: block}, component: "platform-gateway", suffix: "-x", wantErr: "runs no compose component"},
+		{name: "not a compose component", topology: &Topology{Block: block}, component: "platform-api", suffix: "-x", wantErr: "runs no compose component"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stack, err := tt.topology.LaunchComposeInstance(context.Background(), tt.component, tt.suffix, nil)
+			require.ErrorContains(t, err, tt.wantErr)
+			require.Nil(t, stack)
+		})
+	}
+}
+
+func TestClaimSuffixRefusesANameAlreadyOnTheNetwork(t *testing.T) {
+	topo := &Topology{}
+	require.ErrorContains(t, topo.claimSuffix("platform-gateway", "-2", 2), "replica 2 already uses")
+	require.NoError(t, topo.claimSuffix("platform-gateway", "-console", 1))
+	require.ErrorContains(t, topo.claimSuffix("platform-gateway", "-console", 1), "already uses the suffix")
+	require.NoError(t, topo.claimSuffix("platform-api", "-console", 1))
+}
+
 func TestComponentVersion(t *testing.T) {
 	definition := &components.Definition{Name: "platform-gateway"}
 	tests := []struct {

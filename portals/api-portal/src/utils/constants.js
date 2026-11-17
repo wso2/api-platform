@@ -121,6 +121,12 @@ module.exports = {
             API_DEFINITION: 'Specification'
         }
     },
+    // Types the /assets endpoints may write or delete; API_DEFINITION and SCHEMA_DEFINITION are never content.
+    CONTENT_TYPES: {
+        FIXED: ['MARKETING', 'IMAGE'],
+        // Any category name, as an upload stores it from docs/<Folder>/; the match is exact, so no wildcards.
+        DOC_PATTERN: /^DOC_.+$/s,
+    },
     MIME_TYPES: {
         HTML: 'text/html',
         TEXT: 'text/plain',
@@ -262,7 +268,7 @@ module.exports = {
     FILE_NAME: {
         MAIN: 'main.hbs',
         PAGE: 'page.hbs',
-        API_MD_CONTENT_FILE_NAME: 'apiContent.md',
+        API_MD_CONTENT_FILE_NAME: 'api-content.md',
         API_HBS_CONTENT_FILE_NAME: 'api-content.hbs',
         API_DOC_MD: 'api-doc.md',
         API_DOC_HBS: 'api-doc.hbs',

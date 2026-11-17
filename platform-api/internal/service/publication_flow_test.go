@@ -731,7 +731,7 @@ func (c *contentRecorder) PublishContent(_ context.Context, _ *model.APIPortal, 
 }
 
 // TestPublish_PushesTheDraftLandingPage checks the stored landing page reaches the portal as
-// web/apiContent.md in the content archive.
+// web/api-content.md in the content archive.
 func TestPublish_PushesTheDraftLandingPage(t *testing.T) {
 	tdb := openSchemaDB(t)
 	g := seedOrgGraph(t, tdb)
@@ -745,7 +745,7 @@ func TestPublish_PushesTheDraftLandingPage(t *testing.T) {
 		t.Fatalf("pushed content is not a ZIP: %v", err)
 	}
 	for _, f := range zr.File {
-		if f.Name != "content/web/apiContent.md" {
+		if f.Name != "content/web/api-content.md" {
 			continue
 		}
 		rc, err := f.Open()
@@ -758,5 +758,5 @@ func TestPublish_PushesTheDraftLandingPage(t *testing.T) {
 		}
 		return
 	}
-	t.Fatalf("pushed content has no web/apiContent.md")
+	t.Fatalf("pushed content has no web/api-content.md")
 }

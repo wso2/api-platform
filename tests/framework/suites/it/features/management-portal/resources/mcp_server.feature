@@ -24,7 +24,7 @@ Feature: The Platform API's MCP tools
 
   Background:
     Given the gateway services are running
-    And I generate a unique value from "mcp-project" and store it as "project"
+    And I generate a unique resource name from "mcp-project" and store it as "project"
     And I create a project "${CTX:project}" on the control plane
 
   Scenario Outline: Each user sees the tools their role allows
@@ -75,7 +75,7 @@ Feature: The Platform API's MCP tools
     And the JSON response field "context" should be "${CTX:apiContext}"
     When I call the MCP tool "update_api" with arguments:
       """
-      {"apiType": "rest-api", "apiId": "${CTX:apiId}", "payload": {"description": "changed by MCP"}}
+      {"apiType": "rest-api", "apiId": "${CTX:apiId}", "payload": {"description": "changed by MCP"}, "confirm": true}
       """
     Then the MCP tool call should succeed
     When I send a "GET" request to the control plane at "/rest-apis/${CTX:apiId}"
@@ -98,7 +98,7 @@ Feature: The Platform API's MCP tools
     Then the JSON response field "result.structuredContent.isActive" should be true
     When I call the MCP tool "deploy_api" with arguments:
       """
-      {"apiType": "rest-api", "apiId": "${CTX:apiId}", "gatewayId": "it-gateway"}
+      {"apiType": "rest-api", "apiId": "${CTX:apiId}", "gatewayId": "it-gateway", "confirm": true}
       """
     Then the JSON response field "result.structuredContent.deployments[0].status" should be "DEPLOYING"
     And the JSON response field "result.structuredContent.id" should be "${CTX:apiId}"

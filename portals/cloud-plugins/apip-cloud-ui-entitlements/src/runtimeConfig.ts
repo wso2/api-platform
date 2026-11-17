@@ -24,6 +24,8 @@
 type WindowConfig = Partial<{
   APIP_ACP_BILLING_CONSOLE_URL: string;
   billingConsoleUrl: string;
+  BILLING_ENTITLEMENT_BASE_URL: string;
+  billingEntitlementBaseUrl: string;
   PLATFORM_API_BASE_URL: string;
   platformApiBaseUrl: string;
 }>;
@@ -95,4 +97,18 @@ export function proxyBase(): string {
     .trim()
     .replace(/\/+$/, '');
   return isSameOriginPath(base) ? base : '/proxy';
+}
+
+/**
+ * Same-origin path of billing's Entitlement API: `billingEntitlementBaseUrl`
+ * when the deployment routes it apart from the console's proxy (e.g.
+ * `/_api/entitlement/api/v1`), otherwise the `billing-entitlement` route under
+ * the proxy base. A value that is not a same-origin path is ignored.
+ */
+export function entitlementBase(): string {
+  const config = fromWindow();
+  const own = (config.BILLING_ENTITLEMENT_BASE_URL || config.billingEntitlementBaseUrl || '')
+    .trim()
+    .replace(/\/+$/, '');
+  return isSameOriginPath(own) ? own : `${proxyBase()}/billing-entitlement`;
 }

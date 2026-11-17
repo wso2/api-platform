@@ -109,3 +109,24 @@ export const assembleEnvironments = (environments: EnvironmentDTO[]): Environmen
     name: environment.name,
     critical: environment.isProduction ?? false,
   }));
+
+/**
+ * The environments a set of pipelines names, as reference data for a user who
+ * may read pipelines but not `/environments`. A pipeline identifies an
+ * environment by name alone, so the names are enough to show its stages and to
+ * edit or compose a pipeline from them; what cannot be known this way is
+ * whether an environment is critical, or any environment no pipeline names yet.
+ */
+export const environmentsNamedBy = (
+  pipelines: { promotionPaths?: PromotionPath[] }[]
+): Environment[] => {
+  const names: string[] = [];
+  for (const pipeline of pipelines) {
+    for (const path of pipeline.promotionPaths ?? []) {
+      for (const name of [path.sourceEnvironment, ...path.targetEnvironments]) {
+        if (!names.includes(name)) names.push(name);
+      }
+    }
+  }
+  return names.map((name) => ({ id: name, name }));
+};

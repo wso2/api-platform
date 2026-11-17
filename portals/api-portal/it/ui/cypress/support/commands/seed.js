@@ -16,6 +16,8 @@
 // under the License.
 // --------------------------------------------------------------------
 
+import { createZip } from '../zip';
+
 // ---------------------------------------------------------------------------
 // Seed helpers — create demo REST APIs / MCP servers through the real portal
 // management API (POST /api/v0.9/apis, /mcp-servers) so UI browse tests have
@@ -190,6 +192,34 @@ Cypress.Commands.add('deleteMcp', (handle) => {
         headers: { organization: Cypress.env('ORG_HANDLE') },
         failOnStatusCode: false,
     });
+});
+
+// ---------------------------------------------------------------------------
+// cy.uploadMcpContent(handle, entries)
+//   Upload a content ZIP built from entries ({ name, content }) to
+//   PUT /mcp-servers/{handle}/assets. Sent with the page's fetch, because
+//   buildMultipart above only carries text and a ZIP is binary.
+// ---------------------------------------------------------------------------
+Cypress.Commands.add('uploadMcpContent', (handle, entries) => {
+    const zip = createZip(entries);
+    cy.on('uncaught:exception', () => false);
+    cy.visitPortal('/mcps');
+    return cy.getCookie('XSRF-TOKEN').then((csrf) => cy.window().then((win) => {
+        const form = new win.FormData();
+        form.append('content', new win.Blob([zip], { type: 'application/zip' }), 'content.zip');
+        return win.fetch(`${Cypress.env('BASE_PATH')}/api/v0.9/mcp-servers/${encodeURIComponent(handle)}/assets`, {
+            method: 'PUT',
+            body: form,
+            credentials: 'same-origin',
+            headers: {
+                organization: Cypress.env('ORG_HANDLE'),
+                ...(csrf && csrf.value ? { 'X-CSRF-Token': decodeURIComponent(csrf.value) } : {}),
+            },
+        }).then(async (res) => {
+            const details = res.ok ? '' : ` (${res.status}): ${await res.text()}`;
+            expect(res.ok, `upload MCP content${details}`).to.eq(true);
+        });
+    }));
 });
 
 // ---------------------------------------------------------------------------

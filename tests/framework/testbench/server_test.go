@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"github.com/stretchr/testify/require"
+	"github.com/wso2/api-platform/tests/framework/testbench/services/aws"
 	"io"
 	"log"
 	"log/slog"
@@ -417,4 +418,10 @@ func TestServeServesATLSServiceOverHTTPS(t *testing.T) {
 		defer resp.Body.Close()
 		require.Equal(t, http.StatusBadRequest, resp.StatusCode, "a plain HTTP request must not be served")
 	}
+}
+
+// Bedrock answers a request it holds as unresponsive before the write timeout closes the
+// connection, so the caller gets the documented 503.
+func TestBedrockAnswersAnUnresponsiveRequestBeforeTheWriteTimeout(t *testing.T) {
+	require.Less(t, aws.BedrockUnresponsiveHold, writeTimeout)
 }

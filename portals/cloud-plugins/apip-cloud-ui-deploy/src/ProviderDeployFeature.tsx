@@ -17,11 +17,18 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
-import { Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
+import { Alert, Box, Button, CircularProgress, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 import ProviderDeployPage from './ProviderDeployPage';
 import { createProviderDeployClient, withValuePrefix, type ProviderUpstream } from './providerDeployApi';
 import { isSettling } from './utils/status';
 import type { CloudHostPort } from './hostPort';
+import {
+  NO_PERMISSION_TOOLTIP,
+  permissionsOf,
+  PROVIDER_BUILD_OPERATIONS,
+  PROVIDER_DEPLOYMENT_OPERATIONS,
+  SECRET_OPERATIONS,
+} from './permissions';
 import type { Build, Environment } from './types';
 
 export type ProviderDeployFeatureProps = {
@@ -52,7 +59,26 @@ const errorMessage = (error: unknown, fallback: string) =>
  */
 const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactHandle }) => {
   const { apiFetch, apiHandle, notify } = port;
+  const permissions = permissionsOf(port);
   const handle = artifactHandle ?? apiHandle;
+
+  // What the signed-in user may be offered, from the scopes each operation
+  // accepts. The server still decides; this keeps the page from offering a call
+  // it would refuse, and from making one it knows will be refused. Builds are
+  // the provider's own resource, so they come under its scopes rather than the
+  // deployment ones, and a reader without them still gets the environments.
+  const canView = permissions.canAny(
+    PROVIDER_DEPLOYMENT_OPERATIONS.ListLlmProviderEnvironmentDeployments
+  );
+  const canDeploy = permissions.canAny(PROVIDER_DEPLOYMENT_OPERATIONS.DeployLlmProviderToEnvironment);
+  const canUndeploy = permissions.canAny(
+    PROVIDER_DEPLOYMENT_OPERATIONS.UndeployLlmProviderFromEnvironment
+  );
+  const canListBuilds = permissions.canAny(PROVIDER_BUILD_OPERATIONS.GetLLMProviderBuilds);
+  const canDeleteBuild = permissions.canAny(PROVIDER_BUILD_OPERATIONS.DeleteLLMProviderBuild);
+  // A key typed into the deploy dialog is stored as a secret first, which is a
+  // write of its own; deploying on a gateway's existing credential is not.
+  const canStoreCredential = permissions.canAny(SECRET_OPERATIONS.CreateSecret);
 
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [builds, setBuilds] = useState<Build[]>([]);
@@ -72,25 +98,39 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
   const settlingRef = useRef(false);
   settlingRef.current = isSettling(environments);
 
+  // Loads overlap: the settling poll, the refresh after an action, and a reload
+  // because the provider or the user's permissions changed. Only the newest may
+  // write state — `apiFetch` cannot be cancelled, so an earlier response that
+  // lands last would otherwise put back builds the user may no longer read, or
+  // the last provider's environments over this one's.
+  const loadSeqRef = useRef(0);
+
   const load = useCallback(
     async (options: { quiet?: boolean } = {}) => {
-      if (!client) return;
+      const seq = ++loadSeqRef.current;
+      if (!client || !canView) {
+        setLoading(false);
+        return;
+      }
       if (!options.quiet) setLoading(true);
       try {
         const [stages, prepared] = await Promise.all([
           client.listEnvironments(),
-          client.listBuilds(),
+          canListBuilds ? client.listBuilds() : Promise.resolve([]),
         ]);
+        if (seq !== loadSeqRef.current) return;
         setEnvironments(stages);
         setBuilds(prepared);
         setError(null);
       } catch (loadError) {
+        if (seq !== loadSeqRef.current) return;
         setError(errorMessage(loadError, 'Unable to load the environments.'));
       } finally {
-        if (!options.quiet) setLoading(false);
+        // The newest load, quiet or not, is what the page is waiting on.
+        if (seq === loadSeqRef.current) setLoading(false);
       }
     },
-    [client]
+    [canListBuilds, canView, client]
   );
 
   useEffect(() => {
@@ -100,9 +140,9 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
   // Read once per provider rather than on every settling poll: how it authenticates is
   // not deployment state, and failing to read it must leave the rest of the page working.
   useEffect(() => {
-    if (!client) return;
+    if (!client || !canView) return;
     void client.readUpstream().then(setUpstream, () => setUpstream({}));
-  }, [client]);
+  }, [canView, client]);
 
   // A deployment settles asynchronously once its gateway acknowledges, so poll
   // while anything is in flight and stop as soon as everything has settled.
@@ -155,6 +195,12 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
     buildId?: string
   ) => {
     if (!client || gateways.length === 0) return;
+    // The dialog offers no key field without the scope; this is the same rule
+    // applied where the secret would actually be written.
+    if (!canStoreCredential && gateways.some((gateway) => gateway.apiKey)) {
+      notify(NO_PERMISSION_TOOLTIP, 'error');
+      return;
+    }
     void runAction(
       async () => {
         const stored: string[] = [];
@@ -232,6 +278,17 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
     );
   }
 
+  if (!canView) {
+    return (
+      <PageContent fullWidth sx={{ minWidth: 0 }}>
+        <PageTitle sx={{ mb: 2 }}>
+          <PageTitle.Header>Deploy</PageTitle.Header>
+        </PageTitle>
+        <Alert severity="warning">You don&apos;t have permission to view deployments.</Alert>
+      </PageContent>
+    );
+  }
+
   if (loading) {
     return (
       <PageContent fullWidth sx={{ minWidth: 0 }}>
@@ -277,6 +334,10 @@ const ProviderDeployFeature: FC<ProviderDeployFeatureProps> = ({ port, artifactH
       environments={environments}
       builds={builds}
       upstream={upstream}
+      canDeploy={canDeploy}
+      canStoreCredential={canStoreCredential}
+      canUndeploy={canUndeploy}
+      canDeleteBuild={canDeleteBuild}
       busy={busy}
       onDeleteBuild={handleDeleteBuild}
       onDeploy={handleDeploy}

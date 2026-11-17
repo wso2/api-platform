@@ -1,0 +1,53 @@
+# Scenario list: Gateway Artifact Environment Variable Access (GWENV).
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+code: GWENV
+title: Gateway Artifact Environment Variable Access
+scenarios:
+  - id: GWENV-001
+    title: "With policy_engine.env_access.allow_list set, create a REST API whose upstream URL reads a variable outside the list through {{ env }}; 400 with a generic message that names neither the variable nor its value, and the API is not created while a valid API created the same way is."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The allow list is gateway configuration enforced by the gateway management API; no portal action sets it or deploys straight to the gateway.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/template_env_allow_list.feature
+          scenario: "env template in upstream URL naming a variable outside the allow list is rejected"
+  - id: GWENV-002
+    title: "With policy_engine.env_access.allow_list set, create a REST API whose policy parameter reads a variable outside the list through {{ env }}; 400 with the same generic message, and the API is not created while a valid API created the same way is."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The allow list is gateway configuration enforced by the gateway management API; no portal action sets it or deploys straight to the gateway.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/template_env_allow_list.feature
+          scenario: "env template in a policy parameter naming a variable outside the allow list is rejected"
+  - id: GWENV-003
+    title: "With policy_engine.env_access.allow_list set, update a deployed REST API so a policy parameter reads a variable outside the list; 400 with the generic message, the stored definition is unchanged, and the API keeps serving its previous version with no leaked value."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The allow list is gateway configuration enforced by the gateway management API; no portal action sets it or deploys straight to the gateway.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/template_env_allow_list.feature
+          scenario: "updating a deployed API to read a variable outside the allow list is rejected and leaves it serving"
+  - id: GWENV-004
+    title: "Deploy a REST API that reads a variable through {{ env }} with no allow list, then restart the gateway-controller with an allow list that excludes it; the controller starts, the API is undeployed (no route, no policy chain) and persisted as undeployed, and every other API keeps serving."
+    priority: P1
+    ui:
+      status: exempt
+      reason: The allow list is gateway configuration enforced by the gateway-controller at startup; no portal action changes it.
+    it:
+      status: planned

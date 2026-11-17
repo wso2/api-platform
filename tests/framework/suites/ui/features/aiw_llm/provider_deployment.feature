@@ -18,7 +18,7 @@
 
 @AIW-LLM
 Feature: Deploying and running an LLM provider from the AI Workspace
-  Scenarios AIW-LLM (scenarios/AIW-LLM.yaml), sub-features "Deploy", "Undeploy", "Redeploy", "Invoke", "Guardrails",
+  Scenarios AIW-LLM (scenarios/on-prem/AIW-LLM.yaml), sub-features "Deploy", "Undeploy", "Redeploy", "Invoke", "Guardrails",
   "Rate limiting" and "Connection" (AIW-PRV-009, 015, 016, 018, 020, 022, 023, 024, 025,
   026), through the browser against the block's real gateway. The API-level scenarios are in
   suites/it/features/ai-workspace/llm-providers/deploy.feature.

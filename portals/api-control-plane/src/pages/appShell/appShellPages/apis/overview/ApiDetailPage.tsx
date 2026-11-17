@@ -29,7 +29,9 @@ import { useConsoleScope } from '@/scope/ConsoleScopeProvider';
 import { ApiOverviewHeader } from './ApiOverviewHeader';
 import { OverviewTab } from './OverviewTab';
 import { ProgressBanner } from './ProgressBanner';
+import { useCloudDeployments } from './useCloudDeployments';
 import { useCan } from '@/permissions/useCan';
+import { PAGE_API_DEPLOY_SLOT } from '@/extensions';
 
 // No `ScopeGate`: this page is the API tier of the sidebar's Overview item, which
 // degrades to a shallower tier rather than linking here without an API.
@@ -46,9 +48,18 @@ function ApiDetailPageContent() {
   const canEdit = useCan('UpdateRESTAPI');
   const apiQuery = useRestApi(params.apiHandler);
   const apiGatewaysQuery = useRestApiGateways(apiQuery.data?.id);
-  const deploymentsQuery = useDeployments(apiQuery.data?.id);
+  const platformDeploymentsQuery = useDeployments(apiQuery.data?.id);
+  // In cloud the pipeline's per-gateway state is the truth, as on the Deploy page; it
+  // replaces the platform's own deployment list and `isDeployed` flag. Undefined elsewhere.
+  const cloudDeployments = useCloudDeployments('RestApi', params.projectHandler, params.apiHandler).data;
+  const deploymentsQuery = useMemo(
+    () => ({ data: { list: cloudDeployments ?? platformDeploymentsQuery.data?.list ?? [] } }),
+    [cloudDeployments, platformDeploymentsQuery.data],
+  );
   const deployedGateways = useMemo((): Gateway[] => {
-    const gateways = apiGatewaysQuery.data?.list ?? [];
+    const gateways = (apiGatewaysQuery.data?.list ?? []).map((gateway) =>
+      cloudDeployments ? { ...gateway, isDeployed: false } : gateway,
+    );
     const deployments = deploymentsQuery.data?.list ?? [];
     const latestByGateway = new Map<string, number>();
     deployments
@@ -64,7 +75,7 @@ function ApiDetailPageContent() {
       .sort(
         (a, b) => (latestByGateway.get(b.id ?? '') || 0) - (latestByGateway.get(a.id ?? '') || 0),
       );
-  }, [apiGatewaysQuery.data, deploymentsQuery.data]);
+  }, [apiGatewaysQuery.data, deploymentsQuery.data, cloudDeployments]);
 
   if (apiQuery.isLoading) return <LoadingState label="Loading API" />;
   if (apiQuery.error || !apiQuery.data) {
@@ -101,6 +112,7 @@ function ApiDetailPageContent() {
         canEdit={canEdit}
         deployOperation="DeployAPI"
         deployPath={deployPath}
+        deploySlot={PAGE_API_DEPLOY_SLOT}
         editPath={editPath}
       />
 

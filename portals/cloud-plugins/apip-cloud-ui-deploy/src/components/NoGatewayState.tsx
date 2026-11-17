@@ -21,6 +21,7 @@ import {
   Box,
   Button,
   Card,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { Cloud, Server } from '@wso2/oxygen-ui-icons-react';
@@ -52,6 +53,8 @@ export type NoGatewayStateProps = {
   provisioning?: { startedAt: number; environment: string };
   /** Set while the self-hosted gateway registration request is in flight. */
   selfHostedPending?: { startedAt: number };
+  /** Set when the user may not add a gateway: the add buttons are disabled and this says why. */
+  addDeniedReason?: string;
 };
 
 const SELF_HOSTED_STEP_LABELS: [string, string, string] = [
@@ -249,9 +252,11 @@ type OptionProps = {
   action: string;
   primary?: boolean;
   onClick: () => void;
+  /** Disables the button, with this as its tooltip. */
+  disabledReason?: string;
 };
 
-const Option: FC<OptionProps> = ({ icon, title, description, action, primary, onClick }) => {
+const Option: FC<OptionProps> = ({ icon, title, description, action, primary, onClick, disabledReason }) => {
   const c = useDiagramColors();
 
   return (
@@ -288,22 +293,27 @@ const Option: FC<OptionProps> = ({ icon, title, description, action, primary, on
           {description}
         </Typography>
       </Box>
-      <Button
-        variant={primary ? 'contained' : 'outlined'}
-        onClick={onClick}
-        sx={{
-          flexShrink: 0,
-          borderRadius: 999,
-          textTransform: 'none',
-          ...(primary && {
-            bgcolor: ACCENT,
-            color: '#1a0d05',
-            '&:hover': { bgcolor: ACCENT_SOFT },
-          }),
-        }}
-      >
-        {action}
-      </Button>
+      <Tooltip title={disabledReason ?? ''}>
+        <span>
+          <Button
+            variant={primary ? 'contained' : 'outlined'}
+            disabled={disabledReason !== undefined}
+            onClick={onClick}
+            sx={{
+              flexShrink: 0,
+              borderRadius: 999,
+              textTransform: 'none',
+              ...(primary && {
+                bgcolor: ACCENT,
+                color: '#1a0d05',
+                '&:hover': { bgcolor: ACCENT_SOFT },
+              }),
+            }}
+          >
+            {action}
+          </Button>
+        </span>
+      </Tooltip>
     </Box>
   );
 };
@@ -319,6 +329,7 @@ const NoGatewayState: FC<NoGatewayStateProps> = ({
   onAddCloud,
   provisioning,
   selfHostedPending,
+  addDeniedReason,
 }) => {
   // The gateway always goes into the first environment of the pipeline; there is
   // no question to answer, however many environments the project has.
@@ -335,30 +346,31 @@ const NoGatewayState: FC<NoGatewayStateProps> = ({
         <GatewayAnimation apiName={apiName} />
       </Box>
       <Typography variant="h4" sx={{ mb: 0.5, fontWeight: 500 }}>
-        Add a gateway to deploy{' '}
+        Add an API gateway to deploy{' '}
         <Box component="span" sx={{ fontWeight: 700 }}>
           {apiName}
         </Box>
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 4, opacity: 0.65 }}>
-        Gateways run your API in an environment. Add one to start building and deploying.
+        API gateways run your API in an environment. Add one to start building and deploying.
       </Typography>
       <Card sx={{ border: '1px solid', borderColor: 'divider', textAlign: 'left', overflow: 'hidden' }}>
         {selfHostedPending ? (
           <GatewayProvisioningCard
             startedAt={selfHostedPending.startedAt}
             icon={<Server size={20} />}
-            title="Self-hosted gateway"
-            description="Run the gateway in your own infrastructure with full control over network, data and scaling."
+            title="Self-hosted API gateway"
+            description="Run the API gateway in your own infrastructure with full control over network, data and scaling."
             stepLabels={SELF_HOSTED_STEP_LABELS}
           />
         ) : (
           <Option
             primary
             icon={<Server size={20} />}
-            title="Self-hosted gateway"
-            description="Run the gateway in your own infrastructure with full control over network, data and scaling."
-            action="Add self-hosted gateway"
+            title="Self-hosted API gateway"
+            description="Run the API gateway in your own infrastructure with full control over network, data and scaling."
+            action="Add self-hosted API gateway"
+            disabledReason={addDeniedReason}
             onClick={() => handleAdd('self-hosted')}
           />
         )}
@@ -367,9 +379,10 @@ const NoGatewayState: FC<NoGatewayStateProps> = ({
         ) : (
           <Option
             icon={<Cloud size={20} />}
-            title="WSO2 managed gateway"
-            description="A gateway hosted and maintained by WSO2. Ready in one click and bound to your development environment."
-            action="Add Cloud gateway"
+            title="WSO2 managed API gateway"
+            description="An API gateway hosted and maintained by WSO2. Ready in one click and bound to your development environment."
+            action="Add Cloud API gateway"
+            disabledReason={addDeniedReason}
             onClick={() => handleAdd('cloud')}
           />
         )}

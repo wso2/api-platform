@@ -96,6 +96,8 @@ roles:
       - dp:key_manager:update
       - dp:key_manager:manage
       - dp:key_manager:delete
+      - dp:key_manager:metadata_read
+      - dp:oauth2_key:manage
       - dp:view:create
       - dp:view:read
       - dp:view:update
@@ -158,6 +160,8 @@ roles:
       - dp:application_key_mapping:read
       - dp:application_key_mapping:create
       - dp:application_key_mapping:manage
+      - dp:key_manager:metadata_read
+      - dp:oauth2_key:manage
       - dp:subscription:create
       - dp:subscription:read
       - dp:subscription:update

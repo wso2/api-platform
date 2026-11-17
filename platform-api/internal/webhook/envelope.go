@@ -68,6 +68,10 @@ type Envelope struct {
 	AggregateType string `json:"aggregate_type"`
 	AggregateID   string `json:"aggregate_id"`
 	SchemaVersion string `json:"schema_version"`
+	// SecretHash identifies the shared secret that signed and encrypted this delivery
+	// (see SecretHash). Absent when the producer predates it. With the organization it selects
+	// the secret to verify against; it is never trusted before the signature verifies.
+	SecretHash string `json:"secret_hash"`
 	// EncryptedFields lists which fields inside Data carry an encrypted envelope. Always present
 	// in the new contract — empty when no fields are encrypted.
 	EncryptedFields []string        `json:"encrypted_fields"`

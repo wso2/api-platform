@@ -52,6 +52,7 @@ import {
 
 const API_ID = 'pizza-shack';
 const DEPLOYMENT_ID = 'deployment-1';
+const GATEWAY_ID = 'shared-gateway';
 const COLLECTION = `/rest-apis/${API_ID}/deployments`;
 const RESOURCE = `${COLLECTION}/${DEPLOYMENT_ID}`;
 
@@ -177,11 +178,26 @@ describe('undeployDeployment', () => {
       })
     );
 
-    await undeployDeployment(API_ID, DEPLOYMENT_ID);
+    await undeployDeployment(API_ID, DEPLOYMENT_ID, GATEWAY_ID);
 
     expect(requests.last()?.url.pathname).toBe(
       '/api/v0.9/rest-apis/pizza-shack/deployments/deployment-1/undeploy'
     );
+  });
+
+  it('sends the deployment\'s gateway as the gatewayId query parameter', async () => {
+    // Required by the spec: without it the server answers 400 VALIDATION_FAILED,
+    // and another gateway's id is refused with DEPLOYMENT_GATEWAY_MISMATCH.
+    server.use(
+      accepts('post', `${RESOURCE}/undeploy`, aDeployment(), {
+        record: requests,
+        status: 200,
+      })
+    );
+
+    await undeployDeployment(API_ID, DEPLOYMENT_ID, 'gw/1');
+
+    expect(requests.last()?.url.searchParams.get('gatewayId')).toBe('gw/1');
   });
 
   it('sends no request body', async () => {
@@ -194,7 +210,7 @@ describe('undeployDeployment', () => {
       })
     );
 
-    await undeployDeployment(API_ID, DEPLOYMENT_ID);
+    await undeployDeployment(API_ID, DEPLOYMENT_ID, GATEWAY_ID);
 
     expect(requests.last()?.body).toBe('');
   });
@@ -209,11 +225,26 @@ describe('restoreDeployment', () => {
       })
     );
 
-    await restoreDeployment(API_ID, DEPLOYMENT_ID);
+    await restoreDeployment(API_ID, DEPLOYMENT_ID, GATEWAY_ID);
 
     expect(requests.last()?.url.pathname).toBe(
       '/api/v0.9/rest-apis/pizza-shack/deployments/deployment-1/restore'
     );
+  });
+
+  it('sends the deployment\'s gateway as the gatewayId query parameter', async () => {
+    // Required by the spec: without it the server answers 400 VALIDATION_FAILED,
+    // and another gateway's id is refused with DEPLOYMENT_GATEWAY_MISMATCH.
+    server.use(
+      accepts('post', `${RESOURCE}/restore`, aDeployment(), {
+        record: requests,
+        status: 200,
+      })
+    );
+
+    await restoreDeployment(API_ID, DEPLOYMENT_ID, 'gw/1');
+
+    expect(requests.last()?.url.searchParams.get('gatewayId')).toBe('gw/1');
   });
 });
 
@@ -259,7 +290,7 @@ describe('failures', () => {
       failure('post', `${RESOURCE}/undeploy`, 409, 'DEPLOYMENT_ACTIVE')
     );
 
-    const error = (await undeployDeployment(API_ID, DEPLOYMENT_ID).catch(
+    const error = (await undeployDeployment(API_ID, DEPLOYMENT_ID, GATEWAY_ID).catch(
       (e: unknown) => e
     )) as ApiError;
 

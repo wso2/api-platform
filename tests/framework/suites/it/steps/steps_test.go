@@ -42,6 +42,24 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
 
+func TestPadToLength(t *testing.T) {
+	padded, err := padToLength("name", 6)
+	require.NoError(t, err)
+	require.Equal(t, "nameaa", padded)
+	padded, err = padToLength("name", 4)
+	require.NoError(t, err)
+	require.Equal(t, "name", padded)
+	_, err = padToLength("name", 3)
+	require.ErrorContains(t, err, "longer than")
+	_, err = padToLength("", -1)
+	require.ErrorContains(t, err, "longer than")
+}
+
+func TestGenerateUniqueResourceNameOfLengthNeedsRunnerContext(t *testing.T) {
+	err := (&Base{}).generateUniqueResourceNameOfLength(context.Background(), 40, "name", "key")
+	require.Error(t, err)
+}
+
 func TestSetRequestHostExpandsContextValues(t *testing.T) {
 	local := tcontext.NewLocal("runner")
 	local.Set("host", "main-unique.local")
@@ -267,27 +285,33 @@ func TestPrometheusAssertions(t *testing.T) {
 	}
 }
 
+// TestCanonicalResourceTemplates keeps every referenced template within the supported catalogue.
 func TestCanonicalResourceTemplates(t *testing.T) {
 	_, source, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 
 	root := filepath.Join(filepath.Dir(source), "..", "resources", "templates")
-	// Platform Gateway templates own the gateway resource envelope.
+	// Platform Gateway templates and the API Portal organization manifest own the
+	// apiVersion, kind, metadata and spec resource envelope.
 	gatewayKinds := map[string]string{
-		"agent.yaml":                 "Agent",
-		"graphql-api.yaml":           "GraphQLApi",
-		"llm-provider-template.yaml": "LlmProviderTemplate",
-		"llm-provider.yaml":          "LlmProvider",
-		"llm-proxy.yaml":             "LlmProxy",
-		"mcp.yaml":                   "Mcp",
-		"rest-api.yaml":              "RestApi",
-		"subscription.yaml":          "Subscription",
+		"agent.yaml":                   "Agent",
+		"api-portal-organization.yaml": "Organization",
+		"graphql-api.yaml":             "GraphQLApi",
+		"llm-provider-template.yaml":   "LlmProviderTemplate",
+		"llm-provider.yaml":            "LlmProvider",
+		"llm-proxy.yaml":               "LlmProxy",
+		"mcp.yaml":                     "Mcp",
+		"rest-api.yaml":                "RestApi",
+		"subscription.yaml":            "Subscription",
 	}
-	// Control-plane templates are publisher-API payloads, which carry no gateway envelope.
-	// Each names the payload block that identifies the resource.
+	// Control-plane and API Portal templates are publisher-API payloads, which carry no gateway
+	// envelope. Each names the payload block that identifies the resource.
 	controlPlaneBlocks := map[string]string{
-		"agent-proxy.yaml":     "a2a",
-		"llm-provider-cp.yaml": "upstream",
+		"agent-proxy.yaml":              "a2a",
+		"api-portal-api.yaml":           "endPoints",
+		"llm-provider-cp.yaml":          "upstream",
+		"llm-provider-template-cp.yaml": "metadata",
+		"rest-api-cp.yaml":              "upstream",
 	}
 	// Control-plane payloads without a protocol block name the fields every request carries.
 	controlPlaneFields := map[string][]string{
@@ -320,6 +344,10 @@ func TestCanonicalResourceTemplates(t *testing.T) {
 				require.Equal(t, "a2a", document["protocol"], "template %q", name)
 			}
 			for _, envelope := range []string{"apiVersion", "kind", "metadata", "spec"} {
+				if envelope == blockName {
+					// The payload's own block, such as an LLM provider template's metadata.
+					continue
+				}
 				require.NotContains(t, document, envelope, "control-plane template %q must not carry a gateway envelope", name)
 			}
 			block, ok := document[blockName].(map[string]any)
@@ -393,11 +421,11 @@ func TestJSONFieldIsBool(t *testing.T) {
 	}
 }
 
-// mtlsFeatureFiles lists every feature that exercises mutual TLS: each mtls_*.feature and
-// certificates.feature.
+// mtlsFeatureFiles lists every feature that exercises mutual TLS: each feature in
+// gateway/mtls and certificates.feature.
 func mtlsFeatureFiles(t *testing.T, featureRoot string) []string {
 	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(featureRoot, "features", "mtls_*.feature"))
+	paths, err := filepath.Glob(filepath.Join(featureRoot, "features", "gateway", "mtls", "*.feature"))
 	require.NoError(t, err)
 	require.NotEmpty(t, paths)
 	certificates := filepath.Join(featureRoot, "features", "gateway", "security", "certificates.feature")

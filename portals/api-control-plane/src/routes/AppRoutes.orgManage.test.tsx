@@ -68,18 +68,24 @@ describe('Org-level Manage pages', () => {
 
   // `disableFeatures` hides a page from the sidebar and answers its URL as not found.
   it.each([
-    ['subscription-plans', 'Subscription Plans'],
-    ['meters', 'Meters'],
-  ])('answers not found for %s when the feature is disabled', async (feature, heading) => {
-    disabled.names = [feature];
-    renderWithProviders(<AppRoutes />, {
-      route: `/organizations/api-platform-demo/${feature}`,
-      authState: authStatePresets.authenticated(),
-    });
+    ['subscription-plans', 'subscription-plans', 'Subscription Plans'],
+    ['meters', 'meters', 'Meters'],
+    ['service-accounts', 'service-accounts', 'Service Accounts'],
+    ['service-accounts', 'service-accounts/create', 'New service account'],
+    ['service-accounts', 'service-accounts/created', 'Service account created'],
+  ])(
+    'answers not found for %s at /%s when the feature is disabled',
+    async (feature, path, heading) => {
+      disabled.names = [feature];
+      renderWithProviders(<AppRoutes />, {
+        route: `/organizations/api-platform-demo/${path}`,
+        authState: authStatePresets.authenticated(),
+      });
 
-    expect(await screen.findByText('Page not found', {}, LAZY_ROUTE_TIMEOUT)).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: heading })).not.toBeInTheDocument();
-  });
+      expect(await screen.findByText('Page not found', {}, LAZY_ROUTE_TIMEOUT)).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: heading })).not.toBeInTheDocument();
+    },
+  );
 
   it.each([
     ['subscription-plans', 'Subscription Plans'],

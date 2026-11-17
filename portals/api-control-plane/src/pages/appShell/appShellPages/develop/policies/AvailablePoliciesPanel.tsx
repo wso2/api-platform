@@ -38,6 +38,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import {
+  useAllGatewayCustomPolicies,
+  type CustomPolicy,
+} from '@/api/resources/gatewayCustomPolicies';
+import {
   usePolicyHubCategories,
   usePolicyHubInfinitePolicies,
   type PolicySummary,
@@ -45,6 +49,8 @@ import {
 import { SecondaryText } from '@/components/common/SecondaryText';
 import { EmptyState, ErrorState } from '@/components/StateViews';
 import { runtimeConfig } from '@/config/runtime';
+import { useTrackFeature, type FeatureDimensions } from '@/featureUsage';
+import { useCan } from '@/permissions';
 import { iconTileSx } from '@/theme/receipes';
 import { POLICY_DND_MIME, setDraggedPolicy } from './policyDnd';
 
@@ -101,6 +107,16 @@ const messages = defineMessages({
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.emptyDescription',
     defaultMessage: 'No policies match the filter.',
   },
+  custom: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.custom',
+    defaultMessage: 'Custom',
+    description:
+      'Chip on a catalog entry that is one of the organization’s custom policies, synced from a gateway. Adjective.',
+  },
+  customLoadError: {
+    id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.customLoadError',
+    defaultMessage: 'Unable to load the organization’s custom policies.',
+  },
   version: {
     id: 'apiControlPlane.pages.appShell.appShellPages.develop.policies.AvailablePoliciesPanel.version',
     defaultMessage: 'v{version}',
@@ -140,20 +156,127 @@ function PolicySkeletonCard() {
   );
 }
 
+const toPolicySummary = (policy: CustomPolicy): PolicySummary => ({
+  name: policy.name,
+  version: policy.version,
+  displayName: policy.displayName || policy.name,
+  provider: '',
+  categories: [],
+  tags: [],
+  isLatest: true,
+  description: policy.description,
+});
+
+const matchesSearch = (policy: CustomPolicy, term: string): boolean => {
+  const needle = term.toLowerCase();
+  return [policy.name, policy.displayName, policy.description].some((text) =>
+    text?.toLowerCase().includes(needle),
+  );
+};
+
+/** A catalog entry that can be dragged onto a drop zone, or clicked to attach. */
+function PolicyCard({
+  policy,
+  custom = false,
+  disabled,
+  onSelect,
+}: {
+  policy: PolicySummary;
+  custom?: boolean;
+  disabled: boolean;
+  onSelect: (policy: PolicySummary) => void;
+}) {
+  const intl = useIntl();
+  return (
+    <Card
+      aria-disabled={disabled || undefined}
+      draggable={!disabled}
+      onClick={disabled ? undefined : () => onSelect(policy)}
+      onDragEnd={() => setDraggedPolicy(null)}
+      onDragStart={(event) => {
+        if (disabled) {
+          event.preventDefault();
+          return;
+        }
+        setDraggedPolicy({
+          name: policy.name,
+          version: policy.version,
+          displayName: policy.displayName,
+        });
+        event.dataTransfer.effectAllowed = 'copy';
+        event.dataTransfer.setData(POLICY_DND_MIME, policy.name);
+      }}
+      sx={{
+        cursor: disabled ? 'default' : 'grab',
+        opacity: disabled ? 0.6 : 1,
+        ...(!disabled && {
+          '&:active': { cursor: 'grabbing' },
+          '&:hover': { bgcolor: 'action.hover', borderColor: 'primary.light' },
+        }),
+      }}
+    >
+      <CardContent
+        sx={{
+          alignItems: 'center',
+          display: 'flex',
+          gap: 1,
+          p: 1.25,
+          '&:last-child': { pb: 1.25 },
+        }}
+      >
+        <Box sx={{ color: 'text.disabled', display: 'flex' }}>
+          <GripVertical size={16} />
+        </Box>
+        <Avatar
+          src={policy.iconUrl}
+          sx={{ borderRadius: 0.75, height: 28, width: 28 }}
+          variant="rounded"
+        >
+          <Shield size={14} />
+        </Avatar>
+        <Typography noWrap sx={{ flex: 1, fontWeight: 600, minWidth: 0 }} variant="body2">
+          {policy.displayName}
+        </Typography>
+        {custom && (
+          <Chip label={intl.formatMessage(messages.custom)} size="small" variant="filled" />
+        )}
+        <Chip
+          label={intl.formatMessage(messages.version, {
+            version: policy.version.replace(/^v/i, ''),
+          })}
+          size="small"
+          variant="outlined"
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
 /**
- * The "Available Policies" panel: the Policy Hub catalog rendered inline, with
- * each policy draggable onto a drop zone in the Policies panel. Also supports a
- * click fallback (onSelect) for non-DnD attach.
+ * The "Available Policies" panel: the organization's custom policies and the
+ * Policy Hub catalog, each policy draggable onto a drop zone in the Policies
+ * panel. Also supports a click fallback (onSelect) for non-DnD attach.
  */
 export function AvailablePoliciesPanel({
+  artifactKind,
   onSelect,
   disabled = false,
 }: {
+  /** The kind of API whose policies page shows the catalog, for usage analytics. */
+  artifactKind: NonNullable<FeatureDimensions<'apip.policies.policy-hub-browse'>['artifact_kind']>;
   onSelect: (policy: PolicySummary) => void;
   /** Catalog stays browsable, but its policies can be neither dragged nor clicked to attach. */
   disabled?: boolean;
 }) {
   const intl = useIntl();
+  const trackFeature = useTrackFeature();
+  const openReported = useRef(false);
+  useEffect(() => {
+    // Once per visit to the catalog, however often identity re-renders this.
+    if (openReported.current) return;
+    openReported.current = true;
+    trackFeature('apip.policies.policy-hub-browse', { artifact_kind: artifactKind });
+  }, [artifactKind, trackFeature]);
   const [search, setSearch] = useState('');
   const [activeCategories, setActiveCategories] = useState<string[]>([]);
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -174,6 +297,19 @@ export function AvailablePoliciesPanel({
   const policies = useMemo(
     () => policiesQuery.data?.pages.flatMap((page) => page.policies) ?? [],
     [policiesQuery.data],
+  );
+
+  const canReadCustomPolicies = useCan('ListGatewayCustomPolicies');
+  const customPoliciesQuery = useAllGatewayCustomPolicies({ enabled: canReadCustomPolicies });
+  // Custom policies have no categories, so a category filter leaves them out.
+  const customPolicies = useMemo(
+    () =>
+      activeCategories.length > 0
+        ? []
+        : (customPoliciesQuery.data?.list ?? [])
+            .filter((policy) => matchesSearch(policy, debouncedSearch))
+            .map(toPolicySummary),
+    [activeCategories.length, customPoliciesQuery.data, debouncedSearch],
   );
 
   // Load the next page when the end of the list scrolls into view. Re-observing after
@@ -288,114 +424,81 @@ export function AvailablePoliciesPanel({
       />
 
       <Box ref={scrollRef} sx={{ flex: 1, mt: 1.5, overflowY: 'auto' }}>
-        {policiesQuery.isPending ? (
-          <Stack aria-busy spacing={1}>
-            {Array.from({ length: INITIAL_SKELETONS }, (_unused, index) => (
-              <PolicySkeletonCard key={index} />
-            ))}
-          </Stack>
-        ) : policiesQuery.error && policies.length === 0 ? (
-          // The hub's own wording is deliberately not shown: `ApiError.message`
-          // for a hub failure is a sterile client-side string, and echoing an
-          // upstream message risks naming internal hosts.
-          <Stack spacing={1}>
-            <ErrorState message={intl.formatMessage(messages.loadError)} />
-            <Button
-              disabled={policiesQuery.isFetching}
-              onClick={() => void refetch()}
-              size="small"
-              sx={{ alignSelf: 'center' }}
-            >
-              <FormattedMessage {...messages.retry} />
-            </Button>
-          </Stack>
-        ) : policies.length === 0 ? (
-          <EmptyState
-            title={intl.formatMessage(messages.emptyTitle)}
-            description={intl.formatMessage(messages.emptyDescription)}
-          />
-        ) : (
-          <Stack spacing={1}>
-            {policies.map((policy) => (
-              <Card
-                aria-disabled={disabled || undefined}
-                draggable={!disabled}
-                key={`${policy.name}@${policy.version}`}
-                onClick={disabled ? undefined : () => onSelect(policy)}
-                onDragEnd={() => setDraggedPolicy(null)}
-                onDragStart={(event) => {
-                  if (disabled) {
-                    event.preventDefault();
-                    return;
-                  }
-                  setDraggedPolicy({
-                    name: policy.name,
-                    version: policy.version,
-                    displayName: policy.displayName,
-                  });
-                  event.dataTransfer.effectAllowed = 'copy';
-                  event.dataTransfer.setData(POLICY_DND_MIME, policy.name);
-                }}
-                sx={{
-                  cursor: disabled ? 'default' : 'grab',
-                  opacity: disabled ? 0.6 : 1,
-                  ...(!disabled && {
-                    '&:active': { cursor: 'grabbing' },
-                    '&:hover': { bgcolor: 'action.hover', borderColor: 'primary.light' },
-                  }),
-                }}
-              >
-                <CardContent
-                  sx={{
-                    alignItems: 'center',
-                    display: 'flex',
-                    gap: 1,
-                    p: 1.25,
-                    '&:last-child': { pb: 1.25 },
-                  }}
-                >
-                  <Box sx={{ color: 'text.disabled', display: 'flex' }}>
-                    <GripVertical size={16} />
-                  </Box>
-                  <Avatar
-                    src={policy.iconUrl}
-                    sx={{ borderRadius: 0.75, height: 28, width: 28 }}
-                    variant="rounded"
-                  >
-                    <Shield size={14} />
-                  </Avatar>
-                  <Typography noWrap sx={{ flex: 1, fontWeight: 600, minWidth: 0 }} variant="body2">
-                    {policy.displayName}
-                  </Typography>
-                  <Chip
-                    label={intl.formatMessage(messages.version, { version: policy.version })}
-                    size="small"
-                    variant="outlined"
-                  />
-                </CardContent>
-              </Card>
-            ))}
-            {isFetchingNextPage &&
-              Array.from({ length: NEXT_PAGE_SKELETONS }, (_unused, index) => (
-                <PolicySkeletonCard key={`next-${index}`} />
+        <Stack spacing={1}>
+          {customPoliciesQuery.error && (
+            <SecondaryText variant="caption">
+              <FormattedMessage {...messages.customLoadError} />
+            </SecondaryText>
+          )}
+          {customPolicies.map((policy) => (
+            <PolicyCard
+              custom
+              disabled={disabled}
+              key={`custom:${policy.name}@${policy.version}`}
+              onSelect={onSelect}
+              policy={policy}
+            />
+          ))}
+          {policiesQuery.isPending ? (
+            <Stack aria-busy spacing={1}>
+              {Array.from({ length: INITIAL_SKELETONS }, (_unused, index) => (
+                <PolicySkeletonCard key={index} />
               ))}
-            {isFetchNextPageError && (
-              // The policies already loaded stay usable; only the next page is missing.
-              <Stack spacing={1}>
-                <ErrorState message={intl.formatMessage(messages.loadError)} />
-                <Button
-                  disabled={isFetchingNextPage}
-                  onClick={() => void fetchNextPage()}
-                  size="small"
-                  sx={{ alignSelf: 'center' }}
-                >
-                  <FormattedMessage {...messages.retry} />
-                </Button>
-              </Stack>
-            )}
-            <Box aria-hidden ref={sentinelRef} sx={{ height: 1 }} />
-          </Stack>
-        )}
+            </Stack>
+          ) : policiesQuery.error && policies.length === 0 ? (
+            // The hub's own wording is deliberately not shown: `ApiError.message`
+            // for a hub failure is a sterile client-side string, and echoing an
+            // upstream message risks naming internal hosts.
+            <Stack spacing={1}>
+              <ErrorState message={intl.formatMessage(messages.loadError)} />
+              <Button
+                disabled={policiesQuery.isFetching}
+                onClick={() => void refetch()}
+                size="small"
+                sx={{ alignSelf: 'center' }}
+              >
+                <FormattedMessage {...messages.retry} />
+              </Button>
+            </Stack>
+          ) : policies.length === 0 ? (
+            customPolicies.length === 0 && (
+              <EmptyState
+                title={intl.formatMessage(messages.emptyTitle)}
+                description={intl.formatMessage(messages.emptyDescription)}
+              />
+            )
+          ) : (
+            <>
+              {policies.map((policy) => (
+                <PolicyCard
+                  disabled={disabled}
+                  key={`${policy.name}@${policy.version}`}
+                  onSelect={onSelect}
+                  policy={policy}
+                />
+              ))}
+              {isFetchingNextPage &&
+                Array.from({ length: NEXT_PAGE_SKELETONS }, (_unused, index) => (
+                  <PolicySkeletonCard key={`next-${index}`} />
+                ))}
+              {isFetchNextPageError && (
+                // The policies already loaded stay usable; only the next page is missing.
+                <Stack spacing={1}>
+                  <ErrorState message={intl.formatMessage(messages.loadError)} />
+                  <Button
+                    disabled={isFetchingNextPage}
+                    onClick={() => void fetchNextPage()}
+                    size="small"
+                    sx={{ alignSelf: 'center' }}
+                  >
+                    <FormattedMessage {...messages.retry} />
+                  </Button>
+                </Stack>
+              )}
+              <Box aria-hidden ref={sentinelRef} sx={{ height: 1 }} />
+            </>
+          )}
+        </Stack>
       </Box>
     </Box>
   );

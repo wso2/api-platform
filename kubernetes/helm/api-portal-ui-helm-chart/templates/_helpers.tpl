@@ -239,3 +239,17 @@ than a crash-looping pod whose real cause is buried in container logs.
 {{- end -}}
 {{- $canonical -}}
 {{- end -}}
+
+{{/*
+Renders a probe. When the portal serves plain HTTP (tls.certificateProvider=none), an
+httpGet probe is switched to the HTTP scheme, since an HTTPS probe could never pass;
+everything else in the probe is kept as configured.
+Usage: include "apip.apiPortal.probe" (dict "probe" .Values.deployment.livenessProbe "plainHttp" true)
+*/}}
+{{- define "apip.apiPortal.probe" -}}
+{{- $probe := deepCopy .probe -}}
+{{- if and .plainHttp $probe.httpGet -}}
+{{- $_ := set $probe.httpGet "scheme" "HTTP" -}}
+{{- end -}}
+{{- toYaml $probe -}}
+{{- end -}}

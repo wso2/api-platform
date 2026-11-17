@@ -966,6 +966,45 @@ CREATE TABLE dbo.secret_scopes (
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_secret_scopes_scope' AND object_id = OBJECT_ID(N'dbo.secret_scopes'))
 CREATE INDEX idx_secret_scopes_scope ON dbo.secret_scopes(scope, scope_value);
 
+-- Org-level managed secret metadata (e.g. per API portal webhook secret).
+-- The secret values themselves live in webhook_secrets, one row per rotation version.
+IF OBJECT_ID(N'dbo.webhook_secrets_metadata', N'U') IS NULL
+CREATE TABLE dbo.webhook_secrets_metadata (
+    uuid              VARCHAR(40)    NOT NULL PRIMARY KEY,
+    organization_uuid VARCHAR(40)    NOT NULL,
+    handle            VARCHAR(40)    NOT NULL,
+    name              VARCHAR(255)   NOT NULL,
+    type              VARCHAR(20)    NOT NULL DEFAULT 'PORTAL',
+    last_version      INT            NOT NULL DEFAULT 0,
+    data_version      VARCHAR(20)    NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200),
+    created_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
+    updated_by        VARCHAR(200),
+    updated_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT uq_webhook_secrets_metadata_org_handle UNIQUE (organization_uuid, handle),
+    CONSTRAINT fk_webhook_secrets_metadata_org FOREIGN KEY (organization_uuid) REFERENCES dbo.organizations(uuid) ON DELETE CASCADE
+);
+
+-- Versioned, encrypted webhook secret values. Rows are immutable once written
+-- (rotation inserts a new version), so there are no updated_* columns.
+IF OBJECT_ID(N'dbo.webhook_secrets', N'U') IS NULL
+CREATE TABLE dbo.webhook_secrets (
+    uuid              VARCHAR(40)    NOT NULL PRIMARY KEY,
+    secret_uuid  VARCHAR(40)    NOT NULL,
+    secret_version    INTEGER        NOT NULL,
+    secret_enc        VARBINARY(MAX) NOT NULL,
+    secret_hash       VARCHAR(255)   NOT NULL,
+    masked_secret     VARCHAR(255)   NOT NULL,
+    data_version      VARCHAR(20)    NOT NULL DEFAULT '1.0',
+    created_by        VARCHAR(200),
+    created_at        DATETIME2(7)   DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT uq_webhook_secrets_secret_version UNIQUE (secret_uuid, secret_version),
+    CONSTRAINT fk_webhook_secrets_secret FOREIGN KEY (secret_uuid) REFERENCES dbo.webhook_secrets_metadata(uuid) ON DELETE CASCADE
+);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'idx_webhook_secrets_secret_hash' AND object_id = OBJECT_ID(N'dbo.webhook_secrets'))
+CREATE INDEX idx_webhook_secrets_secret_hash ON dbo.webhook_secrets(secret_hash);
+
 -- Pre-computed secret handle references per deployed artifact per gateway.
 IF OBJECT_ID(N'dbo.artifact_secret_refs', N'U') IS NULL
 CREATE TABLE dbo.artifact_secret_refs (

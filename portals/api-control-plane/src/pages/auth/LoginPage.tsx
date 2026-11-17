@@ -24,7 +24,6 @@ import {
   Button,
   Card,
   CardContent,
-  ColorSchemeImage,
   Divider,
   FormLabel,
   IconButton,
@@ -56,7 +55,7 @@ import { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from
 import { defineMessages, FormattedMessage, type MessageDescriptor, useIntl } from 'react-intl';
 import { Navigate, useLocation } from 'react-router-dom';
 
-import { useBrandLogo } from '@/branding/BrandLogoProvider';
+import { BrandLockup } from '@/branding/BrandLockup';
 import { LoadingState } from '../../components/StateViews';
 import { runtimeConfig } from '../../config/runtime';
 import { useAuth } from '../../contexts/auth/AuthProvider';
@@ -206,7 +205,7 @@ const messages = defineMessages({
   },
 });
 
-const BRAND_LOGO_HEIGHT = 56;
+const BRAND_LOGO_HEIGHT = 44;
 
 type LoginLocationState = {
   confirmationKey?: string;
@@ -288,7 +287,6 @@ const featureIconSx = (theme: Theme) =>
 
 export function LoginPage() {
   const auth = useAuth();
-  const brandLogo = useBrandLogo();
   const intl = useIntl();
 
   useDocumentTitle(intl.formatMessage(messages.title));
@@ -403,15 +401,7 @@ export function LoginPage() {
         }}
       >
         <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-          <ColorSchemeImage
-            alt={intl.formatMessage({
-              id: 'appShell.header.title',
-              defaultMessage: 'API Platform',
-            })}
-            height={BRAND_LOGO_HEIGHT}
-            src={brandLogo}
-            width="auto"
-          />
+          <BrandLockup height={BRAND_LOGO_HEIGHT} />
         </Stack>
 
         <Stack spacing={2.5} sx={{ maxWidth: 620 }}>

@@ -65,9 +65,8 @@ type PortalPublisher interface {
 	// and the error says so.
 	UndoPlanSync(ctx context.Context, portal *model.APIPortal, created PlanSyncResult) error
 
-	// PublishContent adds the files in content to apiHandle's listing on portal, replacing
-	// any with the same path; nothing else is removed. Errors follow the same contract as
-	// Publish.
+	// PublishContent replaces the content of apiHandle's listing on portal with content, so
+	// content left out of it is removed. Errors follow the same contract as Publish.
 	PublishContent(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string, content *PortalContent) error
 
 	// Deprecate marks apiHandle's listing on portal as deprecated, re-sending live

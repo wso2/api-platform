@@ -39,7 +39,7 @@ PROJECT_NAME=""
 # [router.downstream_tls] in config.toml as ./listener-certs/default-listener.{crt,key}
 # and mounted into the gateway-controller. The repo checkout keeps these under
 # gateway-controller/listener-certs; the distribution zip stages them under resources/.
-if [[ -d gateway-controller/listener-certs ]]; then
+if [[ -d gateway-controller ]]; then
   CERTS_DIR="gateway-controller/listener-certs"
 else
   CERTS_DIR="resources/listener-certs"

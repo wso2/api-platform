@@ -31,13 +31,12 @@ export const tokenRequestCurl = (clientId: string, scopes: readonly string[]): s
     `curl -X POST "${apiBase()}/service-accounts/token" \\`,
     '  -d grant_type=client_credentials \\',
     `  -d client_id=${clientId} \\`,
-    scopes.length > 0 ? '  -d client_secret="$CLIENT_SECRET" \\' : '  -d client_secret="$CLIENT_SECRET"',
+    scopes.length > 0
+      ? '  -d client_secret="$CLIENT_SECRET" \\'
+      : '  -d client_secret="$CLIENT_SECRET"',
     ...(scopes.length > 0 ? [`  -d scope="${scopes.join(' ')}"`] : []),
   ].join('\n');
 
 /** A harmless read with a token in hand. */
 export const tokenUseCurl = (): string =>
-  [
-    'curl -H "Authorization: Bearer $ACCESS_TOKEN" \\',
-    `  "${apiBase()}/projects"`,
-  ].join('\n');
+  ['curl -H "Authorization: Bearer $ACCESS_TOKEN" \\', `  "${apiBase()}/projects"`].join('\n');

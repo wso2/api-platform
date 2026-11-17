@@ -27,7 +27,7 @@ Feature: Platform-API-driven API deployment is served by the gateway data plane
   Background:
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
-    And I generate a unique value from "papi-deploy-project" and store it as "projectHandle"
+    And I generate a unique resource name from "papi-deploy-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   @smoke

@@ -70,25 +70,31 @@ var (
 	platformProjectKind          = cleanup.Kind{Name: "platform-api-project", Order: 100}
 	platformGraphQLAPIKind       = cleanup.Kind{Name: "platform-api-graphql-api", Order: 55}
 	platformServiceAccountKind   = cleanup.Kind{Name: "platform-api-service-account", Order: 62}
+	platformWebhookSecretKind    = cleanup.Kind{Name: "platform-api-webhook-secret", Order: 94}
+	// An LLM provider template outlives the providers created from it, so it is removed after
+	// them (platformProviderKind, 84).
+	platformLLMTemplateKind = cleanup.Kind{Name: "platform-api-llm-provider-template", Order: 86}
 )
 
 // platformCollectionKinds maps a top-level control-plane collection to the cleanup kind of a
 // resource the request funnel sees created in it. Resources nested under one of these, such
 // as API keys, subscriptions and builds, are removed with their parent.
 var platformCollectionKinds = map[string]cleanup.Kind{
-	"projects":           platformProjectKind,
-	"rest-apis":          platformRESTAPIKind,
-	"graphql-apis":       platformGraphQLAPIKind,
-	"mcp-proxies":        platformMCPKind,
-	"llm-providers":      platformProviderKind,
-	"llm-proxies":        platformProxyKind,
-	"gateways":           platformGatewayKind,
-	"subscription-plans": platformSubscriptionPlanKind,
-	"meters":             platformMeterKind,
-	"applications":       platformApplicationKind,
-	"secrets":            platformSecretKind,
-	"api-portals":        platformAPIPortalKind,
-	"service-accounts":   platformServiceAccountKind,
+	"projects":               platformProjectKind,
+	"rest-apis":              platformRESTAPIKind,
+	"graphql-apis":           platformGraphQLAPIKind,
+	"mcp-proxies":            platformMCPKind,
+	"llm-providers":          platformProviderKind,
+	"llm-proxies":            platformProxyKind,
+	"gateways":               platformGatewayKind,
+	"subscription-plans":     platformSubscriptionPlanKind,
+	"meters":                 platformMeterKind,
+	"applications":           platformApplicationKind,
+	"secrets":                platformSecretKind,
+	"api-portals":            platformAPIPortalKind,
+	"service-accounts":       platformServiceAccountKind,
+	"webhook-secrets":        platformWebhookSecretKind,
+	"llm-provider-templates": platformLLMTemplateKind,
 }
 
 // platformResourcePattern parses a control-plane resource path: a top-level resource, or one
@@ -127,6 +133,8 @@ func RegisterDeploy(sc *godog.ScenarioContext, s *Steps) {
 		s.createRestAPIKeyAuth)
 	sc.Step(`^I create a GraphQL API "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)"$`,
 		s.createGraphQLAPI)
+	sc.Step(`^I create a deployable "([^"]*)" "([^"]*)" via the control plane in project "([^"]*)" with context "([^"]*)"$`,
+		s.createDeployable)
 	sc.Step(`^I deploy the "([^"]*)" "([^"]*)" to the gateway via the control plane$`, s.deployArtifact)
 	sc.Step(`^I deploy the "([^"]*)" "([^"]*)" to the gateway via the control plane and store the deployment id as "([^"]*)"$`,
 		s.deployArtifactAndStore)
@@ -962,6 +970,12 @@ func (s *Steps) deployArtifactToGateway(ctx context.Context, kind, handle, base,
 	collection, ok := deployPaths[resolvedKind]
 	if !ok {
 		return "", fmt.Errorf("unknown artifact kind %q for control-plane deployment", resolvedKind)
+	}
+	// A proxy routes through its provider, so the provider goes to the same gateway first.
+	if provider, ok := deployableBase(ctx, resolvedHandle); ok && resolvedKind == "LlmProxy" {
+		if _, err := s.deployArtifactToGateway(ctx, "LlmProvider", provider, base, bearer, gatewayID); err != nil {
+			return "", fmt.Errorf("deploying the base provider of LLM proxy %q: %w", resolvedHandle, err)
+		}
 	}
 
 	if resolvedKind == "RestApi" {

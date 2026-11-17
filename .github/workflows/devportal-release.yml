@@ -68,18 +68,46 @@ jobs:
         with:
           driver: docker-container
 
-      - name: Build Docker image for testing
-        run: make -C portals/api-portal build
+      # The API Portal tests live in the shared test framework (tests/framework). It
+      # builds the API Portal and Platform API images from this checkout, so the run
+      # tests the release commit's Platform API, not the image the zip pins.
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.10'
+          cache-dependency-path: '**/go.sum'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+
+      - name: Ensure C compiler is available
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      # The suites boot many short-lived containers. Without a larger conntrack table
+      # the kernel can drop new connections to a healthy container under that churn.
+      - name: Raise the conntrack table limit
+        run: sudo sysctl -w net.netfilter.nf_conntrack_max=524288
+
+      # The API Portal integration and UI blocks, listed in API_PORTAL_IT_BLOCKS and
+      # API_PORTAL_UI_BLOCKS in tests/framework/Makefile.
       - name: Run tests
         env:
-          # The IT compose files read ${PLATFORM_API_IMAGE}, defaulting to the
-          # working tree's SNAPSHOT tag. Point them at the released image being
-          # bundled so the tests exercise the same version the zip pins.
-          PLATFORM_API_IMAGE: ${{ env.DOCKER_REGISTRY }}/platform-api:${{ inputs.platform_api_version }}
-        run: |
-          echo "Running integration tests against ${PLATFORM_API_IMAGE}"
-          make test-api-portal
+          CGO_ENABLED: "1"
+          IT_LOG_OUT: ${{ github.workspace }}/tests/framework/logs-out
+        run: make test-api-portal
+
+      - name: Upload container log captures
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: api-portal-release-test-logs
+          path: tests/framework/logs-out/**/*.log
+          if-no-files-found: warn
+          include-hidden-files: true
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3

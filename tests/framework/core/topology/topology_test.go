@@ -875,6 +875,141 @@ blocks:
 	}
 }
 
+func TestBlockFiles(t *testing.T) {
+	// writeSuite writes a suite and its block files into a new directory and returns the
+	// suite path.
+	writeSuite := func(t *testing.T, suite string, files map[string]string) string {
+		t.Helper()
+		dir := t.TempDir()
+		for name, content := range files {
+			path := filepath.Join(dir, name)
+			require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+			require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+		}
+		path := filepath.Join(dir, "suite.yaml")
+		require.NoError(t, os.WriteFile(path, []byte(suite), 0o644))
+		return path
+	}
+	const head = `
+suite: s
+defaults: {parallel: 3, db: {gateway-controller: sqlite, api-portal: postgres}}
+`
+	block := func(name string) string {
+		return `
+  - name: ` + name + `
+    components: [{name: mock-jwks}]
+    runners: [{name: r, features: [features/` + name + `.feature]}]
+`
+	}
+
+	t.Run("blocks are added after the suite's own, in the order listed", func(t *testing.T) {
+		path := writeSuite(t, head+"blocks:"+block("inline")+`
+blockFiles:
+  - blocks/one.yaml
+  - blocks/two.yaml
+`, map[string]string{
+			"blocks/one.yaml": "blocks:" + block("a") + block("b"),
+			"blocks/two.yaml": "blocks:" + block("c"),
+		})
+		r, err := LoadFile(path, testRegistry(t))
+		require.NoError(t, err)
+		require.Equal(t, 3, r.Parallel)
+		var names []string
+		for _, b := range r.Blocks {
+			names = append(names, b.Name)
+		}
+		require.Equal(t, []string{"inline", "a", "b", "c"}, names)
+
+		files := map[string]string{}
+		for _, b := range r.Blocks {
+			files[b.Name] = b.File
+		}
+		require.Equal(t, map[string]string{
+			"inline": "", "a": "blocks/one.yaml", "b": "blocks/one.yaml", "c": "blocks/two.yaml",
+		}, files, "each block records the file that declares it")
+	})
+
+	t.Run("a block file is recorded in its clean form", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [./blocks/../blocks/one.yaml]\n", map[string]string{
+			"blocks/one.yaml": "blocks:" + block("a"),
+		})
+		r, err := LoadFile(path, testRegistry(t))
+		require.NoError(t, err)
+		require.Equal(t, "blocks/one.yaml", r.Blocks[0].File)
+	})
+
+	t.Run("a block name used in two files is rejected", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [blocks/one.yaml, blocks/two.yaml]\n", map[string]string{
+			"blocks/one.yaml": "blocks:" + block("a"),
+			"blocks/two.yaml": "blocks:" + block("a"),
+		})
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, `block "a" is declared in both "blocks/one.yaml" and "blocks/two.yaml"`)
+	})
+
+	t.Run("a block file name that repeats a suite block is reported with both files", func(t *testing.T) {
+		path := writeSuite(t, head+"blocks:"+block("a")+"\nblockFiles: [blocks/one.yaml]\n", map[string]string{
+			"blocks/one.yaml": "blocks:" + block("a"),
+		})
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, `block "a" is declared in both "suite.yaml" and "blocks/one.yaml"`)
+	})
+
+	t.Run("an unnamed block is reported with its file and position", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [blocks/one.yaml]\n", map[string]string{
+			"blocks/one.yaml": "blocks:" + block("a") + `
+  - components: [{name: mock-jwks}]
+    runners: [{name: r, features: [features/unnamed.feature]}]
+`,
+		})
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, `block file "blocks/one.yaml": block 2 has no name`)
+	})
+
+	t.Run("a malformed block file is reported with its name", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [blocks/bad.yaml]\n", map[string]string{
+			"blocks/bad.yaml": "blocks: [\n",
+		})
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, `parsing block file "blocks/bad.yaml"`)
+	})
+
+	t.Run("a missing block file is an error", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [blocks/missing.yaml]\n", nil)
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, `reading block file "blocks/missing.yaml"`)
+	})
+
+	t.Run("a block file without blocks is an error", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [blocks/empty.yaml]\n", map[string]string{
+			"blocks/empty.yaml": "blocks: []\n",
+		})
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, "declares no blocks")
+	})
+
+	t.Run("a block file holds only blocks", func(t *testing.T) {
+		path := writeSuite(t, head+"blockFiles: [blocks/one.yaml]\n", map[string]string{
+			"blocks/one.yaml": "defaults: {parallel: 9}\nblocks:" + block("a"),
+		})
+		_, err := LoadFile(path, testRegistry(t))
+		require.ErrorContains(t, err, "field defaults not found")
+	})
+
+	for _, entry := range []string{"/etc/blocks.yaml", "../blocks.yaml", "blocks/../../blocks.yaml", "\"\""} {
+		t.Run("a block file path outside the suite directory is rejected: "+entry, func(t *testing.T) {
+			path := writeSuite(t, head+"blockFiles: ["+entry+"]\n", nil)
+			_, err := LoadFile(path, testRegistry(t))
+			require.ErrorContains(t, err, "must be a path inside the suite file's directory")
+		})
+	}
+
+	t.Run("Load without a file location refuses block files", func(t *testing.T) {
+		_, err := load(t, head+"blockFiles: [blocks/one.yaml]\n")
+		require.ErrorContains(t, err, "load it with LoadFile")
+	})
+}
+
 func TestAllProblemsReportedAtOnce(t *testing.T) {
 	src := `
 suite: s
@@ -1370,6 +1505,88 @@ func TestSelectionByBlockName(t *testing.T) {
 	})
 }
 
+// productSuite has a Gateway-only block, a Portal-only block and a block with both.
+func productSuite() *Resolved {
+	block := func(name string, started ...string) ResolvedBlock {
+		b := ResolvedBlock{
+			Name: name, Source: name, Parallel: 1,
+			Runners: []Runner{{Name: "r", Features: []string{"features/" + name + ".feature"}}},
+		}
+		for _, c := range started {
+			b.Components = append(b.Components, ResolvedComponent{Def: &components.Definition{Name: c}})
+		}
+		return b
+	}
+	return &Resolved{
+		Name:     "api-platform-it",
+		Parallel: 1,
+		Timeouts: Timeouts{Boot: DefaultBootTimeout, Propagation: DefaultPropagationTimeout},
+		Blocks: []ResolvedBlock{
+			block("gateway-core", "platform-gateway", "testbench"),
+			block("api-portal-core", "api-portal", "platform-api"),
+			block("all-three", "api-portal", "platform-api", "platform-gateway"),
+		},
+	}
+}
+
+func TestSelectionByComponents(t *testing.T) {
+	t.Run("keeps the blocks that start any named component", func(t *testing.T) {
+		got, err := Selection{Components: []string{"api-portal"}}.Apply(productSuite())
+		require.NoError(t, err)
+		require.Equal(t, []string{"api-portal-core", "all-three"}, got.BlockNames())
+	})
+
+	t.Run("several names are an OR", func(t *testing.T) {
+		got, err := Selection{Components: []string{"api-portal", "testbench"}}.Apply(productSuite())
+		require.NoError(t, err)
+		require.Len(t, got.Blocks, 3)
+	})
+
+	t.Run("required components drop the blocks without them", func(t *testing.T) {
+		got, err := Selection{RequireComponents: []string{"platform-gateway"}}.Apply(productSuite())
+		require.NoError(t, err)
+		require.Equal(t, []string{"gateway-core", "all-three"}, got.BlockNames())
+	})
+
+	t.Run("both filters apply together", func(t *testing.T) {
+		got, err := Selection{
+			Components:        []string{"api-portal"},
+			RequireComponents: []string{"platform-gateway"},
+		}.Apply(productSuite())
+		require.NoError(t, err)
+		require.Equal(t, []string{"all-three"}, got.BlockNames())
+	})
+
+	t.Run("a filter that leaves nothing is a skip, not a failure", func(t *testing.T) {
+		_, err := Selection{
+			Components:        []string{"api-portal"},
+			RequireComponents: []string{"testbench"},
+		}.Apply(productSuite())
+		require.ErrorIs(t, err, ErrNothingToRun)
+	})
+
+	t.Run("a component no block starts is an error", func(t *testing.T) {
+		for _, s := range []Selection{
+			{Components: []string{"api-portl"}},
+			{RequireComponents: []string{"api-portl"}},
+		} {
+			_, err := s.Apply(productSuite())
+			require.ErrorContains(t, err, "no block starts component api-portl")
+			require.ErrorContains(t, err, "available: api-portal, platform-api, platform-gateway, testbench")
+			require.NotErrorIs(t, err, ErrNothingToRun)
+		}
+	})
+
+	t.Run("flags parse comma-separated lists", func(t *testing.T) {
+		var s Selection
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		s.Flags(fs)
+		require.NoError(t, fs.Parse([]string{"-components=api-portal, platform-api", "-require-components=platform-gateway"}))
+		require.Equal(t, []string{"api-portal", "platform-api"}, s.Components)
+		require.Equal(t, []string{"platform-gateway"}, s.RequireComponents)
+	})
+}
+
 func TestUnmatchedSelectionIsAnError(t *testing.T) {
 	_, err := Selection{Blocks: []string{"gateway-core/mysql"}}.Apply(matrixSuite())
 	require.ErrorContains(t, err, "no block matches gateway-core/mysql")
@@ -1680,6 +1897,24 @@ func TestGatewayDatabaseCompatibility(t *testing.T) {
 		}}, selected.SkippedBlocks)
 	})
 
+	t.Run("an incompatible block the component filter kept is a skip that names why", func(t *testing.T) {
+		suite := newSuite()
+		suite.Blocks = []ResolvedBlock{
+			suite.Blocks[1], // gateway-core/sqlserver: kept by the filter, then incompatible
+			{
+				Name: "api-portal-core", Source: "api-portal-core",
+				Components: []ResolvedComponent{{Def: &components.Definition{Name: "api-portal"}}},
+				Runners:    []Runner{{Name: "runner", Features: []string{"features/portal.feature"}}},
+			},
+		}
+		_, err := (Selection{
+			GatewayVersion:    "1.1.0",
+			RequireComponents: []string{"platform-gateway"},
+		}).Apply(suite)
+		require.ErrorIs(t, err, ErrNothingToRun)
+		require.ErrorContains(t, err, "gateway-core/sqlserver: Gateway version 1.1.0 does not satisfy platform-gateway dbCompatibility for sqlserver")
+	})
+
 	t.Run("a supported release retains every variant", func(t *testing.T) {
 		selected, err := (Selection{GatewayVersion: "1.2.0"}).Apply(newSuite())
 		require.NoError(t, err)
@@ -1760,7 +1995,9 @@ blocks:
 	})
 }
 
-func TestGatewayVersionSelectionRejectsAnAllIncompatibleSelection(t *testing.T) {
+// A pull request that changes only a feature gated to newer Gateways selects nothing a released
+// leg can run; the leg skips, naming the runners and why.
+func TestGatewayVersionSelectionThatLeavesNothingIsASkip(t *testing.T) {
 	legacy, err := parseGatewayVersionConstraint("gateway-version<=1.2.0")
 	require.NoError(t, err)
 	_, err = Selection{}.Apply(&Resolved{Blocks: []ResolvedBlock{{
@@ -1770,7 +2007,7 @@ func TestGatewayVersionSelectionRejectsAnAllIncompatibleSelection(t *testing.T) 
 		}},
 		Runners: []Runner{{Name: "legacy", Features: []string{"legacy.feature"}, GatewayVersion: &legacy}},
 	}}})
-	require.ErrorContains(t, err, "the selection has no compatible runners")
+	require.ErrorIs(t, err, ErrNothingToRun)
 	require.ErrorContains(t, err, "gateway/legacy: Gateway version 1.3.0 does not satisfy gateway-version<=1.2.0")
 }
 
@@ -2129,6 +2366,10 @@ func TestCloudEnvironmentIsRequiredForExternalComponents(t *testing.T) {
 		}},
 	}}}
 	_, err := (Selection{Blocks: []string{"cloud"}}).Apply(suite)
+	require.ErrorContains(t, err, `external component "cloud-console" in block "cloud" requires -cloud-env`)
+
+	// Naming the external component opts in as naming the block does.
+	_, err = (Selection{Components: []string{"cloud-console"}}).Apply(suite)
 	require.ErrorContains(t, err, `external component "cloud-console" in block "cloud" requires -cloud-env`)
 }
 

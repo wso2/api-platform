@@ -23,10 +23,56 @@ import { createResourceKeys, type OrgScope } from '../../core/queryKeys';
 import {
   getGatewayCustomPolicy,
   listGatewayCustomPolicies,
+  type CustomPolicy,
+  type CustomPolicyListResponse,
   type ListCustomPoliciesQuery,
 } from './gatewayCustomPolicies.endpoints';
 
 export const gatewayCustomPolicyKeys = createResourceKeys('gatewayCustomPolicies');
+
+/** The server's maximum page size. */
+const POLICIES_PAGE_SIZE = 100;
+/** Caps the requests if `pagination.total` is wrong. */
+const POLICIES_MAX_PAGES = 50;
+
+/**
+ * Reads every page of the organization's custom policies, skipping records already read.
+ * Fails rather than return a partial list when the page cap is reached first.
+ */
+const fetchAllGatewayCustomPolicies = async (
+  org: OrgScope,
+  signal: AbortSignal
+): Promise<CustomPolicyListResponse> => {
+  const byUuid = new Map<string, CustomPolicy>();
+  let received = 0;
+  let total = 0;
+  let complete = false;
+
+  for (let page = 0; page < POLICIES_MAX_PAGES && !complete; page += 1) {
+    const response = await listGatewayCustomPolicies({
+      orgId: org,
+      signal,
+      query: { limit: POLICIES_PAGE_SIZE, offset: received },
+    });
+    // `list` is null when the organization has none.
+    const items = response.list ?? [];
+    received += items.length;
+    total = response.pagination?.total ?? 0;
+    items.forEach((policy) => byUuid.set(policy.uuid, policy));
+    complete = items.length === 0 || received >= total;
+  }
+
+  if (!complete) {
+    throw new Error(`Read ${received} of ${total} custom policies before the page limit.`);
+  }
+
+  const list = [...byUuid.values()];
+  return {
+    list,
+    count: list.length,
+    pagination: { total: Math.max(total, list.length), offset: 0, limit: list.length },
+  };
+};
 
 /**
  * Composite id for a policy version.
@@ -60,6 +106,14 @@ export const gatewayCustomPolicyQueries = {
       // in-flight request instead of letting it land in the cache.
       queryFn: ({ signal }) =>
         listGatewayCustomPolicies({ orgId: org, signal, query }),
+      staleTime: staleTimes.static,
+    }),
+
+  /** Every policy in the org, as one list response. */
+  listAll: (org: OrgScope) =>
+    queryOptions({
+      queryKey: gatewayCustomPolicyKeys.list(org, { pages: 'all' }),
+      queryFn: ({ signal }) => fetchAllGatewayCustomPolicies(org, signal),
       staleTime: staleTimes.static,
     }),
 

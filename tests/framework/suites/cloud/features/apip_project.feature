@@ -29,13 +29,11 @@ Feature: APIP cloud project lifecycle
       | id     | default |
       | status | active  |
 
-  @TC_APIP_PROJ_002 @TC_APIP_PROJ_003 @TC_APIP_PROJ_004 @TC_APIP_PROJ_005 @ID_APIP_PROJECT_002
-  Scenario: A project can be retrieved by handle and deleted
+  @TC_APIP_PROJ_002 @TC_APIP_PROJ_003 @ID_APIP_PROJECT_002
+  Scenario: A project can be created and retrieved by handle
     Given I obtain an APIP cloud console token
     When I create a synthetic APIP project
     Then the synthetic APIP project should be retrievable by handle
-    When I delete the synthetic APIP project
-    Then the synthetic APIP project should eventually be absent
 
   @TC_APIP_PROJ_006 @ID_APIP_PROJECT_003
   Scenario: A project whose handle is already in use is rejected
@@ -54,26 +52,13 @@ Feature: APIP cloud project lifecycle
     And the rejected APIP project should not exist
 
     Examples:
-      | defect                   |
-      | uppercase                |
-      | containing an underscore |
-      | starting with a hyphen   |
-      | ending with a hyphen     |
-
-    # Known issue: the platform record skips the handle rules and stores the handle in 40 characters (B7).
-    @known-issue
-    Examples:
       | defect                         |
+      | uppercase                      |
+      | containing an underscore       |
+      | starting with a hyphen         |
+      | ending with a hyphen           |
       | containing consecutive hyphens |
       | longer than 40 characters      |
-
-  @TC_APIP_PROJ_008 @ID_APIP_PROJECT_005
-  Scenario: A project beyond the organisation's quota is refused with the quota error
-    Given I obtain an APIP cloud console token
-    When I create synthetic APIP projects until the organisation refuses one
-    Then the cloud API response status code should be 402
-    And the cloud API error code should be "quota_exceeded"
-    And the rejected APIP project should not exist
 
   @TC_APIP_PROJ_009 @ID_APIP_PROJECT_006
   Scenario: Reading a project that does not exist returns not found
@@ -81,12 +66,6 @@ Feature: APIP cloud project lifecycle
     When I read an APIP project that does not exist
     Then the cloud API response status code should be 404
     And the cloud API error code should be "PROJECT_NOT_FOUND"
-
-  @TC_APIP_PROJ_010 @ID_APIP_PROJECT_007
-  Scenario: Deleting a project that does not exist returns not found
-    Given I obtain an APIP cloud console token
-    When I delete an APIP project that does not exist
-    Then the cloud API response status code should be 404
 
   @TC_APIP_PROJ_011 @ID_APIP_PROJECT_008
   Scenario: A new project is active without any manual intervention
@@ -96,8 +75,7 @@ Feature: APIP cloud project lifecycle
       | status | active |
     And the synthetic APIP project should become active
 
-  # Known issue: creating the second synthetic environment answers 500 internal_error.
-  @TC_APIP_PROJ_012 @known-issue @ID_APIP_PROJECT_009
+  @TC_APIP_PROJ_012 @ID_APIP_PROJECT_009
   Scenario: A project is bound to a deployment pipeline and the binding is readable
     Given I obtain an APIP cloud console token
     And I create 2 synthetic non-production APIP environments

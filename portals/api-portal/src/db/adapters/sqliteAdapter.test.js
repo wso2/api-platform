@@ -110,3 +110,20 @@ test('an error from COMMIT itself carries the mapped code, and nothing is kept',
         assert.deepEqual(await db.query('SELECT * FROM child'), []);
     });
 });
+
+test('the health ping does not wait for a transaction holding the lock', async () => {
+    await withAdapter(async (db) => {
+        let release;
+        const held = new Promise((resolve) => { release = resolve; });
+        const tx = db.withTransaction(async () => { await held; });
+
+        const rows = await Promise.race([
+            db.healthPing(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('the ping waited for the lock')), 500)),
+        ]);
+        assert.deepEqual(rows.length, 1);
+
+        release();
+        await tx;
+    });
+});

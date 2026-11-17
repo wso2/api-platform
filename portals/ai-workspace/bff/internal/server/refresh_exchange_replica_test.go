@@ -117,6 +117,8 @@ type rotatingIDP struct {
 	refreshes  atomic.Int32
 	nonce      atomic.Value
 	upstreamAt atomic.Value // last Authorization header the upstream saw
+	// exchangeGate, when set, holds each exchange in flight until the test opens it.
+	exchangeGate atomic.Pointer[burstGate]
 }
 
 // scopeHeavyJWT mints a decodable access token the size this product actually issues:
@@ -184,6 +186,9 @@ func newRotatingHarness(t *testing.T, accessTTL time.Duration) (*rotatingIDP, *S
 			})
 		default: // token exchange
 			n := idp.exchanges.Add(1)
+			if g := idp.exchangeGate.Load(); g != nil {
+				g.hold()
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"access_token":      scopeHeavyJWT(t, "exchanged", time.Hour),
 				"issued_token_type": auth.TokenTypeAccessToken,
@@ -583,6 +588,8 @@ func TestConcurrentExchangeCachesOnEveryResponse(t *testing.T) {
 	j.apply(t, seedRec)
 
 	const callers = 4
+	gate := newBurstGate(t)
+	idp.exchangeGate.Store(gate)
 	var wg sync.WaitGroup
 	recs := make([]*httptest.ResponseRecorder, callers)
 	start := make(chan struct{})
@@ -594,11 +601,13 @@ func TestConcurrentExchangeCachesOnEveryResponse(t *testing.T) {
 			j.onto(req)
 			rec := httptest.NewRecorder()
 			<-start
+			gate.start()
 			replica.withSessionState(http.HandlerFunc(replica.handleProxy)).ServeHTTP(rec, req)
 			recs[i] = rec
 		}(i)
 	}
 	close(start)
+	gate.openWhenOverlapping(t, callers)
 	wg.Wait()
 
 	if n := idp.exchanges.Load() - afterLogin; n != 1 {

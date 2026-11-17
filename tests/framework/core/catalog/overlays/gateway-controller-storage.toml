@@ -40,5 +40,12 @@ enabled = true
 [policy_engine.admin.config_dump]
 enabled = true
 
+# Restrict {{ env }} in artifact specs to the variables the IT scenarios set
+# (IT_TEMPLATE_PATH, IT_RATE_LIMIT, IT_ALLOW_CREDENTIALS). Anything else, such as
+# the controller's own APIP_GW_* configuration, is refused — exercised by
+# features/gateway/core/template_env_allow_list.feature.
+[policy_engine.env_access]
+allow_list = ["IT_*"]
+
 [api_key]
 api_keys_per_user_per_api = 3

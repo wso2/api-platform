@@ -135,3 +135,27 @@ func TestSPAHandlerPathTraversalContained(t *testing.T) {
 		})
 	}
 }
+
+// A sibling directory whose name merely starts with the static dir's name
+// (static vs static-secret) must stay unreachable.
+func TestSPAHandlerSiblingDirWithSharedPrefixNotServed(t *testing.T) {
+	staticDir := newStaticTestDir(t)
+	sibling := staticDir + "-secret"
+	if err := os.MkdirAll(sibling, 0o755); err != nil {
+		t.Fatalf("mkdir sibling: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sibling, "secret.txt"), []byte(secretBody), 0o600); err != nil {
+		t.Fatalf("write sibling secret: %v", err)
+	}
+	h := spaHandler(staticDir)
+
+	for _, p := range []string{"/../static-secret/secret.txt", "/%2e%2e/static-secret/secret.txt"} {
+		t.Run(p, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, p, nil))
+			if strings.Contains(rec.Body.String(), secretBody) {
+				t.Fatalf("sibling directory file was served (status %d)", rec.Code)
+			}
+		})
+	}
+}

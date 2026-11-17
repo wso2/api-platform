@@ -30,7 +30,7 @@ const { SENSITIVE_FIELDS, redactObject, redactQuery, redactUrl, sessionRef } = r
  */
 function auditMiddleware(options = {}) {
     const { 
-        excludePaths = ['/health', '/metrics', '/favicon.ico'],
+        excludePaths = ['/health', '/ready', '/metrics', '/favicon.ico'],
         sensitiveFields = SENSITIVE_FIELDS
     } = options;
 

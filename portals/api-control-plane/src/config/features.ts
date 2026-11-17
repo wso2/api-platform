@@ -33,7 +33,12 @@ export const FEATURES = [
   'compliance',
   'subscription-plans',
   'meters',
+  'service-accounts',
   'paidplan',
+  // Deleting a project from this console. A deployment whose projects are owned
+  // elsewhere (the cloud: its Cloud Console deletes them, after its own checks)
+  // switches it off, and the gateway in front of it does not serve the call.
+  'project-delete',
 ] as const;
 
 export type FeatureId = (typeof FEATURES)[number];

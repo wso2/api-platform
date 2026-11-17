@@ -59,6 +59,19 @@ export const useGatewayCustomPolicies = (
   });
 };
 
+/** Every policy synced to the active organization, across all pages. */
+export const useAllGatewayCustomPolicies = (
+  options: { enabled?: boolean } = {},
+  overrides: { orgId?: string } = {}
+) => {
+  const { org } = useApiScope(overrides);
+
+  return useQuery({
+    ...gatewayCustomPolicyQueries.listAll(org!),
+    enabled: Boolean(org) && options.enabled !== false,
+  });
+};
+
 /**
  * One version of one policy.
  *

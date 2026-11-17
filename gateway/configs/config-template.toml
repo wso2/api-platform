@@ -284,7 +284,7 @@ url = ""
 username = ""
 password = ""
 no_proxy = []
-# Required ("delegated" or "manual_connect") only when mode != "none" AND ssrf.enabled below
+# Required ("delegated" or "manual_connect") only when mode != "none" AND destination_guard.enabled below
 # — see pkg/config.HTTPClientProxyConfig's doc comment.
 egress = ""
 
@@ -296,11 +296,11 @@ client_cert_file = ""
 client_key_file = ""
 insecure_skip_verify = false
 
-[controller.http_client.ssrf]
-# Off by default: this shared client's current callers (control plane, platform API,
-# on-prem APIM) all target a single fixed, operator-configured host, not a user/tenant-
-# supplied URL — the scenario ssrf-prevention.md targets — so there is nothing to guard
-# against today. Exposed for completeness / any future caller that fetches a tenant-supplied
+[controller.http_client.destination_guard]
+# Its previous name is still read, with a deprecation
+# warning. Off by default: this shared client's current callers (control plane, platform
+# API, on-prem APIM) all target a single fixed, operator-configured host, not a user/
+# tenant-supplied URL, so there is nothing to guard against today. Exposed for completeness / any future caller that fetches a tenant-supplied
 # URL. When enabling, preset must be "permit_private_block_metadata" or "public_only".
 enabled = false
 preset = ""
@@ -516,6 +516,19 @@ skip_verify = false
 # POLICY ENGINE CONFIGURATION
 # =============================================================================
 
+# Environment variables that {{ env "NAME" }} in API / LLM / MCP / agent artifact
+# specs (e.g. policy params, upstream URLs) may read. Rendering happens in the
+# gateway-controller, so this is read by the controller, not the policy engine.
+# When allow_list is not set, artifacts may read any environment variable (the
+# behaviour of earlier releases). When it is set, only the listed variables are
+# readable, and an artifact that references any other one fails to deploy with
+# a 400. Entries are exact names ("BACKEND_URL") or a prefix ending in "*"
+# ("BACKEND_*"); an empty list permits none. May also be given as one
+# comma-separated string, e.g. allow_list = '{{ env "ARTIFACT_ENV_ALLOW_LIST" "" }}'
+# (a blank value leaves access unrestricted).
+[policy_engine.env_access]
+# allow_list = ["BACKEND_URL", "BACKEND_*"]
+
 # handle_upstream_faults routes a failure the UPSTREAM or the ROUTER produced through
 # the fault flow instead of the ordinary response policies.
 #
@@ -728,7 +741,7 @@ url = ""
 username = ""
 password = ""
 no_proxy = []
-# Required ("delegated" or "manual_connect") only when mode != "none" AND ssrf.enabled below
+# Required ("delegated" or "manual_connect") only when mode != "none" AND destination_guard.enabled below
 # — see internal/config.HTTPClientProxyConfig's doc comment.
 egress = ""
 
@@ -740,10 +753,11 @@ client_cert_file = ""
 client_key_file = ""
 insecure_skip_verify = false
 
-[policy_engine.http_client.ssrf]
-# Off by default. Enable (and pick a preset) when a policy's outbound target is derived
-# from tenant/request data rather than a single fixed, operator-configured backend — see
-# ssrf-prevention.md. preset must be "permit_private_block_metadata" or "public_only".
+[policy_engine.http_client.destination_guard]
+# Its previous name is still read, with a deprecation
+# warning. Off by default. Enable (and pick a preset) when a policy's outbound target is
+# derived from tenant/request data rather than a single fixed, operator-configured backend.
+# preset must be "permit_private_block_metadata" or "public_only".
 enabled = false
 preset = ""
 max_redirects = 0
@@ -1305,6 +1319,19 @@ pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
 
 [policy_configurations.azure_llm_cost_v1]
 pricing_file = "/etc/policy-engine/llm-pricing/model_prices.json"
+
+# A2A Agent Card URL rewriting.
+#
+# gateway_url is the externally reachable base URL of the gateway (scheme, host,
+# optional port, optional path prefix). When set, every interface URL a
+# passthrough Agent Card is rewritten to is built on it, ahead of the Agent's
+# vhost and the scheme and authority of the request. Leave it unset when the
+# gateway is the edge. Set it when the gateway sits behind a load balancer,
+# ingress or API front door whose public address differs from the one requests
+# arrive on. It must be an absolute http or https URL with no userinfo, query
+# string or fragment; an unusable value makes card rewriting fail closed.
+# [policy_configurations.a2a_v1]
+# gateway_url = "https://agents.example.com"
 
 # =============================================================================
 # GATEWAY SIGNING KEYS

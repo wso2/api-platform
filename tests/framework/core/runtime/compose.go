@@ -99,7 +99,10 @@ func LaunchCompose(
 	if opts.Network == nil {
 		return nil, fmt.Errorf("runtime: %s needs a block label for its compose stack", def)
 	}
-	suffix := instanceSuffix(opts.Ordinal, opts.Replicas)
+	suffix := opts.InstanceSuffix
+	if suffix == "" {
+		suffix = instanceSuffix(opts.Ordinal, opts.Replicas)
+	}
 	// Values substituted into the staged compose file.
 	substitutions := map[string]string{EnvComposeNetwork: opts.Network.Name()}
 	for k, v := range spec.Env {

@@ -16,148 +16,179 @@
 # under the License.
 # --------------------------------------------------------------------
 
-Feature: API Portal API-key webhook events
 
-  Scenario: API-key generation is delivered to a matching subscriber
-    Given I generate a unique resource name from "portal-apikey-generated-subscriber" and store it as "subscriberId"
-    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with body and stored as "subscriberId":
-      """
-      {"id":"${CTX:subscriberId}","displayName":"API Key Events","targetUrl":"http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook","events":["apikey.*"]}
-      """
-    And a REST API is created in the API Portal and stored as "apiId"
-    When a publisher API key for API "${CTX:apiId}" is generated and stored as "keyId"
-    Then the response status code should be 201
-    When I wait for an API Portal webhook event "apikey.generated" containing "${CTX:keyId}"
-    Then the JSON response field "event_type" should be "apikey.generated"
-    And the JSON response field "data.handle" should be "${CTX:keyId}"
+@APIPORTAL @apiportal-api-key-webhook
+Feature: API key changes are delivered to webhook subscribers, with the key only ever encrypted
+  As the control plane that lets gateways accept the API Portal's API keys
+  I want an event for every key generated, rotated, revoked or linked to an application
+  So that gateways accept exactly the keys the portal issued, and a key never travels in plain text
+
+  # Scenarios APIPORTAL (scenarios/APIPORTAL.yaml) at the API level. A
+  # subscriber without a secret is sent no key at all; one with a secret is sent the key encrypted
+  # with that secret, and never in plain text. A refused change sends no event.
+
+  @APIP-052
+  Scenario: Application and API key events reach only the subscribers that asked for them
+    # An application's whole life is delivered to a subscriber
+    Given I generate a unique resource name from "portal-app-subscriber" and store it as "subscriberId"
+    And I generate a unique resource name from "portal-webhook-app" and store it as "appId"
+    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "subscriberId":
+      | id          | ${CTX:subscriberId} |
+      | displayName | ${CTX:subscriberId} |
+      | targetUrl   | http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook |
+      | events      | ["application.*"] |
+    When a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
+      | id          | ${CTX:appId}        |
+      | displayName | Webhook Application |
+      | description | Receives events        |
+    When I wait for an API Portal webhook event "application.created" containing "${CTX:appId}"
+    Then the JSON response field "event_type" should be "application.created"
+    And the JSON response field "data.handle" should be "${CTX:appId}"
+    And the JSON response field "data.display_name" should be "Webhook Application"
+    And the JSON response field "data.type" should be "web"
+    And the JSON response array field "encrypted_fields" should have 0 items
+    And the JSON response should have field "org.ref_id"
+    And the API Portal delivery for subscriber "${CTX:subscriberId}" and event "application.created" should be "DELIVERED"
+
+    When I send an authenticated API Portal "PUT" request to "/applications/${CTX:appId}" as "developer" with JSON values:
+      | displayName | Updated Webhook Application |
+      | description | after                       |
+    Then the response status code should be 200
+    When I wait for an API Portal webhook event "application.updated" containing "${CTX:appId}"
+    Then the JSON response field "data.display_name" should be "Updated Webhook Application"
+    And the JSON response field "data.description" should be "after"
+
+    When I send an authenticated API Portal "DELETE" request to "/applications/${CTX:appId}" as "developer"
+    Then the response status code should be 200
+    When I wait for an API Portal webhook event "application.deleted" containing "${CTX:appId}"
+    Then the JSON response field "data.handle" should be "${CTX:appId}"
+
+    # Deleting it again finds nothing, and so reports nothing.
+    And I reset API Portal webhook events
+    When I send an authenticated API Portal "DELETE" request to "/applications/${CTX:appId}" as "developer"
+    Then the response status code should be 404
+    And I verify no API Portal webhook event "application.deleted" containing "${CTX:appId}" is delivered
+
+    # A subscriber is not sent application events it did not ask for
+    Given I generate a unique resource name from "portal-key-only-subscriber" and store it as "keySubscriberId"
+    And I generate a unique resource name from "portal-app-control-subscriber" and store it as "appSubscriberId"
+    And I generate a unique resource name from "portal-unmatched-app" and store it as "appId"
+    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "keySubscriberId":
+      | id          | ${CTX:keySubscriberId} |
+      | displayName | ${CTX:keySubscriberId} |
+      | targetUrl   | http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook |
+      | events      | ["apikey.*"] |
+    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "appSubscriberId":
+      | id          | ${CTX:appSubscriberId} |
+      | displayName | ${CTX:appSubscriberId} |
+      | targetUrl   | http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook |
+      | events      | ["application.*"] |
+    When a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
+      | id          | ${CTX:appId}        |
+      | displayName | Webhook Application |
+      | description | Receives events        |
+    Then the API Portal delivery for subscriber "${CTX:appSubscriberId}" and event "application.created" should be "DELIVERED"
+    When I send an authenticated API Portal "GET" request to "/webhook-subscribers/${CTX:keySubscriberId}/deliveries" as "admin"
+    Then the response status code should be 200
+    And the JSON response array field "list" should have 0 items
+
+    # A subscriber with an exact event name receives only that event
+    Given I generate a unique resource name from "portal-exact-subscriber" and store it as "exactSubscriberId"
+    And I generate a unique resource name from "portal-all-apps-subscriber" and store it as "controlSubscriberId"
+    And I generate a unique resource name from "portal-exact-app" and store it as "appId"
+    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "exactSubscriberId":
+      | id          | ${CTX:exactSubscriberId} |
+      | displayName | ${CTX:exactSubscriberId} |
+      | targetUrl   | http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook |
+      | events      | ["application.created"] |
+    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "controlSubscriberId":
+      | id          | ${CTX:controlSubscriberId} |
+      | displayName | ${CTX:controlSubscriberId} |
+      | targetUrl   | http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook |
+      | events      | ["application.*"] |
+    When a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
+      | id          | ${CTX:appId}        |
+      | displayName | Webhook Application |
+      | description | Receives events        |
+    Then the API Portal delivery for subscriber "${CTX:exactSubscriberId}" and event "application.created" should be "DELIVERED"
+    When I send an authenticated API Portal "PUT" request to "/applications/${CTX:appId}" as "developer" with JSON values:
+      | displayName | Renamed Webhook Application |
+      | description | Renamed                     |
+    Then the response status code should be 200
+    When I wait for an API Portal webhook event "application.updated" containing "${CTX:appId}"
+    Then the API Portal delivery for subscriber "${CTX:controlSubscriberId}" and event "application.updated" should be "DELIVERED"
+    When I send an authenticated API Portal "GET" request to "/webhook-subscribers/${CTX:exactSubscriberId}/deliveries" as "admin"
+    Then the response status code should be 200
+    And the JSON response array "list" should not contain an item with "eventType" equal to "application.updated"
+
+    # An API key's life is delivered, without the key, to a subscriber that has no secret
+    Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name from "portal-key-subscriber" and store it as "subscriberId"
+    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "subscriberId":
+      | id          | ${CTX:subscriberId} |
+      | displayName | ${CTX:subscriberId} |
+      | targetUrl   | http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook |
+      | events      | ["apikey.*"] |
+    When a Portal API key for API "${CTX:apiId}" is generated, the value is stored as "keyValue" and the handle is stored as "keyId"
+    And I wait for an API Portal webhook event "apikey.generated" containing "${CTX:keyId}"
+    Then the JSON response field "data.handle" should be "${CTX:keyId}"
+    And the JSON response array field "encrypted_fields" should have 0 items
+    And the JSON response field "data.key" should not exist
+    And the response body should not contain "${CTX:keyValue}"
     And the API Portal delivery for subscriber "${CTX:subscriberId}" and event "apikey.generated" should be "DELIVERED"
 
-  Scenario: API-key regeneration is delivered to a matching subscriber
-    Given I generate a unique resource name from "portal-apikey-regenerated-subscriber" and store it as "subscriberId"
-    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with body and stored as "subscriberId":
-      """
-      {"id":"${CTX:subscriberId}","displayName":"API Key Regeneration Events","targetUrl":"http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook","events":["apikey.*"]}
-      """
-    And a REST API is created in the API Portal and stored as "apiId"
-    And a publisher API key for API "${CTX:apiId}" is generated and stored as "keyId"
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/regenerate" as "publisher" with JSON body:
-      """
-      {"keyId":"${CTX:keyId}"}
-      """
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/regenerate" as "publisher" with JSON values:
+      | keyId | ${CTX:keyId} |
     Then the response status code should be 200
     When I wait for an API Portal webhook event "apikey.regenerated" containing "${CTX:keyId}"
-    Then the JSON response field "event_type" should be "apikey.regenerated"
-    And the JSON response field "data.handle" should be "${CTX:keyId}"
+    Then the JSON response field "data.handle" should be "${CTX:keyId}"
+    And the JSON response field "data.key" should not exist
 
-  Scenario: API-key revocation is delivered to a matching subscriber
-    Given I generate a unique resource name from "portal-apikey-revoked-subscriber" and store it as "subscriberId"
-    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with body and stored as "subscriberId":
-      """
-      {"id":"${CTX:subscriberId}","displayName":"API Key Revocation Events","targetUrl":"http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook","events":["apikey.*"]}
-      """
-    And a REST API is created in the API Portal and stored as "apiId"
-    And a publisher API key for API "${CTX:apiId}" is generated and stored as "keyId"
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/revoke" as "publisher" with JSON body:
-      """
-      {"keyId":"${CTX:keyId}"}
-      """
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/revoke" as "publisher" with JSON values:
+      | keyId | ${CTX:keyId} |
     Then the response status code should be 204
     When I wait for an API Portal webhook event "apikey.revoked" containing "${CTX:keyId}"
-    Then the JSON response field "event_type" should be "apikey.revoked"
-    And the JSON response field "data.handle" should be "${CTX:keyId}"
+    Then the JSON response field "data.handle" should be "${CTX:keyId}"
 
-  Scenario: Associating an API key with an application is delivered to a matching subscriber
-    Given I generate a unique resource name from "portal-apikey-application-subscriber" and store it as "subscriberId"
-    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with body and stored as "subscriberId":
-      """
-      {"id":"${CTX:subscriberId}","displayName":"API Key Application Events","targetUrl":"http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook","events":["apikey.*"]}
-      """
-    And a REST API is created in the API Portal and stored as "apiId"
-    And I generate a unique resource name from "portal-apikey-application" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with body and stored as "appId":
-      """
-      {"id":"${CTX:appId}","displayName":"API Key Application","description":"webhook"}
-      """
-    And a "developer" API key for API "${CTX:apiId}" is generated and stored as "keyId"
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/associate" as "developer" with JSON body:
-      """
-      {"keyId":"${CTX:keyId}","appId":"${CTX:appId}"}
-      """
-    Then the response status code should be 200
-    When I wait for an API Portal webhook event "apikey.application_updated" containing "${CTX:appId}"
-    Then the JSON response field "event_type" should be "apikey.application_updated"
-    And the JSON response field "data.application.handle" should be "${CTX:appId}"
-
-  Scenario: Dissociating an API key clears its application and delivers an update
-    Given I generate a unique resource name from "portal-apikey-dissociate-subscriber" and store it as "subscriberId"
-    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with body and stored as "subscriberId":
-      """
-      {"id":"${CTX:subscriberId}","displayName":"API Key Dissociation Events","targetUrl":"http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook","events":["apikey.*"]}
-      """
-    And a REST API is created in the API Portal and stored as "apiId"
-    And I generate a unique resource name from "portal-apikey-dissociate-app" and store it as "appId"
-    And a unique API Portal resource is created at "/applications" as "developer" with body and stored as "appId":
-      """
-      {"id":"${CTX:appId}","displayName":"Dissociated Application","description":"webhook"}
-      """
-    And a "developer" API key for API "${CTX:apiId}" is generated and stored as "keyId"
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/associate" as "developer" with JSON body:
-      """
-      {"keyId":"${CTX:keyId}","appId":"${CTX:appId}"}
-      """
-    Then the response status code should be 200
-    When I wait for an API Portal webhook event "apikey.application_updated" containing "${CTX:appId}"
-    Then the JSON response field "event_type" should be "apikey.application_updated"
+    # A revoked key cannot be rotated, and the refused rotation reports nothing.
     And I reset API Portal webhook events
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/dissociate" as "developer" with JSON body:
-      """
-      {"keyId":"${CTX:keyId}"}
-      """
-    Then the response status code should be 204
-    When I send an authenticated API Portal "GET" request to "/apis/${CTX:apiId}/api-keys" as "developer"
-    Then the response status code should be 200
-    And the response body should contain "${CTX:keyId}"
-    When I wait for an API Portal webhook event "apikey.application_updated" containing "${CTX:keyId}"
-    Then the JSON response field "event_type" should be "apikey.application_updated"
-    And the JSON response field "data.application" should be:
-      """
-      null
-      """
-
-  Scenario: An API-key value is encrypted for a subscriber with a secret
-    Given I generate a unique resource name from "portal-apikey-encrypted-subscriber" and store it as "subscriberId"
-    And I generate a unique resource name from "portal-apikey-webhook-secret" and store it as "secretValue"
-    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with body and stored as "subscriberId":
-      """
-      {"id":"${CTX:subscriberId}","displayName":"Encrypted API Key Events","targetUrl":"http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook","secret":"${CTX:secretValue}","events":["apikey.*"]}
-      """
-    And a REST API is created in the API Portal and stored as "apiId"
-    When a Portal API key for API "${CTX:apiId}" is generated, the value is stored as "keyValue" and the handle is stored as "keyId"
-    Then the response status code should be 201
-    When I wait for an API Portal webhook event "apikey.generated" containing "${CTX:keyId}"
-    Then the JSON response field "event_type" should be "apikey.generated"
-    And the JSON response array field "encrypted_fields" should have 1 item
-    And the response body should contain "ciphertext"
-    And the JSON response should have field "data.key"
-    And the API Portal webhook encrypted field "data.key" should decrypt to "${CTX:keyValue}" using secret "${CTX:secretValue}"
-
-  Scenario: A rejected API-key regeneration does not publish an event
-    Given I generate a unique resource name from "portal-apikey-rejected-subscriber" and store it as "subscriberId"
-    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with body and stored as "subscriberId":
-      """
-      {"id":"${CTX:subscriberId}","displayName":"Rejected API Key Events","targetUrl":"http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook","events":["apikey.*"]}
-      """
-    And a REST API is created in the API Portal and stored as "apiId"
-    And a publisher API key for API "${CTX:apiId}" is generated and stored as "keyId"
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/revoke" as "publisher" with JSON body:
-      """
-      {"keyId":"${CTX:keyId}"}
-      """
-    Then the response status code should be 204
-    And I reset API Portal webhook events
-    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/regenerate" as "publisher" with JSON body:
-      """
-      {"keyId":"${CTX:keyId}"}
-      """
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/regenerate" as "publisher" with JSON values:
+      | keyId | ${CTX:keyId} |
     Then the response status code should be 409
     And I verify no API Portal webhook event "apikey.regenerated" containing "${CTX:keyId}" is delivered
+
+    # Linking an API key to an application, and unlinking it, are delivered
+    Given a REST API is created in the API Portal and stored as "apiId"
+    Given I generate a unique resource name from "portal-key-app-subscriber" and store it as "subscriberId"
+    And I generate a unique resource name from "portal-key-app" and store it as "appId"
+    And a unique API Portal resource is created at "/webhook-subscribers" as "admin" with values and stored as "subscriberId":
+      | id          | ${CTX:subscriberId} |
+      | displayName | ${CTX:subscriberId} |
+      | targetUrl   | http://testbench:3012/${CTX:apiPortalRunnerPartition}/webhook |
+      | events      | ["apikey.*"] |
+    And a unique API Portal resource is created at "/applications" as "developer" with values and stored as "appId":
+      | id          | ${CTX:appId}        |
+      | displayName | Key Application    |
+      | description | Receives events        |
+    And a "developer" API key for API "${CTX:apiId}" is generated and stored as "keyId"
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/associate" as "developer" with JSON values:
+      | keyId | ${CTX:keyId} |
+      | appId | ${CTX:appId} |
+    Then the response status code should be 200
+    When I wait for an API Portal webhook event "apikey.application_updated" containing "${CTX:appId}"
+    Then the JSON response field "data.handle" should be "${CTX:keyId}"
+    And the JSON response field "data.application.handle" should be "${CTX:appId}"
+
+    And I reset API Portal webhook events
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/dissociate" as "developer" with JSON values:
+      | keyId | ${CTX:keyId} |
+    Then the response status code should be 204
+    When I wait for an API Portal webhook event "apikey.application_updated" containing "${CTX:keyId}" and not containing "${CTX:appId}"
+    Then the JSON response field "data.application" should be null
+
+    # A key that is no longer linked has nothing to unlink, so a second unlink reports nothing.
+    And I reset API Portal webhook events
+    When I send an authenticated API Portal "POST" request to "/apis/${CTX:apiId}/api-keys/dissociate" as "developer" with JSON values:
+      | keyId | ${CTX:keyId} |
+    Then the response status code should be 204
+    And I verify no API Portal webhook event "apikey.application_updated" containing "${CTX:keyId}" is delivered

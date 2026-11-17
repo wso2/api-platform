@@ -33,8 +33,9 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import type { Gateway } from '@/api/resources/gateways';
 import type { Deployment } from '@/api/resources/restApis/deployments';
 import { useNotifications } from '@/components/Notifications';
+import { useTrackFeature, type FeatureDimensions } from '@/featureUsage';
 import { GatewayDeployEnvCard } from './GatewayDeployEnvCard';
-import type { UseDeploymentMutationHook } from './GatewayDeploymentSelector';
+import type { DeployArtifactKind, UseDeploymentMutationHook } from './GatewayDeploymentSelector';
 import { GatewayDeploymentHistory } from '../GatewayDeploymentHistory';
 import {
   currentDeploymentFor,
@@ -92,7 +93,34 @@ const messages = defineMessages({
   },
 });
 
+type DeployDimensions = FeatureDimensions<'apip.lifecycle.api-deploy-click'>;
+const GATEWAY_TYPES: readonly string[] = [
+  'regular',
+  'ai',
+  'event',
+] satisfies DeployDimensions['gateway_type'][];
+const GATEWAY_HOSTING: readonly string[] = ['managed', 'self-hosted'] satisfies NonNullable<
+  DeployDimensions['gateway_hosting']
+>[];
+
+/** The gateway's functionality type, if it is one the taxonomy knows. */
+const deployGatewayType = (gateway: Gateway): DeployDimensions['gateway_type'] | undefined => {
+  const type = gateway.functionalityType;
+  return typeof type === 'string' && GATEWAY_TYPES.includes(type)
+    ? (type as DeployDimensions['gateway_type'])
+    : undefined;
+};
+
+/** The gateway's hosting mode as tagged in its properties, if it is a known value. */
+const deployGatewayHosting = (gateway: Gateway): DeployDimensions['gateway_hosting'] => {
+  const mode = gateway.properties?.gatewayMode;
+  return typeof mode === 'string' && GATEWAY_HOSTING.includes(mode)
+    ? (mode as DeployDimensions['gateway_hosting'])
+    : undefined;
+};
+
 type GatewayDeployCardProps = {
+  artifactKind: DeployArtifactKind;
   /** Handle of the API being deployed. */
   apiId: string;
   gateway: Gateway;
@@ -123,6 +151,7 @@ type GatewayDeployCardProps = {
  */
 export function GatewayDeployCard({
   apiId,
+  artifactKind,
   gateway,
   deployments,
   isExpanded,
@@ -137,6 +166,7 @@ export function GatewayDeployCard({
 }: GatewayDeployCardProps) {
   const intl = useIntl();
   const { notify } = useNotifications();
+  const trackFeature = useTrackFeature();
   const deployMutation = useDeploy();
   const isActive = gateway.isActive === true;
   // `id` is the gateway handle. The spec marks it optional (it is server-assigned
@@ -148,6 +178,15 @@ export function GatewayDeployCard({
   const hasDeployments = gatewayDeployments.length > 0;
 
   const handleDeploy = () => {
+    const gatewayType = deployGatewayType(gateway);
+    // The gateway type is required; a gateway of an unknown type is not reported.
+    if (gatewayType) {
+      trackFeature('apip.lifecycle.api-deploy-click', {
+        artifact_kind: artifactKind,
+        gateway_hosting: deployGatewayHosting(gateway),
+        gateway_type: gatewayType,
+      });
+    }
     const name = nextDeploymentName(gateway, deployments);
     deployMutation.mutate(
       { apiId, body: { name, gatewayId, base: 'current' } },
@@ -286,6 +325,7 @@ export function GatewayDeployCard({
           <Grid size={{ md: hasDeployments ? 6 : 12, xs: 12 }} sx={{ minWidth: 240 }}>
             <GatewayDeployEnvCard
               apiId={apiId}
+              artifactKind={artifactKind}
               currentDeployment={currentDeployment}
               deployments={gatewayDeployments}
               gateway={gateway}
@@ -307,6 +347,7 @@ export function GatewayDeployCard({
             >
               <GatewayDeploymentHistory
                 apiId={apiId}
+                artifactKind={artifactKind}
                 deployments={gatewayDeployments}
                 onRefresh={onRefresh}
                 refreshing={refreshing}

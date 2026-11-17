@@ -99,9 +99,9 @@ func RegisterAgentProxy(sc *godog.ScenarioContext, s *Steps) {
 		s.pollControlPlaneJSONField)
 	sc.Step(`^I send a "([^"]*)" request to the control plane at "([^"]*)" until the response header "([^"]*)" matches "([^"]*)" with body:$`,
 		s.pollControlPlaneHeader)
-	sc.Step(`^I create an? (Agent proxy|LLM provider) via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
+	sc.Step(`^I create an? (Agent proxy|LLM provider template|LLM provider|REST API) via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
 		s.createFromTemplate)
-	sc.Step(`^I update the (Agent proxy|LLM provider) "([^"]*)" via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
+	sc.Step(`^I update the (Agent proxy|LLM provider template|LLM provider|REST API) "([^"]*)" via the control plane from "([^"]*)"(?: as "([^"]*)")? with values:$`,
 		s.updateFromTemplate)
 	sc.Step(`^I deploy the Agent proxy "([^"]*)" to the gateway via the control plane and store the deployment id as "([^"]*)"$`,
 		s.deployAgentProxy)
@@ -137,7 +137,7 @@ func actorCredentials(who string) (actor.Credentials, error) {
 	case "developer":
 		return actor.Developer(), nil
 	default:
-		return actor.Credentials{}, fmt.Errorf("unknown control-plane actor %q: supported actors are admin, publisher, developer, and %s", who, secondOrganizationAdmin)
+		return actor.Credentials{}, fmt.Errorf("unknown control-plane actor %q: supported actors are admin, publisher, developer, %s and %s", who, secondOrganizationAdmin, noScopeCaller)
 	}
 }
 
@@ -145,8 +145,18 @@ func actorCredentials(who string) (actor.Credentials, error) {
 // in features.
 const secondOrganizationAdmin = "org B admin"
 
+// noScopeCaller names, in features, the administrator signed in with every role and scope removed.
+const noScopeCaller = "a caller with no scope"
+
 // actorBearer returns a control-plane bearer token for a feature's actor.
 func actorBearer(ctx context.Context, base, who string) (string, error) {
+	if strings.TrimSpace(who) == noScopeCaller {
+		bearer, err := controlplane.NoScopeLogin(ctx, base)
+		if err != nil {
+			return "", fmt.Errorf("authenticating to the control plane as %q: %w", noScopeCaller, err)
+		}
+		return bearer, nil
+	}
 	if strings.TrimSpace(who) == secondOrganizationAdmin {
 		bearer, err := controlplane.SecondOrganizationLogin(ctx, base)
 		if err != nil {
@@ -617,8 +627,10 @@ func jsonFieldEquals(resp *httpx.Response, field, want string) bool {
 // templateCollections maps the resource a template-create step names to its publisher-API
 // collection.
 var templateCollections = map[string]string{
-	"Agent proxy":  "/agent-proxies",
-	"LLM provider": "/llm-providers",
+	"Agent proxy":           "/agent-proxies",
+	"LLM provider":          "/llm-providers",
+	"LLM provider template": "/llm-provider-templates",
+	"REST API":              "/rest-apis",
 }
 
 // createFromTemplate renders a control-plane resource template and POSTs it to the resource's

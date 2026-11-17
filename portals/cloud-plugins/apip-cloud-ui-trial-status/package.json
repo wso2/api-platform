@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@wso2/oxygen-ui": "0.5.0",
+    "@wso2/oxygen-ui": "0.23.0",
     "react": "19.2.3"
   },
   "devDependencies": {

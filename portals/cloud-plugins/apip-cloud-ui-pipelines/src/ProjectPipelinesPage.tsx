@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useState, type FC } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -17,10 +18,12 @@ import {
   PageContent,
   PageTitle,
   Stack,
+  Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
 import { ArrowRight } from '@wso2/oxygen-ui-icons-react';
 import PipelineStageCard from './components/PipelineStageCard';
+import { NO_PERMISSION_TOOLTIP } from './permissions';
 import type { Environment, Pipeline } from './types';
 
 export type ProjectPipelinesPageProps = {
@@ -33,6 +36,12 @@ export type ProjectPipelinesPageProps = {
   onAssociate: (pipelineIds: string[]) => void;
   /** A binding write is in flight — disables the selector and actions. */
   saving?: boolean;
+  /**
+   * Whether the user holds a scope that changes the binding. When not, the
+   * selector and Save are disabled and the page says so, so a reader is not
+   * invited to choose a pipeline the server would refuse to bind.
+   */
+  canSave: boolean;
 };
 
 /**
@@ -48,6 +57,7 @@ const ProjectPipelinesPage: FC<ProjectPipelinesPageProps> = ({
   environments,
   onAssociate,
   saving = false,
+  canSave,
 }) => {
   const currentPipelineId = pipelines[0]?.id ?? '';
   const [selectedPipelineId, setSelectedPipelineId] = useState(currentPipelineId);
@@ -70,6 +80,12 @@ const ProjectPipelinesPage: FC<ProjectPipelinesPageProps> = ({
         </PageTitle.SubHeader>
       </PageTitle>
 
+      {!canSave ? (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          You don&apos;t have permission to change this project&apos;s pipeline.
+        </Alert>
+      ) : null}
+
       <Box sx={{ width: '100%', maxWidth: 720, mb: 4 }}>
         <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
           Pipeline
@@ -86,7 +102,7 @@ const ProjectPipelinesPage: FC<ProjectPipelinesPageProps> = ({
               alignItems: 'center',
             },
           }}
-          disabled={saving}
+          disabled={saving || !canSave}
           value={selectedPipelineId}
           onChange={(event) => setSelectedPipelineId(event.target.value as string)}
           renderValue={(value) => {
@@ -207,14 +223,19 @@ const ProjectPipelinesPage: FC<ProjectPipelinesPageProps> = ({
         >
           Cancel
         </Button>
-        <Button
-          variant="contained"
-          disabled={!selectedPipelineId || !hasChanges || saving}
-          startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
-          onClick={() => onAssociate([selectedPipelineId])}
-        >
-          Save
-        </Button>
+        <Tooltip title={canSave ? '' : NO_PERMISSION_TOOLTIP}>
+          {/* Wrapped: a disabled button fires no events, so the tooltip explaining why would never open. */}
+          <span>
+            <Button
+              variant="contained"
+              disabled={!selectedPipelineId || !hasChanges || saving || !canSave}
+              startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
+              onClick={() => onAssociate([selectedPipelineId])}
+            >
+              Save
+            </Button>
+          </span>
+        </Tooltip>
       </Stack>
     </PageContent>
   );

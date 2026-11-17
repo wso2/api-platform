@@ -23,7 +23,8 @@ import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 import { Link as RouterLink } from 'react-router-dom';
 
 import { useFormatters } from '@/i18n/useFormatters';
-import { Can, type PermissionOperation } from '@/permissions';
+import { useExtensions } from '@/extensions';
+import { Can, usePermissions, type PermissionOperation } from '@/permissions';
 import { ApiThumbnailManager } from '../components/ApiThumbnailManager';
 import { ApiKindChip, VersionChip } from '../listing/components/RestApiChips';
 
@@ -150,6 +151,11 @@ export type ApiOverviewHeaderProps = {
   deployPath: string;
   /** The operation the Deploy button is gated on. */
   deployOperation: PermissionOperation;
+  /**
+   * The page slot a host may override the Deploy page through. When an override
+   * declares `actionScopes`, the button is gated on those instead.
+   */
+  deploySlot?: string;
   editPath: string;
 };
 
@@ -167,9 +173,19 @@ export function ApiOverviewHeader({
   canEdit,
   deployOperation,
   deployPath,
+  deploySlot,
   editPath,
 }: ApiOverviewHeaderProps) {
   const intl = useIntl();
+  // A host that replaces the Deploy page may deploy under other scopes than the
+  // built-in page (the cloud deploys through its pipeline); its scopes decide.
+  const { hasScope } = usePermissions();
+  const deployOverride = useExtensions().find(
+    (entry) => deploySlot !== undefined && entry.slot === deploySlot,
+  );
+  const overrideScopes = deployOverride?.actionScopes;
+  const viewOnlyDeploy =
+    overrideScopes !== undefined && !overrideScopes.some((scope) => hasScope(scope));
   const { dateTime, relativeTime } = useFormatters();
   const displayName = api.displayName || apiId;
   const context = api.context || '/';
@@ -309,9 +325,10 @@ export function ApiOverviewHeader({
               </IconButton>
             </Tooltip>
           )}
-          {api.readOnly ? (
-            // Viewing deployments is not deploying: a gateway owns these, so the
-            // link stays open to anyone who can see the API.
+          {api.readOnly || viewOnlyDeploy ? (
+            // Viewing deployments is not deploying: a gateway owns these (or the
+            // host's Deploy page would refuse this user's deploy), so the link
+            // stays open to anyone who can see the API.
             <Button
               component={RouterLink}
               startIcon={<Rocket size={18} />}
@@ -320,6 +337,16 @@ export function ApiOverviewHeader({
               variant="contained"
             >
               <FormattedMessage {...messages.viewDeployments} />
+            </Button>
+          ) : overrideScopes !== undefined ? (
+            <Button
+              component={RouterLink}
+              startIcon={<Rocket size={18} />}
+              sx={{ flexShrink: 0 }}
+              to={deployPath}
+              variant="contained"
+            >
+              <FormattedMessage {...messages.deployToGateway} />
             </Button>
           ) : (
             <Can do={deployOperation} denied="disable">

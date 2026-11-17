@@ -44,9 +44,9 @@ const portalArchiveRoot = "content"
 // portalIconName is the thumbnail's base name; the portal shows "api-icon" as the API's icon.
 const portalIconName = "api-icon"
 
-// portalLandingPageName must match exactly: the portal reads this file, not the hyphenated
-// spelling its docs use, and renders it in place of its default Endpoints and Resources section.
-const portalLandingPageName = "apiContent.md"
+// portalLandingPageName must match exactly: the portal accepts no other name for a Markdown
+// landing page, and renders it in place of its default Endpoints and Resources section.
+const portalLandingPageName = "api-content.md"
 
 // portalIconExtensions maps a thumbnail's content type to its file extension.
 var portalIconExtensions = map[string]string{
@@ -67,8 +67,9 @@ type archiveFile struct {
 
 // buildContentArchive packs the documents, thumbnail and landing page (nil for none) into the
 // ZIP layout the portal reads: content/docs/<Folder>/<FileName>, content/web/api-icon.<ext>
-// and content/web/apiContent.md. A blank landing page is left out, since the portal would
-// show it as an empty page. It returns nil when there is nothing to send.
+// and content/web/api-content.md. A blank landing page is left out, since the portal would
+// show it as an empty page. With nothing to send it returns an empty archive, which clears
+// the listing's content.
 func buildContentArchive(docs []portalDocument, thumbnail, landingPage *model.PublicationContent, maxArchiveBytes int64) (*PortalContent, error) {
 	files := make([]archiveFile, 0, len(docs)+2)
 	for _, doc := range docs {
@@ -87,9 +88,6 @@ func buildContentArchive(docs []portalDocument, thumbnail, landingPage *model.Pu
 	}
 	if landingPage != nil && len(bytes.TrimSpace(landingPage.Content)) > 0 {
 		files = append(files, archiveFile{portalArchiveRoot + "/web/" + portalLandingPageName, landingPage.Content})
-	}
-	if len(files) == 0 {
-		return nil, nil
 	}
 	if err := checkPortalContentLimits(files); err != nil {
 		return nil, err

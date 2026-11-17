@@ -25,9 +25,18 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cucumber/godog"
+
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
+
+// kindSelfHostedGateway is a kind of its own, not cleanup.KindGateway, because the registry keeps
+// one deleter per kind name and the two are deleted through different collections
+// (/self-hosted-gateways and /managed-gateways): sharing the kind would send one of them to the
+// wrong collection, which answers 404 and is swept as already gone. It lives in an environment, so
+// it is deleted with the managed gateways, before the environment.
+var kindSelfHostedGateway = cleanup.Kind{Name: "self-hosted-gateway", Order: cleanup.KindGateway.Order}
 
 const (
 	// selfHostedGatewaysPath is the collection the cloud console's gateways page drives for
@@ -47,6 +56,19 @@ const (
 	// no status is active too, as the console treats it.
 	activeTokenStatus = "active"
 )
+
+// registerSelfHostedGatewaySteps binds the steps that register a self-hosted gateway, manage its
+// registration tokens and delete it.
+func (s *Steps) registerSelfHostedGatewaySteps(sc *godog.ScenarioContext) {
+	sc.Step(`^I create a synthetic self-hosted APIP gateway$`, s.createSelfHostedGateway)
+	sc.Step(`^the self-hosted APIP gateway should be retrievable and awaiting connection$`, s.getSelfHostedGatewayAwaitingConnection)
+	sc.Step(`^I generate a registration token for the self-hosted APIP gateway$`, s.generateRegistrationToken)
+	sc.Step(`^I reconfigure the registration token of the self-hosted APIP gateway$`, s.reconfigureRegistrationToken)
+	sc.Step(`^the self-hosted APIP gateway should have exactly (\d+) active registration tokens?$`, s.assertActiveRegistrationTokens)
+	sc.Step(`^the revoked registration tokens should no longer be active$`, s.assertRevokedTokensInactive)
+	sc.Step(`^I delete the synthetic self-hosted APIP gateway$`, s.deleteSelfHostedGateway)
+	sc.Step(`^the self-hosted APIP gateway should eventually be absent$`, s.verifySelfHostedGatewayDeleted)
+}
 
 func selfHostedGatewayPath(id string) string {
 	return selfHostedGatewaysPath + "/" + url.PathEscape(id)
@@ -78,7 +100,7 @@ func (s *Steps) createSelfHostedGateway(ctx context.Context) error {
 	// harmless: its delete answers 404, which the sweep treats as already gone.
 	cleanupID := environment + "-" + name
 	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindSelfHostedGateway, ID: cleanupID, Actor: resourceActor,
+		Kind: kindSelfHostedGateway, ID: cleanupID, Actor: resourceActor,
 		Description: "self-hosted gateway " + cleanupID,
 	}); err != nil {
 		return fmt.Errorf("registering self-hosted gateway %q for cleanup: %w", cleanupID, err)
@@ -101,9 +123,9 @@ func (s *Steps) createSelfHostedGateway(ctx context.Context) error {
 		return fmt.Errorf("creating APIP self-hosted gateway: %w", err)
 	}
 	if id != cleanupID {
-		deregister(ctx, cleanup.KindSelfHostedGateway, cleanupID)
+		deregister(ctx, kindSelfHostedGateway, cleanupID)
 		if err := cleanup.Register(ctx, cleanup.Resource{
-			Kind: cleanup.KindSelfHostedGateway, ID: id, Actor: resourceActor,
+			Kind: kindSelfHostedGateway, ID: id, Actor: resourceActor,
 			Description: "self-hosted gateway " + id,
 		}); err != nil {
 			return fmt.Errorf("registering self-hosted gateway %q for cleanup: %w", id, err)
@@ -332,7 +354,7 @@ func (s *Steps) deleteSelfHostedGateway(ctx context.Context) error {
 		return responseError(resp)
 	}
 	if resp.StatusCode == http.StatusNotFound {
-		deregister(ctx, cleanup.KindSelfHostedGateway, id)
+		deregister(ctx, kindSelfHostedGateway, id)
 	}
 	return nil
 }
@@ -345,6 +367,6 @@ func (s *Steps) verifySelfHostedGatewayDeleted(ctx context.Context) error {
 	if err := s.awaitNotFound(ctx, selfHostedGatewayPath(id), "self-hosted gateway "+id); err != nil {
 		return err
 	}
-	deregister(ctx, cleanup.KindSelfHostedGateway, id)
+	deregister(ctx, kindSelfHostedGateway, id)
 	return nil
 }

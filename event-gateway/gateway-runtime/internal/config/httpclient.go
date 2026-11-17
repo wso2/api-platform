@@ -35,7 +35,7 @@ import (
 // SSRF guarding is unconditionally enabled here with netguard.PermitPrivateBlockMetadata()
 // — every caller of this shared config dials a tenant/subscriber-supplied CallbackURL, so
 // unlike gateway-controller's analogous translation there is no Enabled/Preset switch to
-// interpret; only the redirect/scheme knobs in HTTPClientSSRFConfig are read from config.
+// interpret; only the redirect/scheme knobs in HTTPClientDestinationGuardConfig are read from config.
 // PermitPrivateBlockMetadata (not PublicOnly) is deliberate here, not an oversight: WebSub
 // subscribers routinely live on private networks by design (a Kubernetes ClusterIP, a
 // service-DNS name resolving into RFC 1918 space, a docker-compose service, a localhost
@@ -108,10 +108,10 @@ func BuildHTTPClientConfig(hc HTTPClientConfig) (httpclient.Config, error) {
 
 	// Always on — see this function's doc comment and HTTPClientConfig's doc comment for
 	// why PermitPrivateBlockMetadata (not PublicOnly) is the deliberate choice here.
-	cfg.SSRF.Enabled = true
-	cfg.SSRF.Policy = netguard.PermitPrivateBlockMetadata()
-	cfg.SSRF.Policy.AllowedSchemes = hc.SSRF.AllowedSchemes
-	cfg.SSRF.MaxRedirects = hc.SSRF.MaxRedirects
+	cfg.DestinationGuard.Enabled = true
+	cfg.DestinationGuard.Policy = netguard.PermitPrivateBlockMetadata()
+	cfg.DestinationGuard.Policy.AllowedSchemes = hc.DestinationGuard.AllowedSchemes
+	cfg.DestinationGuard.MaxRedirects = hc.DestinationGuard.MaxRedirects
 
 	if cfg.Proxy.Mode != "" && cfg.Proxy.Mode != "none" {
 		switch hc.Proxy.Egress {

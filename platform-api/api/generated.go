@@ -1099,6 +1099,39 @@ func (e RESTAPIGatewayResponseFunctionalityType) Valid() bool {
 	}
 }
 
+// Defines values for RESTAPIInvokeBodyEncoding.
+const (
+	Base64 RESTAPIInvokeBodyEncoding = "base64"
+	Utf8   RESTAPIInvokeBodyEncoding = "utf8"
+)
+
+// Valid indicates whether the value is a known member of the RESTAPIInvokeBodyEncoding enum.
+func (e RESTAPIInvokeBodyEncoding) Valid() bool {
+	switch e {
+	case Base64:
+		return true
+	case Utf8:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RESTAPIInvokeResponseOutcome.
+const (
+	Response RESTAPIInvokeResponseOutcome = "response"
+)
+
+// Valid indicates whether the value is a known member of the RESTAPIInvokeResponseOutcome enum.
+func (e RESTAPIInvokeResponseOutcome) Valid() bool {
+	switch e {
+	case Response:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RateLimitResetWindowUnit.
 const (
 	Day    RateLimitResetWindowUnit = "day"
@@ -2526,7 +2559,8 @@ type APIDocumentMetadata struct {
 type APIDocumentRequest struct {
 	DisplayName string `json:"displayName" yaml:"displayName"`
 
-	// FileName File name to associate with the content. Defaults to `{handle}.md`.
+	// FileName File name to associate with the content. Must end in `.md`, and must not start with a dot
+	// or contain `..`. Defaults to `{handle}.md`.
 	FileName *string `json:"fileName,omitempty" yaml:"fileName,omitempty"`
 
 	// Id URL-safe document handle. On create: optional, server-generated from
@@ -2538,7 +2572,8 @@ type APIDocumentRequest struct {
 	InlineContent *string `json:"inlineContent,omitempty" yaml:"inlineContent,omitempty"`
 
 	// OtherTypeName Free-form qualifier used when `type` is `Other`. Stored and returned
-	// exactly as typed (no case conversion). Ignored for all other types.
+	// exactly as typed (no case conversion). Must not start with a dot or
+	// contain `..`, `/` or `\`. Ignored for all other types.
 	OtherTypeName *string `json:"otherTypeName,omitempty" yaml:"otherTypeName,omitempty"`
 
 	// Type Document type. Well-known values: `HowTo`, `Samples`, `SupportForum`,
@@ -3420,6 +3455,9 @@ type CustomPolicyResponse struct {
 	// Description Human-readable description of the policy
 	Description *string `json:"description,omitempty" yaml:"description,omitempty"`
 
+	// DisplayName Human-readable policy name, from the policy definition
+	DisplayName *string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+
 	// Name Policy name
 	Name string `json:"name" yaml:"name"`
 
@@ -3520,7 +3558,7 @@ type DeploymentResponse struct {
 	// - ARCHIVED: Historical deployment, can be rolled back
 	Status DeploymentResponseStatus `json:"status" yaml:"status"`
 
-	// StatusReason Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. SECRET_RESOLUTION_FAILED means a gateway that needs secrets inlined fetched this deployment and a referenced secret could not be resolved (missing, deprecated or not decryptable); the gateway does not hold the deployment, restore the secret and redeploy. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH.
+	// StatusReason Error code explaining the failure reason. Null unless status is FAILED (e.g. DEPLOYMENT_TIMEOUT, GATEWAY_PROCESSING_ERROR). Always a code, never free text. SECRET_RESOLUTION_FAILED means a gateway that needs secrets inlined fetched this deployment and a referenced secret could not be resolved (missing, deprecated or not decryptable); the gateway does not hold the deployment, restore the secret and redeploy. Agent proxy deployments may also report AGENT_VALIDATION_FAILED, AGENT_CONFIG_RENDER_FAILED, AGENT_CONFLICT, AGENT_ARTIFACT_FETCH_FAILED and DEPLOYMENT_ID_MISMATCH. UPSTREAM_URL_NOT_ALLOWED means the gateway's network access control does not permit an upstream URL or a policy URL in the deployment; change the URL, or the gateway's access control, and redeploy.
 	StatusReason *string `json:"statusReason,omitempty" yaml:"statusReason,omitempty"`
 
 	// UpdatedAt Timestamp when the deployment status last changed (null for ARCHIVED deployments)
@@ -5514,6 +5552,77 @@ type RESTAPIGatewayResponse struct {
 // RESTAPIGatewayResponseFunctionalityType Type of gateway functionality
 type RESTAPIGatewayResponseFunctionalityType string
 
+// RESTAPIInvokeBodyEncoding How `body` is written; `base64` carries binary data
+type RESTAPIInvokeBodyEncoding string
+
+// RESTAPIInvokeHeader One header or query parameter. A list keeps repeated names.
+type RESTAPIInvokeHeader struct {
+	Name  string `json:"name" yaml:"name"`
+	Value string `json:"value" yaml:"value"`
+}
+
+// RESTAPIInvokeRequest The test request to send. Hop-by-hop headers, `Host`, `Content-Length`, `Expect`,
+// `Cookie` and the forwarding headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`) are
+// refused; `Authorization` is allowed, for the API under test.
+type RESTAPIInvokeRequest struct {
+	// Body The request body, at most `gateway_relay.max_request_bytes` once decoded
+	Body *string `json:"body,omitempty" yaml:"body,omitempty"`
+
+	// BodyEncoding How `body` is written; `base64` carries binary data
+	BodyEncoding *RESTAPIInvokeBodyEncoding `json:"bodyEncoding,omitempty" yaml:"bodyEncoding,omitempty"`
+
+	// GatewayId Handle of a gateway the REST API is deployed to
+	GatewayId string `json:"gatewayId" yaml:"gatewayId"`
+
+	// Headers At most 50 headers, 16 KiB across all names and values
+	Headers *[]RESTAPIInvokeHeader `json:"headers,omitempty" yaml:"headers,omitempty"`
+
+	// Method One of GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS, in any case
+	Method *string `json:"method,omitempty" yaml:"method,omitempty"`
+
+	// Path Path relative to the REST API's invoke URL, starting with `/`. It may not leave the
+	// REST API's context, or carry a query or fragment.
+	Path  *string                `json:"path,omitempty" yaml:"path,omitempty"`
+	Query *[]RESTAPIInvokeHeader `json:"query,omitempty" yaml:"query,omitempty"`
+
+	// RestApiId Handle of the REST API to test
+	RestApiId string `json:"restApiId" yaml:"restApiId"`
+}
+
+// RESTAPIInvokeResponse defines model for RESTAPIInvokeResponse.
+type RESTAPIInvokeResponse struct {
+	// Outcome Always `response`
+	Outcome RESTAPIInvokeResponseOutcome `json:"outcome" yaml:"outcome"`
+
+	// Response The gateway's response
+	Response RESTAPIInvokeResult `json:"response" yaml:"response"`
+}
+
+// RESTAPIInvokeResponseOutcome Always `response`
+type RESTAPIInvokeResponseOutcome string
+
+// RESTAPIInvokeResult The gateway's response
+type RESTAPIInvokeResult struct {
+	// Body The response body; base64 when it is not valid UTF-8
+	Body string `json:"body" yaml:"body"`
+
+	// BodyEncoding How `body` is written; `base64` carries binary data
+	BodyEncoding RESTAPIInvokeBodyEncoding `json:"bodyEncoding" yaml:"bodyEncoding"`
+
+	// DurationMs The gateway round trip, in milliseconds
+	DurationMs int64 `json:"durationMs" yaml:"durationMs"`
+
+	// Headers Every response header, sorted, repeated names kept
+	Headers []RESTAPIInvokeHeader `json:"headers" yaml:"headers"`
+
+	// Status The gateway's HTTP status
+	Status     int    `json:"status" yaml:"status"`
+	StatusText string `json:"statusText" yaml:"statusText"`
+
+	// Truncated The body exceeded `gateway_relay.max_response_bytes` and was clipped
+	Truncated bool `json:"truncated" yaml:"truncated"`
+}
+
 // RESTAPIListResponse defines model for RESTAPIListResponse.
 type RESTAPIListResponse struct {
 	// Count Number of items in current response
@@ -7343,6 +7452,9 @@ type AddApplicationAPIKeysJSONRequestBody = AddApplicationAPIKeysRequest
 
 // AddApplicationAssociationsJSONRequestBody defines body for AddApplicationAssociations for application/json ContentType.
 type AddApplicationAssociationsJSONRequestBody = AddApplicationAssociationsRequest
+
+// InvokeRESTAPIOnGatewayJSONRequestBody defines body for InvokeRESTAPIOnGateway for application/json ContentType.
+type InvokeRESTAPIOnGatewayJSONRequestBody = RESTAPIInvokeRequest
 
 // CreateGatewayJSONRequestBody defines body for CreateGateway for application/json ContentType.
 type CreateGatewayJSONRequestBody = CreateGatewayRequest

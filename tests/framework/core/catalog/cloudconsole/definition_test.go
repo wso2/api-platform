@@ -65,6 +65,61 @@ func TestLoadEnvironmentConfig(t *testing.T) {
 	}
 }
 
+func TestLoadEnvironmentConfigPlatformAPIEndpoint(t *testing.T) {
+	const base = "[environments.local]\ncloud_base_domain = \"openchoreoapis.localhost\"\n"
+
+	t.Run("accepts http on a localhost host and https anywhere", func(t *testing.T) {
+		for endpoint, want := range map[string]string{
+			"http://dev-wso2cloud.openchoreoapis.localhost:19080/path/api/v0.9/": "http://dev-wso2cloud.openchoreoapis.localhost:19080/path/api/v0.9",
+			"https://dev-wso2cloud.openchoreoapis.localhost:19443/path":          "https://dev-wso2cloud.openchoreoapis.localhost:19443/path",
+			"https://dev-wso2cloud.gateway.dev.example.com/path/api/v0.9":        "https://dev-wso2cloud.gateway.dev.example.com/path/api/v0.9",
+			" http://localhost:8080/api ":                                        "http://localhost:8080/api",
+		} {
+			config, err := LoadEnvironmentConfig(writeConfig(t, base+"platform_api_endpoint = \""+endpoint+"\"\n"))
+			require.NoError(t, err, endpoint)
+			require.Equal(t, want, config.Environments["local"].PlatformAPIEndpoint)
+		}
+	})
+
+	t.Run("is optional", func(t *testing.T) {
+		config, err := LoadEnvironmentConfig(writeConfig(t, base))
+		require.NoError(t, err)
+		require.Empty(t, config.Environments["local"].PlatformAPIEndpoint)
+	})
+
+	t.Run("rejects an endpoint that could send the token in the clear or elsewhere", func(t *testing.T) {
+		for name, endpoint := range map[string]string{
+			"plain http on a public host": "http://gateway.example.com/api",
+			"plain http on an IP":         "http://127.0.0.1:19080/api",
+			"plain http lookalike":        "http://gw.localhost.evil.example/api",
+			"credentials":                 "https://user:password@gateway.example.com/api",
+			"query":                       "https://gateway.example.com/api?x=1",
+			"fragment":                    "https://gateway.example.com/api#x",
+			"other scheme":                "ftp://gateway.example.com/api",
+			"relative":                    "/apip-platform-api/api/v0.9",
+			"empty":                       "",
+		} {
+			_, err := LoadEnvironmentConfig(writeConfig(t, base+"platform_api_endpoint = \""+endpoint+"\"\n"))
+			require.Error(t, err, name)
+		}
+		_, err := LoadEnvironmentConfig(writeConfig(t, base+"platform_api_endpoint = 7\n"))
+		require.ErrorContains(t, err, "must be a string")
+	})
+}
+
+func TestEnvironmentConfigEntry(t *testing.T) {
+	config := EnvironmentConfig{Environments: map[string]EnvironmentEntry{
+		"dev": {CloudBaseDomain: "dev.example.com", PlatformAPIEndpoint: "https://dev.example.com/api"},
+	}}
+	entry, err := config.Entry(" dev ")
+	require.NoError(t, err)
+	require.Equal(t, "https://dev.example.com/api", entry.PlatformAPIEndpoint)
+	_, err = config.Entry("")
+	require.ErrorContains(t, err, "environment is required")
+	_, err = config.Entry("missing")
+	require.ErrorContains(t, err, "is not configured")
+}
+
 func TestEnvironmentConfigDomain(t *testing.T) {
 	config := EnvironmentConfig{Environments: map[string]EnvironmentEntry{
 		"dev": {CloudBaseDomain: "dev.example.com"},
@@ -86,6 +141,28 @@ func TestResolveEndpoints(t *testing.T) {
 	require.Equal(t,
 		"https://sample-wso2cloud.gateway.example.test/apip-platform-api-apip-platform-api-endpoint/api/v0.9",
 		endpoints[EndpointAPIPPlatformAPI])
+}
+
+func TestResolveEndpointsUsesTheConfiguredPlatformAPIEndpoint(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, EnvironmentConfigPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(
+		"[environments.local]\ncloud_base_domain = \"openchoreoapis.localhost\"\n"+
+			"platform_api_endpoint = \"http://development-wso2cloud.openchoreoapis.localhost:19080/apip-platform-api-apip-platform-api-endpoint/api/v0.9/\"\n"+
+			"[environments.dev]\ncloud_base_domain = \"dev.example.test\"\n"), 0o644))
+
+	endpoints, err := resolveEndpoints(root, map[string]string{EnvironmentParameter: "local"})
+	require.NoError(t, err)
+	require.Equal(t,
+		"http://development-wso2cloud.openchoreoapis.localhost:19080/apip-platform-api-apip-platform-api-endpoint/api/v0.9",
+		endpoints[EndpointAPIPPlatformAPI])
+
+	endpoints, err = resolveEndpoints(root, map[string]string{EnvironmentParameter: "dev"})
+	require.NoError(t, err)
+	require.Equal(t,
+		"https://dev-wso2cloud.gateway.dev.example.test/apip-platform-api-apip-platform-api-endpoint/api/v0.9",
+		endpoints[EndpointAPIPPlatformAPI], "an environment without the override keeps the derived endpoint")
 }
 
 func TestResolveEndpointsRejectsMissingInputs(t *testing.T) {

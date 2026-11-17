@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -31,10 +32,10 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/components"
 )
 
-// ErrNothingToRun reports that a policy selection left no runner to execute, for example
-// because every selected policy is gated to a newer Gateway release. Callers treat it as a
-// skip, not a failure.
-var ErrNothingToRun = errors.New("topology: the policy selection has nothing to run")
+// ErrNothingToRun reports that a policy or component selection left no runner to execute, for
+// example because every selected policy is gated to a newer Gateway release, or no block starts
+// the components a pull request changed. Callers treat it as a skip, not a failure.
+var ErrNothingToRun = errors.New("topology: the selection has nothing to run")
 
 // Selection narrows the blocks, runners, and coverage mode used for a run.
 type Selection struct {
@@ -44,6 +45,15 @@ type Selection struct {
 
 	// SkipBlocks names blocks to exclude, applied after Blocks.
 	SkipBlocks []string
+
+	// Components keeps the blocks that start at least one of these components, such as the
+	// products a pull request changes. Empty means all.
+	Components []string
+
+	// RequireComponents keeps the blocks that start every one of these components, applied
+	// with Components. A released Gateway leg requires platform-gateway, since a block
+	// without a Gateway runs the same on every Gateway version.
+	RequireComponents []string
 
 	// Tags is a Gherkin tag expression applied on top of each runner's own tags, for
 	// selecting a subset such as a smoke run.
@@ -91,6 +101,14 @@ func (s *Selection) Flags(fs *flag.FlagSet) {
 	})
 	fs.Func("skip-blocks", "comma-separated block names to exclude", func(v string) error {
 		s.SkipBlocks = append(s.SkipBlocks, splitList(v)...)
+		return nil
+	})
+	fs.Func("components", "comma-separated component names: run only the blocks that start at least one of them (default: all)", func(v string) error {
+		s.Components = append(s.Components, splitList(v)...)
+		return nil
+	})
+	fs.Func("require-components", "comma-separated component names: run only the blocks that start all of them", func(v string) error {
+		s.RequireComponents = append(s.RequireComponents, splitList(v)...)
 		return nil
 	})
 	fs.StringVar(&s.Tags, "feature-tags", "",
@@ -217,9 +235,15 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 		exclude[b] = true
 	}
 
+	if err := checkComponentNames(resolved, s.Components, s.RequireComponents); err != nil {
+		return nil, err
+	}
+
 	matchedInclude := map[string]bool{}
 	matchedExclude := map[string]bool{}
 	policyRunnersUsed := false
+	componentFiltered := false
+	componentMatched := false
 
 	for i := range resolved.Blocks {
 		block := cloneBlock(resolved.Blocks[i])
@@ -274,6 +298,12 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 			}
 			continue
 		}
+
+		if !startsAny(&block, s.Components) || !startsAll(&block, s.RequireComponents) {
+			componentFiltered = true
+			continue
+		}
+		componentMatched = true
 
 		skipped, err := selectGatewayDatabaseCompatibility(&block)
 		if err != nil {
@@ -331,10 +361,11 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 			}
 			for _, required := range component.Def.External.RequiredParameters {
 				if strings.TrimSpace(parameters[required]) == "" {
-					if len(include) == 0 {
+					if len(include) == 0 && !slices.Contains(s.Components, component.Def.Name) {
 						// External blocks are opt-in. A normal local suite run must not
 						// require cloud credentials or a target environment merely because
-						// the suite declares the cloud coverage block.
+						// the suite declares the cloud coverage block. Naming the block, or
+						// its external component in -components, opts in.
 						skipExternalBlock = true
 						break
 					}
@@ -397,24 +428,16 @@ func (s Selection) Apply(resolved *Resolved) (*Resolved, error) {
 	}
 
 	if len(out.Blocks) == 0 {
-		if len(s.Policies) > 0 {
+		// A component filter that matches no block is a skip: a pull request that changes only
+		// the API Portal may have nothing to run on a released Gateway leg.
+		if componentFiltered && !componentMatched {
+			return nil, fmt.Errorf("%w: no selected block starts the requested components", ErrNothingToRun)
+		}
+		// So is a selection whose every block or runner the Gateway release excludes: a pull
+		// request that changes only a gateway-version>1.2.0 feature has nothing to run on the
+		// 1.2.0 leg. The skip names each block or runner and why, so nothing is hidden.
+		if len(s.Policies) > 0 || len(out.SkippedBlocks) > 0 || len(out.SkippedRunners) > 0 {
 			return nil, nothingToRun(out)
-		}
-		if len(out.SkippedBlocks) > 0 {
-			reasons := make([]string, 0, len(out.SkippedBlocks))
-			for _, skipped := range out.SkippedBlocks {
-				reasons = append(reasons, fmt.Sprintf("%s: %s", skipped.Block, skipped.Reason))
-			}
-			sort.Strings(reasons)
-			return nil, fmt.Errorf("topology: the selection has no compatible blocks (%s)", strings.Join(reasons, "; "))
-		}
-		if len(out.SkippedRunners) > 0 {
-			reasons := make([]string, 0, len(out.SkippedRunners))
-			for _, skipped := range out.SkippedRunners {
-				reasons = append(reasons, fmt.Sprintf("%s/%s: %s", skipped.Block, skipped.Runner, skipped.Reason))
-			}
-			sort.Strings(reasons)
-			return nil, fmt.Errorf("topology: the selection has no compatible runners (%s)", strings.Join(reasons, "; "))
 		}
 		return nil, fmt.Errorf("topology: the selection matched no blocks, so the run would test nothing")
 	}
@@ -444,6 +467,66 @@ func nothingToRun(out *Resolved) error {
 		return ErrNothingToRun
 	}
 	return fmt.Errorf("%w (%s)", ErrNothingToRun, strings.Join(reasons, "; "))
+}
+
+// checkComponentNames refuses a component no block in the suite starts, so a misspelt name
+// fails rather than silently selecting nothing.
+func checkComponentNames(resolved *Resolved, lists ...[]string) error {
+	started := map[string]bool{}
+	for i := range resolved.Blocks {
+		for _, component := range resolved.Blocks[i].Components {
+			if component.Def != nil {
+				started[component.Def.Name] = true
+			}
+		}
+	}
+	var unknown []string
+	for _, list := range lists {
+		for _, name := range list {
+			if !started[name] && !slices.Contains(unknown, name) {
+				unknown = append(unknown, name)
+			}
+		}
+	}
+	if len(unknown) == 0 {
+		return nil
+	}
+	sort.Strings(unknown)
+	available := slices.Sorted(maps.Keys(started))
+	return fmt.Errorf("topology: no block starts component %s (available: %s)",
+		strings.Join(unknown, ", "), strings.Join(available, ", "))
+}
+
+// startsAny reports whether block starts at least one of names. An empty list matches.
+func startsAny(block *ResolvedBlock, names []string) bool {
+	if len(names) == 0 {
+		return true
+	}
+	for _, name := range names {
+		if startsComponent(block, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// startsAll reports whether block starts every one of names.
+func startsAll(block *ResolvedBlock, names []string) bool {
+	for _, name := range names {
+		if !startsComponent(block, name) {
+			return false
+		}
+	}
+	return true
+}
+
+func startsComponent(block *ResolvedBlock, name string) bool {
+	for _, component := range block.Components {
+		if component.Def != nil && component.Def.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // combineTags combines runner and selection tag expressions.

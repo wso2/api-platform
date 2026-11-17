@@ -69,3 +69,13 @@ export const reformatDefinition = (definition: StoredDefinition, format: Definit
   const parsed = parseSpecText(definition.text, definition.format);
   return parsed.status === 'parsed' ? serializeSpec(parsed.spec, format) : definition.text;
 };
+
+/** A definition's content in one form: an OpenAPI document as compact JSON, a GraphQL schema without surrounding blank space. */
+export const contentOf = ({ format, text }: StoredDefinition): string => {
+  if (format === 'graphql') return text.trim();
+  const parsed = parseSpecText(text, format);
+  return parsed.status === 'parsed' ? JSON.stringify(parsed.spec) : text;
+};
+
+/** Whether two definitions hold the same content, however each is written. */
+export const sameDefinition = (a: StoredDefinition, b: StoredDefinition): boolean => contentOf(a) === contentOf(b);

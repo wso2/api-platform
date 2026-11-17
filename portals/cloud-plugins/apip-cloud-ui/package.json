@@ -11,18 +11,20 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@wso2-enterprise/apip-cloud-ui-app-switcher": "file:../apip-cloud-ui-app-switcher",
     "@wso2-enterprise/apip-cloud-ui-deploy": "file:../apip-cloud-ui-deploy",
     "@wso2-enterprise/apip-cloud-ui-entitlements": "file:../apip-cloud-ui-entitlements",
     "@wso2-enterprise/apip-cloud-ui-environments-new": "file:../apip-cloud-ui-environments-new",
     "@wso2-enterprise/apip-cloud-ui-gateways": "file:../apip-cloud-ui-gateways",
     "@wso2-enterprise/apip-cloud-ui-insights": "file:../apip-cloud-ui-insights",
-    "@wso2-enterprise/apip-cloud-ui-logs": "file:../apip-cloud-ui-logs",
+    "@wso2-enterprise/apip-cloud-ui-marketing-consent": "file:../apip-cloud-ui-marketing-consent",
     "@wso2-enterprise/apip-cloud-ui-managed-portals": "file:../apip-cloud-ui-managed-portals",
     "@wso2-enterprise/apip-cloud-ui-pipelines": "file:../apip-cloud-ui-pipelines",
+    "@wso2-enterprise/apip-cloud-ui-settings": "file:../apip-cloud-ui-settings",
     "@wso2-enterprise/apip-cloud-ui-trial-status": "file:../apip-cloud-ui-trial-status",
     "@wso2-enterprise/apip-cloud-ui-user-profile": "file:../apip-cloud-ui-user-profile",
-    "@wso2/oxygen-ui": "0.5.0",
-    "@wso2/oxygen-ui-icons-react": "0.5.0",
+    "@wso2/oxygen-ui": "0.23.0",
+    "@wso2/oxygen-ui-icons-react": "0.23.0",
     "react": "19.2.3"
   },
   "devDependencies": {

@@ -165,8 +165,6 @@ const registerAllPartialsFromFile = async (baseURL, req, filePrefix) => {
   // values of filePrefix work correctly.
   const base = (...parts) => path.resolve(process.cwd(), filePrefix, ...parts);
 
-  const filePath = req.originalUrl.split(baseURL).pop();
-
   await registerPartialsFromFile(baseURL, base("partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "home", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "api-landing", "partials"), req);
@@ -176,10 +174,6 @@ const registerAllPartialsFromFile = async (baseURL, req, filePrefix) => {
   await registerPartialsFromFile(baseURL, base("pages", "mcp-landing", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "api-workflows", "partials"), req);
   await registerPartialsFromFile(baseURL, base("pages", "api-workflows", "detail", "partials"), req);
-
-  if (fs.existsSync(base("pages", filePath, "partials"))) {
-    await registerPartialsFromFile(baseURL, base("pages", filePath, "partials"), req);
-  }
 }
 
 const registerPartialsFromAPI = async (req, orgId) => {
@@ -226,9 +220,7 @@ async function registerAPILandingContent(req, orgId, partialObject) {
     //replace image urls
     let images = metaData.apiImageMetadata;
     for (const key in images) {
-      let apiImageUrl = `${req.protocol}://${req.get('host')}${constants.API_PORTAL_API.orgPath(orgId)}${constants.ROUTE.API_FILE_PATH}${metaData.id}${constants.API_TEMPLATE_FILE_NAME}`
-      const modifiedApiImageURL = apiImageUrl + images[key]
-      images[key] = modifiedApiImageURL;
+      images[key] = `${req.protocol}://${req.get('host')}${util.apiImageUrl(orgId, metaData, images[key])}`;
     }
   }
   //if hbs content available for API, render the hbs page

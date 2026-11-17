@@ -51,7 +51,10 @@ const (
 	codeSignatureDoesNotMatch      = "SignatureDoesNotMatch"
 	codeRequestExpired             = "RequestExpired"
 	codeAccessDenied               = "AccessDeniedException"
-	codeResourceNotFound           = "ResourceNotFoundException"
+	// codeUnsignedHeaders is the code S3 documents for a request with an x-amz-* header that is
+	// not signed. Other services document no code of their own for it.
+	codeUnsignedHeaders  = "AccessDenied"
+	codeResourceNotFound = "ResourceNotFoundException"
 )
 
 // awsError is a rejection in the shape AWS reports it.
@@ -114,6 +117,11 @@ func (v verifier) verify(r *http.Request, body []byte, want scope, ctl controls)
 	if err != nil {
 		return identity{}, err
 	}
+	// SigV4 requires every x-amz-* header of a request to be signed.
+	if unsigned := unsignedAmzHeaders(r.Header, auth.signedHeaders); len(unsigned) > 0 {
+		return identity{}, reject(codeUnsignedHeaders,
+			"There were headers present in the request which were not signed: "+strings.Join(unsigned, ", "))
+	}
 
 	amzDate, parseErr := time.Parse(amzDateLayout, r.Header.Get(headerAmzDate))
 	if parseErr != nil {
@@ -165,6 +173,24 @@ func (v verifier) verify(r *http.Request, body []byte, want scope, ctl controls)
 			"The request signature we calculated does not match the signature you provided")
 	}
 	return identity{accessKeyID: auth.accessKeyID, service: auth.service, region: auth.region}, nil
+}
+
+// unsignedAmzHeaders returns, sorted and in lower case, the x-amz-* headers of h that signed does
+// not list. X-Amz-Security-Token may be left unsigned: AWS's own SigV4 test suite adds it after
+// signing (post-sts-header-after) and the request is still valid.
+func unsignedAmzHeaders(h http.Header, signed []string) []string {
+	var unsigned []string
+	for name := range h {
+		lower := strings.ToLower(name)
+		if lower == strings.ToLower(headerAmzSecurityToken) {
+			continue
+		}
+		if strings.HasPrefix(lower, "x-amz-") && !slices.Contains(signed, lower) {
+			unsigned = append(unsigned, lower)
+		}
+	}
+	slices.Sort(unsigned)
+	return unsigned
 }
 
 // strictlyIncreasing reports whether names are sorted and none repeats, as SigV4 lists signed headers.

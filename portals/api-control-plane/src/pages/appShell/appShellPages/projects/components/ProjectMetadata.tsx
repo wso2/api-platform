@@ -16,9 +16,10 @@
  * under the License.
  */
 
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import {
   Avatar,
+  AvatarGroup,
   Box,
   Divider,
   RelativeTime,
@@ -33,6 +34,12 @@ import type { Project } from '@/api/resources/projects';
 import { TruncatedText } from '@/components/common/TruncatedText';
 import { SecondaryText } from '@/components/common/SecondaryText';
 import { PageTitleAvatar } from '@/components/common/PageTitleAvatar';
+import {
+  PROJECT_HEADER_ACTIONS_SLOT,
+  type ApiControlPlaneHeaderAction,
+} from '@/extensions';
+import { usePort } from '@/hostPort';
+import { useSlot } from '@/slots';
 import { relativeTime } from '@/utils/relativeTime';
 
 const messages = defineMessages({
@@ -62,8 +69,32 @@ type ProjectMetadataProps = {
   project: Project;
 };
 
+/**
+ * Renders the heading's cloud extension entries.
+ *
+ * Split out so `usePort` is called only when there is an entry to render: the
+ * Port is a cloud concern, and a standalone console registers no entry and so
+ * needs no provider. `ProjectMetadata` itself stays renderable without one.
+ */
+function ProjectHeaderExtensionActions({
+  entries,
+}: {
+  entries: readonly ApiControlPlaneHeaderAction[];
+}) {
+  const port = usePort();
+  return (
+    <Stack alignItems="center" direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+      {entries.map((entry) => (
+        <Fragment key={entry.id}>{entry.render(port)}</Fragment>
+      ))}
+    </Stack>
+  );
+}
+
 export function ProjectMetadata({ project }: ProjectMetadataProps) {
   const intl = useIntl();
+  // Cloud-only entries; empty in a standalone console, which registers none.
+  const headerActions = useSlot<ApiControlPlaneHeaderAction>(PROJECT_HEADER_ACTIONS_SLOT);
   const memberName = project.updatedBy;
   const memberCount = memberName ? 1 : 0;
   const owner = project.createdBy || intl.formatMessage(messages.unknown);
@@ -121,29 +152,18 @@ export function ProjectMetadata({ project }: ProjectMetadataProps) {
               <Stack alignItems="center" direction="row" spacing={1}>
                 {memberName && (
                   <Tooltip title={memberName}>
-                    <Stack direction="row" sx={{ '& > * + *': { ml: -1 } }}>
-                      <Avatar
-                        sx={{
-                          bgcolor: 'primary.main',
-                          color: 'primary.contrastText',
-                          height: 28,
-                          width: 28,
-                          zIndex: 1,
-                        }}
-                      >
+                    <AvatarGroup
+                      sx={{
+                        '& .MuiAvatar-root': { height: 28, width: 28 },
+                      }}
+                    >
+                      <Avatar color="primary" variant="light">
                         {memberName.charAt(0).toUpperCase()}
                       </Avatar>
-                      <Avatar
-                        aria-hidden="true"
-                        sx={{
-                          bgcolor: 'action.hover',
-                          height: 28,
-                          width: 28,
-                        }}
-                      >
+                      <Avatar aria-hidden="true">
                         <Users size={18} strokeWidth={1} />
                       </Avatar>
-                    </Stack>
+                    </AvatarGroup>
                   </Tooltip>
                 )}
                 <Typography color="text.secondary" variant="body2">
@@ -157,6 +177,7 @@ export function ProjectMetadata({ project }: ProjectMetadataProps) {
           </Stack>
         </Stack>
 
+        {headerActions.length > 0 && <ProjectHeaderExtensionActions entries={headerActions} />}
       </Stack>
     </Box>
   );

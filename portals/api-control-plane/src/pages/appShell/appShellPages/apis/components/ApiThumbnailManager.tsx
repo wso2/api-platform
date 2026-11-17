@@ -28,6 +28,7 @@ import {
 } from '@/api/resources/apiThumbnail';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useNotifications } from '@/components/Notifications';
+import { asApiType, useTrackFeature } from '@/featureUsage';
 import { useCan } from '@/permissions/useCan';
 import { ApiThumbnailAvatar } from './ApiThumbnailAvatar';
 
@@ -50,8 +51,7 @@ const messages = defineMessages({
   },
   confirmDeleteMessage: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteMessage',
-    defaultMessage:
-      'Are you sure you want to delete the thumbnail of this API?',
+    defaultMessage: 'Are you sure you want to delete the thumbnail of this API?',
   },
   confirmDeleteButton: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apis.ApiThumbnailManager.confirmDeleteButton',
@@ -100,6 +100,7 @@ export function ApiThumbnailManager({
 }: Props) {
   const intl = useIntl();
   const { notify } = useNotifications();
+  const trackFeature = useTrackFeature();
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -130,6 +131,7 @@ export function ApiThumbnailManager({
       notify(intl.formatMessage(messages.errorSize), 'error');
       return;
     }
+    trackFeature('apip.manage-apis.api-thumbnail-upload-click', { api_type: asApiType(apiType) });
     try {
       await upsertMutation.mutateAsync({ apiType, apiId, file });
       notify(intl.formatMessage(messages.uploadSuccess), 'success');
@@ -139,6 +141,7 @@ export function ApiThumbnailManager({
   };
 
   const onConfirmDelete = async () => {
+    trackFeature('apip.manage-apis.api-thumbnail-remove-click', { api_type: asApiType(apiType) });
     try {
       await deleteMutation.mutateAsync({ apiType, apiId });
       notify(intl.formatMessage(messages.deleteSuccess), 'success');

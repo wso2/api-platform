@@ -70,8 +70,8 @@ const KEYFRAMES = `
 const GatewayProvisioningCard: FC<GatewayProvisioningCardProps> = ({
   startedAt,
   icon = <Cloud size={20} />,
-  title = 'WSO2 managed gateway',
-  description = 'A gateway hosted and maintained by WSO2. Ready in one click and bound to your development environment.',
+  title = 'WSO2 managed API gateway',
+  description = 'An API gateway hosted and maintained by WSO2. Ready in one click and bound to your development environment.',
   stepLabels = DEFAULT_STEP_LABELS,
 }) => {
   const dark = useActiveColorScheme() === 'dark';

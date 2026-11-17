@@ -70,6 +70,10 @@ type Options struct {
 	Ordinal  int
 	Replicas int
 
+	// InstanceSuffix names a compose instance's services in place of the suffix its ordinal
+	// gives, for an instance started beside the block's own.
+	InstanceSuffix string
+
 	// Env is merged over the definition's static Env. This is where a resolved DSN
 	// and any wiring-derived values arrive.
 	Env map[string]string

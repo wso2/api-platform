@@ -23,7 +23,7 @@ Feature: Another organization cannot read an organization's resources
   So that it cannot read them or even learn that they exist
 
   Background:
-    Given I generate a unique value from "tenant-read-project" and store it as "projectHandle"
+    Given I generate a unique resource name from "tenant-read-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
 
   @TENANT-001

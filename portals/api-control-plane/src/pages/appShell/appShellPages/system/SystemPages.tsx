@@ -19,7 +19,7 @@
 import { Button, PageContent, PageTitle, Stack, Typography } from '@wso2/oxygen-ui';
 import { useEffect, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { useOrganizations } from '@/api/resources/organizations';
 import { AppPage } from '@/components/AppPage';
@@ -27,6 +27,7 @@ import { EmptyState, ErrorState, LoadingState } from '@/components/StateViews';
 import { routes } from '@/routes/paths';
 import { useAuth } from '@/contexts/auth/AuthProvider';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import type { OrganizationPickerState } from '@/scope/ConsoleScopeProvider';
 
 /**
  * Message ids are keyed by the *component*, not by this file: five unrelated
@@ -147,9 +148,24 @@ export function OrganizationRedirectPage() {
 
 function OrganizationRedirect() {
   const intl = useIntl();
+  const { canSwitchOrganization, user } = useAuth();
+  const location = useLocation();
+  // Organizations the session was refused are never picked again.
+  const rejected = (location.state as OrganizationPickerState | null)?.rejectedOrganizations ?? [];
+  const sessionHandle = user?.org?.handle;
+  // Where the session switches organizations, its own organization needs no
+  // switch, so it is the one place the user can always land.
+  const sessionLanding =
+    canSwitchOrganization && sessionHandle && !rejected.includes(sessionHandle) ? sessionHandle : undefined;
   const organizationsQuery = useOrganizations();
-  const organization = organizationsQuery.data?.list?.[0];
-  const settled = organizationsQuery.isPending || Boolean(organization);
+  const listed = organizationsQuery.data?.list;
+  const organizations = listed?.filter((item) => !rejected.includes(item.id));
+  // The session's own organization first: opening another one moves the session.
+  const organization =
+    organizations?.find((item) => item.id === sessionHandle) ?? organizations?.[0];
+  const allRejected = Boolean(listed?.length) && organizations?.length === 0;
+  const settled =
+    Boolean(sessionLanding) || organizationsQuery.isPending || Boolean(organization) || allRejected;
   const [attempt, setAttempt] = useState(0);
   const { refetch } = organizationsQuery;
 
@@ -165,6 +181,10 @@ function OrganizationRedirect() {
     }, PROVISIONING_INTERVAL_MS);
     return () => clearTimeout(timer);
   }, [attempt, refetch, settled]);
+
+  if (sessionLanding) {
+    return <Navigate to={routes.organizationHome(sessionLanding)} replace />;
+  }
 
   if (organizationsQuery.isPending) {
     return <LoadingState label={intl.formatMessage(organizationRedirectMessages.loading)} />;
@@ -185,7 +205,7 @@ function OrganizationRedirect() {
     // only the first load — so without the isFetching guard the empty state would flash
     // while that final answer was still in flight, which is the very thing this wait
     // exists to prevent.
-    if (attempt < PROVISIONING_ATTEMPTS || organizationsQuery.isFetching) {
+    if (!allRejected && (attempt < PROVISIONING_ATTEMPTS || organizationsQuery.isFetching)) {
       return <LoadingState label={intl.formatMessage(organizationRedirectMessages.provisioning)} />;
     }
     return (
@@ -196,7 +216,10 @@ function OrganizationRedirect() {
     );
   }
 
-  return <Navigate to={routes.organizationHome(organization.id)} replace />;
+  const pickerState: OrganizationPickerState | undefined = rejected.length
+    ? { rejectedOrganizations: rejected }
+    : undefined;
+  return <Navigate to={routes.organizationHome(organization.id)} replace state={pickerState} />;
 }
 
 export function UnauthorizedPage() {

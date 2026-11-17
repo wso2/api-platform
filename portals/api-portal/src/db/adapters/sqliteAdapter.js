@@ -219,7 +219,15 @@ function createSqliteAdapter(config) {
                 throw err;
             }
         }),
+        // The health check's SELECT 1 does not wait for the lock. The connection is
+        // synchronous, so the statement can never interleave with another; inside an
+        // open transaction it only reads, so it changes nothing. Waiting would report a
+        // healthy database as timed out whenever a transaction holds the lock for longer
+        // than the check timeout.
+        healthPing: () => raw.query('SELECT 1', []),
         close: async () => conn.close(),
+        // One synchronous connection: no pool to saturate.
+        poolStats: () => null,
     };
 }
 

@@ -27,8 +27,27 @@ const { isBinaryParam } = require('../paramTypes');
  * produces exactly that placeholder form for the mssql dialect, so binding
  * here just needs to name each incoming param `p1, p2, ...` in order.
  */
+// node-mssql's own connect timeout when none is configured.
+const MSSQL_DEFAULT_CONNECTION_TIMEOUT_MS = 15000;
+// How much longer the pool waits than a connect attempt may take (see poolTimeoutMs).
+const POOL_TIMEOUT_MARGIN_MS = 5000;
+
+/*
+ * The pool (tarn) times out its acquires and connection creates on its own clock,
+ * 30s by default, and starts that clock just before the driver starts its connect
+ * timer. Left at the default, a connect that hangs (a host that has gone dark rather
+ * than refusing) is cut off by tarn first, with a TimeoutError that carries no code
+ * and does not read as a connection failure, so the database check keeps counting
+ * those operations as healthy. Waiting a little longer than the connect timeout lets
+ * the driver's ConnectionError ETIMEOUT reach the caller instead.
+ */
+function poolTimeoutMs(connectionTimeoutMs) {
+    return (connectionTimeoutMs || MSSQL_DEFAULT_CONNECTION_TIMEOUT_MS) + POOL_TIMEOUT_MARGIN_MS;
+}
+
 function buildConnectionConfig(config) {
     const db = config.database;
+    const poolTimeout = poolTimeoutMs(db.poolConnectionTimeoutMs);
     // sslMode is shared with the postgres adapter's config.database.sslMode
     // (see ../dbSsl.js) — 'verify-full' here maps to encrypt+cert verification,
     // 'disable' to a plain, unencrypted connection.
@@ -43,7 +62,13 @@ function buildConnectionConfig(config) {
             encrypt: verifyFull,
             trustServerCertificate: !verifyFull,
         },
-        pool: { max: db.maxOpenConns, min: db.minOpenConns, idleTimeoutMillis: db.poolIdleTimeoutMs },
+        pool: {
+            max: db.maxOpenConns,
+            min: db.minOpenConns,
+            idleTimeoutMillis: db.poolIdleTimeoutMs,
+            acquireTimeoutMillis: poolTimeout,
+            createTimeoutMillis: poolTimeout,
+        },
         connectionTimeout: db.poolConnectionTimeoutMs,
         requestTimeout: db.poolRequestTimeoutMs,
     };
@@ -72,7 +97,8 @@ function isVarcharSafe(value) {
     return typeof value === 'string' && value.length <= VARCHAR_PARAM_LENGTH && ASCII_ONLY.test(value);
 }
 
-function createMssqlAdapter(config) {
+/** `hooks.onPoolError(err)` receives every connection error the pool raises. */
+function createMssqlAdapter(config, hooks = {}) {
     const pool = new sql.ConnectionPool(buildConnectionConfig(config));
     const ready = pool.connect();
     // Every caller awaits `ready` before issuing a query (see run()/withTransaction()
@@ -81,9 +107,13 @@ function createMssqlAdapter(config) {
     // the process. Attach a no-op catch immediately to prevent that; the real error
     // still propagates through every `await ready` call site.
     ready.catch(() => { /* surfaced to callers via query rejections */ });
-    // Surface pool-level connection errors instead of letting them crash the
-    // process as unhandled 'error' events (mssql/tedious convention).
-    pool.on('error', () => { /* connection errors surface to callers via query rejections */ });
+    // Surface pool-level errors instead of letting them crash the process as unhandled
+    // 'error' events (mssql/tedious convention). The pool raises one for every failed
+    // acquire, which the caller also sees through its own rejection, so the hook must
+    // not count it as another outcome (see OutcomeWindow.notePoolError).
+    pool.on('error', (err) => {
+        if (hooks.onPoolError) hooks.onPoolError(err);
+    });
 
     // Unlike `pg`, the `mssql` package does not serialize plain JS objects for
     // NVARCHAR(MAX) "JSON column" storage (this schema has no native JSON type on
@@ -163,7 +193,13 @@ function createMssqlAdapter(config) {
 
     handle.close = async () => pool.close();
 
+    handle.poolStats = () => ({
+        max: pool.config?.pool?.max,
+        borrowed: pool.borrowed,
+        pending: pool.pending,
+    });
+
     return handle;
 }
 
-module.exports = { createMssqlAdapter };
+module.exports = { createMssqlAdapter, buildConnectionConfig };

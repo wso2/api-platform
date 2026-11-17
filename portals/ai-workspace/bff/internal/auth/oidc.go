@@ -76,9 +76,13 @@ type OIDC struct {
 	redirectURL           string
 	postLogoutRedirectURL string
 	scopes                string
-	disco                 discoveryDoc
-	mapping               session.ClaimMapping
-	absTTL                time.Duration
+	// resource is the RFC 8707 resource indicator put on /oauth2/authorize when
+	// set (see SetResource). Authorize only: the IdP binds it to the code, and an
+	// empty resource= on the token endpoint is rejected by ThunderID.
+	resource string
+	disco    discoveryDoc
+	mapping  session.ClaimMapping
+	absTTL   time.Duration
 
 	// sealer seals the in-flight login transaction into the tx cookie. There is no
 	// in-process alternative: the callback is a fresh browser navigation that any
@@ -157,6 +161,11 @@ func NewOIDC(
 	}
 	return o, nil
 }
+
+// SetResource sets the RFC 8707 resource indicator sent on every authorize request,
+// for an IdP that scopes tokens per resource server (ThunderID issues no product
+// scope without it). Empty, the default, sends no parameter. Call before serving.
+func (o *OIDC) SetResource(resource string) { o.resource = resource }
 
 // Close releases background resources. There are none — login transactions live in
 // the client's cookie, not in this process — but it stays so callers need not know
@@ -295,6 +304,12 @@ func (o *OIDC) AuthCodeURL(returnURL string, extra url.Values) (authURL, txID st
 		"code_challenge_method": "S256",
 	} {
 		q.Set(name, value)
+	}
+	// After the extras too, and removed when unset, so a forwarded parameter can
+	// never pick the resource server the token is minted for.
+	q.Del("resource")
+	if o.resource != "" {
+		q.Set("resource", o.resource)
 	}
 	return o.disco.AuthorizationEndpoint + "?" + q.Encode(), txID, nil
 }

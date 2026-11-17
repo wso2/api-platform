@@ -126,7 +126,7 @@ Feature: Priced subscription plans
     And the JSON response field "code" should be "SUBSCRIPTION_PLAN_PRICING_LOCKED"
 
   Scenario: A plan an API offers keeps its name, limit and price, and can't be deleted
-    Given I generate a unique value from "priced-plan-project" and store it as "projectHandle"
+    Given I generate a unique resource name from "priced-plan-project" and store it as "projectHandle"
     And I create a project "${CTX:projectHandle}" on the control plane
     And I generate a unique resource name from "priced-api" and store it as "apiHandle"
     And I generate a unique API context from "/priced-api" and store it as "apiContext"

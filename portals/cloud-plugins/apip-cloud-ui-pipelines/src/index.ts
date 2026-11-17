@@ -11,7 +11,8 @@ export { default as PipelinesFeature } from './PipelinesFeature';
 export type { PipelinesFeatureProps } from './PipelinesFeature';
 export { default as ProjectPipelinesFeature } from './ProjectPipelinesFeature';
 export type { ProjectPipelinesFeatureProps } from './ProjectPipelinesFeature';
-export type { AIWorkspaceHostPort, ApiFetch, NotifySeverity } from './hostPort';
+export type { AIWorkspaceHostPort, ApiFetch, NotifySeverity, PermissionsPort } from './hostPort';
+export { NO_PERMISSION_TOOLTIP, PIPELINE_OPERATIONS } from './permissions';
 export type {
   CreatePipelineInput,
   Environment,

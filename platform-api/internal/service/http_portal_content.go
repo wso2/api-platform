@@ -30,8 +30,8 @@ import (
 // portalContentFileName must end in .zip, or the portal refuses the upload.
 const portalContentFileName = "content.zip"
 
-// PublishContent implements PortalPublisher with PUT on the listing's /assets. The portal only
-// adds or replaces files, so the call is safe to repeat.
+// PublishContent implements PortalPublisher with PUT on the listing's /assets, which replaces the
+// listing's content, so the call is safe to repeat.
 func (p *HTTPPortalPublisher) PublishContent(ctx context.Context, portal *model.APIPortal, apiType, apiHandle string, content *PortalContent) error {
 	listing, err := portalListingFor(apiType)
 	if err != nil {

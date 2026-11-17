@@ -854,6 +854,51 @@ func TestAPIPortalService_DeleteAPIPortal_HappyPath(t *testing.T) {
 	}
 }
 
+type fakePortalSecretRemover struct {
+	err    error
+	called [2]string
+}
+
+func (f *fakePortalSecretRemover) DeletePortalSecret(_ context.Context, orgID, handle string) error {
+	f.called = [2]string{orgID, handle}
+	return f.err
+}
+
+func TestAPIPortalService_DeleteAPIPortal_RemovesWebhookSecret(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{getResult: &model.APIPortal{ID: "p1", Handle: "acme", OrganizationID: "org-1"}}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	secrets := &fakePortalSecretRemover{}
+	svc.SetWebhookSecrets(secrets)
+	if err := svc.DeleteAPIPortal("acme", "org-1", "actor"); err != nil {
+		t.Fatalf("DeleteAPIPortal: %v", err)
+	}
+	if secrets.called != [2]string{"org-1", "acme"} {
+		t.Errorf("DeletePortalSecret called with %+v", secrets.called)
+	}
+}
+
+func TestAPIPortalService_DeleteAPIPortal_PortalFailureKeepsSecret(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{getResult: &model.APIPortal{ID: "p1", Handle: "acme", OrganizationID: "org-1"}, deleteErr: errors.New("db down")}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	secrets := &fakePortalSecretRemover{}
+	svc.SetWebhookSecrets(secrets)
+	if err := svc.DeleteAPIPortal("acme", "org-1", "actor"); err == nil {
+		t.Fatal("want the portal delete error")
+	}
+	if secrets.called != ([2]string{}) {
+		t.Errorf("a live portal must keep its secret, DeletePortalSecret called with %+v", secrets.called)
+	}
+}
+
+func TestAPIPortalService_DeleteAPIPortal_SecretFailureDoesNotFailADeletedPortal(t *testing.T) {
+	portalRepo := &mockAPIPortalRepository{getResult: &model.APIPortal{ID: "p1", Handle: "acme", OrganizationID: "org-1"}}
+	svc := newTestAPIPortalService(t, portalRepo, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
+	svc.SetWebhookSecrets(&fakePortalSecretRemover{err: errors.New("db down")})
+	if err := svc.DeleteAPIPortal("acme", "org-1", "actor"); err != nil {
+		t.Fatalf("the portal is gone, the delete must succeed: %v", err)
+	}
+}
+
 func TestAPIPortalService_DeleteAPIPortal_NotFound(t *testing.T) {
 	svc := newTestAPIPortalService(t, &mockAPIPortalRepository{getResult: nil}, &mockAPIPortalOrgRepository{}, &mockAPIPortalAuditRepository{})
 	err := svc.DeleteAPIPortal("ghost", "org-1", "actor")

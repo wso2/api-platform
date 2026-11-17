@@ -55,18 +55,38 @@ describe('toUsagePanel', () => {
     ).toBeNull();
   });
 
-  it('groups infrastructure, then gateways, then managed interfaces', () => {
+  it('shows managed interfaces, then infrastructure', () => {
     const panel = toUsagePanel(trial({ apis: 3, gateways: 1, portals: 1 }));
     expect(panel!.sections.map((section) => section.title)).toEqual([
-      'Infrastructure',
-      'Gateways',
       'Managed Interfaces',
+      'Infrastructure',
     ]);
-    expect(panel!.sections[0].items.map((item) => item.key)).toEqual([
-      'api_developer_portals',
-    ]);
-    expect(panel!.sections[2].items).toEqual([
+    expect(panel!.sections[0].items).toEqual([
       { key: 'apis', label: 'APIs', count: 3, limit: 5 },
+    ]);
+  });
+
+  // The gateway kinds sit under a "Gateways" sub-heading, with short labels so
+  // the indented row does not truncate, and Portals follows as a plain row —
+  // an untitled group, since a section's own items always render first.
+  it('nests gateways under a sub-heading, with portals below them', () => {
+    const panel = toUsagePanel(trial({ managedGateways: 0, gateways: 1, portals: 1 }));
+    const infrastructure = panel!.sections[1];
+    expect(infrastructure.items).toBeUndefined();
+    expect(infrastructure.groups).toEqual([
+      {
+        key: 'gateways',
+        title: 'Gateways',
+        items: [
+          { key: 'gateways', label: 'WSO2 Managed', count: 0, limit: 1 },
+          { key: 'hybrid_gateways', label: 'Self-Hosted', count: 1, limit: 1 },
+        ],
+      },
+      {
+        key: 'portals',
+        title: undefined,
+        items: [{ key: 'api_developer_portals', label: 'Portals', count: 1, limit: 1 }],
+      },
     ]);
   });
 
@@ -74,8 +94,11 @@ describe('toUsagePanel', () => {
   // rather than inventing a ceiling for the other.
   it('shows only the gateway kinds the plan caps', () => {
     const panel = toUsagePanel(summary([quota('hybrid_gateways', 3, 1)]));
-    expect(panel!.sections.map((section) => section.key)).toEqual(['gateways']);
-    expect(panel!.sections[0].items.map((item) => item.key)).toEqual(['hybrid_gateways']);
+    expect(panel!.sections.map((section) => section.key)).toEqual(['infrastructure']);
+    expect(panel!.sections[0].groups!.map((group) => group.key)).toEqual(['gateways']);
+    expect(panel!.sections[0].groups![0].items.map((item) => item.key)).toEqual([
+      'hybrid_gateways',
+    ]);
   });
 
   // Billing carries a `projects` quota, but nothing reports the count, so the
@@ -84,16 +107,16 @@ describe('toUsagePanel', () => {
     const panel = toUsagePanel(
       summary([quota('projects', 5, 0), quota('api_developer_portals', 1, 0)]),
     );
-    expect(panel!.sections[0].items.map((item) => item.key)).toEqual([
+    expect(panel!.sections[0].groups!.map((group) => group.key)).toEqual(['portals']);
+    expect(panel!.sections[0].groups![0].items.map((item) => item.key)).toEqual([
       'api_developer_portals',
     ]);
   });
 
-  it('totals managed interfaces only, never a group of independent caps', () => {
+  it('totals managed interfaces only, never a section of independent caps', () => {
     const panel = toUsagePanel(trial({ apis: 3, gateways: 1, portals: 1 }));
-    expect(panel!.sections[0].totalSuffix).toBeUndefined();
+    expect(panel!.sections[0].totalSuffix).toBe('used');
     expect(panel!.sections[1].totalSuffix).toBeUndefined();
-    expect(panel!.sections[2].totalSuffix).toBe('used');
   });
 
   // MCP, LLM and agent proxies are not metered, so the panel never names them
@@ -109,12 +132,12 @@ describe('toUsagePanel', () => {
       ]),
     );
     expect(panel!.sections.map((section) => section.key)).toEqual(['managed-interfaces']);
-    expect(panel!.sections[0].items.map((item) => item.key)).toEqual(['apis']);
+    expect(panel!.sections[0].items!.map((item) => item.key)).toEqual(['apis']);
   });
 
   // A meter this plan does not cap is absent, not zero — rendering it would
   // invent a ceiling billing never set.
-  it('omits a row that has no ceiling', () => {
+  it('omits a row that has no ceiling, and a group left empty by it', () => {
     const panel = toUsagePanel(
       summary([
         quota('apis', 5, 1),
@@ -122,18 +145,15 @@ describe('toUsagePanel', () => {
         quota('api_developer_portals', 1, 0),
       ]),
     );
-    expect(panel!.sections[0].items.map((item) => item.key)).toEqual([
-      'api_developer_portals',
-    ]);
-    expect(panel!.sections.map((section) => section.key)).not.toContain('gateways');
+    expect(panel!.sections[1].groups!.map((group) => group.key)).toEqual(['portals']);
   });
 
-  it('drops a group whose every meter is uncapped', () => {
+  it('drops a section whose every meter is uncapped', () => {
     const panel = toUsagePanel(
       summary([quota('apis', null, 9000), quota('hybrid_gateways', 1, 0)]),
     );
-    // No Managed Interfaces group: its one meter is unlimited.
-    expect(panel!.sections.map((section) => section.key)).toEqual(['gateways']);
+    // No Managed Interfaces section: its one meter is unlimited.
+    expect(panel!.sections.map((section) => section.key)).toEqual(['infrastructure']);
   });
 
   // Soft mode: the row names where overage starts, which is the figure the
@@ -173,16 +193,20 @@ describe('toUsagePanel', () => {
         },
       ]),
     );
-    expect(panel!.sections[0].items).toEqual([
+    expect(panel!.sections[0].groups![0].items).toEqual([
       { key: 'api_developer_portals', label: 'Portals', count: 0, limit: 0 },
     ]);
   });
 
-  it('gives every item and section a stable key', () => {
+  it('gives every item, group and section a stable key', () => {
     const panel = toUsagePanel(trial({ apis: 1 }));
     for (const section of panel!.sections) {
       expect(section.key).toBeTruthy();
-      for (const item of section.items) expect(item.key).toBeTruthy();
+      for (const item of section.items ?? []) expect(item.key).toBeTruthy();
+      for (const group of section.groups ?? []) {
+        expect(group.key).toBeTruthy();
+        for (const item of group.items) expect(item.key).toBeTruthy();
+      }
     }
   });
 });

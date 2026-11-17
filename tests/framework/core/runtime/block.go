@@ -81,6 +81,14 @@ type Topology struct {
 	// stacks contains compose-backed components addressable by service name.
 	stacks map[string]*ComposeStack
 
+	// repoRoot resolves the repository paths of the block's definitions and overlays.
+	repoRoot string
+
+	// extraMu guards what LaunchComposeInstance changes while parallel runners call it: stops
+	// and the suffixes already taken.
+	extraMu       sync.Mutex
+	extraSuffixes map[string]bool
+
 	// logWriter, when non-nil, receives every component's stdout/stderr for the block's
 	// whole lifetime. Nil in a default run — the suite decides whether logs are captured.
 	logWriter *logcapture.Writer
@@ -256,6 +264,7 @@ func BootBlock(
 	}
 
 	t.Admin = actor.Administrator()
+	t.repoRoot = repoRoot
 
 	// Provision storage before starting components.
 	storage, err := Provision(ctx, DatabaseOptions{
@@ -676,6 +685,8 @@ func (t *Topology) Teardown(ctx context.Context) error {
 	if t == nil {
 		return nil
 	}
+	t.extraMu.Lock()
+	defer t.extraMu.Unlock()
 	var errs []error
 	remaining := make([]func(context.Context) error, 0)
 	for i := len(t.stops) - 1; i >= 0; i-- {

@@ -40,7 +40,7 @@ func TestBuildHTTPClientConfigDefaultsSSRFDisabled(t *testing.T) {
 	// policies — some targeting a fixed operator-configured backend, some
 	// potentially targeting a tenant/request-derived URL — so SSRF guarding is
 	// an explicit per-deployment opt-in rather than always-on.
-	if cfg.SSRF.Enabled {
+	if cfg.DestinationGuard.Enabled {
 		t.Fatal("expected SSRF.Enabled to default to false, got true")
 	}
 	if cfg.Proxy.Mode != "" && cfg.Proxy.Mode != "none" {
@@ -70,30 +70,30 @@ func TestBuildHTTPClientConfigCarriesPoolingTimeoutsAndTLS(t *testing.T) {
 	}
 }
 
-func TestBuildHTTPClientConfigSSRFEnabledRequiresValidPreset(t *testing.T) {
+func TestBuildHTTPClientConfigGuardEnabledRequiresValidPreset(t *testing.T) {
 	hc := defaultHTTPClientConfigForTest()
-	hc.SSRF.Enabled = true
-	hc.SSRF.Preset = "not-a-real-preset"
+	hc.DestinationGuard.Enabled = true
+	hc.DestinationGuard.Preset = "not-a-real-preset"
 
 	if _, err := BuildHTTPClientConfig(hc); err == nil {
-		t.Fatal("expected error for unrecognized ssrf.preset, got nil")
+		t.Fatal("expected error for unrecognized destination_guard.preset, got nil")
 	}
 
-	hc.SSRF.Preset = "public_only"
-	hc.SSRF.MaxRedirects = 3
-	hc.SSRF.AllowedSchemes = []string{"https"}
+	hc.DestinationGuard.Preset = "public_only"
+	hc.DestinationGuard.MaxRedirects = 3
+	hc.DestinationGuard.AllowedSchemes = []string{"https"}
 	cfg, err := BuildHTTPClientConfig(hc)
 	if err != nil {
 		t.Fatalf("BuildHTTPClientConfig returned error with valid preset: %v", err)
 	}
-	if !cfg.SSRF.Enabled {
+	if !cfg.DestinationGuard.Enabled {
 		t.Fatal("expected SSRF.Enabled to be true")
 	}
-	if cfg.SSRF.Policy.BlockLoopback != netguard.PublicOnly().BlockLoopback {
-		t.Errorf("expected SSRF.Policy to be derived from the public_only preset, got %+v", cfg.SSRF.Policy)
+	if cfg.DestinationGuard.Policy.BlockLoopback != netguard.PublicOnly().BlockLoopback {
+		t.Errorf("expected DestinationGuard.Policy to be derived from the public_only preset, got %+v", cfg.DestinationGuard.Policy)
 	}
-	if cfg.SSRF.Policy.AllowedSchemes[0] != "https" || cfg.SSRF.MaxRedirects != 3 {
-		t.Errorf("expected SSRF policy/redirects carried through, got %+v maxRedirects=%d", cfg.SSRF.Policy, cfg.SSRF.MaxRedirects)
+	if cfg.DestinationGuard.Policy.AllowedSchemes[0] != "https" || cfg.DestinationGuard.MaxRedirects != 3 {
+		t.Errorf("expected destination guard policy/redirects carried through, got %+v maxRedirects=%d", cfg.DestinationGuard.Policy, cfg.DestinationGuard.MaxRedirects)
 	}
 }
 
@@ -106,13 +106,13 @@ func TestBuildHTTPClientConfigRejectsUnknownProxyMode(t *testing.T) {
 	}
 }
 
-func TestBuildHTTPClientConfigRequiresEgressWhenProxyAndSSRFConfigured(t *testing.T) {
+func TestBuildHTTPClientConfigRequiresEgressWhenProxyAndGuardConfigured(t *testing.T) {
 	hc := defaultHTTPClientConfigForTest()
 	hc.Proxy.Mode = "url"
 	hc.Proxy.URL = "https://proxy.example.com:3128"
 	hc.Proxy.Egress = ""
-	hc.SSRF.Enabled = true
-	hc.SSRF.Preset = "permit_private_block_metadata"
+	hc.DestinationGuard.Enabled = true
+	hc.DestinationGuard.Preset = "permit_private_block_metadata"
 
 	if _, err := BuildHTTPClientConfig(hc); err == nil {
 		t.Fatal("expected error when proxy+SSRF are configured without an explicit egress policy, got nil")

@@ -18,7 +18,7 @@
 
 import { Box, Card, CardContent, Divider, Stack, Typography } from '@wso2/oxygen-ui';
 import { Globe } from '@wso2/oxygen-ui-icons-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
 import { useIsPolicyHubConfigured, type PolicySummary } from '@/api/resources/policyHub';
@@ -26,10 +26,16 @@ import type { GraphQLApiDetail } from '@/api/resources/graphqlApis';
 import { useGraphQLApiSdl, useUpdateGraphQLApi } from '@/api/resources/graphqlApis';
 import type { Policy } from '@/api/resources/restApis';
 import { useNotifications } from '@/components/Notifications';
+import { trackPolicyAttachment, useTrackFeature } from '@/featureUsage';
+import { useCan } from '@/permissions';
 import { AttachedPolicyList } from '../../develop/policies/AttachedPolicyList';
 import { PoliciesPageTitle } from '../../develop/policies/PoliciesPageTitle';
 import { ReadOnlyPoliciesNotice } from '../../develop/policies/ReadOnlyPoliciesNotice';
 import { AvailablePoliciesPanel } from '../../develop/policies/AvailablePoliciesPanel';
+import {
+  newlyAttachedPolicies,
+  type PolicyAttachments,
+} from '../../develop/policies/newlyAttachedPolicies';
 import { getDraggedPolicy } from '../../develop/policies/policyDnd';
 import { PolicyConfigDrawer, type PolicyRef } from '../../develop/policies/PolicyConfigDrawer';
 import { SaveBar } from '../../develop/SaveBar';
@@ -110,8 +116,11 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
   // loading state was blocking the common case on an irrelevant request.
   const needsSdlForSave = api.schemaSource !== 'introspection' && api.schemaSource !== undefined;
   // Synced from a data-plane gateway: the control plane rejects any change, so
-  // the policies are listed without the controls that would change them.
-  const readOnly = Boolean(api.readOnly);
+  // the policies are listed without the controls that would change them. A
+  // caller who may not update the API (saving is an update) gets the same view.
+  const gatewayOwned = Boolean(api.readOnly);
+  const canUpdate = useCan('UpdateGraphQLAPI');
+  const readOnly = gatewayOwned || !canUpdate;
 
   const [apiPolicies, setApiPolicies] = useState<Policy[]>(api.policies ?? []);
   const [picked, setPicked] = useState<PolicySummary | null>(null);
@@ -119,6 +128,10 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
   const [dropActive, setDropActive] = useState(false);
 
   const { dirty, markSaved } = useDirtyTracking({ apiPolicies });
+  const trackFeature = useTrackFeature();
+  // As in PolicyPanel: compared with the last submission, so retrying a
+  // rejected save does not report the same attachment twice.
+  const lastSubmitted = useRef<PolicyAttachments>({ apiPolicies });
 
   const openAdd = () => {
     setEditing(null);
@@ -162,6 +175,14 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
     // the same reason PolicyPanel's does — a PUT to the collection URL would
     // otherwise be issued if it were ever missing.
     if (!graphqlApiId) return;
+    const submitted = { apiPolicies };
+    for (const { name } of newlyAttachedPolicies(lastSubmitted.current, submitted)) {
+      trackPolicyAttachment(trackFeature, name, {
+        artifact_kind: 'graphql-api',
+        policy_scope: 'api',
+      });
+    }
+    lastSubmitted.current = submitted;
     update.mutate(
       {
         graphqlApiId,
@@ -202,7 +223,7 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
   return (
     <Stack spacing={2}>
       <PoliciesPageTitle />
-      {readOnly && <ReadOnlyPoliciesNotice />}
+      {gatewayOwned && <ReadOnlyPoliciesNotice />}
       <Stack alignItems="flex-start" direction={{ xs: 'column', md: 'row' }} spacing={2}>
         <Box sx={{ flex: 1, minWidth: 0, width: '100%' }}>
           <Card sx={{ height: '100%', overflow: 'hidden' }} variant="outlined">
@@ -281,6 +302,7 @@ export function GraphqlPolicyPanel({ api }: { api: GraphQLApiDetail }) {
             <Card sx={{ height: '100%', overflow: 'hidden' }} variant="outlined">
               <CardContent sx={{ height: 620, p: 2 }}>
                 <AvailablePoliciesPanel
+                  artifactKind="graphql-api"
                   disabled={readOnly}
                   onSelect={(policy) => {
                     if (readOnly) return;

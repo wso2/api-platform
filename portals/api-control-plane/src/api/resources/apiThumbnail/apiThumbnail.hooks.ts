@@ -49,6 +49,8 @@ type UseApiThumbnailResult = {
   blob: Blob | undefined;
   /** True on first fetch (branch here, not on `isLoading`, since the query is scope-gated). */
   isPending: boolean;
+  /** True while any read is in flight, a refresh of a cached thumbnail included. */
+  isFetching: boolean;
   /** A real error. "No thumbnail" is a successful `null` value, not an error. */
   error: ApiError | null;
 };
@@ -68,7 +70,13 @@ export const useApiThumbnail = (
   const blob = query.data?.blob;
   const url = useObjectUrl(blob);
 
-  return { url, blob, isPending: query.isPending, error: query.error as ApiError | null };
+  return {
+    url,
+    blob,
+    isPending: query.isPending,
+    isFetching: query.isFetching,
+    error: query.error as ApiError | null,
+  };
 };
 
 /**

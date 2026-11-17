@@ -40,8 +40,8 @@ jobs:
           make test
 
       # The integration framework's coverage run for main. These steps mirror the source-built
-      # (-coverage) leg of it.yml, which uploads the same flags for pull requests; keep the two in
-      # step.
+      # (-coverage) leg of platform-tests.yml, which uploads the same flags for pull requests;
+      # keep the two in step.
       - name: Ensure C compiler is available
         run: |
           sudo apt-get update
@@ -56,16 +56,14 @@ jobs:
           make -C tests/framework a2a-trip-planner
           make -C tests/framework ap-cli
 
+      # Not continue-on-error: a suite that fails, or runs nothing, turns the nightly red rather
+      # than leaving main's integration coverage carried forward unnoticed. The coverage report
+      # and uploads below then do not run.
       - name: Run the integration framework suite with coverage
-        continue-on-error: true
         working-directory: tests/framework
         env:
           IT_COVERAGE_OUT: ${{ github.workspace }}/tests/framework/suites/it/coverage-out
-        # The policy-compat blocks require a sibling gateway-controllers checkout and are
-        # exercised by that repository's workflow.
-        run: |
-          go test ./suites/it -count=1 -timeout=60m -coverage \
-            -skip-blocks=policy-compat,policy-compat-semantic-ai
+        run: go test ./suites/it -count=1 -timeout=60m -coverage
 
       - name: Generate integration coverage report
         continue-on-error: true
@@ -90,7 +88,7 @@ jobs:
           files: gateway/gateway-controller/unit-test-coverage.txt,gateway/gateway-builder/unit-test-coverage.txt,gateway/gateway-runtime/policy-engine/unit-test-coverage.txt,cli/src/unit-test-coverage.txt
           flags: unit
 
-      # Integration flags, the same as it.yml's, so main and pull requests report into one view.
+      # Integration flags, the same as platform-tests.yml's, so main and pull requests report into one view.
       - name: Upload gateway-controller integration coverage to Codecov
         continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1

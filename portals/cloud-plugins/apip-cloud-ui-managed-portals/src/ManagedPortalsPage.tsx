@@ -8,9 +8,10 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { PageContent, Typography } from '@wso2/oxygen-ui';
+import { Alert, PageContent, PageTitle, Typography } from '@wso2/oxygen-ui';
 
 import type { CloudHostPort } from './hostPort';
+import { permissionsOf, PORTAL_OPERATIONS } from './permissions';
 import ManagedPortalCreate from './ManagedPortalCreate';
 import ManagedPortalEdit from './ManagedPortalEdit';
 import ManagedPortalsList from './ManagedPortalsList';
@@ -50,6 +51,15 @@ export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
     setView({ kind: 'list' });
   }, [port.orgHandle]);
 
+  // What the signed-in user may be offered, from the scopes each operation
+  // accepts. The server still decides; this keeps the page from offering a call
+  // it would refuse, and from making one it knows will be refused.
+  const { canAny } = permissionsOf(port);
+  const canList = canAny(PORTAL_OPERATIONS.ListManagedApiPortals);
+  const canCreate = canAny(PORTAL_OPERATIONS.CreateManagedApiPortal);
+  const canUpdate = canAny(PORTAL_OPERATIONS.UpdateManagedApiPortal);
+  const canDelete = canAny(PORTAL_OPERATIONS.DeleteManagedApiPortal);
+
   if (!portalPort) {
     return (
       <PageContent fullWidth>
@@ -63,6 +73,17 @@ export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
     );
   }
 
+  if (!canList) {
+    return (
+      <PageContent fullWidth>
+        <PageTitle sx={{ mb: 3 }}>
+          <PageTitle.Header>Portals</PageTitle.Header>
+        </PageTitle>
+        <Alert severity="warning">You don&apos;t have permission to view portals.</Alert>
+      </PageContent>
+    );
+  }
+
   const goToList = () => setView({ kind: 'list' });
 
   // Keying the child views on orgHandle forces a remount when the user
@@ -72,12 +93,15 @@ export function ManagedPortalsPage({ port }: ManagedPortalsPageProps) {
   // submitted against the new org's environment set.
   return (
     <PortalFeatureProvider value={{ port: portalPort, host: port }}>
-      {view.kind === 'create' ? (
+      {view.kind === 'create' && canCreate ? (
         <ManagedPortalCreate key={port.orgHandle} onCancel={goToList} onCreated={goToList} />
-      ) : view.kind === 'edit' ? (
+      ) : view.kind === 'edit' && canUpdate ? (
         <ManagedPortalEdit key={port.orgHandle} portalId={view.portalId} onCancel={goToList} onSaved={goToList} />
       ) : (
         <ManagedPortalsList
+          canCreate={canCreate}
+          canUpdate={canUpdate}
+          canDelete={canDelete}
           onCreate={() => setView({ kind: 'create' })}
           onEdit={(portal) => setView({ kind: 'edit', portalId: portal.id })}
         />

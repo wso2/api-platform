@@ -18,6 +18,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -324,6 +325,9 @@ func (s *DeploymentService) DeployAPI(apiUUID string, req *api.DeployRequest, or
 			if eu != "" {
 				if err := validateEndpointURL(eu); err != nil {
 					return nil, fmt.Errorf("invalid endpoint URL in metadata: %w", err)
+				}
+				if err := checkURLField(context.Background(), orgUUID, "metadata.endpointUrl", eu); err != nil {
+					return nil, err
 				}
 				endpointURL = &eu
 			}
