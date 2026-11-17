@@ -52,6 +52,11 @@ const (
 	keyEnvironmentName  = "cloudEnvironmentName"
 	keyManagedGatewayID = "cloudManagedGatewayID"
 
+	keySelfHostedGatewayID = "cloudSelfHostedGatewayID"
+	// keyRevokedTokenIDs holds the comma-joined ids of the registration tokens a reconfigure
+	// revoked. Only token ids are ever stored; a token's secret value never enters the context.
+	keyRevokedTokenIDs = "cloudRevokedRegistrationTokenIDs"
+
 	keyAPIDefinition        = "cloudAPIDefinition"
 	keyAPIKey               = "cloudAPIKey"
 	keyRejectedAPIID        = "cloudRejectedAPIID"
@@ -180,6 +185,7 @@ func (s *Steps) registerSteps(sc stepRegistrar) {
 	s.registerProjectSteps(sc)
 	s.registerPortalSteps(sc)
 	s.registerPortalSignInSteps(sc)
+	s.registerSelfHostedGatewaySteps(sc)
 	sc.Step(`^the cloud API response should report:$`, s.assertResponseReports)
 
 	sc.Step(`^I create a synthetic APIP project$`, s.createProject)
@@ -191,7 +197,7 @@ func (s *Steps) registerSteps(sc stepRegistrar) {
 	sc.Step(`^I delete the synthetic APIP environment$`, s.deleteEnvironment)
 	sc.Step(`^deleting the synthetic APIP environment should eventually return not found$`, s.verifyEnvironmentDeleted)
 
-	sc.Step(`^I select an existing APIP environment for a managed gateway$`, s.selectGatewayEnvironment)
+	sc.Step(`^I select an existing APIP environment for a (?:managed|self-hosted) gateway$`, s.selectGatewayEnvironment)
 }
 
 // registerIdentitySteps binds the steps that inspect the console token and send requests with
@@ -345,6 +351,9 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 		return err
 	}
 	if err := reg.RegisterDeleter(kindPortalRestore, portalRestoreDeleter(topo, client)); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(kindSelfHostedGateway, cloudDeleter(topo, client, selfHostedGatewaysPath, false)); err != nil {
 		return err
 	}
 	return reg.RegisterDeleter(cleanup.KindGateway, cloudDeleter(topo, client, managedGatewaysCollection, false))

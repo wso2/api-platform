@@ -1754,14 +1754,18 @@ func newLeftoverStub() *leftoverStub {
 			{"id": "syn-portal-abcde234-3", "name": "Synthetic syn-portal-abcde234-3", "status": "pending"},
 			{"id": "ops-portal", "name": "Operations portal", "status": "active"},
 		},
+		"/self-hosted-gateways": {
+			{"id": "development-syn-shgw-abcde234-1", "displayName": "syn-shgw-abcde234-1", "environment": "development"},
+			{"id": "development-ops-shgw", "displayName": "ops-shgw", "environment": "development"},
+		},
 		"/managed-gateways": {
 			{"id": "development-syn-gw-abcde234-1", "environment": "development"},
 			{"id": "development-default", "environment": "development"},
 			{"id": "development-syn-gw-zzzzz222-1", "environment": "development"},
 			{"id": "development-syn-gw-ab", "displayName": "syn-gw-abcde234-12", "environment": "development"},
 		},
-		"/projects":                    {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
-		"/rest-apis?projectId=default": {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
+		"/projects":                                   {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
+		"/rest-apis?projectId=default":                {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
 		"/rest-apis?projectId=syn-project-abcde234-2": {{"id": "syn-api-abcde234-2"}},
 		"/rest-apis?projectId=ops-project":            {{"id": "syn-api-abcde234-9"}},
 		"/pipelines":                                  {{"name": "default"}, {"name": "syn-pipeline-abcde234-1"}},
@@ -1792,13 +1796,14 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		"rest-apis/syn-api-abcde234-1",
 		"rest-apis/syn-api-abcde234-2",
 		"secrets/syn-secret-abcde234-1",
+		"self-hosted-gateways/development-syn-shgw-abcde234-1",
 		"managed-gateways/development-syn-gw-abcde234-1",
 		"managed-gateways/development-syn-gw-ab",
 		"projects/syn-project-abcde234-2",
 		"pipelines/syn-pipeline-abcde234-1",
 		"environments/syn-env-abcde234-1",
-	}, stub.deleted[:11])
-	require.Len(t, removed, 11)
+	}, stub.deleted[:12])
+	require.Len(t, removed, 12)
 	for _, collection := range projectScopedCollections {
 		listed := slices.Clone(stub.listedProjects[collection])
 		slices.Sort(listed)
@@ -1813,6 +1818,7 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		require.NotContains(t, id, "managed-api-portals/ops-portal")
 		require.NotContains(t, id, "managed-api-portals/dap-")
 		require.NotContains(t, id, "ops-api")
+		require.NotContains(t, id, "ops-shgw")
 	}
 }
 
@@ -3198,7 +3204,7 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 				status = "failed"
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": strings.TrimPrefix(r.URL.Path, "/managed-api-portals/"), "status": status})
-		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis", "/graphql-apis"}, r.URL.Path):
+		case r.Method == http.MethodGet && slices.Contains([]string{"/projects", "/environments", "/secrets", "/rest-apis", "/graphql-apis", "/self-hosted-gateways"}, r.URL.Path):
 			// What the finalizer reads: this organisation holds none of it.
 			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{}})
 		default:
@@ -5796,4 +5802,95 @@ func TestDroppingThePublicationCleanupIsAnExplicitStep(t *testing.T) {
 	pending := registry.Pending()
 	require.Len(t, pending, 1, "only the deleted API's publication is dropped")
 	require.Equal(t, "portal-1/rest-api/another-api", pending[0].ID)
+}
+
+func TestCheckAwaitingConnection(t *testing.T) {
+	valid := func() map[string]any {
+		return map[string]any{
+			"id": "development-shgw-1", "environment": "development",
+			"isActive": false, "endpoints": []any{pendingEndpoint},
+		}
+	}
+	require.NoError(t, checkAwaitingConnection(valid(), "development-shgw-1", "development"))
+
+	for name, mutate := range map[string]func(map[string]any){
+		"wrong id":           func(d map[string]any) { d["id"] = "other" },
+		"wrong environment":  func(d map[string]any) { d["environment"] = "production" },
+		"active":             func(d map[string]any) { d["isActive"] = true },
+		"isActive missing":   func(d map[string]any) { delete(d, "isActive") },
+		"real endpoint":      func(d map[string]any) { d["endpoints"] = []any{"https://gw.example.com"} },
+		"extra endpoint":     func(d map[string]any) { d["endpoints"] = []any{pendingEndpoint, "https://gw.example.com"} },
+		"endpoints missing":  func(d map[string]any) { delete(d, "endpoints") },
+		"isActive as string": func(d map[string]any) { d["isActive"] = "false" },
+	} {
+		document := valid()
+		mutate(document)
+		require.Error(t, checkAwaitingConnection(document, "development-shgw-1", "development"), name)
+	}
+}
+
+func TestMintedTokenIDNeverQuotesTheBody(t *testing.T) {
+	id, err := mintedTokenID([]byte(`{"id":"tok-1","token":"plain-text-secret"}`))
+	require.NoError(t, err)
+	require.Equal(t, "tok-1", id)
+
+	for _, body := range []string{
+		`{"token":"plain-text-secret"}`,
+		`{"id":"tok-1","token":""}`,
+		`plain-text-secret`,
+	} {
+		_, err := mintedTokenID([]byte(body))
+		require.Error(t, err, body)
+		require.NotContains(t, err.Error(), "plain-text-secret")
+	}
+}
+
+func TestActiveTokenIDsFollowsTheConsoleRule(t *testing.T) {
+	require.Equal(t, []string{"active-1", "no-status"}, activeTokenIDs([]map[string]any{
+		{"id": "active-1", "status": "active"},
+		{"id": "no-status"},
+		{"id": "revoked-1", "status": "revoked"},
+		{"id": "", "status": "active"},
+		{"status": "active"},
+	}))
+	require.Empty(t, activeTokenIDs(nil))
+}
+
+func TestStillActive(t *testing.T) {
+	require.Equal(t, []string{"old-2"}, stillActive([]string{"old-1", "old-2"}, []string{"new-1", "old-2"}))
+	require.Empty(t, stillActive([]string{"old-1"}, []string{"new-1"}))
+}
+
+func TestSelfHostedGatewayPathsEscapeID(t *testing.T) {
+	require.Equal(t, "/self-hosted-gateways/id%2Fwith%20separator", selfHostedGatewayPath("id/with separator"))
+	require.Equal(t, "/self-hosted-gateways/gw-1/tokens", selfHostedGatewayTokensPath("gw-1"))
+}
+
+func TestRemoveUnregisteredSelfHostedGatewayDeletesItAndReportsWhenItMayRemain(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	for _, tc := range []struct {
+		status  int
+		wantErr bool
+	}{
+		{status: http.StatusNoContent},
+		{status: http.StatusNotFound},
+		{status: http.StatusInternalServerError, wantErr: true},
+	} {
+		var deleted []string
+		topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+			require.Equal(t, http.MethodDelete, r.Method)
+			deleted = append(deleted, r.URL.Path)
+			w.WriteHeader(tc.status)
+		})
+		steps := &Steps{topo: topo, client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})}
+		ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+
+		err := steps.removeUnregisteredSelfHostedGateway(ctx, "development-shgw-1")
+		require.Equal(t, []string{"/self-hosted-gateways/development-shgw-1"}, deleted, "status %d", tc.status)
+		if tc.wantErr {
+			require.ErrorContains(t, err, `"development-shgw-1"`)
+		} else {
+			require.NoError(t, err, "status %d", tc.status)
+		}
+	}
 }
