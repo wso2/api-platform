@@ -542,7 +542,8 @@ export const createRelayFetch =
     try {
       parsed = await context.invoke({
         body: {
-          restApiId: context.restApiId,
+          apiType: 'rest-api',
+          apiId: context.restApiId,
           gatewayId: context.gatewayId,
           method: request.method ?? 'GET',
           path: split.path,
@@ -722,7 +723,8 @@ export const createGraphqlRelayFetch =
     try {
       parsed = await context.invoke({
         body: {
-          graphqlApiId: context.graphqlApiId,
+          apiType: 'graphql-api',
+          apiId: context.graphqlApiId,
           gatewayId: context.gatewayId,
           query: Array.from(url.searchParams, ([name, value]) => ({ name, value })),
           headers: Array.from(new Headers(init?.headers), ([name, value]) => ({ name, value })),

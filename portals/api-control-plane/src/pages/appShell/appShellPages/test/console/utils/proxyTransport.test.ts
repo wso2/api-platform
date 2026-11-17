@@ -109,7 +109,8 @@ describe('createRelayFetch — what reaches the Platform API', () => {
 
     expect(sent).toEqual({
       body: {
-        restApiId: 'api-1',
+        apiType: 'rest-api',
+        apiId: 'api-1',
         gatewayId: 'gw-prod',
         method: 'GET',
         path: '/order',
@@ -585,7 +586,8 @@ describe('createGraphqlRelayFetch', () => {
     await post(`${ENDPOINT}?apikey=query-key`);
 
     expect(graphqlSent?.body).toEqual({
-      graphqlApiId: 'countries',
+      apiType: 'graphql-api',
+      apiId: 'countries',
       gatewayId: 'gw-prod',
       query: [{ name: 'apikey', value: 'query-key' }],
       headers: [

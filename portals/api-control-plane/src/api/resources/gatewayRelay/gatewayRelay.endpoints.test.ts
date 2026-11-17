@@ -50,7 +50,13 @@ beforeEach(() => {
 describe('invokeApiOnGateway', () => {
   it('POSTs a REST API test request, naming the API and gateway in the body', async () => {
     server.use(accepts('post', INVOKE, relayed, { record: requests, status: 200 }));
-    const body = { restApiId: 'pizza-shack', gatewayId: 'prod-gw', method: 'GET', path: '/orders' };
+    const body = {
+      apiType: 'rest-api' as const,
+      apiId: 'pizza-shack',
+      gatewayId: 'prod-gw',
+      method: 'GET',
+      path: '/orders',
+    };
 
     await invokeApiOnGateway(body);
 
@@ -62,7 +68,8 @@ describe('invokeApiOnGateway', () => {
   it('POSTs a GraphQL API test request to the same operation', async () => {
     server.use(accepts('post', INVOKE, relayed, { record: requests, status: 200 }));
     const body = {
-      graphqlApiId: 'countries-api',
+      apiType: 'graphql-api' as const,
+      apiId: 'countries-api',
       gatewayId: 'prod-gw',
       body: '{"query":"{ __typename }"}',
     };
@@ -76,7 +83,11 @@ describe('invokeApiOnGateway', () => {
   it('resolves with a gateway error status: the relay itself succeeded', async () => {
     server.use(accepts('post', INVOKE, relayed, { status: 200 }));
 
-    const result = await invokeApiOnGateway({ restApiId: 'pizza-shack', gatewayId: 'prod-gw' });
+    const result = await invokeApiOnGateway({
+      apiType: 'rest-api',
+      apiId: 'pizza-shack',
+      gatewayId: 'prod-gw',
+    });
 
     expect(result.response.status).toBe(502);
   });
@@ -85,7 +96,8 @@ describe('invokeApiOnGateway', () => {
     server.use(failure('post', INVOKE, 403, 'REST_API_INVOKE_TARGET_NOT_ALLOWED'));
 
     const error = await invokeApiOnGateway({
-      restApiId: 'pizza-shack',
+      apiType: 'rest-api',
+      apiId: 'pizza-shack',
       gatewayId: 'prod-gw',
     }).catch((e: unknown) => e);
 

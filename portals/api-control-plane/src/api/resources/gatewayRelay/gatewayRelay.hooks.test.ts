@@ -28,7 +28,13 @@ import { useInvokeApiOnGateway } from './gatewayRelay.hooks';
 
 const INVOKE = '/gateway-relay/invoke';
 const variables = {
-  body: { restApiId: 'pizza-shack', gatewayId: 'prod-gw', method: 'GET', path: '/orders' },
+  body: {
+    apiType: 'rest-api' as const,
+    apiId: 'pizza-shack',
+    gatewayId: 'prod-gw',
+    method: 'GET',
+    path: '/orders',
+  },
 };
 
 let requests: Recorder;

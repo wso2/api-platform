@@ -324,9 +324,9 @@ export interface paths {
         put?: never;
         /**
          * Send a test request to an API through a gateway
-         * @description Sends one request to the REST API (`restApiId`) or GraphQL API (`graphqlApiId`) as deployed
-         *     on the gateway (`gatewayId`), for the console's Test console, and returns the gateway's
-         *     response as data. The request goes to the gateway's endpoint plus the context of the API's
+         * @description Sends one request to the REST or GraphQL API (`apiType`, `apiId`) as deployed on the
+         *     gateway (`gatewayId`), for the console's Test console, and returns the gateway's response
+         *     as data. The request goes to the gateway's endpoint plus the context of the API's
          *     deployment there, only if the API is deployed there and the endpoint is on the control
          *     plane's allow list (`gateway_relay.egress.allow_hosts`). A REST API's deployment sends its
          *     main vhost as `Host` when it has one of its own; a GraphQL API is always a `POST` to its
@@ -4530,23 +4530,24 @@ export interface components {
             value: string;
         };
         /**
-         * @description The test request to send, to exactly one of a REST API (`restApiId`) or a GraphQL API
-         *     (`graphqlApiId`). A GraphQL API takes no `method` or `path`: its request is a `POST` to
-         *     its context, and `body` is required. Hop-by-hop headers, `Host`, `Content-Length`,
-         *     `Expect`, `Cookie` and the forwarding headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`)
-         *     are refused; `Authorization` is allowed, for the API under test.
+         * @description The test request to send, to the API named by `apiType` and `apiId`. A GraphQL API takes
+         *     no `method` or `path`: its request is a `POST` to its context, and `body` is required.
+         *     Hop-by-hop headers, `Host`, `Content-Length`, `Expect`, `Cookie` and the forwarding
+         *     headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`) are refused; `Authorization` is
+         *     allowed, for the API under test.
          */
         APIInvokeRequest: {
             /**
-             * @description Handle of the REST API to test
+             * @description The API's type, which names the API with `apiId`, since a handle is unique only within its type
+             * @example rest-api
+             * @enum {string}
+             */
+            apiType: "rest-api" | "graphql-api";
+            /**
+             * @description Handle of the API to test
              * @example pizza-api
              */
-            restApiId?: string;
-            /**
-             * @description Handle of the GraphQL API to test
-             * @example countries-graphql-api
-             */
-            graphqlApiId?: string;
+            apiId: string;
             /**
              * @description Handle of a gateway the API is deployed to
              * @example prod-gateway-01

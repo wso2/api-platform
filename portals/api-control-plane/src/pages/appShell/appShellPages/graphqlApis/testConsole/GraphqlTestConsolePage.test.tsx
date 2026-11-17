@@ -374,7 +374,12 @@ describe('GraphqlTestConsolePage — through the proxy or directly', () => {
     expect(value).toEqual({ data: { hello: 'hi' } });
     expect(fetchSpy).not.toHaveBeenCalled();
     const sent = JSON.parse(requests.last()!.body);
-    expect(sent).toMatchObject({ graphqlApiId: API, gatewayId: 'edge-gateway', query: [] });
+    expect(sent).toMatchObject({
+      apiType: 'graphql-api',
+      apiId: API,
+      gatewayId: 'edge-gateway',
+      query: [],
+    });
     expect(JSON.parse(sent.body)).toMatchObject({ query: '{ hello }' });
     expect(sent.headers).toContainEqual({ name: 'content-type', value: 'application/json' });
   });
