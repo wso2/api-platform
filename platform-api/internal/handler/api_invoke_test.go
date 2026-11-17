@@ -41,8 +41,9 @@ import (
 )
 
 const (
-	invokeOrg  = "org-uuid-1"
-	invokePath = "/api/v0.9/gateway-relay/invoke"
+	invokeOrg         = "org-uuid-1"
+	invokePath        = "/api/v0.9/gateway-relay/invoke"
+	graphqlInvokePath = "/api/v0.9/gateway-relay/invoke-graphql"
 )
 
 // fakeInvokeTargets answers GetAPIInvokeTarget from fixed values.
@@ -100,14 +101,26 @@ func newRelay(t *testing.T, allowHosts ...string) *gatewayrelay.Relay {
 	return relay
 }
 
-// serveInvoke sends body to the invoke route as the caller would, with the
+// serveInvoke sends body to the REST invoke route as the caller would, with the
 // caller's own bearer token, and returns the recorded response.
 func serveInvoke(t *testing.T, targets invokeTargets, relay relayer, contentType, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	mux := http.NewServeMux()
-	NewAPIInvokeHandler(targets, relay, 1<<10, 5*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
+	return serveInvokeAt(t, invokePath, targets, relay, contentType, body)
+}
 
-	req := httptest.NewRequest(http.MethodPost, invokePath, strings.NewReader(body))
+// serveGraphQLInvoke is serveInvoke for the GraphQL invoke route.
+func serveGraphQLInvoke(t *testing.T, targets invokeTargets, relay relayer, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	return serveInvokeAt(t, graphqlInvokePath, targets, relay, "application/json", body)
+}
+
+// serveInvokeAt serves path with targets answering for both API kinds.
+func serveInvokeAt(t *testing.T, path string, targets invokeTargets, relay relayer, contentType, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	mux := http.NewServeMux()
+	NewAPIInvokeHandler(targets, targets, relay, 1<<10, 5*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
@@ -218,7 +231,7 @@ func TestInvokeStartsTheRequestTimeoutBeforeTheRelay(t *testing.T) {
 	relay := &deadlineRelay{}
 	mux := http.NewServeMux()
 	targets := &fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{"https://gw.example.com"}, delay: 2 * time.Second}
-	NewAPIInvokeHandler(targets, relay, 1<<10, 30*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
+	NewAPIInvokeHandler(targets, targets, relay, 1<<10, 30*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
 	req := httptest.NewRequest(http.MethodPost, invokePath, strings.NewReader(invokeBody(`"path": "/"`)))
 	req.Header.Set("Content-Type", "application/json")
 	req = middleware.WithOrganization(req, invokeOrg)
@@ -261,8 +274,8 @@ func TestInvokeAcceptsAnEscapedTextBodyWithinTheLimit(t *testing.T) {
 	})
 	require.NoError(t, err)
 	mux := http.NewServeMux()
-	NewAPIInvokeHandler(&fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{gateway.URL}},
-		relay, maxRequestBytes, 5*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
+	targets := &fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{gateway.URL}}
+	NewAPIInvokeHandler(targets, targets, relay, maxRequestBytes, 5*time.Second, slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
 
 	quotes := strings.Repeat(`\"`, maxRequestBytes-1<<10) // each decodes to one byte
 	req := httptest.NewRequest(http.MethodPost, invokePath, strings.NewReader(invokeBody(`"method": "POST", "path": "/", "body": "`+quotes+`"`)))
@@ -378,6 +391,141 @@ func TestInvokeMapsRelayFailures(t *testing.T) {
 			assert.Equal(t, tc.status, rec.Code, rec.Body.String())
 			assert.Equal(t, tc.code, errorCode(t, rec))
 			assert.NotContains(t, rec.Body.String(), "10.0.0.7")
+		})
+	}
+}
+
+// graphqlInvokeBody is a GraphQL request naming countries on prod-gw, plus fields (JSON members, or "").
+func graphqlInvokeBody(fields string) string {
+	body := `{"graphqlApiId": "countries", "gatewayId": "prod-gw", "body": "{\"query\":\"{ __typename }\"}"`
+	if fields != "" {
+		body += ", " + fields
+	}
+	return body + "}"
+}
+
+// A GraphQL API has one route on the gateway: a POST to its context, with no trailing slash.
+func TestInvokeGraphQLPostsToTheAPIContext(t *testing.T) {
+	var gotMethod, gotURI, gotBody, gotHost string
+	var gotHeaders http.Header
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotURI, gotHost = r.Method, r.URL.RequestURI(), r.Host
+		gotHeaders = r.Header.Clone()
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"__typename":"Query"}}`))
+	}))
+	defer gateway.Close()
+
+	targets := &fakeInvokeTargets{apiContext: "/countries/v1/graphql", endpoints: []string{gateway.URL}}
+	rec := serveGraphQLInvoke(t, targets, newRelay(t, "*"), graphqlInvokeBody(
+		`"query": [{"name": "apikey", "value": "query-key"}], "headers": [{"name": "Content-Type", "value": "application/json"}, {"name": "X-API-Key", "value": "test-key"}]`))
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+	assert.Equal(t, invokeOrg, targets.gotOrg)
+	assert.Equal(t, "countries", targets.gotAPI)
+	assert.Equal(t, "prod-gw", targets.gotGateway)
+
+	assert.Equal(t, http.MethodPost, gotMethod)
+	assert.Equal(t, "/countries/v1/graphql?apikey=query-key", gotURI)
+	assert.Equal(t, `{"query":"{ __typename }"}`, gotBody)
+	assert.Equal(t, "test-key", gotHeaders.Get("X-API-Key"))
+	assert.Equal(t, "application/json", gotHeaders.Get("Content-Type"))
+	assert.Empty(t, gotHeaders.Get("Authorization"), "the caller's token must never reach the gateway")
+	assert.Equal(t, strings.TrimPrefix(gateway.URL, "http://"), gotHost, "a GraphQL API is served on the gateway's default vhost")
+	assert.Contains(t, rec.Body.String(), `"status":200`)
+	assert.Contains(t, rec.Body.String(), `__typename`)
+}
+
+func TestInvokeRoutesEachKindToItsOwnTargets(t *testing.T) {
+	gateway := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer gateway.Close()
+	restTargets := &fakeInvokeTargets{apiContext: "/pizza", endpoints: []string{gateway.URL}}
+	graphqlTargets := &fakeInvokeTargets{apiContext: "/countries", endpoints: []string{gateway.URL}}
+	mux := http.NewServeMux()
+	NewAPIInvokeHandler(restTargets, graphqlTargets, newRelay(t, "*"), 1<<10, 5*time.Second,
+		slog.New(slog.NewTextHandler(io.Discard, nil))).RegisterRoutes(mux)
+
+	for path, body := range map[string]string{invokePath: invokeBody(""), graphqlInvokePath: graphqlInvokeBody("")} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, middleware.WithOrganization(req, invokeOrg))
+		require.Equal(t, http.StatusOK, rec.Code, "%s: %s", path, rec.Body.String())
+	}
+
+	assert.Equal(t, "pizza-api", restTargets.gotAPI)
+	assert.Equal(t, "countries", graphqlTargets.gotAPI)
+}
+
+func TestInvokeGraphQLRefusesAMalformedRequest(t *testing.T) {
+	for name, tc := range map[string]struct {
+		body string
+		code string
+	}{
+		"a method of its own": {graphqlInvokeBody(`"method": "GET"`), apperror.CodeCommonValidationFailed},
+		"a path of its own":   {graphqlInvokeBody(`"path": "/admin"`), apperror.CodeCommonValidationFailed},
+		"no GraphQL API":      {`{"gatewayId": "prod-gw", "body": "{}"}`, apperror.CodeCommonValidationFailed},
+		"no body":             {`{"graphqlApiId": "countries", "gatewayId": "prod-gw"}`, apperror.CodeCommonValidationFailed},
+		"forbidden header":    {graphqlInvokeBody(`"headers": [{"name": "Cookie", "value": "a=1"}]`), apperror.CodeGraphQLAPIInvokeRequestInvalid},
+	} {
+		t.Run(name, func(t *testing.T) {
+			targets := &fakeInvokeTargets{apiContext: "/countries", endpoints: []string{"https://gw.example.com"}}
+			rec := serveGraphQLInvoke(t, targets, newRelay(t, "*"), tc.body)
+			assert.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+			assert.Equal(t, tc.code, errorCode(t, rec))
+		})
+	}
+}
+
+func TestInvokeGraphQLMapsFailuresToItsOwnCodes(t *testing.T) {
+	for name, tc := range map[string]struct {
+		targets *fakeInvokeTargets
+		relay   relayer
+		status  int
+		code    string
+	}{
+		"GraphQL API not found": {
+			&fakeInvokeTargets{err: apperror.GraphQLAPINotFound.New()}, failingRelay{},
+			http.StatusNotFound, apperror.CodeGraphQLAPINotFound,
+		},
+		"not deployed to the gateway": {
+			&fakeInvokeTargets{err: apperror.GraphQLAPIInvokeGatewayNotDeployed.New()}, failingRelay{},
+			http.StatusNotFound, apperror.CodeGraphQLAPIInvokeGatewayNotDeployed,
+		},
+		"gateway without an endpoint": {
+			&fakeInvokeTargets{apiContext: "/countries"}, failingRelay{},
+			http.StatusUnprocessableEntity, apperror.CodeGraphQLAPIInvokeGatewayNoEndpoint,
+		},
+		"gateway endpoint not http": {
+			&fakeInvokeTargets{apiContext: "/countries", endpoints: []string{"wss://gw.example.com"}}, failingRelay{},
+			http.StatusUnprocessableEntity, apperror.CodeGraphQLAPIInvokeGatewayUnsupportedScheme,
+		},
+		"outside the allow list": {
+			&fakeInvokeTargets{apiContext: "/countries", endpoints: []string{"https://internal.example.com:9443"}}, newRelay(t, "https://gw.example.com"),
+			http.StatusForbidden, apperror.CodeGraphQLAPIInvokeTargetNotAllowed,
+		},
+		"busy": {
+			&fakeInvokeTargets{apiContext: "/countries", endpoints: []string{"https://gw.example.com"}}, failingRelay{err: gatewayrelay.ErrBusy},
+			http.StatusServiceUnavailable, apperror.CodeGraphQLAPIInvokeBusy,
+		},
+		"timeout": {
+			&fakeInvokeTargets{apiContext: "/countries", endpoints: []string{"https://gw.example.com"}}, failingRelay{err: fmt.Errorf("relay: %w", context.DeadlineExceeded)},
+			http.StatusGatewayTimeout, apperror.CodeGraphQLAPIInvokeUpstreamTimeout,
+		},
+		"unreachable": {
+			&fakeInvokeTargets{apiContext: "/countries", endpoints: []string{"https://gw.example.com"}}, failingRelay{err: fmt.Errorf("dial tcp 10.0.0.7:9443: connection refused")},
+			http.StatusBadGateway, apperror.CodeGraphQLAPIInvokeUpstreamUnreachable,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rec := serveGraphQLInvoke(t, tc.targets, tc.relay, graphqlInvokeBody(""))
+			assert.Equal(t, tc.status, rec.Code, rec.Body.String())
+			assert.Equal(t, tc.code, errorCode(t, rec))
+			assert.NotContains(t, rec.Body.String(), "10.0.0.7")
+			assert.NotContains(t, rec.Body.String(), "internal.example.com")
 		})
 	}
 }

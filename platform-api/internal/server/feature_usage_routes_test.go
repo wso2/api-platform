@@ -45,7 +45,7 @@ func TestFeatureUsageBindingsResolveToRealRoutes(t *testing.T) {
 	handler.NewAPIHandler(nil, nil, nil, logger, nil).RegisterRoutes(mux)
 	handler.NewAPIDocumentHandler(nil, nil, logger, nil).RegisterRoutes(mux)
 	handler.NewAPIThumbnailHandler(nil, nil, logger, nil).RegisterRoutes(mux)
-	handler.NewAPIInvokeHandler(nil, nil, 0, 0, logger).RegisterRoutes(mux)
+	handler.NewAPIInvokeHandler(nil, nil, nil, 0, 0, logger).RegisterRoutes(mux)
 	handler.NewGatewayHandler(nil, nil, logger).RegisterRoutes(mux)
 	handler.NewSubscriptionPlanHandler(nil, nil, logger).RegisterRoutes(mux)
 	handler.NewMonetizationHandler(nil, logger).RegisterRoutes(mux)

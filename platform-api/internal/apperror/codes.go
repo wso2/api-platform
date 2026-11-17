@@ -257,6 +257,17 @@ const (
 	CodeGraphQLAPIExists                     = "GRAPHQL_API_EXISTS"
 	CodeGraphQLAPISchemaResolveFailed        = "GRAPHQL_API_SCHEMA_RESOLVE_FAILED"
 	CodeGraphQLAPIDeploymentValidationFailed = "GRAPHQL_API_DEPLOYMENT_VALIDATION_FAILED"
+
+	// Sending a test request to a GraphQL API through a gateway it is deployed to
+	// (POST /gateway-relay/invoke-graphql).
+	CodeGraphQLAPIInvokeGatewayNotDeployed       = "GRAPHQL_API_INVOKE_GATEWAY_NOT_DEPLOYED"
+	CodeGraphQLAPIInvokeGatewayNoEndpoint        = "GRAPHQL_API_INVOKE_GATEWAY_NO_ENDPOINT"
+	CodeGraphQLAPIInvokeGatewayUnsupportedScheme = "GRAPHQL_API_INVOKE_GATEWAY_UNSUPPORTED_SCHEME"
+	CodeGraphQLAPIInvokeTargetNotAllowed         = "GRAPHQL_API_INVOKE_TARGET_NOT_ALLOWED"
+	CodeGraphQLAPIInvokeRequestInvalid           = "GRAPHQL_API_INVOKE_REQUEST_INVALID"
+	CodeGraphQLAPIInvokeBusy                     = "GRAPHQL_API_INVOKE_BUSY"
+	CodeGraphQLAPIInvokeUpstreamTimeout          = "GRAPHQL_API_INVOKE_UPSTREAM_TIMEOUT"
+	CodeGraphQLAPIInvokeUpstreamUnreachable      = "GRAPHQL_API_INVOKE_UPSTREAM_UNREACHABLE"
 )
 
 // HMAC secret domain codes (WebSub subscriber callback signing secrets).

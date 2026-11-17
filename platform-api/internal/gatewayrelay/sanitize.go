@@ -185,12 +185,17 @@ func SanitizeQuery(in []Header) (string, error) {
 // ResolvePath joins the caller's path onto the invoke URL's path (basePath, e.g.
 // "/pizza/v1") and refuses a result outside it, so "/../admin" cannot reach the
 // gateway's "/admin". The check runs on the decoded path, catching %2e%2e too.
+// An empty rawPath is the invoke URL's path itself, with no trailing slash.
 //
 // Callers set URL.Path to decoded and URL.RawPath to escaped, so an encoded
 // slash inside a segment is sent as written.
 func ResolvePath(basePath, rawPath string) (decoded, escaped string, err error) {
 	if rawPath == "" {
-		rawPath = "/"
+		base := strings.TrimSuffix(basePath, "/")
+		if base == "" {
+			return "/", "/", nil
+		}
+		return base, base, nil
 	}
 	if hasControlChars(rawPath) || strings.Contains(rawPath, `\`) {
 		return "", "", ErrInvalidPath

@@ -64,6 +64,7 @@ func newReadOnlyTestMux(reached *bool) *http.ServeMux {
 	mux.HandleFunc("POST "+base+"/mcp-proxies/fetch-server-info", hit)
 	mux.HandleFunc("POST "+base+"/agent-proxies/fetch-agent-card", hit)
 	mux.HandleFunc("POST "+base+"/gateway-relay/invoke", hit)
+	mux.HandleFunc("POST "+base+"/gateway-relay/invoke-graphql", hit)
 	mux.HandleFunc("POST /api/internal/v1/deployments/fetch-batch", hit)
 	mux.HandleFunc("POST /api/internal/v1/artifacts/exists", hit)
 	mux.HandleFunc("POST /api/internal/v1/gateways/{gatewayId}/manifest", hit)
@@ -124,6 +125,7 @@ func TestReadOnlyGuard(t *testing.T) {
 		{"frozen: exempt fetch-server-info passes", frozenExceptB, true, readOnlyTestOrgA, http.MethodPost, base + "/mcp-proxies/fetch-server-info", http.StatusOK, true},
 		{"frozen: exempt fetch-agent-card passes", frozenExceptB, true, readOnlyTestOrgA, http.MethodPost, base + "/agent-proxies/fetch-agent-card", http.StatusOK, true},
 		{"frozen: exempt REST API invoke passes", frozenExceptB, true, readOnlyTestOrgA, http.MethodPost, base + "/gateway-relay/invoke", http.StatusOK, true},
+		{"frozen: exempt GraphQL API invoke passes", frozenExceptB, true, readOnlyTestOrgA, http.MethodPost, base + "/gateway-relay/invoke-graphql", http.StatusOK, true},
 		{"frozen: exempt gateway sync read passes", frozenExceptB, true, readOnlyTestOrgA, http.MethodPost, "/api/internal/v1/deployments/fetch-batch", http.StatusOK, true},
 		{"frozen: gateway-token write without org (skip path) falls through to the handler", frozenExceptB, false, "", http.MethodPost, "/api/internal/v1/gateways/gw/manifest", http.StatusOK, true},
 		{"frozen: protected write without org is rejected (fail closed)", frozenExceptB, false, "", http.MethodPost, base + "/projects", http.StatusServiceUnavailable, false},

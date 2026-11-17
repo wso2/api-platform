@@ -668,7 +668,7 @@ func (s *APIService) GetAPIGatewaysByHandle(handle, orgId string, limit, offset 
 	return response, nil
 }
 
-// APIInvokeTarget is where the Test console's request for a REST API goes on one
+// APIInvokeTarget is where the Test console's request for an API goes on one
 // gateway: what that gateway serves, not what the API's definition says now.
 type APIInvokeTarget struct {
 	// Context is the API's context in the deployment the gateway runs. An API whose

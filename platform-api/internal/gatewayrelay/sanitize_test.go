@@ -150,7 +150,7 @@ func TestResolvePathContainsRequestsWithinTheAPI(t *testing.T) {
 	}{
 		{name: "plain path", in: "/order", wantDecoded: "/pizza/v1/order"},
 		{name: "root", in: "/", wantDecoded: "/pizza/v1/"},
-		{name: "empty defaults to root", in: "", wantDecoded: "/pizza/v1/"},
+		{name: "empty is the invoke URL itself", in: "", wantDecoded: "/pizza/v1"},
 		{name: "nested path", in: "/order/42/items", wantDecoded: "/pizza/v1/order/42/items"},
 
 		// Each resolves outside the API, to a sibling route on the gateway.
@@ -198,4 +198,8 @@ func TestResolvePathWithRootContext(t *testing.T) {
 
 	_, _, err = ResolvePath("", "/../order")
 	require.NoError(t, err, "a traversal that cannot escape the root is harmless")
+
+	decoded, _, err = ResolvePath("", "")
+	require.NoError(t, err)
+	assert.Equal(t, "/", decoded)
 }

@@ -3960,6 +3960,26 @@ type GraphQLAPIDetail struct {
 // a source without its required field, is a structural `400`, not a no-op.
 type GraphQLAPIDetailSchemaSource string
 
+// GraphQLAPIInvokeRequest The GraphQL request to send, as a `POST` to the GraphQL API's endpoint. Headers follow the
+// rules of `RESTAPIInvokeRequest`.
+type GraphQLAPIInvokeRequest struct {
+	// Body The GraphQL request, usually JSON with `query`, `variables` and `operationName`, at most
+	// `gateway_relay.max_request_bytes`
+	Body string `json:"body" yaml:"body"`
+
+	// GatewayId Handle of a gateway the GraphQL API is deployed to
+	GatewayId string `json:"gatewayId" yaml:"gatewayId"`
+
+	// GraphqlApiId Handle of the GraphQL API to test
+	GraphqlApiId string `json:"graphqlApiId" yaml:"graphqlApiId"`
+
+	// Headers At most 50 headers, 16 KiB across all names and values
+	Headers *[]RESTAPIInvokeHeader `json:"headers,omitempty" yaml:"headers,omitempty"`
+
+	// Query Query parameters, such as an API key the API expects in the query
+	Query *[]RESTAPIInvokeHeader `json:"query,omitempty" yaml:"query,omitempty"`
+}
+
 // GraphQLAPIListItem defines model for GraphQLAPIListItem.
 type GraphQLAPIListItem struct {
 	Context           string                    `json:"context" yaml:"context"`
@@ -7455,6 +7475,9 @@ type AddApplicationAssociationsJSONRequestBody = AddApplicationAssociationsReque
 
 // InvokeRESTAPIOnGatewayJSONRequestBody defines body for InvokeRESTAPIOnGateway for application/json ContentType.
 type InvokeRESTAPIOnGatewayJSONRequestBody = RESTAPIInvokeRequest
+
+// InvokeGraphQLAPIOnGatewayJSONRequestBody defines body for InvokeGraphQLAPIOnGateway for application/json ContentType.
+type InvokeGraphQLAPIOnGatewayJSONRequestBody = GraphQLAPIInvokeRequest
 
 // CreateGatewayJSONRequestBody defines body for CreateGateway for application/json ContentType.
 type CreateGatewayJSONRequestBody = CreateGatewayRequest

@@ -65,6 +65,7 @@ var bindings = []Binding{
 		"api_type": Path("apiType").Map(apiTypes),
 	}},
 	{Op: "InvokeRESTAPIOnGateway", Feature: "apip.manage-apis.api-test-invoke"},
+	{Op: "InvokeGraphQLAPIOnGateway", Feature: "apip.manage-apis.api-test-invoke"},
 
 	// Gateways
 	{Op: "CreateGateway", Feature: "apip.gateway.gateway-register", From: Sources{
