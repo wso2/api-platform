@@ -22,8 +22,10 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -63,6 +65,18 @@ type Redis struct {
 	retention time.Duration
 }
 
+// redisLog routes the Redis client's own messages (dial retries, pool errors) through
+// the structured logger at debug level: the failover store already logs what an operator
+// needs (Redis unreachable, back again) as JSON, and the client's plain-text lines would
+// otherwise break the JSON log.
+type redisLog struct{}
+
+func (redisLog) Printf(ctx context.Context, format string, v ...interface{}) {
+	slog.DebugContext(ctx, "redis client", slog.String("message", fmt.Sprintf(format, v...)))
+}
+
+var setRedisLog sync.Once
+
 // NewRedis connects to Redis.
 func NewRedis(cfg config.CountersRedisConfig, retention time.Duration) (*Redis, error) {
 	if retention <= 0 {
@@ -78,6 +92,7 @@ func NewRedis(cfg config.CountersRedisConfig, retention time.Duration) (*Redis, 
 	if cfg.TLS {
 		opts.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	}
+	setRedisLog.Do(func() { redis.SetLogger(redisLog{}) })
 	client := redis.NewClient(opts)
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.DialTimeout+time.Second)
 	defer cancel()

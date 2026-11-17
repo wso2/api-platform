@@ -73,7 +73,7 @@ func (s *Syncer) Run(ctx context.Context) {
 			backoff = s.Interval
 		}
 		s.Logger.Warn("Counter sync with the gateway-controller stopped; retrying",
-			slog.Any("error", err), slog.Duration("retry_in", backoff))
+			slog.Any("error", err), slog.String("retry_in", backoff.String()))
 		select {
 		case <-ctx.Done():
 			return

@@ -242,7 +242,7 @@ func (f *Failover) reconnect() {
 			next = f.retry.MaxDuration
 		}
 		f.logger.Warn("Redis still cannot be reached: counting in memory",
-			slog.Int("attempt", attempt), slog.Duration("next_retry_in", next), slog.Any("error", err))
+			slog.Int("attempt", attempt), slog.String("next_retry_in", next.String()), slog.Any("error", err))
 		wait = next
 	}
 }

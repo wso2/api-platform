@@ -370,3 +370,26 @@ func TestSyncerConnectsOnlyOnceACounterIsUsed(t *testing.T) {
 	require.Eventually(t, func() bool { return stub.requests() > 0 }, 5*time.Second, 5*time.Millisecond,
 		"the first counter starts the syncs")
 }
+
+// An idle counter is no longer synced but keeps its last total for the rest of its
+// window, so a used-up budget with rare traffic is still used up on its next request.
+func TestAnIdleCounterKeepsItsTotalForItsWindow(t *testing.T) {
+	s := NewService("engine-1", time.Minute)
+	now := november
+	s.now = func() time.Time { return now }
+	s.Total(key("a"))
+	req := s.nextRequest()
+	s.apply(req, &counterproto.SyncResponse{OK: true, Totals: []counterproto.Total{{Key: wire(key("a")), Total: 12.5}}})
+
+	now = now.Add(2 * time.Minute)
+	assert.Empty(t, s.nextRequest().Keys, "idle: no longer synced")
+	total, synced := s.Total(key("a"))
+	assert.True(t, synced, "its last total is still known")
+	assert.Equal(t, 12.5, total)
+	assert.Len(t, s.nextRequest().Keys, 1, "used again: synced again")
+
+	now = november.Add(keepIdleTotalsFor + time.Hour)
+	assert.Empty(t, s.nextRequest().Keys)
+	_, synced = s.Total(key("a"))
+	assert.False(t, synced, "forgotten once its window can no longer be current")
+}

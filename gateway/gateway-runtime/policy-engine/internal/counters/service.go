@@ -34,6 +34,14 @@ import (
 // used it, when no other is configured.
 const DefaultIdleTimeout = 10 * time.Minute
 
+// keepIdleTotalsFor is how long after its window starts an idle counter's last total is
+// kept: the longest window counters are used for (a budget's month). An idle counter
+// stops being synced but keeps its total, so its next use is judged against what was
+// spent, not against nothing: a used-up budget whose traffic is rarer than the idle
+// timeout stays used up. Within a window the shared total only grows, so a kept total
+// is never above the real one.
+const keepIdleTotalsFor = 32 * 24 * time.Hour
+
 // entry is what this engine keeps for one counter it uses.
 type entry struct {
 	// total is the shared total from the last sync; synced is false until one arrives.
@@ -42,7 +50,8 @@ type entry struct {
 	// pending holds adds not yet in a report.
 	pending float64
 	// expiresAt is pushed forward on every use; past it, with nothing left to report,
-	// the counter is no longer synced and is forgotten.
+	// the counter is no longer synced. Its last total is kept while its window can still
+	// be current (keepIdleTotalsFor); then it is forgotten.
 	expiresAt time.Time
 	// labels describe the counter; sent with its adds (sdk/core/counters.Describe).
 	labels map[string]string
@@ -132,7 +141,8 @@ func (s *Service) Total(key sdkcounters.Key) (float64, bool) {
 
 // nextRequest builds the request for this sync: the report in flight, or a new one
 // from the pending adds, and every counter still in use. Counters past their expiry
-// with nothing left to report are forgotten.
+// with nothing left to report are no longer synced: their last total is kept for the
+// rest of their window, and the rest are forgotten.
 func (s *Service) nextRequest() *counterproto.SyncRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -162,6 +172,9 @@ func (s *Service) nextRequest() *counterproto.SyncRequest {
 	}
 	for key, e := range s.entries {
 		if now.After(e.expiresAt) && e.pending == 0 && s.inflight[key] == 0 {
+			if e.synced && !key.Window.IsZero() && now.Before(key.Window.Add(keepIdleTotalsFor)) {
+				continue // idle: not synced, its total kept until it is used again
+			}
 			delete(s.entries, key)
 			continue
 		}
