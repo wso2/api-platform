@@ -86,11 +86,10 @@ var (
 )
 
 // invokeKind is what differs between a REST and a GraphQL API's test request.
-// label ("REST API") and idKey ("restApiId") name the API in log lines, and the
-// caller needs one of scopes.
+// label ("REST API") names the API in log lines, and the caller needs one of scopes.
 type invokeKind struct {
+	apiType api.APIInvokeRequestApiType
 	label   string
-	idKey   string
 	scopes  []string
 	targets invokeTargets
 	errs    invokeErrors
@@ -112,15 +111,15 @@ type APIInvokeHandler struct {
 func NewAPIInvokeHandler(restTargets, graphqlTargets invokeTargets, relay relayer, authz config.Authorization, maxRequestBytes int64, requestTimeout time.Duration, slogger *slog.Logger) *APIInvokeHandler {
 	return &APIInvokeHandler{
 		rest: invokeKind{
+			apiType: api.APIInvokeRequestApiTypeRestApi,
 			label:   "REST API",
-			idKey:   "restApiId",
 			scopes:  []string{constants.ScopeRESTAPIRead, constants.ScopeRESTAPIManage},
 			targets: restTargets,
 			errs:    restInvokeErrors,
 		},
 		graphql: invokeKind{
+			apiType: api.APIInvokeRequestApiTypeGraphqlApi,
 			label:   "GraphQL API",
-			idKey:   "graphqlApiId",
 			scopes:  []string{constants.ScopeGraphQLAPIRead, constants.ScopeGraphQLAPIManage},
 			targets: graphqlTargets,
 			errs:    graphqlInvokeErrors,
@@ -186,7 +185,8 @@ func (h *APIInvokeHandler) InvokeAPI(w http.ResponseWriter, r *http.Request) err
 	// The relay accepted the method, so this is its normalized form, not raw input.
 	method, _ := gatewayrelay.NormalizeMethod(req.Method)
 	h.slogger.Info("Relayed a test request to a gateway",
-		kind.idKey, apiID,
+		"apiType", kind.apiType,
+		"apiId", apiID,
 		"gatewayId", gatewayID,
 		"method", method,
 		"upstreamStatus", relayed.Status,
@@ -219,9 +219,16 @@ func (h *APIInvokeHandler) decodeRequest(w http.ResponseWriter, r *http.Request)
 		}
 		return kind, "", "", req, apperror.ValidationFailed.Wrap(err, "The request body is not a valid invoke request.")
 	}
-	restAPIID, graphqlAPIID := strOrEmpty(body.RestApiId), strOrEmpty(body.GraphqlApiId)
-	if body.GatewayId == "" || (restAPIID == "") == (graphqlAPIID == "") {
-		return kind, "", "", req, apperror.ValidationFailed.New("gatewayId and exactly one of restApiId or graphqlApiId are required.")
+	switch body.ApiType {
+	case api.APIInvokeRequestApiTypeRestApi:
+		kind = h.rest
+	case api.APIInvokeRequestApiTypeGraphqlApi:
+		kind = h.graphql
+	default:
+		return kind, "", "", req, apperror.ValidationFailed.New("apiType must be rest-api or graphql-api.")
+	}
+	if body.ApiId == "" || body.GatewayId == "" {
+		return kind, "", "", req, apperror.ValidationFailed.New("apiId and gatewayId are required.")
 	}
 
 	req = gatewayrelay.Request{
@@ -239,18 +246,18 @@ func (h *APIInvokeHandler) decodeRequest(w http.ResponseWriter, r *http.Request)
 		req.Headers = toRelayHeaders(*body.Headers)
 	}
 
-	if graphqlAPIID != "" {
+	if kind.apiType == api.APIInvokeRequestApiTypeGraphqlApi {
 		if body.Method != nil || body.Path != nil || req.Body == "" {
 			return kind, "", "", req, apperror.ValidationFailed.New("A GraphQL API's test request takes a body, and no method or path.")
 		}
 		// An empty path is the context itself: a GraphQL API's only route on the gateway.
 		req.Method = http.MethodPost
-		return h.graphql, graphqlAPIID, body.GatewayId, req, nil
+		return kind, body.ApiId, body.GatewayId, req, nil
 	}
 	if req.Path == "" {
 		req.Path = "/"
 	}
-	return h.rest, restAPIID, body.GatewayId, req, nil
+	return kind, body.ApiId, body.GatewayId, req, nil
 }
 
 // relayError maps a failed relay to its response. The address and the check

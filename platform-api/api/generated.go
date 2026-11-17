@@ -139,6 +139,24 @@ func (e APIInvokeBodyEncoding) Valid() bool {
 	}
 }
 
+// Defines values for APIInvokeRequestApiType.
+const (
+	APIInvokeRequestApiTypeGraphqlApi APIInvokeRequestApiType = "graphql-api"
+	APIInvokeRequestApiTypeRestApi    APIInvokeRequestApiType = "rest-api"
+)
+
+// Valid indicates whether the value is a known member of the APIInvokeRequestApiType enum.
+func (e APIInvokeRequestApiType) Valid() bool {
+	switch e {
+	case APIInvokeRequestApiTypeGraphqlApi:
+		return true
+	case APIInvokeRequestApiTypeRestApi:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for APIInvokeResponseOutcome.
 const (
 	Response APIInvokeResponseOutcome = "response"
@@ -2590,12 +2608,18 @@ type APIInvokeHeader struct {
 	Value string `json:"value" yaml:"value"`
 }
 
-// APIInvokeRequest The test request to send, to exactly one of a REST API (`restApiId`) or a GraphQL API
-// (`graphqlApiId`). A GraphQL API takes no `method` or `path`: its request is a `POST` to
-// its context, and `body` is required. Hop-by-hop headers, `Host`, `Content-Length`,
-// `Expect`, `Cookie` and the forwarding headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`)
-// are refused; `Authorization` is allowed, for the API under test.
+// APIInvokeRequest The test request to send, to the API named by `apiType` and `apiId`. A GraphQL API takes
+// no `method` or `path`: its request is a `POST` to its context, and `body` is required.
+// Hop-by-hop headers, `Host`, `Content-Length`, `Expect`, `Cookie` and the forwarding
+// headers (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`) are refused; `Authorization` is
+// allowed, for the API under test.
 type APIInvokeRequest struct {
+	// ApiId Handle of the API to test
+	ApiId string `json:"apiId" yaml:"apiId"`
+
+	// ApiType The API's type, which names the API with `apiId`, since a handle is unique only within its type
+	ApiType APIInvokeRequestApiType `json:"apiType" yaml:"apiType"`
+
 	// Body The request body, at most `gateway_relay.max_request_bytes` once decoded
 	Body *string `json:"body,omitempty" yaml:"body,omitempty"`
 
@@ -2604,9 +2628,6 @@ type APIInvokeRequest struct {
 
 	// GatewayId Handle of a gateway the API is deployed to
 	GatewayId string `json:"gatewayId" yaml:"gatewayId"`
-
-	// GraphqlApiId Handle of the GraphQL API to test
-	GraphqlApiId *string `json:"graphqlApiId,omitempty" yaml:"graphqlApiId,omitempty"`
 
 	// Headers At most 50 headers, 16 KiB across all names and values
 	Headers *[]APIInvokeHeader `json:"headers,omitempty" yaml:"headers,omitempty"`
@@ -2619,10 +2640,10 @@ type APIInvokeRequest struct {
 	// omitted. It may not leave the REST API's context, or carry a query or fragment.
 	Path  *string            `json:"path,omitempty" yaml:"path,omitempty"`
 	Query *[]APIInvokeHeader `json:"query,omitempty" yaml:"query,omitempty"`
-
-	// RestApiId Handle of the REST API to test
-	RestApiId *string `json:"restApiId,omitempty" yaml:"restApiId,omitempty"`
 }
+
+// APIInvokeRequestApiType The API's type, which names the API with `apiId`, since a handle is unique only within its type
+type APIInvokeRequestApiType string
 
 // APIInvokeResponse defines model for APIInvokeResponse.
 type APIInvokeResponse struct {

@@ -129,9 +129,9 @@ func serveInvokeAs(t *testing.T, targets invokeTargets, relay relayer, authz con
 // invokeBody is a request naming pizza-api on prod-gw, plus fields (JSON members, or "").
 func invokeBody(fields string) string {
 	if fields == "" {
-		return `{"restApiId": "pizza-api", "gatewayId": "prod-gw"}`
+		return `{"apiType": "rest-api", "apiId": "pizza-api", "gatewayId": "prod-gw"}`
 	}
-	return `{"restApiId": "pizza-api", "gatewayId": "prod-gw", ` + fields + `}`
+	return `{"apiType": "rest-api", "apiId": "pizza-api", "gatewayId": "prod-gw", ` + fields + `}`
 }
 
 func errorCode(t *testing.T, rec *httptest.ResponseRecorder) string {
@@ -160,7 +160,8 @@ func TestInvokeRelaysTheRequestAndReturnsTheGatewayResponse(t *testing.T) {
 
 	targets := &fakeInvokeTargets{apiContext: "/pizza/v1", endpoints: []string{gateway.URL}}
 	rec := serveInvoke(t, targets, newRelay(t, "*"), "application/json", `{
-		"restApiId": "pizza-api",
+		"apiType": "rest-api",
+		"apiId": "pizza-api",
 		"gatewayId": "prod-gw",
 		"method": "post",
 		"path": "/orders",
@@ -311,9 +312,11 @@ func TestInvokeRefusesAMalformedOrOversizedBody(t *testing.T) {
 		code   string
 	}{
 		"unknown field":        {invokeBody(`"url": "https://evil.example.com"`), http.StatusBadRequest, apperror.CodeCommonValidationFailed},
-		"no gateway named":     {`{"restApiId": "pizza-api"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
-		"no API named":         {`{"gatewayId": "prod-gw"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
-		"both kinds named":     {invokeBody(`"graphqlApiId": "countries"`), http.StatusBadRequest, apperror.CodeCommonValidationFailed},
+		"the old restApiId":    {`{"restApiId": "pizza-api", "gatewayId": "prod-gw"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
+		"no gateway named":     {`{"apiType": "rest-api", "apiId": "pizza-api"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
+		"no API named":         {`{"apiType": "rest-api", "gatewayId": "prod-gw"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
+		"no API type":          {`{"apiId": "pizza-api", "gatewayId": "prod-gw"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
+		"unknown API type":     {`{"apiType": "mcp-proxy", "apiId": "pizza-api", "gatewayId": "prod-gw"}`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
 		"not JSON":             {`not json`, http.StatusBadRequest, apperror.CodeCommonValidationFailed},
 		"over the limit":       {invokeBody(`"body": "` + strings.Repeat("a", 64<<10) + `"`), http.StatusRequestEntityTooLarge, apperror.CodeCommonPayloadTooLarge},
 		"forbidden header":     {invokeBody(`"headers": [{"name": "Cookie", "value": "a=1"}]`), http.StatusBadRequest, apperror.CodeRESTAPIInvokeRequestInvalid},
@@ -394,7 +397,7 @@ func TestInvokeMapsRelayFailures(t *testing.T) {
 
 // graphqlInvokeBody is a GraphQL request naming countries on prod-gw, plus fields (JSON members, or "").
 func graphqlInvokeBody(fields string) string {
-	body := `{"graphqlApiId": "countries", "gatewayId": "prod-gw", "body": "{\"query\":\"{ __typename }\"}"`
+	body := `{"apiType": "graphql-api", "apiId": "countries", "gatewayId": "prod-gw", "body": "{\"query\":\"{ __typename }\"}"`
 	if fields != "" {
 		body += ", " + fields
 	}
@@ -464,7 +467,7 @@ func TestInvokeGraphQLRefusesAMalformedRequest(t *testing.T) {
 	}{
 		"a method of its own": {graphqlInvokeBody(`"method": "POST"`), apperror.CodeCommonValidationFailed},
 		"a path of its own":   {graphqlInvokeBody(`"path": "/"`), apperror.CodeCommonValidationFailed},
-		"no body":             {`{"graphqlApiId": "countries", "gatewayId": "prod-gw"}`, apperror.CodeCommonValidationFailed},
+		"no body":             {`{"apiType": "graphql-api", "apiId": "countries", "gatewayId": "prod-gw"}`, apperror.CodeCommonValidationFailed},
 		"forbidden header":    {graphqlInvokeBody(`"headers": [{"name": "Cookie", "value": "a=1"}]`), apperror.CodeGraphQLAPIInvokeRequestInvalid},
 	} {
 		t.Run(name, func(t *testing.T) {
