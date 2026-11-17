@@ -21,7 +21,7 @@ import { Settings } from "@wso2/oxygen-ui-icons-react";
 
 import { projectManageUrl } from "./cloudConsoleUrl";
 
-const LABEL = "Manage project";
+const LABEL = "Settings";
 
 export type ManageProjectButtonProps = {
   /** The project in scope, by handle. */
@@ -31,7 +31,7 @@ export type ManageProjectButtonProps = {
 };
 
 /**
- * The project heading's action: a link to the WSO2 Cloud console's manage page
+ * The project heading's Settings action: a link to the WSO2 Cloud console's manage page
  * for the project, where it is edited and deleted. A plain anchor, because the
  * Cloud console serves that path, not this console's router.
  */
