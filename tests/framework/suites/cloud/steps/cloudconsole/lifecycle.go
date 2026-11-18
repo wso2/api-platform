@@ -586,7 +586,7 @@ func (s *Steps) selectGatewayEnvironment(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	name, err := usableEnvironment(items)
+	name, err := usableEnvironment(items, hostsSuiteGateways(ctx, s.rawDo))
 	if err != nil {
 		return err
 	}
@@ -605,7 +605,7 @@ func (s *Steps) selectOtherGatewayEnvironment(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	name, err := otherEnvironment(items, active)
+	name, err := otherEnvironment(items, active, hostsSuiteGateways(ctx, s.rawDo))
 	if err != nil {
 		return err
 	}
@@ -628,30 +628,43 @@ func (s *Steps) listEnvironments(ctx context.Context) ([]map[string]any, error) 
 	return items, nil
 }
 
-// usableEnvironment returns the name of the first listed environment that has one.
-func usableEnvironment(items []map[string]any) (string, error) {
+// usableEnvironment returns the name of the first listed environment the suite may select (the
+// default one or one named with the suite's prefix) and that fits reports as allowing the suite's
+// gateway names.
+func usableEnvironment(items []map[string]any, fits func(string) bool) (string, error) {
 	for _, item := range items {
 		name, ok := item["name"].(string)
-		if ok && strings.TrimSpace(name) != "" {
+		if ok && ownedEnvironment(name) && fits(name) {
 			return name, nil
 		}
 	}
-	return "", fmt.Errorf("APIP environment list contains no usable environment")
+	return "", fmt.Errorf("APIP environment list contains no environment named %q or starting with %q that allows a gateway handle of %d characters",
+		defaultEnvironmentName, testResourcePrefix, minGatewayHandleBudget)
 }
 
 // otherEnvironment returns the first listed non-production environment besides the active one that
-// no suite run created for itself.
-func otherEnvironment(items []map[string]any, active string) (string, error) {
+// the suite may select (the default one or one named with the suite's prefix), that fits reports as
+// allowing the suite's gateway names and that no suite run created for itself.
+func otherEnvironment(items []map[string]any, active string, fits func(string) bool) (string, error) {
 	for _, item := range items {
 		name, _ := item["name"].(string)
 		name = strings.TrimSpace(name)
-		if name == "" || name == active || item["isProduction"] == true ||
-			syntheticEnvironmentName.MatchString(strings.ToLower(name)) {
+		if !ownedEnvironment(name) || name == active || item["isProduction"] == true ||
+			syntheticEnvironmentName.MatchString(strings.ToLower(name)) || !fits(name) {
 			continue
 		}
 		return name, nil
 	}
-	return "", fmt.Errorf("the organization has no non-production environment besides %q to create a second gateway in", active)
+	return "", fmt.Errorf("the organization has no non-production environment named %q or starting with %q besides %q that allows a gateway handle of %d characters, to create a second gateway in",
+		defaultEnvironmentName, testResourcePrefix, active, minGatewayHandleBudget)
+}
+
+// rawDo sends a JSON request as the scenario's user without publishing the answer.
+func (s *Steps) rawDo(ctx context.Context, method, path string, body []byte) (*httpx.Response, error) {
+	if body == nil {
+		return s.doAuthenticatedRaw(ctx, method, path, nil)
+	}
+	return s.doAuthenticatedRaw(ctx, method, path, json.RawMessage(body))
 }
 
 func (s *Steps) awaitNotFound(ctx context.Context, path, what string) error {

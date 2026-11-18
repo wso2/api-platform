@@ -185,8 +185,8 @@ func checkAnyEnvironment(ctx context.Context, platform organisationAPI) error {
 	if err != nil {
 		return fmt.Errorf("listing the environments: %w", err)
 	}
-	if _, err := usableEnvironment(items); err != nil {
-		return unavailable("the organisation lists no usable environment")
+	if _, err := usableEnvironment(items, hostsSuiteGateways(ctx, platform.do)); err != nil {
+		return unavailable("%v", err)
 	}
 	return nil
 }
@@ -207,18 +207,22 @@ func (s *Starter) checkSecondEnvironment(ctx context.Context, platform organisat
 	if err != nil {
 		return fmt.Errorf("listing the environments: %w", err)
 	}
-	if _, err := otherEnvironment(items, active); err != nil {
+	if _, err := otherEnvironment(items, active, hostsSuiteGateways(ctx, platform.do)); err != nil {
 		return unavailable("%v", err)
 	}
 	return nil
 }
 
-// checkPipelineProject checks the project CLOUD_IT_PIPELINE_PROJECT names exists and is bound to a
-// deployment pipeline the platform lists, and keeps the pipeline's promotion paths.
+// checkPipelineProject checks the project CLOUD_IT_PIPELINE_PROJECT names is one the suite may use
+// (the default project or one named with the suite's prefix), exists and is bound to a deployment
+// pipeline the platform lists that the suite may use too, and keeps the pipeline's promotion paths.
 func (s *Starter) checkPipelineProject(ctx context.Context, platform organisationAPI) error {
 	project := strings.TrimSpace(os.Getenv(pipelineProjectEnv))
 	if project == "" {
 		return unavailable("%s is not set", pipelineProjectEnv)
+	}
+	if !ownedProject(project) {
+		return unavailable("%s names project %q, which is neither %q nor named with the prefix %q", pipelineProjectEnv, project, defaultProjectID, testResourcePrefix)
 	}
 	resp, err := platform.get(ctx, "/projects/"+url.PathEscape(project))
 	if err != nil {
@@ -238,6 +242,10 @@ func (s *Starter) checkPipelineProject(ctx context.Context, platform organisatio
 		}
 		return fmt.Errorf("reading the deployment pipeline of project %q: %w", project, err)
 	}
+	if !ownedPipeline(pipeline) {
+		return unavailable("project %q is bound to deployment pipeline %q, which is neither %q nor named with the prefix %q",
+			project, pipeline, defaultPipelineName, testResourcePrefix)
+	}
 	if len(environmentsOf(paths)) == 0 {
 		return unavailable("the deployment pipeline %q of project %q has no promotion path", pipeline, project)
 	}
@@ -248,7 +256,8 @@ func (s *Starter) checkPipelineProject(ctx context.Context, platform organisatio
 }
 
 // checkPipelineChain checks the pipeline project's deployment pipeline holds a promotion chain of
-// the given length whose environments each hold an active regular gateway.
+// the given length whose environments are ones the suite may use and each hold an active regular
+// gateway.
 func (s *Starter) checkPipelineChain(ctx context.Context, platform organisationAPI, length int) error {
 	if err := s.require(ctx, prePipelineProj); err != nil {
 		return unavailable("there is no pipeline-bound project to promote through: %v", err)
@@ -262,6 +271,9 @@ func (s *Starter) checkPipelineChain(ctx context.Context, platform organisationA
 		return fmt.Errorf("listing the managed gateways: %w", err)
 	}
 	holdsGateway := func(environment string) bool {
+		if !ownedEnvironment(environment) {
+			return false
+		}
 		filters := append(gatewayFilters(""), inEnvironment(environment))
 		for _, item := range items {
 			if active, _ := item["isActive"].(bool); !active {
@@ -277,8 +289,8 @@ func (s *Starter) checkPipelineChain(ctx context.Context, platform organisationA
 		return false
 	}
 	if promotionChain(pipeline.paths, length, holdsGateway) == nil {
-		return unavailable("the deployment pipeline %q of project %q has no promotion chain of %d environments with an active gateway each",
-			pipeline.pipeline, pipeline.project, length)
+		return unavailable("the deployment pipeline %q of project %q has no promotion chain of %d environments (named %q or starting with %q) with an active gateway each",
+			pipeline.pipeline, pipeline.project, length, defaultEnvironmentName, testResourcePrefix)
 	}
 	return nil
 }

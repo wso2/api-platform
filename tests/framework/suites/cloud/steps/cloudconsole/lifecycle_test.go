@@ -1560,10 +1560,10 @@ func newLeftoverStub() *leftoverStub {
 			{"id": "development-syn-gw-zzzzz222-1", "environment": "development"},
 			{"id": "development-syn-gw-ab", "displayName": "syn-gw-abcde234-12", "environment": "development"},
 		},
-		"/projects":                                   {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "ops-project"}},
-		"/rest-apis?projectId=default":                {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
+		"/projects":                    {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "apip-test-ops-project"}},
+		"/rest-apis?projectId=default": {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
 		"/rest-apis?projectId=syn-project-abcde234-2": {{"id": "syn-api-abcde234-2"}},
-		"/rest-apis?projectId=ops-project":            {{"id": "syn-api-abcde234-9"}},
+		"/rest-apis?projectId=apip-test-ops-project":  {{"id": "syn-api-abcde234-9"}},
 	}}
 }
 
@@ -2796,16 +2796,20 @@ func TestFindPipelineProject(t *testing.T) {
 	var seen []string
 	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
 		seen = append(seen, r.Method+" "+r.URL.Path)
-		writeJSON(w, status, map[string]any{"id": "payments"})
+		writeJSON(w, status, map[string]any{"id": "apip-test-payments"})
 	})
 	t.Setenv(pipelineProjectEnv, " ")
 	require.ErrorIs(t, steps.findPipelineProject(ctx), godog.ErrSkip, "a run that names no project skips the scenario")
 	require.Empty(t, seen)
 
 	t.Setenv(pipelineProjectEnv, "payments")
+	require.ErrorIs(t, steps.findPipelineProject(ctx), godog.ErrSkip, "a project other consoles share is not the suite's to use")
+	require.Empty(t, seen, "the project is refused by its name, before any request")
+
+	t.Setenv(pipelineProjectEnv, "apip-test-payments")
 	require.NoError(t, steps.findPipelineProject(ctx))
-	require.Equal(t, "payments", optionalValue(ctx, keyProjectID))
-	require.Equal(t, []string{"GET /projects/payments"}, seen)
+	require.Equal(t, "apip-test-payments", optionalValue(ctx, keyProjectID))
+	require.Equal(t, []string{"GET /projects/apip-test-payments"}, seen)
 
 	status = http.StatusNotFound
 	require.ErrorContains(t, steps.findPipelineProject(ctx), "does not have")
@@ -2816,17 +2820,22 @@ func TestFindPipelineProject(t *testing.T) {
 // promotionChainStub serves the project "payments", bound to a pipeline with the given promotion
 // paths, and the given managed gateways. It records every request it receives.
 func promotionChainStub(t *testing.T, paths string, gateways []map[string]any) (*Steps, context.Context, *tcontext.Local, *[]string) {
+	return promotionChainStubOf(t, "apip-test-release", paths, gateways)
+}
+
+// promotionChainStubOf is promotionChainStub with the pipeline listed under the given name.
+func promotionChainStubOf(t *testing.T, pipelineName, paths string, gateways []map[string]any) (*Steps, context.Context, *tcontext.Local, *[]string) {
 	t.Helper()
 	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
 	var seen []string
 	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
 		seen = append(seen, r.Method+" "+r.URL.RequestURI())
 		switch r.URL.Path {
-		case "/projects/payments/deployment-pipeline":
+		case "/projects/apip-test-payments/deployment-pipeline":
 			writeJSON(w, http.StatusOK, map[string]any{"pipeline": "release"})
 		case "/pipelines":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"list":[{"id":"release","name":"Release","promotionPaths":` + paths + `}]}`))
+			_, _ = w.Write([]byte(`{"list":[{"id":"release","name":"` + pipelineName + `","promotionPaths":` + paths + `}]}`))
 		case "/managed-gateways":
 			writeJSON(w, http.StatusOK, map[string]any{"list": gateways})
 		default:
@@ -2834,31 +2843,31 @@ func promotionChainStub(t *testing.T, paths string, gateways []map[string]any) (
 		}
 	})
 	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
-	local.Set(keyProjectID, "payments")
+	local.Set(keyProjectID, "apip-test-payments")
 	return steps, ctx, local, &seen
 }
 
 func TestFindPromotionChainRecordsTheChainAndItsGateways(t *testing.T) {
 	steps, ctx, local, seen := promotionChainStub(t,
-		`[{"sourceEnvironment":"dev","targetEnvironments":["staging"]},{"sourceEnvironment":"staging","targetEnvironments":["prod"]}]`,
+		`[{"sourceEnvironment":"development","targetEnvironments":["apip-test-staging"]},{"sourceEnvironment":"apip-test-staging","targetEnvironments":["apip-test-prod"]}]`,
 		[]map[string]any{
-			listedGateway("dev-sgw", "dev", map[string]any{"displayName": "sgw-abcdefg2-3"}),
-			listedGateway("dev-default", "dev", nil),
-			listedGateway("staging-default", "staging", nil),
-			listedGateway("prod-idle", "prod", map[string]any{"isActive": false}),
+			listedGateway("dev-sgw", "development", map[string]any{"displayName": "sgw-abcdefg2-3"}),
+			listedGateway("dev-default", "development", nil),
+			listedGateway("staging-default", "apip-test-staging", nil),
+			listedGateway("prod-idle", "apip-test-prod", map[string]any{"isActive": false}),
 		})
 
 	require.NoError(t, steps.findPromotionChain(ctx, 2))
 	for key, want := range map[string]string{
-		keyPipelineEnvironments:                      "dev,staging",
-		numberedKey(keyPipelineEnvironmentPrefix, 1): "dev",
+		keyPipelineEnvironments:                      "development,apip-test-staging",
+		numberedKey(keyPipelineEnvironmentPrefix, 1): "development",
 		numberedKey(keyPipelineGatewayPrefix, 1):     "dev-default",
 		numberedKey(keyPipelineEndpointPrefix, 1):    "https://dev-default.example.com",
-		numberedKey(keyPipelineEnvironmentPrefix, 2): "staging",
+		numberedKey(keyPipelineEnvironmentPrefix, 2): "apip-test-staging",
 		numberedKey(keyPipelineGatewayPrefix, 2):     "staging-default",
 		numberedKey(keyPipelineEndpointPrefix, 2):    "https://staging-default.example.com",
 		keyGatewayID:       "dev-default",
-		keyGatewayEnv:      "dev",
+		keyGatewayEnv:      "development",
 		keyGatewayEndpoint: "https://dev-default.example.com",
 	} {
 		require.Equal(t, want, optionalValue(ctx, key), key)
@@ -2876,24 +2885,52 @@ func TestFindPromotionChainRecordsTheChainAndItsGateways(t *testing.T) {
 	require.ErrorContains(t, steps.findPromotionChain(ctx, 2), "found no project")
 }
 
+func TestFindPromotionChainPassesOverEnvironmentsAndPipelinesTheSuiteDoesNotOwn(t *testing.T) {
+	paths := `[{"sourceEnvironment":"development","targetEnvironments":["qa"]},{"sourceEnvironment":"qa","targetEnvironments":["apip-test-staging"]}]`
+	gateways := []map[string]any{
+		listedGateway("dev-default", "development", nil),
+		listedGateway("qa-default", "qa", nil),
+		listedGateway("staging-default", "apip-test-staging", nil),
+	}
+
+	steps, ctx, _, _ := promotionChainStub(t, paths, gateways)
+	require.ErrorIs(t, steps.findPromotionChain(ctx, 2), godog.ErrSkip, "qa is another console's environment, so development has no owned next stage")
+	require.ErrorIs(t, steps.findPromotionChain(ctx, 3), godog.ErrSkip)
+
+	steps, ctx, _, _ = promotionChainStubOf(t, "release", paths, gateways)
+	require.ErrorIs(t, steps.findPromotionChain(ctx, 2), godog.ErrSkip, "a pipeline other consoles share is not the suite's to use")
+}
+
 func TestSelectOtherGatewayEnvironmentPassesOverTheActiveProductionAndSyntheticOnes(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
 	environments := []map[string]any{
 		{"name": "development"},
 		{"name": "production", "isProduction": true},
 		{"name": "e-abcdefg2-1"},
-		{"name": "staging"},
+		{"name": "qa"},
+		{"name": "apip-test-environment"},
+		{"name": "apip-test-s1"},
 	}
 	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "GET /environments", r.Method+" "+r.URL.Path)
-		writeJSON(w, http.StatusOK, map[string]any{"list": environments})
+		switch r.Method + " " + r.URL.Path {
+		case "GET /environments":
+			writeJSON(w, http.StatusOK, map[string]any{"list": environments})
+		case "POST /managed-gateways":
+			var body map[string]any
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(handleRefusal(body["environment"].(string))))
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
 	})
 	require.ErrorContains(t, steps.selectOtherGatewayEnvironment(ctx), "does not report its environment")
 	local.Set(keyGatewayEnv, "development")
 	require.NoError(t, steps.selectOtherGatewayEnvironment(ctx))
-	require.Equal(t, "staging", optionalValue(ctx, keyEnvironmentName))
+	require.Equal(t, "apip-test-s1", optionalValue(ctx, keyEnvironmentName),
+		"qa belongs to other consoles and apip-test-environment leaves no room for a gateway name")
 
-	environments = environments[:3]
+	environments = environments[:4]
 	require.ErrorContains(t, steps.selectOtherGatewayEnvironment(ctx), `besides "development"`)
 }
 
@@ -3070,12 +3107,30 @@ type starterPlatform struct {
 	// pipelinePaths; empty means the organisation has none.
 	pipelineProject string
 	pipelinePaths   []promotionPath
+	// pipelineName is the name of that pipeline; empty means "apip-test-pipeline-1".
+	pipelineName string
 	// deleted records the gateways and portals the starter was asked to remove.
 	deleted []string
 	// requests counts every request the organisation answered; gatewayLists those that listed the
 	// managed gateways.
 	requests     int
 	gatewayLists int
+}
+
+// handleRefusal is the platform's refusal of a handle that is too long for an environment: the
+// limit is 37 minus twice the environment name's length, and at least 1.
+func handleRefusal(environment string) string {
+	budget := max(37-2*len(environment), 1)
+	return fmt.Sprintf(`{"code":"invalid_request","message":"The gateway name is too long for the %q environment: its handle %q must be %d characters or fewer."}`,
+		environment, strings.Repeat("a", handleProbeLength), budget)
+}
+
+// boundPipelineName is the name the fake lists its project's pipeline under.
+func (p *starterPlatform) boundPipelineName() string {
+	if p.pipelineName != "" {
+		return p.pipelineName
+	}
+	return "apip-test-pipeline-1"
 }
 
 func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
@@ -3092,7 +3147,7 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 		case r.Method == http.MethodGet && p.pipelineProject != "" && r.URL.Path == "/projects/"+p.pipelineProject:
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": p.pipelineProject})
 		case r.Method == http.MethodGet && p.pipelineProject != "" && r.URL.Path == "/projects/"+p.pipelineProject+"/deployment-pipeline":
-			_ = json.NewEncoder(w).Encode(map[string]any{"pipeline": "project-pipeline"})
+			_ = json.NewEncoder(w).Encode(map[string]any{"pipeline": p.boundPipelineName()})
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/projects/") && strings.Count(r.URL.Path, "/") == 2:
 			w.WriteHeader(http.StatusNotFound)
 		case r.Method == http.MethodGet && r.URL.Path == "/environments":
@@ -3112,7 +3167,7 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{
 				{"name": "other", "promotionPaths": []promotionPath{{SourceEnvironment: "elsewhere"}}},
 				{"name": "default", "promotionPaths": p.paths},
-				{"name": "project-pipeline", "promotionPaths": p.pipelinePaths},
+				{"name": p.boundPipelineName(), "promotionPaths": p.pipelinePaths},
 			}})
 		case r.Method == http.MethodGet && r.URL.Path == "/managed-gateways":
 			p.gatewayLists++
@@ -3123,6 +3178,11 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 		case r.Method == http.MethodPost && r.URL.Path == "/managed-gateways":
 			var body map[string]any
 			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+			if handle, _ := body["handle"].(string); len(handle) == handleProbeLength {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(handleRefusal(body["environment"].(string))))
+				return
+			}
 			p.created = append(p.created, body)
 			if p.createAs != 0 {
 				w.WriteHeader(p.createAs)
@@ -5820,9 +5880,24 @@ func TestStarterChecksTheEnvironments(t *testing.T) {
 		require.NoError(t, starter.Failures())
 		require.Contains(t, strings.Join(starter.Report(), "\n"), "environment is not met")
 	})
-	t.Run("an environment that has a name passes", func(t *testing.T) {
+	t.Run("the default environment passes", func(t *testing.T) {
 		starter := starterAgainst(t, &starterPlatform{environments: []map[string]any{{"name": "development"}}})
 		require.NoError(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preEnvironment}))
+	})
+	t.Run("an environment named with the suite's prefix passes", func(t *testing.T) {
+		starter := starterAgainst(t, &starterPlatform{environments: []map[string]any{{"name": "qa"}, {"name": "apip-test-e1"}}})
+		require.NoError(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preEnvironment}))
+	})
+	t.Run("an environment whose name leaves no room for the suite's gateway names does not count", func(t *testing.T) {
+		starter := starterAgainst(t, &starterPlatform{environments: []map[string]any{{"name": "apip-test-environment"}}})
+		require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preEnvironment}), godog.ErrSkip)
+		require.NoError(t, starter.Failures())
+		require.Contains(t, strings.Join(starter.Report(), "\n"), "allows a gateway handle of 13 characters")
+	})
+	t.Run("environments other consoles own are not selected", func(t *testing.T) {
+		starter := starterAgainst(t, &starterPlatform{environments: []map[string]any{{"name": "qa"}, {"name": "staging"}}})
+		require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preEnvironment}), godog.ErrSkip)
+		require.NoError(t, starter.Failures())
 	})
 }
 
@@ -5837,8 +5912,12 @@ func TestStarterChecksForASecondEnvironment(t *testing.T) {
 			{"name": "development"}, {"name": "production", "isProduction": true}}, false},
 		"an environment an earlier run created does not count": {[]map[string]any{
 			{"name": "development"}, {"name": "syn-env-abcde234-1"}}, false},
-		"a second non-production environment": {[]map[string]any{
-			{"name": "development"}, {"name": "qa", "isProduction": false}}, true},
+		"an environment other consoles own does not count": {[]map[string]any{
+			{"name": "development"}, {"name": "qa", "isProduction": false}}, false},
+		"an environment with a name too long for gateway names does not count": {[]map[string]any{
+			{"name": "development"}, {"name": "apip-test-environment", "isProduction": false}}, false},
+		"a second non-production environment named with the prefix": {[]map[string]any{
+			{"name": "development"}, {"name": "apip-test-e1", "isProduction": false}}, true},
 	} {
 		starter := starterAgainst(t, &starterPlatform{paths: developmentPipeline(), gateways: gateways, environments: tc.environments})
 		err := starter.checkScenario(context.Background(), "a scenario", []precondition{preSecondEnv})
@@ -5852,7 +5931,7 @@ func TestStarterChecksForASecondEnvironment(t *testing.T) {
 }
 
 func TestASecondEnvironmentNeedsTheDefaultGateway(t *testing.T) {
-	platform := &starterPlatform{noDefaultProject: true, noPipelineBinding: true, environments: []map[string]any{{"name": "development"}, {"name": "qa"}}}
+	platform := &starterPlatform{noDefaultProject: true, noPipelineBinding: true, environments: []map[string]any{{"name": "development"}, {"name": "apip-test-e1"}}}
 	starter := starterAgainst(t, platform)
 
 	require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preSecondEnv}), godog.ErrSkip)
@@ -5860,7 +5939,7 @@ func TestASecondEnvironmentNeedsTheDefaultGateway(t *testing.T) {
 }
 
 func TestStarterChecksThePipelineProject(t *testing.T) {
-	chain := promotionChainPaths("development", "qa")
+	chain := promotionChainPaths("development", "apip-test-environment")
 	for name, tc := range map[string]struct {
 		configured string
 		platform   *starterPlatform
@@ -5868,9 +5947,13 @@ func TestStarterChecksThePipelineProject(t *testing.T) {
 		report     string
 	}{
 		"no project is configured": {"", &starterPlatform{}, false, pipelineProjectEnv + " is not set"},
-		"the project is absent":    {"ops", &starterPlatform{}, false, "which the organisation does not have"},
-		"its pipeline has no path": {"ops", &starterPlatform{pipelineProject: "ops"}, false, "has no promotion path"},
-		"its pipeline has paths":   {"ops", &starterPlatform{pipelineProject: "ops", pipelinePaths: chain}, true, ""},
+		"the project is absent":    {"apip-test-ops", &starterPlatform{}, false, "which the organisation does not have"},
+		"the project is another console's": {"ops", &starterPlatform{pipelineProject: "ops", pipelinePaths: chain}, false,
+			"neither \"default\" nor named with the prefix"},
+		"its pipeline is another console's": {"apip-test-ops", &starterPlatform{pipelineProject: "apip-test-ops", pipelinePaths: chain, pipelineName: "release"}, false,
+			"bound to deployment pipeline \"release\""},
+		"its pipeline has no path": {"apip-test-ops", &starterPlatform{pipelineProject: "apip-test-ops"}, false, "has no promotion path"},
+		"its pipeline has paths":   {"apip-test-ops", &starterPlatform{pipelineProject: "apip-test-ops", pipelinePaths: chain}, true, ""},
 	} {
 		starter := starterAgainst(t, tc.platform)
 		t.Setenv(pipelineProjectEnv, tc.configured)
@@ -5886,35 +5969,73 @@ func TestStarterChecksThePipelineProject(t *testing.T) {
 	}
 }
 
+func TestTheSuiteSelectsOnlyTheDefaultResourcesAndThosePrefixed(t *testing.T) {
+	for name, tc := range map[string]struct {
+		check func(string) bool
+		given string
+		want  bool
+	}{
+		"the default environment":              {ownedEnvironment, "development", true},
+		"an environment with the prefix":       {ownedEnvironment, "apip-test-environment", true},
+		"the prefix in another case":           {ownedEnvironment, "APIP-TEST-Environment", true},
+		"another console's environment":        {ownedEnvironment, "qa", false},
+		"the prefix without a name":            {ownedEnvironment, "apip-test", false},
+		"an environment named like a pipeline": {ownedEnvironment, "default", false},
+		"the default pipeline":                 {ownedPipeline, "default", true},
+		"a pipeline with the prefix":           {ownedPipeline, "apip-test-pipeline-2", true},
+		"another console's pipeline":           {ownedPipeline, "release", false},
+		"the default project":                  {ownedProject, "default", true},
+		"a project with the prefix":            {ownedProject, "apip-test-payments", true},
+		"another console's project":            {ownedProject, "payments", false},
+		"a blank name":                         {ownedProject, "  ", false},
+	} {
+		require.Equal(t, tc.want, tc.check(tc.given), name)
+	}
+}
+
 func TestStarterChecksThePromotionChains(t *testing.T) {
 	platform := &starterPlatform{
-		pipelineProject: "ops",
-		pipelinePaths:   promotionChainPaths("development", "qa", "production"),
-		gateways:        chainGateways("development", "qa"),
+		pipelineProject: "apip-test-ops",
+		pipelinePaths:   promotionChainPaths("development", "apip-test-qa", "apip-test-production"),
+		gateways:        chainGateways("development", "apip-test-qa"),
 	}
 	starter := starterAgainst(t, platform)
-	t.Setenv(pipelineProjectEnv, "ops")
+	t.Setenv(pipelineProjectEnv, "apip-test-ops")
 
 	require.NoError(t, starter.checkScenario(context.Background(), "a promotion of 2", []precondition{prePipelineProj, prePipelineChain2}))
 	require.ErrorIs(t, starter.checkScenario(context.Background(), "a promotion of 3", []precondition{prePipelineProj, prePipelineChain3}), godog.ErrSkip,
 		"production holds no active gateway")
 	require.NoError(t, starter.Failures())
-	require.Contains(t, strings.Join(starter.Report(), "\n"), "no promotion chain of 3 environments with an active gateway each")
+	require.Contains(t, strings.Join(starter.Report(), "\n"), "no promotion chain of 3 environments")
 
-	platform.gateways = append(platform.gateways, chainGateways("production")...)
+	platform.gateways = append(platform.gateways, chainGateways("apip-test-production")...)
 	again := starterAgainst(t, platform)
-	t.Setenv(pipelineProjectEnv, "ops")
+	t.Setenv(pipelineProjectEnv, "apip-test-ops")
 	require.NoError(t, again.checkScenario(context.Background(), "a promotion of 3", []precondition{prePipelineProj, prePipelineChain3}))
 }
 
 func TestAPromotionChainNeedsAnActiveGatewayInEveryEnvironment(t *testing.T) {
-	gateways := chainGateways("development", "qa")
+	gateways := chainGateways("development", "apip-test-qa")
 	gateways[1]["isActive"] = false
-	platform := &starterPlatform{pipelineProject: "ops", pipelinePaths: promotionChainPaths("development", "qa"), gateways: gateways}
+	platform := &starterPlatform{pipelineProject: "apip-test-ops", pipelinePaths: promotionChainPaths("development", "apip-test-qa"), gateways: gateways}
 	starter := starterAgainst(t, platform)
-	t.Setenv(pipelineProjectEnv, "ops")
+	t.Setenv(pipelineProjectEnv, "apip-test-ops")
 
 	require.ErrorIs(t, starter.checkScenario(context.Background(), "a promotion", []precondition{prePipelineChain2}), godog.ErrSkip)
+}
+
+func TestAPromotionChainNeedsEnvironmentsTheSuiteMayUse(t *testing.T) {
+	platform := &starterPlatform{
+		pipelineProject: "apip-test-ops",
+		pipelinePaths:   promotionChainPaths("development", "qa"),
+		gateways:        chainGateways("development", "qa"),
+	}
+	starter := starterAgainst(t, platform)
+	t.Setenv(pipelineProjectEnv, "apip-test-ops")
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a promotion", []precondition{prePipelineChain2}), godog.ErrSkip,
+		"qa has an active gateway but belongs to other consoles")
+	require.NoError(t, starter.Failures())
 }
 
 func TestPrepareChecksTheNamedPreconditionsAndReportsFailures(t *testing.T) {
@@ -5962,7 +6083,7 @@ func TestCloudSweepsLeaveAPipelineProjectTheOrganisationDoesNotListAlone(t *test
 }
 
 func TestCloudSweepsReadTheAPIsOfThePipelineProject(t *testing.T) {
-	t.Setenv(pipelineProjectEnv, "ops-project")
+	t.Setenv(pipelineProjectEnv, "apip-test-ops-project")
 	stub := newLeftoverStub()
 	topo := cloudAPIStub(t, stub.handler)
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
@@ -5971,7 +6092,7 @@ func TestCloudSweepsReadTheAPIsOfThePipelineProject(t *testing.T) {
 	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
 
 	require.NoError(t, err)
-	require.Contains(t, stub.listedProjects["/rest-apis"], "ops-project", "the project the scenarios deploy through is read for leftovers")
+	require.Contains(t, stub.listedProjects["/rest-apis"], "apip-test-ops-project", "the project the scenarios deploy through is read for leftovers")
 	require.Contains(t, removed, "/rest-apis/syn-api-abcde234-9", "the run's API in that project is removed")
 	require.NotContains(t, removed, "/rest-apis/ops-api", "an API the organisation owns stays")
 }

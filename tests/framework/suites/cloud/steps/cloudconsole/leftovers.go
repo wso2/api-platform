@@ -238,7 +238,7 @@ func projectScopedItems(ctx context.Context, client *httpx.Client, base, token s
 	// a project that does not exist, which the scenarios skip for and the platform refuses to list.
 	pipelineProject := strings.TrimSpace(os.Getenv(pipelineProjectEnv))
 	for _, project := range projects {
-		if id := firstString(project, []string{"id"}); id != "" && id == pipelineProject && id != defaultProjectID {
+		if id := firstString(project, []string{"id"}); id != "" && id == pipelineProject && id != defaultProjectID && ownedProject(id) {
 			scopes = append(scopes, id)
 		}
 	}

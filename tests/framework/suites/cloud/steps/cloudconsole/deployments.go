@@ -695,14 +695,17 @@ func boundPipelineOf(ctx context.Context, projectID string, get pipelineGetter) 
 	if listed.StatusCode != http.StatusOK {
 		return "", nil, responseError(listed)
 	}
-	paths, err := listedPipelinePaths(listed, name)
-	return name, paths, err
+	listedName, paths, err := findListedPipeline(listed, name)
+	return listedName, paths, err
 }
 
-// listedPipelinePaths finds a pipeline in a /pipelines listing and returns its promotion paths. A
-// binding names a pipeline by its resource id, which need not be the pipeline's name, so either
-// matches.
+// listedPipelinePaths finds a pipeline in a /pipelines listing and returns its promotion paths.
 func listedPipelinePaths(listed *httpx.Response, pipeline string) ([]promotionPath, error) {
+	_, paths, err := findListedPipeline(listed, pipeline)
+	return paths, err
+}
+
+func findListedPipeline(listed *httpx.Response, pipeline string) (string, []promotionPath, error) {
 	var document struct {
 		List []struct {
 			ID             string          `json:"id"`
@@ -711,14 +714,18 @@ func listedPipelinePaths(listed *httpx.Response, pipeline string) ([]promotionPa
 		} `json:"list"`
 	}
 	if err := json.Unmarshal(listed.Body, &document); err != nil {
-		return nil, fmt.Errorf("decoding deployment pipelines: %w", err)
+		return "", nil, fmt.Errorf("decoding deployment pipelines: %w", err)
 	}
 	for _, candidate := range document.List {
 		if candidate.ID == pipeline || candidate.Name == pipeline {
-			return candidate.PromotionPaths, nil
+			name := candidate.Name
+			if strings.TrimSpace(name) == "" {
+				name = candidate.ID
+			}
+			return name, candidate.PromotionPaths, nil
 		}
 	}
-	return nil, &pipelineNotListedError{pipeline: pipeline}
+	return "", nil, &pipelineNotListedError{pipeline: pipeline}
 }
 
 // assertStagesMatchPipeline checks that the deployment listing has exactly one stage for each

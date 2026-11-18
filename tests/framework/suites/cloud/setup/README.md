@@ -33,14 +33,40 @@ run.
 |---|---|---|---|
 | `default-project` | `GET /projects/default` answers 200 | not built: skipped | the scenarios that start with `I find the default APIP project` (basic, deploy, secrets, portal and some gateway scenarios) |
 | `default-gateway` | the default project's deployment pipeline is readable and lists an environment, and the organisation holds an active regular gateway in it that no suite run created | **built** in the pipeline's first stage (`development` when the pipeline reaches it) and waited for until it is `ACTIVE` | the scenarios that start with `I find an active APIP gateway` (basic, deploy, gateway, gateway configuration, secrets) |
-| `environment` | the platform lists an environment with a name | not built: skipped | the scenarios that select an existing environment for a managed or self-hosted gateway |
-| `second-environment` | the platform lists a non-production environment besides the default gateway's, that no suite run created | not built: skipped | `ID_APIP_GATEWAY_006` and `_007` |
-| `pipeline-project` | `CLOUD_IT_PIPELINE_PROJECT` names a project of the organisation that is bound to a deployment pipeline the platform lists, with at least one promotion path | not built: skipped | the scenarios that start with `I find the pipeline-bound APIP project` |
-| `pipeline-chain-2`, `pipeline-chain-3` | that pipeline holds a promotion chain of 2 (3) environments, each with an active regular gateway | not built: skipped | the promotion scenarios (the chain of 3 is `ID_APIP_PROMOTION_006`), `ID_APIP_DEPLOY_011`, `ID_APIP_PROJECT_009` |
+| `environment` | the platform lists an environment the suite may select (see "Which resources the suite selects") | not built: skipped | the scenarios that select an existing environment for a managed or self-hosted gateway |
+| `second-environment` | the platform lists a non-production environment the suite may select, besides the default gateway's, that no suite run created | not built: skipped | `ID_APIP_GATEWAY_006` and `_007` |
+| `pipeline-project` | `CLOUD_IT_PIPELINE_PROJECT` names a project the suite may select, which the organisation has and which is bound to a deployment pipeline the suite may select and the platform lists, with at least one promotion path | not built: skipped | the scenarios that start with `I find the pipeline-bound APIP project` |
+| `pipeline-chain-2`, `pipeline-chain-3` | that pipeline holds a promotion chain of 2 (3) environments the suite may select, each with an active regular gateway | not built: skipped | the promotion scenarios (the chain of 3 is `ID_APIP_PROMOTION_006`), `ID_APIP_DEPLOY_011`, `ID_APIP_PROJECT_009` |
 | `api-portal` | the organisation holds an active managed API Portal that no scenario created | **built** and waited for until it is `active` | the scenarios that start with `I find an active managed API Portal` (the portal feature) |
 
 The starter never creates an environment, a deployment pipeline or a project, and never changes a
 project's pipeline: the WSO2 Cloud console manages them. A scenario never creates them either.
+
+### Which resources the suite selects
+
+The organisation is shared with other consoles (agent manager and others), so environments,
+deployment pipelines and projects belong to everyone. The suite selects one only if it is the
+organisation's **default** one or its name **starts with `apip-test-`**:
+
+| Resource | The suite selects | Examples |
+|---|---|---|
+| Environment | `development`, or a name starting with `apip-test-` | `apip-test-environment` |
+| Deployment pipeline | `default`, or a name starting with `apip-test-` | `apip-test-pipeline-1`, `apip-test-pipeline-2` |
+| Project | `default`, or an id starting with `apip-test-` | the project `CLOUD_IT_PIPELINE_PROJECT` names |
+
+An environment that hosts the gateways the scenarios build must also leave room for their names:
+the platform limits a gateway handle to 37 minus twice the environment name's length, and the suite's
+names need 13 characters, so such an environment name is at most 12 characters (`apip-test-e1`).
+The starter asks the platform for the limit (the request is refused before anything is built) and
+passes over a longer name: `apip-test-environment` allows a 1-character handle and would fail the
+scenarios that build a gateway in it. Environments that only hold an existing gateway (promotion
+chains) are not subject to this.
+
+Any other environment, pipeline or project is passed over, even when it has everything a scenario
+needs (a gateway in the environment, a promotion path in the pipeline): the precondition is not met
+and the scenarios that need it are skipped. A promotion chain only runs through environments the
+suite may select. Gateways and portals are not selected by name: the starter finds or builds them
+under any name.
 
 ## What happens when a precondition is not met
 
@@ -64,7 +90,7 @@ Read those lines before trusting a green run: a skip is not a pass.
 | Setting | Meaning |
 |---|---|
 | `CLOUD_CONSOLE_ACCESS_TOKEN` | the console token that decides the organisation (required, never printed) |
-| `CLOUD_IT_PIPELINE_PROJECT` | the id of the project the promotion scenarios deploy through; unset skips them |
+| `CLOUD_IT_PIPELINE_PROJECT` | the id of the project the promotion scenarios deploy through (the default project or one starting with `apip-test-`, bound to a pipeline likewise); unset or any other id skips them |
 | `CLOUD_GATEWAY_ID` | pins the gateway the scenarios deploy to; the starter never builds a pinned one |
 
 ## What the finalizer removes
