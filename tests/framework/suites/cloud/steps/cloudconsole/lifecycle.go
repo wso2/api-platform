@@ -449,6 +449,11 @@ func resolveCloudDataPlaneURL(_ context.Context, target string) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("invalid cloud data-plane URL %q: %w", target, err)
 	}
+	// The runtime of a gateway this run started on this machine is plain http on a loopback
+	// address; only the exact origin it was started on is let through.
+	if isLocalGatewayTarget(parsed) {
+		return target, nil
+	}
 	if localDataPlaneEnabled() && approvedLocalDataPlaneTarget(parsed) {
 		return localDataPlaneTarget(parsed, target), nil
 	}

@@ -15,3 +15,11 @@ cloud_base_domain = "development.example"
 # [environments.local]
 # cloud_base_domain = "openchoreoapis.localhost"
 # platform_api_endpoint = "http://development-wso2cloud.openchoreoapis.localhost:19080/apip-platform-api-apip-platform-api-endpoint/api/v0.9"
+
+# A cloud whose console is not served at cloud-console-<environment>.gateway.<cloud_base_domain>
+# sets cloud_console_host, as the deployment's cloud_console_httproute_host does. A self-hosted
+# gateway connects to https://<cloud console host>/api-management/connect.
+#
+# [environments.prod]
+# cloud_base_domain = "example.com"
+# cloud_console_host = "console.example.com"

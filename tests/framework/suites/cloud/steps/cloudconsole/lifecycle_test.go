@@ -459,7 +459,10 @@ func cloudAPIStub(t *testing.T, handler http.HandlerFunc) *frameworkruntime.Topo
 	}))
 	t.Cleanup(server.Close)
 	inst, err := components.NewExternalInstance(corecatalog.CloudConsole(), 0, 1,
-		map[string]string{corecatalog.EndpointAPIPPlatformAPI: server.URL + platformAPIRoute})
+		map[string]string{
+			corecatalog.EndpointAPIPPlatformAPI:     server.URL + platformAPIRoute,
+			corecatalog.EndpointGatewayControlPlane: "https://cloud-console.example.test/api-management/connect",
+		})
 	require.NoError(t, err)
 	set := components.NewSet()
 	require.NoError(t, set.Add(inst))
@@ -5893,4 +5896,116 @@ func TestRemoveUnregisteredSelfHostedGatewayDeletesItAndReportsWhenItMayRemain(t
 			require.NoError(t, err, "status %d", tc.status)
 		}
 	}
+}
+
+func TestControlPlaneHostIsTheConnectEndpointWithoutItsScheme(t *testing.T) {
+	host, err := controlPlaneHost("https://cloud-console-development.gateway.dev.example.test/api-management/connect/")
+	require.NoError(t, err)
+	require.Equal(t, "cloud-console-development.gateway.dev.example.test/api-management/connect", host)
+	for _, endpoint := range []string{
+		"http://cloud-console.example.test/api-management/connect",
+		"https://user:pass@cloud-console.example.test/api-management/connect",
+		"https://cloud-console.example.test/api-management/connect?x=1",
+		"/api-management/connect",
+		"",
+	} {
+		_, err := controlPlaneHost(endpoint)
+		require.Error(t, err, endpoint)
+	}
+}
+
+func TestLocalGatewayEnvVerifiesTheControlPlaneCertificate(t *testing.T) {
+	require.Equal(t, map[string]string{
+		"APIP_GW_CONTROLLER_CONTROLPLANE_HOST":                 "console.example.test/api-management/connect",
+		"APIP_GW_CONTROLLER_CONTROLPLANE_TOKEN":                "registration-token",
+		"APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY": "false",
+	}, localGatewayEnv("console.example.test/api-management/connect", "registration-token"))
+}
+
+func TestParseMintedTokenReturnsTheValueWithoutQuotingTheBody(t *testing.T) {
+	id, token, err := parseMintedToken([]byte(`{"id":"tok-1","token":" secret-value "}`))
+	require.NoError(t, err)
+	require.Equal(t, "tok-1", id)
+	require.Equal(t, "secret-value", token)
+	_, _, err = parseMintedToken([]byte(`{"token":"secret-value"}`))
+	require.ErrorContains(t, err, "no token id")
+	require.NotContains(t, err.Error(), "secret-value")
+}
+
+func TestOnlyTheOriginOfAStartedLocalGatewayIsAnApprovedDataPlaneTarget(t *testing.T) {
+	localGateways.Lock()
+	localGateways.origins["http://localhost:49153"] = true
+	localGateways.Unlock()
+	t.Cleanup(func() {
+		localGateways.Lock()
+		delete(localGateways.origins, "http://localhost:49153")
+		localGateways.Unlock()
+	})
+
+	target, err := resolveCloudDataPlaneURL(context.Background(), "http://localhost:49153/api-1/v1/posts/1")
+	require.NoError(t, err)
+	require.Equal(t, "http://localhost:49153/api-1/v1/posts/1", target)
+	for _, refused := range []string{
+		"http://localhost:49154/api-1/v1/posts/1",
+		"https://localhost:49153/api-1/v1/posts/1",
+		"http://user@localhost:49153/api-1/v1/posts/1",
+		"http://127.0.0.1:49153/api-1/v1/posts/1",
+	} {
+		_, err := resolveCloudDataPlaneURL(context.Background(), refused)
+		require.Error(t, err, refused)
+	}
+}
+
+func TestSelfHostedGatewayStepsUseTheLocalGatewayAsTheActiveGateway(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	steps := &Steps{}
+	require.ErrorContains(t, steps.selectActiveGatewayEnvironment(ctx), "find an active APIP gateway first")
+
+	local, _ := tcontext.LocalOf(ctx)
+	local.Set(keyGatewayID, "managed-gw")
+	local.Set(keyGatewayEnv, "development")
+	local.Set(keyGatewayEndpoint, "https://managed.example.test")
+	require.NoError(t, steps.selectActiveGatewayEnvironment(ctx))
+	environment, err := requiredValue(ctx, keyEnvironmentName)
+	require.NoError(t, err)
+	require.Equal(t, "development", environment)
+
+	local.Set(keySelfHostedGatewayID, "development-syn-shgw-1")
+	require.ErrorContains(t, steps.useLocalGatewayAsActive(ctx), "start a local APIP gateway first")
+	local.Set(keyLocalGatewayEndpoint, "http://localhost:49153")
+	require.NoError(t, steps.useLocalGatewayAsActive(ctx))
+	for key, want := range map[string]string{
+		keyGatewayID: "development-syn-shgw-1", keyGatewayEnv: "development", keyGatewayEndpoint: "http://localhost:49153",
+	} {
+		got, err := requiredValue(ctx, key)
+		require.NoError(t, err, key)
+		require.Equal(t, want, got, key)
+	}
+}
+
+func TestAwaitSelfHostedGatewayStateWaitsForTheReportedState(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	reads := 0
+	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/self-hosted-gateways/development-syn-shgw-1", r.URL.Path)
+		reads++
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "development-syn-shgw-1", "isActive": reads > 1})
+	})
+	steps := &Steps{topo: topo, client: httpx.NewClient(httpx.Options{Timeout: 5 * time.Second})}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	local, _ := tcontext.LocalOf(ctx)
+	local.Set(keySelfHostedGatewayID, "development-syn-shgw-1")
+
+	require.NoError(t, steps.awaitSelfHostedGatewayState(ctx, "active"))
+	require.Equal(t, 2, reads, "the first, inactive answer is not accepted")
+
+	_, err := selfHostedGatewayActive([]byte(`{"id":"development-syn-shgw-1"}`))
+	require.ErrorContains(t, err, "no boolean isActive")
+}
+
+func TestStoppingALocalGatewayThatIsNotRunningSucceeds(t *testing.T) {
+	require.NoError(t, stopLocalGateway(context.Background(), "-shgw-unknown"))
+	require.NoError(t, localGatewayDeleter(context.Background(), cleanup.Resource{Kind: kindLocalGateway, ID: "-shgw-unknown"}))
+	require.Less(t, kindLocalGateway.Order, kindSelfHostedGateway.Order, "the local gateway stops before its registration is deleted")
+	require.Greater(t, kindLocalGateway.Order, cleanup.KindAPI.Order, "the APIs deployed to it are deleted while it still runs")
 }

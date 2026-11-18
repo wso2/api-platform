@@ -42,3 +42,11 @@ scenarios:
       refs:
         - feature: suites/cloud/features/apip_self_hosted_gateway.feature
           scenario: "Reconfiguring a self-hosted gateway's registration token revokes the previous one"
+  - id: ID_APIP_SELF_HOSTED_GATEWAY_003
+    title: "A gateway started with a self-hosted gateway's registration token and the cloud console's /api-management/connect host connects and is reported active, serves an API deployed to it and stops serving it once undeployed, and is reported inactive once it stops."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_self_hosted_gateway_runtime.feature
+          scenario: "A local gateway connects with its registration token and serves the API deployed to it"
