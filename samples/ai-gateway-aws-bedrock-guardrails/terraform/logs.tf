@@ -39,11 +39,19 @@ resource "aws_iam_role_policy" "flow_logs" {
   role = aws_iam_role.flow_logs.id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
-      Resource = "${aws_cloudwatch_log_group.flow_logs.arn}:*"
-    }]
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
+        Resource = "${aws_cloudwatch_log_group.flow_logs.arn}:*"
+      },
+      {
+        # Flow logs list the account's log groups to find this one. The action can't be scoped further.
+        Effect   = "Allow"
+        Action   = "logs:DescribeLogGroups"
+        Resource = "*"
+      },
+    ]
   })
 }
 

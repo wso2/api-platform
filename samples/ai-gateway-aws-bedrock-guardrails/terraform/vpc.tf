@@ -4,6 +4,8 @@
 data "aws_availability_zones" "available" {
   #checkov:skip=CKV_AWS_394:Any two available zones in the reader's Region work.
   state = "available"
+  # Zones that Amazon EKS doesn't support for cluster subnets.
+  exclude_zone_ids = ["use1-az3", "usw1-az2", "cac1-az3"]
 }
 
 locals {

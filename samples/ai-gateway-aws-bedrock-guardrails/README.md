@@ -20,7 +20,7 @@ Code-only sample for running WSO2 AI Gateway on Amazon EKS with Amazon Bedrock G
 ## Prerequisites
 
 - An AWS account and an AWS CLI session (AWS IAM Identity Center recommended).
-- Docker, Terraform 1.9 or later, AWS CLI 2.9 or later, kubectl, Helm 3.12 or later, curl, jq, envsubst, openssl, and unzip.
+- Docker, Terraform 1.9 or later, AWS CLI 2.9 or later, kubectl, Helm 3.12 or later, curl 7.76.0 or later, jq, envsubst, openssl, and unzip.
 
 ## Run
 

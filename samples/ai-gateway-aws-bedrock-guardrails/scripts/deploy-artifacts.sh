@@ -27,6 +27,11 @@ api() {
   curl --fail-with-body -sS --netrc-file "${NETRC_FILE}" "$@"
 }
 
+# Prints the HTTP status of a GET request, or 000 if the request didn't complete.
+api_status() {
+  curl -sS --netrc-file "${NETRC_FILE}" -o /dev/null -w '%{http_code}' "$1" 2>/dev/null || true
+}
+
 # Wait for the management API, which port-forward.sh makes available on this machine.
 ready=0
 for _ in $(seq 1 30); do
@@ -61,7 +66,13 @@ apply_artifact llm-providers bedrock-provider "${ROOT_DIR}/gateway/bedrock-provi
 
 for app in ${APPS}; do
   # Provider key that the proxy sends on the internal route, stored as an encrypted gateway secret.
-  if ! api -o /dev/null "${API}/secrets/${app}-loopback" 2>/dev/null; then
+  # It's created only when the secret doesn't exist, so that a failed lookup never replaces a working key.
+  status="$(api_status "${API}/secrets/${app}-loopback")"
+  case "${status}" in
+    2?? | 404) ;;
+    *) echo "Couldn't look up the gateway secret ${app}-loopback (HTTP ${status}). Rerun when the gateway responds." >&2; exit 1 ;;
+  esac
+  if [ "${status}" = "404" ]; then
     loopback_key="$(create_key llm-providers bedrock-provider "${app}-loopback")"
     api -o /dev/null -X POST "${API}/secrets" -H "Content-Type: application/yaml" --data-binary @- <<SECRET
 apiVersion: gateway.api-platform.wso2.com/v1
@@ -78,7 +89,7 @@ SECRET
   apply_artifact llm-proxies "${app}" "${ROOT_DIR}/gateway/${app}-proxy.yaml"
 
   # Application key, piped straight into Secrets Manager so it never appears in the terminal.
-  if ! aws secretsmanager describe-secret --secret-id "${SECRET_PREFIX}/${app}" >/dev/null 2>&1; then
+  if ! secret_exists "${SECRET_PREFIX}/${app}"; then
     app_key="$(create_key llm-proxies "${app}" "${app}-app")"
     printf '%s' "${app_key}" | aws secretsmanager create-secret --name "${SECRET_PREFIX}/${app}" \
       --description "Gateway API key for ${app}" \

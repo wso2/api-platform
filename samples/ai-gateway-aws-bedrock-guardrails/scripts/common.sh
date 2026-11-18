@@ -22,6 +22,16 @@ export SECRET_PREFIX="wso2-ai-gateway/apps"
 export ADMIN_SECRET="wso2-ai-gateway/admin-password"
 export APPS="support-assistant employee-assistant"
 
+# Succeeds if the secret exists, and fails if it doesn't. Stops the script on any other error, such as
+# expired credentials or denied access, so that a failed lookup isn't mistaken for a missing secret.
+secret_exists() {
+  local err
+  if err="$(aws secretsmanager describe-secret --secret-id "$1" 2>&1 >/dev/null)"; then return 0; fi
+  case "${err}" in *ResourceNotFoundException*) return 1 ;; esac
+  echo "Couldn't look up the secret $1: ${err}" >&2
+  exit 1
+}
+
 # Only these variables are substituted, so other ${...} text stays intact.
 # shellcheck disable=SC2016 # Single quotes are intentional: envsubst expands these names.
 export SUBST_VARS='${AWS_REGION} ${BASELINE_GUARDRAIL_ID} ${BASELINE_GUARDRAIL_VERSION} ${SUPPORT_GUARDRAIL_ID} ${SUPPORT_GUARDRAIL_VERSION}'
