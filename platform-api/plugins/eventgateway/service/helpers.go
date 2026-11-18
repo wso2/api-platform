@@ -178,6 +178,11 @@ func mapUpstreamAuthAPIToModel(in *api.UpstreamAuth) *model.UpstreamAuth {
 	}
 }
 
+// mapUpstreamAuthModelToAPI maps a stored upstream auth block to its API
+// representation. Type and Header identify the scheme and survive the trip;
+// Value is declared writeOnly in the OpenAPI contract and is never returned,
+// matching mapUpstreamConfigToDTO, which backs the LLM, MCP and GraphQL
+// upstream responses.
 func mapUpstreamAuthModelToAPI(in *model.UpstreamAuth) *api.UpstreamAuth {
 	if in == nil {
 		return nil
@@ -190,8 +195,66 @@ func mapUpstreamAuthModelToAPI(in *model.UpstreamAuth) *api.UpstreamAuth {
 	return &api.UpstreamAuth{
 		Type:   authType,
 		Header: utils.StringPtrIfNotEmpty(in.Header),
-		Value:  utils.StringPtrIfNotEmpty(in.Value),
+		Value:  nil, // writeOnly: supplied on configure, never returned
 	}
+}
+
+// preserveWebSubUpstreamAuth backfills the auth value of each endpoint in
+// updated from the stored configuration whenever the request leaves it empty.
+// Reads redact the value, so a client that round-trips a GET response sends an
+// auth block with no value and means "leave it as it is"; without this the
+// stored credential would be overwritten with an empty string on every save
+// that did not retype it.
+//
+// It mirrors preserveUpstreamAuthOnAPIUpdate, the REST API counterpart.
+func preserveWebSubUpstreamAuth(existing model.UpstreamConfig, updated api.Upstream) api.Upstream {
+	updated.Main.Auth = preserveWebSubEndpointAuth(existing.Main, updated.Main.Auth)
+	if updated.Sandbox != nil {
+		updated.Sandbox.Auth = preserveWebSubEndpointAuth(existing.Sandbox, updated.Sandbox.Auth)
+	}
+	return updated
+}
+
+// preserveWebSubEndpointAuth returns the auth block to store for one endpoint.
+// A request that omits the auth block entirely, or sends one with an empty
+// value, keeps the stored credential. An explicit auth type change does not:
+// the stored secret belongs to the previous scheme and must not be silently
+// reattached to a different one.
+//
+// An omitted type is likewise "leave it as it is": mapUpstreamAuthAPIToModel
+// stores an empty type for a nil Type, so without restoring the stored scheme
+// here a save that does not retype it would keep the credential but blank the
+// scheme it belongs to.
+func preserveWebSubEndpointAuth(existing *model.UpstreamEndpoint, updated *api.UpstreamAuth) *api.UpstreamAuth {
+	if existing == nil || existing.Auth == nil {
+		return updated
+	}
+	if updated == nil {
+		if existing.Auth.Value == "" {
+			return nil
+		}
+		authType := api.UpstreamAuthType(existing.Auth.Type)
+		return &api.UpstreamAuth{
+			Type:   &authType,
+			Header: utils.StringPtrIfNotEmpty(existing.Auth.Header),
+			Value:  utils.StringPtrIfNotEmpty(existing.Auth.Value),
+		}
+	}
+	typeChanged := updated.Type != nil &&
+		normalizeUpstreamAuthType(string(*updated.Type)) != normalizeUpstreamAuthType(existing.Auth.Type)
+	if updated.Type == nil {
+		if normalized := normalizeUpstreamAuthType(existing.Auth.Type); normalized != "" {
+			restored := api.UpstreamAuthType(normalized)
+			updated.Type = &restored
+		}
+	}
+	if existing.Auth.Value == "" {
+		return updated
+	}
+	if !typeChanged && (updated.Value == nil || *updated.Value == "") {
+		updated.Value = utils.StringPtrIfNotEmpty(existing.Auth.Value)
+	}
+	return updated
 }
 
 func normalizeUpstreamAuthType(authType string) string {

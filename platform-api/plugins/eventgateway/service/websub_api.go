@@ -289,6 +289,11 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 		subscriptionPlans = *req.SubscriptionPlans
 	}
 
+	// Captured before Configuration is replaced below: reads redact the
+	// upstream auth value, so an update that did not retype it arrives empty
+	// and has to fall back to what is already stored.
+	storedUpstream := existing.Configuration.Upstream
+
 	existing.Name = req.DisplayName
 	existing.Version = req.Version
 	existing.Description = utils.ValueOrEmpty(req.Description)
@@ -300,7 +305,7 @@ func (s *WebSubAPIService) Update(orgUUID, handle, updatedBy string, req *api.We
 		Context:           req.Context,
 		Transport:         transport,
 		Channels:          mapWebSubChannelsAPIToModel(&req.Channels),
-		Upstream:          *mapUpstreamAPIToModel(req.Upstream),
+		Upstream:          *mapUpstreamAPIToModel(preserveWebSubUpstreamAuth(storedUpstream, req.Upstream)),
 		AllChannels:       mapWebSubAllChannelPoliciesAPIToModel(req.AllChannels),
 		SubscriptionPlans: subscriptionPlans,
 	}
