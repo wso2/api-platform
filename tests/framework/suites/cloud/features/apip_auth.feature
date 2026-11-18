@@ -94,11 +94,8 @@ Feature: APIP cloud access and identity
       | GET    | /managed-api-portals                                                  |
       | POST   | /projects                                                             |
       | POST   | /rest-apis                                                            |
-      | POST   | /environments                                                         |
-      | POST   | /pipelines                                                            |
       | POST   | /managed-gateways                                                     |
       | POST   | /projects/default/apis/no-such-api/builds                             |
       | POST   | /projects/default/apis/no-such-api/deployments                        |
       | POST   | /projects/default/apis/no-such-api/deployments/no-such-dep/undeploy   |
-      | DELETE | /environments/no-such-environment                                     |
       | DELETE | /managed-gateways/no-such-gateway                                     |

@@ -732,10 +732,10 @@ func TestSendWithoutAuthorizationOmitsTheHeaderAndPublishesTheResponse(t *testin
 		authorization, method, path = r.Header.Values("Authorization"), r.Method, r.URL.Path
 		w.WriteHeader(http.StatusUnauthorized)
 	})
-	require.NoError(t, steps.sendWithoutAuthorization(ctx, "post", "/environments"))
+	require.NoError(t, steps.sendWithoutAuthorization(ctx, "post", "/projects"))
 	require.Empty(t, authorization)
 	require.Equal(t, http.MethodPost, method)
-	require.Equal(t, "/environments", path)
+	require.Equal(t, "/projects", path)
 	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusUnauthorized))
 }
 
@@ -1235,39 +1235,6 @@ func TestAssertDeploymentStatusReason(t *testing.T) {
 	require.ErrorContains(t, steps.assertDeploymentStatusReason(ctx), "not listed")
 }
 
-func TestEmptyEnvironmentDeletesOnlyThatEnvironmentsGateways(t *testing.T) {
-	var deleted []string
-	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodDelete {
-			deleted = append(deleted, r.URL.Path)
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]string{
-			{"id": "syn-env-default", "environment": "syn-env"},
-			{"id": "syn-env-extra", "environment": "syn-env"},
-			{"id": "development-default", "environment": "development"},
-		}})
-	})
-	base, err := steps.topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
-	require.NoError(t, err)
-	require.NoError(t, emptyEnvironment(ctx, steps.client, base, "console-token", "syn-env"))
-	require.Equal(t, []string{"/managed-gateways/syn-env-default", "/managed-gateways/syn-env-extra"}, deleted)
-}
-
-func TestEmptyEnvironmentReportsRefusals(t *testing.T) {
-	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodDelete {
-			w.WriteHeader(http.StatusForbidden)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]string{{"id": "g", "environment": "e"}}})
-	})
-	base, _ := steps.topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
-	require.Error(t, emptyEnvironment(ctx, steps.client, base, "console-token", "e"))
-	require.NoError(t, emptyEnvironment(ctx, steps.client, base, "console-token", "another"), "nothing to delete in another environment")
-}
-
 func TestRecordRenderedBuild(t *testing.T) {
 	steps, ctx, local, _ := cloudSteps(t, nil)
 	require.Error(t, steps.recordRenderedBuild(ctx), "no API to record builds for")
@@ -1324,185 +1291,6 @@ func TestParseConfigCellReadsJSONLiteralsAndOtherwiseText(t *testing.T) {
 	require.Equal(t, "debug", parseConfigCell("debug"))
 	require.Equal(t, "1 minute", parseConfigCell("1 minute"))
 	require.Equal(t, "[x]\nlevel = 1", parseConfigCell("[x]\nlevel = 1"))
-}
-
-func expandNothing(value string) (string, error) { return value, nil }
-
-func TestPromotionPathsFromTable(t *testing.T) {
-	table := valuesTable(t,
-		[]string{"source", "targets"},
-		[]string{" dev ", "staging, prod"},
-		[]string{"staging", "prod"})
-	paths, err := promotionPathsFromTable(table, expandNothing)
-	require.NoError(t, err)
-	require.Equal(t, []map[string]any{
-		{"sourceEnvironment": "dev", "targetEnvironments": []string{"staging", "prod"}},
-		{"sourceEnvironment": "staging", "targetEnvironments": []string{"prod"}},
-	}, paths)
-
-	expanded, err := promotionPathsFromTable(valuesTable(t, []string{"source", "targets"}, []string{"${A}", "${B}"}),
-		func(value string) (string, error) {
-			return strings.NewReplacer("${A}", "one", "${B}", "two").Replace(value), nil
-		})
-	require.NoError(t, err)
-	require.Equal(t, "one", expanded[0]["sourceEnvironment"])
-	require.Equal(t, []string{"two"}, expanded[0]["targetEnvironments"])
-}
-
-func TestPromotionPathsFromTableRejectsMalformedTables(t *testing.T) {
-	for name, table := range map[string]*godog.Table{
-		"nil":             nil,
-		"header only":     valuesTable(t, []string{"source", "targets"}),
-		"wrong header":    valuesTable(t, []string{"from", "to"}, []string{"a", "b"}),
-		"three columns":   valuesTable(t, []string{"source", "targets"}, []string{"a", "b", "c"}),
-		"no source":       valuesTable(t, []string{"source", "targets"}, []string{" ", "b"}),
-		"no targets":      valuesTable(t, []string{"source", "targets"}, []string{"a", " , "}),
-		"unknown context": valuesTable(t, []string{"source", "targets"}, []string{"a", "${CTX:nothing}"}),
-	} {
-		_, err := promotionPathsFromTable(table, func(value string) (string, error) {
-			if strings.Contains(value, "${CTX:") {
-				return "", errors.New("unresolved")
-			}
-			return value, nil
-		})
-		require.Error(t, err, name)
-	}
-}
-
-func TestCreatePipelineRegistersItBeforeTheRequest(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	var pending func() []cleanup.Resource
-	registeredBeforeRequest := false
-	var sent map[string]any
-	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodPost, r.Method)
-		require.Equal(t, "/pipelines", r.URL.Path)
-		registeredBeforeRequest = len(pending()) == 1
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
-		writeJSON(w, http.StatusCreated, map[string]any{"id": sent["name"], "name": sent["name"]})
-	})
-	pending = registry.Pending
-	local.Set("environmentOne", "development")
-	local.Set("environmentTwo", "syn-env-1")
-
-	require.NoError(t, steps.createPipeline(ctx, valuesTable(t,
-		[]string{"source", "targets"}, []string{"${CTX:environmentOne}", "${CTX:environmentTwo}"})))
-
-	require.True(t, registeredBeforeRequest, "the pipeline must be registered for cleanup before it is requested")
-	id, err := requiredValue(ctx, keyPipelineID)
-	require.NoError(t, err)
-	require.Equal(t, id, sent["name"])
-	require.Equal(t, []any{map[string]any{"sourceEnvironment": "development", "targetEnvironments": []any{"syn-env-1"}}}, sent["promotionPaths"])
-	require.Equal(t, "pipeline", registry.Pending()[0].Kind.Name)
-}
-
-func TestCreatePipelineDoesNotKeepAFailedRequestUnregistered(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request"})
-	})
-	err := steps.createPipeline(ctx, valuesTable(t, []string{"source", "targets"}, []string{"a", "b"}))
-	require.ErrorContains(t, err, "400")
-	require.Len(t, registry.Pending(), 1, "a request that may have created the pipeline stays registered")
-}
-
-func TestCreateProjectBoundToPipelineWaitsForTheProjectAndDeletesItBeforeThePipeline(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	binds := 0
-	steps, ctx, local, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-		switch {
-		case r.Method == http.MethodPost && r.URL.Path == "/projects":
-			writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
-		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/deployment-pipeline"):
-			binds++
-			if binds == 1 {
-				writeJSON(w, http.StatusNotFound, map[string]string{"code": "not_found"})
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]any{"pipeline": body["pipeline"]})
-		default:
-			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
-		}
-	})
-	require.ErrorContains(t, steps.createProjectBoundToPipeline(ctx), "no deployment pipeline")
-
-	local.Set(keyPipelineID, "syn-pipeline-1")
-	require.NoError(t, steps.createProjectBoundToPipeline(ctx))
-	require.Equal(t, 2, binds, "a project that is not readable yet is bound again")
-	project, err := requiredValue(ctx, keyProjectID)
-	require.NoError(t, err)
-	require.NotEqual(t, "default", project)
-
-	require.NoError(t, cleanup.Register(ctx, cleanup.Resource{Kind: kindPipeline, ID: "syn-pipeline-1", Actor: resourceActor}))
-	require.NoError(t, cleanup.Register(ctx, cleanup.Resource{Kind: cleanup.KindGateway, ID: "gw", Actor: resourceActor}))
-	require.NoError(t, cleanup.Register(ctx, cleanup.Resource{Kind: cleanup.KindEnvironment, ID: "env", Actor: resourceActor}))
-	require.NoError(t, cleanup.Register(ctx, cleanup.Resource{Kind: cleanup.KindAPI, ID: "api", Actor: resourceActor}))
-	var order []string
-	for _, resource := range registry.Pending() {
-		order = append(order, resource.Kind.Name)
-	}
-	require.Equal(t, []string{"api", "project", "pipeline", "gateway", "environment"}, order)
-}
-
-func TestCreateProjectBoundToPipelineRefusesAMismatchedBinding(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-		if r.Method == http.MethodPost {
-			writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"pipeline": "default"})
-	})
-	local.Set(keyPipelineID, "syn-pipeline-1")
-	require.ErrorContains(t, steps.createProjectBoundToPipeline(ctx), `bound to deployment pipeline "default"`)
-}
-
-func TestCreateProjectBoundToPipelineStopsOnARefusedBinding(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-		if r.Method == http.MethodPost {
-			writeJSON(w, http.StatusCreated, map[string]any{"id": body["id"]})
-			return
-		}
-		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request"})
-	})
-	local.Set(keyPipelineID, "syn-pipeline-1")
-	started := time.Now()
-	require.ErrorContains(t, steps.createProjectBoundToPipeline(ctx), "400")
-	require.Less(t, time.Since(started), 10*time.Second, "a refused binding is not retried")
-}
-
-func TestRegisterDeletersRemovesPromotionResourcesInDependencyOrder(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	var mu sync.Mutex
-	var deleted []string
-	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			writeJSON(w, http.StatusOK, map[string]any{"list": []any{}})
-			return
-		}
-		mu.Lock()
-		deleted = append(deleted, strings.TrimPrefix(r.URL.Path, "/"))
-		mu.Unlock()
-		w.WriteHeader(http.StatusNotFound)
-	})
-	require.NoError(t, RegisterDeleters(registry, steps.topo))
-
-	for _, resource := range []cleanup.Resource{
-		{Kind: cleanup.KindEnvironment, ID: "env"}, {Kind: cleanup.KindGateway, ID: "gw"}, {Kind: kindPipeline, ID: "pipe"},
-		{Kind: kindPromotionProject, ID: "proj"}, {Kind: cleanup.KindAPI, ID: "api"},
-	} {
-		resource.Actor = resourceActor
-		require.NoError(t, cleanup.Register(ctx, resource))
-	}
-	require.NoError(t, registry.Sweep(ctx))
-	require.Equal(t, []string{"rest-apis/api", "projects/proj", "pipelines/pipe", "managed-gateways/gw", "environments/env"}, deleted)
 }
 
 func TestHandleDefectsBreakOneRuleEach(t *testing.T) {
@@ -1625,34 +1413,41 @@ func TestAwaitProjectActive(t *testing.T) {
 	require.Less(t, time.Since(started), 10*time.Second, "a failed project is not waited for")
 }
 
-func TestProjectPipelineBindingSteps(t *testing.T) {
+func TestProjectPipelineReadSteps(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	bound := "default"
-	var put map[string]string
+	bound := "release"
+	pipelines := `{"list":[{"id":"default","name":"default"},{"id":"release","name":"Release","promotionPaths":[]}]}`
+	var seen []string
 	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/projects/syn-project-1/deployment-pipeline", r.URL.Path)
-		if r.Method == http.MethodPut {
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&put))
-			writeJSON(w, http.StatusBadRequest, map[string]string{"code": "invalid_request"})
-			return
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		switch r.URL.Path {
+		case "/projects/payments/deployment-pipeline":
+			writeJSON(w, http.StatusOK, map[string]any{"pipeline": bound})
+		case "/pipelines":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(pipelines))
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"pipeline": bound})
 	})
-	require.ErrorContains(t, steps.bindProjectToPipeline(ctx, "x"), "no synthetic project")
-	require.ErrorContains(t, steps.readProjectPipeline(ctx), "no synthetic project")
-	local.Set(keyProjectID, "syn-project-1")
-	local.Set(keyPipelineID, "syn-pipeline-1")
-
-	require.NoError(t, steps.bindProjectToPipeline(ctx, "${CTX:cloudPipelineID}"))
-	require.Equal(t, map[string]string{"pipeline": "syn-pipeline-1"}, put)
-	require.NoError(t, steps.bindProjectToPipeline(ctx, ""))
-	require.Equal(t, map[string]string{"pipeline": ""}, put, "a blank pipeline is sent as it is")
+	require.ErrorContains(t, steps.readProjectPipeline(ctx), "no project")
+	local.Set(keyProjectID, "payments")
 
 	require.NoError(t, steps.readProjectPipeline(ctx))
-	require.NoError(t, steps.assertProjectBoundTo(ctx, "default"))
-	require.ErrorContains(t, steps.assertProjectBoundTo(ctx, "${CTX:cloudPipelineID}"), `bound to deployment pipeline "default"`)
-	bound = "syn-pipeline-1"
-	require.NoError(t, steps.assertProjectBoundTo(ctx, "${CTX:cloudPipelineID}"))
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusOK))
+	require.NoError(t, steps.assertBoundPipelineListed(ctx), "a pipeline is matched by its id")
+	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusOK), "the listing read does not replace the binding")
+
+	bound = "Release"
+	require.NoError(t, steps.readProjectPipeline(ctx))
+	require.NoError(t, steps.assertBoundPipelineListed(ctx), "a pipeline is matched by its name")
+
+	bound = "retired"
+	require.NoError(t, steps.readProjectPipeline(ctx))
+	require.ErrorContains(t, steps.assertBoundPipelineListed(ctx), `"retired" is not listed`)
+	for _, request := range seen {
+		require.True(t, strings.HasPrefix(request, "GET "), "the steps only read: %s", request)
+	}
 }
 
 func TestCreateProjectsUntilRefusedStopsAtTheFirstRefusal(t *testing.T) {
@@ -1771,8 +1566,6 @@ func newLeftoverStub() *leftoverStub {
 		"/rest-apis?projectId=default":                {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
 		"/rest-apis?projectId=syn-project-abcde234-2": {{"id": "syn-api-abcde234-2"}},
 		"/rest-apis?projectId=ops-project":            {{"id": "syn-api-abcde234-9"}},
-		"/pipelines":                                  {{"name": "default"}, {"name": "syn-pipeline-abcde234-1"}},
-		"/environments":                               {{"name": "development"}, {"name": "syn-env-abcde234-1"}},
 	}}
 }
 
@@ -1803,10 +1596,8 @@ func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
 		"managed-gateways/development-syn-gw-abcde234-1",
 		"managed-gateways/development-syn-gw-ab",
 		"projects/syn-project-abcde234-2",
-		"pipelines/syn-pipeline-abcde234-1",
-		"environments/syn-env-abcde234-1",
-	}, stub.deleted[:12])
-	require.Len(t, removed, 12)
+	}, stub.deleted[:10])
+	require.Len(t, removed, 10)
 	for _, collection := range projectScopedCollections {
 		listed := slices.Clone(stub.listedProjects[collection])
 		slices.Sort(listed)
@@ -1983,20 +1774,20 @@ func TestListCollectionDoesNotRetryAClientError(t *testing.T) {
 
 func TestCloudSweepsCarryOnPastAListingThatFails(t *testing.T) {
 	stub := newLeftoverStub()
-	stub.failing["/projects"] = http.StatusForbidden
+	stub.failing["/secrets"] = http.StatusForbidden
 	topo := cloudAPIStub(t, stub.handler)
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	require.NoError(t, err)
 
 	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
-	require.ErrorContains(t, err, "listing /projects")
-	require.Contains(t, removed, "/pipelines/syn-pipeline-abcde234-1")
-	require.Contains(t, removed, "/environments/syn-env-abcde234-1")
+	require.ErrorContains(t, err, "listing /secrets")
+	require.Contains(t, removed, "/managed-gateways/development-syn-gw-abcde234-1")
+	require.Contains(t, removed, "/projects/syn-project-abcde234-2")
 }
 
 func TestCloudSweepsSkipACollectionThePlatformDoesNotServe(t *testing.T) {
 	stub := newLeftoverStub()
-	stub.failing["/pipelines"] = http.StatusNotFound
+	stub.failing["/self-hosted-gateways"] = http.StatusNotFound
 	topo := cloudAPIStub(t, stub.handler)
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	require.NoError(t, err)
@@ -2004,7 +1795,7 @@ func TestCloudSweepsSkipACollectionThePlatformDoesNotServe(t *testing.T) {
 	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
 	require.NoError(t, err, "a route the platform does not serve holds no leftovers")
 	require.Contains(t, removed, "/projects/syn-project-abcde234-2")
-	require.NotContains(t, removed, "/pipelines/syn-pipeline-abcde234-1")
+	require.NotContains(t, removed, "/self-hosted-gateways/development-syn-shgw-abcde234-1")
 }
 
 func TestCloudSweepsReportALeftoverThatCannotBeDeleted(t *testing.T) {
@@ -2246,23 +2037,6 @@ func TestFindActiveGatewayRefusesAPinnedGatewayOfASuiteRun(t *testing.T) {
 
 	t.Setenv(cloudGatewayPinEnv, "dev-operator")
 	require.NoError(t, steps.findActiveGateway(ctx), "an operator's gateway that looks like a suite run's is still taken")
-}
-
-func TestAnEnvironmentDeletionHasABudgetOfItsOwn(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/managed-gateways" {
-			writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{}})
-			return
-		}
-		writeJSON(w, http.StatusNotFound, map[string]string{"code": "not_found"})
-	})
-	spent, cancel := context.WithCancel(ctx)
-	cancel()
-
-	deleter := cloudDeleter(steps.topo, steps.client, "/environments", true)
-	require.NoError(t, deleter(spent, cleanup.Resource{Kind: cleanup.KindEnvironment, ID: "e-1"}),
-		"a sweep that has used its time does not stop the deletion of the next environment")
 }
 
 func TestFindActiveGatewayFailsWhenThePipelineCannotBeRead(t *testing.T) {
@@ -2926,13 +2700,15 @@ func TestSendUntilEchoesRotatedWaitsForTheNewValue(t *testing.T) {
 	require.GreaterOrEqual(t, calls, 2, "the first answer still carried the old value")
 }
 
-func TestCreateAPIInSyntheticProjectRefusesTheDefaultProject(t *testing.T) {
+func TestCreateAPIInPipelineProjectRefusesAnyOtherProject(t *testing.T) {
 	steps, ctx, local, _ := cloudSteps(t, func(http.ResponseWriter, *http.Request) {
 		t.Error("no request may be sent")
 	})
-	require.ErrorContains(t, steps.createAPIInSyntheticProject(ctx, nil), "no synthetic project")
+	t.Setenv(pipelineProjectEnv, "")
 	local.Set(keyProjectID, "default")
-	require.ErrorContains(t, steps.createAPIInSyntheticProject(ctx, nil), `"default"`)
+	require.ErrorContains(t, steps.createAPIInPipelineProject(ctx), pipelineProjectEnv, "no project is configured")
+	t.Setenv(pipelineProjectEnv, "payments")
+	require.ErrorContains(t, steps.createAPIInPipelineProject(ctx), `"default"`, "the scenario has not found the configured project")
 }
 
 func TestAssertStageHoldsNothing(t *testing.T) {
@@ -2970,6 +2746,156 @@ func TestStageLookups(t *testing.T) {
 		_, err = stageOf([]map[string]any{stage}, "dev")
 		require.Error(t, err, name)
 	}
+}
+
+func TestPromotionChainFollowsThePipelineFromAnEntryEnvironment(t *testing.T) {
+	all := func(string) bool { return true }
+	linear := []promotionPath{
+		{SourceEnvironment: "dev", TargetEnvironments: []string{"staging"}},
+		{SourceEnvironment: "staging", TargetEnvironments: []string{"prod"}},
+	}
+	require.Equal(t, []string{"dev", "staging"}, promotionChain(linear, 2, all))
+	require.Equal(t, []string{"dev", "staging", "prod"}, promotionChain(linear, 3, all))
+	require.Nil(t, promotionChain(linear, 4, all), "the pipeline is shorter than the chain")
+	require.Nil(t, promotionChain(nil, 2, all))
+	require.Equal(t, []string{"dev", "staging", "prod"}, promotionChain([]promotionPath{linear[1], linear[0]}, 3, all),
+		"the chain starts where no path leads, whatever order the paths are listed in")
+	require.Nil(t, promotionChain(linear, 2, func(environment string) bool { return environment != "staging" }),
+		"an environment that cannot be used breaks the chain")
+
+	branching := []promotionPath{
+		{SourceEnvironment: "dev", TargetEnvironments: []string{"qa", "staging"}},
+		{SourceEnvironment: "staging", TargetEnvironments: []string{"prod"}},
+	}
+	require.Equal(t, []string{"dev", "qa"}, promotionChain(branching, 2, all))
+	require.Equal(t, []string{"dev", "staging"}, promotionChain(branching, 2, func(environment string) bool { return environment != "qa" }))
+	require.Equal(t, []string{"dev", "staging", "prod"}, promotionChain(branching, 3, all), "a branch that ends early is passed over")
+
+	shortcut := []promotionPath{
+		{SourceEnvironment: "dev", TargetEnvironments: []string{"staging", "prod"}},
+		{SourceEnvironment: "staging", TargetEnvironments: []string{"prod"}},
+	}
+	require.Equal(t, []string{"dev", "staging"}, promotionChain(shortcut, 2, all))
+	require.Nil(t, promotionChain(shortcut, 3, all), "the first environment reaches the third directly, so no promotion skips one")
+
+	cyclic := []promotionPath{
+		{SourceEnvironment: "a", TargetEnvironments: []string{"b"}},
+		{SourceEnvironment: "b", TargetEnvironments: []string{"a"}},
+	}
+	require.Nil(t, promotionChain(cyclic, 2, all), "a pipeline that every environment is promoted into has no entry environment")
+
+	blank := []promotionPath{
+		{SourceEnvironment: " ", TargetEnvironments: []string{"x"}},
+		{SourceEnvironment: "dev", TargetEnvironments: []string{" ", "qa"}},
+	}
+	require.Equal(t, []string{"dev", "qa"}, promotionChain(blank, 2, all))
+}
+
+func TestFindPipelineProject(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	status := http.StatusOK
+	var seen []string
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		writeJSON(w, status, map[string]any{"id": "payments"})
+	})
+	t.Setenv(pipelineProjectEnv, " ")
+	require.ErrorIs(t, steps.findPipelineProject(ctx), godog.ErrSkip, "a run that names no project skips the scenario")
+	require.Empty(t, seen)
+
+	t.Setenv(pipelineProjectEnv, "payments")
+	require.NoError(t, steps.findPipelineProject(ctx))
+	require.Equal(t, "payments", optionalValue(ctx, keyProjectID))
+	require.Equal(t, []string{"GET /projects/payments"}, seen)
+
+	status = http.StatusNotFound
+	require.ErrorContains(t, steps.findPipelineProject(ctx), "does not have")
+	status = http.StatusForbidden
+	require.ErrorContains(t, steps.findPipelineProject(ctx), "unexpected response")
+}
+
+// promotionChainStub serves the project "payments", bound to a pipeline with the given promotion
+// paths, and the given managed gateways. It records every request it receives.
+func promotionChainStub(t *testing.T, paths string, gateways []map[string]any) (*Steps, context.Context, *tcontext.Local, *[]string) {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var seen []string
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Method+" "+r.URL.RequestURI())
+		switch r.URL.Path {
+		case "/projects/payments/deployment-pipeline":
+			writeJSON(w, http.StatusOK, map[string]any{"pipeline": "release"})
+		case "/pipelines":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"list":[{"id":"release","name":"Release","promotionPaths":` + paths + `}]}`))
+		case "/managed-gateways":
+			writeJSON(w, http.StatusOK, map[string]any{"list": gateways})
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+	})
+	steps.dataPlaneURLResolver = func(_ context.Context, target string) (string, error) { return target, nil }
+	local.Set(keyProjectID, "payments")
+	return steps, ctx, local, &seen
+}
+
+func TestFindPromotionChainRecordsTheChainAndItsGateways(t *testing.T) {
+	steps, ctx, local, seen := promotionChainStub(t,
+		`[{"sourceEnvironment":"dev","targetEnvironments":["staging"]},{"sourceEnvironment":"staging","targetEnvironments":["prod"]}]`,
+		[]map[string]any{
+			listedGateway("dev-sgw", "dev", map[string]any{"displayName": "sgw-abcdefg2-3"}),
+			listedGateway("dev-default", "dev", nil),
+			listedGateway("staging-default", "staging", nil),
+			listedGateway("prod-idle", "prod", map[string]any{"isActive": false}),
+		})
+
+	require.NoError(t, steps.findPromotionChain(ctx, 2))
+	for key, want := range map[string]string{
+		keyPipelineEnvironments:                      "dev,staging",
+		numberedKey(keyPipelineEnvironmentPrefix, 1): "dev",
+		numberedKey(keyPipelineGatewayPrefix, 1):     "dev-default",
+		numberedKey(keyPipelineEndpointPrefix, 1):    "https://dev-default.example.com",
+		numberedKey(keyPipelineEnvironmentPrefix, 2): "staging",
+		numberedKey(keyPipelineGatewayPrefix, 2):     "staging-default",
+		numberedKey(keyPipelineEndpointPrefix, 2):    "https://staging-default.example.com",
+		keyGatewayID:       "dev-default",
+		keyGatewayEnv:      "dev",
+		keyGatewayEndpoint: "https://dev-default.example.com",
+	} {
+		require.Equal(t, want, optionalValue(ctx, key), key)
+	}
+	require.Contains(t, *seen, "GET /managed-gateways?functionalityType=regular")
+	for _, request := range *seen {
+		require.True(t, strings.HasPrefix(request, "GET "), "the chain is read, never written: %s", request)
+	}
+
+	require.ErrorIs(t, steps.findPromotionChain(ctx, 3), godog.ErrSkip, "the third environment has no active gateway")
+	require.Empty(t, optionalValue(ctx, numberedKey(keyPipelineEnvironmentPrefix, 1)), "a skipped choice keeps nothing of an earlier one")
+	require.ErrorContains(t, steps.findPromotionChain(ctx, 1), "between 2 and")
+	require.ErrorContains(t, steps.findPromotionChain(ctx, maxPromotionEnvironments+1), "between 2 and")
+	local.Set(keyProjectID, "")
+	require.ErrorContains(t, steps.findPromotionChain(ctx, 2), "found no project")
+}
+
+func TestSelectOtherGatewayEnvironmentPassesOverTheActiveProductionAndSyntheticOnes(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	environments := []map[string]any{
+		{"name": "development"},
+		{"name": "production", "isProduction": true},
+		{"name": "e-abcdefg2-1"},
+		{"name": "staging"},
+	}
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "GET /environments", r.Method+" "+r.URL.Path)
+		writeJSON(w, http.StatusOK, map[string]any{"list": environments})
+	})
+	require.ErrorContains(t, steps.selectOtherGatewayEnvironment(ctx), "does not report its environment")
+	local.Set(keyGatewayEnv, "development")
+	require.NoError(t, steps.selectOtherGatewayEnvironment(ctx))
+	require.Equal(t, "staging", optionalValue(ctx, keyEnvironmentName))
+
+	environments = environments[:3]
+	require.ErrorContains(t, steps.selectOtherGatewayEnvironment(ctx), `besides "development"`)
 }
 
 func configurationBody() map[string]any {
@@ -3042,9 +2968,9 @@ func stagesStub(t *testing.T, stages string) (*Steps, context.Context, *tcontext
 	})
 	local.Set(keyProjectID, "syn-project-1")
 	local.Set(keyAPIID, "syn-api-1")
-	local.Set(keySyntheticEnvironments, "dev,env-1,env-2")
-	local.Set(numberedKey(keySyntheticGatewayPrefix, 1), "gw-dev")
-	local.Set(numberedKey(keySyntheticGatewayPrefix, 2), "gw-1")
+	local.Set(keyPipelineEnvironments, "dev,env-1,env-2")
+	local.Set(numberedKey(keyPipelineGatewayPrefix, 1), "gw-dev")
+	local.Set(numberedKey(keyPipelineGatewayPrefix, 2), "gw-1")
 	return steps, ctx, local
 }
 
@@ -3812,71 +3738,6 @@ func TestDeleteManagedGatewayAcceptsOnlyAcceptedAndNoContent(t *testing.T) {
 	require.ErrorContains(t, steps.deleteManagedGateway(ctx), "409")
 	require.NoError(t, steps.requestGatewayDeletion(ctx), "a refusal is for the scenario to assert on")
 	require.NoError(t, steps.assertCloudResponseStatus(ctx, http.StatusConflict))
-}
-
-func TestRegularGatewayOfPrefersAnActiveGatewayOfTheEnvironment(t *testing.T) {
-	items := []map[string]any{
-		{"id": "ai", "environment": "e-1", "functionalityType": "ai", "isActive": true},
-		{"id": "other", "environment": "e-2", "isActive": true},
-		{"id": "building", "environment": "e-1", "isActive": false},
-		{"id": "ready", "environment": "e-1", "isActive": true},
-	}
-	require.Equal(t, "ready", regularGatewayOf(items, "e-1"))
-	require.Equal(t, "building", regularGatewayOf(items[:3], "e-1"))
-	require.Empty(t, regularGatewayOf(items, "e-3"))
-}
-
-func TestEnsureEnvironmentGatewayUsesTheOneTheEnvironmentLists(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	var posted bool
-	steps, ctx, _, registry := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			posted = true
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{"id": "e-1-default", "environment": "e-1", "isActive": false}}})
-	})
-	id, err := steps.ensureEnvironmentGateway(ctx, "e-1")
-	require.NoError(t, err)
-	require.Equal(t, "e-1-default", id)
-	require.False(t, posted, "no gateway is built beside the one the platform provisioned")
-	require.Empty(t, registry.Pending())
-}
-
-func TestEnsureEnvironmentGatewayReportsAListingThatNeverWorked(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	var posted bool
-	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			posted = true
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"code": "internal_error"})
-	})
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	_, err := steps.ensureEnvironmentGateway(ctx, "e-1")
-	require.ErrorContains(t, err, `listing the gateways of environment "e-1"`)
-	require.False(t, posted, "no gateway is built because the listing failed")
-}
-
-func TestEnsureRunnerEnvironmentsKeepsWhatTheRunnerHolds(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	var posted bool
-	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			posted = true
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"list": []map[string]any{{"name": "e-a-1"}, {"name": "e-b-2"}}})
-	})
-	for n, name := range []string{"e-a-1", "e-b-2"} {
-		local.Set(numberedKey(keySyntheticEnvironmentPrefix, n+1), name)
-		local.Set(numberedKey(keySyntheticGatewayPrefix, n+1), "gw-"+name)
-	}
-	local.Set(keySyntheticEnvironments, "e-a-1,e-b-2")
-
-	require.NoError(t, steps.ensureRunnerEnvironments(ctx, 2))
-	require.False(t, posted, "environments the runner already holds are not built again")
-	require.Equal(t, "e-a-1", optionalValue(ctx, keyEnvironmentName))
-	require.ErrorContains(t, steps.ensureRunnerEnvironments(ctx, 0), "between 1 and")
 }
 
 func TestRecordDeploymentsKeepsEachGatewaysDeployment(t *testing.T) {

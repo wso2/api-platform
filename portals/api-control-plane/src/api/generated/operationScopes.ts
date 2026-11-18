@@ -826,7 +826,12 @@ export const OPERATION_SCOPES = {
   getWebhookSecret: ['ap:webhook_secret:manage', 'ap:webhook_secret:read'],
   HeadOrganization: ['ap:organization:manage', 'ap:organization:read'],
   ImportOpenAPI: ['ap:rest_api:create', 'ap:rest_api:manage'],
-  InvokeRESTAPIOnGateway: ['ap:rest_api:gateway:manage', 'ap:rest_api:manage'],
+  InvokeAPIOnGateway: [
+    'ap:graphql_api:manage',
+    'ap:graphql_api:read',
+    'ap:rest_api:manage',
+    'ap:rest_api:read',
+  ],
   issueServiceAccountToken: [],
   listAgentProxies: ['ap:agent_proxy:manage', 'ap:agent_proxy:read'],
   listAgentProxyAPIKeys: [

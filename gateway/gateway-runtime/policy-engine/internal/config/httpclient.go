@@ -57,12 +57,15 @@ func BuildHTTPClientConfig(hc HTTPClientConfig) (httpclient.Config, error) {
 	cfg.TLS.RootCAFile = hc.TLS.RootCAFile
 	cfg.TLS.ClientCertFile = hc.TLS.ClientCertFile
 	cfg.TLS.ClientKeyFile = hc.TLS.ClientKeyFile
-	// InsecureSkipVerify is intentionally not exposed here: this shared client is
-	// used by arbitrary policies against arbitrary operator-configured (and
-	// potentially tenant/request-influenced) backends, so there is no single
-	// existing trust-boundary boolean to reuse the way gateway-controller reuses
-	// controller.controlplane.insecure_skip_verify. It stays at its safe default
-	// (verified).
+	// Skip-verify is off by default. httpclient.New requires an acknowledgement alongside
+	// it, which this single operator-facing flag supplies, as the gateway controller's
+	// shared client does.
+	if hc.TLS.InsecureSkipVerify && hc.TLS.InsecureSkipHostnameVerify {
+		return httpclient.Config{}, fmt.Errorf("policy_engine.http_client.tls: insecure_skip_verify and insecure_skip_hostname_verify are both set; use only one (insecure_skip_verify already skips every certificate check)")
+	}
+	cfg.TLS.InsecureSkipVerify = hc.TLS.InsecureSkipVerify
+	cfg.TLS.InsecureSkipVerifyAcknowledged = hc.TLS.InsecureSkipVerify
+	cfg.TLS.InsecureSkipHostnameVerify = hc.TLS.InsecureSkipHostnameVerify
 
 	switch hc.Proxy.Mode {
 	case "", "none":

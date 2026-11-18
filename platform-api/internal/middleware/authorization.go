@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/wso2/api-platform/common/authenticators"
+	"github.com/wso2/api-platform/platform-api/config"
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 )
 
@@ -206,4 +207,17 @@ func HasEffectiveScope(r *http.Request, mode, scope string) bool {
 		}
 	}
 	return false
+}
+
+// HoldsAnyScope reports whether the request carries one of scopes, deciding as
+// ScopeEnforcer does: every request passes while authorization is disabled or
+// skipped for it. It is for a handler that narrows its route's scopes once it
+// has read the request.
+func HoldsAnyScope(r *http.Request, authz config.Authorization, scopes ...string) bool {
+	if !authz.Enabled || authenticators.GetAuthzSkip(r) {
+		return true
+	}
+	return slices.ContainsFunc(scopes, func(scope string) bool {
+		return HasEffectiveScope(r, authz.Mode, scope)
+	})
 }

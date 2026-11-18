@@ -544,13 +544,13 @@ func TestValidateTLSCertificateRefs(t *testing.T) {
 	}
 
 	tests := []struct {
-		name             string
-		gwNamespace      string
-		listener         gatewayv1.Listener
-		secrets          []corev1.Secret
-		referenceGrants  []gatewayv1beta1.ReferenceGrant
-		wantValid        bool
-		wantReason       string
+		name            string
+		gwNamespace     string
+		listener        gatewayv1.Listener
+		secrets         []corev1.Secret
+		referenceGrants []gatewayv1beta1.ReferenceGrant
+		wantValid       bool
+		wantReason      string
 	}{
 		{
 			name: "no TLS config - valid",

@@ -195,6 +195,12 @@ func main() {
 		slog.ErrorContext(ctx, "Failed to build shared outbound HTTP client for policies", "error", err)
 		os.Exit(1)
 	}
+	if sharedHTTPClientCfg.TLS.InsecureSkipVerify {
+		slog.WarnContext(ctx, "policy_engine.http_client.tls.insecure_skip_verify is enabled: certificate verification is disabled for every outbound call made by every policy")
+	}
+	if sharedHTTPClientCfg.TLS.InsecureSkipHostnameVerify {
+		slog.WarnContext(ctx, "policy_engine.http_client.tls.insecure_skip_hostname_verify is enabled: server certificate names are not checked for any outbound call made by any policy")
+	}
 	sdkutils.SetSharedHTTPClient(sharedHTTPClient)
 	slog.InfoContext(ctx, "Shared outbound HTTP client built for policies")
 

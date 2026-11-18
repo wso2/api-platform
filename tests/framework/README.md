@@ -115,8 +115,11 @@ environment without changing Go code. The CI workflow is responsible for obtaini
 access token; the suite consumes it from `CLOUD_CONSOLE_ACCESS_TOKEN` and never calls the token
 provider itself. Its suite defaults match the integration suite: a 5-minute boot deadline
 and a 60-second propagation deadline. Cloud data-plane availability and eventual reads use the
-propagation deadline; the longer deployment and environment-finalizer waits remain explicit in
-their step contracts.
+propagation deadline; the longer deployment waits remain explicit in their step contracts.
+The suite creates no environments or deployment pipelines and never changes a project's
+pipeline binding. The promotion scenarios deploy through the existing project that
+`CLOUD_IT_PIPELINE_PROJECT` names, which must be bound to a deployment pipeline whose
+environments hold an active gateway each; without it they are skipped.
 
 Each package's `doc.go` carries its charter and the invariants it exists to protect. Read those
 before changing one — most encode a failure mode that presents as a passing test.
