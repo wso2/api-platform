@@ -1,0 +1,4 @@
+# Lowers the platform-api request body cap to 64 KiB, so a test can cross it with a small body
+# rather than the 10 MiB default.
+[platform_api.server]
+max_request_body_bytes = 65536

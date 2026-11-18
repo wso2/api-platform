@@ -248,8 +248,10 @@ func (s *Server) preflightListeners(listeners config.ServerListeners) (*tls.Conf
 type listenerSet struct {
 	logger  *slog.Logger
 	handler atomic.Pointer[http.Handler]
-	servers []*http.Server
-	addrs   []net.Addr
+	// maxBodyBytes caps every request body; 0 leaves bodies uncapped.
+	maxBodyBytes int64
+	servers      []*http.Server
+	addrs        []net.Addr
 	// errs receives what each listener's Serve returns; it is buffered for every
 	// listener so a failing listener never blocks.
 	errs chan error
@@ -265,7 +267,7 @@ type listenerSet struct {
 // hold one open indefinitely (Slowloris). It is validated at config load.
 func bindListeners(listeners config.ServerListeners, timeouts config.Timeouts, tlsConfig *tls.Config,
 	handler http.Handler, logger *slog.Logger) (*listenerSet, error) {
-	ls := &listenerSet{logger: logger}
+	ls := &listenerSet{logger: logger, maxBodyBytes: listeners.MaxRequestBodyBytes}
 	ls.useHandler(handler)
 
 	type binding struct {
@@ -340,8 +342,11 @@ func bindListeners(listeners config.ServerListeners, timeouts config.Timeouts, t
 	return ls, nil
 }
 
-// ServeHTTP passes the request to the current handler.
+// ServeHTTP passes the request to the current handler, with its body capped.
 func (ls *listenerSet) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if ls.maxBodyBytes > 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, ls.maxBodyBytes)
+	}
 	(*ls.handler.Load()).ServeHTTP(w, r)
 }
 

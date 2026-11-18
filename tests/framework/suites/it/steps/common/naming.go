@@ -92,6 +92,17 @@ func GenerateUUIDAndStore(ctx context.Context, key string) error {
 	return generateAndStore(ctx, key, randomUUID)
 }
 
+// GenerateStringAndStore stores a string of length 'a' characters in runner-local scope, for
+// sizing a request body.
+func GenerateStringAndStore(ctx context.Context, length int, key string) error {
+	return generateAndStore(ctx, key, func() (string, error) {
+		if length < 0 {
+			return "", fmt.Errorf("a generated string needs a length of 0 or more, got %d", length)
+		}
+		return strings.Repeat("a", length), nil
+	})
+}
+
 // randomUUID returns an RFC 9562 version 4 UUID in its canonical lower-case form.
 func randomUUID() (string, error) {
 	var b [16]byte
