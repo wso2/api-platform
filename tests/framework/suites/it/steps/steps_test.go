@@ -1160,6 +1160,52 @@ func TestSendHealthUntilStatusRejectsAnInvalidAnswerBound(t *testing.T) {
 	}
 }
 
+func TestHoldHealthPassesWhenEveryAnswerKeepsTheStatus(t *testing.T) {
+	server, calls := healthAnswers(t, []time.Duration{0}, []int{200})
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	funnel := httpx.NewFunnel(httpx.NewClient(httpx.Options{}), 0, 0)
+	req := httpx.Request{Method: http.MethodGet, URL: server.URL + "/ready"}
+
+	start := time.Now()
+	require.NoError(t, holdHealth(ctx, funnel, req, "gateway runtime", "/ready", 200,
+		500*time.Millisecond, 100*time.Millisecond))
+	require.GreaterOrEqual(t, time.Since(start), 500*time.Millisecond, "the status is held for the whole period")
+	require.GreaterOrEqual(t, calls.Load(), int32(5), "the path is polled throughout the period")
+	resp, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+}
+
+func TestHoldHealthFailsOnTheFirstOtherStatus(t *testing.T) {
+	server, calls := healthAnswers(t, []time.Duration{0}, []int{200, 200, 503, 200})
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	funnel := httpx.NewFunnel(httpx.NewClient(httpx.Options{}), 0, 0)
+	req := httpx.Request{Method: http.MethodGet, URL: server.URL + "/ready"}
+
+	err := holdHealth(ctx, funnel, req, "gateway runtime", "/ready", 200, 5*time.Second, 50*time.Millisecond)
+	require.ErrorContains(t, err, "GET gateway runtime health path /ready answered 503")
+	require.Equal(t, int32(3), calls.Load(), "the hold stops at the first other status")
+}
+
+func TestHoldHealthFailsOnALateAnswer(t *testing.T) {
+	server, calls := healthAnswers(t, []time.Duration{0, 500 * time.Millisecond, 0}, []int{200})
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	funnel := httpx.NewFunnel(httpx.NewClient(httpx.Options{}), 0, 0)
+	req := httpx.Request{Method: http.MethodGet, URL: server.URL + "/ready"}
+
+	err := holdHealth(ctx, funnel, req, "gateway runtime", "/ready", 200, 5*time.Second, 100*time.Millisecond)
+	require.ErrorContains(t, err, "GET gateway runtime health path /ready failed after")
+	require.Equal(t, int32(2), calls.Load())
+}
+
+func TestSendHealthKeepingStatusRejectsAnInvalidPeriod(t *testing.T) {
+	base := &Base{topo: healthTopology(t)}
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	for _, seconds := range []string{"0", "0.0", "1.2.3"} {
+		require.Error(t, base.sendHealthKeepingStatus(ctx, "GET", "platform-api", "/ready", 200, seconds), seconds)
+	}
+}
+
 func TestHealthFunnelTrustsEachComponentsCertificate(t *testing.T) {
 	suite, err := New(&frameworkruntime.Topology{})
 	require.NoError(t, err)

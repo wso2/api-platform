@@ -69,31 +69,3 @@ func RenderBody(res Result) ([]byte, error) {
 func formatTime(t time.Time) string {
 	return t.UTC().Truncate(time.Second).Format(time.RFC3339)
 }
-
-// Handler returns the HTTP handler that serves the health answer. It accepts GET and
-// HEAD only, evaluates the checks (or reuses a recent result) on every request, and
-// answers 200 when healthy and 503 otherwise. HEAD gets the same status and headers
-// without a body.
-func (c *Checker) Handler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			w.Header().Set("Allow", "GET, HEAD")
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-
-		res := c.Evaluate()
-		payload, err := RenderBody(res)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		w.WriteHeader(StatusCode(res))
-		if r.Method == http.MethodGet {
-			_, _ = w.Write(payload)
-		}
-	})
-}

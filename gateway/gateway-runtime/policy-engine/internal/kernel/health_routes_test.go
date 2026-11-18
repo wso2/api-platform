@@ -39,14 +39,20 @@ import (
 	"github.com/wso2/api-platform/gateway/gateway-runtime/policy-engine/internal/metrics"
 )
 
-// requestHeadersFor builds the first message Envoy sends for a request on routeName.
+// requestHeadersFor builds the first message Envoy sends for a GET request on routeName.
 func requestHeadersFor(routeName string) *extprocv3.ProcessingRequest {
+	return methodRequestFor(routeName, "GET")
+}
+
+// methodRequestFor builds the first message Envoy sends for a request with the given
+// method on routeName.
+func methodRequestFor(routeName, method string) *extprocv3.ProcessingRequest {
 	return &extprocv3.ProcessingRequest{
 		Request: &extprocv3.ProcessingRequest_RequestHeaders{
 			RequestHeaders: &extprocv3.HttpHeaders{
 				Headers: &corev3.HeaderMap{Headers: []*corev3.HeaderValue{
 					{Key: ":path", RawValue: []byte("/_gateway-health/ready")},
-					{Key: ":method", RawValue: []byte("GET")},
+					{Key: ":method", RawValue: []byte(method)},
 				}},
 				EndOfStream: true,
 			},
@@ -128,6 +134,61 @@ func TestHealthRouteResponse(t *testing.T) {
 	plain := NewExternalProcessorServer(NewKernel(), nil, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil)
 	_, ok = plain.healthRouteResponse(requestHeadersFor(gatewayReadyRouteName))
 	assert.False(t, ok, "without health checkers the route takes the normal path")
+}
+
+func TestHealthRouteRefusesOtherMethods(t *testing.T) {
+	var evaluated int
+	counting := func(context.Context) error { evaluated++; return nil }
+	server := NewExternalProcessorServer(NewKernel(), nil, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil,
+		WithHealthRoutes(
+			newRuntimeChecker("healthy", map[string]health.CheckFunc{"counting": counting}),
+			newRuntimeChecker("ready", map[string]health.CheckFunc{"counting": counting})))
+
+	for _, route := range []string{gatewayHealthyRouteName, gatewayReadyRouteName} {
+		for _, method := range []string{"POST", "PUT", "DELETE", "PATCH", "OPTIONS", ""} {
+			resp, ok := server.healthRouteResponse(methodRequestFor(route, method))
+			require.True(t, ok, "%s %s", method, route)
+			imm := resp.GetImmediateResponse()
+			require.NotNil(t, imm)
+			assert.Equal(t, 405, int(imm.GetStatus().GetCode()), "%s %s", method, route)
+			headers := map[string]string{}
+			for _, h := range imm.GetHeaders().GetSetHeaders() {
+				headers[h.GetHeader().GetKey()] = string(h.GetHeader().GetRawValue())
+			}
+			assert.Equal(t, "GET, HEAD", headers["allow"], "%s %s", method, route)
+			assert.Equal(t, "no-store", headers["cache-control"], "%s %s", method, route)
+			assert.Empty(t, imm.GetBody(), "%s %s", method, route)
+		}
+	}
+	assert.Zero(t, evaluated, "a refused method never evaluates the checks")
+
+	resp, ok := server.healthRouteResponse(methodRequestFor(gatewayReadyRouteName, "GET"))
+	require.True(t, ok)
+	assert.Equal(t, 200, int(resp.GetImmediateResponse().GetStatus().GetCode()), "GET is still answered")
+	assert.Equal(t, 1, evaluated)
+}
+
+func TestHealthRouteAnswersHEADWithoutABody(t *testing.T) {
+	server := NewExternalProcessorServer(NewKernel(), nil, config.TracingConfig{}, "", testMaxDecompressedBytes, testMaxDecompressedBytes, nil,
+		WithHealthRoutes(
+			newRuntimeChecker("healthy", nil),
+			newRuntimeChecker("ready", map[string]health.CheckFunc{
+				"xds_connection": func(context.Context) error { return health.Reason("no configuration received yet") },
+			})))
+
+	for route, want := range map[string]int{gatewayHealthyRouteName: 200, gatewayReadyRouteName: 503} {
+		resp, ok := server.healthRouteResponse(methodRequestFor(route, "HEAD"))
+		require.True(t, ok, route)
+		imm := resp.GetImmediateResponse()
+		require.NotNil(t, imm, route)
+		assert.Equal(t, want, int(imm.GetStatus().GetCode()), route)
+		assert.Empty(t, imm.GetBody(), route)
+		headers := map[string]string{}
+		for _, h := range imm.GetHeaders().GetSetHeaders() {
+			headers[h.GetHeader().GetKey()] = string(h.GetHeader().GetRawValue())
+		}
+		assert.Equal(t, "application/json", headers["content-type"], route)
+	}
 }
 
 // countingCounterVec counts every increment, whatever the labels.

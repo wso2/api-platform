@@ -1231,11 +1231,13 @@ gateway:
       # Both routes are served on the main traffic listener and answered by the policy
       # engine through the router, so they fail when the policy engine is down. The port
       # and scheme below are replaced by the template to follow the router listener
-      # configuration. Liveness does not depend on the controller link: a controller
-      # outage never restarts the runtime. Readiness also fails once the controller link
+      # configuration. Liveness answers 200 whenever the policy engine answers, so it
+      # never depends on the controller: a runtime waiting for its first configuration,
+      # or cut off from the controller, stays out of the Service but is never restarted.
+      # Readiness fails until the first configuration arrives and once the controller link
       # has been down longer than gateway.config.policy_engine.health.xds_connection.grace, and takes
       # the pod out of the Service after about 15 s of failed answers; liveness restarts
-      # it only after about 2 minutes.
+      # it only after about 2 minutes of no answer.
       livenessProbe:
         httpGet:
           # See constants.GatewayHealthyPath.
@@ -1254,11 +1256,11 @@ gateway:
         periodSeconds: 5
         timeoutSeconds: 3
         failureThreshold: 3
-      # Holds off the liveness probe until the runtime has received its first
-      # configuration from the controller. It allows 5 minutes; set to null to disable.
+      # Holds off the liveness probe until the router and policy engine answer. It
+      # allows 5 minutes; set to null to disable.
       startupProbe:
         httpGet:
-          path: /_gateway-health/ready
+          path: /_gateway-health/healthy
           port: https
           scheme: HTTPS
         periodSeconds: 5

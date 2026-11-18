@@ -19,6 +19,8 @@
 package kernel
 
 import (
+	"net/http"
+
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 
@@ -26,8 +28,11 @@ import (
 )
 
 // The Envoy route names of the gateway's own health routes. They must equal the names
-// the gateway controller gives those routes; the two components share no Go module,
-// so the values are repeated here.
+// the gateway controller gives those routes (constants.GatewayReadyRouteName and
+// constants.GatewayHealthyRouteName in the controller). The values are repeated on
+// purpose: each component keeps its health code to itself, so neither depends on the
+// other. If the two drift apart, the policy engine stops answering the routes and Envoy
+// serves the routes' static 200, so the probes pass whatever the runtime's health.
 const (
 	gatewayReadyRouteName   = "gateway-ready"
 	gatewayHealthyRouteName = "gateway-healthy"
@@ -50,7 +55,9 @@ func WithHealthRoutes(liveness, readiness *health.Checker) ServerOption {
 }
 
 // healthRouteResponse returns the response to a health route's request headers, and
-// false for any other message or route.
+// false for any other message or route. The routes accept GET and HEAD only; any other
+// method gets 405 without the checks being evaluated. HEAD gets the same status and
+// headers as GET without a body.
 func (s *ExternalProcessorServer) healthRouteResponse(req *extprocv3.ProcessingRequest) (*extprocv3.ProcessingResponse, bool) {
 	if s.health == nil || req.GetRequestHeaders() == nil {
 		return nil, false
@@ -66,6 +73,17 @@ func (s *ExternalProcessorServer) healthRouteResponse(req *extprocv3.ProcessingR
 		return nil, false
 	}
 
+	method := requestMethod(req.GetRequestHeaders())
+	if method != http.MethodGet && method != http.MethodHead {
+		return immediateHealthResponse(&extprocv3.ImmediateResponse{
+			Status: &typev3.HttpStatus{Code: typev3.StatusCode_MethodNotAllowed},
+			Headers: buildHeaderValueOptions(map[string]string{
+				"allow":         "GET, HEAD",
+				"cache-control": "no-store",
+			}),
+		}), true
+	}
+
 	res := checker.Evaluate()
 	immediate := &extprocv3.ImmediateResponse{
 		Status: &typev3.HttpStatus{Code: typev3.StatusCode(health.StatusCode(res))},
@@ -74,12 +92,30 @@ func (s *ExternalProcessorServer) healthRouteResponse(req *extprocv3.ProcessingR
 			"cache-control": "no-store",
 		}),
 	}
-	if body, err := health.RenderBody(res); err == nil {
-		immediate.Body = body
-	} else {
+	body, err := health.RenderBody(res)
+	if err != nil {
 		immediate.Status = &typev3.HttpStatus{Code: typev3.StatusCode_InternalServerError}
+	} else if method == http.MethodGet {
+		immediate.Body = body
 	}
+	return immediateHealthResponse(immediate), true
+}
+
+// requestMethod returns the request's :method pseudo-header, or "" when it is absent.
+func requestMethod(headers *extprocv3.HttpHeaders) string {
+	for _, h := range headers.GetHeaders().GetHeaders() {
+		if h.GetKey() == ":method" {
+			if raw := h.GetRawValue(); len(raw) > 0 {
+				return string(raw)
+			}
+			return h.GetValue()
+		}
+	}
+	return ""
+}
+
+func immediateHealthResponse(immediate *extprocv3.ImmediateResponse) *extprocv3.ProcessingResponse {
 	return &extprocv3.ProcessingResponse{
 		Response: &extprocv3.ProcessingResponse_ImmediateResponse{ImmediateResponse: immediate},
-	}, true
+	}
 }

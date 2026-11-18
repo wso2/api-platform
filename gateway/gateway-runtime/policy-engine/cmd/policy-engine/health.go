@@ -32,12 +32,15 @@ import (
 // has not loaded its policy configuration.
 const errPolicyConfigNotLoaded = health.Reason("policy configuration not loaded")
 
-// buildHealthCheckers builds the checkers behind the gateway's health routes. Both report
-// whether the policy engine has loaded its policy configuration, as its admin health
-// endpoint does (provider). Readiness adds the dependencies a runtime needs to serve
-// traffic correctly: the configuration link to the controller (when configuration comes
-// over xDS; xdsClient is nil otherwise), tolerated down for the configured grace window,
-// and the Python executor (when one is configured; pythonExecutor is nil otherwise).
+// buildHealthCheckers builds the checkers behind the gateway's health routes. Liveness
+// registers no checks: an answer from the policy engine through the router shows both
+// processes are alive, and nothing a restart cannot fix is checked, so a runtime waiting
+// for or cut off from its controller is never restarted. Readiness reports what a runtime
+// needs to serve traffic correctly: whether the policy engine has loaded its policy
+// configuration, as its admin health endpoint does (provider); the configuration link to
+// the controller (when configuration comes over xDS; xdsClient is nil otherwise),
+// tolerated down for the configured grace window; and the Python executor (when one is
+// configured; pythonExecutor is nil otherwise).
 func buildHealthCheckers(cfg *config.Config, logger *slog.Logger, provider admin.HealthProvider,
 	xdsClient *xdsclient.Client, pythonExecutor health.CheckFunc) (liveness, readiness *health.Checker) {
 	hc := cfg.PolicyEngine.Health
@@ -49,13 +52,9 @@ func buildHealthCheckers(cfg *config.Config, logger *slog.Logger, provider admin
 			DebugLogger:   logger,
 		}
 	}
-	policyEngine := policyEngineCheck(provider)
 	liveness = health.NewChecker(options("healthy"))
-	liveness.Register("policy_engine", policyEngine)
 	readiness = health.NewChecker(options("ready"))
-	// Liveness already logs the policy engine's state changes; readiness reports the same
-	// check without logging it a second time.
-	readiness.RegisterUnlogged("policy_engine", policyEngine)
+	readiness.Register("policy_engine", policyEngineCheck(provider))
 	if xdsClient != nil {
 		readiness.Register("xds_connection", xdsClient.ConnectionCheck(hc.XDSConnection.Grace))
 	}

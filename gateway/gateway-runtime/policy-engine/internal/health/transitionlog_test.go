@@ -292,23 +292,3 @@ func TestTransitionUpCheckWithNoStateIsSilent(t *testing.T) {
 	assert.Empty(t, logs.healthLines())
 	assert.Empty(t, tl.failingSince)
 }
-
-func TestTransitionSkipsUnloggedChecks(t *testing.T) {
-	var logs logCapture
-	c, clk := newTestChecker(logs.options())
-	var loadErr error = Reason("policy configuration not loaded")
-	c.RegisterUnlogged("policy_engine", func(context.Context) error { return loadErr })
-	c.Register("xds_connection", func(context.Context) error { return errors.New("connection refused") })
-
-	probeFor(c, clk, 30*time.Second)
-	loadErr = nil
-	clk.Advance(5 * time.Second)
-	res := c.Evaluate()
-
-	assert.Equal(t, StatusUp, res.Checks["policy_engine"].Status)
-	lines := logs.healthLines()
-	assert.Zero(t, countContaining(lines, "check=policy_engine"), "unlogged check must not log: %v", lines)
-	assert.Equal(t, 1, countContaining(lines, "check=xds_connection"))
-	assert.NotContains(t, logs.debug.String(), "check=policy_engine")
-	assert.NotContains(t, c.logger.failingSince, "policy_engine")
-}

@@ -239,28 +239,13 @@ func TestRegisterTimeoutDefaults(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := NewChecker(testOptions())
-			c.Register("logged", passing, tt.opts...)
-			c.RegisterUnlogged("unlogged", passing, tt.opts...)
+			c.Register("database", passing, tt.opts...)
 
-			require.Len(t, c.checks, 2)
+			require.Len(t, c.checks, 1)
 			assert.Equal(t, tt.want, c.checks[0].timeout)
-			assert.Equal(t, tt.want, c.checks[1].timeout)
 		})
 	}
 	assert.Equal(t, 2*time.Second, defaultCheckTimeout)
-}
-
-func TestUnloggedCheckTimesOutAtItsOwnDeadline(t *testing.T) {
-	c := NewChecker(testOptions())
-	c.RegisterUnlogged("policy_engine", func(ctx context.Context) error {
-		<-ctx.Done()
-		return ctx.Err()
-	}, WithTimeout(50*time.Millisecond))
-
-	res := c.Evaluate()
-
-	assert.Equal(t, StatusDown, res.Checks["policy_engine"].Status)
-	assert.Equal(t, "timed out after 50ms", res.Checks["policy_engine"].Error)
 }
 
 func TestEvaluateNeverExposesRawErrors(t *testing.T) {
@@ -435,26 +420,4 @@ func TestFailingSinceKeepsTheWrappedError(t *testing.T) {
 	assert.Equal(t, cause.Error(), err.Error())
 	assert.ErrorIs(t, err, cause)
 	assert.Equal(t, "timed out after 2s", safeReason(FailingSince(context.DeadlineExceeded, time.Now()), 2*time.Second))
-}
-
-func TestUnloggedCheckDecidesHealth(t *testing.T) {
-	c, clk := newTestChecker(testOptions())
-	var loadErr error = Reason("policy configuration not loaded")
-	c.Register("xds_connection", passing)
-	c.RegisterUnlogged("policy_engine", func(context.Context) error { return loadErr })
-
-	res := c.Evaluate()
-	require.False(t, res.Healthy)
-	assert.Equal(t, UnhealthyStatus, res.Status)
-	assert.Equal(t, StatusUp, res.Checks["xds_connection"].Status)
-	pe := res.Checks["policy_engine"]
-	assert.Equal(t, StatusDown, pe.Status)
-	assert.Equal(t, "policy configuration not loaded", pe.Error)
-	assert.False(t, pe.Since.IsZero())
-
-	loadErr = nil
-	clk.Advance(4 * time.Second)
-	res = c.Evaluate()
-	assert.True(t, res.Healthy)
-	assert.Equal(t, StatusUp, res.Checks["policy_engine"].Status)
 }

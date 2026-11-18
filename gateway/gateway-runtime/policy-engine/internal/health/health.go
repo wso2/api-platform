@@ -108,8 +108,6 @@ type CheckResult struct {
 	Since time.Time
 	// cause is the raw check error, kept for debug logging only. It is never rendered.
 	cause error
-	// unlogged marks a check registered with RegisterUnlogged; the health logger skips it.
-	unlogged bool
 }
 
 // Result is the outcome of one evaluation of every registered check. A Result is shared
@@ -155,8 +153,6 @@ type Checker struct {
 	// since records when each currently failing check started failing, so the start
 	// time survives across evaluations for as long as the check stays down.
 	since map[string]time.Time
-	// unlogged holds the names of checks whose failures and recoveries are not logged.
-	unlogged map[string]bool
 	// logger writes state-change lines; nil when health logging is disabled.
 	logger *transitionLogger
 }
@@ -164,10 +160,9 @@ type Checker struct {
 // NewChecker returns a Checker with no checks registered.
 func NewChecker(opts Options) *Checker {
 	c := &Checker{
-		opts:     opts,
-		now:      time.Now,
-		since:    make(map[string]time.Time),
-		unlogged: make(map[string]bool),
+		opts:  opts,
+		now:   time.Now,
+		since: make(map[string]time.Time),
 	}
 	if opts.Logger != nil {
 		debug := opts.DebugLogger
@@ -186,16 +181,6 @@ func (c *Checker) Register(name string, fn CheckFunc, opts ...CheckOption) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.checks = append(c.checks, newNamedCheck(name, fn, opts))
-}
-
-// RegisterUnlogged adds a named check that appears in the answer and decides health like
-// any other check, but whose failures and recoveries are not logged. It suits a check
-// that another checker already registers and logs.
-func (c *Checker) RegisterUnlogged(name string, fn CheckFunc, opts ...CheckOption) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.checks = append(c.checks, newNamedCheck(name, fn, opts))
-	c.unlogged[name] = true
 }
 
 // Evaluate returns the current health result. A result younger than the cache TTL is
@@ -303,7 +288,7 @@ func (c *Checker) buildResult(started time.Time, checks []namedCheck, errs map[s
 	for name, err := range errs {
 		if err == nil {
 			delete(c.since, name)
-			res.Checks[name] = CheckResult{Status: StatusUp, unlogged: c.unlogged[name]}
+			res.Checks[name] = CheckResult{Status: StatusUp}
 			continue
 		}
 		since, failing := c.since[name]
@@ -317,11 +302,10 @@ func (c *Checker) buildResult(started time.Time, checks []namedCheck, errs map[s
 		}
 		res.Healthy = false
 		res.Checks[name] = CheckResult{
-			Status:   StatusDown,
-			Error:    safeReason(err, timeouts[name]),
-			Since:    since,
-			cause:    err,
-			unlogged: c.unlogged[name],
+			Status: StatusDown,
+			Error:  safeReason(err, timeouts[name]),
+			Since:  since,
+			cause:  err,
 		}
 	}
 	if !res.Healthy {

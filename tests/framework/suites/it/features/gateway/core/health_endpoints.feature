@@ -84,11 +84,11 @@ Feature: Gateway liveness and readiness endpoints
     And the JSON response field "checks.xds_connection.status" should be "up"
 
   @HEALTH-007
-  Scenario: Runtime liveness reports only the policy engine
+  Scenario: Runtime liveness depends on no dependency check
     When I send a "GET" request to the gateway runtime health path "/_gateway-health/healthy"
     Then the response status code should be 200
     And the JSON response field "status" should be "healthy"
-    And the JSON response field "checks.policy_engine.status" should be "up"
+    And the JSON response field "checks.policy_engine" should not exist
     And the JSON response field "checks.xds_connection" should not exist
 
   @HEALTH-008
@@ -104,6 +104,22 @@ Feature: Gateway liveness and readiness endpoints
     When I send a "GET" request to the gateway runtime health path "/_gateway-health/ready/extra"
     Then the response status code should be 404
     And the response body should not contain "policy_engine"
+
+  @HEALTH-033
+  Scenario Outline: Runtime health routes refuse the <method> method on <path>
+    When I send a "<method>" request to the gateway runtime health path "<path>"
+    Then the response status code should be 405
+    And the response header "Allow" should be "GET, HEAD"
+    And the response body should not contain "policy_engine"
+    When I send a "GET" request to the gateway runtime health path "<path>"
+    Then the response status code should be 200
+
+    Examples:
+      | method | path                     |
+      | POST   | /_gateway-health/ready   |
+      | DELETE | /_gateway-health/ready   |
+      | POST   | /_gateway-health/healthy |
+      | DELETE | /_gateway-health/healthy |
 
   @HEALTH-010
   Scenario Outline: An API cannot claim a route in the reserved health namespace (<case>)

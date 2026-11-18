@@ -42,7 +42,7 @@ Feature: Runtime health during a short controller outage
     And the resource creation response should indicate successful deployment
     And I send a "GET" request to "${CTX:apiContext}/${CTX:apiVersion}/us/seattle" until status 200
     When I stop the gateway service "gateway-controller"
-    And I send a "GET" request to the gateway runtime health path "/_gateway-health/ready"
+    And I send a "GET" request to the gateway runtime health path "/_gateway-health/ready" and it keeps status 200 for 15 seconds
     Then the response status code should be 200
     And the JSON response field "status" should be "ready"
     And the JSON response field "checks.xds_connection.status" should be "up"

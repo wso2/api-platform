@@ -60,6 +60,8 @@ func (b *Base) registerHealthSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^I send a "([^"]*)" request to the `+healthComponents+
 		` health path "([^"]*)" until status (\d+)(?:, each answer within ([0-9.]+) seconds)?$`,
 		b.sendHealthUntilStatus)
+	sc.Step(`^I send a "([^"]*)" request to the `+healthComponents+
+		` health path "([^"]*)" and it keeps status (\d+) for ([0-9.]+) seconds$`, b.sendHealthKeepingStatus)
 	sc.Step(`^I (stop|start|pause|unpause) the "([^"]*)" database server$`, b.controlDatabaseServer)
 }
 
@@ -191,6 +193,69 @@ func pollHealth(ctx context.Context, funnel *httpx.Funnel, req httpx.Request, co
 		},
 		func(r *httpx.Response) bool { return r != nil && r.StatusCode == want },
 		fmt.Sprintf("waiting for %s %s health path %s to return %d", req.Method, component, path, want))
+}
+
+// healthHoldInterval is how often a held health path is polled, and how long each answer
+// may take.
+const healthHoldInterval = time.Second
+
+// sendHealthKeepingStatus polls a health path for the given number of seconds and requires
+// every answer to have the wanted status. The last answer is published, so the steps that
+// follow assert the state at the end of the period.
+func (b *Base) sendHealthKeepingStatus(ctx context.Context, method, component, path string, want int,
+	seconds string) error {
+	req, err := b.healthRequest(ctx, method, component, path, "", "")
+	if err != nil {
+		return err
+	}
+	value, err := parseSeconds(seconds)
+	if err != nil {
+		return err
+	}
+	if value <= 0 {
+		return fmt.Errorf("the period must be positive, got %q seconds", seconds)
+	}
+	return holdHealth(ctx, b.healthFunnel(component), req, component, path, want,
+		time.Duration(value*float64(time.Second)), healthHoldInterval)
+}
+
+// holdHealth sends req every interval until period has passed. It fails on the first
+// answer with another status, the first request error, and the first answer that takes
+// longer than interval.
+func holdHealth(ctx context.Context, funnel *httpx.Funnel, req httpx.Request, component, path string,
+	want int, period, interval time.Duration) error {
+	start := time.Now()
+	deadline := start.Add(period)
+	for {
+		attemptCtx, cancel := context.WithTimeout(ctx, interval)
+		resp, err := funnel.Send(attemptCtx, req)
+		cancel()
+		held := time.Since(start).Round(time.Millisecond)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return fmt.Errorf("%s %s health path %s failed after %s of the %s it must keep status %d: %w",
+				req.Method, component, path, held, period, want, err)
+		}
+		if resp.StatusCode != want {
+			return fmt.Errorf("%s %s health path %s answered %d after %s of the %s it must keep status %d: %s",
+				req.Method, component, path, resp.StatusCode, held, period, want, resp.Describe())
+		}
+		if resp.Elapsed > interval {
+			return fmt.Errorf("%s %s health path %s answered after %s, longer than %s: %s",
+				req.Method, component, path, resp.Elapsed, interval, resp.Describe())
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(min(interval, remaining)):
+		}
+	}
 }
 
 // controlDatabaseServer takes the block's database server down or brings it back. Stopping it

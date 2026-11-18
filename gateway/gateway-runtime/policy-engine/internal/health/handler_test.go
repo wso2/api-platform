@@ -23,7 +23,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -31,26 +30,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func serve(c *Checker, method string) *httptest.ResponseRecorder {
-	rec := httptest.NewRecorder()
-	c.Handler().ServeHTTP(rec, httptest.NewRequest(method, "/health", nil))
-	return rec
+// answer evaluates c and renders the result as the gateway health routes do.
+func answer(t *testing.T, c *Checker) (int, string) {
+	t.Helper()
+	res := c.Evaluate()
+	body, err := RenderBody(res)
+	require.NoError(t, err)
+	return StatusCode(res), string(body)
 }
 
 func failing(err error) CheckFunc {
 	return func(context.Context) error { return err }
 }
 
-func TestHandlerHealthy(t *testing.T) {
+func TestAnswerHealthy(t *testing.T) {
 	c, _ := newTestChecker(testOptions())
 	c.Register("database", passing)
 	c.Register("cache", passing)
 
-	rec := serve(c, http.MethodGet)
+	code, body := answer(t, c)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
-	assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+	assert.Equal(t, http.StatusOK, code)
 	assert.JSONEq(t, `{
 		"status": "ready",
 		"timestamp": "2026-10-13T09:00:00Z",
@@ -58,22 +58,20 @@ func TestHandlerHealthy(t *testing.T) {
 			"cache": {"status": "up"},
 			"database": {"status": "up"}
 		}
-	}`, rec.Body.String())
+	}`, body)
 }
 
-func TestHandlerUnhealthy(t *testing.T) {
+func TestAnswerUnhealthy(t *testing.T) {
 	c, _ := newTestChecker(testOptions())
 	c.Register("database", failing(Reason("database unreachable")))
 	c.Register("cache", passing)
 
-	rec := serve(c, http.MethodGet)
+	code, body := answer(t, c)
 
-	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
-	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
-	assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+	assert.Equal(t, http.StatusServiceUnavailable, code)
 
 	var got map[string]any
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.NoError(t, json.Unmarshal([]byte(body), &got))
 	assert.Equal(t, "unhealthy", got["status"])
 	assert.NotContains(t, got, "component")
 
@@ -89,55 +87,16 @@ func TestHandlerUnhealthy(t *testing.T) {
 	assert.NotContains(t, up, "since")
 }
 
-func TestHandlerNoChecksRendersEmptyObject(t *testing.T) {
+func TestAnswerNoChecksRendersEmptyObject(t *testing.T) {
 	c, _ := newTestChecker(testOptions())
 
-	rec := serve(c, http.MethodGet)
+	code, body := answer(t, c)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), `"checks":{}`)
+	assert.Equal(t, http.StatusOK, code)
+	assert.Contains(t, body, `"checks":{}`)
 }
 
-func TestHandlerHeadHasNoBody(t *testing.T) {
-	tests := []struct {
-		name       string
-		check      CheckFunc
-		wantStatus int
-	}{
-		{name: "healthy", check: passing, wantStatus: http.StatusOK},
-		{name: "unhealthy", check: failing(errors.New("boom")), wantStatus: http.StatusServiceUnavailable},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c, _ := newTestChecker(testOptions())
-			c.Register("database", tt.check)
-
-			rec := serve(c, http.MethodHead)
-
-			assert.Equal(t, tt.wantStatus, rec.Code)
-			assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
-			assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
-			assert.Empty(t, rec.Body.Bytes())
-		})
-	}
-}
-
-func TestHandlerRejectsOtherMethods(t *testing.T) {
-	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch} {
-		t.Run(method, func(t *testing.T) {
-			c, _ := newTestChecker(testOptions())
-			c.Register("database", passing)
-
-			rec := serve(c, method)
-
-			assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
-			assert.Equal(t, "GET, HEAD", rec.Header().Get("Allow"))
-			assert.Empty(t, rec.Body.Bytes())
-		})
-	}
-}
-
-func TestHandlerTimestampIsUTCWithSecondPrecision(t *testing.T) {
+func TestAnswerTimestampIsUTCWithSecondPrecision(t *testing.T) {
 	c, clk := newTestChecker(testOptions())
 	zone := time.FixedZone("UTC+5:30", 5*3600+30*60)
 	clk.mu.Lock()
@@ -145,7 +104,7 @@ func TestHandlerTimestampIsUTCWithSecondPrecision(t *testing.T) {
 	clk.mu.Unlock()
 	c.Register("database", failing(errors.New("boom")))
 
-	rec := serve(c, http.MethodGet)
+	_, body := answer(t, c)
 
 	var got struct {
 		Timestamp string `json:"timestamp"`
@@ -153,21 +112,21 @@ func TestHandlerTimestampIsUTCWithSecondPrecision(t *testing.T) {
 			Since string `json:"since"`
 		} `json:"checks"`
 	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.NoError(t, json.Unmarshal([]byte(body), &got))
 	assert.Equal(t, "2026-10-13T09:00:07Z", got.Timestamp)
 	assert.Equal(t, "2026-10-13T09:00:07Z", got.Checks["database"].Since)
 }
 
-func TestHandlerNeverRendersRawCause(t *testing.T) {
+func TestAnswerNeverRendersRawCause(t *testing.T) {
 	c, _ := newTestChecker(testOptions())
 	c.Register("database", failing(errors.New("dial postgres://u:p@host/db: connection refused")))
 
-	rec := serve(c, http.MethodGet)
+	code, body := answer(t, c)
 
-	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
-	assert.NotContains(t, rec.Body.String(), "postgres://u:p@host")
-	assert.NotContains(t, rec.Body.String(), "connection refused")
-	assert.Contains(t, rec.Body.String(), genericFailure)
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+	assert.NotContains(t, body, "postgres://u:p@host")
+	assert.NotContains(t, body, "connection refused")
+	assert.Contains(t, body, genericFailure)
 }
 
 func TestStatusCode(t *testing.T) {
@@ -201,20 +160,20 @@ func TestRenderBody(t *testing.T) {
 	assert.Regexp(t, `^\{"status":"unhealthy","timestamp":`, string(got))
 }
 
-func TestHandlerHealthyStatusPerChecker(t *testing.T) {
+func TestAnswerHealthyStatusPerChecker(t *testing.T) {
 	opts := testOptions()
 	opts.HealthyStatus = "healthy"
 	c, _ := newTestChecker(opts)
 	c.Register("database", passing)
 
-	rec := serve(c, http.MethodGet)
+	code, body := answer(t, c)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, http.StatusOK, code)
 	assert.JSONEq(t, `{
 		"status": "healthy",
 		"timestamp": "2026-10-13T09:00:00Z",
 		"checks": {
 			"database": {"status": "up"}
 		}
-	}`, rec.Body.String())
+	}`, body)
 }

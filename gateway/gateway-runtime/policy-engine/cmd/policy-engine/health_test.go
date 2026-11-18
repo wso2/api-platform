@@ -25,7 +25,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -70,16 +69,18 @@ type servedHealth struct {
 	} `json:"checks"`
 }
 
-// serveHealth answers one GET from the checker and decodes the body.
+// serveHealth evaluates the checker, renders its answer as the gateway health routes do,
+// and decodes the body.
 func serveHealth(t *testing.T, c *health.Checker) (int, servedHealth, map[string]any) {
 	t.Helper()
-	rec := httptest.NewRecorder()
-	c.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	res := c.Evaluate()
+	payload, err := health.RenderBody(res)
+	require.NoError(t, err)
 	var body servedHealth
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body), rec.Body.String())
+	require.NoError(t, json.Unmarshal(payload, &body), string(payload))
 	var raw map[string]any
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &raw))
-	return rec.Code, body, raw
+	require.NoError(t, json.Unmarshal(payload, &raw))
+	return health.StatusCode(res), body, raw
 }
 
 func TestBuildHealthCheckersPolicyEngineHealthy(t *testing.T) {
@@ -88,8 +89,7 @@ func TestBuildHealthCheckersPolicyEngineHealthy(t *testing.T) {
 	code, live, raw := serveHealth(t, liveness)
 	assert.Equal(t, http.StatusOK, code)
 	assert.Equal(t, "healthy", live.Status)
-	assert.Len(t, live.Checks, 1)
-	assert.Equal(t, "up", live.Checks["policy_engine"].Status)
+	assert.Empty(t, live.Checks, "liveness registers no checks")
 	assert.NotContains(t, raw, "component")
 
 	code, ready, _ := serveHealth(t, readiness)
@@ -103,13 +103,16 @@ func TestBuildHealthCheckersPolicyEngineHealthy(t *testing.T) {
 func TestBuildHealthCheckersPolicyEngineNotLoaded(t *testing.T) {
 	liveness, readiness := buildHealthCheckers(healthTestConfig(), discardLogger(), fakeHealthProvider(false), nil, nil)
 
-	for name, c := range map[string]*health.Checker{"liveness": liveness, "readiness": readiness} {
-		code, body, _ := serveHealth(t, c)
-		assert.Equal(t, http.StatusServiceUnavailable, code, name)
-		assert.Equal(t, health.UnhealthyStatus, body.Status, name)
-		assert.Equal(t, "down", body.Checks["policy_engine"].Status, name)
-		assert.Equal(t, "policy configuration not loaded", body.Checks["policy_engine"].Error, name)
-	}
+	code, ready, _ := serveHealth(t, readiness)
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+	assert.Equal(t, health.UnhealthyStatus, ready.Status)
+	assert.Equal(t, "down", ready.Checks["policy_engine"].Status)
+	assert.Equal(t, "policy configuration not loaded", ready.Checks["policy_engine"].Error)
+
+	code, live, _ := serveHealth(t, liveness)
+	assert.Equal(t, http.StatusOK, code, "a runtime without its policy configuration is not restarted")
+	assert.Equal(t, "healthy", live.Status)
+	assert.Empty(t, live.Checks)
 }
 
 func TestBuildHealthCheckersWithConfigurationLink(t *testing.T) {
@@ -127,8 +130,8 @@ func TestBuildHealthCheckersWithConfigurationLink(t *testing.T) {
 	assert.Equal(t, "policy configuration not loaded", ready.Checks["policy_engine"].Error)
 
 	live := liveness.Evaluate()
-	assert.NotContains(t, live.Checks, "xds_connection", "liveness never depends on the controller")
-	assert.Equal(t, "policy configuration not loaded", live.Checks["policy_engine"].Error)
+	assert.True(t, live.Healthy, "liveness never depends on the controller")
+	assert.Empty(t, live.Checks)
 }
 
 func TestBuildHealthCheckersWithPythonExecutor(t *testing.T) {

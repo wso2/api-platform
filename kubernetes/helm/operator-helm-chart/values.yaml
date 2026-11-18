@@ -665,25 +665,38 @@ gateway:
           # Probes hit the router's own health routes on the main traffic listener;
           # the gateway chart rewrites httpGet.port/scheme from gateway.config.router
           # so they always follow the router's actual bind port.
-          # These MUST use the same handler type as gateway-helm-chart's defaults
+          # These MUST use the same handler type as gateway-helm-chart's defaults.
+          # Both routes are answered by the policy engine through the router. Liveness
+          # never depends on the controller, so a runtime waiting for or cut off from its
+          # controller is never restarted. Readiness takes the pod out of the Service after
+          # about 15 s of failed answers; liveness restarts it only after about 2 minutes
+          # of no answer. These match the gateway chart's defaults.
           livenessProbe:
             httpGet:
               path: /_gateway-health/healthy
               port: https
               scheme: HTTPS
-            initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 12
           readinessProbe:
             httpGet:
               path: /_gateway-health/ready
               port: https
               scheme: HTTPS
-            initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
-            failureThreshold: 6
+            failureThreshold: 3
+          # Holds off the liveness probe until the router and policy engine answer. It
+          # allows 5 minutes; set to null to disable.
+          startupProbe:
+            httpGet:
+              path: /_gateway-health/healthy
+              port: https
+              scheme: HTTPS
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
           # Resource limits and requests
           # Uncomment and adjust based on your workload
           resources: {}

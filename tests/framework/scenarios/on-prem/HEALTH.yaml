@@ -80,7 +80,7 @@ scenarios:
         - feature: suites/it/features/gateway/core/health_endpoints.feature
           scenario: "Runtime readiness reports the policy engine and its control-plane connection"
   - id: HEALTH-007
-    title: Probe gateway runtime liveness; it answers 200 and reports only the policy engine.
+    title: Probe gateway runtime liveness; it answers 200 and reports no dependency check, so the controller link never restarts the runtime.
     priority: P0
     ui:
       status: exempt
@@ -365,3 +365,14 @@ scenarios:
       refs:
         - feature: suites/it/features/apiportal/security/health_access.feature
           scenario: "The Platform API health endpoints keep their own allowed list"
+  - id: HEALTH-033
+    title: Send a method other than GET or HEAD to a gateway runtime health route; it is refused with 405 and Allow GET, HEAD, and a GET still answers.
+    priority: P2
+    ui:
+      status: exempt
+      reason: Health endpoints are probed by orchestrators and monitors; no UI shows or calls them.
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/core/health_endpoints.feature
+          scenario: "Runtime health routes refuse the <method> method on <path>"
