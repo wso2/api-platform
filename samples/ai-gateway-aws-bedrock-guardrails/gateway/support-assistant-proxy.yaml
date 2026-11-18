@@ -1,0 +1,45 @@
+# Support assistant proxy with its own guardrail on top of the provider's baseline.
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProxy
+metadata:
+  name: support-assistant
+spec:
+  displayName: Support assistant
+  version: v1.0
+  context: /support-assistant
+  provider:
+    id: bedrock-provider
+    auth:
+      type: api-key
+      header: Authorization
+      value: 'Bearer {{ secret "support-assistant-loopback" }}'
+  operationPolicies:
+    - name: api-key-auth
+      version: v1
+      paths:
+        - path: /model/{modelId}/converse
+          methods: [POST]
+          params:
+            key: Authorization
+            in: header
+            valuePrefix: "Bearer "
+    - name: aws-bedrock-guardrail
+      version: v1
+      paths:
+        - path: /model/{modelId}/converse
+          methods: [POST]
+          params:
+            region: ${AWS_REGION}
+            guardrailID: ${SUPPORT_GUARDRAIL_ID}
+            guardrailVersion: "${SUPPORT_GUARDRAIL_VERSION}"
+            awsAuth:
+              authenticationType: sts-assume-role
+              awsRoleARN: ${GATEWAY_ROLE_ARN}
+              awsRoleSessionName: support-assistant-guardrail
+            request:
+              jsonPath: "$.messages[-1].content[0].text"
+              showAssessment: true         # For this walkthrough only
+            response:
+              enabled: true
+              jsonPath: "$.output.message.content[0].text"
+              applicableStatusCodes: "200-299"  # Pass the baseline's 422 through unchanged

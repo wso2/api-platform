@@ -1,0 +1,12 @@
+# docker-compose.override.yaml
+# Docker Compose merges this file automatically. It passes your
+# temporary AWS credentials from the shell to the gateway runtime. The values are
+# never written to a file. The gateway uses them only to call sts:AssumeRole on
+# the least-privilege role that Terraform created.
+services:
+  gateway-runtime:
+    environment:
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AWS_REGION

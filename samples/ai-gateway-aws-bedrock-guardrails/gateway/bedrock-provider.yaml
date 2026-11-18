@@ -1,0 +1,60 @@
+# Shared Amazon Bedrock provider with the baseline guardrail.
+# scripts/deploy-artifacts.sh fills in the ${...} values from the Terraform outputs.
+apiVersion: gateway.api-platform.wso2.com/v1
+kind: LlmProvider
+metadata:
+  name: bedrock-provider
+spec:
+  displayName: Amazon Bedrock
+  version: v1.0
+  template: awsbedrock
+  context: /bedrock
+  upstream:
+    url: https://bedrock-runtime.${AWS_REGION}.amazonaws.com
+  accessControl:
+    mode: deny_all
+    exceptions:
+      - path: /model/{modelId}/converse
+        methods: [POST]
+  operationPolicies:
+    - name: api-key-auth                   # Reads the gateway key
+      version: v1
+      paths:
+        - path: /model/{modelId}/converse
+          methods: [POST]
+          params:
+            key: Authorization
+            in: header
+            valuePrefix: "Bearer "
+    - name: aws-bedrock-guardrail          # Must run before signing
+      version: v1
+      paths:
+        - path: /model/{modelId}/converse
+          methods: [POST]
+          params:
+            region: ${AWS_REGION}
+            guardrailID: ${BASELINE_GUARDRAIL_ID}
+            guardrailVersion: "${BASELINE_GUARDRAIL_VERSION}"
+            awsAuth:
+              authenticationType: sts-assume-role
+              awsRoleARN: ${GATEWAY_ROLE_ARN}
+              awsRoleSessionName: baseline-guardrail
+            request:
+              jsonPath: "$.messages[-1].content[0].text"
+              redactPII: true
+              showAssessment: true         # For this walkthrough only
+            response:
+              enabled: true
+              jsonPath: "$.output.message.content[0].text"
+              applicableStatusCodes: "200-299"  # Pass error responses through unchanged
+    - name: aws-authentication             # Replaces Authorization with SigV4
+      version: v0
+      paths:
+        - path: /model/{modelId}/converse
+          methods: [POST]
+          params:
+            service: bedrock
+            region: ${AWS_REGION}
+            authenticationType: sts-assume-role
+            awsRoleARN: ${GATEWAY_ROLE_ARN}
+            awsRoleSessionName: bedrock-converse
