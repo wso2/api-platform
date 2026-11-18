@@ -89,6 +89,8 @@ const (
 	EventTypeSubscriptionPlanCreated = "subscriptionPlan.created"
 	EventTypeSubscriptionPlanUpdated = "subscriptionPlan.updated"
 	EventTypeSubscriptionPlanDeleted = "subscriptionPlan.deleted"
+
+	EventTypeSecretUpdated = "secret.updated"
 )
 
 // GatewayEventsService handles broadcasting events to connected gateways via EventHub.
@@ -340,6 +342,11 @@ func (s *GatewayEventsService) BroadcastSubscriptionPlanUpdatedEvent(gatewayID s
 // BroadcastSubscriptionPlanDeletedEvent sends a subscriptionPlan.deleted event to the target gateway.
 func (s *GatewayEventsService) BroadcastSubscriptionPlanDeletedEvent(gatewayID string, event *model.SubscriptionPlanDeletedEvent) error {
 	return s.broadcastEvent(gatewayID, EventTypeSubscriptionPlanDeleted, event)
+}
+
+// BroadcastSecretUpdatedEvent sends a secret.updated event to the target gateway.
+func (s *GatewayEventsService) BroadcastSecretUpdatedEvent(gatewayID string, event *model.SecretUpdatedEvent) error {
+	return s.broadcastEvent(gatewayID, EventTypeSecretUpdated, event)
 }
 
 // broadcastEvent is the generic helper for broadcasting gateway events without a userId.

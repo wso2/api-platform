@@ -39,6 +39,12 @@ const (
 	// resolves only gateway-local secrets; 1.0.0 has no template engine at all.
 	MinSecretSyncGatewayVersion = "1.2.0"
 
+	// MinSecretUpdatedEventGatewayVersion: no LTS release handles the
+	// secret.updated event, which tells a gateway to re-fetch a rotated secret
+	// and re-render the routes that use it. LTS releases ignore unknown event
+	// types; 1.2.0 applies a rotated value only on a redeploy after a reconnect.
+	MinSecretUpdatedEventGatewayVersion = NoLTSRelease
+
 	// MinVerbatimMCPUpstreamPathVersion is the first release that forwards
 	// "<context>/mcp" to exactly the configured MCP upstream path. Older
 	// releases append the "/mcp" operation path to the upstream path.
@@ -118,6 +124,12 @@ func SupportsSecretSync(rawVersion string) bool {
 // the artifact. It is the delivery-time counterpart of SupportsSecretSync.
 func RequiresInlineSecrets(rawVersion string) bool {
 	return !SupportsSecretSync(rawVersion)
+}
+
+// HandlesSecretUpdatedEvent reports whether the gateway applies a
+// secret.updated event to the routes it already serves.
+func HandlesSecretUpdatedEvent(rawVersion string) bool {
+	return AtLeast(rawVersion, MinSecretUpdatedEventGatewayVersion)
 }
 
 // RechecksKeyEventOwnership reports whether the gateway only applies an API

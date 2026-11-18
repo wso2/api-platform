@@ -19,7 +19,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,6 +73,7 @@ type mockSecretRepo struct {
 	updateFn                func(*model.Secret) error
 	findRefsAndSoftDeleteFn func(orgID, handle, by string) ([]model.SecretReference, error)
 	findRefsFn              func(orgID, handle string) ([]model.SecretReference, error)
+	deployedGatewayIDs      []string
 	listFn                  func(orgID string, limit, offset int, after *time.Time) ([]*model.Secret, error)
 	countFn                 func(orgID string) (int, error)
 }
@@ -145,6 +149,10 @@ func (m *mockSecretRepo) FindRefs(orgID, handle string) ([]model.SecretReference
 		return m.findRefsFn(orgID, handle)
 	}
 	return nil, nil
+}
+
+func (m *mockSecretRepo) FindDeployedGatewayIDs(orgID, handle string) ([]string, error) {
+	return m.deployedGatewayIDs, nil
 }
 
 func (m *mockSecretRepo) List(orgID string, limit, offset int, after *time.Time) ([]*model.Secret, error) {
@@ -373,6 +381,66 @@ func TestSecretService_Update_EncryptsNewValue(t *testing.T) {
 	}
 	if string(repo.secrets["upd"].Ciphertext) == "" {
 		t.Error("Ciphertext should be set after update")
+	}
+}
+
+type orgGatewaysRepo struct {
+	repository.GatewayRepository
+	gateways []*model.Gateway
+}
+
+func (r *orgGatewaysRepo) GetByOrganizationID(string) ([]*model.Gateway, error) {
+	return r.gateways, nil
+}
+
+// A value change sends secret.updated, carrying the handle only, to each
+// gateway with a deployment referencing the secret that handles the event. An
+// update that keeps the value sends nothing.
+func TestSecretService_Update_BroadcastsSecretUpdatedOnValueChange(t *testing.T) {
+	repo := newMockRepo()
+	repo.secrets["rot"] = &model.Secret{
+		Handle: "rot",
+		Hash:   hashSecret(make([]byte, 32), "value-ONE"),
+		Status: model.SecretStatusActive,
+	}
+	repo.deployedGatewayIDs = []string{"gw-current", "gw-lts"}
+	hub := &recordingEventHub{}
+	svc := NewSecretService(repo, &mockVault{}, newTestIdentityService())
+	svc.SetGatewayEvents(NewGatewayEventsService(hub, nil, slog.Default()), &orgGatewaysRepo{gateways: []*model.Gateway{
+		{ID: "gw-current", Version: ""},
+		{ID: "gw-lts", Version: "1.2.0"},
+		{ID: "gw-idle", Version: ""},
+	}}, slog.Default())
+
+	if _, err := svc.Update("org1", "rot", "bob", &dto.UpdateSecretRequest{Value: "value-TWO"}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if len(hub.published) != 1 {
+		t.Fatalf("published %d events, want 1 (to gw-current only)", len(hub.published))
+	}
+	e := hub.published[0]
+	if e.GatewayID != "gw-current" {
+		t.Errorf("event sent to %q, want gw-current", e.GatewayID)
+	}
+	if strings.Contains(e.EventData, "value-TWO") || strings.Contains(e.EventData, "value-ONE") {
+		t.Errorf("event carries a secret value: %s", e.EventData)
+	}
+	var envelope struct {
+		Type    string                   `json:"type"`
+		Payload model.SecretUpdatedEvent `json:"payload"`
+	}
+	if err := json.Unmarshal([]byte(e.EventData), &envelope); err != nil {
+		t.Fatalf("decode event: %v", err)
+	}
+	if envelope.Type != EventTypeSecretUpdated || envelope.Payload.Handle != "rot" {
+		t.Errorf("event = %+v, want secret.updated for rot", envelope)
+	}
+
+	if _, err := svc.Update("org1", "rot", "bob", &dto.UpdateSecretRequest{Value: "value-TWO", Description: "same value"}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if len(hub.published) != 1 {
+		t.Errorf("an update that keeps the value published an event; total %d", len(hub.published))
 	}
 }
 

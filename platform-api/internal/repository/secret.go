@@ -361,6 +361,32 @@ func (r *SecretRepo) FindRefs(orgID, handle string) ([]model.SecretReference, er
 	return refs, rows.Err()
 }
 
+// FindDeployedGatewayIDs returns the gateways that have an artifact referencing
+// handle deployed (artifact_secret_refs rows with a gateway_id).
+func (r *SecretRepo) FindDeployedGatewayIDs(orgID, handle string) ([]string, error) {
+	query := r.db.Rebind(`
+		SELECT DISTINCT gateway_id
+		FROM artifact_secret_refs
+		WHERE organization_uuid = ? AND secret_handle = ? AND gateway_id <> ''
+	`)
+
+	rows, err := r.db.Query(query, orgID, handle)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find gateways referencing secret: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func isSecretUniqueViolation(err error) bool {
 	if err == nil {
 		return false

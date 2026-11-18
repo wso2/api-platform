@@ -30,6 +30,7 @@ import (
 	"github.com/wso2/api-platform/platform-api/internal/apperror"
 	"github.com/wso2/api-platform/platform-api/internal/constants"
 	"github.com/wso2/api-platform/platform-api/internal/dto"
+	"github.com/wso2/api-platform/platform-api/internal/gatewaytranslator/gwversion"
 	"github.com/wso2/api-platform/platform-api/internal/model"
 	"github.com/wso2/api-platform/platform-api/internal/repository"
 	"github.com/wso2/api-platform/platform-api/internal/vault"
@@ -47,10 +48,22 @@ type SecretService struct {
 	repo     repository.SecretRepository
 	vault    vault.SecretVault
 	identity *IdentityService
+
+	gatewayEvents *GatewayEventsService
+	gatewayRepo   repository.GatewayRepository
+	slogger       *slog.Logger
 }
 
 func NewSecretService(repo repository.SecretRepository, v vault.SecretVault, identity *IdentityService) *SecretService {
 	return &SecretService{repo: repo, vault: v, identity: identity}
+}
+
+// SetGatewayEvents enables the secret.updated event on a value change. Without
+// it a rotation reaches gateways only through their own sync.
+func (s *SecretService) SetGatewayEvents(events *GatewayEventsService, gatewayRepo repository.GatewayRepository, slogger *slog.Logger) {
+	s.gatewayEvents = events
+	s.gatewayRepo = gatewayRepo
+	s.slogger = slogger
 }
 
 // toSecretResponse converts secret via secretToResponse and resolves its
@@ -189,8 +202,10 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 	if req.Description != "" {
 		existing.Description = req.Description
 	}
+	newHash := hashSecret(s.vault.HashKey(), req.Value)
+	valueChanged := existing.Hash != newHash
 	existing.Ciphertext = ciphertext
-	existing.Hash = hashSecret(s.vault.HashKey(), req.Value)
+	existing.Hash = newHash
 	existing.UpdatedBy = updatedBy
 	// Rotation is an explicit intent to put the secret back into service.
 	existing.Status = model.SecretStatusActive
@@ -198,8 +213,48 @@ func (s *SecretService) Update(orgID, handle, updatedBy string, req *dto.UpdateS
 	if err := s.repo.Update(existing); err != nil {
 		return nil, fmt.Errorf("failed to update secret: %w", err)
 	}
+	if valueChanged {
+		s.notifyGatewaysOfRotation(orgID, handle)
+	}
 
 	return s.toSecretResponse(existing)
+}
+
+// notifyGatewaysOfRotation sends secret.updated (the handle only) to every
+// gateway that has an artifact referencing handle deployed and handles the
+// event. Only those gateways may fetch the value (GetGatewaySecretValue), and a
+// gateway that deploys one later fetches the current value then. Best effort:
+// the value is saved, and a gateway that misses the event picks it up on its
+// next deployment or reconnect.
+func (s *SecretService) notifyGatewaysOfRotation(orgID, handle string) {
+	if s.gatewayEvents == nil || s.gatewayRepo == nil {
+		return
+	}
+	ids, err := s.repo.FindDeployedGatewayIDs(orgID, handle)
+	if err != nil {
+		s.slogger.Warn("Failed to find gateways using a rotated secret", "orgId", orgID, "handle", handle, "error", err)
+		return
+	}
+	if len(ids) == 0 {
+		return
+	}
+	deployed := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		deployed[id] = true
+	}
+	gateways, err := s.gatewayRepo.GetByOrganizationID(orgID)
+	if err != nil {
+		s.slogger.Warn("Failed to load gateways for secret.updated broadcast", "orgId", orgID, "error", err)
+		return
+	}
+	for _, gw := range gateways {
+		if gw == nil || !deployed[gw.ID] || !gwversion.HandlesSecretUpdatedEvent(gw.Version) {
+			continue
+		}
+		if err := s.gatewayEvents.BroadcastSecretUpdatedEvent(gw.ID, &model.SecretUpdatedEvent{Handle: handle}); err != nil {
+			s.slogger.Warn("Failed to broadcast secret.updated event", "gatewayId", gw.ID, "handle", handle, "error", err)
+		}
+	}
 }
 
 func (s *SecretService) Delete(orgID, handle, updatedBy string) error {

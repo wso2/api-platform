@@ -19,9 +19,15 @@
 package controlplane
 
 import (
+	"encoding/json"
 	"log/slog"
+	"time"
 
+	"github.com/google/uuid"
+	"github.com/wso2/api-platform/common/eventhub"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/utils"
 )
 
 // syncSecrets pulls secrets from the Platform API and upserts them into local
@@ -33,6 +39,9 @@ import (
 //
 // Reconnect (warm cache): metadata-only request, then per-secret /value calls only
 // for secrets whose hash has changed since last sync.
+//
+// Either way, deployed artifacts that use a secret whose value changed are
+// re-rendered (rerenderSecretConsumers).
 func (c *Client) syncSecrets() {
 	if c.IsOnPrem() {
 		c.logger.Debug("Skipping secret sync: on-prem control plane detected")
@@ -73,6 +82,7 @@ func (c *Client) syncSecretsBulk() {
 	}
 
 	synced, skipped, failed := 0, 0, 0
+	changed := make(map[string]struct{})
 
 	for _, meta := range metas {
 		if meta.Status != "ACTIVE" {
@@ -88,7 +98,8 @@ func (c *Client) syncSecretsBulk() {
 			continue
 		}
 
-		if err := c.secretSyncer.UpsertFromPlatform(meta.Handle, meta.DisplayName, *meta.Value); err != nil {
+		valueChanged, err := c.storeSecret(meta.Handle, meta.DisplayName, *meta.Value)
+		if err != nil {
 			c.logger.Error("Failed to upsert secret from platform",
 				slog.String("handle", meta.Handle),
 				slog.Any("error", err),
@@ -96,10 +107,14 @@ func (c *Client) syncSecretsBulk() {
 			failed++
 			continue
 		}
+		if valueChanged {
+			changed[meta.Handle] = struct{}{}
+		}
 
 		c.secretHashCache.Store(meta.Handle, meta.Hash)
 		synced++
 	}
+	c.rerenderSecretConsumers(changed, "")
 
 	c.logger.Info("Bulk Platform API secret sync complete",
 		slog.Int("synced", synced),
@@ -120,6 +135,7 @@ func (c *Client) syncSecretsIncremental() {
 	}
 
 	synced, skipped, failed := 0, 0, 0
+	changed := make(map[string]struct{})
 
 	for _, meta := range metas {
 		if meta.Status != "ACTIVE" {
@@ -143,7 +159,8 @@ func (c *Client) syncSecretsIncremental() {
 			continue
 		}
 
-		if err := c.secretSyncer.UpsertFromPlatform(meta.Handle, meta.DisplayName, plaintext); err != nil {
+		valueChanged, err := c.storeSecret(meta.Handle, meta.DisplayName, plaintext)
+		if err != nil {
 			c.logger.Error("Failed to upsert secret from platform",
 				slog.String("handle", meta.Handle),
 				slog.Any("error", err),
@@ -151,10 +168,14 @@ func (c *Client) syncSecretsIncremental() {
 			failed++
 			continue
 		}
+		if valueChanged {
+			changed[meta.Handle] = struct{}{}
+		}
 
 		c.secretHashCache.Store(meta.Handle, meta.Hash)
 		synced++
 	}
+	c.rerenderSecretConsumers(changed, "")
 
 	c.logger.Info("Incremental Platform API secret sync complete",
 		slog.Int("synced", synced),
@@ -164,10 +185,11 @@ func (c *Client) syncSecretsIncremental() {
 }
 
 // syncSecretRefsFromYAML extracts {{ secret "handle" }} placeholders from the
-// supplied YAML, then fetches and upserts any handle that is not already in the
-// local hash cache. This is called from deployment event handlers so that secrets
-// created after the last startup/reconnect sync are available for template
-// rendering when the artifact arrives.
+// supplied YAML and fetches the current value of each one before the artifact
+// is rendered. It is called from deployment event handlers. Every referenced
+// handle is fetched, cached or not, so a deployment never renders a value that
+// was rotated since the last sync; other deployed artifacts that use a changed
+// value are re-rendered too.
 func (c *Client) syncSecretRefsFromYAML(yamlData []byte, correlationID string) {
 	if c.apiUtilsService == nil || c.secretSyncer == nil {
 		return
@@ -186,18 +208,14 @@ func (c *Client) syncSecretRefsFromYAML(yamlData []byte, correlationID string) {
 		}
 	}
 
+	changed := make(map[string]struct{})
 	for handle := range seen {
-		// Skip handles that were already synced (present in the hash cache).
-		if _, cached := c.secretHashCache.Load(handle); cached {
-			continue
-		}
-
 		c.logger.Info("Fetching secret referenced in artifact",
 			slog.String("secret_handle", handle),
 			slog.String("correlation_id", correlationID),
 		)
 
-		plaintext, err := c.apiUtilsService.FetchPlatformSecretValue(handle)
+		valueChanged, err := c.refreshSecret(handle)
 		if err != nil {
 			c.logger.Error("Failed to fetch secret value for artifact",
 				slog.String("secret_handle", handle),
@@ -206,20 +224,149 @@ func (c *Client) syncSecretRefsFromYAML(yamlData []byte, correlationID string) {
 			)
 			continue
 		}
+		if valueChanged {
+			changed[handle] = struct{}{}
+		}
+	}
+	c.rerenderSecretConsumers(changed, correlationID)
+}
 
-		if err := c.secretSyncer.UpsertFromPlatform(handle, handle, plaintext); err != nil {
-			c.logger.Error("Failed to upsert secret for artifact",
-				slog.String("secret_handle", handle),
+// handleSecretUpdatedEvent applies a secret.updated event, which the Platform
+// API sends when a secret's value is rotated: it fetches the new value and
+// re-renders the deployed artifacts that use it. The event carries the handle
+// only, never the value.
+func (c *Client) handleSecretUpdatedEvent(event map[string]interface{}) {
+	correlationID, _ := event["correlationId"].(string)
+	payload, _ := event["payload"].(map[string]interface{})
+	handle, _ := payload["handle"].(string)
+	if handle == "" {
+		c.logger.Warn("Ignoring secret.updated event without a handle",
+			slog.String("correlation_id", correlationID))
+		return
+	}
+	if c.IsOnPrem() || c.apiUtilsService == nil || c.secretSyncer == nil {
+		return
+	}
+
+	changed, err := c.refreshSecret(handle)
+	if err != nil {
+		c.logger.Error("Failed to refresh rotated secret",
+			slog.String("secret_handle", handle),
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err),
+		)
+		return
+	}
+	if changed {
+		c.rerenderSecretConsumers(map[string]struct{}{handle: {}}, correlationID)
+	}
+}
+
+// refreshSecret fetches handle's value from the Platform API by handle and
+// stores it, reporting whether the stored value changed. The value's hash is
+// not known here, so the cache entry is cleared to "" when the value changed
+// and the next reconnect sync checks it again.
+func (c *Client) refreshSecret(handle string) (bool, error) {
+	plaintext, err := c.apiUtilsService.FetchPlatformSecretValue(handle)
+	if err != nil {
+		return false, err
+	}
+	changed, err := c.storeSecret(handle, "", plaintext)
+	if err != nil {
+		return false, err
+	}
+	if _, cached := c.secretHashCache.Load(handle); changed || !cached {
+		c.secretHashCache.Store(handle, "")
+	}
+	return changed, nil
+}
+
+// storeSecret upserts a value fetched from the Platform API and reports whether
+// it differs from the stored one. Comparing values rather than trusting the
+// caller keeps a replica that already holds the value (secrets live in the
+// shared database) from re-rendering again. An empty displayName keeps the
+// stored one, or uses the handle for a new secret.
+func (c *Client) storeSecret(handle, displayName, plaintext string) (bool, error) {
+	existing, getErr := c.secretSyncer.Get(handle, "")
+	if getErr == nil && displayName == "" {
+		displayName = existing.DisplayName
+	}
+	if displayName == "" {
+		displayName = handle
+	}
+	if getErr == nil && existing.Value == plaintext && existing.DisplayName == displayName {
+		return false, nil
+	}
+	if err := c.secretSyncer.UpsertFromPlatform(handle, displayName, plaintext); err != nil {
+		return false, err
+	}
+	return getErr != nil || existing.Value != plaintext, nil
+}
+
+// rerenderSecretConsumers publishes a replica-sync UPDATE event for every
+// deployed artifact whose source configuration references one of handles. Each
+// controller replica, this one included, then re-renders the artifact from the
+// database with the stored secret values, the way it applies a deployment.
+func (c *Client) rerenderSecretConsumers(handles map[string]struct{}, correlationID string) {
+	if len(handles) == 0 || c.db == nil || c.eventHub == nil {
+		return
+	}
+	configs, err := c.db.GetAllConfigs()
+	if err != nil {
+		c.logger.Error("Failed to load artifacts to re-render after a secret change",
+			slog.String("correlation_id", correlationID),
+			slog.Any("error", err),
+		)
+		return
+	}
+	for _, cfg := range configs {
+		if cfg == nil || cfg.DesiredState != models.StateDeployed || !referencesSecret(cfg.SourceConfiguration, handles) {
+			continue
+		}
+		eventType, ok := utils.ReplicaSyncEventType(cfg.Kind)
+		if !ok {
+			continue
+		}
+		event := eventhub.Event{
+			GatewayID:           c.gatewayID,
+			OriginatedTimestamp: time.Now(),
+			EventType:           eventType,
+			Action:              "UPDATE",
+			EntityID:            cfg.UUID,
+			EventID:             uuid.New().String(),
+			EventData:           eventhub.EmptyEventData,
+		}
+		if err := c.eventHub.PublishEvent(c.gatewayID, event); err != nil {
+			c.logger.Error("Failed to publish re-render event after a secret change",
+				slog.String("id", cfg.UUID),
+				slog.String("kind", cfg.Kind),
 				slog.String("correlation_id", correlationID),
 				slog.Any("error", err),
 			)
 			continue
 		}
-
-		// Store a sentinel in the cache so subsequent events don't re-fetch.
-		// The real hash is unknown here (we fetched by handle, not via list);
-		// store an empty string so the incremental sync will still refresh it
-		// on the next reconnect if the value changes.
-		c.secretHashCache.Store(handle, "")
+		c.logger.Info("Re-rendering artifact after a secret change",
+			slog.String("id", cfg.UUID),
+			slog.String("kind", cfg.Kind),
+			slog.String("correlation_id", correlationID),
+		)
 	}
+}
+
+// referencesSecret reports whether the unrendered configuration has a
+// {{ secret "handle" }} placeholder for one of handles.
+func referencesSecret(source any, handles map[string]struct{}) bool {
+	if source == nil {
+		return false
+	}
+	raw, err := json.Marshal(source)
+	if err != nil {
+		return false
+	}
+	for _, m := range constants.SecretPlaceholderRe.FindAllSubmatch(raw, -1) {
+		if _, ok := handles[string(m[1])]; ok {
+			return true
+		}
+	}
+	return false
 }
