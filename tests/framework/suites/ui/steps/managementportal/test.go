@@ -167,7 +167,8 @@ func (s *Steps) consoleShowsRequest(ctx context.Context, url, method, path strin
 		return err
 	}
 	curl := response.GetByRole("region", playwright.LocatorGetByRoleOptions{Name: "cURL", Exact: playwright.Bool(true)})
-	if err := s.expect.Locator(curl).ToContainText("curl -X '" + method + "'"); err != nil {
+	// `--globoff` keeps curl from expanding `[..]` or `{..}` in the URL into several requests.
+	if err := s.expect.Locator(curl).ToContainText("curl --globoff -X '" + method + "'"); err != nil {
 		return fmt.Errorf("%s %s shows no cURL command: %w", method, path, err)
 	}
 	if err := s.expect.Locator(curl).ToContainText("'" + resolved + "'"); err != nil {
