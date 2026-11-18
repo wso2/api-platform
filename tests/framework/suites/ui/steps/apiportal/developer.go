@@ -340,7 +340,8 @@ func (u *Steps) subscribeNeedsLogin(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	subscribe := page.Locator(`#subscriptionPlans .aov-plan-card[data-policy-name="Bronze"] a.dp-btn`)
+	// Signed out, the header's Subscribe is a link to the login page.
+	subscribe := page.Locator(`.aov-hero-actions a.dp-btn[href$="/login"]`)
 	if err := u.expect.Locator(subscribe).ToHaveText("Subscribe"); err != nil {
 		return err
 	}
@@ -353,7 +354,7 @@ func (u *Steps) subscribeNeedsLogin(ctx context.Context) error {
 	return u.signInThroughLocalFormAs(ctx, "developer")
 }
 
-// subscribeOnAPIPage subscribes to the Bronze plan from its card and checks the token dialog,
+// subscribeOnAPIPage subscribes to the Bronze plan through the header's plan picker and checks the token dialog,
 // then registers the subscription for cleanup.
 func (u *Steps) subscribeOnAPIPage(ctx context.Context) error {
 	api, err := developerAPI(ctx)
@@ -365,7 +366,7 @@ func (u *Steps) subscribeOnAPIPage(ctx context.Context) error {
 		return err
 	}
 	subscription, err := createdBy(page, http.MethodPost, portalPath("/subscriptions"), "subscriptionId",
-		func() error { return page.Locator("#subscribe-btn-Bronze").Click() })
+		func() error { return choosePlan(page, "Bronze") })
 	if err != nil {
 		return fmt.Errorf("subscribing to Bronze: %w", err)
 	}
@@ -444,7 +445,8 @@ func (u *Steps) currentSubscription(page playwright.Page, apiID string) (string,
 	return id, one.SubscriptionToken, nil
 }
 
-// offersSwitchPlan checks that, with a Bronze subscription, the Silver card offers Switch plan.
+// offersSwitchPlan checks that, with a Bronze subscription, the header offers View subscription for
+// Bronze, and Switch plan, whose picker offers Silver but not the current plan.
 func (u *Steps) offersSwitchPlan(ctx context.Context) error {
 	api, err := developerAPI(ctx)
 	if err != nil {
@@ -454,10 +456,23 @@ func (u *Steps) offersSwitchPlan(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := u.expect.Locator(page.Locator(`.aov-plan-card[data-policy-name="Bronze"] .api-view-sub-btn`)).ToContainText("View subscription"); err != nil {
+	if err := u.expect.Locator(viewSubscriptionButton(page, "Bronze")).ToContainText("View subscription"); err != nil {
 		return err
 	}
-	return u.expect.Locator(page.Locator("#subscribe-btn-Silver")).ToContainText("Switch plan")
+	if err := u.expect.Locator(headerPlanPicker(page)).ToContainText("Switch plan"); err != nil {
+		return err
+	}
+	if err := headerPlanPicker(page).Click(); err != nil {
+		return err
+	}
+	picker := page.Locator(".plan-picker")
+	if err := u.expect.Locator(picker.Locator(`input[value="Silver"]`)).ToBeEnabled(); err != nil {
+		return err
+	}
+	if err := u.expect.Locator(picker.Locator(`input[value="Bronze"]`)).ToBeDisabled(); err != nil {
+		return fmt.Errorf("the current plan should not be offered: %w", err)
+	}
+	return page.Keyboard().Press("Escape")
 }
 
 // openSubscriptionManage opens the Manage dialog of the subscription on the Subscriptions page.
@@ -578,7 +593,7 @@ func (u *Steps) switchPlan(ctx context.Context) error {
 		return err
 	}
 	if err := wizardAll(
-		wizardClick(page, "#subscribe-btn-Silver"),
+		func() error { return choosePlan(page, "Silver") },
 		u.wizardVisible(page, "#apiUnsubDialog"),
 		u.wizardContains(page, "#apiUnsubTitle", "Switch to Silver plan?"),
 		u.wizardContains(page, "#apiUnsubDesc", "Your subscription token will remain the same."),

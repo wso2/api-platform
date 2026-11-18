@@ -268,9 +268,10 @@ func viewSubscriptionButton(page playwright.Page, planID string) playwright.Loca
 	return page.Locator(`.aov-hero-actions [data-view-subscription="` + planID + `"]`)
 }
 
-// choosePaidPlan opens the header's plan picker, picks the plan and confirms. A paid plan's
-// confirmation clicks its card's hidden button, which opens the checkout dialog.
-func choosePaidPlan(page playwright.Page, planID string) error {
+// choosePlan opens the header's plan picker, picks the plan and confirms. The confirmation clicks
+// the plan card's hidden button: a free plan subscribes (or asks to switch), a paid plan opens the
+// checkout dialog.
+func choosePlan(page playwright.Page, planID string) error {
 	if err := headerPlanPicker(page).Click(); err != nil {
 		return err
 	}
@@ -303,7 +304,7 @@ func (u *Steps) startCheckout(ctx context.Context, page playwright.Page) (string
 	if err != nil {
 		return "", err
 	}
-	if err := choosePaidPlan(page, planID); err != nil {
+	if err := choosePlan(page, planID); err != nil {
 		return "", fmt.Errorf("choosing the paid plan: %w", err)
 	}
 	response, err := page.ExpectResponse(regexp.MustCompile(`/checkout-sessions$`), func() error {
@@ -384,7 +385,7 @@ func (u *Steps) startPayingFlatRatePlan(ctx context.Context) error {
 		return err
 	}
 	dialog := page.Locator("#paidSubscribeModal")
-	if err := choosePaidPlan(page, planID); err != nil {
+	if err := choosePlan(page, planID); err != nil {
 		return fmt.Errorf("choosing the paid plan: %w", err)
 	}
 	if err := u.expect.Locator(page.Locator("#paidSubscribeTitle")).ToHaveText("Subscribe to " + planName + " plan"); err != nil {
@@ -407,7 +408,7 @@ func (u *Steps) startPayingFlatRatePlan(ctx context.Context) error {
 	if err := u.failProviderCall(ctx, "stripe", map[string]any{"method": "POST", "path": "/v1/checkout/sessions", "status": 500}); err != nil {
 		return err
 	}
-	if err := choosePaidPlan(page, planID); err != nil {
+	if err := choosePlan(page, planID); err != nil {
 		return err
 	}
 	if err := continueButton.Click(); err != nil {
@@ -419,7 +420,7 @@ func (u *Steps) startPayingFlatRatePlan(ctx context.Context) error {
 	if err := serveStripeJS(page, false); err != nil {
 		return err
 	}
-	if err := choosePaidPlan(page, planID); err != nil {
+	if err := choosePlan(page, planID); err != nil {
 		return err
 	}
 	if err := continueButton.Click(); err != nil {
@@ -501,7 +502,7 @@ func (u *Steps) startPayingUsagePlan(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := choosePaidPlan(page, planID); err != nil {
+	if err := choosePlan(page, planID); err != nil {
 		return fmt.Errorf("choosing the paid plan: %w", err)
 	}
 	if err := u.expect.Locator(page.Locator("#paidSubscribePricing tr")).ToHaveCount(4); err != nil {

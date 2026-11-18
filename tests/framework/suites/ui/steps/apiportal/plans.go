@@ -51,7 +51,8 @@ func (u *Steps) registerPlanSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^that plan cannot be deleted while a developer subscribes to it$`, u.planDeleteRefused)
 }
 
-// addFreePlan adds a plan with two request limits, refusing a limit count that is not positive.
+// addFreePlan adds a plan with a request-count condition of two limits, refusing a limit count that
+// is not positive.
 func (u *Steps) addFreePlan(ctx context.Context) error {
 	page, err := u.openSettingsPanel(ctx, "cfg-plans")
 	if err != nil {
@@ -64,20 +65,20 @@ func (u *Steps) addFreePlan(ctx context.Context) error {
 	if err := fillAndCheck(page, "#pol-desc", "A free plan with two limits"); err != nil {
 		return err
 	}
-	limits := page.Locator("#pol-limits-list .cfg-limit-row")
-	for range 2 {
-		if err := page.Locator("#pol-add-limit-btn").Click(); err != nil {
-			return fmt.Errorf("adding a limit: %w", err)
-		}
+	// A new plan offers the condition types; choosing one adds it with one limit to fill.
+	if err := page.Locator(`.pln-type-card[data-type="request-count"]`).Click(); err != nil {
+		return fmt.Errorf("choosing a request-count condition: %w", err)
+	}
+	condition := page.Locator(".pln-cond").First()
+	limits := condition.Locator(".cfg-limit-row")
+	if err := condition.Locator("button", playwright.LocatorLocatorOptions{HasText: "Add limit"}).Click(); err != nil {
+		return fmt.Errorf("adding a limit: %w", err)
 	}
 	if err := u.expect.Locator(limits).ToHaveCount(2); err != nil {
 		return err
 	}
 	for i, limit := range []struct{ count, unit string }{{"0", "MINUTE"}, {freePlanDayLimit, "DAY"}} {
 		row := limits.Nth(i)
-		if _, err := row.Locator(".cfg-limit-type").SelectOption(playwright.SelectOptionValues{Values: &[]string{"REQUEST_COUNT"}}); err != nil {
-			return err
-		}
 		if err := row.Locator(".cfg-limit-count").Fill(limit.count); err != nil {
 			return err
 		}
@@ -88,7 +89,7 @@ func (u *Steps) addFreePlan(ctx context.Context) error {
 			return err
 		}
 	}
-	if err := u.saveExpecting(page, "#cfg-plan-modal-save", "Limit count must be -1 (unlimited) or a positive number."); err != nil {
+	if err := u.saveExpecting(page, "#pol-save", "Enter a whole number of at least 1."); err != nil {
 		return err
 	}
 	if err := limits.Nth(0).Locator(".cfg-limit-count").Fill(freePlanMinuteLimit); err != nil {
@@ -99,7 +100,7 @@ func (u *Steps) addFreePlan(ctx context.Context) error {
 	var planID string
 	if _, err := page.ExpectNavigation(func() error {
 		created, err := createdBy(page, http.MethodPost, portalPath("/subscription-plans"), "id",
-			func() error { return page.Locator("#cfg-plan-modal-save").Click() })
+			func() error { return page.Locator("#pol-save").Click() })
 		if err != nil {
 			return err
 		}
@@ -149,7 +150,12 @@ func (u *Steps) editFreePlanLimit(ctx context.Context) error {
 	if err := planRow(page, name).Locator(".cfg-plan-edit-btn").Click(); err != nil {
 		return fmt.Errorf("opening the plan editor: %w", err)
 	}
-	limits := page.Locator("#pol-limits-list .cfg-limit-row")
+	// A saved plan's conditions open collapsed; open the request-count condition to edit its limits.
+	condition := page.Locator(`.pln-cond[data-type="request-count"]`)
+	if err := condition.Locator(".pln-cond-toggle").Click(); err != nil {
+		return fmt.Errorf("opening the request-count condition: %w", err)
+	}
+	limits := condition.Locator(".cfg-limit-row")
 	if err := u.expect.Locator(limits).ToHaveCount(2); err != nil {
 		return err
 	}
@@ -163,7 +169,7 @@ func (u *Steps) editFreePlanLimit(ctx context.Context) error {
 	if err := minute.Locator(".cfg-limit-count").Fill(freePlanMinuteLimitEdited); err != nil {
 		return err
 	}
-	if err := u.saveAndReload(page, page.Locator("#cfg-plan-modal-save"), "Plan updated."); err != nil {
+	if err := u.saveAndReload(page, page.Locator("#pol-save"), "Plan updated."); err != nil {
 		return err
 	}
 	status, body, err := u.portalCall(page, http.MethodGet, "/subscription-plans/"+planID, nil)
@@ -253,7 +259,8 @@ func (u *Steps) offerPlanOnAPI(ctx context.Context) error {
 	return u.waitForPortalCards(ctx, "/apis", id)
 }
 
-// planCardOnAPIPage checks the plan's card on the API page and its two limits.
+// planCardOnAPIPage checks the plan's card on the API page and its two limits. The card shows the
+// name; the limits it holds, hidden, are what the plan picker and checkout show.
 func (u *Steps) planCardOnAPIPage(ctx context.Context) error {
 	planID, err := resolveText(ctx, keyBillingPlan)
 	if err != nil {
@@ -278,13 +285,14 @@ func (u *Steps) planCardOnAPIPage(ctx context.Context) error {
 	if err := u.expect.Locator(card.Locator(".aov-plan-name")).ToHaveText(name); err != nil {
 		return err
 	}
-	for _, count := range []string{freePlanMinuteLimitEdited, freePlanDayLimit} {
-		limit := card.Locator(".aov-plan-count").Filter(playwright.LocatorFilterOptions{HasText: regexpExact(count)})
+	lines := card.Locator(".aov-plan-limits li")
+	for _, line := range []string{freePlanMinuteLimitEdited + " requests / minute", "20,000 requests / day"} {
+		limit := lines.Filter(playwright.LocatorFilterOptions{HasText: regexpExact(line)})
 		if err := u.expect.Locator(limit).ToHaveCount(1); err != nil {
-			return fmt.Errorf("the plan card does not show the limit %s: %w", count, err)
+			return fmt.Errorf("the plan card does not hold the limit %q: %w", line, err)
 		}
 	}
-	return u.expect.Locator(card.Locator(".aov-plan-count")).ToHaveCount(2)
+	return u.expect.Locator(lines).ToHaveCount(2)
 }
 
 // planDeleteRefused subscribes the developer to the plan, then checks as the administrator that
