@@ -1088,6 +1088,279 @@
   "apiControlPlane.pages.appShell.HeaderScopeSwitchers.projectsFailed": {
     "defaultMessage": "Failed to load projects"
   },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.back": {
+    "defaultMessage": "Back to API Portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.created": {
+    "defaultMessage": "API Portal “{name}” registered.",
+    "description": "{name} is the portal name the user just entered."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.description.label": {
+    "defaultMessage": "Description (Optional)"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.handle.error.invalid": {
+    "defaultMessage": "Use lowercase letters, numbers and hyphens only."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.handle.error.required": {
+    "defaultMessage": "Enter a handle."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.handle.helper": {
+    "defaultMessage": "Identifies the portal in URLs and the API. It cannot be changed later."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.handle.label": {
+    "defaultMessage": "Handle"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.name.error.required": {
+    "defaultMessage": "Enter a portal name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.name.label": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.section.general": {
+    "defaultMessage": "General Details"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.submit": {
+    "defaultMessage": "Register portal"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.submitting": {
+    "defaultMessage": "Registering…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.subtitle": {
+    "defaultMessage": "Register an API Portal you run, then connect it to the control plane."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.title": {
+    "defaultMessage": "Register an API Portal"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.url.error.invalid": {
+    "defaultMessage": "Enter a full https URL, for example https://portal.example.com."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.url.error.required": {
+    "defaultMessage": "Enter the portal URL."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.url.helper": {
+    "defaultMessage": "Where the control plane reaches the portal to publish APIs."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.url.label": {
+    "defaultMessage": "URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalCreatePage.url.placeholder": {
+    "defaultMessage": "https://portal.example.com",
+    "description": "Example portal address shown in the empty URL field."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalDetailPage.back": {
+    "defaultMessage": "Back to API Portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalDetailPage.delete": {
+    "defaultMessage": "Delete"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalDetailPage.delete.body": {
+    "defaultMessage": "This removes “{name}” from the control plane, which can then no longer publish to it. The portal itself keeps running, along with the APIs already on it.",
+    "description": "{name} is the portal name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalDetailPage.delete.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalDetailPage.delete.title": {
+    "defaultMessage": "Delete this API Portal?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalDetailPage.deleted": {
+    "defaultMessage": "API Portal “{name}” deleted.",
+    "description": "{name} is the portal name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalDetailPage.edit": {
+    "defaultMessage": "Edit"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalDetailPage.error": {
+    "defaultMessage": "Unable to load this API Portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalDetailPage.loading": {
+    "defaultMessage": "Loading API Portal"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalDetailPage.notFound": {
+    "defaultMessage": "API Portal not found"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalDetailPage.registered": {
+    "defaultMessage": "You registered {name}. Next, configure the portal with the hash below so the control plane can publish to it.",
+    "description": "{name} is the portal name. Never translated."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.column.name": {
+    "defaultMessage": "Portal",
+    "description": "Column header over the portal name and handle."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.column.updated": {
+    "defaultMessage": "Updated",
+    "description": "Column header over the last-updated timestamp."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.column.url": {
+    "defaultMessage": "URL",
+    "description": "Column header over the portal address."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.count": {
+    "defaultMessage": "{count, plural, one {# portal} other {# portals}}",
+    "description": "Heading above the listing, counting every match."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.empty.description": {
+    "defaultMessage": "Register an API Portal you run so you can publish APIs to it for developers to discover and subscribe to."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.empty.title": {
+    "defaultMessage": "Register your first API Portal",
+    "description": "First-run prompt shown to an organization with no API Portals."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.error": {
+    "defaultMessage": "Unable to load API Portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.loading": {
+    "defaultMessage": "Loading API Portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.noMatches.description": {
+    "defaultMessage": "Try a different search term."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.noMatches.title": {
+    "defaultMessage": "No matching portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.register": {
+    "defaultMessage": "Register portal"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.searchPlaceholder": {
+    "defaultMessage": "Search portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.subtitle": {
+    "defaultMessage": "Register the API Portals you run and connect them to the control plane."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.title": {
+    "defaultMessage": "API Portals"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.confirm.body": {
+    "defaultMessage": "This replaces the shared key the control plane uses for this portal. Publishing to the portal fails until it is configured with the new hash."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.confirm.button": {
+    "defaultMessage": "Generate new key"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.confirm.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.confirm.title": {
+    "defaultMessage": "Generate a new shared key?"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.generate": {
+    "defaultMessage": "Generate new key",
+    "description": "Replaces the shared key, so the portal needs the new hash."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.generating": {
+    "defaultMessage": "Generating…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.hashOnce": {
+    "defaultMessage": "Copy this now. The console does not keep the hash; to see one again, generate a new key."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.hashPending": {
+    "defaultMessage": "The hash is shown only right after the key is set. If you no longer have it, generate a new key."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.intro": {
+    "defaultMessage": "The control plane authenticates to the portal with a shared key. The portal checks it against the key’s SHA-256 hash, which you set in the portal’s configuration."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.quickstart": {
+    "defaultMessage": "Using the quickstart distribution? Write the hash to {file} instead.",
+    "description": "{file} is a file path, rendered as code. Keep it as is."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.restart": {
+    "defaultMessage": "Restart the portal so it picks up the new hash."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.step.configure": {
+    "defaultMessage": "Step 1: Add the hash to the portal configuration"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.step.configure.intro": {
+    "defaultMessage": "Set this in the portal’s config.toml:",
+    "description": "config.toml is a file name. Keep it as is."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.step.restart": {
+    "defaultMessage": "Step 2: Restart the portal"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.title": {
+    "defaultMessage": "Connect the portal"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.updated": {
+    "defaultMessage": "New shared key set. Configure the portal with the new hash."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalEditDialog.cancel": {
+    "defaultMessage": "Cancel"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalEditDialog.description.label": {
+    "defaultMessage": "Description"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalEditDialog.name.error.required": {
+    "defaultMessage": "Enter a portal name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalEditDialog.name.label": {
+    "defaultMessage": "Name"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalEditDialog.save": {
+    "defaultMessage": "Save"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalEditDialog.saved": {
+    "defaultMessage": "API Portal “{name}” updated.",
+    "description": "{name} is the portal name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalEditDialog.saving": {
+    "defaultMessage": "Saving…"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalEditDialog.title": {
+    "defaultMessage": "Edit API Portal"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalEditDialog.url.error.invalid": {
+    "defaultMessage": "Enter a full https URL, for example https://portal.example.com."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalEditDialog.url.label": {
+    "defaultMessage": "URL"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalWebhookSecretStep.addressHint": {
+    "defaultMessage": "Replace {placeholder} with the address the portal reaches the control plane’s Platform API on.",
+    "description": "{placeholder} is rendered as code. Keep it as is."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalWebhookSecretStep.apiIntro": {
+    "defaultMessage": "Or create the subscriber through the portal’s API, with this request body:"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalWebhookSecretStep.created": {
+    "defaultMessage": "Webhook secret issued. Add it to the portal’s webhook subscriber."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalWebhookSecretStep.exists": {
+    "defaultMessage": "This portal already has a webhook secret. Its value is shown only when it is issued; rotate it to get a new one. Older versions keep working until you remove them."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalWebhookSecretStep.generate": {
+    "defaultMessage": "Generate webhook secret"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalWebhookSecretStep.intro": {
+    "defaultMessage": "The portal tells the control plane when API keys, subscriptions and applications change, signing each event with a webhook secret. The control plane recognises the portal by that secret."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalWebhookSecretStep.loadError": {
+    "defaultMessage": "Could not check whether this portal has a webhook secret. Try again shortly."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalWebhookSecretStep.loading": {
+    "defaultMessage": "Checking the portal’s webhook secret"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalWebhookSecretStep.receiverNote": {
+    "defaultMessage": "The control plane accepts these events only when its webhook receiver is on: {setting} in its config.toml.",
+    "description": "{setting} is a configuration line, rendered as code. config.toml is a file name."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalWebhookSecretStep.rotate": {
+    "defaultMessage": "Rotate webhook secret",
+    "description": "Issues a new version of the secret; older versions keep working."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalWebhookSecretStep.secretOnce": {
+    "defaultMessage": "Copy this secret now. The control plane does not show it again; to get another, rotate the secret."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalWebhookSecretStep.settingsIntro": {
+    "defaultMessage": "In the portal, open Settings, then Webhooks, and add a subscriber with this target URL, the secret above, and all events:",
+    "description": "Settings and Webhooks are pages in the API Portal."
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalWebhookSecretStep.title": {
+    "defaultMessage": "Step 3: Send portal events to the control plane"
+  },
+  "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalWebhookSecretStep.working": {
+    "defaultMessage": "Generating…"
+  },
   "apiControlPlane.pages.appShell.appShellPages.apis.ApiDetailPage.by.label": {
     "defaultMessage": "by",
     "description": "Label between the API creation time and creator."
