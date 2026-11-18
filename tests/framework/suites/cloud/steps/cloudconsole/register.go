@@ -424,7 +424,25 @@ func responseError(resp *httpx.Response) error {
 	if resp == nil {
 		return errors.New("cloud-console: no response")
 	}
-	return fmt.Errorf("cloud-console: unexpected response: %s", resp.Describe())
+	return &statusError{status: resp.StatusCode, message: "cloud-console: unexpected response: " + resp.Describe()}
+}
+
+// statusError is an answer a caller did not expect. It keeps the status, so a caller can tell a
+// resource that is absent from one the token may not touch.
+type statusError struct {
+	status  int
+	message string
+}
+
+func (e *statusError) Error() string { return e.message }
+
+// errorStatus returns the status of the answer behind err, or zero when err is not one.
+func errorStatus(err error) int {
+	var answer *statusError
+	if errors.As(err, &answer) {
+		return answer.status
+	}
+	return 0
 }
 
 func cloudAPIURL(base, path string) string {

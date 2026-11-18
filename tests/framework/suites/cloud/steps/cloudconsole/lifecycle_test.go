@@ -25,6 +25,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image/png"
 	"io"
 	"log/slog"
@@ -1575,6 +1576,7 @@ func sweepLeftovers(ctx context.Context, base string, timeout time.Duration) ([]
 }
 
 func TestCloudSweepsDeleteOnlyTheRunsLeftoversInDependencyOrder(t *testing.T) {
+	t.Setenv(pipelineProjectEnv, "")
 	stub := newLeftoverStub()
 	topo := cloudAPIStub(t, stub.handler)
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
@@ -3057,6 +3059,23 @@ type starterPlatform struct {
 	portalFails    bool
 	// portalAbsent makes a portal lookup answer 404, as when a refused create left nothing behind.
 	portalAbsent bool
+
+	// noDefaultProject makes the default project answer 404, and noPipelineBinding its deployment
+	// pipeline.
+	noDefaultProject  bool
+	noPipelineBinding bool
+	// environments are what GET /environments lists.
+	environments []map[string]any
+	// pipelineProject is a project, other than the default one, bound to a pipeline of
+	// pipelinePaths; empty means the organisation has none.
+	pipelineProject string
+	pipelinePaths   []promotionPath
+	// deleted records the gateways and portals the starter was asked to remove.
+	deleted []string
+	// requests counts every request the organisation answered; gatewayLists those that listed the
+	// managed gateways.
+	requests     int
+	gatewayLists int
 }
 
 func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
@@ -3064,15 +3083,39 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		require.Equal(t, "Bearer console-token", r.Header.Get("Authorization"))
+		p.requests++
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/default" && p.noDefaultProject:
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/default":
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "default"})
+		case r.Method == http.MethodGet && p.pipelineProject != "" && r.URL.Path == "/projects/"+p.pipelineProject:
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": p.pipelineProject})
+		case r.Method == http.MethodGet && p.pipelineProject != "" && r.URL.Path == "/projects/"+p.pipelineProject+"/deployment-pipeline":
+			_ = json.NewEncoder(w).Encode(map[string]any{"pipeline": "project-pipeline"})
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/projects/") && strings.Count(r.URL.Path, "/") == 2:
+			w.WriteHeader(http.StatusNotFound)
+		case r.Method == http.MethodGet && r.URL.Path == "/environments":
+			environments := p.environments
+			if environments == nil {
+				environments = []map[string]any{}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"list": environments})
+		case r.Method == http.MethodDelete:
+			p.deleted = append(p.deleted, r.URL.Path)
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodGet && r.URL.Path == "/projects/default/deployment-pipeline" && p.noPipelineBinding:
+			w.WriteHeader(http.StatusNotFound)
 		case r.Method == http.MethodGet && r.URL.Path == "/projects/default/deployment-pipeline":
 			_ = json.NewEncoder(w).Encode(map[string]any{"pipeline": "default"})
 		case r.Method == http.MethodGet && r.URL.Path == "/pipelines":
 			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{
 				{"name": "other", "promotionPaths": []promotionPath{{SourceEnvironment: "elsewhere"}}},
 				{"name": "default", "promotionPaths": p.paths},
+				{"name": "project-pipeline", "promotionPaths": p.pipelinePaths},
 			}})
 		case r.Method == http.MethodGet && r.URL.Path == "/managed-gateways":
+			p.gatewayLists++
 			if kind := r.URL.Query().Get("functionalityType"); kind != "" {
 				require.Equal(t, regularGatewayKind, kind)
 			}
@@ -3167,7 +3210,7 @@ func TestEnsureDefaultGatewayLeavesAnActiveGatewayAlone(t *testing.T) {
 	}}
 	outcome, err := ensureForTest(t, platform)
 	require.NoError(t, err)
-	require.Equal(t, gatewayOutcome{ID: "development-default"}, outcome, "an existing gateway is used, not created")
+	require.Equal(t, gatewayOutcome{ID: "development-default", Environment: "development"}, outcome, "an existing gateway is used, not created")
 	require.Empty(t, platform.created)
 }
 
@@ -3179,7 +3222,7 @@ func TestEnsureDefaultGatewayCreatesOneWhenNoneIsUsable(t *testing.T) {
 	}}
 	outcome, err := ensureForTest(t, platform)
 	require.NoError(t, err)
-	require.Equal(t, gatewayOutcome{ID: "development-" + testDefaultGateway, Created: true}, outcome)
+	require.Equal(t, gatewayOutcome{ID: "development-" + testDefaultGateway, Environment: "development", Created: true}, outcome)
 	require.Len(t, platform.created, 1)
 	require.Equal(t, map[string]any{
 		"displayName": testDefaultGateway, "environment": "development", "functionalityType": regularGatewayKind,
@@ -3224,6 +3267,12 @@ func TestEnsureDefaultGatewayRefusesOtherAnswers(t *testing.T) {
 	platform := &starterPlatform{paths: developmentPipeline(), createAs: http.StatusForbidden}
 	_, err := ensureForTest(t, platform)
 	require.ErrorContains(t, err, "creating the default gateway")
+	require.ErrorIs(t, err, errUnavailable, "a platform that refuses the token cannot be asked to build a gateway")
+
+	platform = &starterPlatform{paths: developmentPipeline(), createAs: http.StatusInternalServerError}
+	_, err = ensureForTest(t, platform)
+	require.ErrorContains(t, err, "creating the default gateway")
+	require.NotErrorIs(t, err, errUnavailable, "a gateway the platform failed to create is a failure")
 }
 
 func TestEnsureDefaultGatewayNeverCreatesTheGatewayAPinNames(t *testing.T) {
@@ -3233,12 +3282,13 @@ func TestEnsureDefaultGatewayNeverCreatesTheGatewayAPinNames(t *testing.T) {
 	}}
 	_, err := ensureForTest(t, platform)
 	require.ErrorContains(t, err, cloudGatewayPinEnv)
+	require.ErrorIs(t, err, errUnavailable)
 	require.Empty(t, platform.created)
 
 	platform.gateways = append(platform.gateways, map[string]any{"id": "wanted", "environment": "development", "status": "ACTIVE", "isActive": true})
 	outcome, err := ensureForTest(t, platform)
 	require.NoError(t, err)
-	require.Equal(t, gatewayOutcome{ID: "wanted"}, outcome)
+	require.Equal(t, gatewayOutcome{ID: "wanted", Environment: "development"}, outcome)
 }
 
 func TestEnsureDefaultGatewayNeedsAPipeline(t *testing.T) {
@@ -3246,6 +3296,7 @@ func TestEnsureDefaultGatewayNeedsAPipeline(t *testing.T) {
 	platform := &starterPlatform{}
 	_, err := ensureForTest(t, platform)
 	require.ErrorContains(t, err, "no environment")
+	require.ErrorIs(t, err, errUnavailable, "a pipeline with no stage to build in is an organisation the starter cannot fix")
 }
 
 func TestDefaultGatewayEnvironmentPrefersDevelopmentThenTheFirstStage(t *testing.T) {
@@ -3282,30 +3333,19 @@ func TestDefaultGatewayEnvironmentPrefersDevelopmentThenTheFirstStage(t *testing
 func TestStarterStartNeedsTheConsoleToken(t *testing.T) {
 	t.Setenv(cloudConsoleAccessTokenEnv, "")
 	topo := cloudAPIStub(t, func(http.ResponseWriter, *http.Request) {})
-	starter, err := NewStarter(nil)
+	starter, err := NewStarter()
 	require.NoError(t, err)
 	require.ErrorContains(t, starter.Start(context.Background(), topo), cloudConsoleAccessTokenEnv)
 }
 
-func TestStarterStartPreparesTheOrganisationOnce(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
-	platform := &starterPlatform{paths: developmentPipeline(), gateways: []map[string]any{
-		{"id": "development-default", "environment": "development", "status": "ACTIVE", "isActive": true},
-	}}
-	var lists int
-	handler := platform.handler(t)
-	topo := cloudAPIStub(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/managed-gateways" && r.Method == http.MethodGet {
-			lists++
-		}
-		handler(w, r)
-	})
-	starter, err := NewStarter(nil)
-	require.NoError(t, err)
-	require.NoError(t, starter.Start(context.Background(), topo))
-	require.NoError(t, starter.Start(context.Background(), topo))
-	require.Equal(t, 1, lists, "the second runner shares the first one's preparation")
+func TestStarterSharesAPreconditionAcrossScenarios(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList()}
+	starter := starterAgainst(t, platform)
+
+	require.NoError(t, starter.checkScenario(context.Background(), "first", []precondition{preDefaultGateway}))
+	require.NoError(t, starter.checkScenario(context.Background(), "second", []precondition{preDefaultGateway}))
+
+	require.Equal(t, 1, platform.gatewayLists, "the second scenario shares the first one's check")
 }
 
 func TestFinalizerRemovesTheStartersGatewayAfterTheRunnersGateways(t *testing.T) {
@@ -3338,30 +3378,24 @@ func TestFinalizerRemovesTheStartersGatewayAfterTheRunnersGateways(t *testing.T)
 	}, gateways, "the starter's gateway goes last, and another run's default gateway stays")
 }
 
-func TestStarterHandsTheFinalizerWhatItWillCreate(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
-	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1}
-	topo := cloudAPIStub(t, platform.handler(t))
-	finalizer := NewFinalizer()
-	starter, err := NewStarter(finalizer)
-	require.NoError(t, err)
+func TestStarterChecksNothingUntilAScenarioNeedsIt(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList(), noPortals: true}
+	starter := starterAgainst(t, platform)
+	require.Zero(t, platform.requests, "starting the run asks the organisation nothing")
 
-	require.NoError(t, starter.Start(context.Background(), topo))
+	require.NoError(t, starter.checkScenario(context.Background(), "a scenario that needs nothing", nil))
+	require.Zero(t, platform.requests)
 
-	require.Len(t, platform.created, 1)
-	require.Equal(t, starter.gatewayDisplayName(), platform.created[0]["displayName"])
-	require.True(t, finalizer.finals.Tracked())
-	require.True(t, finalizer.finals.Owns([]string{"development-" + starter.gatewayDisplayName()}),
-		"the finalizer must recognise the gateway the starter created")
-	require.False(t, finalizer.finals.Owns([]string{"development-" + defaultGatewayDisplayName + "-zzzzz222"}))
-	finalizer.mu.Lock()
-	defer finalizer.mu.Unlock()
-	require.Len(t, finalizer.bases, 1, "the platform is known to the finalizer even if no scenario ran")
+	require.NoError(t, starter.checkScenario(context.Background(), "a scenario that needs the default project", []precondition{preDefaultProject}))
+	require.Positive(t, platform.requests)
+	require.Zero(t, platform.gatewayLists, "no scenario needed a gateway")
+	require.Empty(t, platform.created)
+	require.Empty(t, platform.createdPortals, "no scenario needed a portal")
+	require.Empty(t, starter.Report())
 }
 
 func TestStarterGatewayNameFitsTheHandleLimitOfTheDevelopmentEnvironment(t *testing.T) {
-	starter, err := NewStarter(nil)
+	starter, err := NewStarter()
 	require.NoError(t, err)
 	const developmentHandleLimit = 15 // the platform allows 37 minus twice the environment name's length
 	require.LessOrEqual(t, len(starter.gatewayDisplayName()), developmentHandleLimit)
@@ -3370,11 +3404,16 @@ func TestStarterGatewayNameFitsTheHandleLimitOfTheDevelopmentEnvironment(t *test
 }
 
 func TestAGatewayTheOrganisationAlreadyHadIsUsedAndSurvivesTheFinalizer(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
 	platform := &starterPlatform{paths: developmentPipeline(), gateways: []map[string]any{
 		{"id": "development-default", "displayName": "default", "environment": "development", "status": "ACTIVE", "isActive": true},
 	}}
+	starter := starterAgainst(t, platform)
+	require.NoError(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preDefaultGateway}))
+	id, created := starter.Gateway()
+	require.Equal(t, "development-default", id)
+	require.False(t, created)
+	require.Empty(t, platform.created)
+
 	var mu sync.Mutex
 	var deletes []string
 	handler := platform.handler(t)
@@ -3391,19 +3430,47 @@ func TestAGatewayTheOrganisationAlreadyHadIsUsedAndSurvivesTheFinalizer(t *testi
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	require.NoError(t, err)
 	finalizer := NewFinalizer()
-	starter, err := NewStarter(finalizer)
-	require.NoError(t, err)
-
-	require.NoError(t, starter.StartAt(context.Background(), base))
-	id, created := starter.Gateway()
-	require.Equal(t, "development-default", id)
-	require.False(t, created)
-	require.Empty(t, platform.created)
+	finalizer.Watch(base, "abcde234")
 
 	removed, err := finalizer.Finalize(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, removed)
 	require.Empty(t, deletes, "nothing the run did not create is deleted")
+}
+
+func TestWhatTheStarterBuiltSurvivesTheFinalizerOfARun(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
+	starter := starterAgainst(t, platform)
+	require.NoError(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preDefaultGateway, preAPIPortal}))
+	gateway, gatewayCreated := starter.Gateway()
+	require.True(t, gatewayCreated)
+	_, portalCreated := starter.Portal()
+	require.True(t, portalCreated)
+
+	stub := newLeftoverStub()
+	stub.lists["/managed-gateways"] = []map[string]any{
+		{"id": gateway, "displayName": starter.gatewayDisplayName(), "environment": "development"},
+		{"id": "development-syn-gw-abcde234-1", "environment": "development"},
+	}
+	stub.lists["/managed-api-portals"] = []map[string]any{
+		{"id": starter.portalName(), "name": starter.portalName(), "status": "active"},
+	}
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+	finalizer := NewFinalizer()
+	finalizer.Watch(base, "abcde234")
+
+	removed, err := finalizer.Finalize(context.Background())
+	require.NoError(t, err)
+	require.Contains(t, removed, "/managed-gateways/development-syn-gw-abcde234-1", "the run's own gateway goes")
+	require.NotContains(t, removed, "/managed-gateways/"+gateway, "the starter's gateway stays for the next run")
+	for _, id := range stub.deleted {
+		require.NotContains(t, id, starter.portalName())
+		require.NotContains(t, id, starter.gatewayDisplayName())
+	}
 }
 
 func TestAGatewayTheStarterCreatesGetsAtLeastFiveMinutesToBecomeActive(t *testing.T) {
@@ -4996,6 +5063,32 @@ func TestAssertCloudResponseStatusAndErrorCode(t *testing.T) {
 	require.ErrorContains(t, steps.assertCloudErrorCode(ctx, "UNAUTHORIZED"), "reading the error code")
 }
 
+// skipWhilePortalCreationIsOff skips a test that builds a portal while starterCreatesPortal is false.
+func skipWhilePortalCreationIsOff(t *testing.T) {
+	t.Helper()
+	if !starterCreatesPortal {
+		t.Skip("the starter does not create a portal while starterCreatesPortal is false")
+	}
+}
+
+func TestStarterSkipsThePortalScenariosInsteadOfCreatingAPortalWhileCreationIsOff(t *testing.T) {
+	if starterCreatesPortal {
+		t.Skip("the starter creates a portal")
+	}
+	platform := &starterPlatform{noPortals: true, portalActiveAt: 1}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a portal scenario", []precondition{preAPIPortal}), godog.ErrSkip)
+
+	require.Empty(t, platform.createdPortals, "no portal is created")
+	require.NoError(t, starter.Failures(), "a portal that is not found is a skip, not a failure")
+	require.Contains(t, strings.Join(starter.Report(), "\n"), "api-portal is not met")
+
+	existing := &starterPlatform{portals: []map[string]any{{"id": "acme-portal", "status": "active"}}}
+	require.NoError(t, starterAgainst(t, existing).checkScenario(context.Background(), "a portal scenario", []precondition{preAPIPortal}),
+		"an active portal the organisation has is still used")
+}
+
 func ensurePortalForTest(t *testing.T, platform *starterPlatform) (portalOutcome, error) {
 	return ensureDefaultPortal(context.Background(), platform.api(t), defaultPortalName+"-abcde234", slog.Default())
 }
@@ -5023,6 +5116,7 @@ func TestEnsureDefaultPortalWaitsForAPortalThatIsBeingBuilt(t *testing.T) {
 }
 
 func TestEnsureDefaultPortalCreatesOneWhenTheOrganisationHasNone(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
 	platform := &starterPlatform{noPortals: true, portalActiveAt: 2}
 	got, err := ensurePortalForTest(t, platform)
 	require.NoError(t, err)
@@ -5034,6 +5128,7 @@ func TestEnsureDefaultPortalCreatesOneWhenTheOrganisationHasNone(t *testing.T) {
 }
 
 func TestEnsureDefaultPortalIgnoresPortalsThatCannotServe(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
 	platform := &starterPlatform{noPortals: true, portalActiveAt: 1, portals: []map[string]any{
 		{"id": "broken", "status": "failed"},
 		{"id": "going", "status": "deleting"},
@@ -5045,12 +5140,14 @@ func TestEnsureDefaultPortalIgnoresPortalsThatCannotServe(t *testing.T) {
 }
 
 func TestEnsureDefaultPortalStopsAtOnceWhenThePortalFails(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
 	platform := &starterPlatform{noPortals: true, portalFails: true}
 	_, err := ensurePortalForTest(t, platform)
 	require.ErrorContains(t, err, "failed to provision")
 }
 
 func TestEnsureDefaultPortalDoesNotWaitForAPortalAConflictLeftNowhere(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
 	platform := &starterPlatform{noPortals: true, portalCreateAs: http.StatusConflict, portalAbsent: true}
 	_, err := ensurePortalForTest(t, platform)
 	require.ErrorContains(t, err, "creating the managed API Portal")
@@ -5058,74 +5155,19 @@ func TestEnsureDefaultPortalDoesNotWaitForAPortalAConflictLeftNowhere(t *testing
 }
 
 func TestEnsureDefaultPortalWaitsForThePortalAConflictPointsAt(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
 	platform := &starterPlatform{noPortals: true, portalCreateAs: http.StatusConflict, portalActiveAt: 1}
 	got, err := ensurePortalForTest(t, platform)
 	require.NoError(t, err)
 	require.Equal(t, "dap-abcde234", got.ID)
 }
 
-func TestStarterPreparesAPortalAndHandsItToTheFinalizer(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
-	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
-	topo := cloudAPIStub(t, platform.handler(t))
-	finalizer := NewFinalizer()
-	starter, err := NewStarter(finalizer)
-	require.NoError(t, err)
-
-	require.NoError(t, starter.Start(context.Background(), topo))
-
-	require.Len(t, platform.createdPortals, 1)
-	require.Equal(t, starter.portalName(), platform.createdPortals[0]["handle"])
-	id, created := starter.Portal()
-	require.Equal(t, starter.portalName(), id)
-	require.True(t, created)
-	require.True(t, finalizer.finals.Owns([]string{starter.portalName()}),
-		"the finalizer must recognise the portal the starter created")
-}
-
-func TestStarterLeavesPortalsAloneWhenThePortalRunnerIsNotSelected(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
-	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
-	topo := cloudAPIStub(t, platform.handler(t))
-	starter, err := NewStarter(NewFinalizer())
-	require.NoError(t, err)
-	starter.SelectRunners([]string{"apip-basic", "apip-project"})
-
-	require.NoError(t, starter.Start(context.Background(), topo))
-
-	require.Empty(t, platform.createdPortals, "no selected runner needs a portal")
-	id, created := starter.Portal()
-	require.Empty(t, id)
-	require.False(t, created)
-}
-
-func TestStarterPreparesAPortalWhenThePortalRunnerIsSelected(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
-	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
-	topo := cloudAPIStub(t, platform.handler(t))
-	starter, err := NewStarter(NewFinalizer())
-	require.NoError(t, err)
-	starter.SelectRunners([]string{"apip-basic", portalRunner})
-
-	require.NoError(t, starter.Start(context.Background(), topo))
-
-	require.Len(t, platform.createdPortals, 1)
-}
-
-func TestStarterSkipsThePortalWhenTheOrganisationAlreadyHasOne(t *testing.T) {
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
+func TestStarterUsesThePortalTheOrganisationAlreadyHas(t *testing.T) {
 	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1,
 		portals: []map[string]any{{"id": "acme-portal", "status": "active"}}}
-	topo := cloudAPIStub(t, platform.handler(t))
-	starter, err := NewStarter(NewFinalizer())
-	require.NoError(t, err)
-	starter.SelectRunners([]string{portalRunner})
+	starter := starterAgainst(t, platform)
 
-	require.NoError(t, starter.Start(context.Background(), topo))
+	require.NoError(t, starter.checkScenario(context.Background(), "a portal scenario", []precondition{preAPIPortal}))
 
 	require.Empty(t, platform.createdPortals)
 	id, created := starter.Portal()
@@ -5134,7 +5176,7 @@ func TestStarterSkipsThePortalWhenTheOrganisationAlreadyHasOne(t *testing.T) {
 }
 
 func TestStarterPortalHandleIsValid(t *testing.T) {
-	starter, err := NewStarter(nil)
+	starter, err := NewStarter()
 	require.NoError(t, err)
 	handle := starter.portalName()
 	require.GreaterOrEqual(t, len(handle), 3)
@@ -5534,47 +5576,404 @@ func TestRequestPortalUnderDeletedHandleRepeatsARefusalThatMayClear(t *testing.T
 	}
 }
 
-func startStarterAgainst(t *testing.T, platform *starterPlatform) (*Starter, error) {
-	t.Helper()
-	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
-	t.Setenv(cloudGatewayPinEnv, "")
-	topo := cloudAPIStub(t, platform.handler(t))
-	starter, err := NewStarter(nil)
-	require.NoError(t, err)
-	return starter, starter.Start(context.Background(), topo)
-}
-
 func activeGatewayList() []map[string]any {
 	return []map[string]any{{"id": "development-default", "environment": "development", "status": "ACTIVE", "isActive": true}}
 }
 
-func TestStarterSkipsThePortalRunnerWhenThePortalCannotBePrepared(t *testing.T) {
-	platform := &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList(), noPortals: true, portalFails: true}
-	starter, err := startStarterAgainst(t, platform)
-	require.NoError(t, err, "a portal that cannot be built does not fail the run")
-	require.ErrorContains(t, starter.PortalUnavailable(), "failed to provision")
-
-	require.ErrorIs(t, starter.skipScenario("features/apip_portal.feature", "any portal scenario"), godog.ErrSkip)
-	require.ErrorIs(t, starter.skipScenario("/work/suites/cloud/features/apip_portal.feature", "any portal scenario"), godog.ErrSkip)
-	require.NoError(t, starter.skipScenario("features/apip_basic.feature", "a scenario of another runner"))
-
-	id, _ := starter.Gateway()
-	require.Equal(t, "development-default", id, "the gateway is still prepared for the other runners")
-}
-
-func TestStarterSkipsNothingWhenThePortalIsPrepared(t *testing.T) {
-	platform := &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList()}
-	starter, err := startStarterAgainst(t, platform)
+// starterAgainst returns a starter that has been started against the fake organisation.
+func starterAgainst(t *testing.T, platform *starterPlatform) *Starter {
+	t.Helper()
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	t.Setenv(cloudGatewayPinEnv, "")
+	t.Setenv(pipelineProjectEnv, "")
+	starter, err := NewStarter()
 	require.NoError(t, err)
-	require.NoError(t, starter.PortalUnavailable())
-	require.NoError(t, starter.skipScenario("features/apip_portal.feature", "a portal scenario"))
+	starter.pollInterval = retry.BaseInterval
+	require.NoError(t, starter.StartAt(context.Background(), platform.api(t).base))
+	return starter
 }
 
-func TestStarterStillFailsTheRunWhenTheGatewayCannotBePrepared(t *testing.T) {
+// chainGateways lists an active regular gateway with an endpoint in each environment.
+func chainGateways(environments ...string) []map[string]any {
+	gateways := make([]map[string]any, 0, len(environments))
+	for _, environment := range environments {
+		gateways = append(gateways, map[string]any{
+			"id": environment + "-gateway", "environment": environment, "status": "ACTIVE", "isActive": true,
+			"endpoints": []any{"https://" + environment + ".gateway.example"},
+		})
+	}
+	return gateways
+}
+
+// promotionChainPaths is a pipeline that leads from the first environment through each next one.
+func promotionChainPaths(environments ...string) []promotionPath {
+	var paths []promotionPath
+	for i := 0; i+1 < len(environments); i++ {
+		paths = append(paths, promotionPath{SourceEnvironment: environments[i], TargetEnvironments: []string{environments[i+1]}})
+	}
+	return paths
+}
+
+func TestNeedsOfStepsNamesWhatEachStepAsksOfTheOrganisation(t *testing.T) {
+	chainOf2 := "I find a promotion chain of 2 environments with an active gateway each in the project's deployment pipeline"
+	chainOf3 := "I find a promotion chain of 3 environments with an active gateway each in the project's deployment pipeline"
+	for name, tc := range map[string]struct {
+		steps []string
+		want  []precondition
+	}{
+		"nothing": {[]string{"I obtain an APIP cloud console token", `I send a "GET" request to "x" until status 200`}, nil},
+		"project and gateway": {[]string{"I find the default APIP project", "I find an active APIP gateway"},
+			[]precondition{preDefaultProject, preDefaultGateway}},
+		"portal": {[]string{"I find an active managed API Portal"},
+			[]precondition{preAPIPortal}},
+		"environment to host a managed gateway": {[]string{"I select an existing APIP environment for a managed gateway"},
+			[]precondition{preEnvironment}},
+		"environment to register a self-hosted gateway": {[]string{"I select an existing APIP environment for a self-hosted gateway"},
+			[]precondition{preEnvironment}},
+		"a second environment": {[]string{"I select an existing APIP environment other than the active gateway's for a managed gateway"},
+			[]precondition{preDefaultGateway, preSecondEnv}},
+		"the gateway the scenario before built there": {[]string{"I work with synthetic managed APIP gateway 2"},
+			[]precondition{preDefaultGateway, preSecondEnv}},
+		"the first gateway the scenario before built": {[]string{"I work with synthetic managed APIP gateway 1"},
+			[]precondition{preDefaultGateway, preSecondEnv}},
+		"the pipeline project": {[]string{"I find the pipeline-bound APIP project"}, []precondition{prePipelineProj}},
+		"a chain of 2":         {[]string{chainOf2}, []precondition{prePipelineProj, prePipelineChain2}},
+		"a chain of 3":         {[]string{chainOf3}, []precondition{prePipelineProj, prePipelineChain3}},
+		"report order, each once": {[]string{"I find an active managed API Portal", "I find an active APIP gateway", "I find an active APIP gateway", "I find the default APIP project"},
+			[]precondition{preDefaultProject, preDefaultGateway, preAPIPortal}},
+	} {
+		require.Equal(t, tc.want, needsOfSteps(tc.steps), name)
+	}
+}
+
+func TestEveryPreconditionIsAskedForByAScenarioOfTheFeatureFiles(t *testing.T) {
+	var mu sync.Mutex
+	needs := map[string][]precondition{}
+	var out bytes.Buffer
+	godog.TestSuite{
+		ScenarioInitializer: func(sc *godog.ScenarioContext) {
+			sc.Before(func(ctx context.Context, scenario *godog.Scenario) (context.Context, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				needs[scenario.Name] = needsOfScenario(scenario)
+				return ctx, godog.ErrSkip
+			})
+		},
+		Options: &godog.Options{Format: "progress", Paths: []string{"../../features"}, NoColors: true, Output: &out},
+	}.Run()
+
+	asked := map[precondition]bool{}
+	var needingNothing int
+	for _, scenarioNeeds := range needs {
+		for _, need := range scenarioNeeds {
+			asked[need] = true
+		}
+		if len(scenarioNeeds) == 0 {
+			needingNothing++
+		}
+	}
+	for _, need := range allPreconditions {
+		require.True(t, asked[need], "no scenario asks for %s: its step text may have changed", need)
+	}
+	require.Positive(t, needingNothing, "a scenario that needs nothing of the organisation is left alone")
+	require.Equal(t, []precondition{prePipelineProj, prePipelineChain3},
+		needs["Promotion follows the environment chain of the pipeline in order"])
+	require.Equal(t, []precondition{preDefaultProject, preDefaultGateway},
+		needs["A REST API can be deployed and invoked through the gateway"])
+	require.Equal(t, []precondition{preDefaultProject, preDefaultGateway, preSecondEnv},
+		needs["A gateway requested with only a name and an environment is built, connects and reports its version, and the name can be used in another environment"])
+}
+
+func TestPreconditionNamedFindsEveryPrecondition(t *testing.T) {
+	for _, need := range allPreconditions {
+		got, err := preconditionNamed(string(need))
+		require.NoError(t, err)
+		require.Equal(t, need, got)
+	}
+	require.Equal(t, []string{"default-project", "default-gateway", "environment", "second-environment",
+		"pipeline-project", "pipeline-chain-2", "pipeline-chain-3", "api-portal"}, Preconditions())
+	_, err := preconditionNamed("a gateway")
+	require.ErrorContains(t, err, "unknown precondition")
+}
+
+func TestErrorStatusReadsTheStatusOfAnUnexpectedAnswer(t *testing.T) {
+	answer := responseError(&httpx.Response{StatusCode: http.StatusNotFound, Body: []byte(`{}`)})
+	require.Equal(t, http.StatusNotFound, errorStatus(answer))
+	require.Equal(t, http.StatusNotFound, errorStatus(fmt.Errorf("reading the project: %w", answer)))
+	require.Contains(t, answer.Error(), "unexpected response")
+	require.Zero(t, errorStatus(errors.New("no answer")))
+	require.Zero(t, errorStatus(nil))
+}
+
+func TestStarterBuildsAGatewayAndAPortalWhenAScenarioNeedsThem(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
+	platform := &starterPlatform{paths: developmentPipeline(), activeAt: 1, noPortals: true, portalActiveAt: 1}
+	starter := starterAgainst(t, platform)
+
+	require.NoError(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preDefaultGateway, preAPIPortal}))
+
+	require.Len(t, platform.created, 1)
+	require.Equal(t, starter.gatewayDisplayName(), platform.created[0]["displayName"])
+	require.Len(t, platform.createdPortals, 1)
+	require.Equal(t, starter.portalName(), platform.createdPortals[0]["handle"])
+	gateway, created := starter.Gateway()
+	require.Equal(t, "development-"+starter.gatewayDisplayName(), gateway)
+	require.True(t, created)
+	portal, created := starter.Portal()
+	require.Equal(t, starter.portalName(), portal)
+	require.True(t, created)
+	require.NoError(t, starter.Failures())
+	require.Empty(t, starter.Report())
+	require.Empty(t, platform.deleted, "what the starter built and made ready stays")
+}
+
+func TestStarterSkipsScenariosWhenTheDefaultProjectIsMissing(t *testing.T) {
+	platform := &starterPlatform{noDefaultProject: true}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preDefaultProject}), godog.ErrSkip)
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "another", []precondition{preDefaultProject}), godog.ErrSkip)
+
+	require.NoError(t, starter.Failures(), "a project the starter cannot build is not a failure of the run")
+	require.Equal(t, []string{`default-project is not met, 2 scenario(s) skipped: precondition not met: the organisation has no "default" project`},
+		starter.Report())
+}
+
+func TestStarterSkipsScenariosWhenTheDefaultPipelineCannotBeRead(t *testing.T) {
+	platform := &starterPlatform{noPipelineBinding: true}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preDefaultGateway}), godog.ErrSkip)
+
+	require.NoError(t, starter.Failures())
+	require.Empty(t, platform.created)
+	require.Contains(t, strings.Join(starter.Report(), "\n"), "default-gateway is not met")
+}
+
+func TestStarterSkipsWithoutFailingWhenTheTokenMayNotBuildAGatewayOrAPortal(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), createAs: http.StatusForbidden,
+		noPortals: true, portalCreateAs: http.StatusForbidden}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "gateway scenario", []precondition{preDefaultGateway}), godog.ErrSkip)
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "portal scenario", []precondition{preAPIPortal}), godog.ErrSkip)
+
+	require.NoError(t, starter.Failures(), "a token that may not build the resource is the organisation's limit, not a failure")
+	require.Len(t, starter.Report(), 2)
+	require.Empty(t, platform.deleted, "nothing was built, so nothing is removed")
+}
+
+func TestStarterFailsAndRemovesAGatewayItCouldNotMakeActive(t *testing.T) {
 	platform := &starterPlatform{paths: developmentPipeline(), failsWith: "no capacity"}
-	starter, err := startStarterAgainst(t, platform)
-	require.ErrorContains(t, err, "default gateway")
-	require.NoError(t, starter.PortalUnavailable(), "the portal was never attempted")
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preDefaultGateway}), godog.ErrSkip)
+
+	err := starter.Failures()
+	require.ErrorContains(t, err, "default-gateway")
+	require.ErrorContains(t, err, "no capacity")
+	require.ErrorContains(t, err, "was removed")
+	require.Equal(t, []string{"/managed-gateways/development-" + starter.gatewayDisplayName()}, platform.deleted)
+	_, created := starter.Gateway()
+	require.False(t, created, "a gateway that did not become active is not the one the scenarios use")
+}
+
+func TestStarterFailsAndRemovesAPortalItCouldNotMakeActive(t *testing.T) {
+	skipWhilePortalCreationIsOff(t)
+	platform := &starterPlatform{noPortals: true, portalFails: true}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a portal scenario", []precondition{preAPIPortal}), godog.ErrSkip)
+
+	err := starter.Failures()
+	require.ErrorContains(t, err, "api-portal")
+	require.ErrorContains(t, err, "failed to provision")
+	require.Equal(t, []string{"/managed-api-portals/" + starter.portalName()}, platform.deleted)
+}
+
+func TestStarterDoesNotRemoveAGatewayItDidNotBuild(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), failsWith: "no capacity", gateways: []map[string]any{
+		{"id": "development-building", "environment": "development", "status": "PROVISIONING"},
+	}}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preDefaultGateway}), godog.ErrSkip)
+
+	require.Error(t, starter.Failures())
+	require.Empty(t, platform.deleted, "a gateway the organisation already had is never removed")
+}
+
+func TestAFailedPreconditionSkipsOnlyTheScenariosThatNeedIt(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), failsWith: "no capacity", gateways: nil}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "needs a gateway", []precondition{preDefaultProject, preDefaultGateway}), godog.ErrSkip)
+	require.NoError(t, starter.checkScenario(context.Background(), "needs a portal", []precondition{preAPIPortal}),
+		"the organisation's portal is untouched by the gateway's failure")
+	require.NoError(t, starter.checkScenario(context.Background(), "needs the project", []precondition{preDefaultProject}))
+}
+
+func TestStarterChecksTheEnvironments(t *testing.T) {
+	t.Run("an organisation that lists none skips", func(t *testing.T) {
+		starter := starterAgainst(t, &starterPlatform{})
+		require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preEnvironment}), godog.ErrSkip)
+		require.NoError(t, starter.Failures())
+		require.Contains(t, strings.Join(starter.Report(), "\n"), "environment is not met")
+	})
+	t.Run("an environment that has a name passes", func(t *testing.T) {
+		starter := starterAgainst(t, &starterPlatform{environments: []map[string]any{{"name": "development"}}})
+		require.NoError(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preEnvironment}))
+	})
+}
+
+func TestStarterChecksForASecondEnvironment(t *testing.T) {
+	gateways := chainGateways("development")
+	for name, tc := range map[string]struct {
+		environments []map[string]any
+		met          bool
+	}{
+		"development only": {[]map[string]any{{"name": "development"}}, false},
+		"a production environment does not count": {[]map[string]any{
+			{"name": "development"}, {"name": "production", "isProduction": true}}, false},
+		"an environment an earlier run created does not count": {[]map[string]any{
+			{"name": "development"}, {"name": "syn-env-abcde234-1"}}, false},
+		"a second non-production environment": {[]map[string]any{
+			{"name": "development"}, {"name": "qa", "isProduction": false}}, true},
+	} {
+		starter := starterAgainst(t, &starterPlatform{paths: developmentPipeline(), gateways: gateways, environments: tc.environments})
+		err := starter.checkScenario(context.Background(), "a scenario", []precondition{preSecondEnv})
+		if tc.met {
+			require.NoError(t, err, name)
+			continue
+		}
+		require.ErrorIs(t, err, godog.ErrSkip, name)
+		require.NoError(t, starter.Failures(), name)
+	}
+}
+
+func TestASecondEnvironmentNeedsTheDefaultGateway(t *testing.T) {
+	platform := &starterPlatform{noDefaultProject: true, noPipelineBinding: true, environments: []map[string]any{{"name": "development"}, {"name": "qa"}}}
+	starter := starterAgainst(t, platform)
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a scenario", []precondition{preSecondEnv}), godog.ErrSkip)
+	require.NoError(t, starter.Failures())
+}
+
+func TestStarterChecksThePipelineProject(t *testing.T) {
+	chain := promotionChainPaths("development", "qa")
+	for name, tc := range map[string]struct {
+		configured string
+		platform   *starterPlatform
+		met        bool
+		report     string
+	}{
+		"no project is configured": {"", &starterPlatform{}, false, pipelineProjectEnv + " is not set"},
+		"the project is absent":    {"ops", &starterPlatform{}, false, "which the organisation does not have"},
+		"its pipeline has no path": {"ops", &starterPlatform{pipelineProject: "ops"}, false, "has no promotion path"},
+		"its pipeline has paths":   {"ops", &starterPlatform{pipelineProject: "ops", pipelinePaths: chain}, true, ""},
+	} {
+		starter := starterAgainst(t, tc.platform)
+		t.Setenv(pipelineProjectEnv, tc.configured)
+		err := starter.checkScenario(context.Background(), "a scenario", []precondition{prePipelineProj})
+		if tc.met {
+			require.NoError(t, err, name)
+			require.Empty(t, starter.Report(), name)
+			continue
+		}
+		require.ErrorIs(t, err, godog.ErrSkip, name)
+		require.NoError(t, starter.Failures(), name)
+		require.Contains(t, strings.Join(starter.Report(), "\n"), tc.report, name)
+	}
+}
+
+func TestStarterChecksThePromotionChains(t *testing.T) {
+	platform := &starterPlatform{
+		pipelineProject: "ops",
+		pipelinePaths:   promotionChainPaths("development", "qa", "production"),
+		gateways:        chainGateways("development", "qa"),
+	}
+	starter := starterAgainst(t, platform)
+	t.Setenv(pipelineProjectEnv, "ops")
+
+	require.NoError(t, starter.checkScenario(context.Background(), "a promotion of 2", []precondition{prePipelineProj, prePipelineChain2}))
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a promotion of 3", []precondition{prePipelineProj, prePipelineChain3}), godog.ErrSkip,
+		"production holds no active gateway")
+	require.NoError(t, starter.Failures())
+	require.Contains(t, strings.Join(starter.Report(), "\n"), "no promotion chain of 3 environments with an active gateway each")
+
+	platform.gateways = append(platform.gateways, chainGateways("production")...)
+	again := starterAgainst(t, platform)
+	t.Setenv(pipelineProjectEnv, "ops")
+	require.NoError(t, again.checkScenario(context.Background(), "a promotion of 3", []precondition{prePipelineProj, prePipelineChain3}))
+}
+
+func TestAPromotionChainNeedsAnActiveGatewayInEveryEnvironment(t *testing.T) {
+	gateways := chainGateways("development", "qa")
+	gateways[1]["isActive"] = false
+	platform := &starterPlatform{pipelineProject: "ops", pipelinePaths: promotionChainPaths("development", "qa"), gateways: gateways}
+	starter := starterAgainst(t, platform)
+	t.Setenv(pipelineProjectEnv, "ops")
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a promotion", []precondition{prePipelineChain2}), godog.ErrSkip)
+}
+
+func TestPrepareChecksTheNamedPreconditionsAndReportsFailures(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), gateways: activeGatewayList(), noDefaultProject: true}
+	starter := starterAgainst(t, platform)
+
+	require.NoError(t, starter.Prepare(context.Background(), []string{"default-gateway"}))
+	id, created := starter.Gateway()
+	require.Equal(t, "development-default", id)
+	require.False(t, created)
+	require.Empty(t, starter.Report(), "only the named precondition was checked")
+
+	require.NoError(t, starter.Prepare(context.Background(), []string{"default-project"}), "an unavailable precondition is reported, not an error")
+	require.Len(t, starter.Report(), 1)
+
+	require.ErrorContains(t, starter.Prepare(context.Background(), []string{"a gateway"}), "unknown precondition")
+}
+
+func TestPrepareReturnsWhatTheStarterFailedToPrepare(t *testing.T) {
+	platform := &starterPlatform{paths: developmentPipeline(), failsWith: "no capacity"}
+	starter := starterAgainst(t, platform)
+
+	err := starter.Prepare(context.Background(), []string{"default-gateway"})
+
+	require.ErrorContains(t, err, "no capacity")
+}
+
+func TestStartedStarterNeedsStartBeforeAPreconditionIsChecked(t *testing.T) {
+	starter, err := NewStarter()
+	require.NoError(t, err)
+	require.ErrorContains(t, starter.require(context.Background(), preDefaultProject), "Start must be called")
+}
+
+func TestCloudSweepsLeaveAPipelineProjectTheOrganisationDoesNotListAlone(t *testing.T) {
+	t.Setenv(pipelineProjectEnv, "no-such-project")
+	stub := newLeftoverStub()
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	_, err = sweepLeftovers(context.Background(), base, 5*time.Second)
+
+	require.NoError(t, err, "a setting that names an absent project is not a leftover the finalizer must fail on")
+	require.NotContains(t, stub.listedProjects["/rest-apis"], "no-such-project")
+}
+
+func TestCloudSweepsReadTheAPIsOfThePipelineProject(t *testing.T) {
+	t.Setenv(pipelineProjectEnv, "ops-project")
+	stub := newLeftoverStub()
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
+
+	require.NoError(t, err)
+	require.Contains(t, stub.listedProjects["/rest-apis"], "ops-project", "the project the scenarios deploy through is read for leftovers")
+	require.Contains(t, removed, "/rest-apis/syn-api-abcde234-9", "the run's API in that project is removed")
+	require.NotContains(t, removed, "/rest-apis/ops-api", "an API the organisation owns stays")
 }
 
 func TestSaveDefinitionAcceptsOnlyAnswersAContentRefusalCanGive(t *testing.T) {

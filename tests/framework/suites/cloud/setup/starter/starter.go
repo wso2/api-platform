@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-// Package starter makes sure the shared organisation holds what a cloud suite run needs before
-// any scenario starts.
+// Package starter makes sure the shared organisation holds what a cloud suite run needs.
 //
 // The finalizer package removes what a run left behind; a Starter is its counterpart at the
 // other end of the run. It holds the prerequisites of an organisation, such as the gateway the
-// scenarios deploy to, and brings each of them into existence when it is missing. A prerequisite
-// outlives the run: it carries no runner suffix, so the finalizer never sweeps it. The cloud
-// suite's step packages supply the Prerequisites of the platform they drive.
+// scenarios deploy to, and prepares each of them once, however many scenarios and runners ask for
+// it: the prerequisite is built when it is missing and is only checked when it cannot be built. A
+// prerequisite outlives the run: it carries no runner suffix, so the finalizer never sweeps it. The
+// cloud suite's step packages supply the Prerequisites of the platform they drive.
 package starter
 
 import (

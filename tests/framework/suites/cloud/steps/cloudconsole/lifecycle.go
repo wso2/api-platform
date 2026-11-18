@@ -582,24 +582,15 @@ func (s *Steps) getProject(ctx context.Context) error {
 }
 
 func (s *Steps) selectGatewayEnvironment(ctx context.Context) error {
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/environments", nil)
+	items, err := s.listEnvironments(ctx)
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return responseError(resp)
-	}
-	items, err := listItems(resp)
+	name, err := usableEnvironment(items)
 	if err != nil {
-		return fmt.Errorf("decoding APIP environments: %w", err)
+		return err
 	}
-	for _, item := range items {
-		name, ok := item["name"].(string)
-		if ok && strings.TrimSpace(name) != "" {
-			return tcontext.Set(ctx, keyEnvironmentName, name)
-		}
-	}
-	return fmt.Errorf("APIP environment list contains no usable environment")
+	return tcontext.Set(ctx, keyEnvironmentName, name)
 }
 
 // selectOtherGatewayEnvironment selects a listed non-production environment other than the active
@@ -610,17 +601,47 @@ func (s *Steps) selectOtherGatewayEnvironment(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("the active gateway does not report its environment: %w", err)
 	}
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/environments", nil)
+	items, err := s.listEnvironments(ctx)
 	if err != nil {
 		return err
 	}
+	name, err := otherEnvironment(items, active)
+	if err != nil {
+		return err
+	}
+	return tcontext.Set(ctx, keyEnvironmentName, name)
+}
+
+// listEnvironments reads the environments the platform lists for the organisation.
+func (s *Steps) listEnvironments(ctx context.Context) ([]map[string]any, error) {
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/environments", nil)
+	if err != nil {
+		return nil, err
+	}
 	if resp.StatusCode != http.StatusOK {
-		return responseError(resp)
+		return nil, responseError(resp)
 	}
 	items, err := listItems(resp)
 	if err != nil {
-		return fmt.Errorf("decoding APIP environments: %w", err)
+		return nil, fmt.Errorf("decoding APIP environments: %w", err)
 	}
+	return items, nil
+}
+
+// usableEnvironment returns the name of the first listed environment that has one.
+func usableEnvironment(items []map[string]any) (string, error) {
+	for _, item := range items {
+		name, ok := item["name"].(string)
+		if ok && strings.TrimSpace(name) != "" {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("APIP environment list contains no usable environment")
+}
+
+// otherEnvironment returns the first listed non-production environment besides the active one that
+// no suite run created for itself.
+func otherEnvironment(items []map[string]any, active string) (string, error) {
 	for _, item := range items {
 		name, _ := item["name"].(string)
 		name = strings.TrimSpace(name)
@@ -628,9 +649,9 @@ func (s *Steps) selectOtherGatewayEnvironment(ctx context.Context) error {
 			syntheticEnvironmentName.MatchString(strings.ToLower(name)) {
 			continue
 		}
-		return tcontext.Set(ctx, keyEnvironmentName, name)
+		return name, nil
 	}
-	return fmt.Errorf("the organization has no non-production environment besides %q to create a second gateway in", active)
+	return "", fmt.Errorf("the organization has no non-production environment besides %q to create a second gateway in", active)
 }
 
 func (s *Steps) awaitNotFound(ctx context.Context, path, what string) error {

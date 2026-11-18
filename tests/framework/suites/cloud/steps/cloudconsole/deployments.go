@@ -718,7 +718,7 @@ func listedPipelinePaths(listed *httpx.Response, pipeline string) ([]promotionPa
 			return candidate.PromotionPaths, nil
 		}
 	}
-	return nil, fmt.Errorf("deployment pipeline %q is not listed", pipeline)
+	return nil, &pipelineNotListedError{pipeline: pipeline}
 }
 
 // assertStagesMatchPipeline checks that the deployment listing has exactly one stage for each

@@ -146,17 +146,23 @@ func TestCloudSuite(t *testing.T) {
 	}
 
 	finalizer := cloudsteps.NewFinalizer()
-	// The starter hands the finalizer what it created, so the cleanup below removes it.
-	starter, err := cloudsteps.NewStarter(finalizer)
+	// The starter checks what the organisation holds when a scenario first needs it, so a run of
+	// apip-basic alone never looks at the organisation's portals, pipelines or environments.
+	starter, err := cloudsteps.NewStarter()
 	if err != nil {
 		t.Fatalf("creating the cloud run starter: %v", err)
 	}
-	// The starter prepares only what the selected runners rely on, such as the API Portal for
-	// apip-portal, so a run of apip-basic alone leaves the organisation's portals alone.
-	starter.SelectRunners(selectedRunnerNames(narrowed))
 	// Cleanup runs after every runner has finished, also when a scenario failed or a runner
-	// panicked, and removes what the per-scenario cleanup left in the shared organisation.
+	// panicked. The starter says which scenarios the organisation could not support and fails the
+	// run for what it tried to prepare and could not; the finalizer removes what the per-scenario
+	// cleanup left in the shared organisation.
 	t.Cleanup(func() {
+		for _, line := range starter.Report() {
+			t.Logf("cloud run starter: %s", line)
+		}
+		if err := starter.Failures(); err != nil {
+			t.Errorf("cloud run starter could not prepare the organisation: %v", err)
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 		removed, err := finalizer.Finalize(ctx)
@@ -202,17 +208,6 @@ func TestCloudSuite(t *testing.T) {
 	})
 }
 
-// selectedRunnerNames lists the runners of every block that survived the selection.
-func selectedRunnerNames(suite *topology.Resolved) []string {
-	names := []string{}
-	for _, block := range suite.Blocks {
-		for _, runner := range block.Runners {
-			names = append(names, runner.Name)
-		}
-	}
-	return names
-}
-
 func TestSuiteShapeReturnsResolvedBlockAndRunnerCounts(t *testing.T) {
 	dir := t.TempDir()
 	fixture := `
@@ -256,13 +251,4 @@ func TestRepoRootFindsWorkspaceRoot(t *testing.T) {
 	root := repoRoot(t)
 	_, err := os.Stat(filepath.Join(root, "go.work"))
 	require.NoError(t, err)
-}
-
-func TestSelectedRunnerNamesListsTheRunnersOfEveryBlock(t *testing.T) {
-	suite := &topology.Resolved{Blocks: []topology.ResolvedBlock{
-		{Runners: []topology.Runner{{Name: "apip-basic"}}},
-		{Runners: []topology.Runner{{Name: "apip-portal"}, {Name: "apip-deploy"}}},
-	}}
-	require.Equal(t, []string{"apip-basic", "apip-portal", "apip-deploy"}, selectedRunnerNames(suite))
-	require.Empty(t, selectedRunnerNames(&topology.Resolved{}))
 }
