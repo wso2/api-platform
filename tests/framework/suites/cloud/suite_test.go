@@ -146,9 +146,10 @@ func TestCloudSuite(t *testing.T) {
 	}
 
 	finalizer := cloudsteps.NewFinalizer()
-	// The starter checks what the organisation holds when a scenario first needs it, so a run of
-	// apip-basic alone checks only the default project and gateway (reading the default project's
-	// pipeline binding to do so) and never looks at the organisation's portals or other environments.
+	// The starter makes sure the organisation holds the projects the runners work in first (creating
+	// one it lacks), and checks the rest of what the organisation holds when a scenario first needs
+	// it, so a run of apip-basic alone checks the gateway (reading its project's pipeline binding to
+	// do so) and never looks at the organisation's portals or other environments.
 	starter, err := cloudsteps.NewStarter()
 	if err != nil {
 		t.Fatalf("creating the cloud run starter: %v", err)

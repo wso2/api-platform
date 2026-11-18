@@ -102,6 +102,24 @@ func TestSweepDeletesOnlyTheTrackedRunnersEntriesInOrder(t *testing.T) {
 	require.Equal(t, removed, system.deleted)
 }
 
+func TestSweepDeletesEveryEntryOfACollectionMarkedAll(t *testing.T) {
+	system := newLeftovers()
+	tracker := NewTracker(nil)
+	tracker.Track("abcde234")
+	gateways := system.collection("/gateways")
+	gateways.All = true
+
+	removed, err := tracker.Sweep(context.Background(), []Collection{gateways, system.collection("/projects")})
+	require.NoError(t, err)
+	require.Equal(t, []string{"/gateways/gw-1", "/gateways/default", "/gateways/gw-2", "/gateways/gw-cut", "/projects/proj-1"}, removed,
+		"a collection marked All loses every entry it lists; the others only the tracked runs' entries")
+
+	untracked := NewTracker(nil)
+	removed, err = untracked.Sweep(context.Background(), []Collection{gateways})
+	require.NoError(t, err)
+	require.Empty(t, removed, "nothing is deleted before a runner is tracked, All or not")
+}
+
 func TestSweepDoesNothingBeforeARunnerIsTracked(t *testing.T) {
 	system := newLeftovers()
 	tracker := NewTracker(nil)

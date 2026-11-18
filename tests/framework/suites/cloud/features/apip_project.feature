@@ -21,13 +21,13 @@ Feature: APIP cloud project lifecycle
   So that project creation, its refusals, its pipeline binding and deletion are verified
 
   @TC_APIP_PROJ_001 @ID_APIP_PROJECT_001
-  Scenario: The default project of the organisation is resolved and active
+  Scenario: The test project of the suite is resolved and active
     Given I obtain an APIP cloud console token
-    When I read the default APIP project
+    When I read the APIP test project
     Then the cloud API response status code should be 200
     And the cloud API response should report:
-      | id     | default |
-      | status | active  |
+      | id     | ${CTX:cloudScenarioProject} |
+      | status | active                      |
 
   @TC_APIP_PROJ_002 @TC_APIP_PROJ_003 @ID_APIP_PROJECT_002
   Scenario: A project can be created and retrieved by handle

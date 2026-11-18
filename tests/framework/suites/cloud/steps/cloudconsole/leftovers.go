@@ -168,6 +168,8 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 	for _, collection := range projectScopedCollections {
 		sweeps = append(sweeps, projectScopedSweep(client, base, token, owns, collection))
 	}
+	// A plan is deleted after the APIs that offer it.
+	sweeps = append(sweeps, subscriptionPlanSweep(client, base, token))
 	for _, entry := range finalizerCollections {
 		budget := entry.budget
 		if budget == 0 {
@@ -205,11 +207,13 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 var projectScopedCollections = []string{"/rest-apis", "/graphql-apis"}
 
 // projectScopedSweep describes a collection the platform lists per project, so it reads the
-// default project, the pipeline-bound project and every project a tracked run created. Only the
-// entries named with a tracked run's suffix are deleted, so an API the organisation owns stays.
+// projects the suite works in and every project a tracked run created. The suite's projects are its
+// own, so everything they hold is deleted, whichever run put it there and whatever it is named: the
+// projects are left empty.
 func projectScopedSweep(client *httpx.Client, base, token string, owns func(names []string) bool, collection string) finalizer.Collection {
 	return finalizer.Collection{
 		Name:    collection,
+		All:     true,
 		Timeout: finalizerCollectionBudget,
 		List: func(ctx context.Context) ([]finalizer.Leftover, error) {
 			items, err := projectScopedItems(ctx, client, base, token, owns, collection)
@@ -221,8 +225,8 @@ func projectScopedSweep(client *httpx.Client, base, token string, owns func(name
 	}
 }
 
-// projectScopedItems reads a collection the platform lists per project, for the default project,
-// the pipeline-bound project the scenarios deploy through and every project a tracked run created.
+// projectScopedItems reads a collection the platform lists per project, for the projects the suite
+// works in and every project a tracked run created.
 // A failure part way returns the items already read with the error.
 func projectScopedItems(ctx context.Context, client *httpx.Client, base, token string, owns func(names []string) bool, collection string) ([]map[string]any, error) {
 	projects, err := listCollection(ctx, client, base, token, "/projects")
@@ -233,17 +237,21 @@ func projectScopedItems(ctx context.Context, client *httpx.Client, base, token s
 	if err != nil {
 		errs = append(errs, fmt.Errorf("listing the projects that hold %s: %w", collection, err))
 	}
-	scopes := []string{defaultProjectID}
-	// The pipeline-bound project is read only when the organisation lists it: the setting may name
-	// a project that does not exist, which the scenarios skip for and the platform refuses to list.
-	pipelineProject := strings.TrimSpace(os.Getenv(pipelineProjectEnv))
+	// The suite's projects are read only when the organisation lists them: a project it lacks
+	// is one the runners skipped, which the platform refuses to list. When the projects cannot be
+	// listed both are read.
+	var scopes []string
+	if err != nil {
+		// The list is not known, so both are read; the one the organisation lacks is refused.
+		scopes = slices.Clone(suiteProjects)
+	}
 	for _, project := range projects {
-		if id := firstString(project, []string{"id"}); id != "" && id == pipelineProject && id != defaultProjectID && ownedProject(id) {
+		if id := firstString(project, []string{"id"}); slices.Contains(suiteProjects, id) {
 			scopes = append(scopes, id)
 		}
 	}
 	for _, project := range projects {
-		if id := firstString(project, []string{"id"}); id != "" && id != defaultProjectID && owns(namesOf(project)) && !slices.Contains(scopes, id) {
+		if id := firstString(project, []string{"id"}); id != "" && owns(namesOf(project)) && !slices.Contains(scopes, id) {
 			scopes = append(scopes, id)
 		}
 	}
@@ -261,6 +269,36 @@ func projectScopedItems(ctx context.Context, client *httpx.Client, base, token s
 	return items, errors.Join(errs...)
 }
 
+// syntheticPlanPrefix starts the id of every subscription plan a scenario creates.
+const syntheticPlanPrefix = "syn-plan-"
+
+// subscriptionPlanSweep deletes the subscription plans scenarios created, whichever run created
+// them, so the portal is left without any. A plan the organisation owns does not carry the prefix
+// and stays.
+func subscriptionPlanSweep(client *httpx.Client, base, token string) finalizer.Collection {
+	return finalizer.Collection{
+		Name:    "/subscription-plans",
+		All:     true,
+		Timeout: finalizerCollectionBudget,
+		List: func(ctx context.Context) ([]finalizer.Leftover, error) {
+			items, err := listCollection(ctx, client, base, token, "/subscription-plans")
+			if errors.Is(err, errCollectionNotServed) {
+				return nil, nil
+			}
+			var created []map[string]any
+			for _, item := range items {
+				if strings.HasPrefix(firstString(item, []string{"id"}), syntheticPlanPrefix) {
+					created = append(created, item)
+				}
+			}
+			return leftoversOf(created, []string{"id"}), err
+		},
+		Delete: func(ctx context.Context, id string) error {
+			return deleteLeftover(ctx, client, base, token, "/subscription-plans", id)
+		},
+	}
+}
+
 // publishedAPICollections are the API collections whose APIs a portal can list, by the API type
 // the publication routes use.
 var publishedAPICollections = []struct{ apiType, collection string }{
@@ -268,14 +306,16 @@ var publishedAPICollections = []struct{ apiType, collection string }{
 	{"graphql-api", "/graphql-apis"},
 }
 
-// portalSweeps empties the managed API Portals of what the run put in them, and never deletes a
+// portalSweeps empties the managed API Portals of what the suite published, and never deletes a
 // portal: the starter's portal and every portal the organisation already had stay. It unpublishes
-// each API of the run from every active portal that lists it. The only portals it deletes are
-// those a scenario built for itself, which carry syntheticPortalPrefix.
+// every API of the suite's projects from every active portal that lists it, whichever run
+// published it. The only portals it deletes are those a scenario built for itself, which carry
+// syntheticPortalPrefix.
 func portalSweeps(client *httpx.Client, base, token string, owns func(names []string) bool) []finalizer.Collection {
 	return []finalizer.Collection{
 		{
 			Name:    "portal-publications",
+			All:     true,
 			Timeout: finalizerCollectionBudget,
 			List: func(ctx context.Context) ([]finalizer.Leftover, error) {
 				return portalPublications(ctx, client, base, token, owns)
@@ -327,8 +367,8 @@ func portalSweeps(client *httpx.Client, base, token string, owns func(names []st
 	}
 }
 
-// portalPublications lists, as publication ids, the listings the run's APIs hold in the active
-// portals. An API that no portal lists has no publication route to read, so it is not a leftover.
+// portalPublications lists, as publication ids, the listings the APIs of the suite's projects (and
+// of the projects a tracked run created) hold in the active portals. An API that no portal lists has no publication route to read, so it is not a leftover.
 func portalPublications(ctx context.Context, client *httpx.Client, base, token string, owns func(names []string) bool) ([]finalizer.Leftover, error) {
 	portals, err := listCollection(ctx, client, base, token, managedPortalsCollection)
 	if errors.Is(err, errCollectionNotServed) {
@@ -357,7 +397,7 @@ func portalPublications(ctx context.Context, client *httpx.Client, base, token s
 		}
 		for _, item := range items {
 			api := firstString(item, []string{"id"})
-			if api == "" || !owns(namesOf(item)) {
+			if api == "" {
 				continue
 			}
 			for _, portal := range active {

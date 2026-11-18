@@ -116,10 +116,11 @@ access token; the suite consumes it from `CLOUD_CONSOLE_ACCESS_TOKEN` and never 
 provider itself. Its suite defaults match the integration suite: a 5-minute boot deadline
 and a 60-second propagation deadline. Cloud data-plane availability and eventual reads use the
 propagation deadline; the longer deployment waits remain explicit in their step contracts.
-The suite creates no environments or deployment pipelines and never changes a project's
-pipeline binding. The promotion scenarios deploy through the existing project that
-`CLOUD_IT_PIPELINE_PROJECT` names, which must be bound to a deployment pipeline whose
-environments hold an active gateway each; without it they are skipped.
+The suite creates no environments or deployment pipelines and never changes a project's pipeline
+binding. Its runners work in the projects `apip-test-project-1` and `apip-test-project-2`, which the
+starter creates when the organisation lacks them, each bound to a deployment pipeline named with
+the prefix `apip-test-` (never the default project or pipeline); the scenarios of a project that
+cannot be created are skipped and the run fails. See `suites/cloud/setup/README.md`.
 
 Each package's `doc.go` carries its charter and the invariants it exists to protect. Read those
 before changing one — most encode a failure mode that presents as a passing test.

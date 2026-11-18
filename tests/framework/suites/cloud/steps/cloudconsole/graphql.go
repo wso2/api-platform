@@ -75,7 +75,7 @@ var (
 
 // registerGraphQLSteps binds the steps that create, change and call a GraphQL API.
 func (s *Steps) registerGraphQLSteps(sc stepRegistrar) {
-	sc.Step(`^I create a synthetic GraphQL API in the default project with:$`, s.createGraphQLAPIWithValues)
+	sc.Step(`^I create a synthetic GraphQL API in the APIP test project with:$`, s.createGraphQLAPIWithValues)
 	sc.Step(`^I submit a synthetic GraphQL API creation request with:$`, s.submitGraphQLAPI)
 	sc.Step(`^I update the synthetic GraphQL API with:$`, s.updateGraphQLAPI)
 	sc.Step(`^I send the GraphQL request "([^"]*)" to the synthetic GraphQL API until status (\d+)$`, s.sendGraphQLRequest)

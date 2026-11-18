@@ -73,10 +73,10 @@ func handleDefectNames() string {
 	return strings.Join(names, ", ")
 }
 
-// registerProjectSteps binds the steps that read the default project, probe projects that do not
+// registerProjectSteps binds the steps that read the scenario's project, probe projects that do not
 // exist, refuse a project, read a project's pipeline binding, and probe the quota.
 func (s *Steps) registerProjectSteps(sc stepRegistrar) {
-	sc.Step(`^I read the default APIP project$`, s.readDefaultProject)
+	sc.Step(`^I read the APIP test project$`, s.readDefaultProject)
 	sc.Step(`^I read an APIP project that does not exist$`, s.readAbsentProject)
 	sc.Step(`^I create the synthetic APIP project again under the same handle$`, s.createDuplicateProject)
 	sc.Step(`^I request a synthetic APIP project whose handle is "([^"]*)"$`, s.requestProjectWithDefectiveHandle)
@@ -87,10 +87,14 @@ func (s *Steps) registerProjectSteps(sc stepRegistrar) {
 	sc.Step(`^I create synthetic APIP projects until the organisation refuses one$`, s.createProjectsUntilRefused)
 }
 
-// readDefaultProject reads the organisation's default project directly, which stays correct once
+// readDefaultProject reads the scenario's project directly, which stays correct once
 // the organisation holds more projects than the first page of the list.
 func (s *Steps) readDefaultProject(ctx context.Context) error {
-	_, err := s.doAuthenticated(ctx, http.MethodGet, "/projects/default", nil)
+	project, err := requiredValue(ctx, keyScenarioProject)
+	if err != nil {
+		return fmt.Errorf("the scenario's project is not known: %w", err)
+	}
+	_, err = s.doAuthenticated(ctx, http.MethodGet, "/projects/"+url.PathEscape(project), nil)
 	return err
 }
 

@@ -53,6 +53,10 @@ type Collection struct {
 	List func(ctx context.Context) ([]Leftover, error)
 	// Delete removes one entry by its ID. An entry that is already gone is not an error.
 	Delete func(ctx context.Context, id string) error
+	// All deletes every entry List returns, not only those named with a tracked suffix. A collection
+	// sets it when List itself returns only what belongs to the suite, such as the contents of a
+	// project the suite owns, so that an entry of an earlier or interrupted run is removed too.
+	All bool
 	// Timeout bounds the time this collection may spend, within the caller's own deadline. Each
 	// deletion may use what is left of it. Once it is spent, a deletion still gets MinAttempt, so
 	// no leftover goes without an attempt. Zero leaves only the caller's deadline.
@@ -102,7 +106,8 @@ func (t *Tracker) Tracked() bool {
 }
 
 // Sweep runs through the collections in order. For each it lists the collection, keeps the entries named
-// with a tracked suffix and deletes them, carrying on past a failure. It returns what it
+// with a tracked suffix (every entry of a collection marked All) and deletes them, carrying on past
+// a failure. It returns what it
 // removed as "<collection name>/<id>", each one a leak the registry cleanup missed, and the joined
 // errors for what it could not list or delete.
 func (t *Tracker) Sweep(ctx context.Context, collections []Collection) ([]string, error) {
@@ -148,7 +153,7 @@ func (t *Tracker) sweepCollection(ctx context.Context, collection Collection, su
 	}
 	handled := make(map[string]struct{}, len(items))
 	for _, item := range items {
-		if !OwnedBy(item.Names, suffixes) {
+		if !collection.All && !OwnedBy(item.Names, suffixes) {
 			continue
 		}
 		if _, seen := handled[item.ID]; seen && item.ID != "" {
