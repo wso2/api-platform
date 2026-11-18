@@ -9,15 +9,17 @@ data "aws_iam_session_context" "current" {
 locals {
   # A cross-Region inference profile ID such as us.amazon.nova-2-lite-v1:0 routes to the
   # foundation model amazon.nova-2-lite-v1:0 in several Regions. IAM must allow the profile
-  # and the model in every Region the profile can route to. A global.* profile also needs the
-  # Region-agnostic model ARN.
+  # and the model in every Region the profile can route to. A global.* profile needs the model in
+  # the requesting Region and the Region-agnostic model ARN instead.
   is_inference_profile  = can(regex("^(us|eu|apac|jp|au|in|global)\\.", var.model_id))
   foundation_model_id   = replace(var.model_id, "/^(us|eu|apac|jp|au|in|global)\\./", "")
   inference_profile_arn = "arn:aws:bedrock:${var.region}:${data.aws_caller_identity.current.account_id}:inference-profile/${var.model_id}"
-  model_arns = local.is_inference_profile ? concat(
-    [for r in var.model_regions : "arn:aws:bedrock:${r}::foundation-model/${local.foundation_model_id}"],
-    startswith(var.model_id, "global.") ? ["arn:aws:bedrock:::foundation-model/${local.foundation_model_id}"] : [],
-  ) : ["arn:aws:bedrock:${var.region}::foundation-model/${var.model_id}"]
+  model_arns = !local.is_inference_profile ? ["arn:aws:bedrock:${var.region}::foundation-model/${var.model_id}"] : (
+    startswith(var.model_id, "global.") ? [
+      "arn:aws:bedrock:${var.region}::foundation-model/${local.foundation_model_id}",
+      "arn:aws:bedrock:::foundation-model/${local.foundation_model_id}",
+    ] : [for r in var.model_regions : "arn:aws:bedrock:${r}::foundation-model/${local.foundation_model_id}"]
+  )
 }
 
 # Least-privilege role for the gateway. Your own credentials only call sts:AssumeRole;
