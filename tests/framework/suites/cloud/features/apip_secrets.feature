@@ -23,11 +23,11 @@ Feature: APIP cloud secrets
   @TC_APIP_SEC_001 @ID_APIP_SECRETS_001
   Scenario: A secret created in the console is sent by the gateway to the upstream of a deployed API
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
     And an echo backend is available for deployment overrides
     And I create a synthetic secret
-    When I create a synthetic REST API in the default project with:
+    When I create a synthetic REST API in the APIP test project with:
       | policies | [{"name":"set-headers","version":"v1","params":{"request":{"headers":[{"name":"x-apip-secret-probe","value":"${CTX:cloudSecretReference}"}]}}}] |
     And I request a deployment of the synthetic REST API with:
       | environment | ${CTX:cloudGatewayEnvironment}                         |
@@ -41,11 +41,11 @@ Feature: APIP cloud secrets
   @TC_APIP_SEC_004 @ID_APIP_SECRETS_003
   Scenario: A secret in use cannot be deleted, and once deleted it can no longer be used
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
     And an echo backend is available for deployment overrides
     And I create a synthetic secret
-    When I create a synthetic REST API in the default project with:
+    When I create a synthetic REST API in the APIP test project with:
       | policies | [{"name":"set-headers","version":"v1","params":{"request":{"headers":[{"name":"x-apip-secret-probe","value":"${CTX:cloudSecretReference}"}]}}}] |
     And I request a deployment of the synthetic REST API with:
       | environment | ${CTX:cloudGatewayEnvironment}                         |
@@ -70,7 +70,7 @@ Feature: APIP cloud secrets
   @TC_APIP_SEC_006 @ID_APIP_SECRETS_005
   Scenario: A REST API that references a secret that does not exist is refused when it is created
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I choose a synthetic secret handle without creating the secret
     When I submit a synthetic REST API creation request with:
       | policies | [{"name":"set-headers","version":"v1","params":{"request":{"headers":[{"name":"x-apip-secret-probe","value":"${CTX:cloudSecretReference}"}]}}}] |

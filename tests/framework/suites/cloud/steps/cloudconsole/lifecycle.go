@@ -48,27 +48,28 @@ func (s *Steps) obtainToken(ctx context.Context) error {
 	return nil
 }
 
-// defaultProjectID is the project every organization is given at onboarding, and
-// the one the REST API scenarios deploy into.
-const defaultProjectID = "default"
-
-// findDefaultProject asks for the project by id rather than scanning the list.
+// findTestProject finds the project the scenario's feature file works in, asking for it by id
+// rather than scanning the list.
 //
 // /projects is paginated and answers with 20 of them by default, so on an
-// organization with more projects than that the default is simply on a later
+// organization with more projects than that the project is simply on a later
 // page. Scanning the first page reported it missing and sent the reader looking
 // for a broken organization: one real organization held 213 projects, with the
 // default among them the whole time.
-func (s *Steps) findDefaultProject(ctx context.Context) error {
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects/"+defaultProjectID, nil)
+func (s *Steps) findTestProject(ctx context.Context) error {
+	project, err := requiredValue(ctx, keyScenarioProject)
+	if err != nil {
+		return fmt.Errorf("the scenario's project is not known: %w", err)
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects/"+url.PathEscape(project), nil)
 	if err != nil {
 		return err
 	}
 	switch resp.StatusCode {
 	case http.StatusOK:
-		return tcontext.Set(ctx, keyProjectID, defaultProjectID)
+		return tcontext.Set(ctx, keyProjectID, project)
 	case http.StatusNotFound:
-		return fmt.Errorf("the organization has no %q project", defaultProjectID)
+		return fmt.Errorf("the organization has no %q project", project)
 	default:
 		return responseError(resp)
 	}

@@ -159,8 +159,8 @@ func (s *Steps) registerLocalGatewaySteps(sc stepRegistrar) {
 }
 
 // selectActiveGatewayEnvironment creates the self-hosted gateway in the environment of the gateway
-// "I find an active APIP gateway" chose. That environment is in the default project's deployment
-// pipeline, so the default project's APIs can be deployed to a gateway in it.
+// "I find an active APIP gateway" chose. That environment is in the deployment pipeline of the APIP test
+// project, so the project's APIs can be deployed to a gateway in it.
 func (s *Steps) selectActiveGatewayEnvironment(ctx context.Context) error {
 	environment, err := requiredValue(ctx, keyGatewayEnv)
 	if err != nil {

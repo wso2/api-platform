@@ -27,28 +27,32 @@ import (
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 )
 
-// The organisation is shared with other consoles, so the suite selects an environment, a
-// deployment pipeline or a project only if it is the organisation's default one or its name starts
-// with testResourcePrefix (apip-test-environment, apip-test-pipeline-1, ...). Gateways and portals
-// are not selected by name: the suite finds or builds them under any name.
+// The organisation is shared with other consoles, so the suite selects an environment only if it is
+// the organisation's default one or its name starts with testResourcePrefix, and a deployment
+// pipeline or a project only if its name starts with it (apip-test-environment,
+// apip-test-pipeline-1, apip-test-project-1, ...). It never uses the default pipeline or the default
+// project. Gateways and portals are not selected by name: the suite finds or builds them under any
+// name.
 const (
 	testResourcePrefix     = "apip-test-"
 	defaultEnvironmentName = "development"
-	defaultPipelineName    = "default"
 )
 
-// ownedByTheSuite reports whether a resource name is the default one or carries the suite's prefix.
-func ownedByTheSuite(name, defaultName string) bool {
+// hasSuitePrefix reports whether a resource name starts with the suite's prefix.
+func hasSuitePrefix(name string) bool {
 	name = strings.ToLower(strings.TrimSpace(name))
-	return name != "" && (name == defaultName || strings.HasPrefix(name, testResourcePrefix))
+	return strings.HasPrefix(name, testResourcePrefix) && len(name) > len(testResourcePrefix)
 }
 
-func ownedEnvironment(name string) bool { return ownedByTheSuite(name, defaultEnvironmentName) }
+// ownedEnvironment reports whether the suite may select an environment: the default one, or one
+// named with the suite's prefix.
+func ownedEnvironment(name string) bool {
+	return strings.EqualFold(strings.TrimSpace(name), defaultEnvironmentName) || hasSuitePrefix(name)
+}
 
-func ownedPipeline(name string) bool { return ownedByTheSuite(name, defaultPipelineName) }
-
-// ownedProject reports whether a project id is the default project's or carries the suite's prefix.
-func ownedProject(id string) bool { return ownedByTheSuite(id, defaultProjectID) }
+// ownedPipeline reports whether the suite may select a deployment pipeline: one named with the
+// suite's prefix.
+func ownedPipeline(name string) bool { return hasSuitePrefix(name) }
 
 // minGatewayHandleBudget is the handle length an environment must allow for the suite's ordinary
 // gateway names: syntheticGatewayBase and the 11 characters the unique generator adds. The

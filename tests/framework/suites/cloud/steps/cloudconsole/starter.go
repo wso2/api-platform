@@ -59,7 +59,7 @@ func isStarterGateway(names []string) bool {
 }
 
 // preferredGatewayEnvironment is the environment the starter creates the default gateway in when
-// the default project's deployment pipeline reaches it.
+// the deployment pipeline of the project reaches it.
 const preferredGatewayEnvironment = "development"
 
 // gatewayReadyTimeout bounds how long the starter waits for a gateway it created, or one that is
@@ -80,7 +80,9 @@ const gatewayStatusActive = "ACTIVE"
 // 3 and 40 characters.
 const defaultPortalName = "dap"
 
-// starterCreatesPortal is false while the cloud intermittently fails to create a managed API Portal: with no active portal the apip-portal scenarios are skipped, not built for.
+// starterCreatesPortal is false while the cloud intermittently fails to create a managed API
+// Portal. With no active portal the starter does not build one: the apip-portal scenarios are
+// skipped and the run fails, since the organisation lacks what the starter is meant to provide.
 const starterCreatesPortal = false
 
 // errStartNotCalled is what a precondition check returns before Start has recorded the platform.
@@ -122,7 +124,7 @@ type portalOutcome struct {
 //
 // A precondition is one of two kinds. The starter builds a regular gateway and a managed API
 // Portal when the organisation has none, because the scenarios never build them: both take
-// minutes. The other preconditions, such as the default project, a second environment and a
+// minutes. The other preconditions, such as the suite's projects, a second environment and a
 // pipeline-bound project, are only checked, because the starter cannot create them: environments
 // and deployment pipelines are managed in the WSO2 Cloud console. A scenario whose precondition is
 // not met is skipped. When the starter tried to build a gateway or portal and could not, the run
@@ -146,9 +148,12 @@ type Starter struct {
 	base  string
 	token string
 
-	gateway  gatewayOutcome
+	// gateways holds, for each project whose default gateway was prepared, that gateway.
+	gateways map[string]gatewayOutcome
 	portal   portalOutcome
-	pipeline pipelineState
+	// pipelines holds, for each project whose pipeline was checked, the pipeline and its promotion
+	// paths.
+	pipelines map[string]pipelineState
 	// unmet holds why each precondition is unavailable, and failures why the starter failed to
 	// prepare one. skipped counts the scenarios skipped for each precondition.
 	unmet    map[precondition]error
@@ -164,13 +169,15 @@ func NewStarter() (*Starter, error) {
 	}
 	log := slog.Default()
 	return &Starter{
-		starter:  starter.New(log),
-		client:   httpx.NewClient(httpx.Options{MaxRetries: 1}),
-		suffix:   strings.ToLower(generator.Suffix()),
-		log:      log,
-		unmet:    map[precondition]error{},
-		failures: map[precondition]error{},
-		skipped:  map[precondition]int{},
+		starter:   starter.New(log),
+		client:    httpx.NewClient(httpx.Options{MaxRetries: 1}),
+		suffix:    strings.ToLower(generator.Suffix()),
+		log:       log,
+		gateways:  map[string]gatewayOutcome{},
+		pipelines: map[string]pipelineState{},
+		unmet:     map[precondition]error{},
+		failures:  map[precondition]error{},
+		skipped:   map[precondition]int{},
 	}, nil
 }
 
@@ -188,12 +195,17 @@ func (s *Starter) portalName() string {
 // remove them; a person who wants them gone names the suffix to the setup command.
 func (s *Starter) Suffix() string { return s.suffix }
 
-// Gateway reports the gateway the starter settled on and whether it created it. It is empty until a
-// scenario, or Prepare, needed a gateway.
+// Gateway reports the gateway the starter settled on and whether it created it, for the first
+// project of the suite that has one. It is empty until a scenario, or Prepare, needed a gateway.
 func (s *Starter) Gateway() (id string, created bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.gateway.ID, s.gateway.Created
+	for _, project := range suiteProjects {
+		if outcome, ok := s.gateways[project]; ok && outcome.ID != "" {
+			return outcome.ID, outcome.Created
+		}
+	}
+	return "", false
 }
 
 // Portal reports the managed API Portal the starter settled on and whether it created it. It is
@@ -205,13 +217,32 @@ func (s *Starter) Portal() (id string, created bool) {
 }
 
 // Start records the organisation behind the block's platform endpoint, for the scenarios that need
-// something of it. It checks nothing: each precondition is checked when a scenario first needs it.
+// something of it, and then checks the projects the suite works in: it is the first check made
+// with the token, so a runner whose project the organisation lacks is skipped before anything else
+// of the organisation is looked at. Every other precondition is checked when a scenario first
+// needs it.
 func (s *Starter) Start(ctx context.Context, topo *frameworkruntime.Topology) error {
 	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	if err != nil {
 		return err
 	}
-	return s.StartAt(ctx, base)
+	if err := s.StartAt(ctx, base); err != nil {
+		return err
+	}
+	s.CheckProjects(ctx)
+	return nil
+}
+
+// CheckProjects makes sure the organisation holds each project the suite works in, creating one it
+// lacks. A project that is missing and cannot be created skips the scenarios that work in it and
+// fails the run; the checks are made once.
+func (s *Starter) CheckProjects(ctx context.Context) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), preconditionTimeout)
+	defer cancel()
+	for _, project := range suiteProjects {
+		// The outcome is kept by require; Failures and Report say what became of it.
+		_ = s.require(ctx, scoped(preProject, project))
+	}
 }
 
 // StartAt is Start for the platform API endpoint given as a URL, for a caller that has no topology.
@@ -259,8 +290,8 @@ func (s *Starter) checkScenario(ctx context.Context, name string, needs []precon
 
 // Preconditions names every precondition a scenario can need, in report order.
 func Preconditions() []string {
-	names := make([]string, 0, len(allPreconditions))
-	for _, need := range allPreconditions {
+	names := make([]string, 0, len(preconditionOrder))
+	for _, need := range preconditionOrder {
 		names = append(names, string(need))
 	}
 	return names
@@ -275,11 +306,11 @@ func (s *Starter) Prepare(ctx context.Context, names []string) error {
 	if len(names) > 0 {
 		needs = make([]precondition, 0, len(names))
 		for _, name := range names {
-			need, err := preconditionNamed(name)
+			named, err := preconditionsNamed(name)
 			if err != nil {
 				return err
 			}
-			needs = append(needs, need)
+			needs = append(needs, named...)
 		}
 	}
 	s.mu.Lock()
@@ -362,11 +393,14 @@ func (s *Starter) Report() []string {
 	return lines
 }
 
-// prepareGateway leaves the organisation with an active regular gateway the default project's
-// pipeline accepts a deployment to. A gateway the starter built and could not make active is
-// removed.
-func (s *Starter) prepareGateway(ctx context.Context, platform organisationAPI) error {
-	outcome, err := ensureDefaultGateway(ctx, platform, s.gatewayDisplayName(), s.log)
+// prepareGateway leaves the organisation with an active regular gateway the deployment
+// pipeline of the project accepts a deployment to. A gateway the starter built and could not make
+// active is removed.
+func (s *Starter) prepareGateway(ctx context.Context, platform organisationAPI, project string) error {
+	if err := s.requireProject(ctx, project); err != nil {
+		return err
+	}
+	outcome, err := ensureDefaultGateway(ctx, platform, s.gatewayDisplayName(), project, s.log)
 	if err != nil {
 		if outcome.Created {
 			err = s.removeCreated(ctx, platform, "gateway", managedGatewaysCollection, outcome.ID, err)
@@ -374,7 +408,7 @@ func (s *Starter) prepareGateway(ctx context.Context, platform organisationAPI) 
 		return err
 	}
 	s.mu.Lock()
-	s.gateway = outcome
+	s.gateways[project] = outcome
 	s.mu.Unlock()
 	return nil
 }
@@ -436,18 +470,22 @@ func (p organisationAPI) get(ctx context.Context, path string) (*httpx.Response,
 }
 
 // ensureDefaultGateway leaves the organisation with a regular gateway that is active and that the
-// default project's deployment pipeline accepts a deployment to. A gateway that is still being
+// deployment pipeline of the project accepts a deployment to. A gateway that is still being
 // built is waited for rather than duplicated; only when none exists is one created. The outcome
 // names a gateway the starter created even when it did not become active, so the caller can remove
 // it. An error that matches errUnavailable means the organisation lacks something the starter
 // cannot build.
-func ensureDefaultGateway(ctx context.Context, platform organisationAPI, displayName string, log *slog.Logger) (gatewayOutcome, error) {
-	paths, err := pipelinePathsOf(ctx, defaultProjectID, platform.get)
+func ensureDefaultGateway(ctx context.Context, platform organisationAPI, displayName, project string, log *slog.Logger) (gatewayOutcome, error) {
+	pipeline, paths, err := boundPipelineOf(ctx, project, platform.get)
 	if err != nil {
 		if pipelineMissing(err) {
-			return gatewayOutcome{}, unavailable("the default project's deployment pipeline cannot be read: %v", err)
+			return gatewayOutcome{}, fmt.Errorf("the deployment pipeline of project %q cannot be read: %w", project, err)
 		}
-		return gatewayOutcome{}, fmt.Errorf("reading the default project's deployment pipeline: %w", err)
+		return gatewayOutcome{}, fmt.Errorf("reading the deployment pipeline of project %q: %w", project, err)
+	}
+	if !ownedPipeline(pipeline) {
+		return gatewayOutcome{}, fmt.Errorf("project %q is bound to deployment pipeline %q, which is not named with the prefix %q",
+			project, pipeline, testResourcePrefix)
 	}
 	environments := environmentsOf(paths)
 
@@ -479,12 +517,12 @@ func ensureDefaultGateway(ctx context.Context, platform organisationAPI, display
 		return building[0], awaitGatewayActive(ctx, platform, building[0].ID)
 	}
 	if pin != "" {
-		return gatewayOutcome{}, unavailable("%s names gateway %q, which is not an active regular gateway in the default project's pipeline", cloudGatewayPinEnv, pin)
+		return gatewayOutcome{}, fmt.Errorf("%s names gateway %q, which is not an active regular gateway in the deployment pipeline of project %q", cloudGatewayPinEnv, pin, project)
 	}
 
 	environment, err := defaultGatewayEnvironment(paths)
 	if err != nil {
-		return gatewayOutcome{}, unavailable("%v", err)
+		return gatewayOutcome{}, err
 	}
 	id, err := createDefaultGateway(ctx, platform, environment, displayName)
 	if err != nil {
@@ -523,7 +561,7 @@ func defaultGatewayEnvironment(paths []promotionPath) (string, error) {
 		}
 	}
 	if len(stages) == 0 {
-		return "", errors.New("the default project's deployment pipeline has no environment to create a gateway in")
+		return "", errors.New("the deployment pipeline has no environment to create a gateway in")
 	}
 	slices.Sort(stages)
 	return stages[0], nil
@@ -641,7 +679,7 @@ func ensureDefaultPortal(ctx context.Context, platform organisationAPI, name str
 	}
 
 	if !starterCreatesPortal {
-		return portalOutcome{}, unavailable("the organisation has no active managed API Portal, and the starter does not create one")
+		return portalOutcome{}, errors.New("the organisation has no active managed API Portal, and the starter does not create one")
 	}
 	id, err := createDefaultPortal(ctx, platform, name)
 	if err != nil {

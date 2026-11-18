@@ -75,7 +75,7 @@ Feature: APIP cloud managed gateway lifecycle
   @TC_APIP_GW_003 @TC_APIP_GW_004 @TC_APIP_GW_008 @TC_APIP_GW_011 @TC_APIP_GW_014 @TC_APIP_GW_015 @TC_APIP_GW_016 @TC_APIP_GW_017 @TC_APIP_PROV_001 @TC_APIP_PROV_003 @TC_APIP_PROV_011 @ID_APIP_GATEWAY_006
   Scenario: A gateway requested with only a name and an environment is built, connects and reports its version, and the name can be used in another environment
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
     And I select an existing APIP environment other than the active gateway's for a managed gateway
     And I choose a synthetic managed APIP gateway name at the handle limit of the active gateway's environment and the selected environment
@@ -145,10 +145,10 @@ Feature: APIP cloud managed gateway lifecycle
   @TC_APIP_DEP_010 @ID_APIP_GATEWAY_010
   Scenario: A deployment that names fewer gateways than the environment already runs the API on is refused
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
     And I work with synthetic managed APIP gateway 1
-    And I create a synthetic REST API in the default project
+    And I create a synthetic REST API in the APIP test project
     When I request a deployment of the synthetic REST API with:
       | environment | ${CTX:cloudGatewayEnvironment}                              |
       | gatewayIds  | ${CTX:cloudGatewayID},${CTX:cloudSyntheticManagedGateway1} |
@@ -179,10 +179,10 @@ Feature: APIP cloud managed gateway lifecycle
   @TC_APIP_GW_005 @TC_APIP_GW_006 @TC_APIP_PROV_006 @ID_APIP_GATEWAY_012
   Scenario: A gateway is deployed to and deleted on its own, and it is gone from the list once it is deleted
     Given I obtain an APIP cloud console token
-    And I find the default APIP project
+    And I find the APIP test project
     And I find an active APIP gateway
     And I work with synthetic managed APIP gateway 1
-    And I create a synthetic REST API in the default project
+    And I create a synthetic REST API in the APIP test project
     When I deploy a build of the synthetic REST API to synthetic managed APIP gateway 1
     Then the synthetic REST API should be deployed on synthetic managed APIP gateway 1
     And the synthetic REST API should not be deployed on the active gateway

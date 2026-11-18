@@ -18,23 +18,24 @@ package cloudconsole
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/cucumber/godog"
 )
 
 // precondition names something the organisation must hold for a scenario to test the product
-// instead of the organisation.
+// instead of the organisation. A precondition asked of one project is written "<name>@<project>".
 type precondition string
 
 const (
-	preDefaultProject precondition = "default-project"
+	preProject        precondition = "project"
 	preDefaultGateway precondition = "default-gateway"
 	preEnvironment    precondition = "environment"
 	preSecondEnv      precondition = "second-environment"
@@ -44,27 +45,68 @@ const (
 	preAPIPortal      precondition = "api-portal"
 )
 
-// allPreconditions lists every precondition in the order a report names them.
-var allPreconditions = []precondition{
-	preDefaultProject, preDefaultGateway, preEnvironment, preSecondEnv,
+// projectScoped lists the preconditions asked of one of the suite's projects, so that each is
+// prepared, and reported, once for every project.
+var projectScoped = []precondition{preProject, preDefaultGateway, prePipelineProj, prePipelineChain2, prePipelineChain3}
+
+// preconditionOrder lists every precondition in the order a report names them. The projects come
+// first: nothing else is looked at in an organisation that lacks the project a runner works in.
+var preconditionOrder = []precondition{
+	preProject, preDefaultGateway, preEnvironment, preSecondEnv,
 	prePipelineProj, prePipelineChain2, prePipelineChain3, preAPIPortal,
 }
 
-// preconditionNamed returns the precondition a name stands for.
-func preconditionNamed(name string) (precondition, error) {
-	for _, candidate := range allPreconditions {
-		if string(candidate) == strings.TrimSpace(name) {
-			return candidate, nil
+// allPreconditions lists every precondition, a project-scoped one once for each project.
+var allPreconditions = func() []precondition {
+	var all []precondition
+	for _, base := range preconditionOrder {
+		if !slices.Contains(projectScoped, base) {
+			all = append(all, base)
+			continue
+		}
+		for _, project := range suiteProjects {
+			all = append(all, scoped(base, project))
 		}
 	}
-	return "", fmt.Errorf("unknown precondition %q", name)
+	return all
+}()
+
+// scoped returns a project-scoped precondition for one project.
+func scoped(base precondition, project string) precondition {
+	return precondition(string(base) + "@" + project)
 }
 
-// errUnavailable marks a precondition the organisation does not meet and the starter cannot meet
-// with the token it has: the resource is absent and not one the starter builds, or the platform
-// refuses the token the request that would build it. The scenarios that need it are skipped, and
-// the run does not fail for it. Any other error from a precondition is a failure: the starter
-// tried to build the resource, or to read it, and could not.
+// splitPrecondition returns the name of a precondition and the project it is asked of, which is
+// empty for one that is not project-scoped.
+func splitPrecondition(need precondition) (precondition, string) {
+	base, project, _ := strings.Cut(string(need), "@")
+	return precondition(base), project
+}
+
+// preconditionsNamed returns the preconditions a name stands for: the precondition itself, or for
+// the name of a project-scoped one, its precondition for every project.
+func preconditionsNamed(name string) ([]precondition, error) {
+	name = strings.TrimSpace(name)
+	if slices.Contains(allPreconditions, precondition(name)) {
+		return []precondition{precondition(name)}, nil
+	}
+	if slices.Contains(projectScoped, precondition(name)) {
+		var needs []precondition
+		for _, project := range suiteProjects {
+			needs = append(needs, scoped(precondition(name), project))
+		}
+		return needs, nil
+	}
+	return nil, fmt.Errorf("unknown precondition %q", name)
+}
+
+// errUnavailable marks a precondition the starter cannot meet with the token it has: the platform
+// refuses the token the request that would build the resource, or the precondition depends on one
+// that failed (whose own failure is reported). The scenarios that need it are skipped, and the run
+// does not fail for it. Any other error from a precondition is a failure, the scenarios that need
+// it are skipped too: the starter tried to build the resource, or to read it, and could not, or
+// the organisation lacks an environment, a deployment pipeline or a promotion chain the suite
+// selects, which the starter cannot create.
 var errUnavailable = errors.New("precondition not met")
 
 func unavailable(format string, args ...any) error {
@@ -77,12 +119,15 @@ func refusesToken(status int) bool {
 }
 
 // stepNeeds says what a scenario step asks of the organisation. A scenario needs what its steps
-// say, so no scenario declares its needs twice.
+// say, so no scenario declares its needs twice. A project-scoped precondition is asked of the
+// project the scenario's feature file works in.
 var stepNeeds = []struct {
 	step  *regexp.Regexp
 	needs []precondition
 }{
-	{regexp.MustCompile(`^I find the default APIP project$`), []precondition{preDefaultProject}},
+	{regexp.MustCompile(`^I find the APIP test project$`), []precondition{preProject}},
+	{regexp.MustCompile(`^I read the APIP test project$`), []precondition{preProject}},
+	{regexp.MustCompile(`^I create a synthetic (?:REST|GraphQL) API in the APIP test project`), []precondition{preProject}},
 	{regexp.MustCompile(`^I find an active APIP gateway$`), []precondition{preDefaultGateway}},
 	{regexp.MustCompile(`^I find an active managed API Portal$`), []precondition{preAPIPortal}},
 	{regexp.MustCompile(`^I select an existing APIP environment for a (?:managed|self-hosted) gateway$`),
@@ -103,13 +148,19 @@ var stepNeeds = []struct {
 	{regexp.MustCompile(`^I find a promotion chain of 3 environments `), []precondition{prePipelineProj, prePipelineChain3}},
 }
 
-// needsOfSteps returns the preconditions the step texts ask for, each once, in report order.
-func needsOfSteps(steps []string) []precondition {
+// needsOfSteps returns the preconditions the step texts ask for, each once, in report order. The
+// project comes first, so a scenario that works in a project the organisation lacks is skipped
+// before anything else of the organisation is looked at. A scenario that uses no project, such as a
+// sign-in one, does not ask for one.
+func needsOfSteps(steps []string, project string) []precondition {
 	asked := map[precondition]bool{}
 	for _, text := range steps {
 		for _, entry := range stepNeeds {
 			if entry.step.MatchString(strings.TrimSpace(text)) {
 				for _, need := range entry.needs {
+					if slices.Contains(projectScoped, need) {
+						need = scoped(need, project)
+					}
 					asked[need] = true
 				}
 			}
@@ -124,16 +175,17 @@ func needsOfSteps(steps []string) []precondition {
 	return needs
 }
 
-// needsOfScenario returns the preconditions a scenario's steps ask for.
+// needsOfScenario returns the preconditions a scenario's steps ask for, in the project of the
+// scenario's feature file.
 func needsOfScenario(scenario *godog.Scenario) []precondition {
 	steps := make([]string, 0, len(scenario.Steps))
 	for _, step := range scenario.Steps {
 		steps = append(steps, step.Text)
 	}
-	return needsOfSteps(steps)
+	return needsOfSteps(steps, projectOfFeature(scenario.Uri))
 }
 
-// pipelineState is the project CLOUD_IT_PIPELINE_PROJECT names and the promotion paths of the
+// pipelineState is a project of the suite and the promotion paths of the
 // deployment pipeline it is bound to.
 type pipelineState struct {
 	project  string
@@ -144,21 +196,25 @@ type pipelineState struct {
 // prepare brings one precondition about, or says why it cannot be. A precondition the starter
 // builds is built when the organisation lacks it; every other one is only checked.
 func (s *Starter) prepare(ctx context.Context, platform organisationAPI, need precondition) error {
-	switch need {
-	case preDefaultProject:
-		return checkDefaultProject(ctx, platform)
+	base, project := splitPrecondition(need)
+	if slices.Contains(projectScoped, base) && !slices.Contains(suiteProjects, project) {
+		return fmt.Errorf("precondition %q names no project of the suite", need)
+	}
+	switch base {
+	case preProject:
+		return s.ensureProject(ctx, platform, project)
 	case preDefaultGateway:
-		return s.prepareGateway(ctx, platform)
+		return s.prepareGateway(ctx, platform, project)
 	case preEnvironment:
 		return checkAnyEnvironment(ctx, platform)
 	case preSecondEnv:
 		return s.checkSecondEnvironment(ctx, platform)
 	case prePipelineProj:
-		return s.checkPipelineProject(ctx, platform)
+		return s.checkPipelineProject(ctx, platform, project)
 	case prePipelineChain2:
-		return s.checkPipelineChain(ctx, platform, 2)
+		return s.checkPipelineChain(ctx, platform, project, 2)
 	case prePipelineChain3:
-		return s.checkPipelineChain(ctx, platform, 3)
+		return s.checkPipelineChain(ctx, platform, project, 3)
 	case preAPIPortal:
 		return s.preparePortal(ctx, platform)
 	default:
@@ -166,8 +222,14 @@ func (s *Starter) prepare(ctx context.Context, platform organisationAPI, need pr
 	}
 }
 
-func checkDefaultProject(ctx context.Context, platform organisationAPI) error {
-	resp, err := platform.get(ctx, "/projects/"+url.PathEscape(defaultProjectID))
+// ensureProject leaves the organisation holding a project the suite works in: one it has is used
+// as it is, and one it lacks is created, since the suite's projects are the starter's to provide.
+// Only the project is created. Its deployment pipeline is managed in the WSO2 Cloud console, so a
+// project the starter created is bound to the default pipeline and its pipeline preconditions stay
+// unmet until the console binds it to a pipeline of the suite. A project that is absent and cannot
+// be created is a failure, except when the platform refuses the token the request.
+func (s *Starter) ensureProject(ctx context.Context, platform organisationAPI, project string) error {
+	resp, err := platform.get(ctx, "/projects/"+url.PathEscape(project))
 	if err != nil {
 		return err
 	}
@@ -175,10 +237,63 @@ func checkDefaultProject(ctx context.Context, platform organisationAPI) error {
 	case http.StatusOK:
 		return nil
 	case http.StatusNotFound:
-		return unavailable("the organisation has no %q project", defaultProjectID)
+		return s.createProject(ctx, platform, project)
 	default:
-		return fmt.Errorf("reading the %q project: %w", defaultProjectID, responseError(resp))
+		return fmt.Errorf("reading project %q: %w", project, responseError(resp))
 	}
+}
+
+// createProject asks the platform for a project of the suite and checks it was created under the
+// requested handle. A conflict means another run created it first, so it is read instead. The
+// project stays after the run, for later runs to use.
+func (s *Starter) createProject(ctx context.Context, platform organisationAPI, project string) error {
+	body, err := json.Marshal(map[string]string{
+		"id":          project,
+		"displayName": project,
+		"description": "Project the APIP cloud integration tests work in. Created by the suite's starter and reused by every run. Do not delete.",
+	})
+	if err != nil {
+		return err
+	}
+	resp, err := platform.do(ctx, http.MethodPost, "/projects", body)
+	if err != nil {
+		return err
+	}
+	switch resp.StatusCode {
+	case http.StatusCreated, http.StatusOK:
+		id, err := stringField(resp, "id")
+		if err != nil {
+			return fmt.Errorf("creating project %q: %w", project, err)
+		}
+		if id != project {
+			return fmt.Errorf("creating project %q: the platform created project %q instead", project, id)
+		}
+		s.log.Info("created a project of the suite", "project", project)
+		return nil
+	case http.StatusConflict:
+		found, err := platform.get(ctx, "/projects/"+url.PathEscape(project))
+		if err != nil {
+			return err
+		}
+		if found.StatusCode != http.StatusOK {
+			return fmt.Errorf("creating project %q: %w", project, responseError(resp))
+		}
+		return nil
+	default:
+		err := fmt.Errorf("creating project %q: %w", project, responseError(resp))
+		if refusesToken(resp.StatusCode) {
+			return fmt.Errorf("%w: %w", errUnavailable, err)
+		}
+		return err
+	}
+}
+
+// requireProject makes sure a project the suite works in is there, as unavailable when it is not.
+func (s *Starter) requireProject(ctx context.Context, project string) error {
+	if err := s.require(ctx, scoped(preProject, project)); err != nil {
+		return unavailable("project %q is not available: %v", project, err)
+	}
+	return nil
 }
 
 func checkAnyEnvironment(ctx context.Context, platform organisationAPI) error {
@@ -190,7 +305,7 @@ func checkAnyEnvironment(ctx context.Context, platform organisationAPI) error {
 		return fmt.Errorf("listing the environments: %w", err)
 	}
 	if _, err := usableEnvironment(items, hostsSuiteGateways(ctx, platform.do)); err != nil {
-		return unavailable("%v", err)
+		return err
 	}
 	return nil
 }
@@ -198,11 +313,12 @@ func checkAnyEnvironment(ctx context.Context, platform organisationAPI) error {
 // checkSecondEnvironment checks the organisation lists a non-production environment besides the one
 // the default gateway is in, which the scenarios that build a second gateway need.
 func (s *Starter) checkSecondEnvironment(ctx context.Context, platform organisationAPI) error {
-	if err := s.require(ctx, preDefaultGateway); err != nil {
+	// The scenarios that need a second environment work in project one.
+	if err := s.require(ctx, scoped(preDefaultGateway, projectOne)); err != nil {
 		return unavailable("there is no default gateway whose environment could be set aside: %v", err)
 	}
 	s.mu.Lock()
-	active := s.gateway.Environment
+	active := s.gateways[projectOne].Environment
 	s.mu.Unlock()
 	items, err := listCollection(ctx, platform.client, platform.base, platform.token, "/environments")
 	if errors.Is(err, errCollectionNotServed) {
@@ -212,62 +328,46 @@ func (s *Starter) checkSecondEnvironment(ctx context.Context, platform organisat
 		return fmt.Errorf("listing the environments: %w", err)
 	}
 	if _, err := otherEnvironment(items, active, hostsSuiteGateways(ctx, platform.do)); err != nil {
-		return unavailable("%v", err)
+		return err
 	}
 	return nil
 }
 
-// checkPipelineProject checks the project CLOUD_IT_PIPELINE_PROJECT names is one the suite may use
-// (the default project or one named with the suite's prefix), exists and is bound to a deployment
-// pipeline the platform lists that the suite may use too, and keeps the pipeline's promotion paths.
-func (s *Starter) checkPipelineProject(ctx context.Context, platform organisationAPI) error {
-	project := strings.TrimSpace(os.Getenv(pipelineProjectEnv))
-	if project == "" {
-		return unavailable("%s is not set", pipelineProjectEnv)
-	}
-	if !ownedProject(project) {
-		return unavailable("%s names project %q, which is neither %q nor named with the prefix %q", pipelineProjectEnv, project, defaultProjectID, testResourcePrefix)
-	}
-	resp, err := platform.get(ctx, "/projects/"+url.PathEscape(project))
-	if err != nil {
+// checkPipelineProject checks the project is bound to a deployment pipeline the suite may use (one
+// named with the suite's prefix) that the platform lists, with at least one promotion path, and
+// keeps the pipeline's promotion paths.
+func (s *Starter) checkPipelineProject(ctx context.Context, platform organisationAPI, project string) error {
+	if err := s.requireProject(ctx, project); err != nil {
 		return err
-	}
-	switch resp.StatusCode {
-	case http.StatusOK:
-	case http.StatusNotFound:
-		return unavailable("%s names project %q, which the organisation does not have", pipelineProjectEnv, project)
-	default:
-		return fmt.Errorf("reading project %q: %w", project, responseError(resp))
 	}
 	pipeline, paths, err := boundPipelineOf(ctx, project, platform.get)
 	if err != nil {
 		if pipelineMissing(err) {
-			return unavailable("the deployment pipeline of project %q cannot be read: %v", project, err)
+			return fmt.Errorf("the deployment pipeline of project %q cannot be read: %w", project, err)
 		}
 		return fmt.Errorf("reading the deployment pipeline of project %q: %w", project, err)
 	}
 	if !ownedPipeline(pipeline) {
-		return unavailable("project %q is bound to deployment pipeline %q, which is neither %q nor named with the prefix %q",
-			project, pipeline, defaultPipelineName, testResourcePrefix)
+		return fmt.Errorf("project %q is bound to deployment pipeline %q, which is not named with the prefix %q",
+			project, pipeline, testResourcePrefix)
 	}
 	if len(environmentsOf(paths)) == 0 {
-		return unavailable("the deployment pipeline %q of project %q has no promotion path", pipeline, project)
+		return fmt.Errorf("the deployment pipeline %q of project %q has no promotion path", pipeline, project)
 	}
 	s.mu.Lock()
-	s.pipeline = pipelineState{project: project, pipeline: pipeline, paths: paths}
+	s.pipelines[project] = pipelineState{project: project, pipeline: pipeline, paths: paths}
 	s.mu.Unlock()
 	return nil
 }
 
-// checkPipelineChain checks the pipeline project's deployment pipeline holds a promotion chain of
-// the given length whose environments are ones the suite may use and each hold an active regular
-// gateway.
-func (s *Starter) checkPipelineChain(ctx context.Context, platform organisationAPI, length int) error {
-	if err := s.require(ctx, prePipelineProj); err != nil {
+// checkPipelineChain checks the project's deployment pipeline holds a promotion chain of the given
+// length whose environments are ones the suite may use and each hold an active regular gateway.
+func (s *Starter) checkPipelineChain(ctx context.Context, platform organisationAPI, project string, length int) error {
+	if err := s.require(ctx, scoped(prePipelineProj, project)); err != nil {
 		return unavailable("there is no pipeline-bound project to promote through: %v", err)
 	}
 	s.mu.Lock()
-	pipeline := s.pipeline
+	pipeline := s.pipelines[project]
 	s.mu.Unlock()
 	items, err := listCollectionQuery(ctx, platform.client, platform.base, platform.token, "/managed-gateways",
 		url.Values{"functionalityType": {regularGatewayKind}})
@@ -296,7 +396,7 @@ func (s *Starter) checkPipelineChain(ctx context.Context, platform organisationA
 		return false
 	}
 	if promotionChain(pipeline.paths, length, holdsGateway) == nil {
-		return unavailable("the deployment pipeline %q of project %q has no promotion chain of %d environments (named %q or starting with %q) with an active gateway each",
+		return fmt.Errorf("the deployment pipeline %q of project %q has no promotion chain of %d environments (named %q or starting with %q) with an active gateway each",
 			pipeline.pipeline, pipeline.project, length, defaultEnvironmentName, testResourcePrefix)
 	}
 	return nil

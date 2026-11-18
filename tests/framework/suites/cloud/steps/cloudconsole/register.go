@@ -143,6 +143,9 @@ func (r *stepRecorder) Step(expr, stepFunc any) {
 // Register binds APIP cloud-specific Gherkin steps.
 func Register(sc *godog.ScenarioContext, topo *frameworkruntime.Topology, funnel *httpx.Funnel) {
 	s := &Steps{topo: topo, funnel: funnel, client: funnel.Client()}
+	sc.Before(func(ctx context.Context, scenario *godog.Scenario) (context.Context, error) {
+		return ctx, tcontext.Set(ctx, keyScenarioProject, projectOfFeature(scenario.Uri))
+	})
 	s.registerSteps(sc)
 }
 
@@ -155,10 +158,10 @@ func (s *Steps) stepDefinitions() []stepDefinition {
 
 func (s *Steps) registerSteps(sc stepRegistrar) {
 	sc.Step(`^I obtain an APIP cloud console token$`, s.obtainToken)
-	sc.Step(`^I find the default APIP project$`, s.findDefaultProject)
+	sc.Step(`^I find the APIP test project$`, s.findTestProject)
 	sc.Step(`^I find an active APIP gateway$`, s.findActiveGateway)
-	sc.Step(`^I create a synthetic REST API in the default project$`, s.createDefaultAPI)
-	sc.Step(`^I create a synthetic REST API in the default project with:$`, s.createAPIWithValues)
+	sc.Step(`^I create a synthetic REST API in the APIP test project$`, s.createDefaultAPI)
+	sc.Step(`^I create a synthetic REST API in the APIP test project with:$`, s.createAPIWithValues)
 	sc.Step(`^I create a new version "([^"]*)" of the synthetic REST API with:$`, s.createNewAPIVersion)
 	sc.Step(`^I submit a synthetic REST API creation request with:$`, s.submitAPICreation)
 	sc.Step(`^the cloud API response status code should be (\d+)$`, s.assertCloudResponseStatus)
