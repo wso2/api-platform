@@ -56,7 +56,15 @@ blocks:
       - name: cloud-console
       - name: platform-gateway
         db: sqlite
+    # The gateway loads the integration-test policy definitions and reports all but it-builtin as
+    # custom. They have fixed names, so one runner syncs them at a time.
+    wiring:
+      platform-gateway:
+        customPolicies: true
     runners:
       - name: apip-self-hosted-gateway-runtime
         features:
           - features/apip_self_hosted_gateway_runtime.feature
+      - name: apip-self-hosted-gateway-custom-policies
+        features:
+          - features/apip_self_hosted_gateway_custom_policies.feature

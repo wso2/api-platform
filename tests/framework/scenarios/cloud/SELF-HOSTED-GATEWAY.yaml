@@ -50,3 +50,27 @@ scenarios:
       refs:
         - feature: suites/cloud/features/apip_self_hosted_gateway_runtime.feature
           scenario: "A local gateway connects with its registration token and serves the API deployed to it"
+  - id: ID_APIP_SELF_HOSTED_GATEWAY_004
+    title: "A self-hosted gateway connected through the cloud console's /api-management/connect host reports its policies in its manifest: a custom policy with its definition, a built-in one without."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_self_hosted_gateway_custom_policies.feature
+          scenario: "A connected self-hosted gateway's manifest reports its custom policies with their definitions"
+  - id: ID_APIP_SELF_HOSTED_GATEWAY_005
+    title: "A custom policy synced from a self-hosted gateway's manifest is added to the organisation with its display name and definition, is listed, and is no longer listed once deleted."
+    priority: P0
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_self_hosted_gateway_custom_policies.feature
+          scenario: "A custom policy synced from a self-hosted gateway is added to the organisation and can be deleted"
+  - id: ID_APIP_SELF_HOSTED_GATEWAY_006
+    title: "Syncing a policy the self-hosted gateway reports as built in is refused with POLICY_INVALID_STATE and adds nothing to the organisation."
+    priority: P1
+    cloud:
+      status: automated
+      refs:
+        - feature: suites/cloud/features/apip_self_hosted_gateway_custom_policies.feature
+          scenario: "Syncing a policy the self-hosted gateway does not report as custom is refused"
