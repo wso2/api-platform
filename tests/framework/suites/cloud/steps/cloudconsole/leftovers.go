@@ -205,7 +205,8 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 var projectScopedCollections = []string{"/rest-apis"}
 
 // projectScopedSweep describes a collection the platform lists per project, so it reads the
-// default project and every project a tracked run created.
+// default project, the pipeline-bound project and every project a tracked run created. Only the
+// entries named with a tracked run's suffix are deleted, so an API the organisation owns stays.
 func projectScopedSweep(client *httpx.Client, base, token string, owns func(names []string) bool, collection string) finalizer.Collection {
 	return finalizer.Collection{
 		Name:    collection,
@@ -220,9 +221,9 @@ func projectScopedSweep(client *httpx.Client, base, token string, owns func(name
 	}
 }
 
-// projectScopedItems reads a collection the platform lists per project, for the default project
-// and every project a tracked run created. A failure part way returns the items already read with
-// the error.
+// projectScopedItems reads a collection the platform lists per project, for the default project,
+// the pipeline-bound project the scenarios deploy through and every project a tracked run created.
+// A failure part way returns the items already read with the error.
 func projectScopedItems(ctx context.Context, client *httpx.Client, base, token string, owns func(names []string) bool, collection string) ([]map[string]any, error) {
 	projects, err := listCollection(ctx, client, base, token, "/projects")
 	if errors.Is(err, errCollectionNotServed) {
@@ -233,8 +234,16 @@ func projectScopedItems(ctx context.Context, client *httpx.Client, base, token s
 		errs = append(errs, fmt.Errorf("listing the projects that hold %s: %w", collection, err))
 	}
 	scopes := []string{defaultProjectID}
+	// The pipeline-bound project is read only when the organisation lists it: the setting may name
+	// a project that does not exist, which the scenarios skip for and the platform refuses to list.
+	pipelineProject := strings.TrimSpace(os.Getenv(pipelineProjectEnv))
 	for _, project := range projects {
-		if id := firstString(project, []string{"id"}); id != "" && id != defaultProjectID && owns(namesOf(project)) {
+		if id := firstString(project, []string{"id"}); id != "" && id == pipelineProject && id != defaultProjectID && ownedProject(id) {
+			scopes = append(scopes, id)
+		}
+	}
+	for _, project := range projects {
+		if id := firstString(project, []string{"id"}); id != "" && id != defaultProjectID && owns(namesOf(project)) && !slices.Contains(scopes, id) {
 			scopes = append(scopes, id)
 		}
 	}
@@ -373,9 +382,11 @@ func portalPublications(ctx context.Context, client *httpx.Client, base, token s
 	return leftovers, errors.Join(errs...)
 }
 
-// defaultGatewayLast moves the default gateway the starter created behind every other gateway. The
-// platform refuses to delete an environment's default gateway while other gateways of its kind
-// remain, and allows the last one to go.
+// defaultGatewayLast moves a gateway the starter created behind every other gateway. The finalizer
+// of a run never deletes it, since a run tracks only the suffixes of its runners; it is deleted when
+// a person names the starter's suffix to the setup command. The platform refuses to delete an
+// environment's default gateway while other gateways of its kind remain, and allows the last one to
+// go.
 func defaultGatewayLast(leftovers []finalizer.Leftover) {
 	slices.SortStableFunc(leftovers, func(a, b finalizer.Leftover) int {
 		return boolRank(isStarterGateway(a.Names)) - boolRank(isStarterGateway(b.Names))

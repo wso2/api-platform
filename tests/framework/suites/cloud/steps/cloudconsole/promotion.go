@@ -74,11 +74,17 @@ func resetPromotionState(ctx context.Context) error {
 }
 
 // findPipelineProject makes the project pipelineProjectEnv names the scenario's project, and skips
-// the scenario when no project is named.
+// the scenario when no project is named or the project is neither the default one nor named with
+// the suite's prefix.
 func (s *Steps) findPipelineProject(ctx context.Context) error {
 	project := strings.TrimSpace(os.Getenv(pipelineProjectEnv))
 	if project == "" {
 		slog.Warn("skipping: no project bound to a deployment pipeline is configured", "environment", pipelineProjectEnv)
+		return godog.ErrSkip
+	}
+	if !ownedProject(project) {
+		slog.Warn("skipping: the pipeline project is neither the default project nor named with the suite's prefix",
+			"environment", pipelineProjectEnv, "project", project, "prefix", testResourcePrefix)
 		return godog.ErrSkip
 	}
 	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/projects/"+url.PathEscape(project), nil)
@@ -193,6 +199,11 @@ func (s *Steps) findPromotionChain(ctx context.Context, length int) error {
 	if err != nil {
 		return fmt.Errorf("reading the deployment pipeline of project %q: %w", projectID, err)
 	}
+	if !ownedPipeline(pipeline) {
+		slog.Warn("skipping: the project's deployment pipeline is neither the default pipeline nor named with the suite's prefix",
+			"project", projectID, "pipeline", pipeline, "prefix", testResourcePrefix)
+		return godog.ErrSkip
+	}
 	items, err := s.fetchGatewayList(ctx, regularGatewayKind)
 	if err != nil {
 		return err
@@ -200,6 +211,10 @@ func (s *Steps) findPromotionChain(ctx context.Context, length int) error {
 	gateways := map[string]gatewayChoice{}
 	var unusable []string
 	for _, environment := range sortedKeys(environmentsOf(paths)) {
+		if !ownedEnvironment(environment) {
+			unusable = append(unusable, fmt.Sprintf("environment %q is neither the default one nor named with the prefix %q", environment, testResourcePrefix))
+			continue
+		}
 		choice, err := s.chooseActiveGateway(ctx, items, "gateway of environment "+environment,
 			append(gatewayFilters(""), inEnvironment(environment))...)
 		if errors.Is(err, errCloudDataPlaneDomains) {
