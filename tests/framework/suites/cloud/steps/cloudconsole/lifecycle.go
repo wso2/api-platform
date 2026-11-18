@@ -612,18 +612,23 @@ func (s *Steps) selectOtherGatewayEnvironment(ctx context.Context) error {
 	return tcontext.Set(ctx, keyEnvironmentName, name)
 }
 
-// listEnvironments reads the environments the platform lists for the organisation.
+// listEnvironments reads every page of the environments the platform lists for the organisation,
+// as the starter does, so both see the same list.
 func (s *Steps) listEnvironments(ctx context.Context) ([]map[string]any, error) {
-	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/environments", nil)
+	token, err := bearerToken(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, responseError(resp)
-	}
-	items, err := listItems(resp)
+	base, err := s.topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
 	if err != nil {
-		return nil, fmt.Errorf("decoding APIP environments: %w", err)
+		return nil, err
+	}
+	items, err := listCollection(ctx, s.client, base, token, "/environments")
+	if errors.Is(err, errCollectionNotServed) {
+		return nil, errors.New("the platform does not serve APIP environments")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("listing APIP environments: %w", err)
 	}
 	return items, nil
 }

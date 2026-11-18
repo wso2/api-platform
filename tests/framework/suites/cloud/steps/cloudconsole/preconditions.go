@@ -94,6 +94,10 @@ var stepNeeds = []struct {
 	// another environment.
 	{regexp.MustCompile(`^I work with synthetic managed APIP gateway [12]$`),
 		[]precondition{preDefaultGateway, preSecondEnv}},
+	// The configuration scenarios work with the gateway their setup scenario builds beside the
+	// default gateway, in the default gateway's environment.
+	{regexp.MustCompile(`^I work with the configuration of synthetic managed APIP gateway 1$`),
+		[]precondition{preDefaultGateway}},
 	{regexp.MustCompile(`^I find the pipeline-bound APIP project$`), []precondition{prePipelineProj}},
 	{regexp.MustCompile(`^I find a promotion chain of 2 environments `), []precondition{prePipelineProj, prePipelineChain2}},
 	{regexp.MustCompile(`^I find a promotion chain of 3 environments `), []precondition{prePipelineProj, prePipelineChain3}},
@@ -276,6 +280,9 @@ func (s *Starter) checkPipelineChain(ctx context.Context, platform organisationA
 		}
 		filters := append(gatewayFilters(""), inEnvironment(environment))
 		for _, item := range items {
+			if id, _ := item["id"].(string); strings.TrimSpace(id) == "" {
+				continue
+			}
 			if active, _ := item["isActive"].(bool); !active {
 				continue
 			}
@@ -303,8 +310,18 @@ func (e *pipelineNotListedError) Error() string {
 	return fmt.Sprintf("deployment pipeline %q is not listed", e.pipeline)
 }
 
-// pipelineMissing reports whether err says the pipeline, or the project's binding to it, is absent.
+// pipelineBindingMissingError says the platform has no deployment pipeline binding for a project.
+type pipelineBindingMissingError struct{ cause error }
+
+func (e *pipelineBindingMissingError) Error() string { return e.cause.Error() }
+
+func (e *pipelineBindingMissingError) Unwrap() error { return e.cause }
+
+// pipelineMissing reports whether err says the pipeline, or the project's binding to it, is absent:
+// the binding route answered 404, or the pipeline list does not hold the bound pipeline. A failure
+// to read the list itself, a 404 from it included, is not an absent pipeline.
 func pipelineMissing(err error) bool {
 	var notListed *pipelineNotListedError
-	return errors.As(err, &notListed) || errorStatus(err) == http.StatusNotFound
+	var noBinding *pipelineBindingMissingError
+	return errors.As(err, &notListed) || errors.As(err, &noBinding)
 }

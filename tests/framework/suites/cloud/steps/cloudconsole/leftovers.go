@@ -243,7 +243,7 @@ func projectScopedItems(ctx context.Context, client *httpx.Client, base, token s
 		}
 	}
 	for _, project := range projects {
-		if id := firstString(project, []string{"id"}); id != "" && id != defaultProjectID && owns(namesOf(project)) {
+		if id := firstString(project, []string{"id"}); id != "" && id != defaultProjectID && owns(namesOf(project)) && !slices.Contains(scopes, id) {
 			scopes = append(scopes, id)
 		}
 	}

@@ -83,6 +83,9 @@ const defaultPortalName = "dap"
 // starterCreatesPortal is false while the cloud intermittently fails to create a managed API Portal: with no active portal the apip-portal scenarios are skipped, not built for.
 const starterCreatesPortal = false
 
+// errStartNotCalled is what a precondition check returns before Start has recorded the platform.
+var errStartNotCalled = errors.New("cloud run starter: Start must be called before a precondition is checked")
+
 // preconditionTimeout bounds how long the starter works on one precondition for the scenarios
 // that wait for it, and so how long a gateway or portal it builds has to become active.
 const preconditionTimeout = 20 * time.Minute
@@ -279,6 +282,12 @@ func (s *Starter) Prepare(ctx context.Context, names []string) error {
 			needs = append(needs, need)
 		}
 	}
+	s.mu.Lock()
+	started := s.base != ""
+	s.mu.Unlock()
+	if !started {
+		return errStartNotCalled
+	}
 	for _, need := range needs {
 		// The outcome is kept by require; Failures and Report say what became of it.
 		_ = s.require(ctx, need)
@@ -294,7 +303,7 @@ func (s *Starter) require(ctx context.Context, need precondition) error {
 	base, token := s.base, s.token
 	s.mu.Unlock()
 	if base == "" {
-		return errors.New("cloud run starter: Start must be called before a precondition is checked")
+		return errStartNotCalled
 	}
 	platform := organisationAPI{client: s.client, base: base, token: token, pollInterval: s.pollInterval}
 	return s.starter.Ensure(ctx, base+"#"+string(need), []starter.Prerequisite{{

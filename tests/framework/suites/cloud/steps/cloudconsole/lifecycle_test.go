@@ -1563,7 +1563,7 @@ func newLeftoverStub() *leftoverStub {
 		"/projects":                    {{"id": "default"}, {"id": "syn-project-abcde234-2"}, {"id": "apip-test-ops-project"}},
 		"/rest-apis?projectId=default": {{"id": "syn-api-abcde234-1"}, {"id": "ops-api"}},
 		"/rest-apis?projectId=syn-project-abcde234-2": {{"id": "syn-api-abcde234-2"}},
-		"/rest-apis?projectId=apip-test-ops-project":  {{"id": "syn-api-abcde234-9"}},
+		"/rest-apis?projectId=apip-test-ops-project":  {{"id": "syn-api-abcde234-9"}, {"id": "ops-project-api"}},
 	}}
 }
 
@@ -3109,6 +3109,8 @@ type starterPlatform struct {
 	pipelinePaths   []promotionPath
 	// pipelineName is the name of that pipeline; empty means "apip-test-pipeline-1".
 	pipelineName string
+	// pipelinesAnswer, when set, is the status the pipeline list answers with instead of the list.
+	pipelinesAnswer int
 	// deleted records the gateways and portals the starter was asked to remove.
 	deleted []string
 	// requests counts every request the organisation answered; gatewayLists those that listed the
@@ -3163,6 +3165,8 @@ func (p *starterPlatform) handler(t *testing.T) http.HandlerFunc {
 			w.WriteHeader(http.StatusNotFound)
 		case r.Method == http.MethodGet && r.URL.Path == "/projects/default/deployment-pipeline":
 			_ = json.NewEncoder(w).Encode(map[string]any{"pipeline": "default"})
+		case r.Method == http.MethodGet && r.URL.Path == "/pipelines" && p.pipelinesAnswer != 0:
+			w.WriteHeader(p.pipelinesAnswer)
 		case r.Method == http.MethodGet && r.URL.Path == "/pipelines":
 			_ = json.NewEncoder(w).Encode(map[string]any{"list": []map[string]any{
 				{"name": "other", "promotionPaths": []promotionPath{{SourceEnvironment: "elsewhere"}}},
@@ -5696,6 +5700,8 @@ func TestNeedsOfStepsNamesWhatEachStepAsksOfTheOrganisation(t *testing.T) {
 			[]precondition{preDefaultGateway, preSecondEnv}},
 		"the first gateway the scenario before built": {[]string{"I work with synthetic managed APIP gateway 1"},
 			[]precondition{preDefaultGateway, preSecondEnv}},
+		"the configuration of the gateway the setup scenario built": {[]string{"I work with the configuration of synthetic managed APIP gateway 1"},
+			[]precondition{preDefaultGateway}},
 		"the pipeline project": {[]string{"I find the pipeline-bound APIP project"}, []precondition{prePipelineProj}},
 		"a chain of 2":         {[]string{chainOf2}, []precondition{prePipelineProj, prePipelineChain2}},
 		"a chain of 3":         {[]string{chainOf3}, []precondition{prePipelineProj, prePipelineChain3}},
@@ -5993,6 +5999,80 @@ func TestTheSuiteSelectsOnlyTheDefaultResourcesAndThosePrefixed(t *testing.T) {
 	}
 }
 
+func TestAPipelineListThatCannotBeReadIsAFailureNotAMissingPipeline(t *testing.T) {
+	chain := promotionChainPaths("development", "apip-test-e1")
+	for name, tc := range map[string]struct {
+		platform *starterPlatform
+		failed   bool
+	}{
+		"the list answers 404":        {&starterPlatform{pipelineProject: "apip-test-ops", pipelinePaths: chain, pipelinesAnswer: http.StatusNotFound}, true},
+		"the list answers 500":        {&starterPlatform{pipelineProject: "apip-test-ops", pipelinePaths: chain, pipelinesAnswer: http.StatusInternalServerError}, true},
+		"the list lacks the pipeline": {&starterPlatform{pipelineProject: "apip-test-ops", pipelinePaths: chain, pipelineName: "apip-test-pipeline-1"}, false},
+	} {
+		starter := starterAgainst(t, tc.platform)
+		t.Setenv(pipelineProjectEnv, "apip-test-ops")
+		err := starter.checkScenario(context.Background(), "a scenario", []precondition{prePipelineProj})
+		if name == "the list lacks the pipeline" {
+			require.NoError(t, err, name)
+			continue
+		}
+		require.ErrorIs(t, err, godog.ErrSkip, name)
+		if tc.failed {
+			require.Error(t, starter.Failures(), name)
+		} else {
+			require.NoError(t, starter.Failures(), name)
+		}
+	}
+}
+
+func TestAProjectWithoutAPipelineBindingIsMissingNotFailed(t *testing.T) {
+	require.True(t, pipelineMissing(&pipelineBindingMissingError{cause: errors.New("binding is absent")}))
+	require.True(t, pipelineMissing(&pipelineNotListedError{pipeline: "p"}))
+	require.False(t, pipelineMissing(&statusError{status: http.StatusNotFound}), "a 404 that is not the binding route's says nothing about the binding")
+}
+
+func TestAPromotionChainNeedsEveryGatewayItCountsToHaveAnID(t *testing.T) {
+	gateways := chainGateways("development", "apip-test-e1")
+	gateways[1]["id"] = " "
+	platform := &starterPlatform{pipelineProject: "apip-test-ops", pipelinePaths: promotionChainPaths("development", "apip-test-e1"), gateways: gateways}
+	starter := starterAgainst(t, platform)
+	t.Setenv(pipelineProjectEnv, "apip-test-ops")
+
+	require.ErrorIs(t, starter.checkScenario(context.Background(), "a promotion", []precondition{prePipelineChain2}), godog.ErrSkip)
+}
+
+func TestPrepareNeedsStartBeforeItChecksAnything(t *testing.T) {
+	starter, err := NewStarter()
+	require.NoError(t, err)
+
+	require.ErrorContains(t, starter.Prepare(context.Background(), []string{"default-project"}), "Start must be called")
+	require.ErrorContains(t, starter.Prepare(context.Background(), nil), "Start must be called")
+}
+
+func TestListEnvironmentsReadsEveryPage(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	steps, ctx, _, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/environments", r.URL.Path)
+		offset := r.URL.Query().Get("offset")
+		page := []map[string]any{{"name": "development"}, {"name": "production", "isProduction": true}}
+		if offset == "2" {
+			page = []map[string]any{{"name": "apip-test-e1"}}
+		}
+		off := 0
+		if offset == "2" {
+			off = 2
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"list": page,
+			"pagination": map[string]any{"total": 3, "offset": off, "limit": 2}})
+	})
+
+	items, err := steps.listEnvironments(ctx)
+
+	require.NoError(t, err)
+	require.Len(t, items, 3, "an environment on the second page is listed too")
+	require.Equal(t, "apip-test-e1", items[2]["name"])
+}
+
 func TestStarterChecksThePromotionChains(t *testing.T) {
 	platform := &starterPlatform{
 		pipelineProject: "apip-test-ops",
@@ -6095,6 +6175,34 @@ func TestCloudSweepsReadTheAPIsOfThePipelineProject(t *testing.T) {
 	require.Contains(t, stub.listedProjects["/rest-apis"], "apip-test-ops-project", "the project the scenarios deploy through is read for leftovers")
 	require.Contains(t, removed, "/rest-apis/syn-api-abcde234-9", "the run's API in that project is removed")
 	require.NotContains(t, removed, "/rest-apis/ops-api", "an API the organisation owns stays")
+	require.NotContains(t, removed, "/rest-apis/ops-project-api", "an API the organisation owns in the pipeline project stays too")
+}
+
+func TestCloudSweepsListAProjectOnceWhenTwoRulesSelectIt(t *testing.T) {
+	t.Setenv(pipelineProjectEnv, "apip-test-abcde234")
+	stub := newLeftoverStub()
+	stub.lists["/projects"] = append(stub.lists["/projects"], map[string]any{"id": "apip-test-abcde234"})
+	stub.lists["/rest-apis?projectId=apip-test-abcde234"] = []map[string]any{{"id": "syn-api-abcde234-7"}}
+	topo := cloudAPIStub(t, stub.handler)
+	base, err := topo.URL(corecatalog.Name, corecatalog.EndpointAPIPPlatformAPI)
+	require.NoError(t, err)
+
+	removed, err := sweepLeftovers(context.Background(), base, 5*time.Second)
+
+	require.NoError(t, err)
+	listings := func(id string) int {
+		count := 0
+		for _, project := range stub.listedProjects["/rest-apis"] {
+			if project == id {
+				count++
+			}
+		}
+		return count
+	}
+	require.Positive(t, listings("default"))
+	require.Equal(t, listings("default"), listings("apip-test-abcde234"),
+		"a project that two rules select is listed as often as one that a single rule selects")
+	require.Contains(t, removed, "/rest-apis/syn-api-abcde234-7")
 }
 
 func TestSaveDefinitionAcceptsOnlyAnswersAContentRefusalCanGive(t *testing.T) {

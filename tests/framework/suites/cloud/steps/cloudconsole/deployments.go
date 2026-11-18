@@ -681,6 +681,9 @@ func boundPipelineOf(ctx context.Context, projectID string, get pipelineGetter) 
 	if err != nil {
 		return "", nil, err
 	}
+	if bound.StatusCode == http.StatusNotFound {
+		return "", nil, &pipelineBindingMissingError{cause: responseError(bound)}
+	}
 	if bound.StatusCode != http.StatusOK {
 		return "", nil, responseError(bound)
 	}
