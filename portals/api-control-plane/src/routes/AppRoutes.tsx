@@ -417,21 +417,22 @@ function GraphqlDeployRoute() {
 }
 
 /**
- * A route subtree that a cloud plugin can replace. Renders an override
- * registered against `slot` when one is present, otherwise the built-in pages in
- * `children` — the same Slot-adds / Hideable-suppresses split the ai-workspace
- * host uses, so the cloud build swaps in its plugin while the public build keeps
- * its native pages. Mounted at `<path>/*` so either branch owns the nested routes.
+ * The gateways route subtree. Renders an override registered against
+ * `PAGE_GATEWAYS_SLOT` when one is present, otherwise the built-in gateways
+ * pages — the same Slot-adds / Hideable-suppresses split the ai-workspace host
+ * uses, so the cloud build swaps in the managed-gateways plugin while the public
+ * build keeps its native pages. Mounted at `gateways/*` so either branch owns
+ * the nested `create`/`new`/`:gatewayId` routes.
  */
-function OverridableSubtree({ slot, children }: { slot: string; children: ReactNode }) {
+function GatewaysRoute() {
   const port = usePort();
-  const [override] = useSlot<ApiControlPlaneExtension>(slot).filter(hasRender);
-  // This route's own index path, derived by stripping the matched splat off the
-  // current URL. Deliberately not `useResolvedPath('')`: from a splat route
-  // react-router 7 resolves relative to the *full* matched pathname, so that
-  // would hand back the current URL and redirect it to itself. Stripping the
-  // splat also keeps the scope-less `select-scope` aliases working, which
-  // rebuilding the path from a route builder would not.
+  const [override] = useSlot<ApiControlPlaneExtension>(PAGE_GATEWAYS_SLOT).filter(hasRender);
+  // This route's own `gateways` path, derived by stripping the matched splat
+  // off the current URL. Deliberately not `useResolvedPath('')`: from a splat
+  // route react-router 7 resolves relative to the *full* matched pathname, so
+  // that would hand back the current URL and redirect it to itself. Stripping
+  // the splat also keeps the scope-less `select-scope` aliases working, which
+  // rebuilding the path from `routes.gateways()` would not.
   const { pathname } = useLocation();
   const splat = useParams()['*'] ?? '';
   const indexPath = splat
@@ -440,9 +441,9 @@ function OverridableSubtree({ slot, children }: { slot: string; children: ReactN
   if (override) {
     // An override replaces the whole subtree with one self-contained flow that
     // keeps its view in local state (a feature package holds no router of its
-    // own, so it cannot own nested routes). There is therefore no create or
-    // detail URL under it: send those to the index instead of rendering the
-    // override at a URL claiming to be a create or detail page.
+    // own, so it cannot own nested routes). There is therefore no `new` or
+    // `:gatewayId` URL under it: send those to the index instead of rendering
+    // the list at a URL claiming to be a create or detail page.
     return (
       <Routes>
         <Route index element={<ExtensionPage>{override.render(port)}</ExtensionPage>} />
@@ -451,35 +452,51 @@ function OverridableSubtree({ slot, children }: { slot: string; children: ReactN
     );
   }
   return (
-    <Hideable name={slot}>
-      <Routes>{children}</Routes>
+    <Hideable name={PAGE_GATEWAYS_SLOT}>
+      <Routes>
+        <Route index element={<GatewaysPage />} />
+        <Route path="new" element={<GatewayCreatePage />} />
+        <Route path=":gatewayId" element={<GatewayDetailPage />} />
+      </Routes>
     </Hideable>
   );
 }
 
-/** The gateways route subtree; the cloud build overrides it via `PAGE_GATEWAYS_SLOT`. */
-function GatewaysRoute() {
-  return (
-    <OverridableSubtree slot={PAGE_GATEWAYS_SLOT}>
-      <Route index element={<GatewaysPage />} />
-      <Route path="new" element={<GatewayCreatePage />} />
-      <Route path=":gatewayId" element={<GatewayDetailPage />} />
-    </OverridableSubtree>
-  );
-}
-
 /**
- * The organization's API Portals registry. The open-source build lists, registers
- * and manages self-hosted portals here; the cloud build overrides the subtree via
- * `PAGE_API_PORTALS_SLOT` with its managed portals, at the same URL and sidebar item.
+ * The organization's Portals registry, the same arrangement as `GatewaysRoute`.
+ * Renders an override registered against `PAGE_API_PORTALS_SLOT` when one is
+ * present (the cloud build's managed portals), otherwise the built-in pages that
+ * list, register and manage self-hosted portals. Mounted at `portals/*` so either
+ * branch owns the nested `new`/`:apiPortalId` routes.
  */
 function ApiPortalsRoute() {
+  const port = usePort();
+  const [override] = useSlot<ApiControlPlaneExtension>(PAGE_API_PORTALS_SLOT).filter(hasRender);
+  // This route's own `portals` path, derived by stripping the matched splat off
+  // the current URL, for the reason `GatewaysRoute` gives.
+  const { pathname } = useLocation();
+  const splat = useParams()['*'] ?? '';
+  const indexPath = splat
+    ? pathname.slice(0, pathname.length - splat.length).replace(/\/+$/, '')
+    : pathname;
+  if (override) {
+    // As for gateways, an override is one self-contained flow with no nested
+    // URLs: send the built-in create and detail URLs to the index.
+    return (
+      <Routes>
+        <Route index element={<ExtensionPage>{override.render(port)}</ExtensionPage>} />
+        <Route element={<Navigate replace to={indexPath} />} path="*" />
+      </Routes>
+    );
+  }
   return (
-    <OverridableSubtree slot={PAGE_API_PORTALS_SLOT}>
-      <Route index element={<ApiPortalsPage />} />
-      <Route path="new" element={<ApiPortalCreatePage />} />
-      <Route path=":apiPortalId" element={<ApiPortalDetailPage />} />
-    </OverridableSubtree>
+    <Hideable name={PAGE_API_PORTALS_SLOT}>
+      <Routes>
+        <Route index element={<ApiPortalsPage />} />
+        <Route path="new" element={<ApiPortalCreatePage />} />
+        <Route path=":apiPortalId" element={<ApiPortalDetailPage />} />
+      </Routes>
+    </Hideable>
   );
 }
 
