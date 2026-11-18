@@ -24,11 +24,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/cucumber/godog"
 
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
+	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
 
@@ -867,16 +869,38 @@ func settled(resp *httpx.Response, conflictSettles bool) bool {
 		(conflictSettles && resp.StatusCode == http.StatusConflict)
 }
 
-// remove sends one cleanup call and fails unless the answer is settled.
+// remove sends one cleanup call and fails unless the answer is settled. A call that got no answer,
+// a 5xx or a 429 is repeated, since a removal that is missed leaves the item on the shared portal
+// for good; any other answer is final.
 func (c consumerSession) remove(ctx context.Context, method, path string, body any, conflictSettles bool) error {
-	resp, err := c.call(ctx, method, path, body)
+	var failure error
+	err := retry.Await(ctx, retry.Options{Interval: 2 * time.Second},
+		func(ctx context.Context) (bool, error) {
+			resp, err := c.call(ctx, method, path, body)
+			switch {
+			case err != nil && failedInTransit(err):
+				return false, retry.Transient(err)
+			case err != nil:
+				failure = err
+			case resp.StatusCode >= http.StatusInternalServerError || resp.StatusCode == http.StatusTooManyRequests:
+				return false, retry.Transient(statusError(resp))
+			case !settled(resp, conflictSettles):
+				failure = statusError(resp)
+			}
+			return true, nil
+		},
+		func(answered bool) bool { return answered }, method+" "+path)
 	if err != nil {
 		return err
 	}
-	if !settled(resp, conflictSettles) {
-		return statusError(resp)
-	}
-	return nil
+	return failure
+}
+
+// failedInTransit reports whether err is a request that got no answer, such as one on a dropped
+// connection, rather than one that could not be built.
+func failedInTransit(err error) bool {
+	var urlErr *url.Error
+	return errors.As(err, &urlErr) && urlErr.Op != "parse"
 }
 
 func (c consumerSession) deleteApplication(ctx context.Context, id string) error {

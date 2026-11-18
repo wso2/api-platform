@@ -5796,6 +5796,9 @@ type fakeConsumerAPI struct {
 	secretStatus int
 	// failPageFrom, when set, fails every list page from that offset with 502.
 	failPageFrom int
+	// failOnce answers each listed call ("METHOD /path") once with its status, or drops the
+	// connection when the status is 0.
+	failOnce map[string]int
 	// keyManagers, when set, replaces the portal's key managers.
 	keyManagers []any
 	// request is the call being answered, for the page it asks for.
@@ -5844,14 +5847,30 @@ func (f *fakePortalSite) serveConsumerAPI(w http.ResponseWriter, r *http.Request
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, portalAPIBasePath)
-	api.calls = append(api.calls, r.Method+" "+path)
+	call := r.Method + " " + path
+	api.calls = append(api.calls, call)
+	if status, fail := api.failOnce[call]; fail {
+		delete(api.failOnce, call)
+		if status == 0 {
+			if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
+				_ = conn.Close()
+			}
+			return
+		}
+		writeJSON(w, status, map[string]any{"message": http.StatusText(status)})
+		return
+	}
 	if offset, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && api.failPageFrom > 0 && offset >= api.failPageFrom {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"message": "Bad Gateway"})
 		return
 	}
 	var body map[string]any
 	if r.Body != nil && r.ContentLength != 0 {
-		require.NoError(f.t, json.NewDecoder(r.Body).Decode(&body))
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			f.t.Errorf("the portal API request %s does not decode: %v", call, err)
+			writeJSON(w, http.StatusBadRequest, map[string]any{"message": "Bad Request"})
+			return
+		}
 	}
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	switch {
@@ -5943,6 +5962,10 @@ func (a *fakeConsumerAPI) offers(api, plan string) bool {
 	return slices.Contains(a.offered[api], plan)
 }
 
+func writeMethodNotAllowed(w http.ResponseWriter) {
+	writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"message": "Method Not Allowed"})
+}
+
 func (a *fakeConsumerAPI) serveSubscriptions(w http.ResponseWriter, method string, rest []string, body map[string]any) {
 	if len(rest) == 0 && method == http.MethodPost {
 		artifact, _ := body["artifactId"].(string)
@@ -5979,6 +6002,10 @@ func (a *fakeConsumerAPI) serveSubscriptions(w http.ResponseWriter, method strin
 		writeJSON(w, http.StatusOK, fakePage(a.request, list))
 		return
 	}
+	if len(rest) == 0 {
+		writeMethodNotAllowed(w)
+		return
+	}
 	sub, known := a.subs[rest[0]]
 	if !known {
 		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Subscription not found"})
@@ -5993,6 +6020,8 @@ func (a *fakeConsumerAPI) serveSubscriptions(w http.ResponseWriter, method strin
 	case len(rest) == 1 && method == http.MethodDelete:
 		delete(a.subs, rest[0])
 		writeJSON(w, http.StatusOK, map[string]any{"message": "Subscription deleted successfully"})
+	case len(rest) == 2 && method != http.MethodPost:
+		writeMethodNotAllowed(w)
 	case len(rest) == 2 && rest[1] == "change-plan":
 		plan, _ := body["planId"].(string)
 		if !a.offers(sub["artifactId"].(string), plan) {
@@ -6490,6 +6519,8 @@ func (a *fakeConsumerAPI) serveOAuth2Keys(w http.ResponseWriter, method string, 
 			list = append(list, map[string]any{"keyId": key["keyId"], "name": key["name"], "consumerSecret": ""})
 		}
 		writeJSON(w, http.StatusOK, fakePage(a.request, list))
+	case len(rest) == 0:
+		writeMethodNotAllowed(w)
 	default:
 		key, known := a.oauth2[rest[0]]
 		if !known {
@@ -6500,6 +6531,8 @@ func (a *fakeConsumerAPI) serveOAuth2Keys(w http.ResponseWriter, method string, 
 		case len(rest) == 1 && method == http.MethodDelete:
 			delete(a.oauth2, rest[0])
 			w.WriteHeader(http.StatusNoContent)
+		case len(rest) == 2 && method != http.MethodPost:
+			writeMethodNotAllowed(w)
 		case len(rest) == 2 && rest[1] == "associate":
 			key["applicationId"] = body["applicationId"]
 			writeJSON(w, http.StatusOK, map[string]any{"application": map[string]any{"id": body["applicationId"]}})
@@ -6687,6 +6720,55 @@ func TestConsumerCleanupRemovesWhatItListedBeforeAPageFailed(t *testing.T) {
 	require.Len(t, site.consumer.apps, 50, "the first page is removed although the second failed")
 }
 
+func TestConsumerCleanupRepeatsARemovalThatGotNoAnswer(t *testing.T) {
+	for name, status := range map[string]int{
+		"a 502 answer":         http.StatusBadGateway,
+		"a 429 answer":         http.StatusTooManyRequests,
+		"a dropped connection": 0,
+	} {
+		t.Run(name, func(t *testing.T) {
+			site, steps, ctx, registry := consumerSteps(t)
+			require.NoError(t, steps.createConsumerApplication(ctx))
+			require.Len(t, site.consumer.apps, 1)
+			for id := range site.consumer.apps {
+				site.consumer.failOnce = map[string]int{http.MethodDelete + " " + applicationPath(id): status}
+			}
+			site.consumer.calls = nil
+
+			require.NoError(t, registry.Sweep(ctx))
+			require.Empty(t, site.consumer.apps)
+			require.Equal(t, []string{"DELETE applications", "DELETE applications"}, calledCollections(site.consumer.calls))
+		})
+	}
+}
+
+func TestConsumerCleanupReportsARefusedRemovalWithoutRepeatingIt(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	require.Len(t, site.consumer.apps, 1)
+	var id string
+	for id = range site.consumer.apps {
+		site.consumer.failOnce = map[string]int{http.MethodDelete + " " + applicationPath(id): http.StatusConflict}
+	}
+	site.consumer.calls = nil
+
+	require.ErrorContains(t, registry.Sweep(ctx), "-> 409")
+	require.Contains(t, site.consumer.apps, id)
+	require.Equal(t, []string{"DELETE applications"}, calledCollections(site.consumer.calls))
+}
+
+func TestFailedInTransitTellsADroppedRequestFromOneThatCannotBeBuilt(t *testing.T) {
+	_, parseErr := url.Parse("http://[::1")
+	require.Error(t, parseErr)
+	sent := &url.Error{Op: "Delete", URL: "https://portal.example/applications/a", Err: io.ErrUnexpectedEOF}
+
+	require.True(t, failedInTransit(sent))
+	require.True(t, failedInTransit(fmt.Errorf("httpx: DELETE https://portal.example/applications/a: %w", sent)))
+	require.False(t, failedInTransit(parseErr))
+	require.False(t, failedInTransit(errors.New("signed up no consumer")))
+	require.False(t, failedInTransit(nil))
+}
+
 func TestOAuth2KeysAreDeletedByIDWhenTheirClientHasNoName(t *testing.T) {
 	site, steps, ctx, registry := consumerSteps(t)
 	require.NoError(t, steps.createConsumerOAuth2Keys(ctx))
@@ -6700,11 +6782,11 @@ func TestOAuth2KeysAreDeletedByIDWhenTheirClientHasNoName(t *testing.T) {
 
 func TestCreateConsumerOAuth2KeysReadsEveryPageOfKeyManagers(t *testing.T) {
 	site, steps, ctx, _ := consumerSteps(t)
-	for i := range 25 {
-		site.consumer.keyManagers = append(site.consumer.keyManagers, map[string]any{"id": "aaa-" + strconv.Itoa(10+i), "keyCreation": "import"})
+	for i := range listPageSize {
+		site.consumer.keyManagers = append(site.consumer.keyManagers, map[string]any{"id": "aaa-" + strconv.Itoa(100+i), "keyCreation": "import"})
 	}
 	site.consumer.keyManagers = append(site.consumer.keyManagers, map[string]any{"id": "thunder", "keyCreation": "register"})
-	require.NoError(t, steps.createConsumerOAuth2Keys(ctx), "the key manager that registers clients is past the first 20")
+	require.NoError(t, steps.createConsumerOAuth2Keys(ctx), "the key manager that registers clients is past the first page")
 }
 
 func TestTheSubscriptionTokenAssertionReadsOnlyTheLastAnswer(t *testing.T) {
