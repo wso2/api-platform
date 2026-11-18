@@ -42,6 +42,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -4388,7 +4389,9 @@ type fakePortalSite struct {
 	mu       sync.Mutex
 	users    map[string]string
 	sessions map[string]bool
-	flows    []map[string]any
+	// signIns counts the sessions the callback started, so a session is never named twice.
+	signIns int
+	flows   []map[string]any
 	// wrongPasswordStatus is how the identity provider answers a wrong password: 200 with an
 	// ERROR flow status, or a client error.
 	wrongPasswordStatus int
@@ -4446,7 +4449,8 @@ func (f *fakePortalSite) servePortal(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		session := "signed-in-" + strconv.Itoa(len(f.sessions))
+		session := "signed-in-" + strconv.Itoa(f.signIns)
+		f.signIns++
 		f.sessions[session] = true
 		// Like the portal, the callback sets the replaced session's CSRF cookie; the landing page sets the new one.
 		http.SetCookie(w, &http.Cookie{Name: "portal.sid", Value: session, Path: "/api-portal"})
@@ -5799,9 +5803,11 @@ type fakeConsumerAPI struct {
 	secretStatus int
 	// failPageFrom, when set, fails every list page from that offset with 502.
 	failPageFrom int
-	// failOnce answers each listed call ("METHOD /path") once with its status, or drops the
-	// connection when the status is 0.
+	// failOnce answers each listed call ("METHOD /path") once with its status. With status 0 it
+	// drops the connection before the call takes effect, and with commitThenDrop after it.
 	failOnce map[string]int
+	// failEvery answers each listed call with its status every time.
+	failEvery map[string]int
 	// keyManagers, when set, replaces the portal's key managers.
 	keyManagers []any
 	// request is the call being answered, for the page it asks for.
@@ -5814,6 +5820,10 @@ type fakeConsumerAPI struct {
 	seq    int
 	calls  []string
 }
+
+// commitThenDrop is a failOnce status that applies the call and then drops the connection, so
+// the caller never sees the answer to a call that took effect.
+const commitThenDrop = -1
 
 // fakePage pages items as the portal does: limit (default 20, at most 100) items from offset.
 func fakePage(r *http.Request, items []any) map[string]any {
@@ -5852,7 +5862,20 @@ func (f *fakePortalSite) serveConsumerAPI(w http.ResponseWriter, r *http.Request
 	path := strings.TrimPrefix(r.URL.Path, portalAPIBasePath)
 	call := r.Method + " " + path
 	api.calls = append(api.calls, call)
-	if status, fail := api.failOnce[call]; fail {
+	if status, fail := api.failEvery[call]; fail {
+		writeJSON(w, status, map[string]any{"message": http.StatusText(status)})
+		return
+	}
+	if status, fail := api.failOnce[call]; fail && status == commitThenDrop {
+		delete(api.failOnce, call)
+		connection := w
+		w = httptest.NewRecorder()
+		defer func() {
+			if conn, _, err := connection.(http.Hijacker).Hijack(); err == nil {
+				_ = conn.Close()
+			}
+		}()
+	} else if fail {
 		delete(api.failOnce, call)
 		if status == 0 {
 			if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
@@ -5948,6 +5971,8 @@ func (a *fakeConsumerAPI) serveApplications(w http.ResponseWriter, method string
 		case http.MethodDelete:
 			delete(a.apps, rest[0])
 			w.WriteHeader(http.StatusOK)
+		default:
+			writeMethodNotAllowed(w)
 		}
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
@@ -6184,7 +6209,7 @@ func TestSignUpRegistersTheRunnersSweepOfTheConsumersPortal(t *testing.T) {
 }
 
 func TestConsumerApplicationLifecycle(t *testing.T) {
-	site, steps, ctx, registry := consumerSteps(t)
+	_, steps, ctx, registry := consumerSteps(t)
 
 	require.NoError(t, steps.createConsumerApplication(ctx))
 	id, err := requiredValue(ctx, keyConsumerApplicationID)
@@ -6198,7 +6223,13 @@ func TestConsumerApplicationLifecycle(t *testing.T) {
 	require.NoError(t, steps.updateConsumerApplication(ctx, table))
 	require.Equal(t, http.StatusOK, publishedStatusOf(t, ctx), "an update keeps the handle the application was created with")
 	require.NoError(t, steps.readConsumerApplication(ctx))
-	require.Equal(t, "Renamed "+id, site.consumer.apps[id]["displayName"])
+	read, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, read.StatusCode)
+	var answer map[string]any
+	require.NoError(t, json.Unmarshal(read.Body, &answer))
+	require.Equal(t, id, answer["id"])
+	require.Equal(t, "Renamed "+id, answer["displayName"], "the read returns the renamed application")
 	require.ErrorContains(t, steps.updateConsumerApplication(ctx, valuesTable(t, []string{"id", "other"})), `unsupported application field "id"`)
 
 	require.NoError(t, steps.deleteConsumerApplication(ctx))
@@ -6437,9 +6468,9 @@ func TestApplicationBody(t *testing.T) {
 }
 
 func TestSendWithCredentialSendsEachStoredCredentialAsItShould(t *testing.T) {
-	var got []string
+	var got [][2]string
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got = append(got, r.Header.Get("Authorization")+r.Header.Get("Subscription-Key"))
+		got = append(got, [2]string{r.Header.Get("Authorization"), r.Header.Get("Subscription-Key")})
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -6458,8 +6489,9 @@ func TestSendWithCredentialSendsEachStoredCredentialAsItShould(t *testing.T) {
 	} {
 		require.NoError(t, steps.sendWithCredentialUntilStatus(ctx, http.MethodGet, server.URL, send.header, send.credential, http.StatusOK))
 	}
-	require.Equal(t, []string{"token-2", "token-1", "Bearer aGVhZA.Ym9keQ.c2ln", "Bearer aGVhZA.Ym9keQ.A2ln"}, got,
-		"a subscription token is sent as it is, an access token as a bearer token, and a forged one with another signature")
+	require.Equal(t, [][2]string{
+		{"", "token-2"}, {"", "token-1"}, {"Bearer aGVhZA.Ym9keQ.c2ln", ""}, {"Bearer aGVhZA.Ym9keQ.A2ln", ""},
+	}, got, "a subscription token is sent as it is in its own header, an access token as a bearer token, and a forged one with another signature")
 }
 
 func TestForgeSignatureChangesOnlyTheSignature(t *testing.T) {
@@ -6658,15 +6690,33 @@ func TestRedactSubscriptionTokensLeavesOtherAnswersAlone(t *testing.T) {
 	}
 }
 
+// fillApplicationsBefore adds n applications that the portal lists before the scenario's, which
+// match it in every field the listing sorts on ahead of the id, and returns the scenario's
+// application.
+func fillApplicationsBefore(t *testing.T, site *fakePortalSite, ctx context.Context, n int) string {
+	t.Helper()
+	id, err := requiredValue(ctx, keyConsumerApplicationID)
+	require.NoError(t, err)
+	target := site.consumer.apps[id]
+	for i := range n {
+		filler := "aaa-app-" + strconv.Itoa(1000+i)
+		site.consumer.apps[filler] = map[string]any{"id": filler, "displayName": target["displayName"], "description": target["description"]}
+	}
+	return id
+}
+
 func TestConsumerListingReadsEveryPage(t *testing.T) {
 	site, steps, ctx, _ := consumerSteps(t)
 	require.NoError(t, steps.createConsumerApplication(ctx))
-	for i := range 150 {
-		id := "aaa-app-" + strconv.Itoa(1000+i)
-		site.consumer.apps[id] = map[string]any{"id": id}
+	id := fillApplicationsBefore(t, site, ctx, 150)
+	all := make([]any, 0, len(site.consumer.apps))
+	for _, app := range site.consumer.apps {
+		all = append(all, app)
 	}
+	first := fakePage(httptest.NewRequest(http.MethodGet, "/applications?limit=100", nil), all)["list"].([]any)
+	require.NotContains(t, first, site.consumer.apps[id], "the application is past the first page")
 	require.NoError(t, steps.assertConsumerListing(ctx, "applications", "include", "synthetic application", ""),
-		"the application is past the first page")
+		"the application is found on a later page")
 	require.ErrorContains(t, steps.assertConsumerListing(ctx, "applications", "not include", "synthetic application", ""), "still include")
 	require.NoError(t, steps.deleteConsumerApplication(ctx))
 	require.NoError(t, steps.assertConsumerListing(ctx, "applications", "not include", "synthetic application", ""))
@@ -6712,10 +6762,7 @@ func TestASubscriptionOfAnotherAPIIsNotTheScenarios(t *testing.T) {
 func TestConsumerCleanupRemovesWhatItListedBeforeAPageFailed(t *testing.T) {
 	site, steps, ctx, registry := consumerSteps(t)
 	require.NoError(t, steps.createConsumerApplication(ctx))
-	for i := range 150 {
-		id := "aaa-app-" + strconv.Itoa(1000+i)
-		site.consumer.apps[id] = map[string]any{"id": id}
-	}
+	fillApplicationsBefore(t, site, ctx, 150)
 	site.consumer.failPageFrom = listPageSize
 	require.NoError(t, registry.Sweep(ctx), "the scenario's application is deleted by its handle")
 	err := consumerSession{signIn: steps.signInConsumer}.removeApplications(ctx)
@@ -6728,6 +6775,7 @@ func TestConsumerCleanupRepeatsARemovalThatGotNoAnswer(t *testing.T) {
 		"a 502 answer":         http.StatusBadGateway,
 		"a 429 answer":         http.StatusTooManyRequests,
 		"a dropped connection": 0,
+		"a connection dropped after the deletion took effect": commitThenDrop,
 	} {
 		t.Run(name, func(t *testing.T) {
 			site, steps, ctx, registry := consumerSteps(t)
@@ -6955,4 +7003,66 @@ func TestStoppingALocalGatewayThatIsNotRunningSucceeds(t *testing.T) {
 	require.NoError(t, localGatewayDeleter(ctx, cleanup.Resource{Kind: kindLocalGateway, ID: "-shgw-unknown"}))
 	require.Less(t, kindLocalGateway.Order, kindSelfHostedGateway.Order, "the local gateway stops before its registration is deleted")
 	require.Greater(t, kindLocalGateway.Order, cleanup.KindAPI.Order, "the APIs deployed to it are deleted while it still runs")
+}
+
+func TestFailedInTransitRetriesOnlyWhatAnotherAttemptCanFix(t *testing.T) {
+	dropped := &url.Error{Op: http.MethodDelete, URL: "https://portal.example/applications/a", Err: io.EOF}
+	require.True(t, failedInTransit(dropped))
+	require.True(t, failedInTransit(fmt.Errorf("httpx: reading the body of DELETE https://portal.example/applications/a: %w", io.ErrUnexpectedEOF)),
+		"an answer whose body was cut off")
+	require.True(t, failedInTransit(fmt.Errorf("read: %w", syscall.ECONNRESET)))
+	for name, cause := range map[string]error{
+		"an unknown authority":       x509.UnknownAuthorityError{},
+		"an invalid certificate":     x509.CertificateInvalidError{Reason: x509.Expired},
+		"another host's certificate": x509.HostnameError{Host: "portal.example"},
+		"a failed verification":      &tls.CertificateVerificationError{Err: errors.New("bad chain")},
+	} {
+		refused := &url.Error{Op: http.MethodDelete, URL: "https://portal.example/applications/a", Err: cause}
+		require.False(t, failedInTransit(refused), name)
+		require.False(t, failedInTransit(fmt.Errorf("httpx: DELETE: %w", refused)), name)
+	}
+	require.False(t, failedInTransit(errors.New("httpx: response body of DELETE https://portal.example/applications/a exceeds the 1048576-byte limit")),
+		"an answer over the size limit is the same the next time")
+}
+
+func TestConsumerCleanupStopsRepeatingARemovalAtItsDeadline(t *testing.T) {
+	site, steps, ctx, _ := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	id, err := requiredValue(ctx, keyConsumerApplicationID)
+	require.NoError(t, err)
+	site.consumer.failEvery = map[string]int{http.MethodDelete + " " + applicationPath(id): http.StatusBadGateway}
+
+	short, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	err = consumerSession{signIn: steps.signInConsumer}.deleteApplication(short, id)
+	require.ErrorContains(t, err, "last attempt")
+	require.ErrorContains(t, err, "-> 502", "the failure names what the last attempt got")
+}
+
+func TestTheRunnersSweepRunsAgainAfterAFailedSweep(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	site.consumer.failOnce = map[string]int{http.MethodGet + " /applications": http.StatusBadGateway}
+	site.consumer.calls = nil
+
+	require.NoError(t, registry.SweepRunner(ctx), "the second sweep lists and removes what the first could not")
+	require.Empty(t, site.consumer.apps)
+}
+
+func TestTheRunnersSweepReportsWhatStaysAfterItsLastAttempt(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	site.consumer.failEvery = map[string]int{http.MethodGet + " /applications": http.StatusBadGateway}
+	site.consumer.calls = nil
+
+	err := registry.SweepRunner(ctx)
+	require.ErrorContains(t, err, "after 3 sweeps")
+	listings := 0
+	for _, call := range site.consumer.calls {
+		if call == http.MethodGet+" /applications" {
+			listings++
+		}
+	}
+	require.Equal(t, leftoverSweepAttempts, listings, "each sweep lists the applications once")
+	require.Len(t, site.consumer.apps, 1)
 }

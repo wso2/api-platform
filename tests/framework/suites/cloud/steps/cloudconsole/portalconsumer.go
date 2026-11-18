@@ -19,11 +19,15 @@ package cloudconsole
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"syscall"
 	"time"
 
 	"github.com/cucumber/godog"
@@ -869,21 +873,33 @@ func settled(resp *httpx.Response, conflictSettles bool) bool {
 		(conflictSettles && resp.StatusCode == http.StatusConflict)
 }
 
-// remove sends one cleanup call and fails unless the answer is settled. A call that got no answer,
-// a 5xx or a 429 is repeated, since a removal that is missed leaves the item on the shared portal
-// for good; any other answer is final.
+// removalRetryWindow bounds how long one removal is repeated, so an item that stays unavailable
+// leaves the rest of the sweep its time.
+const removalRetryWindow = 20 * time.Second
+
+// leftoverSweepAttempts is how many times the runner's sweep of a consumer's portal is run while
+// it fails, each time listing what is still there.
+const leftoverSweepAttempts = 3
+
+// remove sends one cleanup call and fails unless the answer is settled. A call that got no full
+// answer, a 5xx or a 429 is repeated for up to removalRetryWindow, since a removal that is missed
+// leaves the item on the shared portal for good; any other answer is final.
 func (c consumerSession) remove(ctx context.Context, method, path string, body any, conflictSettles bool) error {
-	var failure error
+	ctx, cancel := context.WithTimeout(ctx, removalRetryWindow)
+	defer cancel()
+	var failure, transient error
 	err := retry.Await(ctx, retry.Options{Interval: 2 * time.Second},
 		func(ctx context.Context) (bool, error) {
 			resp, err := c.call(ctx, method, path, body)
 			switch {
 			case err != nil && failedInTransit(err):
+				transient = err
 				return false, retry.Transient(err)
 			case err != nil:
 				failure = err
 			case resp.StatusCode >= http.StatusInternalServerError || resp.StatusCode == http.StatusTooManyRequests:
-				return false, retry.Transient(statusError(resp))
+				transient = statusError(resp)
+				return false, retry.Transient(transient)
 			case !settled(resp, conflictSettles):
 				failure = statusError(resp)
 			}
@@ -891,16 +907,33 @@ func (c consumerSession) remove(ctx context.Context, method, path string, body a
 		},
 		func(answered bool) bool { return answered }, method+" "+path)
 	if err != nil {
+		if transient != nil {
+			return fmt.Errorf("%w (last attempt: %v)", err, transient)
+		}
 		return err
 	}
 	return failure
 }
 
-// failedInTransit reports whether err is a request that got no answer, such as one on a dropped
-// connection, rather than one that could not be built.
+// failedInTransit reports whether err is a request that got no full answer: a dropped connection,
+// or an answer whose body was cut off. A request that could not be built, a certificate the client
+// refuses, or an answer over the size limit is not, since sending it again changes nothing.
 func failedInTransit(err error) bool {
+	if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET) {
+		return true
+	}
 	var urlErr *url.Error
-	return errors.As(err, &urlErr) && urlErr.Op != "parse"
+	return errors.As(err, &urlErr) && urlErr.Op != "parse" && !certificateRefused(err)
+}
+
+// certificateRefused reports whether err is the client refusing the server's certificate.
+func certificateRefused(err error) bool {
+	var unknownAuthority x509.UnknownAuthorityError
+	var invalid x509.CertificateInvalidError
+	var hostname x509.HostnameError
+	var verification *tls.CertificateVerificationError
+	return errors.As(err, &unknownAuthority) || errors.As(err, &invalid) ||
+		errors.As(err, &hostname) || errors.As(err, &verification)
 }
 
 func (c consumerSession) deleteApplication(ctx context.Context, id string) error {
@@ -974,12 +1007,36 @@ func (c consumerSession) removeApplications(ctx context.Context) error {
 	return errors.Join(failed...)
 }
 
-// removeLeftovers empties the portal of consumer, the runner's consumer. It always signs in, because
-// the last scenario may have left a visitor's or a signed-out browser.
+// removeLeftovers empties the portal of consumer, the runner's consumer. Each sweep signs in,
+// because the last scenario may have left a visitor's or a signed-out browser, and a sweep that
+// fails is run again, up to leftoverSweepAttempts times, before the failure is reported.
 func (c consumerSession) removeLeftovers(ctx context.Context, consumer string) error {
 	if current, _, err := consumerCredentials(ctx); err != nil || current != consumer {
 		return fmt.Errorf("the portal items of consumer %q were not swept: the runner can sign in only as its latest consumer", consumer)
 	}
+	attempts := 0
+	var failed error
+	err := retry.Await(ctx, retry.Options{Interval: 2 * time.Second},
+		func(ctx context.Context) (bool, error) {
+			attempts++
+			failed = c.sweepPortal(ctx)
+			if failed == nil || attempts >= leftoverSweepAttempts {
+				return true, nil
+			}
+			return false, retry.Transient(failed)
+		},
+		func(done bool) bool { return done }, "sweeping the portal of consumer "+consumer)
+	if err != nil {
+		return err
+	}
+	if failed != nil {
+		return fmt.Errorf("the portal of consumer %q still holds items after %d sweeps: %w", consumer, attempts, failed)
+	}
+	return nil
+}
+
+// sweepPortal signs the consumer in and removes everything the consumer holds on the portal.
+func (c consumerSession) sweepPortal(ctx context.Context) error {
 	if err := c.signIn(ctx); err != nil {
 		return fmt.Errorf("signing the consumer in to clean up: %w", err)
 	}
