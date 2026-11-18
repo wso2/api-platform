@@ -68,12 +68,15 @@ if [ ! -f "${GATEWAY_DIR}/api-platform.env" ] \
   fi
   # setup.sh prints the admin password in its summary. Replace that line, so the password doesn't
   # reach the terminal or a CI log. Errors still go to stderr.
-  (cd "${GATEWAY_DIR}" && ADMIN_USERNAME=admin ADMIN_PASSWORD="$(aws secretsmanager get-secret-value --secret-id "${ADMIN_SECRET}" \
-    --query SecretString --output text)" ./scripts/setup.sh --force) \
+  # Read the password first, so that a failed read stops here instead of letting setup generate its own.
+  admin_password="$(aws secretsmanager get-secret-value --secret-id "${ADMIN_SECRET}" --query SecretString --output text)"
+  [ -n "${admin_password}" ] || { echo "Couldn't read the admin password from ${ADMIN_SECRET}." >&2; exit 1; }
+  (cd "${GATEWAY_DIR}" && ADMIN_USERNAME=admin ADMIN_PASSWORD="${admin_password}" ./scripts/setup.sh --force) \
     | awk -v secret="${ADMIN_SECRET}" '
         /admin login:/ { print "   Gateway-controller admin login:  admin (password in Secrets Manager as " secret ")"; next }
         /will not be shown again/ { next }
         { print }'
+  unset admin_password
 fi
 
 # 3. Build images with the newer guardrail policy, then add the allowlist and credentials override and

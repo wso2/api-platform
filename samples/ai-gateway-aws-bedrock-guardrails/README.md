@@ -51,12 +51,13 @@ The sample uses WSO2 AI Gateway 1.2.0, which ships `aws-bedrock-guardrail` v1.0.
 
 ## What the guardrails check
 
-Each guardrail policy reads one text value from the message body, at its `jsonPath`. The sample checks the first text block of the last message (`$.messages[-1].content[0].text`) and the first text block of the model's reply (`$.output.message.content[0].text`). The policy can't select several values at once, so the guardrails don't check:
+Each guardrail policy reads one text value from the message body, at its `jsonPath`. The sample checks the first content block of the last message (`$.messages[-1].content[0].text`) and of the model's reply (`$.output.message.content[0].text`), and that block must be text. The policy can't select several values at once, so the guardrails don't check:
 
+- The system prompt.
 - Earlier messages in a multi-turn conversation.
-- Additional content blocks in the last message or in the reply.
+- Other content blocks in the last message or in the reply.
 
-Clients that send each prompt as a single text block in the last message get full coverage. If your clients send multi-turn history or several content blocks, also apply the guardrails in the application, or call the Amazon Bedrock `ApplyGuardrail` API on the full conversation.
+If your clients send a system prompt, multi-turn history, or several content blocks, also apply the guardrails in the application, or call the Amazon Bedrock `ApplyGuardrail` API on the full conversation.
 
 ## Cost
 
