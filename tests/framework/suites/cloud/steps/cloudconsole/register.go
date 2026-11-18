@@ -64,10 +64,12 @@ const (
 	keyVersionDeploymentID  = "cloudVersionDeploymentID"
 	keyVersionAPIDefinition = "cloudVersionAPIDefinition"
 
-	keyBuildID         = "cloudBuildID"
-	keyBuildIDs        = "cloudBuildIDs"
-	keyBuildsOwner     = "cloudBuildsOwner"
-	keyBuildMetadata   = "cloudBuildMetadata"
+	keyBuildID       = "cloudBuildID"
+	keyBuildIDs      = "cloudBuildIDs"
+	keyBuildsOwner   = "cloudBuildsOwner"
+	keyBuildMetadata = "cloudBuildMetadata"
+	// keyBuildMetadataOf names the build the stored metadata was prepared with.
+	keyBuildMetadataOf = "cloudBuildMetadataBuildID"
 	keyDeployedBuildID = "cloudDeployedBuildID"
 	keyEchoBackendURL  = "cloudEchoBackendURL"
 
@@ -161,11 +163,13 @@ func (s *Steps) registerSteps(sc stepRegistrar) {
 	sc.Step(`^I submit a synthetic REST API creation request with:$`, s.submitAPICreation)
 	sc.Step(`^the cloud API response status code should be (\d+)$`, s.assertCloudResponseStatus)
 	sc.Step(`^I update the synthetic REST API with:$`, s.updateAPI)
-	sc.Step(`^I deploy the (synthetic REST API|new API version) to the active gateway$`, s.deployAPI)
+	sc.Step(`^I deploy the (synthetic REST API|new API version|synthetic GraphQL API) to the active gateway$`, s.deployAPI)
 	sc.Step(`^I redeploy the synthetic REST API to the active gateway$`, s.redeployAPI)
-	sc.Step(`^I undeploy the synthetic REST API$`, s.undeployAPI)
-	sc.Step(`^the (synthetic REST API|new API version) deployment should become (DEPLOYED|UNDEPLOYED|FAILED)$`, s.waitDeployment)
+	sc.Step(`^I undeploy the (synthetic REST API|synthetic GraphQL API)$`, s.undeployAPI)
+	sc.Step(`^I try to undeploy the synthetic REST API(?: from the environment "([^"]*)")?$`, s.tryUndeployAPI)
+	sc.Step(`^the (synthetic REST API|new API version|synthetic GraphQL API) deployment should become (DEPLOYED|UNDEPLOYED|FAILED)$`, s.waitDeployment)
 	sc.Step(`^a "([^"]*)" request to "([^"]*)" should keep returning (\d+) until the redeployment is DEPLOYED$`, s.keepServingUntilDeployed)
+	sc.Step(`^a "([^"]*)" request to "([^"]*)" should keep returning (\d+) for (\d+) seconds$`, s.keepReturningFor)
 	sc.Step(`^I create an API key for the synthetic REST API$`, s.createAPIKey)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with header "([^"]*)" set to the (API key|previous API key|subscription token|previous subscription token|access token|access token with a forged signature) until status (\d+)$`, s.sendWithCredentialUntilStatus)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, s.sendUntilStatus)
@@ -174,7 +178,10 @@ func (s *Steps) registerSteps(sc stepRegistrar) {
 	sc.Step(`^the synthetic REST API should eventually be absent$`, s.verifyAPIDeleted)
 
 	s.registerIdentitySteps(sc)
+	s.registerAPIDefinitionSteps(sc)
 	s.registerDeploymentSteps(sc)
+	s.registerBuildSteps(sc)
+	s.registerGraphQLSteps(sc)
 	s.registerGatewaySteps(sc)
 	s.registerGatewayConfigSteps(sc)
 	s.registerPromotionSteps(sc)
@@ -208,7 +215,7 @@ func (s *Steps) registerIdentitySteps(sc stepRegistrar) {
 	sc.Step(`^I send a "([^"]*)" request to the APIP cloud path "([^"]*)" bearing an expired console token$`, s.sendWithExpiredToken)
 	sc.Step(`^the cloud API error response should not expose internal detail$`, s.assertNoInternalDetail)
 	sc.Step(`^the cloud API response status code should be a client error$`, s.assertCloudResponseClientError)
-	sc.Step(`^the cloud API response body should contain "([^"]*)"$`, s.assertCloudResponseContains)
+	sc.Step(`^the cloud API response body should (contain|not contain) "([^"]*)"$`, s.assertCloudResponseContains)
 	sc.Step(`^the cloud API error code should be "([^"]*)"$`, s.assertCloudErrorCode)
 }
 
@@ -318,6 +325,9 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 		return err
 	}
 	if err := reg.RegisterDeleter(cleanup.KindGraphQLAPI, cloudDeleter(topo, client, "/graphql-apis")); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(kindGraphQLAPIKey, cloudRequestDeleter(topo, client, revokeGraphQLKeyRequest)); err != nil {
 		return err
 	}
 	if err := reg.RegisterDeleter(cleanup.KindSubscriptionPlan, cloudDeleter(topo, client, "/subscription-plans")); err != nil {

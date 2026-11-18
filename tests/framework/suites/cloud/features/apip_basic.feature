@@ -140,3 +140,199 @@ Feature: APIP cloud REST API lifecycle
     Then a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" should keep returning 200 until the redeployment is DEPLOYED
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/2" until status 200
     And the synthetic REST API data-plane response should contain post 2
+
+  @ID_APIP_BASIC_010
+  Scenario: An API imported from an OpenAPI file has the definition's operations and stored definition, and the gateway serves them
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    When I import a synthetic REST API from the spec fixture "petstore-v1.yaml"
+    Then the synthetic REST API should have the operations of the spec fixture "petstore-v1.yaml"
+    And the stored definition of the synthetic REST API should be the spec fixture "petstore-v1.yaml"
+    When I deploy the synthetic REST API to the active gateway
+    Then the synthetic REST API deployment should become DEPLOYED
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/pets/42" until status 200
+    And the echo backend should have received a request for "/pets/42"
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/store/orders" until status 404
+
+  @ID_APIP_BASIC_011
+  Scenario: A second version imported under the same name keeps its own operations and definition
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    When I import a synthetic REST API from the spec fixture "petstore-v1.yaml"
+    And I import a new version "2.0.0" of the synthetic REST API from the spec fixture "inventory.yaml"
+    Then the new API version should have the synthetic REST API's display name and the version "2.0.0"
+    And the synthetic REST API should have the operations of the spec fixture "petstore-v1.yaml"
+    And the new API version should have the operations of the spec fixture "inventory.yaml"
+    And the stored definition of the synthetic REST API should be the spec fixture "petstore-v1.yaml"
+    And the stored definition of the new API version should be the spec fixture "inventory.yaml"
+
+  @ID_APIP_BASIC_012
+  Scenario: Deleting an imported API removes its definition, and the same API can be imported again with another definition
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    When I import a synthetic REST API from the spec fixture "petstore-v1.yaml"
+    Then the stored definition of the synthetic REST API should be the spec fixture "petstore-v1.yaml"
+    When I delete the synthetic REST API
+    Then the synthetic REST API should eventually be absent
+    And the synthetic REST API should have no stored definition
+    When I import the deleted synthetic REST API again from the spec fixture "inventory.yaml"
+    Then the synthetic REST API should have the operations of the spec fixture "inventory.yaml"
+    And the stored definition of the synthetic REST API should be the spec fixture "inventory.yaml"
+
+  @ID_APIP_BASIC_013 @type:negative
+  Scenario: Importing with both a file and a URL, or with neither, is refused and creates nothing
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And an echo backend is available for deployment overrides
+    When I submit a synthetic REST API import with:
+      | file | @spec:petstore-v1.yaml       |
+      | url  | ${CTX:cloudEchoBackendURL} |
+    Then the cloud API response status code should be 400
+    And the cloud API response body should contain "either"
+    And the submitted synthetic REST API should not exist
+    When I submit a synthetic REST API import with:
+      | description | Neither a file nor a URL |
+    Then the cloud API response status code should be 400
+    And the cloud API response body should contain "either"
+    And the submitted synthetic REST API should not exist
+    When I submit a synthetic REST API import with:
+      | file | @spec:petstore-v1.yaml |
+    Then the cloud API response status code should be 201
+    And the submitted synthetic REST API should exist
+
+  @ID_APIP_BASIC_014 @type:negative
+  Scenario Outline: Importing a file that is not a usable OpenAPI 3.x definition is refused with its reason and creates nothing
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    When I submit a synthetic REST API import with:
+      | file | @spec:<fixture> |
+    Then the cloud API response status code should be 400
+    And the cloud API response body should contain "<reason>"
+    And the submitted synthetic REST API should not exist
+    When I submit a synthetic REST API import with:
+      | file | @spec:petstore-v1.yaml |
+    Then the cloud API response status code should be 201
+    And the submitted synthetic REST API should exist
+
+    Examples:
+      | fixture          | reason                     |
+      | empty-paths.yaml | at least one operation     |
+      | invalid.yaml     | get.responses              |
+      | swagger2.yaml    | Swagger 2.x is not allowed |
+
+  # 5242880 bytes (5 MiB) is the platform's default definition size limit.
+  @ID_APIP_BASIC_015 @type:boundary
+  Scenario: A definition over the size limit is refused as too large and creates nothing
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    When I submit a synthetic REST API import with:
+      | file | @generated-spec:5242881 |
+    Then the cloud API response status code should be 413
+    And the cloud API error code should be "PAYLOAD_TOO_LARGE"
+    And the submitted synthetic REST API should not exist
+    When I submit a synthetic REST API import with:
+      | file | @spec:petstore-v1.yaml |
+    Then the cloud API response status code should be 201
+    And the submitted synthetic REST API should exist
+
+  @ID_APIP_BASIC_016 @type:negative
+  Scenario: Importing from the cloud metadata address or a file URL is refused and creates nothing
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And an echo backend is available for deployment overrides
+    When I submit a synthetic REST API import with:
+      | url | http://169.254.169.254/latest/meta-data/ |
+    Then the cloud API response status code should be 400
+    And the cloud API error code should be "DESTINATION_NOT_ALLOWED"
+    And the cloud API response body should not contain "169.254"
+    And the submitted synthetic REST API should not exist
+    When I submit a synthetic REST API import with:
+      | url | file:///etc/passwd |
+    Then the cloud API response status code should be 400
+    And the cloud API response body should contain "failed to fetch OpenAPI spec from the provided URL"
+    And the cloud API response body should not contain "/etc/passwd"
+    And the submitted synthetic REST API should not exist
+    When I submit a synthetic REST API import with:
+      | url | ${CTX:cloudEchoBackendURL} |
+    Then the cloud API response status code should be 400
+    And the cloud API response body should not contain "failed to fetch"
+    And the submitted synthetic REST API should not exist
+    When I submit a synthetic REST API import with:
+      | file | @spec:petstore-v1.yaml |
+    Then the cloud API response status code should be 201
+    And the submitted synthetic REST API should exist
+
+  @ID_APIP_BASIC_017
+  Scenario: A new definition adds and removes operations, an operation it keeps keeps its policy, and a redeploy serves the result
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    When I import a synthetic REST API from the spec fixture "petstore-v1.yaml"
+    And I add a header policy to the "listPets" operation of the synthetic REST API
+    And I deploy the synthetic REST API to the active gateway
+    Then the synthetic REST API deployment should become DEPLOYED
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/pets" until status 200
+    And the echoed request should carry the header policy's header
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/store/inventory" until status 200
+    When I replace the definition of the synthetic REST API with the spec fixture "petstore-v2.yaml"
+    Then the synthetic REST API should have the operations of the spec fixture "petstore-v2.yaml"
+    And the "listPets" operation of the synthetic REST API should keep the header policy
+    And the stored definition of the synthetic REST API should be the spec fixture "petstore-v2.yaml"
+    When I redeploy the synthetic REST API to the active gateway
+    Then the synthetic REST API deployment should become DEPLOYED
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/pets/42/photos" until status 200
+    And the echo backend should have received a request for "/pets/42/photos"
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/store/inventory" until status 404
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/pets" until status 200
+    And the echoed request should carry the header policy's header
+
+  @ID_APIP_BASIC_018
+  Scenario: A definition that renames an operation's path gives the renamed operation no policy, and it is served without it
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    When I import a synthetic REST API from the spec fixture "petstore-v1.yaml"
+    And I add a header policy to the "listPets" operation of the synthetic REST API
+    And I deploy the synthetic REST API to the active gateway
+    Then the synthetic REST API deployment should become DEPLOYED
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/pets" until status 200
+    And the echoed request should carry the header policy's header
+    When I replace the definition of the synthetic REST API with the spec fixture "petstore-renamed.yaml"
+    Then the synthetic REST API should have the operations of the spec fixture "petstore-renamed.yaml"
+    And the "listAnimals" operation of the synthetic REST API should not have the header policy
+    When I redeploy the synthetic REST API to the active gateway
+    Then the synthetic REST API deployment should become DEPLOYED
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/animals" until status 200
+    And the echo backend should have received a request for "/animals"
+    And the echoed request should not carry the header policy's header
+
+  @ID_APIP_BASIC_019
+  Scenario: Validating an invalid OpenAPI file lists its errors and returns its content, and a valid file has none
+    Given I obtain an APIP cloud console token
+    When I validate the spec fixture "invalid.yaml"
+    Then the OpenAPI validation should list the errors and return the definition
+    When I validate the spec fixture "petstore-v1.yaml"
+    Then the OpenAPI validation should find no errors
+
+  @ID_APIP_BASIC_020
+  Scenario: A changed context and version are kept, and a redeploy serves the API at the new context and no longer at the old one
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    When I create a synthetic REST API in the default project
+    And I deploy the synthetic REST API to the active gateway
+    Then the synthetic REST API deployment should become DEPLOYED
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
+    When I update the synthetic REST API with:
+      | context | /${CTX:cloudAPIID}/v2 |
+      | version | 2.0.0                 |
+    And I read the synthetic REST API
+    Then the cloud API response should report:
+      | context | /${CTX:cloudAPIID}/v2 |
+      | version | 2.0.0                 |
+    When I redeploy the synthetic REST API to the active gateway
+    Then the synthetic REST API deployment should become DEPLOYED
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v2/posts/1" until status 200
+    And the synthetic REST API data-plane response should contain post 1
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 404

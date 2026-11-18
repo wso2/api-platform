@@ -79,13 +79,20 @@ var deploymentRequestKeys = map[string]bool{
 	"buildId": true, "fromEnvironment": true, "parameters": true,
 }
 
-// apiScopePath is the project-and-API prefix of the cloud-extension build and deployment routes.
+// apiScopePath is the project-and-API prefix of the cloud-extension build and deployment routes
+// for the synthetic REST API.
 func apiScopePath(ctx context.Context) (string, error) {
+	return refScopePath(ctx, primaryAPI)
+}
+
+// refScopePath is the project-and-API prefix of the build and deployment routes for the API a ref
+// points at. A route under it still needs the ref's kind.
+func refScopePath(ctx context.Context, ref apiRef) (string, error) {
 	projectID, err := requiredValue(ctx, keyProjectID)
 	if err != nil {
 		return "", err
 	}
-	apiID, err := requiredValue(ctx, keyAPIID)
+	apiID, err := requiredValue(ctx, ref.id)
 	if err != nil {
 		return "", err
 	}
@@ -101,23 +108,73 @@ func optionalValue(ctx context.Context, key string) string {
 	return strings.TrimSpace(value)
 }
 
-// ownBuildState drops the builds a previous scenario recorded. Scenario state lives as long as the
-// runner and a build id is a day and an index that is only unique within one API, so builds
-// recorded for another API must not be mistaken for this API's.
+// ownBuildState drops the builds a previous scenario recorded for the synthetic REST API.
 func ownBuildState(ctx context.Context) error {
-	apiID, err := requiredValue(ctx, keyAPIID)
+	return ownBuildsOf(ctx, primaryAPI, keyBuildID, keyBuildMetadata, keyBuildMetadataOf)
+}
+
+// ownBuildsOf drops the builds, and the related keys, that the scenario state holds for an API
+// other than the one a ref points at now. Scenario state lives as long as the runner and a build
+// id is a day and an index that is only unique within one API, so builds recorded for another API
+// must not be mistaken for this API's.
+func ownBuildsOf(ctx context.Context, ref apiRef, related ...string) error {
+	apiID, err := requiredValue(ctx, ref.id)
 	if err != nil {
 		return err
 	}
-	if optionalValue(ctx, keyBuildsOwner) == apiID {
+	if optionalValue(ctx, ref.buildsOwner) == apiID {
 		return nil
 	}
-	for _, key := range []string{keyBuildIDs, keyBuildID, keyBuildMetadata} {
+	for _, key := range append([]string{ref.builds}, related...) {
 		if err := tcontext.Set(ctx, key, ""); err != nil {
 			return err
 		}
 	}
-	return tcontext.Set(ctx, keyBuildsOwner, apiID)
+	return tcontext.Set(ctx, ref.buildsOwner, apiID)
+}
+
+// ownRefBuilds drops the builds the scenario state holds for an API other than the one a ref
+// points at, with the related keys of the synthetic REST API's builds.
+func ownRefBuilds(ctx context.Context, ref apiRef) error {
+	if ref.builds == primaryAPI.builds {
+		return ownBuildState(ctx)
+	}
+	return ownBuildsOf(ctx, ref)
+}
+
+// appendBuild adds a build to the builds the scenario saw for the API a ref points at.
+func appendBuild(ctx context.Context, ref apiRef, buildID string) error {
+	if err := ownRefBuilds(ctx, ref); err != nil {
+		return err
+	}
+	if seen := optionalValue(ctx, ref.builds); seen != "" {
+		buildID = seen + "," + buildID
+	}
+	return tcontext.Set(ctx, ref.builds, buildID)
+}
+
+// seenBuilds lists the builds the scenario saw for the API a ref points at, oldest first.
+func seenBuilds(ctx context.Context, ref apiRef) ([]string, error) {
+	if err := ownRefBuilds(ctx, ref); err != nil {
+		return nil, err
+	}
+	seen := optionalValue(ctx, ref.builds)
+	if seen == "" {
+		return nil, nil
+	}
+	return strings.Split(seen, ","), nil
+}
+
+// seenBuild is the nth build, counted from 1, that the scenario saw for the API a ref points at.
+func seenBuild(ctx context.Context, ref apiRef, n int) (string, error) {
+	builds, err := seenBuilds(ctx, ref)
+	if err != nil {
+		return "", err
+	}
+	if n < 1 || n > len(builds) {
+		return "", fmt.Errorf("build %d was not seen; the scenario has seen %d builds", n, len(builds))
+	}
+	return builds[n-1], nil
 }
 
 // prepareBuild prepares a build of the synthetic REST API, optionally recording metadata with it.
@@ -167,6 +224,9 @@ func (s *Steps) prepareBuild(ctx context.Context, table *godog.Table) error {
 	if err := tcontext.Set(ctx, keyBuildMetadata, encoded); err != nil {
 		return err
 	}
+	if err := tcontext.Set(ctx, keyBuildMetadataOf, buildID); err != nil {
+		return err
+	}
 	if err := tcontext.Set(ctx, keyBuildID, buildID); err != nil {
 		return err
 	}
@@ -176,8 +236,11 @@ func (s *Steps) prepareBuild(ctx context.Context, table *godog.Table) error {
 	return tcontext.Set(ctx, keyBuildIDs, buildID)
 }
 
-// latestPreparedBuild is the most recently prepared build of the scenario.
+// latestPreparedBuild is the most recently prepared build of the scenario's API.
 func latestPreparedBuild(ctx context.Context) (string, error) {
+	if err := ownBuildState(ctx); err != nil {
+		return "", err
+	}
 	prepared, err := requiredValue(ctx, keyBuildIDs)
 	if err != nil {
 		return "", fmt.Errorf("no build has been prepared: %w", err)
@@ -245,18 +308,26 @@ func (s *Steps) awaitBuilds(ctx context.Context, ids []string) ([]map[string]any
 	return listed, err
 }
 
-// assertBuildListed checks that the latest prepared build is listed with the metadata it was
-// prepared with.
+// assertBuildListed checks that the build the scenario last prepared is listed, with the metadata
+// it was prepared with. That is the build a prepare recorded, which a later deployment's build does
+// not replace; without a prepare it is the latest build the scenario saw.
 func (s *Steps) assertBuildListed(ctx context.Context) error {
-	id, err := latestPreparedBuild(ctx)
-	if err != nil {
+	if err := ownBuildState(ctx); err != nil {
 		return err
 	}
+	id := optionalValue(ctx, keyBuildMetadataOf)
+	if id == "" {
+		latest, err := latestPreparedBuild(ctx)
+		if err != nil {
+			return err
+		}
+		id = latest
+	}
+	encoded := optionalValue(ctx, keyBuildMetadata)
 	listed, err := s.awaitBuilds(ctx, []string{id})
 	if err != nil {
 		return err
 	}
-	encoded := optionalValue(ctx, keyBuildMetadata)
 	if encoded == "" {
 		return nil
 	}
