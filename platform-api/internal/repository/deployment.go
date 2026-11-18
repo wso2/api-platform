@@ -587,6 +587,27 @@ func (r *DeploymentRepo) UpdateStatusWithPerformedAtGuard(artifactUUID, orgUUID,
 	return result.RowsAffected()
 }
 
+// RecoverTimedOutStatus moves a deployment to newStatus and clears its status
+// reason, but only while the timeout job's FAILED/DEPLOYMENT_TIMEOUT is still the
+// row's state, deploymentID and performed_at match, and newStatus is what the operation was
+// driving towards (status_desired). Any other failure, a newer operation
+// (re-stamped performed_at) or a mismatched action leaves the row untouched.
+// Returns the number of rows updated, 0 when nothing qualified.
+func (r *DeploymentRepo) RecoverTimedOutStatus(artifactUUID, orgUUID, gatewayID, deploymentID string, newStatus model.DeploymentStatus, performedAt time.Time) (int64, error) {
+	result, err := r.db.Exec(r.db.Rebind(`
+		UPDATE deployment_status
+		SET status = ?, status_reason = NULL, updated_at = ?
+		WHERE artifact_uuid = ? AND organization_uuid = ? AND gateway_uuid = ?
+		  AND deployment_uuid = ? AND performed_at = ?
+		  AND status = ? AND status_reason = ? AND status_desired = ?
+	`), newStatus, time.Now().UTC(), artifactUUID, orgUUID, gatewayID, deploymentID, performedAt,
+		model.DeploymentStatusFailed, model.DeploymentErrorTimeout, newStatus)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 // GetStaleTransitionalStatuses finds deployment_status rows stuck in DEPLOYING/UNDEPLOYING
 // for longer than the given timeout duration.
 // FailCurrentDeployment sets the status row of an artifact on a gateway to
