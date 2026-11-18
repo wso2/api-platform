@@ -15,7 +15,9 @@
 # Refs are feature paths relative to tests/framework plus the exact scenario name.
 #
 # The UI layer is exempt for every entry: the AuthContext is gateway runtime state that no portal
-# shows. The IT scenarios read it from the traffic log and the analytics user id.
+# shows. The IT scenarios read it from the traffic log and the analytics user id. ACTX-003 covers a
+# key generated on the gateway; a key with an application needs platform-api to map it and is not
+# automated.
 code: ACTX
 title: Typed AuthContext
 scenarios:
@@ -115,8 +117,12 @@ scenarios:
       status: exempt
       reason: "The AuthContext is gateway runtime state that no portal shows."
     it:
-      status: exempt
-      reason: "Proven by gateway/system-policies/analytics/analytics_test.go TestOnResponseHeaders_PopulatesAuthMetadata and TestPopulateAuthAnalyticsMetadata_AllFieldsPopulated; the ACTX-001, ACTX-002 and ACTX-008 scenarios also check the analytics user id."
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "jwt-auth fills the AuthContext from the token's claims"
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "basic-auth fills the AuthContext with the username only"
   - id: ACTX-010
     title: "Send a request through layered auth where only one layer is authenticated with a subject; analytics walks from the latest AuthContext back through Previous and records that layer's subject."
     priority: P1
@@ -124,8 +130,10 @@ scenarios:
       status: exempt
       reason: "The AuthContext is gateway runtime state that no portal shows."
     it:
-      status: exempt
-      reason: "Proven by gateway/system-policies/analytics/analytics_test.go TestPopulateAuthAnalyticsMetadata_WalksPreviousChainToFirstAuthenticated; the ACTX-008 scenario also records the earlier layer's subject when the later one is unauthenticated."
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "A second auth policy's AuthContext wraps the first one in Previous"
   - id: ACTX-011
     title: "Send a request whose AuthContext is unauthenticated, or authenticated with an empty subject; analytics records no user id."
     priority: P1
@@ -142,8 +150,10 @@ scenarios:
       status: exempt
       reason: "The AuthContext is gateway runtime state that no portal shows."
     it:
-      status: exempt
-      reason: "Proven by gateway/system-policies/analytics/analytics_test.go TestPopulateAuthAnalyticsMetadata_NilAuthContextNoop."
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "A request to an API with no auth policy is published as anonymous"
   - id: ACTX-013
     title: "Build a gateway with a custom policy written against the old SDK, which reads or writes AuthContext as map[string]string; the build fails on the type change, and once the policy uses the struct fields it builds and runs."
     priority: P1

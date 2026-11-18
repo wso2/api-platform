@@ -330,7 +330,8 @@ blocks:
     components:
       - name: platform-gateway
         overlay: tests/framework/core/catalog/overlays/auth-context.toml
-        db: sqlite
+        db:
+          matrix: [sqlite, postgres, sqlserver]
       - name: testbench
     runners:
       - name: auth-context

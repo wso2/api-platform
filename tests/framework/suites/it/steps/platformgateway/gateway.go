@@ -1196,7 +1196,7 @@ func (g *Gateway) register(sc *godog.ScenarioContext) {
 		g.analyticsAIContextField)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should (have|not have) company id(?: "([^"]*)")?$`,
 		g.analyticsCompanyID)
-	sc.Step(`^the latest analytics event for API context "([^"]*)" with response status (\d+) should have user id "([^"]*)"$`, g.analyticsUserID)
+	sc.Step(`^the analytics event for the logged request should have user id "([^"]*)"$`, g.analyticsUserID)
 	sc.Step(`^the response should be an oob-template list$`, g.oobTemplateList)
 	sc.Step(`^the lazy resources should contain template "([^"]*)" of type "([^"]*)"$`, g.lazyTemplatePresent)
 	sc.Step(`^the lazy resources should not contain template "([^"]*)"$`, g.lazyTemplateAbsent)
@@ -2643,28 +2643,25 @@ func metadataFieldAwait(event *analyticsEvent, field string, absent bool, want s
 	}
 }
 
-// analyticsUserID checks the user id of the latest analytics event an API published with a status:
-// the subject of the request's authenticated AuthContext, or "anonymous" when it has none. It keys
-// on the API context because an event for a refused request records no operation path.
-func (g *Gateway) analyticsUserID(ctx context.Context, apiContext string, status int, want string) error {
-	resolvedContext, err := stepscommon.Expand(ctx, apiContext)
+// analyticsUserID checks the user id of the analytics event for the request whose access log line
+// a step matched last: the subject of its authenticated AuthContext, or "anonymous" when it has
+// none. The correlation id singles out that request among others for the same API.
+func (g *Gateway) analyticsUserID(ctx context.Context, want string) error {
+	correlationID, err := stepscommon.Expand(ctx, "${CTX:"+keyLoggedCorrelationID+"}")
 	if err != nil {
-		return err
+		return fmt.Errorf("no access log line matched before this step: %w", err)
 	}
 	resolved, err := stepscommon.Expand(ctx, want)
 	if err != nil {
 		return err
 	}
-	event, err := g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("API context %q with response status %d", resolvedContext, status),
-		func(event *analyticsEvent) bool {
-			return event.Metadata["apiContext"] == resolvedContext && event.Response.Status == status
-		})
+	event, err := g.latestMatchingAnalyticsEvent(ctx, fmt.Sprintf("correlation id %q", correlationID),
+		func(event *analyticsEvent) bool { return event.Metadata["correlationId"] == correlationID })
 	if err != nil {
 		return err
 	}
 	if event.UserID != resolved {
-		return fmt.Errorf("analytics event for API context %q with response status %d has user id %q, want %q",
-			resolvedContext, status, event.UserID, resolved)
+		return fmt.Errorf("analytics event for correlation id %q has user id %q, want %q", correlationID, event.UserID, resolved)
 	}
 	return nil
 }

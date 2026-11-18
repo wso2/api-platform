@@ -21,6 +21,7 @@
 # layer that is authenticated and has a subject, walking back through Previous. A traffic log line
 # is found by its API's context, which a refused request's line carries without an operation path,
 # and it lands about a second after its request, so each request's line is awaited before the next.
+# An analytics event is matched to its request by the correlation id of the line found last.
 @ACTX @auth-context
 Feature: Typed AuthContext
   As a policy author
@@ -31,7 +32,7 @@ Feature: Typed AuthContext
     Given the gateway services are running
     And I authenticate using basic auth as "admin"
 
-  @ACTX-001
+  @ACTX-001 @ACTX-009 @ACTX-014
   Scenario: jwt-auth fills the AuthContext from the token's claims
     Given I generate a unique value from "actx-jwt" and store it as "api"
     And I generate a unique API context from "/actx-jwt" and store it as "ctx"
@@ -56,9 +57,9 @@ Feature: Typed AuthContext
       | "authIssuer":"http://testbench:3001/token"   |
       | "authAudience":["test-audience"]             |
       | "authScopes":["orders:read","orders:write"]  |
-    And the latest analytics event for API context "${CTX:ctx}" with response status 200 should have user id "actx-jwt-user"
+    And the analytics event for the logged request should have user id "actx-jwt-user"
 
-  @ACTX-002
+  @ACTX-002 @ACTX-009 @ACTX-014
   Scenario: basic-auth fills the AuthContext with the username only
     Given I generate a unique value from "actx-basic" and store it as "api"
     And I generate a unique API context from "/actx-basic" and store it as "ctx"
@@ -82,12 +83,13 @@ Feature: Typed AuthContext
       | "authIssuer":""           |
       | "authAudience":[]         |
       | "authScopes":[]           |
-    And the latest analytics event for API context "${CTX:ctx}" with response status 200 should have user id "actx-user"
+    And the analytics event for the logged request should have user id "actx-user"
 
-  @ACTX-003 @known-issue
+  @ACTX-003 @ACTX-014 @known-issue
   Scenario: api-key-auth fills the AuthContext with the key's owner and credential
     Given I generate a unique value from "actx-key" and store it as "api"
     And I generate a unique API context from "/actx-key" and store it as "ctx"
+    And I generate a unique resource name from "actx-key" and store it as "keyName"
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:api}                        |
@@ -99,10 +101,11 @@ Feature: Typed AuthContext
       | spec.policies          | [{"name":"api-key-auth","version":"v1","params":{"key":"API-Key","in":"header"}}] |
     Then the response should be successful
     # A key generated on the gateway has no application, so its credential is the key's own id,
-    # which the gateway's REST API does not return: the line can only show that one is set.
+    # which the gateway's REST API does not return: the line can only show that one is set. A key
+    # with an application, whose credential is the application id, needs platform-api to map it.
     When I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:api}/api-keys" with body:
       """
-      {"name": "actx-key"}
+      {"name": "${CTX:keyName}"}
       """
     Then the response status should be 201
     And I store the JSON response field "apiKey.apiKey" as "key"
@@ -113,11 +116,12 @@ Feature: Typed AuthContext
       | "authAuthenticated":true             |
       | "authType":"apikey"                  |
       | "authSubject":"admin"                |
+      | "authCredentialId":"                 |
       | not "authCredentialId":""            |
       | "authIssuer":""                      |
       | "authAudience":[]                    |
       | "authScopes":[]                      |
-    And the latest analytics event for API context "${CTX:ctx}" with response status 200 should have user id "admin"
+    And the analytics event for the logged request should have user id "admin"
 
   # The 200 before each refusal is the positive control: the same API reports its caller once the
   # credentials are valid. For api-key-auth that report is ACTX-003, which waits on #4340.
@@ -129,6 +133,7 @@ Feature: Typed AuthContext
     And I generate a unique API context from "/actx-fail-basic" and store it as "basicCtx"
     And I generate a unique value from "actx-fail-key" and store it as "keyApi"
     And I generate a unique API context from "/actx-fail-key" and store it as "keyCtx"
+    And I generate a unique resource name from "actx-fail-key" and store it as "keyName"
     When I create API from "resources/templates/rest-api.yaml" with values:
       | apiVersion             | ${CTX:gatewaySpecVersion}         |
       | name                   | ${CTX:jwtApi}                     |
@@ -161,7 +166,7 @@ Feature: Typed AuthContext
     Then the response should be successful
     When I send a "POST" request to the "gateway-controller" service at "/rest-apis/${CTX:keyApi}/api-keys" with body:
       """
-      {"name": "actx-fail-key"}
+      {"name": "${CTX:keyName}"}
       """
     Then the response status should be 201
     And I store the JSON response field "apiKey.apiKey" as "key"
@@ -180,13 +185,14 @@ Feature: Typed AuthContext
     And the "gateway-runtime" access log since the latest request should show a line for API context "${CTX:jwtCtx}" with:
       | "authAuthenticated":false |
       | "authSubject":""          |
+    And the analytics event for the logged request should have user id "anonymous"
     When I set header "Authorization" to "Bearer not-a-jwt"
     And I send a "GET" request to "${CTX:jwtCtx}/data"
     Then the response status code should be 401
     And the "gateway-runtime" access log since the latest request should show a line for API context "${CTX:jwtCtx}" with:
       | "authAuthenticated":false |
       | "authSubject":""          |
-    And the latest analytics event for API context "${CTX:jwtCtx}" with response status 401 should have user id "anonymous"
+    And the analytics event for the logged request should have user id "anonymous"
 
     # basic-auth
     When I clear all headers
@@ -201,13 +207,14 @@ Feature: Typed AuthContext
     And the "gateway-runtime" access log since the latest request should show a line for API context "${CTX:basicCtx}" with:
       | "authAuthenticated":false |
       | "authSubject":""          |
+    And the analytics event for the logged request should have user id "anonymous"
     When I set header "Authorization" to "Basic YWN0eC11c2VyOndyb25n"
     And I send a "GET" request to "${CTX:basicCtx}/data"
     Then the response status code should be 401
     And the "gateway-runtime" access log since the latest request should show a line for API context "${CTX:basicCtx}" with:
       | "authAuthenticated":false |
       | "authSubject":""          |
-    And the latest analytics event for API context "${CTX:basicCtx}" with response status 401 should have user id "anonymous"
+    And the analytics event for the logged request should have user id "anonymous"
 
     # api-key-auth
     When I clear all headers
@@ -221,15 +228,16 @@ Feature: Typed AuthContext
     And the "gateway-runtime" access log since the latest request should show a line for API context "${CTX:keyCtx}" with:
       | "authAuthenticated":false |
       | "authSubject":""          |
+    And the analytics event for the logged request should have user id "anonymous"
     When I set header "API-Key" to "actx-not-a-valid-key-0000000000000000000"
     And I send a "GET" request to "${CTX:keyCtx}/data"
     Then the response status code should be 401
     And the "gateway-runtime" access log since the latest request should show a line for API context "${CTX:keyCtx}" with:
       | "authAuthenticated":false |
       | "authSubject":""          |
-    And the latest analytics event for API context "${CTX:keyCtx}" with response status 401 should have user id "anonymous"
+    And the analytics event for the logged request should have user id "anonymous"
 
-  @ACTX-005
+  @ACTX-005 @ACTX-014
   Scenario: mcp-auth authenticates an MCP tool call without authorizing it
     Given I generate a unique resource name from "actx-mcp-auth" and store it as "mcpName"
     And I generate a unique API version from "actx-mcp-auth" and store it as "mcpVersion"
@@ -265,7 +273,7 @@ Feature: Typed AuthContext
       | "authSubject":"test-user" |
       | "authAuthorized":false    |
 
-  @ACTX-006
+  @ACTX-006 @ACTX-014
   Scenario: mcp-authz authorizes a tool call whose token has the tool's scope
     Given I generate a unique resource name from "actx-mcp-authz" and store it as "mcpName"
     And I generate a unique API version from "actx-mcp-authz" and store it as "mcpVersion"
@@ -332,6 +340,7 @@ Feature: Typed AuthContext
       | "authAuthenticated":true |
     When I use the MCP Client to send "add" tools/call request to "${CTX:mcpContext}/mcp"
     Then the response should be successful
+    And the JSON response field "result.content[0].text" should contain "The sum of 40 and 60 is 100."
     And the "gateway-runtime" access log since the latest request should show a line for API context "${CTX:mcpContext}" with:
       | "authAuthorized":true |
     When I set header "Authorization" to "Bearer ${CTX:unscoped}"
@@ -344,8 +353,8 @@ Feature: Typed AuthContext
 
   # basic-auth reads Authorization, so jwt-auth reads its token from X-JWT. The first request
   # passes both policies; the second sends no basic credentials, which basic-auth lets through
-  # unauthenticated, so the reader walks back through Previous to the jwt-auth layer.
-  @ACTX-008
+  # unauthenticated, so analytics walks back through Previous to the jwt-auth layer (ACTX-010).
+  @ACTX-008 @ACTX-010
   Scenario: A second auth policy's AuthContext wraps the first one in Previous
     Given I generate a unique value from "actx-layered" and store it as "api"
     And I generate a unique API context from "/actx-layered" and store it as "ctx"
@@ -380,3 +389,26 @@ Feature: Typed AuthContext
       | "authIssuer":"http://testbench:3001/token" |
       | "authAudience":["test-audience"]           |
       | "authScopes":["orders:read"]               |
+    And the analytics event for the logged request should have user id "actx-jwt-user"
+
+  @ACTX-012
+  Scenario: A request to an API with no auth policy is published as anonymous
+    Given I generate a unique value from "actx-open" and store it as "api"
+    And I generate a unique API context from "/actx-open" and store it as "ctx"
+    When I create API from "resources/templates/rest-api.yaml" with values:
+      | apiVersion             | ${CTX:gatewaySpecVersion}         |
+      | name                   | ${CTX:api}                        |
+      | spec.displayName       | ACTX-Open                         |
+      | spec.version           | v1.0                              |
+      | spec.context           | ${CTX:ctx}                        |
+      | spec.upstream.main.url | http://testbench:3000             |
+      | spec.operations        | [{"method":"GET","path":"/data"}] |
+    Then the response should be successful
+    When I clear all headers
+    And I send a "GET" request to "${CTX:ctx}/data" until status 200
+    Then the "gateway-runtime" access log since the latest request should show a line for API context "${CTX:ctx}" with:
+      | "status":200              |
+      | "authAuthenticated":false |
+      | "authSubject":""          |
+      | "authType":""             |
+    And the analytics event for the logged request should have user id "anonymous"

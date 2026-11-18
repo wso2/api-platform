@@ -41,6 +41,8 @@ const (
 	keyLogCandidate   = "mtlsLogCandidate"
 	keyNotedCounters  = "mtlsNotedCounters"
 	sinceLatestPhrase = "since the latest request"
+	// keyLoggedCorrelationID holds the correlation id of the latest access log line a step matched.
+	keyLoggedCorrelationID = "loggedCorrelationId"
 )
 
 // gatewayStack is the component whose services' logs the log steps read.
@@ -246,12 +248,13 @@ func accessLogExpectations(ctx context.Context, table *godog.Table) ([]logExpect
 // expectation and contradicts it otherwise. No line for the path yet is the only tolerated
 // state.
 func observeAccessLogLine(logs, path string, expectations []logExpectation) error {
-	return observeLogLineWith(logs, `"path":"`+path+`"`, path, expectations)
+	_, err := observeLogLineWith(logs, `"path":"`+path+`"`, path, expectations)
+	return err
 }
 
-// observeLogLineWith is observeAccessLogLine for the first line carrying marker; subject names
-// what the marker identifies in its messages.
-func observeLogLineWith(logs, marker, subject string, expectations []logExpectation) error {
+// observeLogLineWith is observeAccessLogLine for the first line carrying marker, and returns the
+// line that satisfied it; subject names what the marker identifies in its messages.
+func observeLogLineWith(logs, marker, subject string, expectations []logExpectation) (string, error) {
 	for _, line := range strings.Split(logs, "\n") {
 		if !strings.Contains(line, marker) {
 			continue
@@ -263,11 +266,11 @@ func observeLogLineWith(logs, marker, subject string, expectations []logExpectat
 			}
 		}
 		if len(missing) > 0 {
-			return fmt.Errorf("the access log line for %s does not show %s: %s", subject, strings.Join(missing, " and "), line)
+			return "", fmt.Errorf("the access log line for %s does not show %s: %s", subject, strings.Join(missing, " and "), line)
 		}
-		return nil
+		return line, nil
 	}
-	return tolerated("no access log line for %s since the latest request yet", subject)
+	return "", tolerated("no access log line for %s since the latest request yet", subject)
 }
 
 func (g *Gateway) accessLogShowsLine(ctx context.Context, service, path string, table *godog.Table) error {
@@ -289,15 +292,30 @@ func (g *Gateway) logShowsLine(ctx context.Context, service, field, value string
 	if err != nil {
 		return err
 	}
-	return awaitReadState(ctx, fmt.Sprintf("waiting for the %q access log line for %s", service, resolved),
+	var line string
+	err = awaitReadState(ctx, fmt.Sprintf("waiting for the %q access log line for %s", service, resolved),
 		func(ctx context.Context) error {
 			logs, err := g.logSinceLatestRequest(ctx, service)
 			if err != nil {
 				return err
 			}
-			return observeLogLineWith(logs, `"`+field+`":"`+resolved+`"`, resolved, expectations)
+			line, err = observeLogLineWith(logs, `"`+field+`":"`+resolved+`"`, resolved, expectations)
+			return err
 		})
+	if err != nil {
+		return err
+	}
+	// The line's correlation id names its request, which is how a later analytics step finds that
+	// request's event among others for the same API.
+	if m := correlationIDField.FindStringSubmatch(line); m != nil {
+		if local, ok := tcontext.LocalOf(ctx); ok {
+			local.Set(keyLoggedCorrelationID, m[1])
+		}
+	}
+	return nil
 }
+
+var correlationIDField = regexp.MustCompile(`"correlationId":"([^"]+)"`)
 
 // ── Analytics attribution ──────────────────────────────────────────────────────
 

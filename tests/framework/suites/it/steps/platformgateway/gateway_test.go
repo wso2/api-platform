@@ -1629,16 +1629,21 @@ func TestObservabilityHelpers(t *testing.T) {
 	require.ErrorContains(t, wrong, "does not show tls")
 
 	// A refused request's traffic log line has no operation path, only its API's context.
-	refused := `{"status":401,"api":{"context":"/actx-fail"},"operation":{"method":"GET"},"properties":{"authSubject":""}}`
+	refused := `{"status":401,"correlationId":"c-1","api":{"context":"/actx-fail"},"operation":{"method":"GET"},"properties":{"authSubject":""}}`
 	empty := []logExpectation{{describe: "empty subject", shownIn: func(s string) bool { return strings.Contains(s, `"authSubject":""`) }}}
-	require.NoError(t, observeLogLineWith(refused, `"context":"/actx-fail"`, "/actx-fail", empty))
-	require.Equal(t, "tolerated", outcome(observeLogLineWith(refused, `"context":"/other"`, "/other", empty)))
+	matched, err := observeLogLineWith("noise\n"+refused, `"context":"/actx-fail"`, "/actx-fail", empty)
+	require.NoError(t, err)
+	require.Equal(t, []string{`"correlationId":"c-1"`, "c-1"}, correlationIDField.FindStringSubmatch(matched))
+	_, err = observeLogLineWith(refused, `"context":"/other"`, "/other", empty)
+	require.Equal(t, "tolerated", outcome(err))
 	var notTable godog.Table
 	require.NoError(t, json.Unmarshal([]byte(`{"rows":[{"cells":[{"value":"not \"authSubject\":\"\""}]}]}`), &notTable))
 	notEmpty, err := accessLogExpectations(context.Background(), &notTable)
 	require.NoError(t, err)
-	require.Equal(t, "fail", outcome(observeLogLineWith(refused, `"context":"/actx-fail"`, "/actx-fail", notEmpty)))
-	require.NoError(t, observeLogLineWith(`{"api":{"context":"/actx"},"properties":{"authSubject":"alice"}}`, `"context":"/actx"`, "/actx", notEmpty))
+	_, err = observeLogLineWith(refused, `"context":"/actx-fail"`, "/actx-fail", notEmpty)
+	require.Equal(t, "fail", outcome(err))
+	_, err = observeLogLineWith(`{"api":{"context":"/actx"},"properties":{"authSubject":"alice"}}`, `"context":"/actx"`, "/actx", notEmpty)
+	require.NoError(t, err)
 
 	require.NoError(t, observeCounterGrowth("policy_executions_total", `{status="denied"}`, 1, 2, 1))
 	require.Equal(t, "tolerated", outcome(observeCounterGrowth("policy_executions_total", `{status="denied"}`, 1, 1, 1)))
