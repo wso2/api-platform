@@ -26,6 +26,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/wso2/api-platform/tests/framework/core/cleanup"
 	"github.com/wso2/api-platform/tests/framework/core/util/httpx"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
 )
@@ -88,14 +89,22 @@ func newPortalBrowser(client *httpx.Client, portal *url.URL) (*portalBrowser, er
 
 // send makes one request with the cookies for its URL and keeps the cookies the answer sets.
 func (b *portalBrowser) send(ctx context.Context, method, target string, body []byte) (*httpx.Response, error) {
+	return b.sendWith(ctx, method, target, body, nil)
+}
+
+// sendWith is send with extra request headers.
+func (b *portalBrowser) sendWith(ctx context.Context, method, target string, body []byte, extra map[string]string) (*httpx.Response, error) {
 	parsed, err := url.Parse(target)
 	if err != nil {
-		return nil, fmt.Errorf("the sign-in reached a URL that does not parse: %w", err)
+		return nil, fmt.Errorf("the portal request reached a URL that does not parse: %w", err)
 	}
 	if err := requireSecureURL(parsed); err != nil {
-		return nil, fmt.Errorf("the sign-in reached an insecure URL: %w", err)
+		return nil, fmt.Errorf("the portal request reached an insecure URL: %w", err)
 	}
-	headers := map[string]string{}
+	headers := make(map[string]string, len(extra)+2)
+	for name, value := range extra {
+		headers[name] = value
+	}
 	if cookies := b.jar.Cookies(parsed); len(cookies) > 0 {
 		pairs := make([]string, 0, len(cookies))
 		for _, cookie := range cookies {
@@ -424,8 +433,16 @@ func (s *Steps) signIn(ctx context.Context, actions []flowAction) error {
 			return err
 		}
 	}
-	if _, err := redirectTarget(landed); err != nil {
+	next, err := redirectTarget(landed)
+	if err != nil {
 		return fmt.Errorf("the portal did not take the consumer's sign-in: %w", err)
+	}
+	// The callback starts a new session after the portal set the CSRF cookie of the old one, so
+	// the browser follows the redirect, as a real one does, and takes the new session's cookie.
+	if sameOrigin(next, browser.portal) {
+		if _, err := browser.send(ctx, http.MethodGet, next.String(), nil); err != nil {
+			return fmt.Errorf("opening the page the sign-in lands on: %w", err)
+		}
 	}
 	return nil
 }
@@ -477,7 +494,17 @@ func (s *Steps) signUpConsumer(ctx context.Context) error {
 	}); err != nil {
 		return err
 	}
-	return requireSignInAccepted(ctx)
+	if err := requireSignInAccepted(ctx); err != nil {
+		return err
+	}
+	// After the runner's last scenario, cleanup empties the consumer's portal of whatever a
+	// scenario's own cleanup could not remove.
+	if err := cleanup.RegisterRunner(ctx, cleanup.Resource{
+		Kind: kindConsumerLeftovers, ID: username, Actor: consumerActor, Description: "the portal items of consumer " + username,
+	}); err != nil {
+		return fmt.Errorf("registering the portal items of consumer %q for cleanup: %w", username, err)
+	}
+	return nil
 }
 
 // signInConsumer signs the runner's consumer in with its username and password.

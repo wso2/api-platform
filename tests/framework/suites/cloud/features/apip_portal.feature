@@ -765,6 +765,278 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     When I request "/api-portal/${CTX:cloudPortalOrg}/views/${CTX:cloudPortalView}/api/${CTX:cloudAPIID}/docs/specification.json" from the managed API Portal until status 200
     Then the portal answer should contain "/ping"
 
+  @ID_APIP_PORTAL_059 @layer:inherited
+  Scenario: A consumer creates an application, renames it and deletes it
+    Given I obtain an APIP cloud console token
+    And I find an active managed API Portal
+    And I sign in to the managed API Portal as the consumer
+    When the consumer creates a synthetic application on the managed API Portal
+    Then the cloud API response should report:
+      | id          | ${CTX:cloudPortalApplicationID}           |
+      | displayName | Synthetic ${CTX:cloudPortalApplicationID} |
+    And the consumer's applications on the managed API Portal should include the synthetic application
+    When the consumer updates the synthetic application on the managed API Portal with:
+      | displayName | Renamed ${CTX:cloudPortalApplicationID}     |
+      | description | Renamed by the APIP cloud integration test. |
+    Then the cloud API response status code should be 200
+    When the consumer reads the synthetic application on the managed API Portal
+    Then the cloud API response status code should be 200
+    And the cloud API response should report:
+      | id          | ${CTX:cloudPortalApplicationID}             |
+      | displayName | Renamed ${CTX:cloudPortalApplicationID}     |
+      | description | Renamed by the APIP cloud integration test. |
+    When the consumer deletes the synthetic application on the managed API Portal
+    Then the cloud API response status code should be 200
+    When the consumer reads the synthetic application on the managed API Portal
+    Then the cloud API response status code should be 404
+    And the consumer's applications on the managed API Portal should not include the synthetic application
+
+  @ID_APIP_PORTAL_060 @layer:inherited
+  Scenario: A consumer subscribes with a plan the API offers, not with one it does not offer, and only once
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create another synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    And I save a publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I publish the synthetic REST API on the managed API Portal
+    And the cloud API response status code should be 201
+    And I sign in to the managed API Portal as the consumer
+    When the consumer subscribes to the synthetic REST API on the managed API Portal with the other synthetic subscription plan
+    Then the cloud API response status code should be 400
+    When the consumer subscribes to the synthetic REST API on the managed API Portal with the synthetic subscription plan
+    Then the cloud API response status code should be 201
+    And the cloud API response should report:
+      | artifactId           | ${CTX:cloudAPIID}                        |
+      | subscriptionPlanName | Synthetic ${CTX:cloudSubscriptionPlanID} |
+      | status               | ACTIVE                                   |
+    And the consumer's subscriptions on the managed API Portal should include the synthetic subscription
+    When the consumer subscribes to the synthetic REST API on the managed API Portal with the synthetic subscription plan
+    Then the cloud API response status code should be 409
+
+  @ID_APIP_PORTAL_061 @layer:inherited
+  Scenario: A consumer moves a subscription to another plan the API offers
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create another synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    And I save a publication draft of the synthetic REST API with:
+      | subscriptionPlanIds | ["${CTX:cloudSubscriptionPlanID}", "${CTX:cloudSecondSubscriptionPlanID}"] |
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I publish the synthetic REST API on the managed API Portal
+    And the cloud API response status code should be 201
+    And I sign in to the managed API Portal as the consumer
+    And the consumer subscribes to the synthetic REST API on the managed API Portal with the synthetic subscription plan
+    And the cloud API response status code should be 201
+    When the consumer moves the synthetic subscription to the other synthetic subscription plan on the managed API Portal
+    Then the cloud API response status code should be 200
+    When the consumer reads the synthetic subscription on the managed API Portal
+    Then the cloud API response status code should be 200
+    And the cloud API response should report:
+      | subscriptionPlanName | Synthetic ${CTX:cloudSecondSubscriptionPlanID} |
+      | status               | ACTIVE                                         |
+
+  @ID_APIP_PORTAL_062 @layer:inherited
+  Scenario: A consumer suspends a subscription and resumes it
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    And I save a publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I publish the synthetic REST API on the managed API Portal
+    And the cloud API response status code should be 201
+    And I sign in to the managed API Portal as the consumer
+    And the consumer subscribes to the synthetic REST API on the managed API Portal with the synthetic subscription plan
+    And the cloud API response status code should be 201
+    When the consumer sets the synthetic subscription INACTIVE on the managed API Portal
+    Then the cloud API response status code should be 200
+    When the consumer reads the synthetic subscription on the managed API Portal
+    Then the cloud API response should report:
+      | status | INACTIVE |
+    When the consumer sets the synthetic subscription ACTIVE on the managed API Portal
+    Then the cloud API response status code should be 200
+    When the consumer reads the synthetic subscription on the managed API Portal
+    Then the cloud API response should report:
+      | status | ACTIVE |
+
+  @ID_APIP_PORTAL_063 @layer:inherited
+  Scenario: Regenerating a subscription's token replaces it
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    And I save a publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I publish the synthetic REST API on the managed API Portal
+    And the cloud API response status code should be 201
+    And I sign in to the managed API Portal as the consumer
+    And the consumer subscribes to the synthetic REST API on the managed API Portal with the synthetic subscription plan
+    And the cloud API response status code should be 201
+    When the consumer reads the synthetic subscription on the managed API Portal
+    Then the synthetic subscription's token should be unchanged
+    When the consumer regenerates the token of the synthetic subscription on the managed API Portal
+    Then the synthetic subscription's token should be replaced
+    When the consumer reads the synthetic subscription on the managed API Portal
+    Then the synthetic subscription's token should be unchanged
+
+  @ID_APIP_PORTAL_064 @layer:inherited
+  Scenario: A consumer unsubscribes, the subscription is gone, and the consumer can subscribe again
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project
+    And I save a publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I publish the synthetic REST API on the managed API Portal
+    And the cloud API response status code should be 201
+    And I sign in to the managed API Portal as the consumer
+    And the consumer subscribes to the synthetic REST API on the managed API Portal with the synthetic subscription plan
+    And the cloud API response status code should be 201
+    When the consumer reads the synthetic subscription on the managed API Portal
+    Then the cloud API response status code should be 200
+    When the consumer unsubscribes from the synthetic REST API on the managed API Portal
+    Then the cloud API response status code should be 200
+    When the consumer reads the synthetic subscription on the managed API Portal
+    Then the cloud API response status code should be 404
+    And the consumer's subscriptions on the managed API Portal should not include the synthetic subscription
+    When the consumer subscribes to the synthetic REST API on the managed API Portal with the synthetic subscription plan
+    Then the cloud API response status code should be 201
+
+  @ID_APIP_PORTAL_065 @ID_APIP_PORTAL_066 @layer:cloud-owned
+  Scenario: The gateway accepts a consumer's API key from the portal, then only its regenerated value, and none once it is revoked
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project with:
+      | policies | [{"name":"api-key-auth","version":"v1","params":{"key":"X-API-Key","in":"header"}}] |
+    And I deploy the synthetic REST API to the active gateway
+    And the synthetic REST API deployment should become DEPLOYED
+    And I save a publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I publish the synthetic REST API on the managed API Portal
+    And the cloud API response status code should be 201
+    And I sign in to the managed API Portal as the consumer
+    And the consumer subscribes to the synthetic REST API on the managed API Portal with the synthetic subscription plan
+    And the cloud API response status code should be 201
+    When the consumer generates an API key for the synthetic REST API on the managed API Portal
+    Then I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" with header "X-API-Key" set to the API key until status 200
+    And the synthetic REST API data-plane response should contain post 1
+    When the consumer regenerates the API key on the managed API Portal
+    Then I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" with header "X-API-Key" set to the API key until status 200
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" with header "X-API-Key" set to the previous API key until status 401
+    When the consumer revokes the API key on the managed API Portal
+    Then the cloud API response status code should be 204
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" with header "X-API-Key" set to the API key until status 401
+
+  @ID_APIP_PORTAL_067 @layer:inherited
+  Scenario: A consumer's API key is listed for the API and the consumer, and for an application only while associated with it
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project with:
+      | policies | [{"name":"api-key-auth","version":"v1","params":{"key":"X-API-Key","in":"header"}}] |
+    And I deploy the synthetic REST API to the active gateway
+    And the synthetic REST API deployment should become DEPLOYED
+    And I save a publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I publish the synthetic REST API on the managed API Portal
+    And the cloud API response status code should be 201
+    And I sign in to the managed API Portal as the consumer
+    And the consumer creates a synthetic application on the managed API Portal
+    When the consumer generates an API key for the synthetic REST API on the managed API Portal
+    Then the consumer's API keys for the synthetic REST API on the managed API Portal should include the API key as ACTIVE
+    And the consumer's API keys on the managed API Portal should include the API key as ACTIVE
+    And the consumer's API keys of the synthetic application on the managed API Portal should not include the API key
+    When the consumer associates the API key with the synthetic application on the managed API Portal
+    Then the cloud API response status code should be 200
+    And the consumer's API keys of the synthetic application on the managed API Portal should include the API key as ACTIVE
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" with header "X-API-Key" set to the API key until status 200
+    When the consumer dissociates the API key from the synthetic application on the managed API Portal
+    Then the cloud API response status code should be 204
+    And the consumer's API keys of the synthetic application on the managed API Portal should not include the API key
+    When the consumer revokes the API key on the managed API Portal
+    Then the cloud API response status code should be 204
+    And the consumer's API keys for the synthetic REST API on the managed API Portal should include the API key as REVOKED
+
+  @ID_APIP_PORTAL_068 @ID_APIP_PORTAL_069 @ID_APIP_PORTAL_070 @ID_APIP_PORTAL_071 @layer:cloud-owned
+  Scenario: The gateway serves an API that validates subscriptions only to the current token of an active subscription
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project with:
+      | policies | [{"name":"subscription-validation","version":"v1","params":{}}] |
+    And I deploy the synthetic REST API to the active gateway
+    And the synthetic REST API deployment should become DEPLOYED
+    And I save a publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I publish the synthetic REST API on the managed API Portal
+    And the cloud API response status code should be 201
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 403
+    And I sign in to the managed API Portal as the consumer
+    When the consumer subscribes to the synthetic REST API on the managed API Portal with the synthetic subscription plan
+    Then the cloud API response status code should be 201
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" with header "Subscription-Key" set to the subscription token until status 200
+    And the synthetic REST API data-plane response should contain post 1
+    When the consumer sets the synthetic subscription INACTIVE on the managed API Portal
+    Then the cloud API response status code should be 200
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" with header "Subscription-Key" set to the subscription token until status 403
+    When the consumer sets the synthetic subscription ACTIVE on the managed API Portal
+    Then the cloud API response status code should be 200
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" with header "Subscription-Key" set to the subscription token until status 200
+    When the consumer regenerates the token of the synthetic subscription on the managed API Portal
+    Then the synthetic subscription's token should be replaced
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" with header "Subscription-Key" set to the subscription token until status 200
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" with header "Subscription-Key" set to the previous subscription token until status 403
+    When the consumer unsubscribes from the synthetic REST API on the managed API Portal
+    Then the cloud API response status code should be 200
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" with header "Subscription-Key" set to the subscription token until status 403
+
+  @ID_APIP_PORTAL_072 @layer:cloud-owned
+  Scenario: The gateway accepts an access token issued with a consumer's OAuth2 keys from the portal, and refuses a request without one or with a forged one
+    Given I obtain an APIP cloud console token
+    And I find the default APIP project
+    And I find an active APIP gateway
+    And I find an active managed API Portal
+    And I create a synthetic subscription plan
+    And I create a synthetic REST API in the default project with:
+      | policies | [{"name":"jwt-auth","version":"v1","params":{}}] |
+    And I deploy the synthetic REST API to the active gateway
+    And the synthetic REST API deployment should become DEPLOYED
+    And I save a publication draft of the synthetic REST API
+    And I save a valid definition on the publication draft of the synthetic REST API
+    And I publish the synthetic REST API on the managed API Portal
+    And the cloud API response status code should be 201
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 401
+    And I sign in to the managed API Portal as the consumer
+    And the consumer creates a synthetic application on the managed API Portal
+    When the consumer creates OAuth2 keys on the managed API Portal
+    Then the consumer's OAuth2 keys on the managed API Portal should include the OAuth2 keys
+    And the consumer's OAuth2 keys of the synthetic application on the managed API Portal should not include the OAuth2 keys
+    When the consumer associates the OAuth2 keys with the synthetic application on the managed API Portal
+    Then the cloud API response status code should be 200
+    And the consumer's OAuth2 keys of the synthetic application on the managed API Portal should include the OAuth2 keys
+    When the consumer generates an access token with the OAuth2 keys on the managed API Portal
+    Then I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" with header "Authorization" set to the access token until status 200
+    And the synthetic REST API data-plane response should contain post 1
+    And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" with header "Authorization" set to the access token with a forged signature until status 401
+    When the consumer dissociates the OAuth2 keys from the synthetic application on the managed API Portal
+    Then the cloud API response status code should be 204
+    And the consumer's OAuth2 keys of the synthetic application on the managed API Portal should not include the OAuth2 keys
+
   # api-platform: DeleteAPI never unpublishes the API from the portal, so the page stays served.
   @known-issue
   @ID_APIP_PORTAL_043 @layer:cloud-owned
