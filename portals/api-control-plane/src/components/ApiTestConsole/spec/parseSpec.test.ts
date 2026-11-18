@@ -122,8 +122,9 @@ describe('parseConsoleSpec', () => {
       'PUT /books/{id}',
       'POST /upload',
     ]);
-    expect(op('GET /books')).toMatchObject({ group: 'Books', summary: 'List books' });
-    expect(op('GET /books/{id}')?.group).toBe('/books');
+    expect(op('GET /books')).toMatchObject({ groups: ['Books'], summary: 'List books' });
+    // No tag: Swagger UI's `default` group, not a made-up one from the path.
+    expect(op('GET /books/{id}')?.groups).toEqual(['default']);
   });
 
   it('reads parameters, and leaves out cookies the browser cannot set', () => {
@@ -291,5 +292,180 @@ describe('parseConsoleSpec', () => {
 
   it('returns nothing for a document with no paths, rather than throwing', () => {
     expect(parseConsoleSpec({})).toEqual({ operations: [], schemas: [] });
+  });
+
+  it('lists an operation under every tag it carries, once each', () => {
+    const model = parseConsoleSpec({
+      paths: {
+        '/edge/multi-tag': {
+          get: { responses: {}, tags: ['edge', 'reporting', 'params', 'edge'] },
+        },
+      },
+    });
+    expect(model.operations[0].groups).toEqual(['edge', 'reporting', 'params']);
+  });
+
+  it('puts an untagged operation under `default`, as Swagger UI does', () => {
+    const model = parseConsoleSpec({
+      paths: { '/edge/untagged/thing': { get: { responses: {} } } },
+    });
+    expect(model.operations[0].groups).toEqual(['default']);
+  });
+
+  it('keeps every named body example, and starts from the first', () => {
+    const model = parseConsoleSpec({
+      paths: {
+        '/bodies/examples': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  examples: {
+                    minimal: { summary: 'Minimal order', value: { title: 'Minimal', quantity: 1 } },
+                    bulk: { summary: 'Bulk order', value: { title: 'Bulk', quantity: 500 } },
+                    full: { value: { title: 'Full', quantity: 7 } },
+                  },
+                },
+              },
+            },
+            responses: {},
+          },
+        },
+      },
+    });
+    const option = model.operations[0].body?.options[0];
+    expect(option?.examples.map((e) => [e.name, e.summary])).toEqual([
+      ['minimal', 'Minimal order'],
+      ['bulk', 'Bulk order'],
+      ['full', ''],
+    ]);
+    expect(JSON.parse(option?.example ?? '')).toEqual({ title: 'Minimal', quantity: 1 });
+    expect(JSON.parse(option?.examples[1].text ?? '')).toEqual({ title: 'Bulk', quantity: 500 });
+  });
+
+  it('offers no example picker when there is only one example', () => {
+    const model = parseConsoleSpec({
+      paths: {
+        '/one': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { examples: { only: { value: { a: 1 } } } } },
+            },
+            responses: {},
+          },
+        },
+      },
+    });
+    expect(model.operations[0].body?.options[0].examples).toEqual([]);
+  });
+
+  describe('JSON examples', () => {
+    const bodyExample = (media: object): string | undefined =>
+      parseConsoleSpec({
+        paths: {
+          '/x': {
+            post: { requestBody: { content: { 'application/json': media } }, responses: {} },
+          },
+        },
+      }).operations[0].body?.options[0].example;
+
+    it('keeps a string example as a string when the schema declares a string', () => {
+      // `[1,2]` is the author's string here, not a serialized array.
+      expect(bodyExample({ example: '[1,2]', schema: { type: 'string' } })).toBe('"[1,2]"');
+      // With no string schema, a pre-serialized array or object is still the author's own text.
+      expect(bodyExample({ example: '[1,2]' })).toBe('[1,2]');
+    });
+
+    it('starts from the first example that carries a value, skipping an external-only one', () => {
+      const text = bodyExample({
+        examples: {
+          remote: { externalValue: 'https://example.com/a.json' },
+          inline: { value: { name: 'Dune' } },
+        },
+      });
+      expect(JSON.parse(text ?? '')).toEqual({ name: 'Dune' });
+    });
+
+    it('keeps an authored null example instead of an empty editor', () => {
+      expect(bodyExample({ schema: { example: null, nullable: true, type: 'string' } })).toBe(
+        'null',
+      );
+      expect(bodyExample({ schema: { default: null, nullable: true, type: 'string' } })).toBe(
+        'null',
+      );
+    });
+  });
+
+  it('leaves out a read-only form property, also when it is a oneOf or anyOf', () => {
+    const form = (properties: object, required: string[]) =>
+      parseConsoleSpec({
+        paths: {
+          '/f': {
+            post: {
+              requestBody: {
+                content: {
+                  'application/x-www-form-urlencoded': {
+                    schema: { properties, required, type: 'object' },
+                  },
+                },
+              },
+              responses: {},
+            },
+          },
+        },
+      }).operations[0].body?.options[0].formFields.map((f) => f.name);
+
+    expect(
+      form(
+        {
+          direct: { readOnly: true, type: 'string' },
+          composed: { oneOf: [{ type: 'string' }], readOnly: true },
+          either: { anyOf: [{ type: 'string' }], readOnly: true },
+          writable: { type: 'string' },
+        },
+        ['direct', 'composed', 'either'],
+      ),
+    ).toEqual(['writable']);
+  });
+
+  it('keeps a string example as a string for an OpenAPI 3.1 nullable string', () => {
+    const model = parseConsoleSpec({
+      paths: {
+        '/x': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': { example: '[1,2]', schema: { type: ['string', 'null'] } },
+              },
+            },
+            responses: {},
+          },
+        },
+      },
+    });
+    expect(model.operations[0].body?.options[0].example).toBe('"[1,2]"');
+  });
+
+  it('offers no example picker when `example` is also given, since that is what the body starts as', () => {
+    const model = parseConsoleSpec({
+      paths: {
+        '/x': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  example: { from: 'example' },
+                  examples: { a: { value: { n: 1 } }, b: { value: { n: 2 } } },
+                },
+              },
+            },
+            responses: {},
+          },
+        },
+      },
+    });
+    const option = model.operations[0].body?.options[0];
+    expect(JSON.parse(option?.example ?? '')).toEqual({ from: 'example' });
+    expect(option?.examples).toEqual([]);
   });
 });

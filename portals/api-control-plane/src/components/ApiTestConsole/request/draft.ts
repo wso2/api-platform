@@ -23,7 +23,16 @@ import { paramKey, type RequestDraft } from './buildRequest';
 export const initialDraft = (operation: ConsoleOperation): RequestDraft => {
   const params: Record<string, string> = {};
   operation.parameters.forEach((parameter) => {
-    if (parameter.example !== undefined) params[paramKey(parameter)] = parameter.example;
+    if (parameter.example !== undefined) {
+      params[paramKey(parameter)] = parameter.example;
+      return;
+    }
+    // A required choice has no "any" option to rest on, so it starts on its first value, as
+    // Swagger UI does.
+    if (parameter.required && parameter.type !== 'array') {
+      const first = parameter.type === 'boolean' ? 'true' : parameter.enum?.[0];
+      if (first !== undefined) params[paramKey(parameter)] = first;
+    }
   });
 
   const option = operation.body?.options[0];

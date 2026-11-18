@@ -16,10 +16,11 @@
  * under the License.
  */
 
-import { flatten, resolveRef, sampleFromSchema } from './jsonSample';
+import { flatten, isReadOnly, resolveRef, sampleFromSchema } from './jsonSample';
 import {
   CONSOLE_METHODS,
   type ConsoleBodyKind,
+  type ConsoleBodyExample,
   type ConsoleBodyOption,
   type ConsoleFormField,
   type ConsoleMethod,
@@ -165,8 +166,9 @@ export const bodyKindOf = (mediaType: string): ConsoleBodyKind => {
  * `"hello"`; but a string that already holds a JSON object or array is the author's text and
  * stays as written, which is how many documents spell a body example.
  */
-const jsonText = (value: unknown): string => {
-  if (typeof value === 'string') {
+const jsonText = (value: unknown, stringSchema = false): string => {
+  // A schema that declares a string settles it: `[1,2]` is then the string, not an array.
+  if (typeof value === 'string' && !stringSchema) {
     const trimmed = value.trim();
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
@@ -184,20 +186,57 @@ const jsonText = (value: unknown): string => {
   }
 };
 
+/** Whether the media entry's schema declares a plain string, so a string example is that string. */
+const declaresString = (spec: Json, media: Json): boolean => {
+  if (!isObject(media.schema)) return false;
+  const { type } = flatten(spec, media.schema, 0);
+  // OpenAPI 3.1 writes a nullable string as `['string', 'null']`.
+  return Array.isArray(type)
+    ? type.includes('string') && type.every((t) => t === 'string' || t === 'null')
+    : type === 'string';
+};
+
 /** An example for a media-type entry: the author's own, else one built from the schema. */
 const exampleOf = (spec: Json, media: Json, mediaType: string): string => {
   // JSON keeps the JSON form of strings and null; text and XML examples stay as written.
-  const render = bodyKindOf(mediaType) === 'json' ? jsonText : stringify;
+  const stringSchema = declaresString(spec, media);
+  const render = (value: unknown): string =>
+    bodyKindOf(mediaType) === 'json' ? jsonText(value, stringSchema) : stringify(value);
   if (media.example !== undefined) return render(media.example);
   if (isObject(media.examples)) {
+    // The first example that carries its own value; one that only points elsewhere is skipped.
     const first = Object.values(media.examples)
       .map((e) => deref(spec, e))
-      .find(isObject);
-    if (first && first.value !== undefined) return render(first.value);
+      .find((e): e is Json => isObject(e) && e.value !== undefined);
+    if (first) return render(first.value);
   }
   if (!isObject(media.schema)) return '';
+  // `null` is also the sampler's "nothing to show", so an authored `null` is told apart first.
+  const own = flatten(spec, media.schema, 0);
+  if (own.example === null || (own.example === undefined && own.default === null)) {
+    return render(null);
+  }
   const sample = sampleFromSchema(spec, media.schema);
   return sample === null || sample === undefined ? '' : render(sample);
+};
+
+/** Every named example of a media-type entry, when the document lists more than one. */
+const namedExamplesOf = (spec: Json, media: Json, mediaType: string): ConsoleBodyExample[] => {
+  // `example` wins over `examples`, so the picker would not match the body it starts from.
+  if (media.example !== undefined || !isObject(media.examples)) return [];
+  const stringSchema = declaresString(spec, media);
+  const render = (value: unknown): string =>
+    bodyKindOf(mediaType) === 'json' ? jsonText(value, stringSchema) : stringify(value);
+  const listed = Object.entries(media.examples)
+    .map(([name, raw]) => ({ name, example: deref(spec, raw) }))
+    .filter((entry): entry is { name: string; example: Json } => isObject(entry.example))
+    .filter(({ example }) => example.value !== undefined)
+    .map(({ name, example }) => ({
+      name,
+      summary: str(example.summary),
+      text: render(example.value),
+    }));
+  return listed.length > 1 ? listed : [];
 };
 
 const formFieldsOf = (spec: Json, schema: unknown): ConsoleFormField[] => {
@@ -210,7 +249,7 @@ const formFieldsOf = (spec: Json, schema: unknown): ConsoleFormField[] => {
       : [],
   );
   return Object.entries(resolved.properties)
-    .filter(([, property]) => !(isObject(property) && flatten(spec, property, 0).readOnly === true))
+    .filter(([, property]) => !isReadOnly(spec, property))
     .map(([name, property]) => {
       const detail = isObject(property) ? flatten(spec, property, 0) : {};
       const sample = sampleFromSchema(spec, property);
@@ -237,6 +276,7 @@ const bodyOptionOf = (spec: Json, mediaType: string, mediaValue: unknown): Conso
     mediaType,
     kind,
     example: isForm || kind === 'binary' ? '' : exampleOf(spec, media, mediaType),
+    examples: isForm || kind === 'binary' ? [] : namedExamplesOf(spec, media, mediaType),
     schemaName: isObject(schema) ? refName(schema.$ref) : undefined,
     fields: fieldsOf(spec, schema),
     formFields: isForm ? formFieldsOf(spec, schema) : [],
@@ -393,13 +433,15 @@ const responsesOf = (spec: Json, operation: Json): ConsoleResponseDoc[] => {
   });
 };
 
-const groupOf = (operation: Json, path: string): string => {
-  const tag = Array.isArray(operation.tags)
-    ? operation.tags.find((t) => typeof t === 'string' && t !== '')
-    : undefined;
-  if (typeof tag === 'string') return tag;
-  const segment = path.split('/').find((part) => part !== '' && !part.startsWith('{'));
-  return segment ? `/${segment}` : '/';
+/** Swagger UI's name for the group of operations that carry no tag. */
+const UNTAGGED_GROUP = 'default';
+
+/** Every tag of an operation, once each; an untagged operation belongs to `default`. */
+const groupsOf = (operation: Json): string[] => {
+  const tags = Array.isArray(operation.tags)
+    ? operation.tags.filter((t): t is string => typeof t === 'string' && t !== '')
+    : [];
+  return tags.length > 0 ? Array.from(new Set(tags)) : [UNTAGGED_GROUP];
 };
 
 const schemasOf = (spec: Json): ConsoleSchemaDoc[] => {
@@ -444,7 +486,7 @@ export const parseConsoleSpec = (spec: Json): ConsoleSpecModel => {
         path,
         summary: str(operation.summary) || `${method} ${path}`,
         description: str(operation.description),
-        group: groupOf(operation, path),
+        groups: groupsOf(operation),
         deprecated: operation.deprecated === true,
         parameters: [...shared, ...own],
         body: bodyOf(spec, operation, Array.isArray(item.parameters) ? item.parameters : []),

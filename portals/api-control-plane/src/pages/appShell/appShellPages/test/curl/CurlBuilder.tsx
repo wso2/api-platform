@@ -144,7 +144,9 @@ export function CurlBuilder({
         ? request.body.trim() === ''
           ? 0
           : 1
-        : activeRows(request.formFields).length;
+        : request.bodyMode === 'binary'
+          ? 1
+          : activeRows(request.formFields).length;
 
   /** A count badge, or nothing — a "0" badge is noise. */
   const withBadge = (label: React.ReactNode, count: number) =>
@@ -257,6 +259,7 @@ export function CurlBuilder({
 
         {tab === 'body' && (
           <BodyEditor
+            binaryFile={request.binaryFile}
             fields={request.formFields}
             mode={request.bodyMode}
             onChange={(body) => onChange({ ...request, body })}

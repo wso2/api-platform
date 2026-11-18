@@ -107,9 +107,25 @@ export const flatten = (spec: Schema, schema: Schema, depth: number): Schema => 
   );
 };
 
+/**
+ * Whether a schema is response-only. `readOnly` may sit on the wrapper of a `oneOf`/`anyOf`, which
+ * `flatten` drops when it picks a branch, so the schema's own flag is read first, then through
+ * `$ref`, a choice and `allOf`.
+ */
+export const isReadOnly = (spec: Schema, schema: unknown, depth = 0): boolean => {
+  if (!isObject(schema) || depth > MAX_DEPTH) return false;
+  if (schema.readOnly === true) return true;
+  if (typeof schema.$ref === 'string') {
+    return isReadOnly(spec, resolveRef(spec, schema.$ref), depth + 1);
+  }
+  const branch = schema.oneOf ?? schema.anyOf;
+  if (Array.isArray(branch) && branch.length > 0) return isReadOnly(spec, branch[0], depth + 1);
+  return flatten(spec, schema, depth).readOnly === true;
+};
+
 /** Whether a property is response-only, including through `$ref`/`allOf`. */
 const isResponseOnly = (spec: Schema, property: unknown, depth: number): boolean =>
-  isObject(property) && flatten(spec, property, depth).readOnly === true;
+  isReadOnly(spec, property, depth);
 
 /** A placeholder for a schema that says only what type it is. */
 const placeholderFor = (type: unknown, format: unknown): unknown => {

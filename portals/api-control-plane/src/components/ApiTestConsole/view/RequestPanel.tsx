@@ -47,6 +47,7 @@ import {
 import { Check, Copy, Lock, Plus, Send, Square, X } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl, type IntlShape } from 'react-intl';
 
+import { MarkdownView } from '@/components/MarkdownView';
 import { SegmentedControl } from '@/components/common/SegmentedControl';
 import { SecondaryText } from '@/components/common/SecondaryText';
 import { MethodBadge } from '@/components/SwaggerOperationsView/MethodBadge';
@@ -254,6 +255,18 @@ const messages = defineMessages({
     id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.requestTabs',
     defaultMessage: 'Request sections',
     description: 'Accessible label for the tabs that switch between parameters, headers and body.',
+  },
+  customBody: {
+    id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.customBody',
+    defaultMessage: 'Edited body',
+    description:
+      'Shown in the example dropdown when the request body has been edited and no longer equals any documented example.',
+  },
+  exampleLabel: {
+    id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.exampleLabel',
+    defaultMessage: 'Example',
+    description:
+      'Accessible label of the dropdown that picks one of the request body examples the API documents.',
   },
   reset: {
     id: 'apiControlPlane.components.ApiTestConsole.RequestPanel.reset',
@@ -479,9 +492,12 @@ function ParameterRow({
                 onChange={(event) => onChange(String(event.target.value))}
                 value={value}
               >
-                <MenuItem value="">
-                  <FormattedMessage {...messages.anyValue} />
-                </MenuItem>
+                {/* A required value always has a choice made, so "any" is only for optional ones. */}
+                {!parameter.required && (
+                  <MenuItem value="">
+                    <FormattedMessage {...messages.anyValue} />
+                  </MenuItem>
+                )}
                 {options.map((option) => (
                   <MenuItem key={option} value={option}>
                     {option}
@@ -817,9 +833,30 @@ function BodyTab({
     }
   }
 
+  // The picker follows what is in the draft, so it cannot disagree with the editor after the
+  // user switches operation or tab, or edits the text: it names the example the text equals.
+  const matchedExample = option.examples.find((e) => e.text === draft.bodyText);
+  // Reset returns to the example last chosen, else the one the text equals, else the first.
+  const resetExample =
+    option.examples.find((e) => e.name === draft.bodyExample) ??
+    matchedExample ??
+    option.examples[0];
+  const exampleText = resetExample?.text ?? option.example;
+
   const selectMediaType = (mediaType: string) => {
     const next = body.options.find((o) => o.mediaType === mediaType);
-    onDraft((current) => ({ ...current, bodyMediaType: mediaType, bodyText: next?.example ?? '' }));
+    onDraft((current) => ({
+      ...current,
+      bodyExample: undefined,
+      bodyMediaType: mediaType,
+      bodyText: next?.example ?? '',
+    }));
+  };
+
+  const selectExample = (name: string) => {
+    const next = option.examples.find((e) => e.name === name);
+    if (!next) return;
+    onDraft((current) => ({ ...current, bodyExample: name, bodyText: next.text }));
   };
 
   return (
@@ -853,6 +890,30 @@ function BodyTab({
               </FormControl>
             ) : (
               <Chip label={option.mediaType} size="small" variant="outlined" />
+            )}
+            {isText && option.examples.length > 1 && (
+              <FormControl size="small">
+                <FormLabel id="body-example-label" sx={visuallyHidden}>
+                  {intl.formatMessage(messages.exampleLabel)}
+                </FormLabel>
+                <Select
+                  displayEmpty
+                  labelId="body-example-label"
+                  onChange={(event) => selectExample(String(event.target.value))}
+                  renderValue={(name) =>
+                    option.examples.find((e) => e.name === name)?.summary ||
+                    String(name) ||
+                    intl.formatMessage(messages.customBody)
+                  }
+                  value={matchedExample?.name ?? ''}
+                >
+                  {option.examples.map((example) => (
+                    <MenuItem key={example.name} value={example.name}>
+                      {example.summary || example.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             )}
             {isText && option.fields.length > 0 && (
               <SegmentedControl
@@ -890,7 +951,7 @@ function BodyTab({
                 </Button>
               )}
               <Button
-                onClick={() => onDraft((current) => ({ ...current, bodyText: option.example }))}
+                onClick={() => onDraft((current) => ({ ...current, bodyText: exampleText }))}
                 size="small"
                 variant="text"
               >
@@ -1082,10 +1143,9 @@ export function RequestPanel({
                 />
               )}
             </Stack>
+            {/* Descriptions are Markdown; MarkdownView sanitizes before rendering. */}
             {operation.description !== '' && (
-              <SecondaryText variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
-                {operation.description}
-              </SecondaryText>
+              <MarkdownView allowImages={false} source={operation.description} />
             )}
           </Stack>
 

@@ -334,6 +334,8 @@ describe('buildSendRequest — body', () => {
       draft({ bodyMediaType: 'application/x-www-form-urlencoded' }),
     );
     expect(result.problems).toEqual({});
+    // The request is still built; only its body is left out.
+    expect(result.request).toBeDefined();
     expect(result.request?.body).toBeUndefined();
   });
 

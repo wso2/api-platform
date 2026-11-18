@@ -41,13 +41,16 @@ export type DisplayOptions = {
 /** Wraps arbitrary text in POSIX `sh` single quotes, so no value can end the quoting. */
 export const shellQuote = (value: string): string => `'${value.split("'").join(`'\\''`)}'`;
 
+/** curl reads a file named `-` as standard input; `./-` is the file of that name. */
+export const localFilePath = (filename: string): string => (filename === '-' ? './-' : filename);
+
 /**
  * A file part for `-F`. curl splits `name=@file` at `,` and `;` for its own options, so the
  * filename goes in double quotes, with `\` and `"` escaped as curl's form syntax asks. Shell
  * quoting alone does not protect a name such as `report,final.csv`.
  */
 export const formFileArg = (name: string, filename: string): string =>
-  `${name}=@"${filename.replace(/[\\"]/g, '\\$&')}"`;
+  `${name}=@"${localFilePath(filename).replace(/[\\"]/g, '\\$&')}"`;
 
 const queryValue = (name: string, value: string, options: DisplayOptions): string =>
   !options.reveal && options.secretQuery?.has(name) ? MASKED_VALUE : value;
@@ -84,7 +87,7 @@ const bodyFlags = (request: ConsoleSendRequest): string[] => {
           : `--form-string ${shellQuote(`${part.name}=${part.value}`)}`,
       );
     case 'binary':
-      return [`--data-binary ${shellQuote(`@${body.file.name}`)}`];
+      return [`--data-binary ${shellQuote(`@${localFilePath(body.file.name)}`)}`];
   }
 };
 
@@ -92,10 +95,11 @@ const bodyFlags = (request: ConsoleSendRequest): string[] => {
 export const toCurl = (request: ConsoleSendRequest, options: DisplayOptions): string => {
   // `-X HEAD` only renames the method; curl then waits for a body the server never sends.
   // `--head` is what makes it handle a HEAD response.
-  const methodFlag =
-    request.method === 'HEAD' ? '--head' : `-X ${shellQuote(request.method)}`;
+  const methodFlag = request.method === 'HEAD' ? '--head' : `-X ${shellQuote(request.method)}`;
+  // `--globoff`: without it curl expands `[1-2]` or `{a,b}` in the URL into several requests,
+  // while the console sends one request to the literal path.
   const lines = [
-    `curl ${methodFlag} ${shellQuote(displayUrl(request, options))}`,
+    `curl --globoff ${methodFlag} ${shellQuote(displayUrl(request, options))}`,
     ...request.headers.map(
       ([name, value]) => `-H ${shellQuote(`${name}: ${headerValue(name, value, options)}`)}`,
     ),

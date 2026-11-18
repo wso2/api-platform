@@ -154,3 +154,38 @@ describe('BodyEditor — the raw body editor', () => {
     expect(screen.queryByRole('textbox', { name: /request body/i })).not.toBeInTheDocument();
   });
 });
+
+describe('BodyEditor — a mirrored binary upload', () => {
+  it('names the file that will be uploaded', () => {
+    renderWithProviders(
+      <BodyEditor
+        binaryFile="photo.png"
+        fields={[]}
+        mode="binary"
+        onChange={vi.fn()}
+        onFieldsChange={vi.fn()}
+        onModeChange={vi.fn()}
+        onRawFormatChange={vi.fn()}
+        rawFormat="json"
+        value=""
+      />,
+    );
+
+    expect(screen.getByText(/uploads the file photo\.png/)).toBeInTheDocument();
+  });
+
+  it('names the binary mode while it is active, and leaves it for None', async () => {
+    const { user } = renderWithProviders(<Harness initialMode="binary" />);
+
+    const mode = screen.getByRole('combobox', { name: 'Body type' });
+    expect(mode).toHaveTextContent('Binary file');
+
+    await user.click(mode);
+    await user.click(screen.getByRole('option', { name: 'None' }));
+
+    expect(screen.getByRole('combobox', { name: 'Body type' })).toHaveTextContent('None');
+    // Once left, the binary mode is no longer offered.
+    await user.click(screen.getByRole('combobox', { name: 'Body type' }));
+    expect(screen.queryByRole('option', { name: 'Binary file' })).toBeNull();
+  });
+});

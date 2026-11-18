@@ -69,6 +69,14 @@ describe('createDirectTransport — what leaves the browser', () => {
     });
   });
 
+  it('writes a space in a query value as %20, as the displayed URL does, never as +', async () => {
+    await transport(request({ query: [['spaces', 'a b c']] }), live);
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'https://gw.example.com/p/order?spaces=a%20b%20c',
+    );
+  });
+
   it('refuses a request it cannot prove stays on the gateway, and sends nothing', async () => {
     for (const path of ['//evil.example.com', '/a/../../b', 'order']) {
       await expect(transport(request({ path }), live)).rejects.toThrow(

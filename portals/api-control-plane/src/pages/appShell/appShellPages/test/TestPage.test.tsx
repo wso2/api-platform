@@ -689,7 +689,7 @@ describe('TestPage — proxy or direct', () => {
     // A copied command leaves from the user's own terminal, so neither mode
     // applies to it — and the switch lives inside the console view, which stays
     // mounted (to keep its drafts) but is hidden.
-    await waitFor(() => expect(curlText()).toContain('curl -X'));
+    await waitFor(() => expect(curlText()).toContain('curl --globoff -X'));
     expect(screen.getByTestId('spec-viewer')).not.toBeVisible();
     expect(screen.queryByRole('button', { name: /Through proxy/i })).toBeNull();
     expectNoRenderLoop();

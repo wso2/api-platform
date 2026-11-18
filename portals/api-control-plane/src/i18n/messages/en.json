@@ -892,6 +892,10 @@
     "defaultMessage": "Copy request URL",
     "description": "Accessible label and tooltip of the button copying the request URL."
   },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.customBody": {
+    "defaultMessage": "Edited body",
+    "description": "Shown in the example dropdown when the request body has been edited and no longer equals any documented example."
+  },
   "apiControlPlane.components.ApiTestConsole.RequestPanel.deprecated": {
     "defaultMessage": "Deprecated",
     "description": "Badge on an operation or parameter the API marks as deprecated."
@@ -899,6 +903,10 @@
   "apiControlPlane.components.ApiTestConsole.RequestPanel.edit": {
     "defaultMessage": "Edit",
     "description": "Toggle option showing the request body editor."
+  },
+  "apiControlPlane.components.ApiTestConsole.RequestPanel.exampleLabel": {
+    "defaultMessage": "Example",
+    "description": "Accessible label of the dropdown that picks one of the request body examples the API documents."
   },
   "apiControlPlane.components.ApiTestConsole.RequestPanel.format": {
     "defaultMessage": "Format",
@@ -5518,6 +5526,14 @@
   "apiControlPlane.pages.auth.LoginPage.usernamePlaceholder": {
     "defaultMessage": "Enter your username"
   },
+  "apiControlPlane.pages.test.console.BodyEditor.binary": {
+    "defaultMessage": "Binary file",
+    "description": "Body type option shown while the body is a single file upload carried over from the console."
+  },
+  "apiControlPlane.pages.test.console.BodyEditor.binaryUpload": {
+    "defaultMessage": "The request uploads the file {name} as its whole body. Choose another body type to send something else instead.",
+    "description": "Explains a binary body carried over from the console. {name} is the file name the user chose and is not translated."
+  },
   "apiControlPlane.pages.test.console.BodyEditor.bodyLabel": {
     "defaultMessage": "Request body",
     "description": "Accessible label for the request body text area."
@@ -5691,12 +5707,16 @@
     "description": "State of the toggle when the credential is visible in the displayed command. An adjective, not a command."
   },
   "apiControlPlane.pages.test.console.CurlCommandPanel.summary": {
-    "defaultMessage": "{method} · {headerCount, plural, =0 {no headers} one {# header} other {# headers}}{bodyKind, select, json { · JSON body} xml { · XML body} text { · text body} formData { · form data} urlEncoded { · URL-encoded body} other {}}",
+    "defaultMessage": "{method} · {headerCount, plural, =0 {no headers} one {# header} other {# headers}}{bodyKind, select, json { · JSON body} xml { · XML body} text { · text body} formData { · form data} urlEncoded { · URL-encoded body} binary { · binary body} other {}}",
     "description": "One-line description of the command. {method} is an HTTP verb and is not translated. {bodyKind} selects how the body is encoded, or \"none\" for no body."
   },
   "apiControlPlane.pages.test.console.CurlCommandPanel.title": {
     "defaultMessage": "cURL command",
     "description": "Heading of the generated command block. A noun."
+  },
+  "apiControlPlane.pages.test.console.CurlCommandPanel.unsupportedFile": {
+    "defaultMessage": "A cURL command cannot name the file “{name}” in a URL-encoded body, because its name contains “=”. Rename the file, or send the request from the console instead.",
+    "description": "Shown in place of the cURL command when it could not be written correctly. {name} is the file name the user chose and is not translated."
   },
   "apiControlPlane.pages.test.console.ExecuteModeSwitch.callModeLabel": {
     "defaultMessage": "Send requests through the proxy or directly",

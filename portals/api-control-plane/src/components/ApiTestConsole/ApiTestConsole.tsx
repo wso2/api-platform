@@ -16,7 +16,15 @@
  * under the License.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react';
 import { Alert, Card, CardContent, Grid, Stack } from '@wso2/oxygen-ui';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
@@ -158,7 +166,9 @@ export function ApiTestConsole({
   const abort = useRef<AbortController | undefined>(undefined);
   // The definition the latest render shows; a send compares it with the one it began under.
   const currentModel = useRef(model);
-  useEffect(() => {
+  // A layout effect, so the new definition is recorded during the commit, before any promise
+  // continuation of a send from the old one can run and see the old definition as current.
+  useLayoutEffect(() => {
     currentModel.current = model;
     // A different definition makes what is in flight stale: stop it, and drop its answer.
     return () => abort.current?.abort();
@@ -256,15 +266,16 @@ export function ApiTestConsole({
 
     try {
       const response = await transport(result.request, controller.signal);
-      // An answer for a definition that has since changed must not land on a same-key operation.
-      if (currentModel.current !== sentModel) return;
+      // An answer for a definition that has since changed, or to a request the user cancelled,
+      // must not land on a same-key operation.
+      if (controller.signal.aborted || currentModel.current !== sentModel) return;
       setOutcomes((all) => ({ ...all, [operation.key]: { result: response, sent } }));
     } catch (error) {
       if (error instanceof ConsoleTransportError && error.aborted) {
         // The user cancelled; there is nothing to report.
         return;
       }
-      if (currentModel.current !== sentModel) return;
+      if (controller.signal.aborted || currentModel.current !== sentModel) return;
       // Only our own, already-worded messages are shown. Anything else is not
       // passed through: an unknown error's text could carry URLs or tokens.
       const message =

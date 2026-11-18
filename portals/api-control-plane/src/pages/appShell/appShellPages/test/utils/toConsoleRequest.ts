@@ -115,6 +115,6 @@ export const toConsoleRequest = (
         ),
       };
     case 'binary':
-      return { ...base, binaryFile: body.file.name };
+      return { ...base, bodyMode: 'binary', binaryFile: body.file.name };
   }
 };

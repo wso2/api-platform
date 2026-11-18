@@ -38,7 +38,6 @@ import {
 import { ChevronDown, Search } from '@wso2/oxygen-ui-icons-react';
 import { defineMessages, FormattedMessage, useIntl } from 'react-intl';
 
-import { SegmentedControl } from '@/components/common/SegmentedControl';
 import { SecondaryText } from '@/components/common/SecondaryText';
 import { MethodBadge } from '@/components/SwaggerOperationsView/MethodBadge';
 import type { ConsoleOperation, ConsoleSchemaDoc } from '../types';
@@ -136,8 +135,11 @@ export function OperationSidebar({
   );
   const groups = useMemo(() => {
     const byGroup = new Map<string, ConsoleOperation[]>();
+    // An operation with several tags is listed under each of them, as Swagger UI does.
     visible.forEach((operation) =>
-      byGroup.set(operation.group, [...(byGroup.get(operation.group) ?? []), operation]),
+      operation.groups.forEach((group) =>
+        byGroup.set(group, [...(byGroup.get(group) ?? []), operation]),
+      ),
     );
     return Array.from(byGroup.entries());
   }, [visible]);
@@ -163,16 +165,33 @@ export function OperationSidebar({
             }}
             value={search}
           />
-          <SegmentedControl
+          {/* Chips wrap as a group of their own, so a long list of methods never clips or stretches. */}
+          <Stack
             aria-label={intl.formatMessage(messages.methodFilter)}
-            onChange={onMethod}
-            options={[
+            direction="row"
+            flexWrap="wrap"
+            gap={0.75}
+            role="group"
+          >
+            {[
               { label: <FormattedMessage {...messages.all} />, value: 'all' },
               ...methods.map((value) => ({ label: value, value })),
-            ]}
-            sx={{ '& .MuiToggleButton-root': { flex: 1, px: 1 } }}
-            value={method}
-          />
+            ].map((option) => {
+              const selected = method === option.value;
+              return (
+                <Chip
+                  aria-pressed={selected}
+                  color={selected ? 'primary' : 'default'}
+                  key={option.value}
+                  label={option.label}
+                  onClick={() => onMethod(option.value)}
+                  size="small"
+                  sx={{ fontSize: 12, fontWeight: 600, letterSpacing: 0.2 }}
+                  variant={selected ? 'filled' : 'outlined'}
+                />
+              );
+            })}
+          </Stack>
         </Stack>
       </CardContent>
 

@@ -26,6 +26,7 @@ import {
   shellQuote,
   toCurl,
   toCurlScript,
+  unrepresentableFileName,
 } from './toCurl';
 import {
   HTTP_METHODS,
@@ -197,7 +198,7 @@ describe('buildRequestUrl', () => {
 
 describe('toCurl', () => {
   it('emits the method explicitly, even for GET', () => {
-    expect(toCurl(request(), { revealSecrets: true })).toContain('curl -X GET');
+    expect(toCurl(request(), { revealSecrets: true })).toContain('curl --globoff -X GET');
   });
 
   it('quotes the URL so a query string cannot be split by the shell', () => {
@@ -370,15 +371,41 @@ describe('files', () => {
     expect(out).toContain("--data-urlencode 'note=hi'");
   });
 
-  it('sends a binary upload only while no other body mode is chosen', () => {
-    expect(command({ binaryFile: 'photo.png' })).toContain("--data-binary '@photo.png'");
-    // Choosing another body mode, or editing a raw body, replaces the upload.
+  it('sends a binary upload in binary mode, and drops it when another mode is chosen', () => {
+    expect(command({ binaryFile: 'photo.png', bodyMode: 'binary' })).toContain(
+      "--data-binary '@photo.png'",
+    );
+    // Choosing None, as the editor offers, means no body at all.
+    expect(command({ binaryFile: 'photo.png', bodyMode: 'none' })).not.toContain('--data-binary');
+    // So does choosing a raw or form body, which replaces the upload.
     const raw = command({ binaryFile: 'photo.png', body: '{}', bodyMode: 'raw' });
     expect(raw).not.toContain('--data-binary');
     expect(raw).toContain("--data-raw '{}'");
     expect(
       command({ binaryFile: 'photo.png', bodyMode: 'url-encoded', formFields: [] }),
     ).not.toContain('--data-binary');
+  });
+
+  it('never lets a file named `-` be read as standard input', () => {
+    expect(command({ binaryFile: '-', bodyMode: 'binary' })).toContain("--data-binary '@./-'");
+    expect(command({ bodyMode: 'form-data', formFields: [fileRow('f', '-')] })).toContain(
+      "-F 'f=@./-'",
+    );
+  });
+
+  it('finds a file in a URL-encoded body that curl would send as the wrong field', () => {
+    const urlEncoded = (name: string) =>
+      request({ bodyMode: 'url-encoded', formFields: [fileRow('upload', name)] });
+
+    // curl splits at the first `=`, so `report=final.csv` would be literal text, not the file.
+    expect(unrepresentableFileName(urlEncoded('report=final.csv'))).toBe('report=final.csv');
+    expect(unrepresentableFileName(urlEncoded('report.csv'))).toBeUndefined();
+    // Multipart names its file with -F, which has no such problem.
+    expect(
+      unrepresentableFileName(
+        request({ bodyMode: 'form-data', formFields: [fileRow('upload', 'a=b.csv')] }),
+      ),
+    ).toBeUndefined();
   });
 });
 

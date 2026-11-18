@@ -87,9 +87,10 @@ export type KeyValueRow = {
  *
  * `form-data` is `multipart/form-data` and `url-encoded` is
  * `application/x-www-form-urlencoded`; both are edited as key/value pairs
- * rather than as text, because that is what they are on the wire.
+ * rather than as text, because that is what they are on the wire. `binary` is a single file
+ * upload mirrored from the other view; choosing any other mode, `none` included, drops it.
  */
-export const BODY_MODES = ['none', 'raw', 'form-data', 'url-encoded'] as const;
+export const BODY_MODES = ['none', 'raw', 'form-data', 'url-encoded', 'binary'] as const;
 
 export type BodyMode = (typeof BODY_MODES)[number];
 
@@ -149,6 +150,7 @@ export const hasBody = (request: ConsoleRequest): boolean => {
   if (request.bodyMode === 'form-data' || request.bodyMode === 'url-encoded') {
     return activeRows(request.formFields).length > 0;
   }
+  if (request.bodyMode === 'binary') return Boolean(request.binaryFile);
   return false;
 };
 

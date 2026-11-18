@@ -77,11 +77,22 @@ export type ConsoleFormField = ConsoleSchemaField & {
   example: string;
 };
 
+/** One named example of a request body, as listed under `examples` in the document. */
+export type ConsoleBodyExample = {
+  /** The example's key in the document. */
+  name: string;
+  /** Its `summary`, when it has one. */
+  summary: string;
+  text: string;
+};
+
 export type ConsoleBodyOption = {
   mediaType: string;
   kind: ConsoleBodyKind;
   /** Text offered as the starting point. Empty for form and binary bodies. */
   example: string;
+  /** Every named example, in document order, when the document lists more than one. */
+  examples: ConsoleBodyExample[];
   schemaName?: string;
   fields: ConsoleSchemaField[];
   formFields: ConsoleFormField[];
@@ -106,8 +117,8 @@ export type ConsoleOperation = {
   path: string;
   summary: string;
   description: string;
-  /** Grouping label: the first tag, or the first path segment. */
-  group: string;
+  /** Every tag the operation carries; `default` when it has none, as Swagger UI groups it. */
+  groups: string[];
   deprecated: boolean;
   parameters: ConsoleParameter[];
   body?: { required: boolean; options: ConsoleBodyOption[] };

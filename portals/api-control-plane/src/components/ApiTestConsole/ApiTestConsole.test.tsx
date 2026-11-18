@@ -385,29 +385,40 @@ describe('ApiTestConsole — response fidelity', () => {
       blobs.push(blob);
       return 'blob:test';
     });
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
     URL.createObjectURL = createObjectURL;
     URL.revokeObjectURL = vi.fn();
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const anchorClick = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
 
-    const { user } = renderConsole(transport);
-    await user.click(sendButton());
-    await screen.findByText(/9007199254740993/);
+    try {
+      const { user } = renderConsole(transport);
+      await user.click(sendButton());
+      await screen.findByText(/9007199254740993/);
 
-    await user.click(screen.getByRole('button', { name: 'Copy' }));
-    // user-event's own clipboard takes what the console copies.
-    const copied = await navigator.clipboard.readText();
-    expect(copied).toContain('9007199254740993');
-    expect(copied).not.toContain('9007199254740992');
+      await user.click(screen.getByRole('button', { name: 'Copy' }));
+      // user-event's own clipboard takes what the console copies.
+      const copied = await navigator.clipboard.readText();
+      expect(copied).toContain('9007199254740993');
+      expect(copied).not.toContain('9007199254740992');
 
-    await user.click(screen.getByRole('button', { name: 'Download' }));
-    await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
-    const downloaded = await new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.readAsText(blobs[0]);
-    });
-    expect(downloaded).toContain('9007199254740993');
-    expect(downloaded).not.toContain('9007199254740992');
+      await user.click(screen.getByRole('button', { name: 'Download' }));
+      await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+      const downloaded = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.readAsText(blobs[0]);
+      });
+      expect(downloaded).toContain('9007199254740993');
+      expect(downloaded).not.toContain('9007199254740992');
+    } finally {
+      // Direct assignments are not undone by Vitest's mock restoration, so put them back.
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+      anchorClick.mockRestore();
+    }
   });
 
   it('keeps the route label of the send, and shows none when it had none', async () => {
@@ -513,8 +524,13 @@ describe('ApiTestConsole — files', () => {
     // `hidden` would remove it from the tab order; the label must not be a second stop.
     expect(input).not.toHaveAttribute('hidden');
     expect(input.closest('label')).toHaveAttribute('tabindex', '-1');
-    input.focus();
-    expect(input).toHaveFocus();
+    // Focus must arrive by Tab alone, which `focus()` would not prove.
+    let reached = false;
+    for (let presses = 0; presses < 20 && !reached; presses += 1) {
+      await user.tab();
+      reached = document.activeElement === input;
+    }
+    expect(reached).toBe(true);
   });
 });
 
@@ -601,5 +617,162 @@ describe('ApiTestConsole — nested schemas', () => {
     // Only the first `address` can be opened; the one under `owner` would repeat it.
     expect(screen.queryAllByRole('button', { name: 'Show the fields of address' })).toHaveLength(0);
     expect(screen.getAllByRole('button', { name: 'Hide the fields of address' })).toHaveLength(1);
+  });
+});
+
+const SPEC_EXTRAS = {
+  paths: {
+    '/edge/multi-tag': {
+      get: { responses: {}, summary: 'Carries three tags', tags: ['edge', 'reporting', 'params'] },
+    },
+    '/edge/untagged/thing': { get: { responses: {}, summary: 'Has no tag' } },
+    '/params/status/{status}': {
+      get: {
+        parameters: [
+          {
+            in: 'path',
+            name: 'status',
+            required: true,
+            schema: { enum: ['active', 'archived'], type: 'string' },
+          },
+          { in: 'query', name: 'sort', schema: { enum: ['asc', 'desc'], type: 'string' } },
+        ],
+        responses: {},
+        summary: 'Enum parameters',
+      },
+    },
+    '/bodies/examples': {
+      post: {
+        requestBody: {
+          content: {
+            'application/json': {
+              examples: {
+                minimal: { summary: 'Minimal order', value: { title: 'Minimal' } },
+                bulk: { summary: 'Bulk order', value: { title: 'Bulk' } },
+              },
+            },
+          },
+          required: true,
+        },
+        responses: {},
+        summary: 'Named examples',
+      },
+    },
+  },
+};
+
+const renderExtras = (transport: ConsoleTransport) =>
+  renderWithProviders(
+    <ApiTestConsole baseUrl="https://gw.example.com/p" spec={SPEC_EXTRAS} transport={transport} />,
+  );
+
+describe('ApiTestConsole — cancelling', () => {
+  it('drops an answer, or an error, that arrives after the user cancelled', async () => {
+    for (const settle of ['resolve', 'reject'] as const) {
+      let finish: () => void = () => undefined;
+      // A transport that ignores the abort signal and settles later, like a slow network.
+      const transport = vi.fn<ConsoleTransport>(
+        () =>
+          new Promise<ConsoleSendResult>((resolve, reject) => {
+            finish = () => (settle === 'resolve' ? resolve(result()) : reject(new Error('boom')));
+          }),
+      );
+      const { user, unmount } = renderConsole(transport);
+
+      await user.click(sendButton());
+      await user.click(await screen.findByRole('button', { name: /^Cancel/ }));
+      finish();
+
+      // Nothing is reported for a request the user gave up on.
+      await waitFor(() => expect(sendButton()).toBeEnabled());
+      expect(screen.queryByText('200 OK')).toBeNull();
+      expect(screen.queryByText(/could not be sent/i)).toBeNull();
+      unmount();
+    }
+  });
+});
+
+describe('ApiTestConsole — Swagger parity', () => {
+  it('lists a multi-tag operation under each tag, and an untagged one under default', () => {
+    renderExtras(vi.fn());
+
+    expect(screen.getAllByRole('button', { name: /Carries three tags/ })).toHaveLength(3);
+    expect(screen.getByText('default')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Has no tag/ })).toBeInTheDocument();
+  });
+
+  it('gives a required enum no “any” option, starting on its first value', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
+    const { user } = renderExtras(transport);
+    await user.click(screen.getByRole('button', { name: /Enum parameters/ }));
+
+    // The required path enum starts on its first value; the optional query enum offers "any".
+    await user.click(screen.getByRole('combobox', { name: 'status' }));
+    expect(screen.queryByRole('option', { name: '— any —' })).toBeNull();
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['active', 'archived']);
+    await user.keyboard('{Escape}');
+
+    await user.click(screen.getByRole('combobox', { name: 'sort' }));
+    expect(screen.getByRole('option', { name: '— any —' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+
+    await user.click(sendButton());
+    expect(transport.mock.calls[0][0].path).toBe('/params/status/active');
+  });
+
+  it('lets a named body example be chosen, and sends it', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
+    const { user } = renderExtras(transport);
+    await user.click(screen.getByRole('button', { name: /Named examples/ }));
+    await user.click(screen.getByRole('tab', { name: /Body/ }));
+
+    await user.click(screen.getByRole('combobox', { name: 'Example' }));
+    await user.click(screen.getByRole('option', { name: 'Bulk order' }));
+    await user.click(sendButton());
+
+    const [sent] = transport.mock.calls[0];
+    expect(sent.body).toMatchObject({ kind: 'text' });
+    expect(JSON.parse(sent.body?.kind === 'text' ? sent.body.text : '')).toEqual({ title: 'Bulk' });
+  });
+
+  it('keeps the example dropdown in step with the body after leaving and coming back', async () => {
+    const { user } = renderExtras(vi.fn());
+    await user.click(screen.getByRole('button', { name: /Named examples/ }));
+    await user.click(screen.getByRole('tab', { name: /Body/ }));
+    await user.click(screen.getByRole('combobox', { name: 'Example' }));
+    await user.click(screen.getByRole('option', { name: 'Bulk order' }));
+
+    // Another operation, then back: the draft still holds the second example.
+    await user.click(screen.getByRole('button', { name: /Has no tag/ }));
+    await user.click(screen.getByRole('button', { name: /Named examples/ }));
+    await user.click(screen.getByRole('tab', { name: /Body/ }));
+
+    expect(screen.getByRole('combobox', { name: 'Example' })).toHaveTextContent('Bulk order');
+  });
+
+  it('resets an edited body to the example that was chosen, not the first one', async () => {
+    const { user } = renderExtras(vi.fn());
+    await user.click(screen.getByRole('button', { name: /Named examples/ }));
+    await user.click(screen.getByRole('tab', { name: /Body/ }));
+    await user.click(screen.getByRole('combobox', { name: 'Example' }));
+    await user.click(screen.getByRole('option', { name: 'Bulk order' }));
+
+    await user.type(screen.getByRole('textbox', { name: 'Request body' }), ' ');
+    expect(screen.getByRole('combobox', { name: 'Example' })).toHaveTextContent('Edited body');
+    await user.click(screen.getByRole('button', { name: 'Reset to example' }));
+
+    expect(screen.getByRole('combobox', { name: 'Example' })).toHaveTextContent('Bulk order');
+  });
+
+  it('shows an edited body as such, and resets to the example it started from', async () => {
+    const { user } = renderExtras(vi.fn());
+    await user.click(screen.getByRole('button', { name: /Named examples/ }));
+    await user.click(screen.getByRole('tab', { name: /Body/ }));
+
+    await user.type(screen.getByRole('textbox', { name: 'Request body' }), ' ');
+    expect(screen.getByRole('combobox', { name: 'Example' })).toHaveTextContent('Edited body');
+
+    await user.click(screen.getByRole('button', { name: 'Reset to example' }));
+    expect(screen.getByRole('combobox', { name: 'Example' })).toHaveTextContent('Minimal order');
   });
 });

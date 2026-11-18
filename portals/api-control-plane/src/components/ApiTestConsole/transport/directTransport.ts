@@ -83,7 +83,13 @@ export const createDirectTransport =
     if (!target) {
       throw new ConsoleTransportError(intl.formatMessage(transportMessages.invalidTarget));
     }
-    request.query.forEach(([name, value]) => target.searchParams.append(name, value));
+    // Encoded as `encodeURIComponent` does, like the URL the console displays: `searchParams`
+    // would write a space as `+`, which a `spaceDelimited` array value must not carry.
+    if (request.query.length > 0) {
+      target.search = request.query
+        .map(([name, value]) => `${encodeURIComponent(name)}=${encodeURIComponent(value)}`)
+        .join('&');
+    }
 
     const headers = new Headers();
     request.headers.forEach(([name, value]) => {

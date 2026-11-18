@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import { localFilePath } from '@/components/ApiTestConsole';
 import {
   activeRows,
   bodyKindOf,
@@ -96,20 +97,35 @@ export const curlSummary = (
   method: request.method,
 });
 
+/**
+ * The first file in a URL-encoded body that curl's `name@file` form cannot name correctly, or
+ * undefined. curl splits `--data-urlencode` at the first `=`, so a file name containing one is
+ * read as literal content under the wrong field name. No command is shown for such a request,
+ * because one that sends the wrong data is worse than none.
+ */
+export const unrepresentableFileName = (request: ConsoleRequest): string | undefined => {
+  if (request.bodyMode !== 'url-encoded') return undefined;
+  return activeRows(request.formFields).find((row) => row.file && row.value.includes('='))?.value;
+};
+
 /** curl's `-F` reads `,` and `;` as separators, so such a filename goes in double quotes. */
-const formFileRef = (filename: string): string =>
-  /[,;"\\]/.test(filename)
+const formFileRef = (name: string): string => {
+  const filename = localFilePath(name);
+  return /[,;"\\]/.test(filename)
     ? `@"${filename.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
     : `@${filename}`;
+};
 
 /**
  * Returns curl body flags, preserving raw bodies and encoding form fields
  * safely. Multipart fields use `-F` so curl generates the boundary.
  */
 const bodyFlags = (request: ConsoleRequest, options: ToCurlOptions): string[] => {
-  // A binary upload only applies while no other body mode has been chosen.
-  if (request.binaryFile && request.bodyMode === 'none')
-    return [`--data-binary ${shellQuote(`@${request.binaryFile}`)}`];
+  // A binary upload is its own mode, so choosing `none` (or any other) removes it.
+  if (request.bodyMode === 'binary')
+    return request.binaryFile
+      ? [`--data-binary ${shellQuote(`@${localFilePath(request.binaryFile)}`)}`]
+      : [];
   if (!hasBody(request)) return [];
 
   if (request.bodyMode === 'raw') {
@@ -127,7 +143,9 @@ const bodyFlags = (request: ConsoleRequest, options: ToCurlOptions): string[] =>
     }
     // `-F` cannot be mixed with `--data-urlencode`, so outside multipart a file row is curl's
     // `name@file` form: the file is read and its content encoded into the body.
-    if (field.file) return `--data-urlencode ${shellQuote(`${encodeURIComponent(name)}@${value}`)}`;
+    if (field.file) {
+      return `--data-urlencode ${shellQuote(`${encodeURIComponent(name)}@${localFilePath(value)}`)}`;
+    }
     // curl encodes the value of --data-urlencode but not the name.
     return `--data-urlencode ${shellQuote(`${encodeURIComponent(name)}=${value}`)}`;
   });
@@ -141,8 +159,10 @@ const bodyFlags = (request: ConsoleRequest, options: ToCurlOptions): string[] =>
  * command still says what it does after someone edits the URL.
  */
 export const toCurl = (request: ConsoleRequest, options: ToCurlOptions): string => {
+  // `--globoff`: without it curl expands `[1-2]` or `{a,b}` in the URL into several requests,
+  // while the console sends one request to the literal path.
   const lines = [
-    `curl -X ${request.method} \\`,
+    `curl --globoff -X ${request.method} \\`,
     `  ${shellQuote(buildRequestUrl(request, options))} \\`,
   ];
 

@@ -44,6 +44,8 @@ export type RequestDraft = {
   headers: DraftHeader[];
   bodyMediaType: string;
   bodyText: string;
+  /** The named example the body was last set from, so Reset returns to it after edits. */
+  bodyExample?: string;
   /** Text fields of a form body, by field name. */
   formValues: Record<string, string>;
   /** Chosen files, by field name, or {@link BINARY_FILE_KEY} for a binary body. */

@@ -105,16 +105,31 @@ describe('toCurl — files and HEAD', () => {
 
   it('escapes quotes and backslashes in a filename for curl, then for the shell', () => {
     expect(formFileArg('f', 'a"b\\c')).toBe('f=@"a\\"b\\\\c"');
-    expect(toCurl(upload("it's.txt"), { reveal: true })).toContain(
-      `-F 'upload=@"it'\\''s.txt"'`,
-    );
+    expect(toCurl(upload("it's.txt"), { reveal: true })).toContain(`-F 'upload=@"it'\\''s.txt"'`);
   });
 
   it('uses --head for a HEAD request, and -X for the others', () => {
     const head = toCurl({ ...request, body: undefined, method: 'HEAD' }, { reveal: true });
-    expect(head).toMatch(/^curl --head 'https:/);
+    expect(head).toMatch(/^curl --globoff --head 'https:/);
     expect(head).not.toContain('-X');
-    expect(toCurl(request, { reveal: true })).toMatch(/^curl -X 'POST'/);
+    expect(toCurl(request, { reveal: true })).toMatch(/^curl --globoff -X 'POST'/);
+  });
+
+  it('turns off URL globbing, so [1-2] or {a,b} in a path stays one literal request', () => {
+    const globbed = { ...request, body: undefined, path: '/reports/[1-2]/{a,b}' };
+    expect(toCurl(globbed, { reveal: true })).toContain("curl --globoff -X 'POST' ");
+    expect(toCurl({ ...globbed, method: 'HEAD' }, { reveal: true })).toContain(
+      'curl --globoff --head ',
+    );
+  });
+
+  it('never lets a file named `-` be read as standard input', () => {
+    expect(toCurl(upload('-'), { reveal: true })).toContain(`-F 'upload=@"./-"'`);
+    const binary: ConsoleSendRequest = {
+      ...request,
+      body: { file: new File(['x'], '-'), kind: 'binary', mediaType: 'application/octet-stream' },
+    };
+    expect(toCurl(binary, { reveal: true })).toContain(`--data-binary '@./-'`);
   });
 });
 

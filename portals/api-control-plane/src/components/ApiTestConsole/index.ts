@@ -18,7 +18,7 @@
 
 export { ApiTestConsole, downloadOpenApi, type ApiTestConsoleProps } from './ApiTestConsole';
 export { createDirectTransport } from './transport/directTransport';
-export { toCurl, displayUrl, MASKED_VALUE } from './request/display';
+export { toCurl, displayUrl, localFilePath, MASKED_VALUE } from './request/display';
 export {
   ConsoleTransportError,
   type ConsoleAutoParam,
