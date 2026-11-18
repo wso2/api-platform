@@ -528,3 +528,103 @@ func TestFetchAPIKeysByKind_AgentPathAndIssuer(t *testing.T) {
 	require.Len(t, keys, 1, "only active keys are synced")
 	assert.Equal(t, "active-key", keys[0].Name)
 }
+
+// --- single-artifact sync on create ------------------------------------------
+
+const (
+	recreatedRestID   = "0199a1b2-0000-7000-8000-00000000b001"
+	otherRestID       = "0199a1b2-0000-7000-8000-00000000b002"
+	recreatedKeyUUID  = "0199a1b2-0000-7000-8000-00000000c001"
+	otherKeyUUID      = "0199a1b2-0000-7000-8000-00000000c002"
+	recreatedKeyName  = "consumer-key"
+	recreatedKeyHash  = "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+	otherKeyHash      = "fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9"
+	restKeysForTwoAPI = `[{
+		"uuid": "` + recreatedKeyUUID + `", "name": "` + recreatedKeyName + `", "maskedApiKey": "***6e7ae",
+		"apiKeyHashes": {"sha256": "` + recreatedKeyHash + `"}, "artifactUuid": "` + recreatedRestID + `",
+		"status": "active", "createdAt": "2026-09-20T10:00:00Z", "updatedAt": "2026-09-20T10:00:00Z", "source": "external"
+	}, {
+		"uuid": "` + otherKeyUUID + `", "name": "other-key", "maskedApiKey": "***f8fb9",
+		"apiKeyHashes": {"sha256": "` + otherKeyHash + `"}, "artifactUuid": "` + otherRestID + `",
+		"status": "active", "createdAt": "2026-09-20T10:00:00Z", "updatedAt": "2026-09-20T10:00:00Z", "source": "external"
+	}]`
+)
+
+// A RestApi that is deleted and created again with the same UUID (an agent that
+// is suspended and resumed, whose RestApi is removed and re-applied) loses its
+// keys on delete. SyncAPIKeysForArtifact restores them from the control plane,
+// and only them: keys of other artifacts in the same response are left alone.
+func TestSyncAPIKeysForArtifact_RestoresKeysOfRecreatedRestAPI(t *testing.T) {
+	h := newAgentEventsHarness(t)
+	srv := newKeyBackfillServer(t, map[string]string{"/apis/api-keys": restKeysForTwoAPI})
+	h.withKeyServices(srv)
+
+	cfg := agentEvtRestConfig(recreatedRestID, "recreated-rest")
+	require.NoError(t, h.db.SaveConfig(cfg))
+	h.client.SyncAPIKeysForArtifact(cfg)
+	key, err := h.db.GetAPIKeysByAPIAndName(recreatedRestID, recreatedKeyName)
+	require.NoError(t, err)
+	require.NotNil(t, key, "precondition: the key is loaded for the first deployment")
+
+	// Undeploy: deleting the configuration deletes its keys too.
+	require.NoError(t, h.db.DeleteConfig(recreatedRestID))
+	_, err = h.db.GetAPIKeysByAPIAndName(recreatedRestID, recreatedKeyName)
+	require.True(t, storage.IsNotFoundError(err), "precondition: delete removes the key, got %v", err)
+
+	// Redeploy with the same UUID.
+	require.NoError(t, h.db.SaveConfig(agentEvtRestConfig(recreatedRestID, "recreated-rest")))
+	created := len(h.apiKeyEvents("CREATE"))
+	h.client.SyncAPIKeysForArtifact(cfg)
+
+	key, err = h.db.GetAPIKeysByAPIAndName(recreatedRestID, recreatedKeyName)
+	require.NoError(t, err)
+	require.NotNil(t, key, "the re-created API must get its key back from the control plane")
+	assert.Equal(t, recreatedKeyUUID, key.UUID)
+	assert.Equal(t, models.APIKeyStatusActive, key.Status)
+	assert.Equal(t, created+1, len(h.apiKeyEvents("CREATE")), "only the API's own key is announced")
+
+	_, err = h.db.GetAPIKeysByAPIAndName(otherRestID, "other-key")
+	assert.True(t, storage.IsNotFoundError(err), "keys of other artifacts must not be stored, got %v", err)
+
+	for _, p := range srv.requested() {
+		assert.Equal(t, "/apis/api-keys", p, "only the created artifact's kind is fetched")
+	}
+}
+
+// Keys the control plane reports against a bottom-up synced artifact's
+// cp_artifact_id are stored under the local UUID, as the bulk sync does.
+func TestSyncAPIKeysForArtifact_MapsCPArtifactIDToLocalUUID(t *testing.T) {
+	h := newAgentEventsHarness(t)
+	srv := newKeyBackfillServer(t, map[string]string{"/apis/api-keys": restKeysForTwoAPI})
+	h.withKeyServices(srv)
+
+	const localID = "0199a1b2-0000-7000-8000-00000000b0ff"
+	cfg := agentEvtRestConfig(localID, "bottom-up-rest")
+	cfg.CPArtifactID = recreatedRestID
+	require.NoError(t, h.db.SaveConfig(cfg))
+
+	h.client.SyncAPIKeysForArtifact(cfg)
+
+	key, err := h.db.GetAPIKeysByAPIAndName(localID, recreatedKeyName)
+	require.NoError(t, err)
+	require.NotNil(t, key)
+	assert.Equal(t, localID, key.ArtifactUUID)
+}
+
+// Kinds the control plane serves no keys for, and kinds on-prem APIM has no
+// backfill route for, are not fetched.
+func TestSyncAPIKeysForArtifact_SkipsUnsupportedKinds(t *testing.T) {
+	h := newAgentEventsHarness(t)
+	srv := newKeyBackfillServer(t, nil)
+	h.withKeyServices(srv)
+
+	h.client.SyncAPIKeysForArtifact(&models.StoredConfig{UUID: recreatedRestID, Kind: string(models.KindMcp)})
+	assert.Empty(t, srv.requested(), "a kind outside the API-key sync list is not fetched")
+
+	h.client.gatewayPath = "/internal/gateway" // marks the control plane as on-prem
+	h.client.SyncAPIKeysForArtifact(&models.StoredConfig{UUID: agentEvtID, Kind: models.KindAgent})
+	assert.Empty(t, srv.requested(), "on-prem has no Agent key route")
+
+	h.client.SyncAPIKeysForArtifact(agentEvtRestConfig(recreatedRestID, "onprem-rest"))
+	assert.Equal(t, []string{"/apis/api-keys"}, srv.requested(), "on-prem still serves RestApi keys")
+}
