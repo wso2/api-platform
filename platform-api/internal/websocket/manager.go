@@ -179,7 +179,7 @@ var ErrGatewayConnectionLimitReached = errors.New("maximum connections for this 
 // Parameters:
 //   - gatewayID: UUID of the authenticated gateway
 //   - transport: Transport implementation for message delivery
-//   - authToken: API key used for authentication
+//   - tokenID: ID of the gateway token used for authentication
 //   - orgID: UUID of the organization that owns the gateway
 //
 // Returns the Connection instance and any error encountered.
@@ -189,11 +189,11 @@ var ErrGatewayConnectionLimitReached = errors.New("maximum connections for this 
 // instances share the same gateway identity. Both limits are checked and the
 // slice is replaced under m.mu, so concurrent registrations for one gateway can
 // neither exceed the per-gateway limit nor drop each other's connections.
-func (m *Manager) Register(gatewayID string, transport Transport, authToken string,
+func (m *Manager) Register(gatewayID string, transport Transport, tokenID string,
 	orgID string) (*Connection, error) {
 
 	connectionID := uuid.New().String()
-	conn := NewConnection(gatewayID, connectionID, transport, authToken, orgID)
+	conn := NewConnection(gatewayID, connectionID, transport, tokenID, orgID)
 
 	m.mu.Lock()
 	if m.connectionCount >= m.maxConnections {
@@ -299,6 +299,29 @@ func (m *Manager) Unregister(gatewayID, connectionID string) {
 
 	m.slogger.Info("Gateway disconnected", "gatewayID", gatewayID, "connectionID", connectionID,
 		"orgID", removed.OrganizationID, "totalConnections", m.GetConnectionCount())
+}
+
+// CloseConnectionsForToken closes and unregisters every connection of gatewayID
+// on this instance that authenticated with tokenID, leaving the gateway's
+// connections made with its other tokens untouched. It returns the number of
+// connections closed. Once it returns, Send on a closed connection fails, so no
+// further event reaches those sessions.
+func (m *Manager) CloseConnectionsForToken(gatewayID, tokenID string) int {
+	closed := 0
+	for _, conn := range m.GetConnections(gatewayID) {
+		if conn.TokenID != tokenID {
+			continue
+		}
+		// 1008 (policy violation) tells the gateway the session was ended on
+		// purpose; Unregister's own normal-closure Close is then a no-op.
+		if err := conn.Close(1008, "gateway token revoked"); err != nil {
+			m.slogger.Warn("Failed to send close frame to gateway with revoked token", "gatewayID", gatewayID,
+				"connectionID", conn.ConnectionID, "error", err)
+		}
+		m.Unregister(gatewayID, conn.ConnectionID)
+		closed++
+	}
+	return closed
 }
 
 // GetConnections retrieves all connections for a specific gateway ID.

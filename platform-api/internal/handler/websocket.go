@@ -97,7 +97,7 @@ func (h *WebSocketHandler) Connect(w http.ResponseWriter, r *http.Request) error
 	}
 
 	// Authenticate gateway using API key
-	gateway, err := h.gatewayService.VerifyToken(apiKey)
+	gateway, tokenID, err := h.gatewayService.VerifyToken(apiKey)
 	if err != nil {
 		h.manager.IncrementFailedConnections()
 		return apperror.Unauthorized.Wrap(err).
@@ -116,7 +116,7 @@ func (h *WebSocketHandler) Connect(w http.ResponseWriter, r *http.Request) error
 	transport := ws.NewWebSocketTransport(conn)
 
 	// Register connection with manager
-	connection, err := h.manager.Register(gateway.ID, transport, apiKey, gateway.OrganizationID)
+	connection, err := h.manager.Register(gateway.ID, transport, tokenID, gateway.OrganizationID)
 	if err != nil {
 		h.slogger.Error("Connection registration failed", "gatewayID", gateway.ID, "orgID", gateway.OrganizationID, "error", err)
 		h.manager.IncrementFailedConnections()
@@ -129,6 +129,17 @@ func (h *WebSocketHandler) Connect(w http.ResponseWriter, r *http.Request) error
 			conn.WriteMessage(websocket.TextMessage, jsonErr)
 		}
 		conn.Close()
+		return nil
+	}
+
+	// A revoke that landed between VerifyToken and Register may already have closed this
+	// replica's sessions for the token without seeing this one. Re-check now that the
+	// connection is registered: any later revoke is guaranteed to close it.
+	if active, err := h.gatewayService.IsTokenActive(tokenID); err != nil || !active {
+		h.slogger.Warn("Closing gateway connection: its token was revoked while connecting",
+			"gatewayID", gateway.ID, "connectionID", connection.ConnectionID, "error", err)
+		connection.Close(1008, "gateway token revoked")
+		h.manager.Unregister(gateway.ID, connection.ConnectionID)
 		return nil
 	}
 
