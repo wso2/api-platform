@@ -248,10 +248,17 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     apiHandler: ScopeHandle = ':apiHandler',
   ) => apiPath(orgHandle, projectHandler, apiHandler, 'observability/logs'),
-  // Org-level portal registry lives in the cloud-plugin sidebar; this builder is
-  // the well-known link the built-in Publish page uses for its "register a portal"
-  // empty-state so the core does not encode the plugin's routePath literal.
-  managedApiPortals: (orgHandle = ':orgHandle') =>
+  // The organization's API Portals registry: self-hosted portals in the
+  // open-source build, managed portals in the cloud build (which overrides the
+  // page via `PAGE_API_PORTALS_SLOT`). Distinct from the API-scoped `apiPortals`
+  // below, which lists one API's publications.
+  orgApiPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/portals`,
+  newOrgApiPortal: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/portals/new`,
+  orgApiPortal: (orgHandle = ':orgHandle', apiPortalId = ':apiPortalId') =>
+    `/organizations/${orgHandle}/portals/${apiPortalId}`,
+  // Where the cloud build served its managed portals before they moved onto the
+  // registry above. Only redirected there, so links and bookmarks keep working.
+  legacyManagedApiPortals: (orgHandle = ':orgHandle') =>
     `/organizations/${orgHandle}/managed-api-portals`,
   // GraphQL API-level pages — see `graphqlApiPath` for why these live under a
   // distinct `graphql-apis` segment rather than joining the REST `api*` builders above.
@@ -324,7 +331,6 @@ export const routes = {
     projectHandler: ScopeHandle = ':projectHandler',
     graphqlApiHandler: ScopeHandle = ':graphqlApiHandler',
   ) => graphqlApiPath(orgHandle, projectHandler, graphqlApiHandler, 'observability/logs'),
-  organizationPortals: (orgHandle = ':orgHandle') => `/organizations/${orgHandle}/portals`,
   projectPortals: (orgHandle = ':orgHandle', projectHandler = ':projectHandler') =>
     projectPath(orgHandle, projectHandler, 'portals'),
   apiPortals: (

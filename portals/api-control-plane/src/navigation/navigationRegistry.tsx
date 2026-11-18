@@ -31,6 +31,7 @@ import {
   Megaphone,
   Network,
   NotepadText,
+  PanelsTopLeft,
   Rocket,
   SlidersHorizontal,
   UserRoundKey,
@@ -409,6 +410,18 @@ export const navigationRegistry: NavigationDefinition[] = [
     icon: <Network />,
     to: orgLevelTo(routes.gateways),
     match: matchRoutes(routes.gateways(), routes.newGateway(), routes.gateway()),
+  },
+  {
+    id: 'apiPortals',
+    label: 'Portals',
+    group: CLUSTER.place,
+    order: 32,
+    icon: <PanelsTopLeft />,
+    // Only for a user who may list portals. The cloud build replaces the page
+    // (and repositions this item) through `PAGE_API_PORTALS_SLOT`.
+    permission: 'ListApiPortals',
+    to: orgLevelTo(routes.orgApiPortals),
+    match: matchRoutes(routes.orgApiPortals(), routes.newOrgApiPortal(), routes.orgApiPortal()),
   },
   {
     id: 'develop',

@@ -17,18 +17,24 @@
  */
 
 /**
- * Public surface of the org-level API Portals list. Import from
+ * Public surface of the org-level API Portals registry. Import from
  * `api/resources/apiPortals` only; deeper imports skip scope binding and gating.
  * @see ./apiPortals.hooks.ts for the hook contract.
  */
 
 export type {
   ApiPortal,
+  CreateApiPortalBody,
   ListApiPortalsQuery,
   ListApiPortalsResponse,
+  UpdateApiPortalBody,
 } from './apiPortals.endpoints';
 export {
+  useApiPortal,
   useApiPortals,
+  useCreateApiPortal,
+  useDeleteApiPortal,
   useInvalidateApiPortals,
+  useUpdateApiPortal,
   type ApiPortalListFilters,
 } from './apiPortals.hooks';

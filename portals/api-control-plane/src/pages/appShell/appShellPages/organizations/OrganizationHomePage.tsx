@@ -451,7 +451,7 @@ function OrganizationHomePageContent() {
                   ? '—'
                   : intl.formatNumber(portalsQuery.data?.pagination.total ?? 0)
               }
-              onAction={() => navigate(routes.managedApiPortals(orgHandle))}
+              onAction={() => navigate(routes.orgApiPortals(orgHandle))}
               title={intl.formatMessage(messages.developerPortalTitle)}
               operationId="CreateApiPortal"
               component="portals"

@@ -3247,6 +3247,97 @@ export const API_PLATFORM_TAXONOMY: FeatureTaxonomy = {
       },
     },
     {
+      code: 'apip.lifecycle.manage-api-portal-click',
+      name: 'API Portal Registration Click',
+      description:
+        'Register, edit, replace the shared key of, or delete a self-hosted API Portal in the console.',
+      category: 'lifecycle',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.lifecycle.manage-api-portal-click',
+        event_category: 'lifecycle',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'operation',
+            type: 'enum',
+            values: ['create', 'update', 'delete', 'rotate-key'],
+            required: true,
+            description:
+              'What the click did; rotate-key replaces the shared key the control plane sends to the portal.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'API Portal Registration Clicks' }],
+      },
+    },
+    {
+      code: 'apip.lifecycle.api-portal-webhook-secret-click',
+      name: 'API Portal Webhook Secret Click',
+      description:
+        'Generate or rotate the secret a self-hosted API Portal signs its events to the control plane with.',
+      category: 'lifecycle',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.lifecycle.api-portal-webhook-secret-click',
+        event_category: 'adoption',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          { name: 'operation', type: 'enum', values: ['create', 'rotate'], required: true },
+        ],
+        aggregations: [{ type: 'count', label: 'Webhook Secrets Issued' }],
+      },
+    },
+    {
+      code: 'apip.lifecycle.api-portal-setup-copy',
+      name: 'API Portal Setup Copy',
+      description:
+        "Copy a configuration snippet from a self-hosted API Portal's setup instructions in the console.",
+      category: 'lifecycle',
+      tier: 'core',
+      status: 'stable',
+      availability: { introduced_in: '0.9.0' },
+      tracking: {
+        event_name: 'apip.lifecycle.api-portal-setup-copy',
+        event_category: 'engagement',
+        platforms: ['web'],
+        dimensions: [
+          {
+            name: 'portal',
+            type: 'enum',
+            values: ['api-control-plane'],
+            required: true,
+            description: 'The API Platform UI the action was taken in.',
+          },
+          {
+            name: 'setup_step',
+            type: 'enum',
+            values: ['shared-key-config', 'webhook-subscriber'],
+            required: true,
+            description: 'The step the snippet belongs to.',
+          },
+        ],
+        aggregations: [{ type: 'count', label: 'API Portal Setup Snippets Copied' }],
+      },
+    },
+    {
       code: 'apip.developer-portal.browse-catalog',
       name: 'Catalog Browsing',
       description: "Browse the portal's catalog of APIs or MCP servers.",
@@ -5768,6 +5859,31 @@ export const CONSOLE_FEATURES = {
     tier: 'core',
     eventCategory: 'engagement',
     dimensions: { api_type: { required: false, values: ['rest-api', 'graphql-api', 'mcp-proxy'] } },
+  },
+  'apip.lifecycle.manage-api-portal-click': {
+    name: 'API Portal Registration Click',
+    category: 'lifecycle',
+    tier: 'core',
+    eventCategory: 'lifecycle',
+    dimensions: {
+      operation: { required: true, values: ['create', 'update', 'delete', 'rotate-key'] },
+    },
+  },
+  'apip.lifecycle.api-portal-webhook-secret-click': {
+    name: 'API Portal Webhook Secret Click',
+    category: 'lifecycle',
+    tier: 'core',
+    eventCategory: 'adoption',
+    dimensions: { operation: { required: true, values: ['create', 'rotate'] } },
+  },
+  'apip.lifecycle.api-portal-setup-copy': {
+    name: 'API Portal Setup Copy',
+    category: 'lifecycle',
+    tier: 'core',
+    eventCategory: 'engagement',
+    dimensions: {
+      setup_step: { required: true, values: ['shared-key-config', 'webhook-subscriber'] },
+    },
   },
   'apip.monetization.subscription-plan-create-click': {
     name: 'Subscription Plan Creation Click',

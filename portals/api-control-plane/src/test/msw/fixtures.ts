@@ -37,6 +37,7 @@ export type RestApiFixture = Schema<'RESTAPI'>;
 export type ProjectFixture = Schema<'Project'>;
 export type OrganizationFixture = Schema<'Organization'>;
 export type GatewayFixture = Schema<'GatewayResponse'>;
+export type ApiPortalFixture = Schema<'ApiPortalResponse'>;
 export type DeploymentFixture = Schema<'DeploymentResponse'>;
 export type GraphQLApiFixture = Schema<'GraphQLAPI'>;
 export type GraphQLApiDetailFixture = Schema<'GraphQLAPIDetail'>;
@@ -123,6 +124,29 @@ export const aCreateGatewayBody = (
   functionalityType: 'regular',
   isCritical: false,
   version: '1.0.0',
+  ...overrides,
+});
+
+/** A registered API Portal. The shared key is write-only, so it never appears here. */
+export const anApiPortal = (
+  overrides: Partial<ApiPortalFixture> = {}
+): ApiPortalFixture => ({
+  id: 'partner-portal',
+  name: 'Partner Portal',
+  url: 'https://portal.example.com',
+  createdAt: '2026-10-01T10:00:00Z',
+  updatedAt: '2026-10-01T10:00:00Z',
+  ...overrides,
+});
+
+/** Body for registering an API Portal; the shared key is 64 hex characters. */
+export const aCreateApiPortalBody = (
+  overrides: Partial<Schema<'CreateApiPortalRequest'>> = {}
+): Schema<'CreateApiPortalRequest'> => ({
+  name: 'Partner Portal',
+  handle: 'partner-portal',
+  url: 'https://portal.example.com',
+  sharedKey: 'a'.repeat(64),
   ...overrides,
 });
 

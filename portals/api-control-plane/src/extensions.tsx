@@ -167,6 +167,14 @@ export const settingsTabSlot = (level: NavigationLevel): string =>
 export const PAGE_GATEWAYS_SLOT = 'page.gateways';
 
 /**
+ * Slot for overriding the built-in API Portals registry (list + register/detail).
+ * Same arrangement as `PAGE_GATEWAYS_SLOT`: consumed by the `portals/*` route
+ * wrapper in `AppRoutes`, with `routePath`/`level` inert. The cloud build puts its
+ * managed portals here, so both builds share one sidebar item and one URL.
+ */
+export const PAGE_API_PORTALS_SLOT = 'page.apiPortals';
+
+/**
  * Slot for overriding the built-in API Deploy page. Same arrangement as
  * `PAGE_GATEWAYS_SLOT`: consumed by the `apiDeploy` route wrapper in
  * `AppRoutes`, with `routePath`/`level` inert. The override needs the API in

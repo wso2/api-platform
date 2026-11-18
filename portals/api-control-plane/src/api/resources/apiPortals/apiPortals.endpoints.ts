@@ -17,22 +17,31 @@
  */
 
 import { http, type RequestOptions } from '../../core/http';
-import type { QueryOf, ResponseOf, Schema } from '../../core/spec';
+import type { BodyOf, PathOf, QueryOf, ResponseOf, Schema } from '../../core/spec';
 
 /**
- * Transport layer for the `/api-portals` org-level list. Kept as its own package
- * (rather than folded into apiPublications) because the two answer different
- * questions: publications is an API-scoped rollup annotated per portal, while
- * this is a plain list of the org's registered portals - used, e.g., for the
- * portal count on the org overview card.
+ * Transport layer for `/api-portals`, the org's registry of API Portals. Kept
+ * as its own package (rather than folded into apiPublications) because the two
+ * answer different questions: publications is an API-scoped rollup annotated
+ * per portal, while this is the registry itself - the list, plus registering,
+ * editing and removing a portal.
+ *
+ * The shared key platform-api sends to a portal is write-only: it goes out on
+ * create and update and never comes back in a response.
  */
 
 export type ApiPortal = Schema<'ApiPortalResponse'>;
 export type ApiPortalListItem = Schema<'ApiPortalListItem'>;
 export type ListApiPortalsResponse = ResponseOf<'ListApiPortals'>;
 export type ListApiPortalsQuery = QueryOf<'ListApiPortals'>;
+export type CreateApiPortalBody = BodyOf<'CreateApiPortal'>;
+export type UpdateApiPortalBody = BodyOf<'UpdateApiPortal'>;
 
 const API_PORTALS_BASE = '/api-portals';
+
+/** URL-encoded path for one portal. Handles are user-supplied - always encode. */
+const resourcePath = (apiPortalId: PathOf<'GetApiPortal'>['apiPortalId']): string =>
+  `${API_PORTALS_BASE}/${encodeURIComponent(apiPortalId)}`;
 
 /**
  * GETs `/api-portals` for the caller's org. Paging, sort and search flow
@@ -46,3 +55,45 @@ export const listApiPortals = async (
     ...options,
     operationName: 'ListApiPortals',
   });
+
+export const getApiPortal = async (
+  apiPortalId: string,
+  options?: RequestOptions,
+): Promise<ApiPortal> =>
+  http.get<ApiPortal>(resourcePath(apiPortalId), {
+    ...options,
+    operationName: 'GetApiPortal',
+  });
+
+export const createApiPortal = async (
+  body: CreateApiPortalBody,
+  options?: RequestOptions,
+): Promise<ApiPortal> =>
+  http.post<ApiPortal>(API_PORTALS_BASE, body, {
+    ...options,
+    operationName: 'CreateApiPortal',
+  });
+
+/**
+ * PUTs a partial update. A `sharedKey` in the body replaces the stored key, so
+ * the same call rotates it; omitting the field leaves the key unchanged.
+ */
+export const updateApiPortal = async (
+  apiPortalId: string,
+  body: UpdateApiPortalBody,
+  options?: RequestOptions,
+): Promise<ApiPortal> =>
+  http.put<ApiPortal>(resourcePath(apiPortalId), body, {
+    ...options,
+    operationName: 'UpdateApiPortal',
+  });
+
+export const deleteApiPortal = async (
+  apiPortalId: string,
+  options?: RequestOptions,
+): Promise<void> => {
+  await http.delete<void>(resourcePath(apiPortalId), {
+    ...options,
+    operationName: 'DeleteApiPortal',
+  });
+};

@@ -42,6 +42,7 @@ import {
   isSidebarExtension,
   PAGE_API_DEPLOY_SLOT,
   PAGE_GRAPHQL_API_DEPLOY_SLOT,
+  PAGE_API_PORTALS_SLOT,
   PAGE_GATEWAYS_SLOT,
   type ApiControlPlaneExtension,
   type ApiControlPlaneExtensionChild,
@@ -75,6 +76,21 @@ const GatewaysPage = lazy(() =>
 const GatewayCreatePage = lazy(() =>
   import('../pages/appShell/appShellPages/gateways/GatewayCreatePage').then((m) => ({
     default: m.GatewayCreatePage,
+  })),
+);
+const ApiPortalsPage = lazy(() =>
+  import('../pages/appShell/appShellPages/apiPortals/ApiPortalsPage').then((m) => ({
+    default: m.ApiPortalsPage,
+  })),
+);
+const ApiPortalCreatePage = lazy(() =>
+  import('../pages/appShell/appShellPages/apiPortals/ApiPortalCreatePage').then((m) => ({
+    default: m.ApiPortalCreatePage,
+  })),
+);
+const ApiPortalDetailPage = lazy(() =>
+  import('../pages/appShell/appShellPages/apiPortals/ApiPortalDetailPage').then((m) => ({
+    default: m.ApiPortalDetailPage,
   })),
 );
 const GatewayDetailPage = lazy(() =>
@@ -446,6 +462,53 @@ function GatewaysRoute() {
   );
 }
 
+/**
+ * The organization's Portals registry, the same arrangement as `GatewaysRoute`.
+ * Renders an override registered against `PAGE_API_PORTALS_SLOT` when one is
+ * present (the cloud build's managed portals), otherwise the built-in pages that
+ * list, register and manage self-hosted portals. Mounted at `portals/*` so either
+ * branch owns the nested `new`/`:apiPortalId` routes.
+ */
+function ApiPortalsRoute() {
+  const port = usePort();
+  const [override] = useSlot<ApiControlPlaneExtension>(PAGE_API_PORTALS_SLOT).filter(hasRender);
+  // This route's own `portals` path, derived by stripping the matched splat off
+  // the current URL, for the reason `GatewaysRoute` gives.
+  const { pathname } = useLocation();
+  const splat = useParams()['*'] ?? '';
+  const indexPath = splat
+    ? pathname.slice(0, pathname.length - splat.length).replace(/\/+$/, '')
+    : pathname;
+  if (override) {
+    // As for gateways, an override is one self-contained flow with no nested
+    // URLs: send the built-in create and detail URLs to the index.
+    return (
+      <Routes>
+        <Route index element={<ExtensionPage>{override.render(port)}</ExtensionPage>} />
+        <Route element={<Navigate replace to={indexPath} />} path="*" />
+      </Routes>
+    );
+  }
+  return (
+    <Hideable name={PAGE_API_PORTALS_SLOT}>
+      <Routes>
+        <Route index element={<ApiPortalsPage />} />
+        <Route path="new" element={<ApiPortalCreatePage />} />
+        <Route path=":apiPortalId" element={<ApiPortalDetailPage />} />
+      </Routes>
+    </Hideable>
+  );
+}
+
+/**
+ * The cloud build served its managed portals at `/managed-api-portals` before they
+ * moved onto the shared Portals registry. Sends old links and bookmarks there.
+ */
+function LegacyManagedPortalsRedirect() {
+  const { orgHandle = '' } = useParams();
+  return <Navigate replace to={routes.orgApiPortals(orgHandle)} />;
+}
+
 export function AppRoutes({ extensions = [] }: AppRoutesProps) {
   // Only `sidebar.*` entries become top-level routes.
   //
@@ -519,6 +582,11 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path={routes.projects()} element={<ProjectListPage />} />
           <Route path={routes.newProject()} element={<ProjectCreatePage />} />
           <Route path={`${routes.gateways()}/*`} element={<GatewaysRoute />} />
+          <Route path={`${routes.orgApiPortals()}/*`} element={<ApiPortalsRoute />} />
+          <Route
+            path={`${routes.legacyManagedApiPortals()}/*`}
+            element={<LegacyManagedPortalsRedirect />}
+          />
           {/*
             Project and API overview take a single fully-scoped path each: they
             are the deeper tiers of the sidebar's Overview item, which degrades

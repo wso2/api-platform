@@ -608,6 +608,17 @@ describe('permission-gated items', () => {
     expect(manageChildren(['ap:service_account:manage'])).toContain('manage-service-accounts');
   });
 
+  const topLevelIds = (scopes: string[]) =>
+    itemsAt(atOrg(), routes.organizationHome(ORG), scopes).map((item) => item.id);
+
+  it('hides API Portals from a user who cannot list portals', () => {
+    expect(topLevelIds(['ap:gateway:read'])).not.toContain('apiPortals');
+  });
+
+  it('shows API Portals to a user who can list them', () => {
+    expect(topLevelIds(['ap:api_portal:read'])).toContain('apiPortals');
+  });
+
   it('hides Service Accounts when the deployment disables the feature, even from an administrator', () => {
     disabled.names = ['service-accounts'];
     try {

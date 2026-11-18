@@ -20,7 +20,7 @@ import { queryOptions } from '@tanstack/react-query';
 
 import { staleTimes } from '../../core/queryClient';
 import { createResourceKeys, type OrgScope } from '../../core/queryKeys';
-import { listApiPortals, type ListApiPortalsQuery } from './apiPortals.endpoints';
+import { getApiPortal, listApiPortals, type ListApiPortalsQuery } from './apiPortals.endpoints';
 
 export const apiPortalKeys = createResourceKeys('apiPortals');
 
@@ -34,6 +34,13 @@ export const apiPortalQueries = {
     queryOptions({
       queryKey: apiPortalKeys.list(org, query),
       queryFn: ({ signal }) => listApiPortals({ orgId: org, signal, query }),
+      staleTime: staleTimes.standard,
+    }),
+
+  detail: (org: OrgScope, apiPortalId: string) =>
+    queryOptions({
+      queryKey: apiPortalKeys.detail(org, apiPortalId),
+      queryFn: ({ signal }) => getApiPortal(apiPortalId, { orgId: org, signal }),
       staleTime: staleTimes.standard,
     }),
 };
