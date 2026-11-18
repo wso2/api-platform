@@ -59,6 +59,10 @@ const (
 	// customPolicyListPage is the page size used to read the organisation's custom policies.
 	customPolicyListPage = 100
 
+	// customPolicyRollbackTimeout bounds the delete of a synced policy the step could not register
+	// for cleanup.
+	customPolicyRollbackTimeout = 30 * time.Second
+
 	// keyGatewayManifest holds the policies of the self-hosted gateway's manifest, as JSON.
 	keyGatewayManifest = "cloudSelfHostedGatewayManifest"
 	// keyCustomPolicyID and keyCustomPolicyVersion identify the custom policy the scenario synced.
@@ -83,6 +87,7 @@ func (s *Steps) registerCustomPolicySteps(sc stepRegistrar) {
 	sc.Step(`^I remove any custom policy "([^"]*)" an earlier run left in the organisation$`, s.removeLeftoverCustomPolicy)
 	sc.Step(`^I sync the custom policy "([^"]*)" version "([^"]*)" from the self-hosted APIP gateway$`, s.syncCustomPolicy)
 	sc.Step(`^the synced custom policy should be listed in the organisation$`, s.assertCustomPolicyListed)
+	sc.Step(`^the organisation should list the synced custom policy and no custom policy "([^"]*)"$`, s.assertCustomPolicyListedWithout)
 	sc.Step(`^I delete the synced custom policy$`, s.deleteCustomPolicy)
 	sc.Step(`^the synced custom policy should eventually be absent$`, s.verifyCustomPolicyDeleted)
 	sc.Step(`^the organisation should hold no custom policy "([^"]*)"$`, s.assertNoCustomPolicy)
@@ -222,9 +227,9 @@ func (s *Steps) listCustomPolicies(ctx context.Context) ([]map[string]any, error
 }
 
 // customPolicyPage reads one page of the organisation's custom policies. A response without a
-// "list" field is an error, not an empty page: absence is only ever read from a list the platform
-// returned. The platform answers an organisation that holds none with "list": null, which is an
-// empty page.
+// "list" field, or with a null entry in it, is an error, not an empty page: absence is only ever
+// read from a list the platform returned. The platform answers an organisation that holds none with
+// "list": null, which is an empty page.
 func customPolicyPage(body []byte) ([]map[string]any, error) {
 	var envelope map[string]json.RawMessage
 	if err := json.Unmarshal(body, &envelope); err != nil {
@@ -237,6 +242,11 @@ func customPolicyPage(body []byte) ([]map[string]any, error) {
 	var items []map[string]any
 	if err := json.Unmarshal(raw, &items); err != nil {
 		return nil, fmt.Errorf("decoding the organisation's custom policies: %w", err)
+	}
+	for i, item := range items {
+		if item == nil {
+			return nil, fmt.Errorf("the organisation's custom policies list has a null entry at %d", i)
+		}
 	}
 	return items, nil
 }
@@ -318,7 +328,11 @@ func (s *Steps) syncCustomPolicy(ctx context.Context, name, version string) erro
 		Description: "custom policy " + name + " " + synced,
 	}); err != nil {
 		err = fmt.Errorf("registering custom policy %s %s for cleanup: %w", name, synced, err)
-		return errors.Join(err, s.removeCustomPolicyRecord(ctx, id+"/"+synced))
+		// Nothing else will delete the policy, so the delete must still go out when the
+		// scenario's deadline has passed.
+		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), customPolicyRollbackTimeout)
+		defer cancel()
+		return errors.Join(err, s.removeCustomPolicyRecord(rollbackCtx, id+"/"+synced))
 	}
 	for key, value := range map[string]string{keyCustomPolicyID: id, keyCustomPolicyVersion: synced, keyCustomPolicyName: name} {
 		if err := tcontext.Set(ctx, key, value); err != nil {
@@ -353,6 +367,31 @@ func (s *Steps) assertCustomPolicyListed(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	return checkCustomPolicyListed(items, id, version, name)
+}
+
+// assertCustomPolicyListedWithout checks that one read of the organisation's list shows the synced
+// policy and no record of the named one, so an empty list cannot pass the absence check.
+func (s *Steps) assertCustomPolicyListedWithout(ctx context.Context, absent string) error {
+	id, version, name, err := syncedCustomPolicy(ctx)
+	if err != nil {
+		return err
+	}
+	items, err := s.listCustomPolicies(ctx)
+	if err != nil {
+		return err
+	}
+	if err := checkCustomPolicyListed(items, id, version, name); err != nil {
+		return err
+	}
+	if matches := customPoliciesNamed(items, absent); len(matches) > 0 {
+		return fmt.Errorf("the organisation holds custom policy %s: %v", absent, matches)
+	}
+	return nil
+}
+
+// checkCustomPolicyListed checks items hold the policy with the uuid, under its name and version.
+func checkCustomPolicyListed(items []map[string]any, id, version, name string) error {
 	for _, item := range items {
 		if itemID, _ := item["uuid"].(string); itemID != id {
 			continue

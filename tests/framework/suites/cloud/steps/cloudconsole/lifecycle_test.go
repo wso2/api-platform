@@ -6073,6 +6073,33 @@ func TestCustomPolicyListsAreReadOnlyFromAListThePlatformReturned(t *testing.T) 
 	require.ErrorContains(t, err, "has no list")
 	_, err = customPolicyPage([]byte(`{"list":{"name":"it-builtin"}}`))
 	require.ErrorContains(t, err, "decoding")
+	_, err = customPolicyPage([]byte(`{"list":[{"name":"ops-policy"},null]}`))
+	require.ErrorContains(t, err, "null entry at 1")
+}
+
+func TestAssertCustomPolicyListedWithoutReadsBothFromOneList(t *testing.T) {
+	t.Setenv(cloudConsoleAccessTokenEnv, "console-token")
+	var lists stubCalls
+	var list []map[string]any
+	steps, ctx, local, _ := cloudSteps(t, func(w http.ResponseWriter, r *http.Request) {
+		lists.add(r.URL.Path)
+		_ = json.NewEncoder(w).Encode(map[string]any{"list": list})
+	})
+	local.Set(keyCustomPolicyID, "control-1")
+	local.Set(keyCustomPolicyVersion, "v1.0.0")
+	local.Set(keyCustomPolicyName, "it-custom-control")
+	control := map[string]any{"uuid": "control-1", "name": "it-custom-control", "version": "v1.0.0"}
+
+	list = []map[string]any{control}
+	require.NoError(t, steps.assertCustomPolicyListedWithout(ctx, "it-builtin"))
+	require.Len(t, lists.snapshot(), 1, "the control and the absence are read from one list")
+
+	list = []map[string]any{}
+	require.ErrorContains(t, steps.assertCustomPolicyListedWithout(ctx, "it-builtin"), "does not list custom policy control-1",
+		"an empty list cannot pass the absence check")
+
+	list = []map[string]any{control, {"name": "it-builtin"}}
+	require.ErrorContains(t, steps.assertCustomPolicyListedWithout(ctx, "it-builtin"), "holds custom policy it-builtin")
 }
 
 func TestAssertNoCustomPolicyCountsAListedNameWithoutAnIdentity(t *testing.T) {
