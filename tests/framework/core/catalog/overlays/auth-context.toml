@@ -1,0 +1,21 @@
+# Auth context (ACTX): each traffic log line carries the AuthContext the request's auth policies
+# left, and jwt-auth and mcp-auth trust tokens from the testbench mock JWKS server.
+[traffic_logging]
+enabled = true
+
+[traffic_logging.properties]
+authAuthenticated = "$ctx:auth.authenticated"
+authAuthorized = "$ctx:auth.authorized"
+authType = "$ctx:auth.type"
+authSubject = "$ctx:auth.subject"
+authIssuer = "$ctx:auth.issuer"
+authAudience = "$ctx:auth.audience"
+authScopes = "$ctx:auth.scopes"
+authCredentialId = "$ctx:auth.credential_id"
+
+[[policy_configurations.jwtauth_v1.keymanagers]]
+name = "mock-jwks"
+issuer = "http://testbench:3001/token"
+
+[policy_configurations.jwtauth_v1.keymanagers.jwks.remote]
+uri = "http://testbench:3001/jwks"

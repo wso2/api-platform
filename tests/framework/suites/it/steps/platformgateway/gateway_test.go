@@ -1628,6 +1628,18 @@ func TestObservabilityHelpers(t *testing.T) {
 	require.Equal(t, "fail", outcome(wrong))
 	require.ErrorContains(t, wrong, "does not show tls")
 
+	// A refused request's traffic log line has no operation path, only its API's context.
+	refused := `{"status":401,"api":{"context":"/actx-fail"},"operation":{"method":"GET"},"properties":{"authSubject":""}}`
+	empty := []logExpectation{{describe: "empty subject", shownIn: func(s string) bool { return strings.Contains(s, `"authSubject":""`) }}}
+	require.NoError(t, observeLogLineWith(refused, `"context":"/actx-fail"`, "/actx-fail", empty))
+	require.Equal(t, "tolerated", outcome(observeLogLineWith(refused, `"context":"/other"`, "/other", empty)))
+	var notTable godog.Table
+	require.NoError(t, json.Unmarshal([]byte(`{"rows":[{"cells":[{"value":"not \"authSubject\":\"\""}]}]}`), &notTable))
+	notEmpty, err := accessLogExpectations(context.Background(), &notTable)
+	require.NoError(t, err)
+	require.Equal(t, "fail", outcome(observeLogLineWith(refused, `"context":"/actx-fail"`, "/actx-fail", notEmpty)))
+	require.NoError(t, observeLogLineWith(`{"api":{"context":"/actx"},"properties":{"authSubject":"alice"}}`, `"context":"/actx"`, "/actx", notEmpty))
+
 	require.NoError(t, observeCounterGrowth("policy_executions_total", `{status="denied"}`, 1, 2, 1))
 	require.Equal(t, "tolerated", outcome(observeCounterGrowth("policy_executions_total", `{status="denied"}`, 1, 1, 1)))
 	fell := observeCounterGrowth("policy_executions_total", `{status="denied"}`, 4, 3, 1)

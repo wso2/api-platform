@@ -323,6 +323,21 @@ blocks:
         features:
           - features/gateway/mtls/header_bypass.feature
 
+  # The AuthContext each auth policy leaves (ACTX). Its overlay turns on the traffic log, which
+  # carries the AuthContext fields of each request and which no other block writes.
+  - name: auth-context
+    parallel: 1
+    components:
+      - name: platform-gateway
+        overlay: tests/framework/core/catalog/overlays/auth-context.toml
+        db: sqlite
+      - name: testbench
+    runners:
+      - name: auth-context
+        tags: "gateway-version>1.2.0;~@known-issue"
+        features:
+          - features/gateway/security/auth_context.feature
+
   # Mutual TLS outcomes in the access log, analytics and metrics. The block reads gateway-wide
   # certificate gauges and its own JSON access log lines, so runners take turns. The overlay never
   # touches present_default_identity, which also covers the on/default-identity scenario.

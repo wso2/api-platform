@@ -1,0 +1,184 @@
+# Scenario list: Typed AuthContext (ACTX).
+#
+# Each auth policy describes the caller in a typed AuthContext (sdk/core/policy/v1alpha2/
+# auth_context.go): whether it authenticated and was authorized, the auth type, subject, issuer,
+# audience, scopes and credential, with the earlier policy's context in Previous. Later policies
+# read it, and analytics and the traffic log report the subject of the latest layer that is
+# authenticated and has one.
+#
+# One entry per scenario, kept by hand. A scenario that automates an entry carries its ID
+# as a tag. Each layer (ui, it) records how it covers the ID:
+#   automated    the refs assert the expected result and run in CI
+#   known-issue  the refs assert it but carry @known-issue until `issue` is fixed
+#   exempt       the layer deliberately does not test the ID, for `reason`
+#   planned      not automated in this layer yet
+# Refs are feature paths relative to tests/framework plus the exact scenario name.
+#
+# The UI layer is exempt for every entry: the AuthContext is gateway runtime state that no portal
+# shows. The IT scenarios read it from the traffic log and the analytics user id.
+code: ACTX
+title: Typed AuthContext
+scenarios:
+  - id: ACTX-001
+    title: "Call an API with jwt-auth using a valid JWT with sub, iss, aud and scope claims; the AuthContext is authenticated, its type is jwt, and its subject, issuer, audience and scopes are the token's claims."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "jwt-auth fills the AuthContext from the token's claims"
+  - id: ACTX-002
+    title: "Call an API with basic-auth using a valid username and password; the AuthContext is authenticated, its type is basic and its subject is the username, with no issuer, audience or scopes."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "basic-auth fills the AuthContext with the username only"
+  - id: ACTX-003
+    title: "Call an API with api-key-auth using a valid API key; the AuthContext is authenticated, its type is apikey, its subject is the key's owner and its credential is the key's application, or the key itself when it has none, with no issuer, audience or scopes."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/4340
+      refs:
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "api-key-auth fills the AuthContext with the key's owner and credential"
+  - id: ACTX-004
+    title: "Call APIs with jwt-auth, basic-auth and api-key-auth with missing and with invalid credentials; each request is refused with 401 and no authenticated subject reaches the traffic log or analytics."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "Missing or invalid credentials are refused and leave no authenticated subject"
+  - id: ACTX-005
+    title: "Call a tool on an MCP proxy with mcp-auth using a valid access token; the AuthContext is authenticated, its type is mcp/oauth and it is not authorized."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "mcp-auth authenticates an MCP tool call without authorizing it"
+  - id: ACTX-006
+    title: "Call a tool on an MCP proxy with mcp-auth and mcp-authz using a token with the tool's required scope; the AuthContext is authorized and its type is mcp/oauth+authz."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "mcp-authz authorizes a tool call whose token has the tool's scope"
+  - id: ACTX-007
+    title: "Call a tool on an MCP proxy with mcp-auth and mcp-authz using a token without the tool's required scope; mcp-authz refuses the call and the AuthContext stays unauthorized."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "mcp-authz refuses a tool call whose token lacks the tool's scope"
+  - id: ACTX-008
+    title: "Call an API with two auth policies in sequence; the AuthContext is the second policy's, and its Previous is the first policy's with its fields intact."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: automated
+      refs:
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "A second auth policy's AuthContext wraps the first one in Previous"
+  - id: ACTX-009
+    title: "Send an authenticated request to an API with an auth policy and analytics enabled; the analytics event's user id is the authenticated subject."
+    priority: P0
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: exempt
+      reason: "Proven by gateway/system-policies/analytics/analytics_test.go TestOnResponseHeaders_PopulatesAuthMetadata and TestPopulateAuthAnalyticsMetadata_AllFieldsPopulated; the ACTX-001, ACTX-002 and ACTX-008 scenarios also check the analytics user id."
+  - id: ACTX-010
+    title: "Send a request through layered auth where only one layer is authenticated with a subject; analytics walks from the latest AuthContext back through Previous and records that layer's subject."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: exempt
+      reason: "Proven by gateway/system-policies/analytics/analytics_test.go TestPopulateAuthAnalyticsMetadata_WalksPreviousChainToFirstAuthenticated; the ACTX-008 scenario also records the earlier layer's subject when the later one is unauthenticated."
+  - id: ACTX-011
+    title: "Send a request whose AuthContext is unauthenticated, or authenticated with an empty subject; analytics records no user id."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: exempt
+      reason: "Proven by gateway/system-policies/analytics/analytics_test.go TestPopulateAuthAnalyticsMetadata_UnauthenticatedSkipped and TestPopulateAuthAnalyticsMetadata_EmptySubjectSkipped."
+  - id: ACTX-012
+    title: "Send a request to an API with no auth policy; the analytics event's user id is anonymous and analytics publishing still works."
+    priority: P2
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: exempt
+      reason: "Proven by gateway/system-policies/analytics/analytics_test.go TestPopulateAuthAnalyticsMetadata_NilAuthContextNoop."
+  - id: ACTX-013
+    title: "Build a gateway with a custom policy written against the old SDK, which reads or writes AuthContext as map[string]string; the build fails on the type change, and once the policy uses the struct fields it builds and runs."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: exempt
+      reason: "A compile-time change: the Go compiler refuses a policy that treats the AuthContext struct as a map, and the IT suite builds gateways only from released policies, which all use the struct."
+  - id: ACTX-014
+    title: "Build a gateway with the default auth policies and deploy an API with each; the gateway builds, each policy authenticates as before, and each fills in the AuthContext."
+    priority: P1
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: known-issue
+      issue: https://github.com/wso2/api-platform/issues/4340
+      refs:
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "jwt-auth fills the AuthContext from the token's claims"
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "basic-auth fills the AuthContext with the username only"
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "api-key-auth fills the AuthContext with the key's owner and credential"
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "mcp-auth authenticates an MCP tool call without authorizing it"
+        - feature: suites/it/features/gateway/security/auth_context.feature
+          scenario: "mcp-authz authorizes a tool call whose token has the tool's scope"
+  - id: ACTX-015
+    title: "Read Scopes and Audience from an AuthContext left by basic or API key auth, where both are nil; a scope lookup returns false, ranging over the audience yields nothing, and nothing panics."
+    priority: P2
+    ui:
+      status: exempt
+      reason: "The AuthContext is gateway runtime state that no portal shows."
+    it:
+      status: exempt
+      reason: "Proven by sdk/core/policy/v1alpha2/auth_context_test.go TestAuthContextNilScopesAndAudienceReadAsEmpty; Go guarantees reading a nil map or slice is safe, so there is no gateway behaviour to observe."

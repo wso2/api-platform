@@ -52,6 +52,7 @@ func (g *Gateway) registerMTLSObservabilitySteps(sc *godog.ScenarioContext) {
 	sc.StepContext().After(commitLogMarksAfterRequest)
 
 	sc.Step(`^the "([^"]*)" access log `+sinceLatestPhrase+` should show a line for "([^"]*)" with:$`, g.accessLogShowsLine)
+	sc.Step(`^the "([^"]*)" access log `+sinceLatestPhrase+` should show a line for API context "([^"]*)" with:$`, g.accessLogShowsLineForAPIContext)
 	sc.Step(`^the "([^"]*)" log `+sinceLatestPhrase+` should contain "(.*)"$`, g.logSinceLatestRequestContains)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should have the user id of fixture "([^"]*)"$`, g.analyticsUserIDOfFixture)
 	sc.Step(`^the latest analytics event for path "([^"]*)" should not have metadata field "([^"]*)"$`, g.analyticsMetadataFieldAbsent)
@@ -223,6 +224,14 @@ func accessLogExpectations(ctx context.Context, table *godog.Table) ([]logExpect
 			})
 			continue
 		}
+		// A "not " row is shown when the line lacks the text after it.
+		if absent, ok := strings.CutPrefix(cell, "not "); ok {
+			out = append(out, logExpectation{
+				describe: fmt.Sprintf("no %q", absent),
+				shownIn:  func(line string) bool { return !strings.Contains(line, absent) },
+			})
+			continue
+		}
 		literal := cell
 		out = append(out, logExpectation{
 			describe: fmt.Sprintf("%q", literal),
@@ -237,7 +246,12 @@ func accessLogExpectations(ctx context.Context, table *godog.Table) ([]logExpect
 // expectation and contradicts it otherwise. No line for the path yet is the only tolerated
 // state.
 func observeAccessLogLine(logs, path string, expectations []logExpectation) error {
-	marker := `"path":"` + path + `"`
+	return observeLogLineWith(logs, `"path":"`+path+`"`, path, expectations)
+}
+
+// observeLogLineWith is observeAccessLogLine for the first line carrying marker; subject names
+// what the marker identifies in its messages.
+func observeLogLineWith(logs, marker, subject string, expectations []logExpectation) error {
 	for _, line := range strings.Split(logs, "\n") {
 		if !strings.Contains(line, marker) {
 			continue
@@ -249,15 +263,25 @@ func observeAccessLogLine(logs, path string, expectations []logExpectation) erro
 			}
 		}
 		if len(missing) > 0 {
-			return fmt.Errorf("the access log line for %s does not show %s: %s", path, strings.Join(missing, " and "), line)
+			return fmt.Errorf("the access log line for %s does not show %s: %s", subject, strings.Join(missing, " and "), line)
 		}
 		return nil
 	}
-	return tolerated("no access log line for %s since the latest request yet", path)
+	return tolerated("no access log line for %s since the latest request yet", subject)
 }
 
 func (g *Gateway) accessLogShowsLine(ctx context.Context, service, path string, table *godog.Table) error {
-	resolvedPath, err := stepscommon.Expand(ctx, path)
+	return g.logShowsLine(ctx, service, "path", path, table)
+}
+
+// accessLogShowsLineForAPIContext finds the line by its API's context, which a line for a
+// request the gateway refused carries even when it has no operation path.
+func (g *Gateway) accessLogShowsLineForAPIContext(ctx context.Context, service, apiContext string, table *godog.Table) error {
+	return g.logShowsLine(ctx, service, "context", apiContext, table)
+}
+
+func (g *Gateway) logShowsLine(ctx context.Context, service, field, value string, table *godog.Table) error {
+	resolved, err := stepscommon.Expand(ctx, value)
 	if err != nil {
 		return err
 	}
@@ -265,13 +289,13 @@ func (g *Gateway) accessLogShowsLine(ctx context.Context, service, path string, 
 	if err != nil {
 		return err
 	}
-	return awaitReadState(ctx, fmt.Sprintf("waiting for the %q access log line for %s", service, resolvedPath),
+	return awaitReadState(ctx, fmt.Sprintf("waiting for the %q access log line for %s", service, resolved),
 		func(ctx context.Context) error {
 			logs, err := g.logSinceLatestRequest(ctx, service)
 			if err != nil {
 				return err
 			}
-			return observeAccessLogLine(logs, resolvedPath, expectations)
+			return observeLogLineWith(logs, `"`+field+`":"`+resolved+`"`, resolved, expectations)
 		})
 }
 
