@@ -19,7 +19,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ConsoleSendRequest } from '../types';
-import { displayUrl, MASKED_VALUE, shellQuote, toCurl } from './display';
+import { displayUrl, formFileArg, MASKED_VALUE, shellQuote, toCurl } from './display';
 
 const request: ConsoleSendRequest = {
   baseUrl: 'https://gw.example.com/p',
@@ -82,6 +82,39 @@ describe('toCurl', () => {
       body: { kind: 'multipart', parts: [{ name: 'note', value: '@/etc/passwd' }] },
     };
     expect(toCurl(multipart, { reveal: true })).toContain(`--form-string 'note=@/etc/passwd'`);
+  });
+});
+
+describe('toCurl — files and HEAD', () => {
+  const upload = (filename: string): ConsoleSendRequest => ({
+    ...request,
+    body: {
+      kind: 'multipart',
+      parts: [{ file: new File(['x'], filename), name: 'upload' }],
+    },
+  });
+
+  it('keeps a comma or semicolon in a filename inside one curl form file', () => {
+    expect(toCurl(upload('report,final.csv'), { reveal: true })).toContain(
+      `-F 'upload=@"report,final.csv"'`,
+    );
+    expect(toCurl(upload('a;type=text.csv'), { reveal: true })).toContain(
+      `-F 'upload=@"a;type=text.csv"'`,
+    );
+  });
+
+  it('escapes quotes and backslashes in a filename for curl, then for the shell', () => {
+    expect(formFileArg('f', 'a"b\\c')).toBe('f=@"a\\"b\\\\c"');
+    expect(toCurl(upload("it's.txt"), { reveal: true })).toContain(
+      `-F 'upload=@"it'\\''s.txt"'`,
+    );
+  });
+
+  it('uses --head for a HEAD request, and -X for the others', () => {
+    const head = toCurl({ ...request, body: undefined, method: 'HEAD' }, { reveal: true });
+    expect(head).toMatch(/^curl --head 'https:/);
+    expect(head).not.toContain('-X');
+    expect(toCurl(request, { reveal: true })).toMatch(/^curl -X 'POST'/);
   });
 });
 

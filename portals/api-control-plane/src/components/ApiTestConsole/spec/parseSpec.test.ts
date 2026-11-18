@@ -153,6 +153,67 @@ describe('parseConsoleSpec', () => {
     expect(body?.options[1].formFields[0]).toMatchObject({ name: 'title', required: true });
   });
 
+  it('serializes JSON examples as JSON, and leaves text and XML examples as written', () => {
+    const exampleFor = (mediaType: string, media: Record<string, unknown>) =>
+      parseConsoleSpec({
+        paths: {
+          '/x': {
+            post: {
+              requestBody: { content: { [mediaType]: media } },
+              responses: {},
+            },
+          },
+        },
+      }).operations[0].body?.options[0].example;
+
+    // A string is a JSON value of its own, as is null.
+    expect(exampleFor('application/json', { schema: { type: 'string', example: 'hello' } })).toBe(
+      '"hello"',
+    );
+    expect(exampleFor('application/json', { example: 'hello' })).toBe('"hello"');
+    expect(exampleFor('application/json', { example: null })).toBe('null');
+    // A string already holding a JSON object is the author's own text.
+    expect(exampleFor('application/json', { example: '{"a":1}' })).toBe('{"a":1}');
+    expect(exampleFor('application/json', { example: { a: 1 } })).toBe('{\n  "a": 1\n}');
+    expect(exampleFor('text/plain', { example: 'hello' })).toBe('hello');
+    expect(exampleFor('application/xml', { example: '<a/>' })).toBe('<a/>');
+  });
+
+  it('leaves read-only properties out of the request form fields', () => {
+    const spec = {
+      components: {
+        schemas: {
+          Item: {
+            properties: {
+              id: { readOnly: true, type: 'string' },
+              name: { type: 'string' },
+            },
+            required: ['id', 'name'],
+            type: 'object',
+          },
+        },
+      },
+      paths: {
+        '/items': {
+          post: {
+            requestBody: {
+              content: {
+                'application/x-www-form-urlencoded': {
+                  schema: { $ref: '#/components/schemas/Item' },
+                },
+              },
+            },
+            responses: {},
+          },
+        },
+      },
+    };
+    const fields = parseConsoleSpec(spec).operations[0].body?.options[0].formFields ?? [];
+    // `id` is required only in responses, so the user is never asked for it.
+    expect(fields.map((f) => f.name)).toEqual(['name']);
+    expect(fields[0].required).toBe(true);
+  });
+
   it('marks binary form fields as file inputs', () => {
     const fields = op('POST /upload')?.body?.options[0].formFields ?? [];
     expect(fields.find((f) => f.name === 'file')).toMatchObject({ binary: true, required: true });

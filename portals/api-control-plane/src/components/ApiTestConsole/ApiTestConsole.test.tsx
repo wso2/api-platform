@@ -365,6 +365,159 @@ describe('ApiTestConsole — mirroring', () => {
   });
 });
 
+describe('ApiTestConsole — response fidelity', () => {
+  const BIG = '{"id":9007199254740993}';
+
+  it('shows an integer above 2^53 exactly as received', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result({ bodyText: BIG }));
+    const { user } = renderConsole(transport);
+
+    await user.click(sendButton());
+    expect(await screen.findByText(/9007199254740993/)).toBeInTheDocument();
+    expect(screen.queryByText(/9007199254740992/)).toBeNull();
+  });
+
+  it('copies and downloads the same exact number', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result({ bodyText: BIG }));
+    const blobs: Blob[] = [];
+    // jsdom has no Blob URLs, so stand in for both calls the download makes.
+    const createObjectURL = vi.fn((blob: Blob) => {
+      blobs.push(blob);
+      return 'blob:test';
+    });
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    const { user } = renderConsole(transport);
+    await user.click(sendButton());
+    await screen.findByText(/9007199254740993/);
+
+    await user.click(screen.getByRole('button', { name: 'Copy' }));
+    // user-event's own clipboard takes what the console copies.
+    const copied = await navigator.clipboard.readText();
+    expect(copied).toContain('9007199254740993');
+    expect(copied).not.toContain('9007199254740992');
+
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+    const downloaded = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(blobs[0]);
+    });
+    expect(downloaded).toContain('9007199254740993');
+    expect(downloaded).not.toContain('9007199254740992');
+  });
+
+  it('keeps the route label of the send, and shows none when it had none', async () => {
+    const transport = vi.fn<ConsoleTransport>().mockResolvedValue(result());
+    const { user, rerender } = renderConsole(transport);
+
+    await user.click(sendButton());
+    await screen.findByText(/200 OK/);
+
+    // Switching the mode later must not relabel a response that was sent without one.
+    rerender(
+      <ApiTestConsole
+        baseUrl="https://gw.example.com/p"
+        routeLabel="via proxy"
+        spec={SPEC}
+        transport={transport}
+      />,
+    );
+    expect(screen.queryByText('via proxy')).toBeNull();
+  });
+});
+
+describe('ApiTestConsole — a changed definition', () => {
+  it('drops a response that arrives after the definition changed', async () => {
+    let resolve: (value: ConsoleSendResult) => void = () => undefined;
+    const transport = vi.fn<ConsoleTransport>().mockImplementation(
+      () =>
+        new Promise((r) => {
+          resolve = r;
+        }),
+    );
+    const { user, rerender } = renderConsole(transport);
+
+    await user.click(sendButton());
+    await screen.findByText(/Waiting for the gateway/i);
+
+    // The same operations, in a new definition: the old answer must not land on them.
+    rerender(
+      <ApiTestConsole
+        baseUrl="https://gw.example.com/p"
+        spec={{ ...SPEC, info: { title: 'v2' } }}
+        transport={transport}
+      />,
+    );
+    resolve(result({ bodyText: 'STALE-RESPONSE-BODY' }));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(screen.queryByText(/STALE-RESPONSE-BODY/)).toBeNull();
+    expect(await screen.findByText(/Possible responses/i)).toBeInTheDocument();
+    // The console is free to send again.
+    expect(sendButton()).toBeEnabled();
+  });
+});
+
+describe('ApiTestConsole — files', () => {
+  const UPLOAD_SPEC = {
+    openapi: '3.0.1',
+    paths: {
+      '/upload': {
+        post: {
+          requestBody: {
+            content: {
+              'application/octet-stream': { schema: { format: 'binary', type: 'string' } },
+            },
+            required: true,
+          },
+          responses: { '204': { description: 'stored' } },
+          summary: 'Upload',
+        },
+      },
+    },
+  };
+
+  const fileInput = (): HTMLInputElement =>
+    document.querySelector('input[type="file"]') as HTMLInputElement;
+
+  it('reports a replacement file even when it has the same name', async () => {
+    const onRequestChange = vi.fn<(request: ConsoleSendRequest) => void>();
+    const { user } = renderConsole(vi.fn(), { onRequestChange, spec: UPLOAD_SPEC });
+    await user.click(screen.getByRole('tab', { name: /Body/ }));
+
+    const first = new File(['one'], 'data.bin');
+    const second = new File(['two, different'], 'data.bin');
+
+    await user.upload(fileInput(), first);
+    await waitFor(() => {
+      const body = onRequestChange.mock.calls.at(-1)?.[0].body;
+      expect(body && 'file' in body ? body.file : undefined).toBe(first);
+    });
+
+    await user.upload(fileInput(), second);
+    await waitFor(() => {
+      const body = onRequestChange.mock.calls.at(-1)?.[0].body;
+      expect(body && 'file' in body ? body.file : undefined).toBe(second);
+    });
+  });
+
+  it('keeps the file picker in the keyboard tab order', async () => {
+    const { user } = renderConsole(vi.fn(), { spec: UPLOAD_SPEC });
+    await user.click(screen.getByRole('tab', { name: /Body/ }));
+
+    const input = fileInput();
+    // `hidden` would remove it from the tab order; the label must not be a second stop.
+    expect(input).not.toHaveAttribute('hidden');
+    expect(input.closest('label')).toHaveAttribute('tabindex', '-1');
+    input.focus();
+    expect(input).toHaveFocus();
+  });
+});
+
 describe('ApiTestConsole — response format', () => {
   const MULTI = {
     paths: {

@@ -20,18 +20,18 @@ import { createIntl, createIntlCache } from 'react-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError, type ApiErrorKind } from '@/api/core/errors';
-import type { InvokeRestApiOnGatewayVariables } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
+import type { InvokeApiOnGatewayVariables } from '@/api/resources/gatewayRelay';
 import type { ConsoleSendRequest } from '@/components/ApiTestConsole';
 import { createRelayTransport, encodeRequestBody, type RelayContext } from './relayTransport';
 
 const intl = createIntl({ locale: 'en', messages: {} }, createIntlCache());
 
 /** What the transport asked to invoke, and how the invoke answers. */
-let sent: InvokeRestApiOnGatewayVariables | undefined;
+let sent: InvokeApiOnGatewayVariables | undefined;
 let answer: () => Promise<unknown>;
 
-/** Stands in for `useInvokeRestApiOnGateway`'s `mutateAsync`. */
-const invoke = async (variables: InvokeRestApiOnGatewayVariables) => {
+/** Stands in for `useInvokeApiOnGateway`'s `mutateAsync`. */
+const invoke = async (variables: InvokeApiOnGatewayVariables) => {
   sent = variables;
   if (variables.signal?.aborted) throw new ApiError('Request was canceled', { kind: 'aborted' });
   return answer();
@@ -108,7 +108,8 @@ describe('createRelayTransport — what reaches the Platform API', () => {
 
     expect(sent).toEqual({
       body: {
-        restApiId: 'api-1',
+        apiType: 'rest-api',
+        apiId: 'api-1',
         gatewayId: 'gw-prod',
         method: 'GET',
         path: '/order',

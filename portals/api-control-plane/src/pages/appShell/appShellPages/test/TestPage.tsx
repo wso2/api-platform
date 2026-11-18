@@ -25,10 +25,8 @@ import { useNavigate } from 'react-router-dom';
 import { SegmentedControl } from '@/components/common/SegmentedControl';
 import { parseSpecContent, useRestApi, useRestApiOpenApi } from '@/api/resources/restApis';
 import { useDeployments } from '@/api/resources/restApis/deployments';
-import {
-  useInvokeRestApiOnGateway,
-  useRestApiGateways,
-} from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
+import { useInvokeApiOnGateway } from '@/api/resources/gatewayRelay';
+import { useRestApiGateways } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
 import { isTestKeyExpired, KEY_COUNTDOWN_TICK_MS, testKeyRemainingMs } from './utils/testApiKey';
 import { useTestApiKey } from './utils/useTestApiKey';
 import { isApiError } from '@/api/core/errors';
@@ -174,7 +172,7 @@ function TestConsole() {
   const definitionQuery = useRestApiOpenApi(restApiId);
   const gatewaysQuery = useRestApiGateways(restApiId);
   const deploymentsQuery = useDeployments(restApiId);
-  const { mutateAsync: invoke } = useInvokeRestApiOnGateway({ orgId: params.orgHandle ?? '' });
+  const { mutateAsync: invoke } = useInvokeApiOnGateway({ orgId: params.orgHandle ?? '' });
 
   /** API `api-key-auth` configuration, if present. */
   const apiKeyAuth = useMemo(() => apiKeyAuthOf(apiQuery.data), [apiQuery.data]);

@@ -160,18 +160,44 @@ export const bodyKindOf = (mediaType: string): ConsoleBodyKind => {
   return 'binary';
 };
 
+/**
+ * A JSON example as JSON text. A string is a JSON value of its own, so `hello` becomes
+ * `"hello"`; but a string that already holds a JSON object or array is the author's text and
+ * stays as written, which is how many documents spell a body example.
+ */
+const jsonText = (value: unknown): string => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        JSON.parse(trimmed);
+        return value;
+      } catch {
+        // Not JSON text, so it is a plain string value.
+      }
+    }
+  }
+  try {
+    return JSON.stringify(value, null, 2) ?? '';
+  } catch {
+    return '';
+  }
+};
+
 /** An example for a media-type entry: the author's own, else one built from the schema. */
-const exampleOf = (spec: Json, media: Json): string => {
-  if (media.example !== undefined) return stringify(media.example);
+const exampleOf = (spec: Json, media: Json, mediaType: string): string => {
+  // JSON keeps the JSON form of strings and null; text and XML examples stay as written.
+  const render = bodyKindOf(mediaType) === 'json' ? jsonText : stringify;
+  if (media.example !== undefined) return render(media.example);
   if (isObject(media.examples)) {
     const first = Object.values(media.examples)
       .map((e) => deref(spec, e))
       .find(isObject);
-    if (first && first.value !== undefined) return stringify(first.value);
+    if (first && first.value !== undefined) return render(first.value);
   }
   if (!isObject(media.schema)) return '';
   const sample = sampleFromSchema(spec, media.schema);
-  return sample === null || sample === undefined ? '' : stringify(sample);
+  return sample === null || sample === undefined ? '' : render(sample);
 };
 
 const formFieldsOf = (spec: Json, schema: unknown): ConsoleFormField[] => {
@@ -183,21 +209,23 @@ const formFieldsOf = (spec: Json, schema: unknown): ConsoleFormField[] => {
       ? resolved.required.filter((n): n is string => typeof n === 'string')
       : [],
   );
-  return Object.entries(resolved.properties).map(([name, property]) => {
-    const detail = isObject(property) ? flatten(spec, property, 0) : {};
-    const sample = sampleFromSchema(spec, property);
-    return {
-      name,
-      type: typeLabel(spec, property),
-      required: required.has(name),
-      description: str(detail.description),
-      binary: detail.format === 'binary',
-      example:
-        typeof sample === 'string' || typeof sample === 'number' || typeof sample === 'boolean'
-          ? String(sample)
-          : '',
-    };
-  });
+  return Object.entries(resolved.properties)
+    .filter(([, property]) => !(isObject(property) && flatten(spec, property, 0).readOnly === true))
+    .map(([name, property]) => {
+      const detail = isObject(property) ? flatten(spec, property, 0) : {};
+      const sample = sampleFromSchema(spec, property);
+      return {
+        name,
+        type: typeLabel(spec, property),
+        required: required.has(name),
+        description: str(detail.description),
+        binary: detail.format === 'binary',
+        example:
+          typeof sample === 'string' || typeof sample === 'number' || typeof sample === 'boolean'
+            ? String(sample)
+            : '',
+      };
+    });
 };
 
 const bodyOptionOf = (spec: Json, mediaType: string, mediaValue: unknown): ConsoleBodyOption => {
@@ -208,7 +236,7 @@ const bodyOptionOf = (spec: Json, mediaType: string, mediaValue: unknown): Conso
   return {
     mediaType,
     kind,
-    example: isForm || kind === 'binary' ? '' : exampleOf(spec, media),
+    example: isForm || kind === 'binary' ? '' : exampleOf(spec, media, mediaType),
     schemaName: isObject(schema) ? refName(schema.$ref) : undefined,
     fields: fieldsOf(spec, schema),
     formFields: isForm ? formFieldsOf(spec, schema) : [],
@@ -356,7 +384,7 @@ const responsesOf = (spec: Json, operation: Json): ConsoleResponseDoc[] => {
       mediaTypes,
       schemaName: isObject(schema) ? refName(schema.$ref) : undefined,
       example: mediaType
-        ? exampleOf(spec, mediaObject) || undefined
+        ? exampleOf(spec, mediaObject, mediaType) || undefined
         : isObject(schema)
           ? stringify(sampleFromSchema(spec, schema))
           : undefined,

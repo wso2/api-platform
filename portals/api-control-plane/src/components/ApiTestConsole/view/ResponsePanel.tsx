@@ -220,6 +220,10 @@ export function ResponsePanel({
 }: ResponsePanelProps) {
   const intl = useIntl();
   const result = outcome?.result;
+  // The label is the one the request was sent with; an absent one stays absent, so a mode
+  // switched afterwards does not relabel a finished response. Only an outcome with no
+  // send-time record falls back to the current label.
+  const sentRouteLabel = outcome?.sent ? outcome.sent.routeLabel : routeLabel;
 
   const body = useMemo(
     () =>
@@ -262,10 +266,8 @@ export function ResponsePanel({
                   )}
                   {chip(intl.formatMessage(messages.time, { ms: result.durationMs }))}
                   {chip(intl.formatNumber(result.sizeBytes, { style: 'unit', unit: 'byte' }))}
-                  {(outcome?.sent?.routeLabel ?? routeLabel) && (
-                    <SecondaryText variant="caption">
-                      {outcome?.sent?.routeLabel ?? routeLabel}
-                    </SecondaryText>
+                  {sentRouteLabel && (
+                    <SecondaryText variant="caption">{sentRouteLabel}</SecondaryText>
                   )}
                 </>
               )}

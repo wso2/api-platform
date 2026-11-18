@@ -19,8 +19,10 @@
 import { defineMessages, type IntlShape } from 'react-intl';
 
 import { isApiError, type ApiError } from '@/api/core/errors';
-import type { InvokeRestApiOnGatewayResponse } from '@/api/resources/restApis/apiGateways/apiGateways.endpoints';
-import type { InvokeRestApiOnGatewayVariables } from '@/api/resources/restApis/apiGateways/apiGateways.hooks';
+import type {
+  InvokeApiOnGatewayResponse,
+  InvokeApiOnGatewayVariables,
+} from '@/api/resources/gatewayRelay';
 import {
   ConsoleTransportError,
   decodeBody,
@@ -151,12 +153,12 @@ const ERROR_MESSAGES: Record<string, (typeof messages)[keyof typeof messages]> =
 };
 
 /** What the Platform API returns when the relay reached the gateway. */
-type RelayResult = InvokeRestApiOnGatewayResponse;
+type RelayResult = InvokeApiOnGatewayResponse;
 
 /** Everything the relay needs to send one request. */
 export type RelayContext = {
-  /** Sends the invoke request: `useInvokeRestApiOnGateway`'s `mutateAsync`. */
-  invoke: (variables: InvokeRestApiOnGatewayVariables) => Promise<InvokeRestApiOnGatewayResponse>;
+  /** Sends the invoke request: `useInvokeApiOnGateway`'s `mutateAsync`. */
+  invoke: (variables: InvokeApiOnGatewayVariables) => Promise<InvokeApiOnGatewayResponse>;
   restApiId: string;
   gatewayId: string;
   intl: IntlShape;
@@ -480,7 +482,8 @@ export const createRelayTransport =
     try {
       parsed = await context.invoke({
         body: {
-          restApiId: context.restApiId,
+          apiType: 'rest-api',
+          apiId: context.restApiId,
           gatewayId: context.gatewayId,
           method: request.method,
           path: request.path,

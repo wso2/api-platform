@@ -331,6 +331,57 @@ describe('toCurl', () => {
   });
 });
 
+describe('files', () => {
+  const fileRow = (name: string, filename: string) => row({ file: true, name, value: filename });
+  const command = (overrides: Partial<ConsoleRequest>) =>
+    toCurl(request({ method: 'POST', ...overrides }), { revealSecrets: true });
+
+  it('sends a multipart file with -F, and the other fields as plain text', () => {
+    const out = command({
+      bodyMode: 'form-data',
+      formFields: [fileRow('upload', 'a.csv'), row({ name: 'note', value: 'hi' })],
+    });
+    expect(out).toContain("-F 'upload=@a.csv'");
+    expect(out).toContain("--form-string 'note=hi'");
+  });
+
+  it('quotes a filename curl would split at a comma or semicolon', () => {
+    expect(
+      command({ bodyMode: 'form-data', formFields: [fileRow('upload', 'report,final.csv')] }),
+    ).toContain(`-F 'upload=@"report,final.csv"'`);
+    expect(
+      command({ bodyMode: 'form-data', formFields: [fileRow('upload', 'a;b.csv')] }),
+    ).toContain(`-F 'upload=@"a;b.csv"'`);
+  });
+
+  it('escapes quotes and backslashes in a filename', () => {
+    expect(command({ bodyMode: 'form-data', formFields: [fileRow('f', 'a"b\\c.csv')] })).toContain(
+      `-F 'f=@"a\\"b\\\\c.csv"'`,
+    );
+  });
+
+  it('never mixes -F with --data-urlencode when the mode is url-encoded', () => {
+    const out = command({
+      bodyMode: 'url-encoded',
+      formFields: [fileRow('upload', 'a.csv'), row({ name: 'note', value: 'hi' })],
+    });
+    expect(out).not.toContain('-F ');
+    expect(out).toContain("--data-urlencode 'upload@a.csv'");
+    expect(out).toContain("--data-urlencode 'note=hi'");
+  });
+
+  it('sends a binary upload only while no other body mode is chosen', () => {
+    expect(command({ binaryFile: 'photo.png' })).toContain("--data-binary '@photo.png'");
+    // Choosing another body mode, or editing a raw body, replaces the upload.
+    const raw = command({ binaryFile: 'photo.png', body: '{}', bodyMode: 'raw' });
+    expect(raw).not.toContain('--data-binary');
+    expect(raw).toContain("--data-raw '{}'");
+    expect(
+      command({ binaryFile: 'photo.png', bodyMode: 'url-encoded', formFields: [] }),
+    ).not.toContain('--data-binary');
+  });
+});
+
 describe('Content-Type', () => {
   it('is derived from the raw format, not from a header the user must maintain', () => {
     const command = (format: ConsoleRequest['rawFormat'], body: string) =>

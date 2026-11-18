@@ -290,6 +290,18 @@ export const buildSendRequest = ({
     }
   }
 
+  // Body presence is independent of field-level requirements: a required body whose form
+  // fields are all optional and empty still has to carry something.
+  if (
+    canHaveBody &&
+    operation.body?.required &&
+    option &&
+    body === undefined &&
+    !problems[BODY_PROBLEM_KEY]
+  ) {
+    problems[BODY_PROBLEM_KEY] = { code: 'required' };
+  }
+
   if (body?.kind === 'text') headers.push(['Content-Type', body.mediaType]);
   if (body?.kind === 'form') headers.push(['Content-Type', 'application/x-www-form-urlencoded']);
   if (body?.kind === 'binary') headers.push(['Content-Type', body.mediaType]);

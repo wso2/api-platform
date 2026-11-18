@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useState, type ReactNode } from 'react';
+import { useState, type ChangeEvent, type ReactNode } from 'react';
 import {
   Box,
   Button,
@@ -739,16 +739,34 @@ function FilePicker({
   const intl = useIntl();
   return (
     <Stack alignItems="center" direction="row" spacing={1}>
-      <Button component="label" size="small" variant="outlined">
+      {/* The label has no tab stop of its own: the input inside it is the one focusable
+          control, visually hidden rather than `hidden` (which removes it from the tab order),
+          so the keyboard reaches it and Enter or Space opens the file dialog. The button shows
+          the focus the input holds. */}
+      <Button
+        component="label"
+        size="small"
+        sx={{
+          '&:focus-within': {
+            outlineColor: 'primary.main',
+            outlineOffset: 2,
+            outlineStyle: 'solid',
+            outlineWidth: 2,
+          },
+        }}
+        tabIndex={-1}
+        variant="outlined"
+      >
         <FormattedMessage {...messages.chooseFile} />
-        <input
+        <Box
           aria-label={label}
-          hidden
-          onChange={(event) => {
+          component="input"
+          onChange={(event: ChangeEvent<HTMLInputElement>) => {
             onChange(event.target.files?.[0]);
             // Allow choosing the same file again after clearing it.
             event.target.value = '';
           }}
+          sx={visuallyHidden}
           type="file"
         />
       </Button>

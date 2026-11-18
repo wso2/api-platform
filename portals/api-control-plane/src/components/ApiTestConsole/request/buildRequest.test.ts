@@ -69,6 +69,31 @@ const SPEC = {
         responses: {},
       },
     },
+    '/optional-form': {
+      post: {
+        requestBody: {
+          content: {
+            'application/x-www-form-urlencoded': {
+              schema: { properties: { note: { type: 'string' } }, type: 'object' },
+            },
+          },
+          required: true,
+        },
+        responses: {},
+      },
+    },
+    '/optional-form-body-not-required': {
+      post: {
+        requestBody: {
+          content: {
+            'application/x-www-form-urlencoded': {
+              schema: { properties: { note: { type: 'string' } }, type: 'object' },
+            },
+          },
+        },
+        responses: {},
+      },
+    },
     '/urlencoded': {
       post: {
         requestBody: {
@@ -285,6 +310,31 @@ describe('buildSendRequest — body', () => {
       'Content-Type',
       'application/x-www-form-urlencoded',
     ]);
+  });
+
+  it('requires a required form body even when every field is optional and empty', () => {
+    const empty = build(
+      'POST /optional-form',
+      draft({ bodyMediaType: 'application/x-www-form-urlencoded' }),
+    );
+    expect(empty.request).toBeUndefined();
+    expect(empty.problems[BODY_PROBLEM_KEY]).toEqual({ code: 'required' });
+
+    const filled = build(
+      'POST /optional-form',
+      draft({ bodyMediaType: 'application/x-www-form-urlencoded', formValues: { note: 'n' } }),
+    );
+    expect(filled.problems[BODY_PROBLEM_KEY]).toBeUndefined();
+    expect(filled.request?.body).toEqual({ fields: [['note', 'n']], kind: 'form' });
+  });
+
+  it('still omits an optional empty form body', () => {
+    const result = build(
+      'POST /optional-form-body-not-required',
+      draft({ bodyMediaType: 'application/x-www-form-urlencoded' }),
+    );
+    expect(result.problems).toEqual({});
+    expect(result.request?.body).toBeUndefined();
   });
 
   it('builds a multipart body with a chosen file, and adds no Content-Type of its own', () => {

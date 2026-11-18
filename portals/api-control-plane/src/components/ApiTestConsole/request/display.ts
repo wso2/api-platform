@@ -41,6 +41,14 @@ export type DisplayOptions = {
 /** Wraps arbitrary text in POSIX `sh` single quotes, so no value can end the quoting. */
 export const shellQuote = (value: string): string => `'${value.split("'").join(`'\\''`)}'`;
 
+/**
+ * A file part for `-F`. curl splits `name=@file` at `,` and `;` for its own options, so the
+ * filename goes in double quotes, with `\` and `"` escaped as curl's form syntax asks. Shell
+ * quoting alone does not protect a name such as `report,final.csv`.
+ */
+export const formFileArg = (name: string, filename: string): string =>
+  `${name}=@"${filename.replace(/[\\"]/g, '\\$&')}"`;
+
 const queryValue = (name: string, value: string, options: DisplayOptions): string =>
   !options.reveal && options.secretQuery?.has(name) ? MASKED_VALUE : value;
 
@@ -72,7 +80,7 @@ const bodyFlags = (request: ConsoleSendRequest): string[] => {
       return body.parts.map((part) =>
         // `--form-string` keeps a leading `@` or `<` in a value from being read as a file.
         'file' in part
-          ? `-F ${shellQuote(`${part.name}=@${part.file.name}`)}`
+          ? `-F ${shellQuote(formFileArg(part.name, part.file.name))}`
           : `--form-string ${shellQuote(`${part.name}=${part.value}`)}`,
       );
     case 'binary':
@@ -82,8 +90,12 @@ const bodyFlags = (request: ConsoleSendRequest): string[] => {
 
 /** A line-continued curl command equivalent to the request. */
 export const toCurl = (request: ConsoleSendRequest, options: DisplayOptions): string => {
+  // `-X HEAD` only renames the method; curl then waits for a body the server never sends.
+  // `--head` is what makes it handle a HEAD response.
+  const methodFlag =
+    request.method === 'HEAD' ? '--head' : `-X ${shellQuote(request.method)}`;
   const lines = [
-    `curl -X ${shellQuote(request.method)} ${shellQuote(displayUrl(request, options))}`,
+    `curl ${methodFlag} ${shellQuote(displayUrl(request, options))}`,
     ...request.headers.map(
       ([name, value]) => `-H ${shellQuote(`${name}: ${headerValue(name, value, options)}`)}`,
     ),

@@ -83,9 +83,28 @@ export const downloadOpenApi = (spec: Record<string, unknown>): void => {
 
 const NO_PARAMS: readonly ConsoleAutoParam[] = [];
 
-/** A request without its files' contents, as a comparable string. */
+const fileIds = new WeakMap<File, number>();
+let nextFileId = 0;
+
+/** A stable id per `File` object, so a replaced file differs even under the same name. */
+const fileId = (file: File): number => {
+  let id = fileIds.get(file);
+  if (id === undefined) {
+    nextFileId += 1;
+    id = nextFileId;
+    fileIds.set(file, id);
+  }
+  return id;
+};
+
+/**
+ * A request as a comparable string. A file is identified by its name and by which `File`
+ * object it is; its contents are never read.
+ */
 const requestSignature = (request: ConsoleSendRequest): string =>
-  JSON.stringify(request, (_key, value) => (value instanceof File ? `file:${value.name}` : value));
+  JSON.stringify(request, (_key, value) =>
+    value instanceof File ? `file:${value.name}:${fileId(value)}` : value,
+  );
 
 /** Copies text; resolves to whether the browser accepted it. */
 const writeClipboard = async (text: string): Promise<boolean> => {
@@ -132,9 +151,18 @@ export function ApiTestConsole({
     setOutcomes({});
     setProblems({});
     setSelectedSchema(undefined);
+    // A send that began under the old definition no longer owns the busy state.
+    setSendingKey(undefined);
   }
 
   const abort = useRef<AbortController | undefined>(undefined);
+  // The definition the latest render shows; a send compares it with the one it began under.
+  const currentModel = useRef(model);
+  useEffect(() => {
+    currentModel.current = model;
+    // A different definition makes what is in flight stale: stop it, and drop its answer.
+    return () => abort.current?.abort();
+  }, [model]);
   const copyTimer = useRef<number | undefined>(undefined);
 
   // A new document may not contain the selected operation any more.
@@ -214,6 +242,7 @@ export function ApiTestConsole({
       return;
     }
 
+    const sentModel = model;
     const controller = new AbortController();
     abort.current = controller;
     setSendingKey(operation.key);
@@ -227,12 +256,15 @@ export function ApiTestConsole({
 
     try {
       const response = await transport(result.request, controller.signal);
+      // An answer for a definition that has since changed must not land on a same-key operation.
+      if (currentModel.current !== sentModel) return;
       setOutcomes((all) => ({ ...all, [operation.key]: { result: response, sent } }));
     } catch (error) {
       if (error instanceof ConsoleTransportError && error.aborted) {
         // The user cancelled; there is nothing to report.
         return;
       }
+      if (currentModel.current !== sentModel) return;
       // Only our own, already-worded messages are shown. Anything else is not
       // passed through: an unknown error's text could carry URLs or tokens.
       const message =
@@ -241,9 +273,21 @@ export function ApiTestConsole({
           : intl.formatMessage(messages.unexpected);
       setOutcomes((all) => ({ ...all, [operation.key]: { error: message, sent } }));
     } finally {
-      setSendingKey(undefined);
+      // Only the send that owns the busy state clears it.
+      if (abort.current === controller) setSendingKey(undefined);
     }
-  }, [autoHeaders, autoQuery, baseUrl, draft, intl, operation, routeLabel, sendingKey, transport]);
+  }, [
+    autoHeaders,
+    autoQuery,
+    baseUrl,
+    draft,
+    intl,
+    model,
+    operation,
+    routeLabel,
+    sendingKey,
+    transport,
+  ]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
