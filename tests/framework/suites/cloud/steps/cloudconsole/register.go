@@ -171,7 +171,7 @@ func (s *Steps) registerSteps(sc stepRegistrar) {
 	sc.Step(`^a "([^"]*)" request to "([^"]*)" should keep returning (\d+) until the redeployment is DEPLOYED$`, s.keepServingUntilDeployed)
 	sc.Step(`^a "([^"]*)" request to "([^"]*)" should keep returning (\d+) for (\d+) seconds$`, s.keepReturningFor)
 	sc.Step(`^I create an API key for the synthetic REST API$`, s.createAPIKey)
-	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with header "([^"]*)" set to the API key until status (\d+)$`, s.sendWithAPIKeyUntilStatus)
+	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with header "([^"]*)" set to the (API key|previous API key|subscription token|previous subscription token|access token|access token with a forged signature) until status (\d+)$`, s.sendWithCredentialUntilStatus)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, s.sendUntilStatus)
 	sc.Step(`^the synthetic REST API data-plane response should contain post (\d+)$`, s.assertAPIResponse)
 	sc.Step(`^I delete the synthetic REST API$`, s.deleteAPI)
@@ -189,6 +189,7 @@ func (s *Steps) registerSteps(sc stepRegistrar) {
 	s.registerProjectSteps(sc)
 	s.registerPortalSteps(sc)
 	s.registerPortalSignInSteps(sc)
+	s.registerPortalConsumerSteps(sc)
 	s.registerSelfHostedGatewaySteps(sc)
 	sc.Step(`^the cloud API response should report:$`, s.assertResponseReports)
 
@@ -342,6 +343,10 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 		return err
 	}
 	if err := reg.RegisterDeleter(kindPortalRestore, portalRestoreDeleter(topo, client)); err != nil {
+		return err
+	}
+	signIn := func(ctx context.Context) error { return (&Steps{client: client}).signInConsumer(ctx) }
+	if err := registerConsumerDeleters(reg, signIn); err != nil {
 		return err
 	}
 	if err := reg.RegisterDeleter(kindLocalGateway, localGatewayDeleter); err != nil {
