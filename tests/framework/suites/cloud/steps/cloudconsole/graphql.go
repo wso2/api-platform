@@ -653,8 +653,13 @@ func (s *Steps) createGraphQLAPIKey(ctx context.Context, which string) error {
 	if err != nil {
 		return err
 	}
+	// The platform names a key after its display name, so each key of the API gets its own.
+	displayName := "Synthetic key for " + id
+	if valueSlot == keyOtherAPIKey {
+		displayName = "Other synthetic key for " + id
+	}
 	resp, err := s.doAuthenticatedRaw(ctx, http.MethodPost, graphQLAPIsCollection+"/"+url.PathEscape(id)+"/api-keys",
-		map[string]string{"displayName": "Synthetic key for " + id})
+		map[string]string{"displayName": displayName})
 	if err != nil {
 		return err
 	}

@@ -7369,6 +7369,8 @@ type graphQLStub struct {
 	apis         map[string]bool
 	// keyAnswer, when set, replaces the answer to a key creation.
 	keyAnswer map[string]string
+	// keyNames are the display names of the keys created, in order.
+	keyNames []string
 }
 
 // metadata reads the metadata part of a GraphQL API form; ok is false once a request it cannot
@@ -7428,6 +7430,12 @@ func (s *graphQLStub) handler(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/graphql-apis/gql-1/api-keys"):
 		s.keyRequests = append(s.keyRequests, r.Method+" "+r.URL.Path)
 		if r.Method == http.MethodPost {
+			var body map[string]string
+			if !assert.NoError(s.t, json.NewDecoder(r.Body).Decode(&body)) {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			s.keyNames = append(s.keyNames, body["displayName"])
 			answer := map[string]string{"status": "success", "apiKey": "key-value", "keyId": "key-1"}
 			if s.keyAnswer != nil {
 				answer = s.keyAnswer
@@ -7935,6 +7943,8 @@ func TestGraphQLAPIKeyIsRegisteredBeforeItsValueIsRead(t *testing.T) {
 	require.Equal(t, "second-value", optionalValue(ctx, keyOtherAPIKey))
 	require.Equal(t, "key-2", optionalValue(ctx, keyOtherGraphQLKeyID))
 	require.Empty(t, optionalValue(ctx, keyAPIKey), "the other key does not take the first key's place")
+	require.Len(t, stub.keyNames, 2)
+	require.NotEqual(t, stub.keyNames[0], stub.keyNames[1], "each key of an API has a display name of its own")
 
 	for status, ok := range map[int]bool{http.StatusNoContent: true, http.StatusNotFound: true, http.StatusServiceUnavailable: false} {
 		stub.keyStatus = status
