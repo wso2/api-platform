@@ -876,7 +876,7 @@ type ControlPlaneConfig struct {
 	Token                 string        `koanf:"token"`                   // Registration token (api-key)
 	ReconnectInitial      time.Duration `koanf:"reconnect_initial"`       // Initial retry delay
 	ReconnectMax          time.Duration `koanf:"reconnect_max"`           // Maximum retry delay
-	PollingInterval       time.Duration `koanf:"polling_interval"`        // Reconciliation polling interval
+	PollingInterval       time.Duration `koanf:"polling_interval"`        // Interval for periodic re-sync of secrets, gateway artifacts, subscription plans, subscriptions and API keys while connected; with deployment_sync_enabled, on-prem ticks also push gateway artifacts to APIM (only the control-plane-to-gateway bulk deployment pull is first-connect-only)
 	InsecureSkipVerify    bool          `koanf:"insecure_skip_verify"`    // Skip TLS certificate verification (insecure, dev/test only)
 	DeploymentSyncEnabled bool          `koanf:"deployment_sync_enabled"` // Enable two-way artifact/deployment sync with the control plane: DP->CP push and CP->DP pull (default: true)
 	SyncBatchSize         int           `koanf:"sync_batch_size"`         // Number of deployments to fetch per batch request during startup sync (default: 50)
