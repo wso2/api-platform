@@ -1402,3 +1402,57 @@ func TestPolicyValidator_GraphQLHostRewriteRequiresManualUpstream(t *testing.T) 
 	cfg.Spec.Upstream.Main.HostRewrite = &manual
 	assert.Empty(t, hostRewriteErrors(validator.ValidateGraphQLAPIPolicies(cfg)))
 }
+
+// An Agent proxies operations, and a passthrough public card, to spec.upstream
+// with Envoy auto_host_rewrite unless hostRewrite is manual, so host-rewrite in
+// any of its three policy scopes is refused the same way as on a RestApi.
+// Fault policies are not checked: they run over the error response.
+func TestPolicyValidator_AgentHostRewriteRequiresManualUpstream(t *testing.T) {
+	validator := NewPolicyValidator(hostRewriteDefs(), nil)
+	manual, auto := api.AgentConfigDataUpstreamHostRewriteManual, api.AgentConfigDataUpstreamHostRewriteAuto
+
+	tests := []struct {
+		name         string
+		scope        string // "common", "operation", "card" or "fault"
+		hostRewrite  *api.AgentConfigDataUpstreamHostRewrite
+		wantErrField string
+	}{
+		{name: "operation-common, unset", scope: "common", wantErrField: "spec.a2a.operationConfigs.policies[0]"},
+		{name: "operation-common, auto", scope: "common", hostRewrite: &auto, wantErrField: "spec.a2a.operationConfigs.policies[0]"},
+		{name: "operation-common, manual", scope: "common", hostRewrite: &manual},
+		{name: "per-operation, unset", scope: "operation", wantErrField: "spec.a2a.operationConfigs.operations[0].policies[0]"},
+		{name: "per-operation, manual", scope: "operation", hostRewrite: &manual},
+		{name: "agent card, unset", scope: "card", wantErrField: "spec.a2a.agentCard.public.policies[0]"},
+		{name: "agent card, manual", scope: "card", hostRewrite: &manual},
+		{name: "fault policy, unset", scope: "fault"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policies := []api.Policy{{Name: "host-rewrite", Version: "v1", Params: &map[string]interface{}{"host": "agent.example.com"}}}
+			cfg := &api.AgentConfiguration{}
+			cfg.Spec.Upstream.Url = api.Ptr("http://agent.example.com")
+			cfg.Spec.Upstream.HostRewrite = tt.hostRewrite
+			ops := &cfg.Spec.A2a.OperationConfigs
+			switch tt.scope {
+			case "common":
+				ops.Policies = &policies
+			case "operation":
+				ops.Operations = &[]api.A2AOperationConfig{{Name: api.A2AOperationName("SendMessage"), Policies: &policies}}
+			case "card":
+				cfg.Spec.A2a.AgentCard = &api.A2AAgentCard{Public: &api.A2APublicAgentCard{Policies: &policies}}
+			case "fault":
+				ops.FaultPolicies = &policies
+			}
+
+			errs := hostRewriteErrors(validator.ValidateAgentPolicies(cfg))
+			if tt.wantErrField == "" {
+				assert.Empty(t, errs)
+				return
+			}
+			require.Len(t, errs, 1)
+			assert.Equal(t, tt.wantErrField, errs[0].Field)
+			assert.Contains(t, errs[0].Message, "spec.upstream.hostRewrite is 'manual'")
+		})
+	}
+}

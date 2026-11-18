@@ -214,6 +214,7 @@ func (pv *PolicyValidator) ValidateAgentPolicies(agentConfig *api.AgentConfigura
 	var errors []ValidationError
 
 	operationConfigs := &agentConfig.Spec.A2a.OperationConfigs
+	hostRewrite := agentConfig.Spec.Upstream.HostRewrite
 
 	if operationConfigs.Policies != nil {
 		for i, policy := range *operationConfigs.Policies {
@@ -221,6 +222,9 @@ func (pv *PolicyValidator) ValidateAgentPolicies(agentConfig *api.AgentConfigura
 			if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
 				errors = append(errors, err)
 				continue
+			}
+			if err, refused := refuseHostRewriteWithoutManualAgentUpstream(policy.Name, fieldPath, hostRewrite); refused {
+				errors = append(errors, err)
 			}
 			errors = append(errors, pv.validatePolicy(policy, fieldPath)...)
 		}
@@ -237,6 +241,9 @@ func (pv *PolicyValidator) ValidateAgentPolicies(agentConfig *api.AgentConfigura
 					errors = append(errors, err)
 					continue
 				}
+				if err, refused := refuseHostRewriteWithoutManualAgentUpstream(policy.Name, fieldPath, hostRewrite); refused {
+					errors = append(errors, err)
+				}
 				errors = append(errors, pv.validatePolicy(policy, fieldPath)...)
 			}
 		}
@@ -252,6 +259,9 @@ func (pv *PolicyValidator) ValidateAgentPolicies(agentConfig *api.AgentConfigura
 			if err, refused := refuseMtlsAuthOutsideRestAPI(policy.Name, fieldPath); refused {
 				errors = append(errors, err)
 				continue
+			}
+			if err, refused := refuseHostRewriteWithoutManualAgentUpstream(policy.Name, fieldPath, hostRewrite); refused {
+				errors = append(errors, err)
 			}
 			errors = append(errors, pv.validatePolicy(policy, fieldPath)...)
 		}
@@ -820,30 +830,60 @@ func refuseMtlsAuthOutsideRestAPI(policyName, fieldPath string) (ValidationError
 }
 
 // refuseHostRewriteWithoutManualUpstream reports the validation error for a
-// host-rewrite reference on an API whose main or sandbox upstream does not set
-// hostRewrite: manual. Route building enables Envoy auto_host_rewrite for any
-// other value, which overwrites the Host header the policy set, so the policy
-// would be deployed but silently do nothing.
+// host-rewrite reference on a RestApi or GraphQL API whose main or sandbox
+// upstream does not set hostRewrite: manual.
 func refuseHostRewriteWithoutManualUpstream(policyName, fieldPath string, main, sandbox *api.Upstream) (ValidationError, bool) {
-	if policyName != constants.PROXY_HOST__HEADER_POLICY_NAME {
-		return ValidationError{}, false
-	}
 	for _, u := range []struct {
-		name     string
+		label    string
 		upstream *api.Upstream
 	}{{"main", main}, {"sandbox", sandbox}} {
 		if u.upstream == nil {
 			continue
 		}
-		if u.upstream.HostRewrite == nil || *u.upstream.HostRewrite != api.UpstreamHostRewriteManual {
-			return ValidationError{
-				Field: fieldPath,
-				Message: fmt.Sprintf("host-rewrite has no effect unless spec.upstream.%s.hostRewrite is 'manual', "+
-					"because the gateway otherwise overwrites the Host header with the upstream host", u.name),
-			}, true
+		if err, refused := refuseHostRewriteUnlessManual(policyName, fieldPath, u.label, hostRewriteValue(u.upstream.HostRewrite)); refused {
+			return err, true
 		}
 	}
 	return ValidationError{}, false
+}
+
+// refuseHostRewriteWithoutManualAgentUpstream is the Agent counterpart: an
+// Agent has a single spec.upstream and no sandbox slot.
+func refuseHostRewriteWithoutManualAgentUpstream(policyName, fieldPath string, hostRewrite *api.AgentConfigDataUpstreamHostRewrite) (ValidationError, bool) {
+	return refuseHostRewriteUnlessManual(policyName, fieldPath, "upstream", hostRewriteValue(hostRewrite))
+}
+
+// refuseHostRewriteUnlessManual holds the rule for every kind. Route building
+// enables Envoy auto_host_rewrite for any hostRewrite other than manual, which
+// overwrites the Host header the host-rewrite policy set, so the policy would
+// be deployed but silently do nothing. label names the upstream: "main" or
+// "sandbox" for spec.upstream.<label>, or "upstream" for a kind whose
+// spec.upstream is the upstream itself.
+func refuseHostRewriteUnlessManual(policyName, fieldPath, label string, hostRewrite *string) (ValidationError, bool) {
+	if policyName != constants.PROXY_HOST__HEADER_POLICY_NAME {
+		return ValidationError{}, false
+	}
+	if hostRewrite != nil && *hostRewrite == string(api.UpstreamHostRewriteManual) {
+		return ValidationError{}, false
+	}
+	field := "spec.upstream." + label + ".hostRewrite"
+	if label == "upstream" {
+		field = "spec.upstream.hostRewrite"
+	}
+	return ValidationError{
+		Field: fieldPath,
+		Message: fmt.Sprintf("host-rewrite has no effect unless %s is 'manual', "+
+			"because the gateway otherwise overwrites the Host header with the upstream host", field),
+	}, true
+}
+
+// hostRewriteValue reads any kind's generated hostRewrite enum as a plain string.
+func hostRewriteValue[T ~string](v *T) *string {
+	if v == nil {
+		return nil
+	}
+	s := string(*v)
+	return &s
 }
 
 // refuseMtlsAuthAsFaultPolicy reports the validation error for an mtls-auth
