@@ -413,7 +413,7 @@ export const navigationRegistry: NavigationDefinition[] = [
   },
   {
     id: 'apiPortals',
-    label: 'API Portals',
+    label: 'Portals',
     group: CLUSTER.place,
     order: 32,
     icon: <PanelsTopLeft />,

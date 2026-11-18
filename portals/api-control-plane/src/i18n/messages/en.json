@@ -1231,7 +1231,7 @@
     "defaultMessage": "Register the API Portals you run and connect them to the control plane."
   },
   "apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.title": {
-    "defaultMessage": "API Portals"
+    "defaultMessage": "Portals"
   },
   "apiControlPlane.pages.appShell.appShellPages.apiPortals.components.ApiPortalConnectPanel.confirm.body": {
     "defaultMessage": "This replaces the shared key the control plane uses for this portal. Publishing to the portal fails until it is configured with the new hash."

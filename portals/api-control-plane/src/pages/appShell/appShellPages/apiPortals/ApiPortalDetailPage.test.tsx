@@ -35,6 +35,7 @@ import { server } from '@/test/server';
 import { renderWithProviders, screen, waitFor, within } from '@/test/utils';
 import { ApiPortalDetailPage } from './ApiPortalDetailPage';
 import { HASH_PLACEHOLDER, sharedKeyHash } from './utils/apiPortalSetup';
+import { routes } from '@/routes/paths';
 
 const ORG = 'api-platform-demo';
 const PORTAL_ID = 'partner-portal';
@@ -49,12 +50,12 @@ function renderPage() {
       <Routes>
         <Route
           element={<ApiPortalDetailPage />}
-          path="/organizations/:orgHandle/api-portals/:apiPortalId"
+          path={routes.orgApiPortal()}
         />
-        <Route element={<div>portal list</div>} path="/organizations/:orgHandle/api-portals" />
+        <Route element={<div>portal list</div>} path={routes.orgApiPortals()} />
       </Routes>
     </ApiScopeProvider>,
-    { route: `/organizations/${ORG}/api-portals/${PORTAL_ID}`, scope: makeConsoleScope() },
+    { route: routes.orgApiPortal(ORG, PORTAL_ID), scope: makeConsoleScope() },
   );
 }
 

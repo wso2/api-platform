@@ -26,6 +26,7 @@ import { makeConsoleScope } from '@/test/mockScope';
 import { server } from '@/test/server';
 import { renderWithProviders, screen } from '@/test/utils';
 import { ApiPortalsPage } from './ApiPortalsPage';
+import { routes } from '@/routes/paths';
 
 const ORG = 'api-platform-demo';
 
@@ -33,15 +34,15 @@ function renderPage() {
   return renderWithProviders(
     <ApiScopeProvider orgId={ORG}>
       <Routes>
-        <Route element={<ApiPortalsPage />} path="/organizations/:orgHandle/api-portals" />
-        <Route element={<div>register page</div>} path="/organizations/:orgHandle/api-portals/new" />
+        <Route element={<ApiPortalsPage />} path={routes.orgApiPortals()} />
+        <Route element={<div>register page</div>} path={routes.newOrgApiPortal()} />
         <Route
           element={<div>portal detail</div>}
-          path="/organizations/:orgHandle/api-portals/:apiPortalId"
+          path={routes.orgApiPortal()}
         />
       </Routes>
     </ApiScopeProvider>,
-    { route: `/organizations/${ORG}/api-portals`, scope: makeConsoleScope() },
+    { route: routes.orgApiPortals(ORG), scope: makeConsoleScope() },
   );
 }
 

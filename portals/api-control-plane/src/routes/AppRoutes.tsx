@@ -483,6 +483,15 @@ function ApiPortalsRoute() {
   );
 }
 
+/**
+ * The cloud build served its managed portals at `/managed-api-portals` before they
+ * moved onto the shared Portals registry. Sends old links and bookmarks there.
+ */
+function LegacyManagedPortalsRedirect() {
+  const { orgHandle = '' } = useParams();
+  return <Navigate replace to={routes.orgApiPortals(orgHandle)} />;
+}
+
 export function AppRoutes({ extensions = [] }: AppRoutesProps) {
   // Only `sidebar.*` entries become top-level routes.
   //
@@ -557,6 +566,10 @@ export function AppRoutes({ extensions = [] }: AppRoutesProps) {
           <Route path={routes.newProject()} element={<ProjectCreatePage />} />
           <Route path={`${routes.gateways()}/*`} element={<GatewaysRoute />} />
           <Route path={`${routes.orgApiPortals()}/*`} element={<ApiPortalsRoute />} />
+          <Route
+            path={`${routes.legacyManagedApiPortals()}/*`}
+            element={<LegacyManagedPortalsRedirect />}
+          />
           {/*
             Project and API overview take a single fully-scoped path each: they
             are the deeper tiers of the sidebar's Overview item, which degrades

@@ -92,7 +92,7 @@ const messages = defineMessages({
   },
   title: {
     id: 'apiControlPlane.pages.appShell.appShellPages.apiPortals.ApiPortalsPage.title',
-    defaultMessage: 'API Portals',
+    defaultMessage: 'Portals',
   },
 });
 

@@ -94,6 +94,13 @@ describe('AppRoutes API Portals page override', () => {
     expect(screen.getByTestId('pathname').textContent).toBe(portalsPath);
   });
 
+  it('redirects the old managed portals URL to the registry', async () => {
+    renderAt(routes.legacyManagedApiPortals('api-platform-demo'));
+
+    expect(await screen.findByText('Mock managed portals')).toBeInTheDocument();
+    expect(screen.getByTestId('pathname').textContent).toBe(portalsPath);
+  });
+
   it('redirects a portal detail URL to the index', async () => {
     renderAt(routes.orgApiPortal('api-platform-demo', 'portal-1'));
 

@@ -147,7 +147,7 @@ function CloudDeployPage({ port }: { port: CloudHostPort }) {
  *
  * `managed-api-portals` overrides the built-in API Portals registry via the
  * `page.apiPortals` slot, the same way `gateways` does: the native nav entry and
- * route (`/organizations/<org>/api-portals`) stay in place, and the cloud's managed
+ * route (`/organizations/<org>/portals`) stay in place, and the cloud's managed
  * portals render there instead of the open-source registry of self-hosted portals.
  * Talks to apip-platform-api's cloud-only `/managed-api-portals` resource via the
  * host port.
@@ -357,8 +357,8 @@ export const cloudPluginFeatures: CloudPluginFeature<ApiControlPlaneCloudEntry>[
         group: '',
         order: 120,
         // Inert, as for `gateways`: the override is consumed by the
-        // `api-portals/*` route wrapper in `AppRoutes`.
-        routePath: 'api-portals',
+        // `portals/*` route wrapper in `AppRoutes`.
+        routePath: 'portals',
         render: (port) => <ManagedPortalsPage port={port} />,
         // Gates the built-in item while this override is registered, and the page
         // gates itself the same way.
