@@ -4284,3 +4284,17 @@ func TestReplaceTOMLStringRefusesWhatItCannotChangeExactly(t *testing.T) {
 		}
 	}
 }
+
+func TestGatewayServiceStopRegistersNothingForAServiceItCannotStop(t *testing.T) {
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner"))
+	reg := cleanup.NewRegistry(nil)
+	require.NoError(t, cleanup.Install(ctx, reg))
+	steps := &Steps{topo: &frameworkruntime.Topology{}}
+
+	require.ErrorContains(t, steps.stopService(ctx, "gateway-controller"), `no service or compose component named "gateway-controller"`)
+	require.Zero(t, reg.Count(), "a service that was never stopped needs no restart at cleanup")
+
+	require.NoError(t, reg.Register(cleanup.Resource{Kind: gatewayServiceStoppedKind, ID: "gateway-controller", Actor: "admin"}))
+	require.Error(t, steps.startService(ctx, "gateway-controller"))
+	require.Equal(t, 1, reg.Count(), "a service that failed to start is still restarted at cleanup")
+}
