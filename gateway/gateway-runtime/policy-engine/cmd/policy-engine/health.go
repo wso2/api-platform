@@ -34,8 +34,8 @@ const errPolicyConfigNotLoaded = health.Reason("policy configuration not loaded"
 
 // buildHealthCheckers builds the checkers behind the gateway's health routes. Liveness
 // registers no checks: an answer from the policy engine through the router shows both
-// processes are alive, and nothing a restart cannot fix is checked, so a runtime waiting
-// for or cut off from its controller is never restarted. Readiness reports what a runtime
+// processes are alive, and nothing a restart cannot fix is checked, so once a runtime has
+// its configuration, losing its controller never restarts it. Readiness reports what a runtime
 // needs to serve traffic correctly: whether the policy engine has loaded its policy
 // configuration, as its admin health endpoint does (provider); the configuration link to
 // the controller (when configuration comes over xDS; xdsClient is nil otherwise),
