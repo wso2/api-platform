@@ -46,7 +46,7 @@ const (
 	keyConsumerSubscriptionAPI   = "cloudPortalSubscriptionAPI"
 	keyConsumerSubscriptionToken = "cloudPortalSubscriptionToken"
 	keyPreviousSubscriptionToken = "cloudPreviousSubscriptionToken"
-	// keyAnsweredSubscriptionToken is the token in the last consumer answer, which is published redacted.
+	// keyAnsweredSubscriptionToken holds the answeredToken of the published consumer answer.
 	keyAnsweredSubscriptionToken = "cloudAnsweredSubscriptionToken"
 	keyConsumerAPIKeyID          = "cloudPortalAPIKeyID"
 	keyPreviousAPIKey            = "cloudPreviousAPIKey"
@@ -76,6 +76,12 @@ var (
 )
 
 var errNoConsumerSession = errors.New("the consumer's portal session holds no CSRF token; sign the consumer in first")
+
+// answeredToken is the subscription token of a published answer, whose copy carries it redacted.
+type answeredToken struct {
+	answer *httpx.Response
+	token  string
+}
 
 // registerPortalConsumerSteps binds the steps the signed-in consumer takes on the portal's REST API.
 func (s *Steps) registerPortalConsumerSteps(sc stepRegistrar) {
@@ -184,7 +190,7 @@ func (s *Steps) consumerCall(ctx context.Context, method, path string, body any)
 	}
 	published, token := redactSubscriptionTokens(resp)
 	if token != "" {
-		if err := tcontext.Set(ctx, keyAnsweredSubscriptionToken, token); err != nil {
+		if err := tcontext.Set(ctx, keyAnsweredSubscriptionToken, answeredToken{answer: published, token: token}); err != nil {
 			return nil, err
 		}
 	}
@@ -476,13 +482,15 @@ func (s *Steps) assertConsumerSubscriptionToken(ctx context.Context, how string)
 	if err != nil {
 		return err
 	}
+	value, _ := tcontext.Get(ctx, keyAnsweredSubscriptionToken)
+	answered, ok := value.(answeredToken)
+	if !ok || answered.answer != resp {
+		return errors.New("the last answer is not a subscription answer from the portal")
+	}
 	if resp.StatusCode != http.StatusOK {
 		return responseError(resp)
 	}
-	token, err := requiredValue(ctx, keyAnsweredSubscriptionToken)
-	if err != nil {
-		return fmt.Errorf("the last answer carries no subscription token: %w", err)
-	}
+	token := answered.token
 	previous, err := requiredValue(ctx, keyConsumerSubscriptionToken)
 	if err != nil {
 		return err

@@ -6845,3 +6845,17 @@ func TestCreateConsumerOAuth2KeysReadsEveryPageOfKeyManagers(t *testing.T) {
 	site.consumer.keyManagers = append(site.consumer.keyManagers, map[string]any{"id": "thunder", "keyCreation": "register"})
 	require.NoError(t, steps.createConsumerOAuth2Keys(ctx), "the key manager that registers clients is past the first 20")
 }
+
+func TestTheSubscriptionTokenAssertionReadsOnlyTheLastAnswer(t *testing.T) {
+	_, steps, ctx, _ := consumerSteps(t)
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"))
+	require.NoError(t, steps.readConsumerSubscription(ctx))
+	require.NoError(t, steps.assertConsumerSubscriptionToken(ctx, "unchanged"))
+
+	require.NoError(t, steps.publishPortalAnswer(ctx, &httpx.Response{StatusCode: http.StatusOK, Body: []byte(`{"status":"UP"}`)}))
+	require.ErrorContains(t, steps.assertConsumerSubscriptionToken(ctx, "unchanged"), "not a subscription answer",
+		"an answer published after the subscription read is not compared with its token")
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	require.ErrorContains(t, steps.assertConsumerSubscriptionToken(ctx, "unchanged"), "not a subscription answer",
+		"a consumer answer without a token does not carry the earlier one")
+}
