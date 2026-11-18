@@ -4533,6 +4533,8 @@ type fakePortalSite struct {
 	callbackHost string
 	// consumer is the portal's REST API for the signed-in consumer.
 	consumer fakeConsumerAPI
+	// landingStatus, when set, is how the page the sign-in lands on answers.
+	landingStatus int
 }
 
 const fakeIdentityPrefix = "/t/acme"
@@ -4582,12 +4584,15 @@ func (f *fakePortalSite) servePortal(w http.ResponseWriter, r *http.Request) {
 		}
 		session := "signed-in-" + strconv.Itoa(len(f.sessions))
 		f.sessions[session] = true
-		// As the portal does, the callback's CSRF cookie is the session it replaced; the page it
-		// lands on issues the new session's.
+		// Like the portal, the callback sets the replaced session's CSRF cookie; the landing page sets the new one.
 		http.SetCookie(w, &http.Cookie{Name: "portal.sid", Value: session, Path: "/api-portal"})
 		http.SetCookie(w, &http.Cookie{Name: portalCSRFCookie, Value: "csrf-anonymous", Path: "/api-portal"})
 		http.Redirect(w, r, view, http.StatusFound)
 	case view:
+		if f.landingStatus != 0 {
+			w.WriteHeader(f.landingStatus)
+			return
+		}
 		if session := f.sessionOf(r); f.sessions[session] {
 			http.SetCookie(w, &http.Cookie{Name: portalCSRFCookie, Value: "csrf-" + session, Path: "/api-portal"})
 		}
@@ -5918,8 +5923,7 @@ func TestRemoveUnregisteredSelfHostedGatewayDeletesItAndReportsWhenItMayRemain(t
 	}
 }
 
-// fakeConsumerAPI is the part of a portal's REST API a signed-in consumer calls. It checks the
-// session and, on a call that changes something, the session's CSRF token, as the portal does.
+// fakeConsumerAPI is the consumer's part of a portal's REST API; it checks the session and CSRF token.
 type fakeConsumerAPI struct {
 	// offered names the plans each API offers, and planNames each plan's display name.
 	offered   map[string][]string
@@ -5927,6 +5931,12 @@ type fakeConsumerAPI struct {
 
 	// refuseCreate, when set, is how the portal answers an application create.
 	refuseCreate int
+	// secretStatus, when set, is the status of every answer that carries a credential.
+	secretStatus int
+	// failPageFrom, when set, fails every list page from that offset with 502.
+	failPageFrom int
+	// keyManagers, when set, replaces the portal's key managers.
+	keyManagers []any
 	// request is the call being answered, for the page it asks for.
 	request *http.Request
 
@@ -5938,8 +5948,7 @@ type fakeConsumerAPI struct {
 	calls  []string
 }
 
-// fakePage answers one page of items, as the portal pages its lists: limit (default 20, at most
-// 100) items from offset.
+// fakePage pages items as the portal does: limit (default 20, at most 100) items from offset.
 func fakePage(r *http.Request, items []any) map[string]any {
 	limit, offset := 20, 0
 	if value, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
@@ -5975,6 +5984,10 @@ func (f *fakePortalSite) serveConsumerAPI(w http.ResponseWriter, r *http.Request
 	}
 	path := strings.TrimPrefix(r.URL.Path, portalAPIBasePath)
 	api.calls = append(api.calls, r.Method+" "+path)
+	if offset, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && api.failPageFrom > 0 && offset >= api.failPageFrom {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"message": "Bad Gateway"})
+		return
+	}
 	var body map[string]any
 	if r.Body != nil && r.ContentLength != 0 {
 		require.NoError(f.t, json.NewDecoder(r.Body).Decode(&body))
@@ -5996,9 +6009,11 @@ func (f *fakePortalSite) serveConsumerAPI(w http.ResponseWriter, r *http.Request
 	case parts[0] == "api-keys" && r.Method == http.MethodGet:
 		writeJSON(w, http.StatusOK, api.keyList(func(map[string]any) bool { return true }))
 	case parts[0] == "key-managers" && len(parts) == 2 && parts[1] == "metadata":
-		writeJSON(w, http.StatusOK, map[string]any{"list": []any{
-			map[string]any{"id": "imported", "keyCreation": "import"}, map[string]any{"id": "thunder", "keyCreation": "register"},
-		}})
+		managers := api.keyManagers
+		if managers == nil {
+			managers = []any{map[string]any{"id": "imported", "keyCreation": "import"}, map[string]any{"id": "thunder", "keyCreation": "register"}}
+		}
+		writeJSON(w, http.StatusOK, fakePage(r, managers))
 	case parts[0] == "oauth2-keys":
 		api.serveOAuth2Keys(w, r.Method, parts[1:], body)
 	case parts[0] == "apis" && len(parts) >= 3 && parts[2] == "api-keys" && api.offered[parts[1]] == nil:
@@ -6054,6 +6069,13 @@ func (a *fakeConsumerAPI) serveApplications(w http.ResponseWriter, method string
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
 	}
+}
+
+func (a *fakeConsumerAPI) statusOr(status int) int {
+	if a.secretStatus != 0 {
+		return a.secretStatus
+	}
+	return status
 }
 
 func (a *fakeConsumerAPI) offers(api, plan string) bool {
@@ -6150,7 +6172,7 @@ func (a *fakeConsumerAPI) serveAPIKeys(w http.ResponseWriter, method, apiID stri
 		a.seq++
 		id := "key-" + strconv.Itoa(a.seq)
 		a.keys[id] = map[string]any{"id": id, "apiId": apiID, "status": "ACTIVE", "value": "value-" + strconv.Itoa(a.seq)}
-		writeJSON(w, http.StatusCreated, map[string]any{"id": id, "displayName": body["displayName"], "key": a.keys[id]["value"], "status": "ACTIVE"})
+		writeJSON(w, a.statusOr(http.StatusCreated), map[string]any{"id": id, "displayName": body["displayName"], "key": a.keys[id]["value"], "status": "ACTIVE"})
 		return
 	}
 	id, _ := body["keyId"].(string)
@@ -6163,7 +6185,7 @@ func (a *fakeConsumerAPI) serveAPIKeys(w http.ResponseWriter, method, apiID stri
 	case "regenerate":
 		a.seq++
 		key["value"] = "value-" + strconv.Itoa(a.seq)
-		writeJSON(w, http.StatusOK, map[string]any{"id": id, "key": key["value"], "status": key["status"]})
+		writeJSON(w, a.statusOr(http.StatusOK), map[string]any{"id": id, "key": key["value"], "status": key["status"]})
 	case "revoke":
 		if key["status"] == "REVOKED" {
 			writeJSON(w, http.StatusConflict, map[string]any{"message": "API key is already revoked"})
@@ -6182,9 +6204,8 @@ func (a *fakeConsumerAPI) serveAPIKeys(w http.ResponseWriter, method, apiID stri
 	}
 }
 
-// consumerSteps signs a consumer up on a fake portal whose API api-1 offers plan-1 and plan-2, in
-// a runner whose registry holds the consumer's deleters. The scenario uses plan-1 and, as the
-// other plan, plan-2.
+// consumerSteps signs a consumer up on a fake portal whose api-1 offers plan-1 and, as the other
+// plan, plan-2.
 func consumerSteps(t *testing.T) (*fakePortalSite, *Steps, context.Context, *cleanup.Registry) {
 	t.Helper()
 	site := newFakePortalSite(t)
@@ -6207,8 +6228,7 @@ func publishedStatusOf(t *testing.T, ctx context.Context) int {
 	return resp.StatusCode
 }
 
-// scenarioPending names what the scenario has registered for cleanup, leaving out the runner's
-// sweep of the consumer's portal.
+// scenarioPending names the pending cleanup registrations other than the runner's sweep.
 func scenarioPending(registry *cleanup.Registry) []string {
 	ids := []string{}
 	for _, resource := range registry.Pending() {
@@ -6586,7 +6606,7 @@ func TestRegisteringKeyManagerPicksOneThatRegistersClients(t *testing.T) {
 	require.ErrorContains(t, err, "none of the portal's 1 key managers registers clients")
 }
 
-// serveOAuth2Keys is the part of the fake portal that registers clients with its one key manager.
+// serveOAuth2Keys serves the fake portal's OAuth2 keys, registered with its one key manager.
 func (a *fakeConsumerAPI) serveOAuth2Keys(w http.ResponseWriter, method string, rest []string, body map[string]any) {
 	if a.oauth2 == nil {
 		a.oauth2 = map[string]map[string]any{}
@@ -6601,7 +6621,7 @@ func (a *fakeConsumerAPI) serveOAuth2Keys(w http.ResponseWriter, method string, 
 		a.seq++
 		id := "oauth-" + strconv.Itoa(a.seq)
 		a.oauth2[id] = map[string]any{"keyId": id, "name": properties["client_name"], "secret": "secret-" + strconv.Itoa(a.seq)}
-		writeJSON(w, http.StatusCreated, map[string]any{"keyId": id, "name": properties["client_name"],
+		writeJSON(w, a.statusOr(http.StatusCreated), map[string]any{"keyId": id, "name": properties["client_name"],
 			"consumerKey": "client-" + strconv.Itoa(a.seq), "consumerSecret": a.oauth2[id]["secret"]})
 	case len(rest) == 0 && method == http.MethodGet:
 		list := []any{}
@@ -6630,7 +6650,7 @@ func (a *fakeConsumerAPI) serveOAuth2Keys(w http.ResponseWriter, method string, 
 				writeJSON(w, http.StatusBadRequest, map[string]any{"message": "The key manager refused these credentials."})
 				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"accessToken": "aGVhZA.Ym9keQ." + rest[0], "tokenType": "Bearer"})
+			writeJSON(w, a.statusOr(http.StatusOK), map[string]any{"accessToken": "aGVhZA.Ym9keQ." + rest[0], "tokenType": "Bearer"})
 		default:
 			writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
 		}
@@ -6683,4 +6703,145 @@ func TestTheRunnersSweepDeletesTheConsumersOAuth2Keys(t *testing.T) {
 	}
 	require.NoError(t, registry.SweepRunner(ctx))
 	require.Empty(t, site.consumer.oauth2)
+}
+
+func TestCredentialAnswersWithAnUnexpectedStatusAreReportedWithoutTheirBody(t *testing.T) {
+	site, steps, ctx, _ := consumerSteps(t)
+	require.NoError(t, steps.generateConsumerAPIKey(ctx))
+	require.NoError(t, steps.createConsumerOAuth2Keys(ctx))
+	site.consumer.secretStatus = http.StatusAccepted
+
+	for name, step := range map[string]func(context.Context) error{
+		"generate an API key":      steps.generateConsumerAPIKey,
+		"regenerate the API key":   steps.regenerateConsumerAPIKey,
+		"create OAuth2 keys":       steps.createConsumerOAuth2Keys,
+		"generate an access token": steps.generateConsumerAccessToken,
+	} {
+		err := step(ctx)
+		require.ErrorContains(t, err, "-> 202", name)
+		for _, secret := range []string{"value-", "secret-", "aGVhZA"} {
+			require.NotContains(t, err.Error(), secret, "%s: an error never repeats a credential", name)
+		}
+	}
+}
+
+func TestPublishedSubscriptionAnswersCarryNoToken(t *testing.T) {
+	site, steps, ctx, _ := consumerSteps(t)
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"))
+	id, err := requiredValue(ctx, keyConsumerSubscriptionID)
+	require.NoError(t, err)
+	token := site.consumer.subs[id][subscriptionTokenField].(string)
+
+	published, err := httpx.Published(ctx)
+	require.NoError(t, err)
+	require.NotContains(t, string(published.Body), token)
+	require.Contains(t, string(published.Body), redactedValue)
+	err = steps.assertCloudResponseStatus(ctx, http.StatusOK)
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), token, "a failed status assertion never repeats the token")
+
+	require.NoError(t, steps.assertConsumerListing(ctx, "subscriptions", "include", "synthetic subscription", ""))
+	published, err = httpx.Published(ctx)
+	require.NoError(t, err)
+	require.NotContains(t, string(published.Body), token, "a list's tokens are redacted too")
+	require.NoError(t, steps.readConsumerSubscription(ctx))
+	require.NoError(t, steps.assertConsumerSubscriptionToken(ctx, "unchanged"), "the token assertion still sees the token")
+}
+
+func TestRedactSubscriptionTokensLeavesOtherAnswersAlone(t *testing.T) {
+	for _, body := range []string{`not json`, `{"id":"syn-app-1"}`, `[1,2]`} {
+		resp := &httpx.Response{StatusCode: http.StatusOK, Body: []byte(body)}
+		redacted, token := redactSubscriptionTokens(resp)
+		require.Empty(t, token, body)
+		if json.Valid([]byte(body)) {
+			require.JSONEq(t, body, string(redacted.Body))
+		} else {
+			require.Equal(t, body, string(redacted.Body), "an answer that is not JSON is passed through")
+		}
+	}
+}
+
+func TestConsumerListingReadsEveryPage(t *testing.T) {
+	site, steps, ctx, _ := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	for i := range 150 {
+		id := "aaa-app-" + strconv.Itoa(1000+i)
+		site.consumer.apps[id] = map[string]any{"id": id}
+	}
+	require.NoError(t, steps.assertConsumerListing(ctx, "applications", "include", "synthetic application", ""),
+		"the application is past the first page")
+	require.ErrorContains(t, steps.assertConsumerListing(ctx, "applications", "not include", "synthetic application", ""), "still include")
+	require.NoError(t, steps.deleteConsumerApplication(ctx))
+	require.NoError(t, steps.assertConsumerListing(ctx, "applications", "not include", "synthetic application", ""))
+}
+
+func TestSignInFailsWhenThePageItLandsOnFails(t *testing.T) {
+	site := newFakePortalSite(t)
+	steps, ctx := signInSteps(t, site)
+	require.NoError(t, steps.signUpConsumer(ctx))
+	site.landingStatus = http.StatusBadGateway
+	require.ErrorContains(t, steps.signInConsumer(ctx), "lands on answered 502")
+}
+
+func TestTheRunnersSweepRefusesAConsumerItCannotSignInAs(t *testing.T) {
+	_, _, ctx, registry := consumerSteps(t)
+	require.NoError(t, cleanup.RegisterRunner(ctx, cleanup.Resource{Kind: kindConsumerLeftovers, ID: "syn-consumer-earlier", Actor: consumerActor}))
+	err := registry.SweepRunner(ctx)
+	require.ErrorContains(t, err, `consumer "syn-consumer-earlier" were not swept`)
+}
+
+func TestConsumerCleanupSignsInAgainOnAStaleCSRFToken(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	browser, err := scenarioBrowser(ctx)
+	require.NoError(t, err)
+	browser.jar.SetCookies(browser.portal, []*http.Cookie{{Name: portalCSRFCookie, Value: "stale", Path: "/api-portal"}})
+	require.NoError(t, registry.Sweep(ctx))
+	require.Empty(t, site.consumer.apps)
+}
+
+func TestASubscriptionOfAnotherAPIIsNotTheScenarios(t *testing.T) {
+	_, steps, ctx, _ := consumerSteps(t)
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"))
+	require.NoError(t, steps.readConsumerSubscription(ctx))
+
+	require.NoError(t, tcontext.Set(ctx, keyAPIID, "api-2"))
+	require.ErrorContains(t, steps.readConsumerSubscription(ctx), "no subscription to the synthetic REST API api-2")
+	require.NoError(t, steps.subscribeConsumer(ctx, "the"), "a refusal is left to the status assertion")
+	_, err := requiredValue(ctx, keyConsumerSubscriptionToken)
+	require.Error(t, err, "a refused subscribe drops the token of another API's subscription")
+}
+
+func TestConsumerCleanupRemovesWhatItListedBeforeAPageFailed(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerApplication(ctx))
+	for i := range 150 {
+		id := "aaa-app-" + strconv.Itoa(1000+i)
+		site.consumer.apps[id] = map[string]any{"id": id}
+	}
+	site.consumer.failPageFrom = listPageSize
+	require.NoError(t, registry.Sweep(ctx), "the scenario's application is deleted by its handle")
+	err := consumerSession{signIn: steps.signInConsumer}.removeApplications(ctx)
+	require.ErrorContains(t, err, "-> 502")
+	require.Len(t, site.consumer.apps, 50, "the first page is removed although the second failed")
+}
+
+func TestOAuth2KeysAreDeletedByIDWhenTheirClientHasNoName(t *testing.T) {
+	site, steps, ctx, registry := consumerSteps(t)
+	require.NoError(t, steps.createConsumerOAuth2Keys(ctx))
+	id, err := requiredValue(ctx, keyConsumerOAuth2KeyID)
+	require.NoError(t, err)
+	require.Contains(t, scenarioPending(registry), "portal-oauth2-key:"+id)
+	site.consumer.oauth2[id]["name"] = ""
+	require.NoError(t, registry.Sweep(ctx))
+	require.Empty(t, site.consumer.oauth2)
+}
+
+func TestCreateConsumerOAuth2KeysReadsEveryPageOfKeyManagers(t *testing.T) {
+	site, steps, ctx, _ := consumerSteps(t)
+	for i := range 25 {
+		site.consumer.keyManagers = append(site.consumer.keyManagers, map[string]any{"id": "aaa-" + strconv.Itoa(10+i), "keyCreation": "import"})
+	}
+	site.consumer.keyManagers = append(site.consumer.keyManagers, map[string]any{"id": "thunder", "keyCreation": "register"})
+	require.NoError(t, steps.createConsumerOAuth2Keys(ctx), "the key manager that registers clients is past the first 20")
 }

@@ -902,6 +902,7 @@ Feature: APIP cloud managed API Portal and consumer sign-in
     And the cloud API response status code should be 201
     When the consumer reads the synthetic subscription on the managed API Portal
     Then the cloud API response status code should be 200
+    And the consumer's subscriptions on the managed API Portal should include the synthetic subscription
     When the consumer unsubscribes from the synthetic REST API on the managed API Portal
     Then the cloud API response status code should be 200
     When the consumer reads the synthetic subscription on the managed API Portal

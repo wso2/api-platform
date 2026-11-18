@@ -568,7 +568,7 @@ func (s *Steps) createAPIKey(ctx context.Context) error {
 	return tcontext.Set(ctx, keyAPIKey, key)
 }
 
-// credentialKeys names the scenario-state key each credential a gateway step can send is kept in.
+// credentialKeys maps each credential a gateway step can send to its scenario-state key.
 var credentialKeys = map[string]string{
 	"API key":                              keyAPIKey,
 	"previous API key":                     keyPreviousAPIKey,
@@ -579,9 +579,7 @@ var credentialKeys = map[string]string{
 }
 
 // sendWithCredentialUntilStatus invokes a data-plane URL with a stored credential in the named
-// header: an API key, a subscription token, either as it is or as it was before it was
-// regenerated, or an access token, which is sent as a bearer token, as issued or with its
-// signature changed.
+// header. An access token is sent as a bearer token.
 func (s *Steps) sendWithCredentialUntilStatus(ctx context.Context, method, target, header, which string, want int) error {
 	stateKey, ok := credentialKeys[which]
 	if !ok {
@@ -601,12 +599,12 @@ func (s *Steps) sendWithCredentialUntilStatus(ctx context.Context, method, targe
 	}
 	header = strings.TrimSpace(header)
 	if header == "" {
-		return fmt.Errorf("sending request: API key header name is required")
+		return fmt.Errorf("sending request: header name is required")
 	}
 	return s.sendUntilStatusWith(ctx, method, target, want, map[string]string{header: key})
 }
 
-// forgeSignature returns the JWT with a changed signature, which no issuer signed.
+// forgeSignature returns the JWT with its signature changed.
 func forgeSignature(token string) (string, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 || parts[2] == "" {

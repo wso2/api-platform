@@ -437,11 +437,14 @@ func (s *Steps) signIn(ctx context.Context, actions []flowAction) error {
 	if err != nil {
 		return fmt.Errorf("the portal did not take the consumer's sign-in: %w", err)
 	}
-	// The callback starts a new session after the portal set the CSRF cookie of the old one, so
-	// the browser follows the redirect, as a real one does, and takes the new session's cookie.
+	// The callback's CSRF cookie belongs to the session it replaced; the landing page sets the new one.
 	if sameOrigin(next, browser.portal) {
-		if _, err := browser.send(ctx, http.MethodGet, next.String(), nil); err != nil {
+		page, err := browser.send(ctx, http.MethodGet, next.String(), nil)
+		if err != nil {
 			return fmt.Errorf("opening the page the sign-in lands on: %w", err)
+		}
+		if page.StatusCode >= http.StatusBadRequest {
+			return fmt.Errorf("the page the sign-in lands on answered %d", page.StatusCode)
 		}
 	}
 	return nil
@@ -497,8 +500,6 @@ func (s *Steps) signUpConsumer(ctx context.Context) error {
 	if err := requireSignInAccepted(ctx); err != nil {
 		return err
 	}
-	// After the runner's last scenario, cleanup empties the consumer's portal of whatever a
-	// scenario's own cleanup could not remove.
 	if err := cleanup.RegisterRunner(ctx, cleanup.Resource{
 		Kind: kindConsumerLeftovers, ID: username, Actor: consumerActor, Description: "the portal items of consumer " + username,
 	}); err != nil {

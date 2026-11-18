@@ -177,8 +177,7 @@ func (s *Steps) createSecondPlan(ctx context.Context) error {
 	return s.createPlanAs(ctx, keySecondPlanID)
 }
 
-// syntheticPlanRequestLimit is the synthetic plan's request limit per minute: high enough that a
-// scenario polling the gateway through a subscription to it is never refused for its rate.
+// syntheticPlanRequestLimit is per minute, high enough that polling the gateway never hits it.
 const syntheticPlanRequestLimit = 1000
 
 func planBody(id, status string) map[string]any {
