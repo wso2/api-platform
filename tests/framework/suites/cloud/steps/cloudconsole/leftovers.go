@@ -207,13 +207,11 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 var projectScopedCollections = []string{"/rest-apis", "/graphql-apis"}
 
 // projectScopedSweep describes a collection the platform lists per project, so it reads the
-// projects the suite works in and every project a tracked run created. The suite's projects are its
-// own, so everything they hold is deleted, whichever run put it there and whatever it is named: the
-// projects are left empty.
+// projects the suite works in and every project a tracked run created. Only the entries named with
+// a tracked run's suffix are deleted, so an API the organisation owns stays.
 func projectScopedSweep(client *httpx.Client, base, token string, owns func(names []string) bool, collection string) finalizer.Collection {
 	return finalizer.Collection{
 		Name:    collection,
-		All:     true,
 		Timeout: finalizerCollectionBudget,
 		List: func(ctx context.Context) ([]finalizer.Leftover, error) {
 			items, err := projectScopedItems(ctx, client, base, token, owns, collection)
@@ -272,13 +270,12 @@ func projectScopedItems(ctx context.Context, client *httpx.Client, base, token s
 // syntheticPlanPrefix starts the id of every subscription plan a scenario creates.
 const syntheticPlanPrefix = "syn-plan-"
 
-// subscriptionPlanSweep deletes the subscription plans scenarios created, whichever run created
-// them, so the portal is left without any. A plan the organisation owns does not carry the prefix
-// and stays.
+// subscriptionPlanSweep deletes the subscription plans scenarios created. A plan the organisation
+// owns does not carry the prefix, and a plan of another run does not carry this run's suffix, so
+// both stay.
 func subscriptionPlanSweep(client *httpx.Client, base, token string) finalizer.Collection {
 	return finalizer.Collection{
 		Name:    "/subscription-plans",
-		All:     true,
 		Timeout: finalizerCollectionBudget,
 		List: func(ctx context.Context) ([]finalizer.Leftover, error) {
 			items, err := listCollection(ctx, client, base, token, "/subscription-plans")
@@ -306,16 +303,14 @@ var publishedAPICollections = []struct{ apiType, collection string }{
 	{"graphql-api", "/graphql-apis"},
 }
 
-// portalSweeps empties the managed API Portals of what the suite published, and never deletes a
+// portalSweeps empties the managed API Portals of what the run put in them, and never deletes a
 // portal: the starter's portal and every portal the organisation already had stay. It unpublishes
-// every API of the suite's projects from every active portal that lists it, whichever run
-// published it. The only portals it deletes are those a scenario built for itself, which carry
-// syntheticPortalPrefix.
+// each API of the run from every active portal that lists it. The only portals it deletes are
+// those a scenario built for itself, which carry syntheticPortalPrefix.
 func portalSweeps(client *httpx.Client, base, token string, owns func(names []string) bool) []finalizer.Collection {
 	return []finalizer.Collection{
 		{
 			Name:    "portal-publications",
-			All:     true,
 			Timeout: finalizerCollectionBudget,
 			List: func(ctx context.Context) ([]finalizer.Leftover, error) {
 				return portalPublications(ctx, client, base, token, owns)
@@ -367,8 +362,8 @@ func portalSweeps(client *httpx.Client, base, token string, owns func(names []st
 	}
 }
 
-// portalPublications lists, as publication ids, the listings the APIs of the suite's projects (and
-// of the projects a tracked run created) hold in the active portals. An API that no portal lists has no publication route to read, so it is not a leftover.
+// portalPublications lists, as publication ids, the listings the run's APIs hold in the active
+// portals. An API that no portal lists has no publication route to read, so it is not a leftover.
 func portalPublications(ctx context.Context, client *httpx.Client, base, token string, owns func(names []string) bool) ([]finalizer.Leftover, error) {
 	portals, err := listCollection(ctx, client, base, token, managedPortalsCollection)
 	if errors.Is(err, errCollectionNotServed) {
@@ -397,7 +392,7 @@ func portalPublications(ctx context.Context, client *httpx.Client, base, token s
 		}
 		for _, item := range items {
 			api := firstString(item, []string{"id"})
-			if api == "" {
+			if api == "" || !owns(namesOf(item)) {
 				continue
 			}
 			for _, portal := range active {

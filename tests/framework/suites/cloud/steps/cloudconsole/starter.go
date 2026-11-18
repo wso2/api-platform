@@ -59,7 +59,7 @@ func isStarterGateway(names []string) bool {
 }
 
 // preferredGatewayEnvironment is the environment the starter creates the default gateway in when
-// the deployment pipeline of project apip-test-project-1 reaches it.
+// the deployment pipeline of the project reaches it.
 const preferredGatewayEnvironment = "development"
 
 // gatewayReadyTimeout bounds how long the starter waits for a gateway it created, or one that is
@@ -148,8 +148,9 @@ type Starter struct {
 	base  string
 	token string
 
-	gateway gatewayOutcome
-	portal  portalOutcome
+	// gateways holds, for each project whose default gateway was prepared, that gateway.
+	gateways map[string]gatewayOutcome
+	portal   portalOutcome
 	// pipelines holds, for each project whose pipeline was checked, the pipeline and its promotion
 	// paths.
 	pipelines map[string]pipelineState
@@ -172,6 +173,7 @@ func NewStarter() (*Starter, error) {
 		client:    httpx.NewClient(httpx.Options{MaxRetries: 1}),
 		suffix:    strings.ToLower(generator.Suffix()),
 		log:       log,
+		gateways:  map[string]gatewayOutcome{},
 		pipelines: map[string]pipelineState{},
 		unmet:     map[precondition]error{},
 		failures:  map[precondition]error{},
@@ -193,12 +195,17 @@ func (s *Starter) portalName() string {
 // remove them; a person who wants them gone names the suffix to the setup command.
 func (s *Starter) Suffix() string { return s.suffix }
 
-// Gateway reports the gateway the starter settled on and whether it created it. It is empty until a
-// scenario, or Prepare, needed a gateway.
+// Gateway reports the gateway the starter settled on and whether it created it, for the first
+// project of the suite that has one. It is empty until a scenario, or Prepare, needed a gateway.
 func (s *Starter) Gateway() (id string, created bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.gateway.ID, s.gateway.Created
+	for _, project := range suiteProjects {
+		if outcome, ok := s.gateways[project]; ok && outcome.ID != "" {
+			return outcome.ID, outcome.Created
+		}
+	}
+	return "", false
 }
 
 // Portal reports the managed API Portal the starter settled on and whether it created it. It is
@@ -387,13 +394,13 @@ func (s *Starter) Report() []string {
 }
 
 // prepareGateway leaves the organisation with an active regular gateway the deployment
-// pipeline of project apip-test-project-1 accepts a deployment to. A gateway the starter built and could not make active is
-// removed.
-func (s *Starter) prepareGateway(ctx context.Context, platform organisationAPI) error {
-	if err := s.requireProject(ctx, projectOne); err != nil {
+// pipeline of the project accepts a deployment to. A gateway the starter built and could not make
+// active is removed.
+func (s *Starter) prepareGateway(ctx context.Context, platform organisationAPI, project string) error {
+	if err := s.requireProject(ctx, project); err != nil {
 		return err
 	}
-	outcome, err := ensureDefaultGateway(ctx, platform, s.gatewayDisplayName(), s.log)
+	outcome, err := ensureDefaultGateway(ctx, platform, s.gatewayDisplayName(), project, s.log)
 	if err != nil {
 		if outcome.Created {
 			err = s.removeCreated(ctx, platform, "gateway", managedGatewaysCollection, outcome.ID, err)
@@ -401,7 +408,7 @@ func (s *Starter) prepareGateway(ctx context.Context, platform organisationAPI) 
 		return err
 	}
 	s.mu.Lock()
-	s.gateway = outcome
+	s.gateways[project] = outcome
 	s.mu.Unlock()
 	return nil
 }
@@ -463,22 +470,22 @@ func (p organisationAPI) get(ctx context.Context, path string) (*httpx.Response,
 }
 
 // ensureDefaultGateway leaves the organisation with a regular gateway that is active and that the
-// deployment pipeline of project apip-test-project-1 accepts a deployment to. A gateway that is still being
+// deployment pipeline of the project accepts a deployment to. A gateway that is still being
 // built is waited for rather than duplicated; only when none exists is one created. The outcome
 // names a gateway the starter created even when it did not become active, so the caller can remove
 // it. An error that matches errUnavailable means the organisation lacks something the starter
 // cannot build.
-func ensureDefaultGateway(ctx context.Context, platform organisationAPI, displayName string, log *slog.Logger) (gatewayOutcome, error) {
-	pipeline, paths, err := boundPipelineOf(ctx, projectOne, platform.get)
+func ensureDefaultGateway(ctx context.Context, platform organisationAPI, displayName, project string, log *slog.Logger) (gatewayOutcome, error) {
+	pipeline, paths, err := boundPipelineOf(ctx, project, platform.get)
 	if err != nil {
 		if pipelineMissing(err) {
-			return gatewayOutcome{}, fmt.Errorf("the deployment pipeline of project %q cannot be read: %w", projectOne, err)
+			return gatewayOutcome{}, fmt.Errorf("the deployment pipeline of project %q cannot be read: %w", project, err)
 		}
-		return gatewayOutcome{}, fmt.Errorf("reading the deployment pipeline of project %q: %w", projectOne, err)
+		return gatewayOutcome{}, fmt.Errorf("reading the deployment pipeline of project %q: %w", project, err)
 	}
 	if !ownedPipeline(pipeline) {
 		return gatewayOutcome{}, fmt.Errorf("project %q is bound to deployment pipeline %q, which is not named with the prefix %q",
-			projectOne, pipeline, testResourcePrefix)
+			project, pipeline, testResourcePrefix)
 	}
 	environments := environmentsOf(paths)
 
@@ -510,7 +517,7 @@ func ensureDefaultGateway(ctx context.Context, platform organisationAPI, display
 		return building[0], awaitGatewayActive(ctx, platform, building[0].ID)
 	}
 	if pin != "" {
-		return gatewayOutcome{}, fmt.Errorf("%s names gateway %q, which is not an active regular gateway in the deployment pipeline of project apip-test-project-1", cloudGatewayPinEnv, pin)
+		return gatewayOutcome{}, fmt.Errorf("%s names gateway %q, which is not an active regular gateway in the deployment pipeline of project %q", cloudGatewayPinEnv, pin, project)
 	}
 
 	environment, err := defaultGatewayEnvironment(paths)
@@ -554,7 +561,7 @@ func defaultGatewayEnvironment(paths []promotionPath) (string, error) {
 		}
 	}
 	if len(stages) == 0 {
-		return "", errors.New("the deployment pipeline of project apip-test-project-1 has no environment to create a gateway in")
+		return "", errors.New("the deployment pipeline has no environment to create a gateway in")
 	}
 	slices.Sort(stages)
 	return stages[0], nil

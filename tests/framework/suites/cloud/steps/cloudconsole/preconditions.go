@@ -47,7 +47,7 @@ const (
 
 // projectScoped lists the preconditions asked of one of the suite's projects, so that each is
 // prepared, and reported, once for every project.
-var projectScoped = []precondition{preProject, prePipelineProj, prePipelineChain2, prePipelineChain3}
+var projectScoped = []precondition{preProject, preDefaultGateway, prePipelineProj, prePipelineChain2, prePipelineChain3}
 
 // preconditionOrder lists every precondition in the order a report names them. The projects come
 // first: nothing else is looked at in an organisation that lacks the project a runner works in.
@@ -204,7 +204,7 @@ func (s *Starter) prepare(ctx context.Context, platform organisationAPI, need pr
 	case preProject:
 		return s.ensureProject(ctx, platform, project)
 	case preDefaultGateway:
-		return s.prepareGateway(ctx, platform)
+		return s.prepareGateway(ctx, platform, project)
 	case preEnvironment:
 		return checkAnyEnvironment(ctx, platform)
 	case preSecondEnv:
@@ -313,11 +313,12 @@ func checkAnyEnvironment(ctx context.Context, platform organisationAPI) error {
 // checkSecondEnvironment checks the organisation lists a non-production environment besides the one
 // the default gateway is in, which the scenarios that build a second gateway need.
 func (s *Starter) checkSecondEnvironment(ctx context.Context, platform organisationAPI) error {
-	if err := s.require(ctx, preDefaultGateway); err != nil {
+	// The scenarios that need a second environment work in project one.
+	if err := s.require(ctx, scoped(preDefaultGateway, projectOne)); err != nil {
 		return unavailable("there is no default gateway whose environment could be set aside: %v", err)
 	}
 	s.mu.Lock()
-	active := s.gateway.Environment
+	active := s.gateways[projectOne].Environment
 	s.mu.Unlock()
 	items, err := listCollection(ctx, platform.client, platform.base, platform.token, "/environments")
 	if errors.Is(err, errCollectionNotServed) {

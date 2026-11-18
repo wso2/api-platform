@@ -41,7 +41,7 @@ named with the prefix `apip-test-`:
 | `apip-test-project-2` | every other runner: `apip-auth`, `apip-self-hosted-gateway`, `apip-promotion`, `apip-portal` (and `apip-project`) |
 
 A scenario works in the project of its feature file (one feature file is one runner). The default
-gateway is built in the first stage of `apip-test-project-1`'s pipeline, and the scenarios that
+gateway of a project is built in the first stage of that project's pipeline, and the scenarios that
 deploy along a pipeline (`ID_APIP_DEPLOY_011`; the promotion scenarios) use the pipeline of the
 project of their runner, so `apip-test-project-1` needs a promotion chain of 2 environments and
 `apip-test-project-2` one of 3.
@@ -66,15 +66,16 @@ run.
 | Precondition | Met when | Missing | Scenarios that need it |
 |---|---|---|---|
 | `project@<project>` | `GET /projects/<project>` answers 200, for `apip-test-project-1` and `apip-test-project-2` | **built** by the starter; skipped and the run fails when it cannot be built | the scenarios that read, find or create resources in the project of their runner (basic, deploy, gateway, secrets, portal, project, promotion), as their first check |
-| `default-gateway` | the deployment pipeline of `apip-test-project-1` is readable, is named with the prefix `apip-test-` and lists an environment, and the organisation holds an active regular gateway in it that no suite run created | **built** in the pipeline's first stage (`development` when the pipeline reaches it) and waited for until it is `ACTIVE` | the scenarios that start with `I find an active APIP gateway` (basic, deploy, gateway, gateway configuration, secrets) |
+| `default-gateway@<project>` | the deployment pipeline of the project is readable, is named with the prefix `apip-test-` and lists an environment, and the organisation holds an active regular gateway in it that no suite run created | **built** in the pipeline's first stage (`development` when the pipeline reaches it) and waited for until it is `ACTIVE` | the scenarios that start with `I find an active APIP gateway`, for the project of their runner (basic, deploy, gateway, gateway configuration, secrets, portal) |
 | `environment` | the platform lists an environment the suite may select (see "Which resources the suite selects") | not built: skipped, and the run **fails** | the scenarios that select an existing environment for a managed or self-hosted gateway |
 | `second-environment` | the platform lists a non-production environment the suite may select, besides the default gateway's, that no suite run created | not built: skipped, and the run **fails** | `ID_APIP_GATEWAY_006` and `_007` |
 | `pipeline-project@<project>` | the project is bound to a deployment pipeline named with the prefix `apip-test-` that the platform lists, with at least one promotion path | not built: skipped, and the run **fails** | the scenarios that start with `I find the pipeline-bound APIP project` |
 | `pipeline-chain-2@<project>`, `pipeline-chain-3@<project>` | that pipeline holds a promotion chain of 2 (3) environments the suite may select, each with an active regular gateway | not built: skipped, and the run **fails** | the promotion scenarios of `apip-test-project-2` (the chain of 3 is `ID_APIP_PROMOTION_006`), `ID_APIP_DEPLOY_011` of `apip-test-project-1`, `ID_APIP_PROJECT_009` |
 | `api-portal` | the organisation holds an active managed API Portal that no scenario created | not built while `starterCreatesPortal` is `false` (the cloud intermittently fails to build one): skipped and the run **fails**, so provide an active portal for these scenarios. Built and waited for until it is `active` once the constant is `true` | the scenarios that start with `I find an active managed API Portal` (the portal feature) |
 
-The starter never creates an environment, a deployment pipeline or a project, and never changes a
-project's pipeline: the WSO2 Cloud console manages them. A scenario never creates them either.
+The starter never creates an environment or a deployment pipeline, and never changes a project's
+pipeline: the WSO2 Cloud console manages them. A scenario never creates them either. The starter
+creates a missing suite project (see "The projects the runners work in").
 
 ### Which resources the suite selects
 
@@ -133,32 +134,30 @@ Read those lines before trusting a green run: a skip is not a pass.
 
 ## What the finalizer removes
 
-After the run, the finalizer leaves the suite's two projects and the portal empty, and deletes
-what the run created elsewhere in the organisation, in dependency order:
+After the run, the finalizer deletes what the run created, in dependency order. Every name the
+suite generates carries a suffix of its runner, and the finalizer deletes only the entries named
+with a suffix of **this run**:
 
 | Collection | What is removed |
 |---|---|
-| portal publications | every publication of every API in `apip-test-project-1`, `apip-test-project-2` and the projects the run created, from every active portal, whichever run published it |
+| portal publications | the publications of the run's APIs, from every active portal |
 | managed API Portals | only a portal a scenario built for itself (`syn-portal-`) |
-| REST APIs and GraphQL APIs | **everything** in `apip-test-project-1`, `apip-test-project-2` and the projects the run created, whichever run created it and whatever it is named |
-| subscription plans | every plan a scenario created (`syn-plan-`), whichever run created it |
-| secrets, self-hosted gateways, managed gateways, projects | the entries named with a suffix of **this run**; a runner's name suffix is carried by every name the suite generates |
+| REST APIs and GraphQL APIs | the run's APIs, in `apip-test-project-1`, `apip-test-project-2` and the projects the run created |
+| subscription plans | the plans the run created (`syn-plan-`) |
+| secrets, self-hosted gateways, managed gateways, projects | the run's entries |
 
-The suite's projects are the suite's own, which is why they are emptied of whatever they hold, so
-do not run two suite runs, or keep other resources, in `apip-test-project-N` at the same time.
 Whatever the finalizer removes is a leak the per-scenario cleanup missed and is logged as one.
 
 The finalizer **never** deletes:
 
-- anything the organisation already had outside the suite's projects, including environments,
-  deployment pipelines and the portal's publications of APIs in other projects;
-- the projects (`apip-test-project-1` and `apip-test-project-2` stay, empty), the gateway and the
-  portal the starter built. They stay so that the next run finds them and uses them like any
-  resource the organisation already has. The starter's suffix is not one the run's finalizer looks
-  for;
+- anything the organisation already had, or another run created, including environments,
+  deployment pipelines, the other consoles' resources and the publications of their APIs;
+- the projects `apip-test-project-1` and `apip-test-project-2`, the gateway the starter built and
+  the portal. They stay so that the next run finds them and uses them like any resource the
+  organisation already has. The starter's suffix is not one the run's finalizer looks for;
 - the default gateway of an environment;
 - a managed API Portal of any kind, except one a scenario built for itself (`syn-portal-`). It
-  empties the portals and nothing else.
+  empties the portals of what the run published and nothing else.
 
 A person who wants the starter's gateway gone names its suffix to the setup command (below).
 
