@@ -202,6 +202,8 @@ gateway:
           #   dsn: 'postgres://user:{{ env "APIP_GW_CONTROLLER_STORAGE_POSTGRES_PASSWORD" }}@host:5432/dbname?sslmode=require'
           # or, with gateway.controller.postgres.passwordSecretRef.source=file, the mounted file:
           #   dsn: 'postgres://user:{{ file "/secrets/gateway-controller/postgres/password" }}@host:5432/dbname?sslmode=require'
+          # The password is inserted into the URL as it is: a password with URL-reserved
+          # characters (@ : / ? # %) must be stored URL-encoded, or use the individual fields.
           # (The chart fails to render if a DSN is set alongside passwordSecretRef but
           # does not reference the token for its source.)
           dsn: ""
@@ -237,6 +239,8 @@ gateway:
           #   dsn: 'sqlserver://user:{{ env "APIP_GW_CONTROLLER_STORAGE_DATABASE_PASSWORD" }}@host:1433?database=gateway'
           # or, with gateway.controller.sqlserver.passwordSecretRef.source=file, the mounted file:
           #   dsn: 'sqlserver://user:{{ file "/secrets/gateway-controller/sqlserver/password" }}@host:1433?database=gateway'
+          # The password is inserted into the URL as it is: a password with URL-reserved
+          # characters (@ : / ? # %) must be stored URL-encoded, or use the individual fields.
           # (The chart fails to render if a DSN is set alongside passwordSecretRef but
           # does not reference the token for its source.)
           dsn: ""
@@ -857,7 +861,9 @@ gateway:
         # Directory the Secret key is mounted in when source is file. Must be inside a
         # directory the controller's {{ file }} token may read: /secrets/gateway-controller
         # (default) or /etc/gateway-controller, or one listed in APIP_CONFIG_FILE_SOURCE_ALLOWLIST
-        # (set it through deployment.extraEnv). Otherwise the controller refuses to start.
+        # (set it through deployment.extraEnv). Otherwise the controller refuses to start. The
+        # env var replaces the default directories rather than adding to them, so list every
+        # directory the controller still reads from.
         mountPath: /secrets/gateway-controller/controlplane
     # TLS certificate configuration for downstream (listener) HTTPS
     tls:

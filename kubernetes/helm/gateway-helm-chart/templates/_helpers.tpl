@@ -240,8 +240,9 @@ inUse, token (the quoted TOML value config.toml assigns: an env or file token).
 {{/*
 The gateway-controller secrets delivered as mounted files (source: file) that are in
 use, as YAML `mounts: [...]` with volume, secretName, key, mountPath for each. Fails
-when two of them, or one of them and a mount the chart already makes, share a
-mount path: Kubernetes rejects a pod with duplicate mount paths.
+when two of them, or one of them and a mount the chart already makes or an entry of
+deployment.extraVolumeMounts, share a mount path: Kubernetes rejects a pod with
+duplicate mount paths.
 
 Args: the root context.
 */}}
@@ -250,6 +251,9 @@ Args: the root context.
 {{- $taken := dict -}}
 {{- if $c.deployment.volumeMountPath -}}{{- $_ := set $taken (trimSuffix "/" $c.deployment.volumeMountPath) "gateway.controller.deployment.volumeMountPath" -}}{{- end -}}
 {{- if and $c.encryptionKeys.enabled $c.encryptionKeys.mountPath -}}{{- $_ := set $taken (trimSuffix "/" $c.encryptionKeys.mountPath) "gateway.controller.encryptionKeys.mountPath" -}}{{- end -}}
+{{- range $i, $m := (default (list) $c.deployment.extraVolumeMounts) -}}
+{{- if and (kindIs "map" $m) $m.mountPath -}}{{- $_ := set $taken (trimSuffix "/" (toString $m.mountPath)) (printf "gateway.controller.deployment.extraVolumeMounts[%d]" $i) -}}{{- end -}}
+{{- end -}}
 {{- $mounts := list -}}
 {{- range $which := list "token" "postgres" "sqlserver" -}}
 {{- $s := include "gateway-operator.controllerSecret" (dict "root" $ "which" $which) | fromYaml -}}

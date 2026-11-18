@@ -227,21 +227,37 @@ there as well.
 
 ```bash
 helm install gateway . \
+  --set gateway.controller.encryptionKeys.enabled=true \
+  --set gateway.controller.encryptionKeys.secretName=gateway-encryption-keys \
   --set gateway.controller.controlPlane.token.source=file \
   --set gateway.controller.controlPlane.token.secretName=gateway-cp-token \
+  --set gateway.config.controller.storage.type=postgres \
+  --set gateway.config.controller.storage.postgres.host=postgres.db.svc \
+  --set gateway.config.controller.storage.postgres.database=gateway \
+  --set gateway.config.controller.storage.postgres.user=gateway \
   --set gateway.controller.postgres.passwordSecretRef.source=file \
   --set gateway.controller.postgres.passwordSecretRef.name=gateway-db
 ```
+
+A database password is only mounted when its database is in use: the PostgreSQL settings take
+effect with `storage.type=postgres`, the SQL Server settings with `storage.type=sqlserver`.
 
 - `file` requires the Secret name (`token.secretName` / `passwordSecretRef.name`); a literal
   `token.value` cannot be mounted, so it is rejected with `source=file`.
 - `mountPath` must be inside a directory the controller's `{{ file }}` token may read:
   `/secrets/gateway-controller` or `/etc/gateway-controller`, or a directory listed in
   `APIP_CONFIG_FILE_SOURCE_ALLOWLIST` (set it through `gateway.controller.deployment.extraEnv`).
-  Anywhere else, the controller refuses to start. Each mounted secret needs its own `mountPath`.
+  Anywhere else, the controller refuses to start. `APIP_CONFIG_FILE_SOURCE_ALLOWLIST` replaces the
+  default directories rather than adding to them, so list every directory the controller still
+  reads from, e.g. `/secrets/gateway-controller,/etc/gateway-controller,/vault/secrets`.
+- Each mounted secret needs its own `mountPath`, distinct from the encryption-key mount and from
+  any `gateway.controller.deployment.extraVolumeMounts` path; the chart fails to render otherwise.
 - With a full `dsn`, reference the mounted file in it, e.g.
   `postgres://user:{{ file "/secrets/gateway-controller/postgres/password" }}@host:5432/db`.
-  The chart fails to render if the DSN does not reference that exact path.
+  The chart fails to render if the DSN does not reference that exact path. The file's contents are
+  inserted into the URL as they are, so a password containing URL-reserved characters (`@`, `:`,
+  `/`, `?`, `#`, `%`) must be stored URL-encoded in the Secret, or use the individual connection
+  fields (`host`, `user`, ...) instead of a DSN. The same applies to the `{{ env }}` token.
 - Like the env var, the file is read once at startup: restart the controller after rotating the
   Secret.
 
