@@ -177,10 +177,13 @@ func (s *Steps) createSecondPlan(ctx context.Context) error {
 	return s.createPlanAs(ctx, keySecondPlanID)
 }
 
+// syntheticPlanRequestLimit is per minute, high enough that polling the gateway never hits it.
+const syntheticPlanRequestLimit = 1000
+
 func planBody(id, status string) map[string]any {
 	return map[string]any{
 		"id": id, "displayName": publicationTitle + id, "status": status,
-		"limits": []map[string]any{{"limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "limitCount": 10}},
+		"limits": []map[string]any{{"limitType": "REQUEST_COUNT", "timeUnit": "MINUTE", "limitCount": syntheticPlanRequestLimit}},
 	}
 }
 

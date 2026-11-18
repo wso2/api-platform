@@ -568,15 +568,54 @@ func (s *Steps) createAPIKey(ctx context.Context) error {
 	return tcontext.Set(ctx, keyAPIKey, key)
 }
 
-// sendWithAPIKeyUntilStatus invokes a data-plane URL with the stored API key in the named header.
-func (s *Steps) sendWithAPIKeyUntilStatus(ctx context.Context, method, target, header string, want int) error {
-	key, err := requiredValue(ctx, keyAPIKey)
+// credentialKeys maps each credential a gateway step can send to its scenario-state key.
+var credentialKeys = map[string]string{
+	"API key":                              keyAPIKey,
+	"previous API key":                     keyPreviousAPIKey,
+	"subscription token":                   keyConsumerSubscriptionToken,
+	"previous subscription token":          keyPreviousSubscriptionToken,
+	"access token":                         keyAccessToken,
+	"access token with a forged signature": keyAccessToken,
+}
+
+// sendWithCredentialUntilStatus invokes a data-plane URL with a stored credential in the named
+// header. An access token is sent as a bearer token.
+func (s *Steps) sendWithCredentialUntilStatus(ctx context.Context, method, target, header, which string, want int) error {
+	stateKey, ok := credentialKeys[which]
+	if !ok {
+		return fmt.Errorf("unsupported credential %q", which)
+	}
+	key, err := requiredValue(ctx, stateKey)
 	if err != nil {
 		return err
 	}
+	if stateKey == keyAccessToken {
+		if which == "access token with a forged signature" {
+			if key, err = forgeSignature(key); err != nil {
+				return err
+			}
+		}
+		key = "Bearer " + key
+	}
 	header = strings.TrimSpace(header)
 	if header == "" {
-		return fmt.Errorf("sending request: API key header name is required")
+		return fmt.Errorf("sending request: header name is required")
 	}
 	return s.sendUntilStatusWith(ctx, method, target, want, map[string]string{header: key})
+}
+
+// forgeSignature returns the JWT with its signature changed.
+func forgeSignature(token string) (string, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 || parts[2] == "" {
+		return "", fmt.Errorf("the access token is not a signed JWT")
+	}
+	signature := []byte(parts[2])
+	if signature[0] == 'A' {
+		signature[0] = 'B'
+	} else {
+		signature[0] = 'A'
+	}
+	parts[2] = string(signature)
+	return strings.Join(parts, "."), nil
 }
