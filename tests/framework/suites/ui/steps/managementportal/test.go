@@ -236,7 +236,9 @@ func (s *Steps) addCurlRow(ctx context.Context, key, value string) error {
 	if err != nil {
 		return err
 	}
-	keys := page.GetByLabel("Key", playwright.PageGetByLabelOptions{Exact: playwright.Bool(true)})
+	// Only the visible rows: the console, hidden while this view is open, has fields of its own.
+	visible := playwright.LocatorFilterOptions{Visible: playwright.Bool(true)}
+	keys := page.GetByLabel("Key", playwright.PageGetByLabelOptions{Exact: playwright.Bool(true)}).Filter(visible)
 	row, err := keys.Count()
 	if err != nil || row == 0 {
 		return fmt.Errorf("the cURL builder shows no row to fill: %v", err)
@@ -244,7 +246,7 @@ func (s *Steps) addCurlRow(ctx context.Context, key, value string) error {
 	if err := keys.Nth(row - 1).Fill(key); err != nil {
 		return fmt.Errorf("entering %q as a key: %w", key, err)
 	}
-	values := page.GetByLabel("Value", playwright.PageGetByLabelOptions{Exact: playwright.Bool(true)})
+	values := page.GetByLabel("Value", playwright.PageGetByLabelOptions{Exact: playwright.Bool(true)}).Filter(visible)
 	if err := values.Nth(row - 1).Fill(value); err != nil {
 		return fmt.Errorf("entering %q as %q's value: %w", value, key, err)
 	}
