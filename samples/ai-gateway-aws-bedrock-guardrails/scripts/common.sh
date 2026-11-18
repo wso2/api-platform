@@ -23,6 +23,16 @@ export SECRET_PREFIX="wso2-ai-gateway/apps"
 export ADMIN_SECRET="wso2-ai-gateway/admin-password"
 export APPS="support-assistant employee-assistant"
 
+# Succeeds if the secret exists, and fails if it doesn't. Stops the script on any other error, such as
+# expired credentials or denied access, so that a failed lookup isn't mistaken for a missing secret.
+secret_exists() {
+  local err
+  if err="$(aws secretsmanager describe-secret --secret-id "$1" 2>&1 >/dev/null)"; then return 0; fi
+  case "${err}" in *ResourceNotFoundException*) return 1 ;; esac
+  echo "Couldn't look up the secret $1: ${err}" >&2
+  exit 1
+}
+
 # deploy-artifacts.sh passes the admin password to curl in a .netrc file, which splits fields on
 # whitespace and treats quotes and backslashes specially. Returns 1 for a password with those characters.
 valid_admin_password() {

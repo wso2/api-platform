@@ -20,7 +20,7 @@ rm -rf "${ROOT_DIR}/.tools"   # The ap CLI that build-gateway-image.sh downloade
 secrets=("${ADMIN_SECRET}")
 for app in ${APPS}; do secrets+=("${SECRET_PREFIX}/${app}"); done
 for secret in "${secrets[@]}"; do
-  if aws secretsmanager describe-secret --secret-id "${secret}" >/dev/null 2>&1; then
+  if secret_exists "${secret}"; then
     aws secretsmanager delete-secret --secret-id "${secret}" --force-delete-without-recovery >/dev/null
     echo "Deleted secret ${secret}"
   fi

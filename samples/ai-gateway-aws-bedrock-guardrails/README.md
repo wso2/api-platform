@@ -21,7 +21,7 @@ Code-only version of the sample for the AWS Machine Learning Blog post *Safeguar
 
 - An AWS account and an AWS CLI session (AWS IAM Identity Center recommended).
 - An AWS Region with Amazon Bedrock and Amazon Bedrock Guardrails. The post uses `us-east-1` with the `us.amazon.nova-2-lite-v1:0` inference profile, which routes to `us-east-1`, `us-east-2`, and `us-west-2`. Set `model_regions` if you use another profile.
-- Docker with Docker Compose 2.30 or later, Terraform 1.9 or later, AWS CLI 2.9 or later, curl, jq, envsubst, and unzip.
+- Docker with Docker Compose 2.30 or later, Terraform 1.9 or later, AWS CLI 2.9 or later, curl 7.76.0 or later, jq, envsubst, and unzip.
 
 ## Run
 

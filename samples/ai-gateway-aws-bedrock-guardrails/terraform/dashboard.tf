@@ -41,8 +41,17 @@ resource "aws_cloudwatch_dashboard" "guardrails" {
             "GuardrailArn", aws_bedrock_guardrail.support_assistant.guardrail_arn,
             "GuardrailVersion", aws_bedrock_guardrail_version.support_assistant.version,
           { label = "${aws_bedrock_guardrail.support_assistant.name} checks (support assistant only)", color = "#ff7f0e" }],
-          [local.guardrail_namespace, "InvocationsIntervened", "Operation", "ApplyGuardrail",
-          { label = "Interventions: blocked or masked (both guardrails)", color = "#d62728" }],
+          # Interventions of the two sample guardrails only, so other guardrails in the account don't count.
+          [local.guardrail_namespace, "InvocationsIntervened",
+            "GuardrailArn", aws_bedrock_guardrail.baseline.guardrail_arn,
+            "GuardrailVersion", aws_bedrock_guardrail_version.baseline.version,
+          { id = "baseline_intervened", visible = false }],
+          [local.guardrail_namespace, "InvocationsIntervened",
+            "GuardrailArn", aws_bedrock_guardrail.support_assistant.guardrail_arn,
+            "GuardrailVersion", aws_bedrock_guardrail_version.support_assistant.version,
+          { id = "support_intervened", visible = false }],
+          [{ expression = "SUM([baseline_intervened, support_intervened])",
+          label = "Interventions: blocked or masked (both guardrails)", color = "#d62728" }],
         ]
         yAxis  = { left = { min = 0, label = "Count", showUnits = false } }
         legend = { position = "bottom" }
