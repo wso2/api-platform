@@ -15,6 +15,7 @@ blocks:
       - name: apip-basic
         features:
           - features/apip_basic.feature
+          - features/apip_graphql.feature
       # This test skipped until fix the issue of stale data while project creation.
       # - name: apip-project
       #   features:

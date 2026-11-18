@@ -202,7 +202,7 @@ func cloudSweeps(client *httpx.Client, base, token string, owns func(names []str
 
 // projectScopedCollections are the collections the platform lists only for one project: a list
 // request without projectId is refused with 400.
-var projectScopedCollections = []string{"/rest-apis"}
+var projectScopedCollections = []string{"/rest-apis", "/graphql-apis"}
 
 // projectScopedSweep describes a collection the platform lists per project, so it reads the
 // default project and every project a tracked run created.

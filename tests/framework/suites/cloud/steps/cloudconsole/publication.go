@@ -240,54 +240,6 @@ func (s *Steps) tryDeletePlan(ctx context.Context) error {
 	return nil
 }
 
-// createGraphQLAPI creates a GraphQL API with an inline schema. The control plane accepts a
-// GraphQL API only as a multipart form whose metadata part carries the definition.
-func (s *Steps) createGraphQLAPI(ctx context.Context) error {
-	projectID, err := requiredValue(ctx, keyProjectID)
-	if err != nil {
-		return err
-	}
-	if err := generateResourceAndStore(ctx, "syn-graphql", keyGraphQLAPIID); err != nil {
-		return err
-	}
-	id, err := requiredValue(ctx, keyGraphQLAPIID)
-	if err != nil {
-		return err
-	}
-	metadata, err := json.Marshal(map[string]any{
-		"id": id, "displayName": publicationTitle + id,
-		"description": "Created and deleted by the APIP cloud integration test. Safe to delete.",
-		"context":     "/" + id + "/v1", "version": "1.0.0", "projectId": projectID,
-		"upstream":     map[string]any{"main": map[string]string{"url": "https://graphql.example.com/graphql"}},
-		"schemaSource": "inline", "sdl": graphQLSchema,
-	})
-	if err != nil {
-		return err
-	}
-	body, contentType, err := multipartFields([][2]string{{"metadata", string(metadata)}})
-	if err != nil {
-		return err
-	}
-	if err := cleanup.Register(ctx, cleanup.Resource{
-		Kind: cleanup.KindGraphQLAPI, ID: id, Actor: resourceActor, Description: "GraphQL API " + id,
-	}); err != nil {
-		return fmt.Errorf("registering GraphQL API %q for cleanup: %w", id, err)
-	}
-	resp, err := s.doAuthenticatedContent(ctx, http.MethodPost, "/graphql-apis", contentType, body)
-	if err != nil {
-		return err
-	}
-	if !resp.Succeeded() {
-		if refusedCreate(resp) {
-			deregister(ctx, cleanup.KindGraphQLAPI, id)
-		}
-		return responseError(resp)
-	}
-	return nil
-}
-
-const graphQLSchema = "type Query { hello: String }"
-
 func documentsPath(apiType, apiID string) string {
 	return "/apis/" + apiType + "/" + url.PathEscape(apiID) + "/docs"
 }
