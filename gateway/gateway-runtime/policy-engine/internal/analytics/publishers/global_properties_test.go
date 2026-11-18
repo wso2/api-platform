@@ -387,3 +387,36 @@ func TestGlobalPropertyEvaluator_ReferencedVariableWithNilEventField_ResolvesToZ
 	assert.Equal(t, "", resolved["targetDest"])
 	assert.Equal(t, "", resolved["appId"])
 }
+
+// request.clientPath is the client's path: original_path when the router rewrote it,
+// otherwise the path part of target.destination (policy rejection, no route match).
+func TestGlobalPropertyEvaluator_ResolvesRequestClientPath(t *testing.T) {
+	e := newGlobalPropertyEvaluator(map[string]string{
+		"clientPath": "$ctx:request.clientPath",
+	}, nil)
+
+	tests := []struct {
+		name         string
+		originalPath string
+		destination  string
+		hasTarget    bool
+		want         string
+	}{
+		{"forwarded, path rewritten", "/tlerr/fail", "errbackend/fail", true, "/tlerr/fail"},
+		{"rejected by policy", "", "localhost:18080/tl/secure", true, "/tl/secure"},
+		{"no route matched", "", "localhost:18080/nosuchapi/foo", true, "/nosuchapi/foo"},
+		{"destination without path", "", "localhost:18080", true, ""},
+		{"no target", "", "", false, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			event := createBaseEvent()
+			event.Operation.APIResourceTemplate = tc.originalPath
+			event.Target = nil
+			if tc.hasTarget {
+				event.Target = &dto.Target{Destination: tc.destination}
+			}
+			assert.Equal(t, tc.want, e.resolve(event)["clientPath"])
+		})
+	}
+}
