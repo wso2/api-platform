@@ -94,18 +94,14 @@ scenarios:
       issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
       refs:
         - feature: suites/cloud/features/apip_project.feature
-          scenario: "A project is bound to a deployment pipeline and the binding is readable"
+          scenario: "The deployment pipeline a project is bound to is readable and listed"
       note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
   - id: ID_APIP_PROJECT_010
     title: "Binding a project to a deployment pipeline that does not exist is refused."
     priority: P1
     cloud:
-      status: known-issue
-      issue: "The project delete endpoint of the cloud API answers 501 and the ap token does not carry the cloud:project:delete scope, so a scenario cannot delete the project it creates. The project scenarios are skipped until the endpoint is fixed and the scope is added to the ap token."
-      refs:
-        - feature: suites/cloud/features/apip_project.feature
-          scenario: "Binding a project to a deployment pipeline that does not exist is refused"
-      note: "The runner that hosts this feature is commented out in suites/cloud/cloud-suite.yaml until the issue is fixed."
+      status: exempt
+      reason: "A project's deployment pipeline binding is changed in the WSO2 Cloud console, not through the platform API, so the suite has no binding request to send."
   - id: ID_APIP_PROJECT_011
     title: "A project that was never bound explicitly reads back the default pipeline."
     priority: P1

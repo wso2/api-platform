@@ -139,7 +139,8 @@ const regularGatewayKind = "regular"
 // name may be padded with letters.
 var syntheticGatewayName = regexp.MustCompile(`^(?:s|sg|sgw|g|gw|w)?-?[a-z2-7]{8}-\d+x*$`)
 
-// syntheticEnvironmentName is the name a suite run gives the environments it creates.
+// syntheticEnvironmentName is the name earlier suite runs gave the environments they created, which
+// an organization may still hold.
 var syntheticEnvironmentName = regexp.MustCompile(`^(?:e|syn-env)-[a-z2-7]{8}-\d+$`)
 
 // regularGatewaysOnly rejects a gateway that is not of the regular kind. A listing that does not
@@ -162,8 +163,8 @@ func notSyntheticGateway(item map[string]any) string {
 	return ""
 }
 
-// notInSyntheticEnvironment rejects a gateway of an environment that a suite run created for its
-// own scenario, whose gateways are not the shared one the scenarios deploy to.
+// notInSyntheticEnvironment rejects a gateway of an environment that an earlier suite run created
+// for its own scenario, whose gateways are not the shared one the scenarios deploy to.
 func notInSyntheticEnvironment(item map[string]any) string {
 	environment, _ := item["environment"].(string)
 	if syntheticEnvironmentName.MatchString(strings.ToLower(strings.TrimSpace(environment))) {
@@ -580,125 +581,6 @@ func (s *Steps) getProject(ctx context.Context) error {
 	return err
 }
 
-// syntheticEnvironmentBase is the base of the names a suite run gives its environments. It is
-// short on purpose: the platform renders a gateway's service name from the environment name twice,
-// so every character of the environment's name is two taken from the handle of each gateway in it.
-const syntheticEnvironmentBase = "e"
-
-// createEnvironment creates an environment that is removed when the scenario ends.
-func (s *Steps) createEnvironment(ctx context.Context) error {
-	return s.createEnvironmentScoped(ctx, cleanup.ScenarioScope)
-}
-
-// createRunnerEnvironment creates an environment that later scenarios of the runner keep using, so
-// it is removed when the runner ends.
-func (s *Steps) createRunnerEnvironment(ctx context.Context) error {
-	return s.createEnvironmentScoped(ctx, cleanup.RunnerScope)
-}
-
-func registerEnvironment(ctx context.Context, scope cleanup.Scope, id string) error {
-	resource := cleanup.Resource{
-		Kind: cleanup.KindEnvironment, ID: id, Actor: resourceActor, Description: "environment " + id,
-	}
-	if scope == cleanup.RunnerScope {
-		return cleanup.RegisterRunner(ctx, resource)
-	}
-	return cleanup.Register(ctx, resource)
-}
-
-func (s *Steps) createEnvironmentScoped(ctx context.Context, scope cleanup.Scope) error {
-	if err := generateResourceAndStore(ctx, syntheticEnvironmentBase, keyEnvironmentName); err != nil {
-		return err
-	}
-	id, err := requiredValue(ctx, keyEnvironmentName)
-	if err != nil {
-		return err
-	}
-	if err := registerEnvironment(ctx, scope, id); err != nil {
-		return fmt.Errorf("registering environment %q for cleanup: %w", id, err)
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/environments", map[string]any{
-		"name": id, "isProduction": false,
-	})
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusCreated {
-		return responseError(resp)
-	}
-	createdID, err := stringField(resp, "id")
-	if err != nil {
-		return fmt.Errorf("creating APIP environment: %w", err)
-	}
-	if createdID != id {
-		deregister(ctx, cleanup.KindEnvironment, id)
-		if registerErr := registerEnvironment(ctx, scope, createdID); registerErr != nil {
-			return fmt.Errorf("registering environment %q for cleanup: %w", createdID, registerErr)
-		}
-		return fmt.Errorf("created APIP environment id = %q, want %q", createdID, id)
-	}
-	return nil
-}
-
-func (s *Steps) duplicateEnvironment(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyEnvironmentName)
-	if err != nil {
-		return err
-	}
-	resp, err := s.doAuthenticated(ctx, http.MethodPost, "/environments", map[string]any{
-		"name": id, "isProduction": false,
-	})
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode != http.StatusConflict {
-		return responseError(resp)
-	}
-	return nil
-}
-
-func (s *Steps) deleteEnvironment(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyEnvironmentName)
-	if err != nil {
-		return err
-	}
-	return s.deleteEnvironmentUntilGone(ctx, id)
-}
-
-func (s *Steps) verifyEnvironmentDeleted(ctx context.Context) error {
-	id, err := requiredValue(ctx, keyEnvironmentName)
-	if err != nil {
-		return err
-	}
-	if err := s.awaitEnvironmentNotFound(ctx, id); err != nil {
-		return err
-	}
-	deregister(ctx, cleanup.KindEnvironment, id)
-	return nil
-}
-
-func (s *Steps) deleteEnvironmentUntilGone(ctx context.Context, id string) error {
-	err := s.awaitEnvironmentNotFound(ctx, id)
-	if err != nil {
-		return err
-	}
-	deregister(ctx, cleanup.KindEnvironment, id)
-	return nil
-}
-
-// environmentDeletionTimeout bounds how long an environment is retried until it is gone: its
-// gateways are removed first.
-const environmentDeletionTimeout = 5 * time.Minute
-
-func (s *Steps) awaitEnvironmentNotFound(ctx context.Context, id string) error {
-	return retry.Await(ctx, retry.Options{Timeout: environmentDeletionTimeout, Interval: 3 * time.Second},
-		func(ctx context.Context) (*httpx.Response, error) {
-			return s.doAuthenticatedRaw(ctx, http.MethodDelete, "/environments/"+url.PathEscape(id), nil)
-		}, func(resp *httpx.Response) bool {
-			return resp != nil && resp.StatusCode == http.StatusNotFound
-		}, "waiting for APIP environment "+id+" deletion")
-}
-
 func (s *Steps) selectGatewayEnvironment(ctx context.Context) error {
 	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/environments", nil)
 	if err != nil {
@@ -718,6 +600,37 @@ func (s *Steps) selectGatewayEnvironment(ctx context.Context) error {
 		}
 	}
 	return fmt.Errorf("APIP environment list contains no usable environment")
+}
+
+// selectOtherGatewayEnvironment selects a listed non-production environment other than the active
+// gateway's, for a gateway the runner creates beside the one it creates there. An environment a
+// suite run once created for itself is passed over.
+func (s *Steps) selectOtherGatewayEnvironment(ctx context.Context) error {
+	active, err := requiredValue(ctx, keyGatewayEnv)
+	if err != nil {
+		return fmt.Errorf("the active gateway does not report its environment: %w", err)
+	}
+	resp, err := s.doAuthenticated(ctx, http.MethodGet, "/environments", nil)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return responseError(resp)
+	}
+	items, err := listItems(resp)
+	if err != nil {
+		return fmt.Errorf("decoding APIP environments: %w", err)
+	}
+	for _, item := range items {
+		name, _ := item["name"].(string)
+		name = strings.TrimSpace(name)
+		if name == "" || name == active || item["isProduction"] == true ||
+			syntheticEnvironmentName.MatchString(strings.ToLower(name)) {
+			continue
+		}
+		return tcontext.Set(ctx, keyEnvironmentName, name)
+	}
+	return fmt.Errorf("the organization has no non-production environment besides %q to create a second gateway in", active)
 }
 
 func (s *Steps) awaitNotFound(ctx context.Context, path, what string) error {
