@@ -213,9 +213,10 @@ func consumerSecretCall(ctx context.Context, method, path string, body any) (*ht
 	return browser.apiRequest(ctx, method, path, body)
 }
 
-// statusError reports an unexpected answer without its body, which can carry a credential.
-func statusError(resp *httpx.Response) error {
-	return fmt.Errorf("cloud-console: unexpected response: %s %s -> %d", resp.Method, resp.URL, resp.StatusCode)
+// answerError reports an unexpected answer without its body, which can carry a credential.
+func answerError(resp *httpx.Response) error {
+	return &statusError{status: resp.StatusCode,
+		message: fmt.Sprintf("cloud-console: unexpected response: %s %s -> %d", resp.Method, resp.URL, resp.StatusCode)}
 }
 
 // registerConsumerResource registers a resource for cleanup unless it is already registered.
@@ -252,7 +253,7 @@ func listPages(
 			return nil, false, nil
 		}
 		if resp.StatusCode != http.StatusOK {
-			return items, true, statusError(resp)
+			return items, true, answerError(resp)
 		}
 		listed, err := listItems(resp)
 		if err != nil {
@@ -545,7 +546,7 @@ func (s *Steps) generateConsumerAPIKey(ctx context.Context) error {
 		return err
 	}
 	if resp.StatusCode != http.StatusCreated {
-		return statusError(resp)
+		return answerError(resp)
 	}
 	id, err := stringField(resp, "id")
 	if err != nil {
@@ -580,7 +581,7 @@ func (s *Steps) regenerateConsumerAPIKey(ctx context.Context) error {
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return statusError(resp)
+		return answerError(resp)
 	}
 	key, err := stringField(resp, "key")
 	if err != nil {
@@ -678,7 +679,7 @@ func (s *Steps) createConsumerOAuth2Keys(ctx context.Context) error {
 		return err
 	}
 	if resp.StatusCode != http.StatusCreated {
-		return statusError(resp)
+		return answerError(resp)
 	}
 	id, err := stringField(resp, "keyId")
 	if err != nil {
@@ -730,7 +731,7 @@ func (s *Steps) generateConsumerAccessToken(ctx context.Context) error {
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return statusError(resp)
+		return answerError(resp)
 	}
 	token, err := stringField(resp, "accessToken")
 	if err != nil {
@@ -898,10 +899,10 @@ func (c consumerSession) remove(ctx context.Context, method, path string, body a
 			case err != nil:
 				failure = err
 			case resp.StatusCode >= http.StatusInternalServerError || resp.StatusCode == http.StatusTooManyRequests:
-				transient = statusError(resp)
+				transient = answerError(resp)
 				return false, retry.Transient(transient)
 			case !settled(resp, conflictSettles):
-				failure = statusError(resp)
+				failure = answerError(resp)
 			}
 			return true, nil
 		},
