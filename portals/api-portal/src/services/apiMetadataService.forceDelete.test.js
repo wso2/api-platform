@@ -79,10 +79,19 @@ function call(query = {}) {
  * rows) and `paid` (the uuids of subs billed through the provider). Returns what was
  * removed, revoked and deleted.
  */
-function stubApi(t, { subs = [], keys = [], paid = [] } = {}) {
-    const done = { removedSubs: [], revokedKeys: [], apiDeleted: false };
-    t.mock.method(db, 'withTransaction', (fn) => fn({}));
+function stubApi(t, { subs = [], keys = [], paid = [], failRemovingSub, apiGone = false } = {}) {
+    const done = { removedSubs: [], revokedKeys: [], apiDeleted: false, rolledBack: false };
+    // Records whether the callback rejected, which is what makes the real adapters roll back.
+    t.mock.method(db, 'withTransaction', async (fn) => {
+        try {
+            return await fn({});
+        } catch (error) {
+            done.rolledBack = true;
+            throw error;
+        }
+    });
     t.mock.method(apiDao, 'getIdExcludingType', async () => API_UUID);
+    t.mock.method(apiDao, 'lockForUpdate', async () => !apiGone);
     t.mock.method(apiDao, 'delete', async () => { done.apiDeleted = true; return 1; });
     t.mock.method(subDao, 'listByApi', async () => subs);
     t.mock.method(subDao, 'getById', async (orgId, uuid) => ({ uuid, api_metadata: {}, subscription_plan: {} }));
@@ -92,7 +101,11 @@ function stubApi(t, { subs = [], keys = [], paid = [] } = {}) {
         new Map(uuids.filter((uuid) => paid.includes(uuid)).map((uuid) => [uuid, { subscription_uuid: uuid }])));
     t.mock.method(billingApiPlanDao, 'listByOrg', async () => []);
     t.mock.method(checkoutService, 'endOpenCheckoutsFor', async () => {});
-    t.mock.method(subscriptionService, 'removeSubscription', async (orgId, sub) => { done.removedSubs.push(sub.uuid); return true; });
+    t.mock.method(subscriptionService, 'removeSubscription', async (orgId, sub) => {
+        if (sub.uuid === failRemovingSub) throw new Error('removal failed');
+        done.removedSubs.push(sub.uuid);
+        return true;
+    });
     t.mock.method(apiKeyService, 'revokeInTransaction', async ({ existing }) => { done.revokedKeys.push(existing.uuid); return true; });
     return done;
 }
@@ -136,4 +149,21 @@ test('with force, an API with nothing attached is deleted as before', async (t) 
     const res = await call({ force: 'true' });
     assert.strictEqual(res.status, 200);
     assert.strictEqual(done.apiDeleted, true);
+});
+
+test('with force, a failure part way rolls the whole delete back and reports the error', async (t) => {
+    const done = stubApi(t, { subs: [{ uuid: 'sub-1' }, { uuid: 'sub-2' }], keys: [{ uuid: 'key-1' }], failRemovingSub: 'sub-2' });
+    const res = await call({ force: 'true' });
+    assert.strictEqual(res.status, 500);
+    assert.strictEqual(done.rolledBack, true, 'the transaction must roll back, undoing the removal of sub-1');
+    assert.strictEqual(done.apiDeleted, false);
+});
+
+test('an API deleted before the delete takes its lock answers 404 and changes nothing', async (t) => {
+    const done = stubApi(t, { subs: [{ uuid: 'sub-1' }], apiGone: true });
+    const res = await call({ force: 'true' });
+    assert.strictEqual(res.status, 404);
+    assert.strictEqual(done.rolledBack, true);
+    assert.deepStrictEqual(done.removedSubs, []);
+    assert.strictEqual(done.apiDeleted, false);
 });

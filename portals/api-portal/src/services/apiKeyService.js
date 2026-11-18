@@ -172,6 +172,12 @@ async function generate({ orgId, apiId, subscriptionId, appId, handle, displayNa
 
     try {
         await db.withTransaction(async (t) => {
+            // Serializes with the API's delete, which revokes the keys it can see and then
+            // removes every key: a key committed in between would vanish without a
+            // revocation event. Once the API is gone, there is nothing to key.
+            if (!(await apiDao.lockForUpdate(orgId, api.id, t))) {
+                throw Object.assign(new Error('API not found.'), { status: 404 });
+            }
             let key;
             try {
                 key = await apiKeyDao.create(

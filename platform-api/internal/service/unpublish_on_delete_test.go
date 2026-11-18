@@ -177,6 +177,9 @@ type hookedPublisher struct {
 	onPublish   func()
 	onUnpublish func()
 	unpublished []string
+	// unpublishCtxErrs records each Unpublish context's Err(), so a test can tell
+	// whether a withdrawal ran under a context that was still alive.
+	unpublishCtxErrs []error
 }
 
 func (h *hookedPublisher) Publish(_ context.Context, _ *model.APIPortal, _, _ string, _ *model.Publication, _ *model.PublicationContent) error {
@@ -186,8 +189,9 @@ func (h *hookedPublisher) Publish(_ context.Context, _ *model.APIPortal, _, _ st
 	return nil
 }
 
-func (h *hookedPublisher) Unpublish(_ context.Context, portal *model.APIPortal, _, _ string) error {
+func (h *hookedPublisher) Unpublish(ctx context.Context, portal *model.APIPortal, _, _ string) error {
 	h.unpublished = append(h.unpublished, portal.Handle)
+	h.unpublishCtxErrs = append(h.unpublishCtxErrs, ctx.Err())
 	if h.onUnpublish != nil {
 		hook := h.onUnpublish
 		h.onUnpublish = nil
@@ -246,6 +250,37 @@ func TestPublish_WithdrawsTheListingWhenTheAPIIsDeletedMeanwhile(t *testing.T) {
 	}
 	if len(pub.unpublished) != 1 || pub.unpublished[0] != portal {
 		t.Fatalf("want the pushed listing withdrawn from %s, got %v", portal, pub.unpublished)
+	}
+}
+
+// The withdrawal runs under its own context: when Publish's own context has already
+// ended by the time promotion fails, the listing is still withdrawn rather than left
+// behind by a call that could never reach the portal.
+func TestPublish_WithdrawsEvenWhenPublishContextHasEnded(t *testing.T) {
+	tdb := openSchemaDB(t)
+	g := seedOrgGraph(t, tdb)
+	pub := &hookedPublisher{}
+	svc := newPublicationTestServiceWith(tdb, pub)
+	apiHandle, portal := apiHandleFor(g), portalHandleFor(g)
+
+	saveDraftOn(t, svc, apiHandle, portal, g.org)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	pub.onPublish = func() {
+		tdb.exec(t, `DELETE FROM rest_apis WHERE uuid = ?`, g.apiArtifact)
+		tdb.exec(t, `DELETE FROM api_documents WHERE artifact_uuid = ?`, g.apiArtifact)
+		tdb.exec(t, `DELETE FROM artifacts WHERE uuid = ?`, g.apiArtifact)
+		cancel()
+	}
+
+	if _, _, err := svc.Publish(ctx, "rest-api", apiHandle, portal, g.org, "actor"); err == nil {
+		t.Fatal("want Publish to fail once its API is gone")
+	}
+	if len(pub.unpublished) != 1 || pub.unpublished[0] != portal {
+		t.Fatalf("want the pushed listing withdrawn from %s, got %v", portal, pub.unpublished)
+	}
+	if err := pub.unpublishCtxErrs[0]; err != nil {
+		t.Fatalf("withdrawal ran under an ended context: %v", err)
 	}
 }
 

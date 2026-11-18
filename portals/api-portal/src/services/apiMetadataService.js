@@ -864,11 +864,17 @@ const deleteAPIMetadata = async (req, res) => {
         logger.error('API metadata deletion failed', { error: error.message, orgId, apiId: apiHandle });
         return util.handleError(res, billingCatalogFailure(error));
     }
-    await db.withTransaction(async (t) => {
-        try {
+    // Errors propagate out of the transaction callback so the transaction rolls back: a
+    // forced delete that fails part way (after removing some subscriptions or keys) must
+    // leave the API and everything attached to it as it was. The response is sent below.
+    try {
+        await db.withTransaction(async (t) => {
             apiId = await resolveScopedApiId(req, orgId, apiHandle);
-            if (!apiId) {
-                return util.sendError(res, 404, 'API not found');
+            // Taken before the snapshots below, and by key generation before it inserts a
+            // key, so no key can be committed between the snapshot of active keys and
+            // deleteByApi below without a revocation event.
+            if (!apiId || !(await apiDao.lockForUpdate(orgId, apiId, t))) {
+                throw new NotFoundError('API not found');
             }
             const subApis = await subDao.listByApi(orgId, apiId);
             const activeKeys = await apiKeyDao.list(orgId, { apiId, status: 'ACTIVE' }, t);
@@ -885,24 +891,25 @@ const deleteAPIMetadata = async (req, res) => {
                     throw new CustomError(409, constants.ERROR_MESSAGE.ERR_KEY_EXIST, "API has active keys.");
                 }
             }
-            // Delete revoked/expired keys within the transaction before removing the API row
+            // Removes every remaining key of the API, whatever its status. Active keys were
+            // revoked above (forced) or refused the delete, so only revoked and expired keys
+            // are left here.
             await apiKeyDao.deleteByApi(orgId, apiId, t);
             const apiDeleteResponse = await apiDao.delete(orgId, apiId, t);
             if (apiDeleteResponse === 0) {
                 throw new NotFoundError("Resource not found to delete");
-            } else {
-                deleted = true;
             }
-        } catch (error) {
-            logger.error('API metadata deletion failed', {
-                error: error.message,
-                stack: error.stack,
-                orgId,
-                apiId
-            });
-            util.handleError(res, error);
-        }
-    });
+            deleted = true;
+        });
+    } catch (error) {
+        logger.error('API metadata deletion failed', {
+            error: error.message,
+            stack: error.stack,
+            orgId,
+            apiId
+        });
+        return util.handleError(res, error);
+    }
     // Fired only after the transaction above has committed and released its
     // connection — see the comment in updateAPIMetadata for why firing this
     // while the connection is still checked out deadlocks against itself.

@@ -746,12 +746,18 @@ func (s *PublicationService) Publish(ctx context.Context, apiType, apiId, apiPor
 // see, so without this the portal would keep serving an API that no longer exists,
 // with no row left here to unpublish it from. Best effort: the publish is already
 // failing, and a failure here is logged.
+//
+// The withdrawal gets its own bounded context, detached from Publish's: Publish's
+// deadline may already have passed when promotion failed, and a withdrawal under it
+// could never reach the portal.
 func (s *PublicationService) withdrawIfArtifactDeleted(ctx context.Context, portal *model.APIPortal, apiType, apiHandle, artifactUUID, orgUUID string) {
 	artifact, err := s.artifactRepo.GetByUUID(artifactUUID, orgUUID)
 	if err != nil || artifact != nil {
 		return
 	}
-	if err := s.removeFromPortal(ctx, portal, apiType, apiHandle); err != nil {
+	withdrawCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), portalUndoTimeout)
+	defer cancel()
+	if err := s.removeFromPortal(withdrawCtx, portal, apiType, apiHandle); err != nil {
 		s.slogger.Error("A listing pushed for a deleted API could not be withdrawn from its API Portal",
 			"apiType", apiType, "apiHandle", apiHandle, "apiPortal", portal.Handle, "error", err)
 		return
