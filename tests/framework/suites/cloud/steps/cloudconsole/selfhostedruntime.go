@@ -19,20 +19,19 @@ package cloudconsole
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	corecatalog "github.com/wso2/api-platform/tests/framework/core/catalog/cloudconsole"
 	"github.com/wso2/api-platform/tests/framework/core/cleanup"
-	frameworkruntime "github.com/wso2/api-platform/tests/framework/core/runtime"
 	"github.com/wso2/api-platform/tests/framework/core/util/retry"
 	"github.com/wso2/api-platform/tests/framework/core/util/tcontext"
+	"github.com/wso2/api-platform/tests/framework/core/util/unique"
 )
 
 // This file runs a real gateway as a self-hosted gateway of the cloud: the block's
@@ -55,7 +54,7 @@ const (
 	// of starting; the rest is the platform noticing a closed connection.
 	localGatewayStateTimeout = 3 * time.Minute
 
-	// keyLocalGatewaySuffix names the scenario's local gateway in localGateways.
+	// keyLocalGatewaySuffix names the scenario's local gateway in the runner's registry.
 	keyLocalGatewaySuffix = "cloudLocalGatewaySuffix"
 	// keyLocalGatewayEndpoint is the local runtime's HTTP address, which serves what is deployed.
 	keyLocalGatewayEndpoint = "cloudLocalGatewayEndpoint"
@@ -65,18 +64,90 @@ const (
 	envControlPlaneInsecure = "APIP_GW_CONTROLLER_CONTROLPLANE_INSECURE_SKIP_VERIFY"
 )
 
-// localGateways are the gateways this process started, by suffix, and the runtime origins they
-// serve on. A local origin is a plain-http loopback address, which the data-plane check refuses for
-// any other target: only an origin listed here is let through.
-var localGateways = struct {
-	sync.Mutex
-	stacks  map[string]*frameworkruntime.ComposeStack
-	origins map[string]bool
-}{stacks: map[string]*frameworkruntime.ComposeStack{}, origins: map[string]bool{}}
+// keyLocalGateways holds the runner's localGatewayRegistry in its runner context, so a runner
+// only ever reaches the gateways its own scenarios started.
+const keyLocalGateways = "cloudLocalGateways"
 
-// localGatewayCount numbers the local gateways, so each gets a suffix of its own on the block's
-// network.
-var localGatewayCount atomic.Int64
+// stopper is the part of a compose stack a local gateway's lifecycle needs.
+type stopper interface {
+	Stop(ctx context.Context) error
+}
+
+// localGateway is a gateway a scenario started and the runtime origin approved for it, empty until
+// the origin is known.
+type localGateway struct {
+	stack  stopper
+	origin string
+}
+
+// localGatewayRegistry holds a runner's local gateways by suffix. A local origin is a plain-http
+// loopback address, which the data-plane check refuses for any other target: only an origin of a
+// gateway listed here, and still running, is let through.
+type localGatewayRegistry struct {
+	mu       sync.Mutex
+	gateways map[string]*localGateway
+}
+
+// localGatewaysOf returns the runner's registry, creating it on first use when create is set.
+func localGatewaysOf(ctx context.Context, create bool) (*localGatewayRegistry, error) {
+	if value, ok := tcontext.Get(ctx, keyLocalGateways); ok {
+		if registry, ok := value.(*localGatewayRegistry); ok {
+			return registry, nil
+		}
+		return nil, fmt.Errorf("runner context value %q is not a local gateway registry", keyLocalGateways)
+	}
+	if !create {
+		return nil, nil
+	}
+	registry := &localGatewayRegistry{gateways: map[string]*localGateway{}}
+	if err := tcontext.Set(ctx, keyLocalGateways, registry); err != nil {
+		return nil, err
+	}
+	return registry, nil
+}
+
+func (r *localGatewayRegistry) add(suffix string, stack stopper) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.gateways[suffix] = &localGateway{stack: stack}
+}
+
+func (r *localGatewayRegistry) approve(suffix, origin string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if gateway := r.gateways[suffix]; gateway != nil {
+		gateway.origin = origin
+	}
+}
+
+func (r *localGatewayRegistry) approved(origin string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, gateway := range r.gateways {
+		if gateway.origin != "" && gateway.origin == origin {
+			return true
+		}
+	}
+	return false
+}
+
+// stop stops the gateway with the suffix and forgets it, approval included. A gateway that fails
+// to stop stays registered and approved, since it may still be serving.
+func (r *localGatewayRegistry) stop(ctx context.Context, suffix string) error {
+	r.mu.Lock()
+	gateway := r.gateways[suffix]
+	r.mu.Unlock()
+	if gateway == nil {
+		return nil
+	}
+	if err := gateway.stack.Stop(ctx); err != nil {
+		return fmt.Errorf("stopping local gateway %s: %w", suffix, err)
+	}
+	r.mu.Lock()
+	delete(r.gateways, suffix)
+	r.mu.Unlock()
+	return nil
+}
 
 // registerLocalGatewaySteps binds the steps that run a self-hosted gateway on this machine.
 func (s *Steps) registerLocalGatewaySteps(sc stepRegistrar) {
@@ -121,35 +192,45 @@ func (s *Steps) startLocalGateway(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	suffix := "-shgw" + strconv.FormatInt(localGatewayCount.Add(1), 10)
+	registry, err := localGatewaysOf(ctx, true)
+	if err != nil {
+		return err
+	}
+	// The run-unique name keeps the gateway's service names apart from every other runner's on
+	// the block's network.
+	name, err := unique.Unique(ctx, "shgw")
+	if err != nil {
+		return err
+	}
+	suffix := "-" + strings.ToLower(strings.ReplaceAll(name, "_", "-"))
 	stack, err := s.topo.LaunchComposeInstance(ctx, localGatewayComponent, suffix, localGatewayEnv(host, token))
 	if err != nil {
 		return fmt.Errorf("starting a local gateway for self-hosted gateway %q: %w", id, err)
 	}
-	endpoint, err := stack.Instance.URL("http")
-	if err != nil {
-		return fmt.Errorf("reading the local gateway's runtime address: %w", err)
-	}
-	endpoint = strings.TrimRight(endpoint, "/")
-	origin, err := originOf(endpoint)
-	if err != nil {
-		return err
-	}
-	localGateways.Lock()
-	localGateways.stacks[suffix] = stack
-	localGateways.origins[origin] = true
-	localGateways.Unlock()
+	// Record and register the gateway before anything else can fail, so a failure below stops it
+	// rather than leaving it connected while the platform deletes its registration.
+	registry.add(suffix, stack)
 	if err := cleanup.Register(ctx, cleanup.Resource{
 		Kind: kindLocalGateway, ID: suffix, Actor: resourceActor,
 		Description: "local gateway " + suffix + " for self-hosted gateway " + id,
 	}); err != nil {
-		// The block stops the gateway at teardown in any case; stop it now so it does not stay
-		// connected while the platform deletes its registration.
-		return fmt.Errorf("registering local gateway %s for cleanup: %w (stopping it: %v)", suffix, err, stopLocalGateway(ctx, suffix))
+		err = fmt.Errorf("registering local gateway %s for cleanup: %w", suffix, err)
+		return errors.Join(err, registry.stop(ctx, suffix))
 	}
 	if err := tcontext.Set(ctx, keyLocalGatewaySuffix, suffix); err != nil {
-		return err
+		return errors.Join(err, registry.stop(ctx, suffix))
 	}
+	endpoint, err := stack.Instance.URL("http")
+	if err != nil {
+		err = fmt.Errorf("reading the local gateway's runtime address: %w", err)
+		return errors.Join(err, registry.stop(ctx, suffix))
+	}
+	endpoint = strings.TrimRight(endpoint, "/")
+	origin, err := originOf(endpoint)
+	if err != nil {
+		return errors.Join(err, registry.stop(ctx, suffix))
+	}
+	registry.approve(suffix, origin)
 	return tcontext.Set(ctx, keyLocalGatewayEndpoint, endpoint)
 }
 
@@ -183,15 +264,17 @@ func originOf(raw string) (string, error) {
 	return strings.ToLower(parsed.Scheme + "://" + parsed.Host), nil
 }
 
-// isLocalGatewayTarget reports whether target is on the runtime of a gateway this process started.
-func isLocalGatewayTarget(target *url.URL) bool {
+// isLocalGatewayTarget reports whether target is on the runtime of a gateway the calling runner
+// started and has not stopped.
+func isLocalGatewayTarget(ctx context.Context, target *url.URL) bool {
 	if target == nil || target.User != nil || target.Host == "" {
 		return false
 	}
-	origin := strings.ToLower(target.Scheme + "://" + target.Host)
-	localGateways.Lock()
-	defer localGateways.Unlock()
-	return localGateways.origins[origin]
+	registry, err := localGatewaysOf(ctx, false)
+	if err != nil || registry == nil {
+		return false
+	}
+	return registry.approved(strings.ToLower(target.Scheme + "://" + target.Host))
 }
 
 // awaitSelfHostedGatewayState waits until the platform reports the scenario's self-hosted gateway
@@ -265,23 +348,14 @@ func (s *Steps) stopLocalGateway(ctx context.Context) error {
 	return nil
 }
 
-// stopLocalGateway stops the local gateway with the suffix and forgets it. A gateway already
-// stopped is not an error.
+// stopLocalGateway stops the runner's local gateway with the suffix and forgets it. A gateway
+// already stopped, or never started by this runner, is not an error.
 func stopLocalGateway(ctx context.Context, suffix string) error {
-	localGateways.Lock()
-	stack := localGateways.stacks[suffix]
-	delete(localGateways.stacks, suffix)
-	localGateways.Unlock()
-	if stack == nil {
-		return nil
+	registry, err := localGatewaysOf(ctx, false)
+	if err != nil || registry == nil {
+		return err
 	}
-	if err := stack.Stop(ctx); err != nil {
-		localGateways.Lock()
-		localGateways.stacks[suffix] = stack
-		localGateways.Unlock()
-		return fmt.Errorf("stopping local gateway %s: %w", suffix, err)
-	}
-	return nil
+	return registry.stop(ctx, suffix)
 }
 
 // localGatewayDeleter stops a local gateway a scenario left running.

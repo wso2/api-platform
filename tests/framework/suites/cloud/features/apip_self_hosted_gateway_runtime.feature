@@ -16,7 +16,7 @@
 
 # Runs a real gateway on this machine, so it needs Docker and runs in the apip-cloud-self-hosted
 # block, never in apip-cloud.
-@apip-cloud @apip-cloud-self-hosted
+@apip-cloud @apip-cloud-self-hosted @SELF-HOSTED-GATEWAY
 Feature: APIP cloud self-hosted gateway connected to the cloud control plane
   As an APIP cloud user
   I want a gateway I run myself to connect to the cloud with its registration token

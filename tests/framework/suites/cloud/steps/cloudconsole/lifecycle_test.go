@@ -5793,17 +5793,33 @@ func TestParseMintedTokenReturnsTheValueWithoutQuotingTheBody(t *testing.T) {
 	require.NotContains(t, err.Error(), "secret-value")
 }
 
-func TestOnlyTheOriginOfAStartedLocalGatewayIsAnApprovedDataPlaneTarget(t *testing.T) {
-	localGateways.Lock()
-	localGateways.origins["http://localhost:49153"] = true
-	localGateways.Unlock()
-	t.Cleanup(func() {
-		localGateways.Lock()
-		delete(localGateways.origins, "http://localhost:49153")
-		localGateways.Unlock()
-	})
+// fakeStack is a local gateway stack whose stop fails with err.
+type fakeStack struct {
+	stops int
+	err   error
+}
 
-	target, err := resolveCloudDataPlaneURL(context.Background(), "http://localhost:49153/api-1/v1/posts/1")
+func (f *fakeStack) Stop(context.Context) error {
+	f.stops++
+	return f.err
+}
+
+// runnerWithLocalGateway returns a runner context holding a running local gateway on origin.
+func runnerWithLocalGateway(t *testing.T, runner, suffix, origin string, stack stopper) context.Context {
+	t.Helper()
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal(runner))
+	registry, err := localGatewaysOf(ctx, true)
+	require.NoError(t, err)
+	registry.add(suffix, stack)
+	registry.approve(suffix, origin)
+	return ctx
+}
+
+func TestOnlyTheOriginOfAStartedLocalGatewayIsAnApprovedDataPlaneTarget(t *testing.T) {
+	stack := &fakeStack{}
+	ctx := runnerWithLocalGateway(t, "runner-a", "-shgw-1", "http://localhost:49153", stack)
+
+	target, err := resolveCloudDataPlaneURL(ctx, "http://localhost:49153/api-1/v1/posts/1")
 	require.NoError(t, err)
 	require.Equal(t, "http://localhost:49153/api-1/v1/posts/1", target)
 	for _, refused := range []string{
@@ -5812,9 +5828,31 @@ func TestOnlyTheOriginOfAStartedLocalGatewayIsAnApprovedDataPlaneTarget(t *testi
 		"http://user@localhost:49153/api-1/v1/posts/1",
 		"http://127.0.0.1:49153/api-1/v1/posts/1",
 	} {
-		_, err := resolveCloudDataPlaneURL(context.Background(), refused)
+		_, err := resolveCloudDataPlaneURL(ctx, refused)
 		require.Error(t, err, refused)
 	}
+
+	other := tcontext.WithLocal(context.Background(), tcontext.NewLocal("runner-b"))
+	_, err = resolveCloudDataPlaneURL(other, "http://localhost:49153/api-1/v1/posts/1")
+	require.Error(t, err, "another runner's gateway is not approved")
+
+	require.NoError(t, stopLocalGateway(ctx, "-shgw-1"))
+	require.Equal(t, 1, stack.stops)
+	_, err = resolveCloudDataPlaneURL(ctx, "http://localhost:49153/api-1/v1/posts/1")
+	require.Error(t, err, "a stopped gateway's origin is no longer approved")
+}
+
+func TestALocalGatewayThatFailsToStopStaysApproved(t *testing.T) {
+	stack := &fakeStack{err: errors.New("compose down failed")}
+	ctx := runnerWithLocalGateway(t, "runner-a", "-shgw-1", "http://localhost:49153", stack)
+
+	require.ErrorContains(t, stopLocalGateway(ctx, "-shgw-1"), "compose down failed")
+	_, err := resolveCloudDataPlaneURL(ctx, "http://localhost:49153/api-1/v1/posts/1")
+	require.NoError(t, err, "it may still be serving")
+
+	stack.err = nil
+	require.NoError(t, localGatewayDeleter(ctx, cleanup.Resource{Kind: kindLocalGateway, ID: "-shgw-1"}))
+	require.Equal(t, 2, stack.stops, "cleanup stops it again")
 }
 
 func TestSelfHostedGatewayStepsUseTheLocalGatewayAsTheActiveGateway(t *testing.T) {
@@ -5865,8 +5903,9 @@ func TestAwaitSelfHostedGatewayStateWaitsForTheReportedState(t *testing.T) {
 }
 
 func TestStoppingALocalGatewayThatIsNotRunningSucceeds(t *testing.T) {
-	require.NoError(t, stopLocalGateway(context.Background(), "-shgw-unknown"))
-	require.NoError(t, localGatewayDeleter(context.Background(), cleanup.Resource{Kind: kindLocalGateway, ID: "-shgw-unknown"}))
+	ctx := tcontext.WithLocal(context.Background(), tcontext.NewLocal("cloud-runner"))
+	require.NoError(t, stopLocalGateway(ctx, "-shgw-unknown"))
+	require.NoError(t, localGatewayDeleter(ctx, cleanup.Resource{Kind: kindLocalGateway, ID: "-shgw-unknown"}))
 	require.Less(t, kindLocalGateway.Order, kindSelfHostedGateway.Order, "the local gateway stops before its registration is deleted")
 	require.Greater(t, kindLocalGateway.Order, cleanup.KindAPI.Order, "the APIs deployed to it are deleted while it still runs")
 }

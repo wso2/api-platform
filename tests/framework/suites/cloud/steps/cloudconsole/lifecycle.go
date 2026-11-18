@@ -445,14 +445,14 @@ func firstApprovedDataPlaneEndpoint(ctx context.Context, s *Steps, endpoints []a
 	return "", false, nil
 }
 
-func resolveCloudDataPlaneURL(_ context.Context, target string) (string, error) {
+func resolveCloudDataPlaneURL(ctx context.Context, target string) (string, error) {
 	parsed, err := url.Parse(target)
 	if err != nil {
 		return "", fmt.Errorf("invalid cloud data-plane URL %q: %w", target, err)
 	}
-	// The runtime of a gateway this run started on this machine is plain http on a loopback
-	// address; only the exact origin it was started on is let through.
-	if isLocalGatewayTarget(parsed) {
+	// The runtime of a gateway this runner started on this machine is plain http on a loopback
+	// address; only the exact origin it was started on is let through, while it runs.
+	if isLocalGatewayTarget(ctx, parsed) {
 		return target, nil
 	}
 	if localDataPlaneEnabled() && approvedLocalDataPlaneTarget(parsed) {
