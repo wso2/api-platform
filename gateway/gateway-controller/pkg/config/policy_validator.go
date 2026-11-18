@@ -27,6 +27,7 @@ import (
 
 	versionutil "github.com/wso2/api-platform/common/version"
 	api "github.com/wso2/api-platform/gateway/gateway-controller/pkg/api/management"
+	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/constants"
 	"github.com/wso2/api-platform/gateway/gateway-controller/pkg/models"
 	"github.com/xeipuuv/gojsonschema"
 )
@@ -118,6 +119,9 @@ func (pv *PolicyValidator) ValidateGraphQLAPIPolicies(apiConfig *api.GraphQLAPI)
 			errors = append(errors, err)
 			continue
 		}
+		if err, refused := refuseHostRewriteWithoutManualUpstream(policy.Name, fieldPath, &apiConfig.Spec.Upstream.Main, apiConfig.Spec.Upstream.Sandbox); refused {
+			errors = append(errors, err)
+		}
 		errs := pv.validatePolicy(policy, fieldPath)
 		errors = append(errors, errs...)
 	}
@@ -132,6 +136,9 @@ func (pv *PolicyValidator) ValidateRestAPIPolicies(apiConfig *api.RestAPI) []Val
 	// run, so a problem both report is reported once.
 	var mtlsAuthSchemaErrors []ValidationError
 	collect := func(policy api.Policy, fieldPath string) {
+		if err, refused := refuseHostRewriteWithoutManualUpstream(policy.Name, fieldPath, &apiConfig.Spec.Upstream.Main, apiConfig.Spec.Upstream.Sandbox); refused {
+			errors = append(errors, err)
+		}
 		errs := pv.validatePolicy(policy, fieldPath)
 		if policy.Name == MtlsAuthPolicyName && pv.mtlsAuthValidator != nil {
 			mtlsAuthSchemaErrors = append(mtlsAuthSchemaErrors, errs...)
@@ -810,6 +817,33 @@ func refuseMtlsAuthOutsideRestAPI(policyName, fieldPath string) (ValidationError
 		Field:   fieldPath,
 		Message: "mtls-auth is supported on RestApi only",
 	}, true
+}
+
+// refuseHostRewriteWithoutManualUpstream reports the validation error for a
+// host-rewrite reference on an API whose main or sandbox upstream does not set
+// hostRewrite: manual. Route building enables Envoy auto_host_rewrite for any
+// other value, which overwrites the Host header the policy set, so the policy
+// would be deployed but silently do nothing.
+func refuseHostRewriteWithoutManualUpstream(policyName, fieldPath string, main, sandbox *api.Upstream) (ValidationError, bool) {
+	if policyName != constants.PROXY_HOST__HEADER_POLICY_NAME {
+		return ValidationError{}, false
+	}
+	for _, u := range []struct {
+		name     string
+		upstream *api.Upstream
+	}{{"main", main}, {"sandbox", sandbox}} {
+		if u.upstream == nil {
+			continue
+		}
+		if u.upstream.HostRewrite == nil || *u.upstream.HostRewrite != api.UpstreamHostRewriteManual {
+			return ValidationError{
+				Field: fieldPath,
+				Message: fmt.Sprintf("host-rewrite has no effect unless spec.upstream.%s.hostRewrite is 'manual', "+
+					"because the gateway otherwise overwrites the Host header with the upstream host", u.name),
+			}, true
+		}
+	}
+	return ValidationError{}, false
 }
 
 // refuseMtlsAuthAsFaultPolicy reports the validation error for an mtls-auth
