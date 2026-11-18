@@ -13167,7 +13167,11 @@ components:
           example: "my-app-handle"
         subscriptionToken:
           type: string
-          description: Opaque subscription token for API invocation via Subscription-Key header
+          description: |
+            Opaque subscription token for API invocation via the Subscription-Key header.
+            Returned when the subscription is created, and on a read (get, list, update)
+            only to the subscriber the subscription belongs to. A read by any other user
+            returns the subscription without this field.
         subscriptionPlanId:
           type: string
           description: Handle (slug) of the subscription plan

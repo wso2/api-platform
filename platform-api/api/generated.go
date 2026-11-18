@@ -6011,7 +6011,10 @@ type Subscription struct {
 	// SubscriptionPlanName Subscription plan display name (e.g. Bronze, Gold)
 	SubscriptionPlanName *string `json:"subscriptionPlanName,omitempty" yaml:"subscriptionPlanName,omitempty"`
 
-	// SubscriptionToken Opaque subscription token for API invocation via Subscription-Key header
+	// SubscriptionToken Opaque subscription token for API invocation via the Subscription-Key header.
+	// Returned when the subscription is created, and on a read (get, list, update)
+	// only to the subscriber the subscription belongs to. A read by any other user
+	// returns the subscription without this field.
 	SubscriptionToken *string    `json:"subscriptionToken,omitempty" yaml:"subscriptionToken,omitempty"`
 	UpdatedAt         *time.Time `json:"updatedAt,omitempty" yaml:"updatedAt,omitempty"`
 
