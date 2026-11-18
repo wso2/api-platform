@@ -64,6 +64,9 @@ type Server struct {
 	// joined onto MoesifURL. Nil/empty when moesif_url is unset.
 	moesifProxies map[string]*httputil.ReverseProxy
 	billingProxy  *httputil.ReverseProxy
+	// docsAssistant calls the Ask AI documentation assistant. Nil when
+	// [docs_assistant] is not configured.
+	docsAssistant *http.Client
 	handler       http.Handler
 
 	// exchanger is non-nil exactly when cfg.Auth.TokenExchangeEnabled().
@@ -203,6 +206,14 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 			return nil, err
 		}
 		s.billingProxy = proxy.ReverseProxy(billingTarget, paths.Base+paths.Proxy+"/billing", billingTransport)
+	}
+
+	if cfg.DocsAssistant.Enabled() {
+		client, err := newDocsAssistantClient(cfg.HTTPClient, cfg.DocsAssistant.Timeout)
+		if err != nil {
+			return nil, err
+		}
+		s.docsAssistant = client
 	}
 
 	if cfg.Auth.OIDCEnabled() {
