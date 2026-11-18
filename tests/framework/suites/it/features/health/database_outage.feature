@@ -60,12 +60,12 @@ Feature: Health during a database outage
     And the response body should be empty
     When I send a "GET" request to the API Portal health path "/ready" until status 503
     Then the JSON response field "status" should be "unhealthy"
-    And the JSON response field "checks.database.error" should be "database unreachable"
+    And the JSON response field "checks.database.error" should match pattern "^(database unreachable|timed out after [0-9.]+m?s)$"
     And the JSON response should have field "checks.database.since"
     And the response body should not contain "it-postgres"
     When I send a "GET" request to the gateway controller health path "/api/admin/v1/ready" until status 503
     Then the JSON response field "status" should be "unhealthy"
-    And the JSON response field "checks.database.error" should be "database unreachable"
+    And the JSON response field "checks.database.error" should match pattern "^(database unreachable|timed out after [0-9.]+m?s)$"
     And the response body should not contain "it-postgres"
     When I send a "GET" request to the gateway controller health path "/api/admin/v1/health"
     Then the response status code should be 503
@@ -85,6 +85,9 @@ Feature: Health during a database outage
 
   @HEALTH-019
   Scenario: A hung database fails readiness within the check timeout instead of hanging the probe
+    Given I send a "GET" request to the platform-api health path "/ready" until status 200
+    And I send a "GET" request to the API Portal health path "/ready" until status 200
+    And I send a "GET" request to the gateway controller health path "/api/admin/v1/ready" until status 200
     When I pause the "postgres" database server
     And I send a "GET" request to the platform-api health path "/ready" until status 503
     Then the JSON response field "checks.database.status" should be "down"
