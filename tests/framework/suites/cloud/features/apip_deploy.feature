@@ -192,7 +192,8 @@ Feature: APIP cloud builds and deployments
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
     When I update the synthetic REST API with:
       | operations | [{"name":"getPostOne","request":{"method":"GET","path":"/posts/1"}},{"name":"getPostTwo","request":{"method":"GET","path":"/posts/2"}}] |
-    Then I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/2" until status 404
+    Then the synthetic REST API should have an operation named "getPostTwo"
+    And a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/2" should keep returning 404 for 20 seconds
     And I send a "GET" request to "${CTX:cloudGatewayEndpoint}/${CTX:cloudAPIID}/v1/posts/1" until status 200
     When I prepare a build of the synthetic REST API
     And I deploy build 2 of the synthetic REST API to the active gateway
@@ -272,6 +273,7 @@ Feature: APIP cloud builds and deployments
     When I try to undeploy the synthetic REST API
     Then the cloud API response status code should be 409
     And the cloud API error code should be "DEPLOYMENT_NOT_ACTIVE"
+    And the synthetic REST API deployment should become UNDEPLOYED
 
   @ID_APIP_DEPLOY_017 @type:negative
   Scenario: A build is deleted only through its own API and kind, and through another it is not found and stays listed
@@ -310,3 +312,8 @@ Feature: APIP cloud builds and deployments
     And the deployment stage of the active gateway's environment should show the active gateway as NOT_DEPLOYED
     When I prepare a build of the synthetic REST API
     Then the synthetic REST API should hold 1 builds
+    When I request a deployment of the synthetic REST API with:
+      | environment | ${CTX:cloudGatewayEnvironment} |
+      | gatewayId   | ${CTX:cloudGatewayID}          |
+    Then the cloud API response status code should be 201
+    And the synthetic REST API deployment should become DEPLOYED

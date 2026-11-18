@@ -14,7 +14,7 @@
 # limitations under the License.
 # --------------------------------------------------------------------
 
-@apip-cloud
+@apip-cloud @GRAPHQL
 Feature: APIP cloud GraphQL API lifecycle
   As an APIP cloud user
   I want to create, deploy, change and secure a GraphQL API
@@ -98,6 +98,7 @@ Feature: APIP cloud GraphQL API lifecycle
       | schemaSource | url                                   |
       | sdlUrl       | ${CTX:cloudEchoBackendURL}/status/404 |
     Then the cloud API response status code should be 201
+    And the submitted GraphQL API should exist
     And the submitted GraphQL API should have an empty schema
 
   @ID_APIP_GRAPHQL_007

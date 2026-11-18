@@ -626,6 +626,34 @@ func (s *Steps) keepServingUntilDeployed(ctx context.Context, method, target str
 	return nil
 }
 
+// keepReturningFor sends a data-plane request for the whole window and fails on the first answer
+// that is not the expected status, proving the gateway keeps answering it that way over time.
+func (s *Steps) keepReturningFor(ctx context.Context, method, target string, want, seconds int) error {
+	if seconds < 1 {
+		return fmt.Errorf("a window of %d seconds is too short to observe", seconds)
+	}
+	request, err := s.prepareDataPlaneRequest(ctx, httpx.Request{Method: method, URL: target})
+	if err != nil {
+		return err
+	}
+	last, err := retry.Never(ctx, retry.Options{}, time.Duration(seconds)*time.Second,
+		func(ctx context.Context) (*httpx.Response, error) {
+			response, sendErr := s.funnel.Send(ctx, request)
+			if sendErr != nil {
+				return nil, retry.Transient(sendErr)
+			}
+			return response, nil
+		},
+		func(response *httpx.Response) bool { return response.StatusCode != want })
+	if err != nil {
+		if last != nil {
+			return fmt.Errorf("%s %s did not keep returning %d: %w (last %s)", request.Method, request.URL, want, err, last.Describe())
+		}
+		return fmt.Errorf("%s %s did not keep returning %d: %w", request.Method, request.URL, want, err)
+	}
+	return nil
+}
+
 // createAPIKey issues an API key for the synthetic REST API and keeps its value in scenario state
 // only; the response is not published so the key never reaches a step's response slot.
 func (s *Steps) createAPIKey(ctx context.Context) error {

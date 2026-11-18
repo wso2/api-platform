@@ -86,7 +86,9 @@ func (s *Steps) registerAPIDefinitionSteps(sc stepRegistrar) {
 	sc.Step(`^the "([^"]*)" operation of the synthetic REST API should (keep|not have) the header policy$`, s.assertOperationPolicy)
 	sc.Step(`^the stored definition of the (synthetic REST API|new API version) should be the spec fixture "([^"]*)"$`, s.assertStoredDefinition)
 	sc.Step(`^the synthetic REST API should have no stored definition$`, s.assertNoStoredDefinition)
-	sc.Step(`^the rejected synthetic REST API should not exist$`, s.assertRejectedAPIAbsent)
+	sc.Step(`^the submitted synthetic REST API should (exist|not exist)$`, s.assertSubmittedAPI)
+	sc.Step(`^the new API version should have the synthetic REST API's display name and the version "([^"]*)"$`, s.assertNewVersionOfTheAPI)
+	sc.Step(`^the synthetic REST API should have an operation named "([^"]*)"$`, s.assertOperationNamed)
 	sc.Step(`^the echoed request should carry the header policy's header$`, s.assertProbeHeaderEchoed)
 	sc.Step(`^the echoed request should not carry the header policy's header$`, s.assertProbeHeaderAbsent)
 }
@@ -231,11 +233,16 @@ func (s *Steps) reimportAPI(ctx context.Context, fixture string) error {
 		}
 		*target = value
 	}
-	return s.importAPIAs(ctx, primaryAPI, details, fixture)
+	if err := s.importAPIAs(ctx, primaryAPI, details, fixture); err != nil {
+		return err
+	}
+	// The builds seen for the deleted API are not the new API's, though it has the same id.
+	return tcontext.Set(ctx, primaryAPI.buildsOwner, "")
 }
 
 // importAPIAs creates the REST API a ref names from a specs fixture and keeps its definition. It
-// is registered for cleanup before the request, since an import can fail after the API is stored.
+// is registered for cleanup before the request and stays registered whatever the answer, since an
+// import can fail after the API is stored; cleanup treats an absent API as deleted.
 func (s *Steps) importAPIAs(ctx context.Context, ref apiRef, details importDetails, fixture string) error {
 	if err := registerAPIForCleanup(ctx, details.id); err != nil {
 		return err
@@ -254,24 +261,15 @@ func (s *Steps) importAPIAs(ctx context.Context, ref apiRef, details importDetai
 		return err
 	}
 	if resp.StatusCode != http.StatusCreated {
-		if refusedCreate(resp) {
-			deregister(ctx, cleanup.KindAPI, details.id)
-		}
 		return responseError(resp)
 	}
 	definition, err := definitionOf(resp)
 	if err != nil {
 		return err
 	}
-	createdID, _ := definition["id"].(string)
-	if createdID == "" {
-		return fmt.Errorf("the imported REST API has no id: %s", resp.Describe())
-	}
-	if createdID != details.id {
-		deregister(ctx, cleanup.KindAPI, details.id)
-		if err := registerAPIForCleanup(ctx, createdID); err != nil {
-			return err
-		}
+	createdID, err := s.keepCreatedAPI(ctx, details.id, definition)
+	if err != nil {
+		return err
 	}
 	if err := storeDefinition(ctx, ref, definition); err != nil {
 		return err
@@ -280,7 +278,8 @@ func (s *Steps) importAPIAs(ctx context.Context, ref apiRef, details importDetai
 }
 
 // submitAPIImport sends an import whose definition source comes from a values table and leaves
-// the answer for the scenario, so it can assert on a refusal.
+// the answer for the scenario, so it can assert on a refusal. The API stays registered for cleanup
+// whatever the answer, and an API created under another id is registered under that id.
 func (s *Steps) submitAPIImport(ctx context.Context, table *godog.Table) error {
 	values, err := tableValues(table)
 	if err != nil {
@@ -325,10 +324,39 @@ func (s *Steps) submitAPIImport(ctx context.Context, table *godog.Table) error {
 	if err != nil {
 		return err
 	}
-	if refusedCreate(resp) {
-		deregister(ctx, cleanup.KindAPI, id)
+	if resp.StatusCode != http.StatusCreated {
+		return nil
 	}
-	return nil
+	definition, err := definitionOf(resp)
+	if err != nil {
+		return err
+	}
+	createdID, err := s.keepCreatedAPI(ctx, id, definition)
+	if err != nil {
+		return err
+	}
+	return tcontext.Set(ctx, keyRejectedAPIID, createdID)
+}
+
+// keepCreatedAPI returns the id the platform created an API under. When it is not the id the
+// request named, the created API is registered for cleanup in place of the requested one, and is
+// deleted at once if it cannot be registered.
+func (s *Steps) keepCreatedAPI(ctx context.Context, requested string, created map[string]any) (string, error) {
+	createdID, _ := created["id"].(string)
+	if createdID == "" {
+		return "", fmt.Errorf("the created REST API has no id")
+	}
+	if createdID == requested {
+		return createdID, nil
+	}
+	if err := registerAPIForCleanup(ctx, createdID); err != nil {
+		if _, deleteErr := s.doAuthenticatedRaw(ctx, http.MethodDelete, restAPIsCollection+"/"+url.PathEscape(createdID), nil); deleteErr != nil {
+			return "", fmt.Errorf("%w; deleting it: %v", err, deleteErr)
+		}
+		return "", err
+	}
+	deregister(ctx, cleanup.KindAPI, requested)
+	return createdID, nil
 }
 
 func (s *Steps) validateSpecFixture(ctx context.Context, fixture string) error {
@@ -415,11 +443,7 @@ func (s *Steps) replaceDefinition(ctx context.Context, fixture string) error {
 
 // refreshDefinition keeps the definition the platform holds now for the API a ref points at.
 func (s *Steps) refreshDefinition(ctx context.Context, ref apiRef) error {
-	resp, err := s.readAPIOf(ctx, ref)
-	if err != nil {
-		return err
-	}
-	definition, err := definitionOf(resp)
+	definition, err := s.readDefinitionOf(ctx, ref)
 	if err != nil {
 		return err
 	}
@@ -584,11 +608,7 @@ func (s *Steps) assertOperationsOfFixture(ctx context.Context, label, fixture st
 // assertOperationPolicy checks whether an operation of the synthetic REST API carries the header
 // policy.
 func (s *Steps) assertOperationPolicy(ctx context.Context, name, want string) error {
-	resp, err := s.readAPIOf(ctx, primaryAPI)
-	if err != nil {
-		return err
-	}
-	definition, err := definitionOf(resp)
+	definition, err := s.readDefinitionOf(ctx, primaryAPI)
 	if err != nil {
 		return err
 	}
@@ -657,8 +677,9 @@ func (s *Steps) assertNoStoredDefinition(ctx context.Context) error {
 	return nil
 }
 
-// assertRejectedAPIAbsent checks that a refused import or creation left no API behind.
-func (s *Steps) assertRejectedAPIAbsent(ctx context.Context) error {
+// assertSubmittedAPI checks that the API of the last submitted import or creation exists and is
+// read back under its id, or that a refused one left no API behind.
+func (s *Steps) assertSubmittedAPI(ctx context.Context, presence string) error {
 	id, err := requiredValue(ctx, keyRejectedAPIID)
 	if err != nil {
 		return err
@@ -667,10 +688,63 @@ func (s *Steps) assertRejectedAPIAbsent(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusNotFound {
-		return fmt.Errorf("expected REST API %s not to exist, got %s", id, resp.Describe())
+	if presence == "not exist" {
+		if resp.StatusCode != http.StatusNotFound {
+			return fmt.Errorf("expected REST API %s not to exist, got %s", id, resp.Describe())
+		}
+		return nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("expected REST API %s to exist, got %s", id, resp.Describe())
+	}
+	if got, _ := stringField(resp, "id"); got != id {
+		return fmt.Errorf("reading REST API %s returned the API %q", id, got)
 	}
 	return nil
+}
+
+// assertNewVersionOfTheAPI checks that the new API version is read back under the first API's
+// display name with the given version, and the first API with another version.
+func (s *Steps) assertNewVersionOfTheAPI(ctx context.Context, version string) error {
+	first, err := s.readDefinitionOf(ctx, primaryAPI)
+	if err != nil {
+		return err
+	}
+	second, err := s.readDefinitionOf(ctx, versionAPI)
+	if err != nil {
+		return err
+	}
+	name, _ := first["displayName"].(string)
+	if name == "" || second["displayName"] != name {
+		return fmt.Errorf("the new API version is named %v, the synthetic REST API %q", second["displayName"], name)
+	}
+	if second["version"] != version {
+		return fmt.Errorf("the new API version has the version %v, want %q", second["version"], version)
+	}
+	if first["version"] == version {
+		return fmt.Errorf("the synthetic REST API also has the version %q", version)
+	}
+	return nil
+}
+
+// readDefinitionOf reads the definition the platform holds for the API a ref points at.
+func (s *Steps) readDefinitionOf(ctx context.Context, ref apiRef) (map[string]any, error) {
+	resp, err := s.readAPIOf(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	return definitionOf(resp)
+}
+
+// assertOperationNamed checks that the synthetic REST API the platform holds has an operation of
+// the given name.
+func (s *Steps) assertOperationNamed(ctx context.Context, name string) error {
+	definition, err := s.readDefinitionOf(ctx, primaryAPI)
+	if err != nil {
+		return err
+	}
+	_, err = operationNamed(definition, name)
+	return err
 }
 
 // assertProbeHeaderEchoed checks that the backend received the header the header policy sets.
@@ -700,8 +774,10 @@ func (s *Steps) assertProbeHeaderAbsent(ctx context.Context) error {
 	if err := json.Unmarshal(response.Body, &echoed); err != nil || echoed.Headers == nil {
 		return fmt.Errorf("the response is not an echo of the request: %s", response.Describe())
 	}
-	if got, present := echoedHeader(response.Body, operationProbeHeader); present {
-		return fmt.Errorf("the backend received header %s %q, want none", operationProbeHeader, got)
+	for name, value := range echoed.Headers {
+		if strings.EqualFold(name, operationProbeHeader) {
+			return fmt.Errorf("the backend received header %s %v, want none", operationProbeHeader, value)
+		}
 	}
 	return nil
 }

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 
@@ -59,6 +60,9 @@ const (
 // be created.
 var submittedGraphQLAPI = apiRef{id: keySubmittedGraphQLID, collection: graphQLAPIsCollection}
 
+// kindGraphQLAPIKey is an API key issued for a GraphQL API, revoked before the API is deleted.
+var kindGraphQLAPIKey = cleanup.Kind{Name: "cloud-graphql-api-key", Order: 40}
+
 // GraphQL API fields a values table may set, by the step that accepts them. policies carries JSON,
 // upstream the main upstream URL, and the rest text.
 var (
@@ -80,7 +84,7 @@ func (s *Steps) registerGraphQLSteps(sc stepRegistrar) {
 	sc.Step(`^the GraphQL response should come from the (GraphQL backend|echo backend)$`, s.assertGraphQLResponseSource)
 	sc.Step(`^the (synthetic|submitted) GraphQL API should have the schema "([^"]*)"$`, s.assertGraphQLSchema)
 	sc.Step(`^the (synthetic|submitted) GraphQL API should have an empty schema$`, s.assertEmptyGraphQLSchema)
-	sc.Step(`^the submitted GraphQL API should not exist$`, s.assertSubmittedGraphQLAbsent)
+	sc.Step(`^the submitted GraphQL API should (exist|not exist)$`, s.assertSubmittedGraphQL)
 	sc.Step(`^I validate the GraphQL schema "([^"]*)"$`, s.validateGraphQLSchema)
 	sc.Step(`^the GraphQL schema should be reported as (resolved|not resolved)$`, s.assertGraphQLValidation)
 	sc.Step(`^I create an API key for the synthetic GraphQL API$`, s.createGraphQLAPIKey)
@@ -200,7 +204,8 @@ func (s *Steps) createGraphQLAPIAs(ctx context.Context, overrides map[string]str
 }
 
 // sendGraphQLCreation registers a GraphQL API for cleanup, sends its creation and publishes the
-// answer. A refused creation is deregistered.
+// answer. The API stays registered whatever the answer, since a creation can fail after the API is
+// stored; cleanup treats an absent API as deleted.
 func (s *Steps) sendGraphQLCreation(ctx context.Context, id string, definition map[string]any) (*httpx.Response, error) {
 	body, contentType, err := graphQLForm(definition)
 	if err != nil {
@@ -211,14 +216,7 @@ func (s *Steps) sendGraphQLCreation(ctx context.Context, id string, definition m
 	}); err != nil {
 		return nil, fmt.Errorf("registering GraphQL API %q for cleanup: %w", id, err)
 	}
-	resp, err := s.doAuthenticatedContent(ctx, http.MethodPost, graphQLAPIsCollection, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	if refusedCreate(resp) {
-		deregister(ctx, cleanup.KindGraphQLAPI, id)
-	}
-	return resp, nil
+	return s.doAuthenticatedContent(ctx, http.MethodPost, graphQLAPIsCollection, contentType, body)
 }
 
 // submitGraphQLAPI sends a GraphQL API creation request with the values a table gives and leaves
@@ -362,13 +360,16 @@ func (s *Steps) graphQLCall(ctx context.Context, request string, headers map[str
 }
 
 // graphQLAnswerSource names the backend an answer to a GraphQL request came from: the GraphQL
-// backend answers with the request body, the echo backend with a description of the request. It
-// is empty for any other answer.
+// backend answers with the request body, the echo backend with a description of the request whose
+// JSON body is that request. It is empty for any other answer.
 func graphQLAnswerSource(body []byte, request string) string {
 	var answer struct {
 		Query  string `json:"query"`
 		Method string `json:"method"`
 		Path   string `json:"path"`
+		JSON   struct {
+			Query string `json:"query"`
+		} `json:"json"`
 	}
 	if json.Unmarshal(body, &answer) != nil {
 		return ""
@@ -376,7 +377,7 @@ func graphQLAnswerSource(body []byte, request string) string {
 	switch {
 	case answer.Query == request && answer.Method == "":
 		return "GraphQL backend"
-	case answer.Method == http.MethodPost && answer.Path != "" && answer.Query == "":
+	case answer.Method == http.MethodPost && answer.Path != "" && answer.Query == "" && answer.JSON.Query == request:
 		return "echo backend"
 	default:
 		return ""
@@ -423,7 +424,77 @@ func (s *Steps) graphQLSchemaOf(ctx context.Context, ref apiRef) (string, error)
 
 // sameSchema compares two SDL texts by their tokens, as the platform may lay a schema out anew.
 func sameSchema(a, b string) bool {
-	return strings.Join(strings.Fields(a), " ") == strings.Join(strings.Fields(b), " ")
+	return slices.Equal(graphQLTokens(a), graphQLTokens(b))
+}
+
+// graphQLPunctuators are the GraphQL punctuators of one character.
+const graphQLPunctuators = "!$&()[]{}:=@|"
+
+// graphQLTokens splits SDL into its lexical tokens. Whitespace, commas and comments between tokens
+// are dropped; strings are kept exactly as written.
+func graphQLTokens(sdl string) []string {
+	var tokens []string
+	for i := 0; i < len(sdl); {
+		c := sdl[i]
+		switch {
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ',':
+			i++
+		case c == '#':
+			for i < len(sdl) && sdl[i] != '\n' && sdl[i] != '\r' {
+				i++
+			}
+		case strings.HasPrefix(sdl[i:], `"""`):
+			end := blockStringEnd(sdl, i+3)
+			tokens = append(tokens, sdl[i:end])
+			i = end
+		case c == '"':
+			j := i + 1
+			for j < len(sdl) && sdl[j] != '"' && sdl[j] != '\n' {
+				if sdl[j] == '\\' {
+					j++
+				}
+				j++
+			}
+			end := min(j+1, len(sdl))
+			tokens = append(tokens, sdl[i:end])
+			i = end
+		case strings.HasPrefix(sdl[i:], "..."):
+			tokens = append(tokens, "...")
+			i += 3
+		case strings.IndexByte(graphQLPunctuators, c) >= 0:
+			tokens = append(tokens, string(c))
+			i++
+		default:
+			j := i + 1
+			for j < len(sdl) && isGraphQLWordByte(sdl[j]) {
+				j++
+			}
+			tokens = append(tokens, sdl[i:j])
+			i = j
+		}
+	}
+	return tokens
+}
+
+// blockStringEnd is the index just past the block string whose content starts at from: after its
+// closing triple quote, which an escaped triple quote does not end, or the end of the text.
+func blockStringEnd(sdl string, from int) int {
+	for i := from; i < len(sdl); i++ {
+		if strings.HasPrefix(sdl[i:], `\"""`) {
+			i += 3
+			continue
+		}
+		if strings.HasPrefix(sdl[i:], `"""`) {
+			return i + 3
+		}
+	}
+	return len(sdl)
+}
+
+// isGraphQLWordByte reports whether a byte continues a name or a number.
+func isGraphQLWordByte(c byte) bool {
+	return c == '_' || c == '.' || c == '+' || c == '-' ||
+		(c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 func (s *Steps) assertGraphQLSchema(ctx context.Context, which, want string) error {
@@ -448,8 +519,9 @@ func (s *Steps) assertEmptyGraphQLSchema(ctx context.Context, which string) erro
 	return nil
 }
 
-// assertSubmittedGraphQLAbsent checks that a refused GraphQL API creation left no API behind.
-func (s *Steps) assertSubmittedGraphQLAbsent(ctx context.Context) error {
+// assertSubmittedGraphQL checks that the GraphQL API of the last creation request exists and is
+// read back under its id, or that a refused one left no API behind.
+func (s *Steps) assertSubmittedGraphQL(ctx context.Context, presence string) error {
 	id, err := requiredValue(ctx, keySubmittedGraphQLID)
 	if err != nil {
 		return err
@@ -458,8 +530,17 @@ func (s *Steps) assertSubmittedGraphQLAbsent(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusNotFound {
-		return fmt.Errorf("expected GraphQL API %s not to exist, got %s", id, resp.Describe())
+	if presence == "not exist" {
+		if resp.StatusCode != http.StatusNotFound {
+			return fmt.Errorf("expected GraphQL API %s not to exist, got %s", id, resp.Describe())
+		}
+		return nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("expected GraphQL API %s to exist, got %s", id, resp.Describe())
+	}
+	if got, _ := stringField(resp, "id"); got != id {
+		return fmt.Errorf("reading GraphQL API %s returned the API %q", id, got)
 	}
 	return nil
 }
@@ -534,10 +615,44 @@ func (s *Steps) createGraphQLAPIKey(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating an API key for %s: %w", id, err)
 	}
+	if err := cleanup.Register(ctx, cleanup.Resource{
+		Kind: kindGraphQLAPIKey, ID: graphQLKeyResource(id, keyID), Actor: resourceActor,
+		Description: "API key " + keyID + " of GraphQL API " + id,
+	}); err != nil {
+		if _, revokeErr := s.sendGraphQLKeyRevoke(ctx, id, keyID); revokeErr != nil {
+			return fmt.Errorf("registering the API key for cleanup: %w; revoking it: %v", err, revokeErr)
+		}
+		return fmt.Errorf("registering the API key for cleanup: %w", err)
+	}
 	if err := tcontext.Set(ctx, keyGraphQLKeyID, keyID); err != nil {
 		return err
 	}
 	return tcontext.Set(ctx, keyAPIKey, key)
+}
+
+// graphQLKeyResource is the cleanup id of an API key of a GraphQL API.
+func graphQLKeyResource(apiID, keyID string) string {
+	return apiID + publicationIDGlue + keyID
+}
+
+// revokeGraphQLKeyRequest is the request that revokes the GraphQL API key a cleanup id names. A
+// key the platform no longer has counts as revoked.
+func revokeGraphQLKeyRequest(id string) (string, string, func(*httpx.Response) bool, error) {
+	apiID, keyID, found := strings.Cut(id, publicationIDGlue)
+	if !found || apiID == "" || keyID == "" {
+		return "", "", nil, fmt.Errorf("GraphQL API key cleanup id %q does not name an API and a key", id)
+	}
+	return http.MethodDelete, graphQLKeyPath(apiID, keyID),
+		func(resp *httpx.Response) bool { return resp.Succeeded() || resp.StatusCode == http.StatusNotFound }, nil
+}
+
+func graphQLKeyPath(apiID, keyID string) string {
+	return graphQLAPIsCollection + "/" + url.PathEscape(apiID) + "/api-keys/" + url.PathEscape(keyID)
+}
+
+// sendGraphQLKeyRevoke revokes an API key of a GraphQL API without publishing the answer.
+func (s *Steps) sendGraphQLKeyRevoke(ctx context.Context, apiID, keyID string) (*httpx.Response, error) {
+	return s.doAuthenticatedRaw(ctx, http.MethodDelete, graphQLKeyPath(apiID, keyID), nil)
 }
 
 func (s *Steps) revokeGraphQLAPIKey(ctx context.Context) error {
@@ -549,13 +664,13 @@ func (s *Steps) revokeGraphQLAPIKey(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	resp, err := s.doAuthenticatedRaw(ctx, http.MethodDelete,
-		graphQLAPIsCollection+"/"+url.PathEscape(id)+"/api-keys/"+url.PathEscape(keyID), nil)
+	resp, err := s.sendGraphQLKeyRevoke(ctx, id, keyID)
 	if err != nil {
 		return err
 	}
 	if !resp.Succeeded() {
 		return responseError(resp)
 	}
+	deregister(ctx, kindGraphQLAPIKey, graphQLKeyResource(id, keyID))
 	return nil
 }

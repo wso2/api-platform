@@ -64,10 +64,12 @@ const (
 	keyVersionDeploymentID  = "cloudVersionDeploymentID"
 	keyVersionAPIDefinition = "cloudVersionAPIDefinition"
 
-	keyBuildID         = "cloudBuildID"
-	keyBuildIDs        = "cloudBuildIDs"
-	keyBuildsOwner     = "cloudBuildsOwner"
-	keyBuildMetadata   = "cloudBuildMetadata"
+	keyBuildID       = "cloudBuildID"
+	keyBuildIDs      = "cloudBuildIDs"
+	keyBuildsOwner   = "cloudBuildsOwner"
+	keyBuildMetadata = "cloudBuildMetadata"
+	// keyBuildMetadataOf names the build the stored metadata was prepared with.
+	keyBuildMetadataOf = "cloudBuildMetadataBuildID"
 	keyDeployedBuildID = "cloudDeployedBuildID"
 	keyEchoBackendURL  = "cloudEchoBackendURL"
 
@@ -167,6 +169,7 @@ func (s *Steps) registerSteps(sc stepRegistrar) {
 	sc.Step(`^I try to undeploy the synthetic REST API(?: from the environment "([^"]*)")?$`, s.tryUndeployAPI)
 	sc.Step(`^the (synthetic REST API|new API version|synthetic GraphQL API) deployment should become (DEPLOYED|UNDEPLOYED|FAILED)$`, s.waitDeployment)
 	sc.Step(`^a "([^"]*)" request to "([^"]*)" should keep returning (\d+) until the redeployment is DEPLOYED$`, s.keepServingUntilDeployed)
+	sc.Step(`^a "([^"]*)" request to "([^"]*)" should keep returning (\d+) for (\d+) seconds$`, s.keepReturningFor)
 	sc.Step(`^I create an API key for the synthetic REST API$`, s.createAPIKey)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" with header "([^"]*)" set to the API key until status (\d+)$`, s.sendWithAPIKeyUntilStatus)
 	sc.Step(`^I send a "([^"]*)" request to "([^"]*)" until status (\d+)$`, s.sendUntilStatus)
@@ -321,6 +324,9 @@ func RegisterDeleters(reg *cleanup.Registry, topo *frameworkruntime.Topology) er
 		return err
 	}
 	if err := reg.RegisterDeleter(cleanup.KindGraphQLAPI, cloudDeleter(topo, client, "/graphql-apis")); err != nil {
+		return err
+	}
+	if err := reg.RegisterDeleter(kindGraphQLAPIKey, cloudRequestDeleter(topo, client, revokeGraphQLKeyRequest)); err != nil {
 		return err
 	}
 	if err := reg.RegisterDeleter(cleanup.KindSubscriptionPlan, cloudDeleter(topo, client, "/subscription-plans")); err != nil {

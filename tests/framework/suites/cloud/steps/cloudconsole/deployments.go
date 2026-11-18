@@ -110,7 +110,7 @@ func optionalValue(ctx context.Context, key string) string {
 
 // ownBuildState drops the builds a previous scenario recorded for the synthetic REST API.
 func ownBuildState(ctx context.Context) error {
-	return ownBuildsOf(ctx, primaryAPI, keyBuildID, keyBuildMetadata)
+	return ownBuildsOf(ctx, primaryAPI, keyBuildID, keyBuildMetadata, keyBuildMetadataOf)
 }
 
 // ownBuildsOf drops the builds, and the related keys, that the scenario state holds for an API
@@ -224,6 +224,9 @@ func (s *Steps) prepareBuild(ctx context.Context, table *godog.Table) error {
 	if err := tcontext.Set(ctx, keyBuildMetadata, encoded); err != nil {
 		return err
 	}
+	if err := tcontext.Set(ctx, keyBuildMetadataOf, buildID); err != nil {
+		return err
+	}
 	if err := tcontext.Set(ctx, keyBuildID, buildID); err != nil {
 		return err
 	}
@@ -303,17 +306,23 @@ func (s *Steps) awaitBuilds(ctx context.Context, ids []string) ([]map[string]any
 }
 
 // assertBuildListed checks that the latest prepared build is listed with the metadata it was
-// prepared with.
+// prepared with. The metadata names the build it was prepared with, which a later deployment's
+// build does not replace.
 func (s *Steps) assertBuildListed(ctx context.Context) error {
 	id, err := latestPreparedBuild(ctx)
 	if err != nil {
 		return err
 	}
+	encoded := optionalValue(ctx, keyBuildMetadata)
+	if encoded != "" {
+		if id, err = requiredValue(ctx, keyBuildMetadataOf); err != nil {
+			return fmt.Errorf("the prepared metadata names no build: %w", err)
+		}
+	}
 	listed, err := s.awaitBuilds(ctx, []string{id})
 	if err != nil {
 		return err
 	}
-	encoded := optionalValue(ctx, keyBuildMetadata)
 	if encoded == "" {
 		return nil
 	}

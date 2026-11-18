@@ -161,7 +161,8 @@ Feature: APIP cloud REST API lifecycle
     And I find the default APIP project
     When I import a synthetic REST API from the spec fixture "petstore-v1.yaml"
     And I import a new version "2.0.0" of the synthetic REST API from the spec fixture "inventory.yaml"
-    Then the synthetic REST API should have the operations of the spec fixture "petstore-v1.yaml"
+    Then the new API version should have the synthetic REST API's display name and the version "2.0.0"
+    And the synthetic REST API should have the operations of the spec fixture "petstore-v1.yaml"
     And the new API version should have the operations of the spec fixture "inventory.yaml"
     And the stored definition of the synthetic REST API should be the spec fixture "petstore-v1.yaml"
     And the stored definition of the new API version should be the spec fixture "inventory.yaml"
@@ -189,15 +190,16 @@ Feature: APIP cloud REST API lifecycle
       | url  | ${CTX:cloudEchoBackendURL} |
     Then the cloud API response status code should be 400
     And the cloud API response body should contain "either"
-    And the rejected synthetic REST API should not exist
+    And the submitted synthetic REST API should not exist
     When I submit a synthetic REST API import with:
       | description | Neither a file nor a URL |
     Then the cloud API response status code should be 400
     And the cloud API response body should contain "either"
-    And the rejected synthetic REST API should not exist
+    And the submitted synthetic REST API should not exist
     When I submit a synthetic REST API import with:
       | file | @spec:petstore-v1.yaml |
     Then the cloud API response status code should be 201
+    And the submitted synthetic REST API should exist
 
   @ID_APIP_BASIC_014 @type:negative
   Scenario Outline: Importing a file that is not a usable OpenAPI 3.x definition is refused with its reason and creates nothing
@@ -207,7 +209,11 @@ Feature: APIP cloud REST API lifecycle
       | file | @spec:<fixture> |
     Then the cloud API response status code should be 400
     And the cloud API response body should contain "<reason>"
-    And the rejected synthetic REST API should not exist
+    And the submitted synthetic REST API should not exist
+    When I submit a synthetic REST API import with:
+      | file | @spec:petstore-v1.yaml |
+    Then the cloud API response status code should be 201
+    And the submitted synthetic REST API should exist
 
     Examples:
       | fixture          | reason                     |
@@ -224,30 +230,38 @@ Feature: APIP cloud REST API lifecycle
       | file | @generated-spec:5242881 |
     Then the cloud API response status code should be 413
     And the cloud API error code should be "PAYLOAD_TOO_LARGE"
-    And the rejected synthetic REST API should not exist
+    And the submitted synthetic REST API should not exist
     When I submit a synthetic REST API import with:
       | file | @spec:petstore-v1.yaml |
     Then the cloud API response status code should be 201
+    And the submitted synthetic REST API should exist
 
   @ID_APIP_BASIC_016 @type:negative
   Scenario: Importing from the cloud metadata address or a file URL is refused and creates nothing
     Given I obtain an APIP cloud console token
     And I find the default APIP project
+    And an echo backend is available for deployment overrides
     When I submit a synthetic REST API import with:
       | url | http://169.254.169.254/latest/meta-data/ |
     Then the cloud API response status code should be 400
     And the cloud API error code should be "DESTINATION_NOT_ALLOWED"
     And the cloud API response body should not contain "169.254"
-    And the rejected synthetic REST API should not exist
+    And the submitted synthetic REST API should not exist
     When I submit a synthetic REST API import with:
       | url | file:///etc/passwd |
     Then the cloud API response status code should be 400
     And the cloud API response body should contain "failed to fetch OpenAPI spec from the provided URL"
     And the cloud API response body should not contain "/etc/passwd"
-    And the rejected synthetic REST API should not exist
+    And the submitted synthetic REST API should not exist
+    When I submit a synthetic REST API import with:
+      | url | ${CTX:cloudEchoBackendURL} |
+    Then the cloud API response status code should be 400
+    And the cloud API response body should not contain "failed to fetch"
+    And the submitted synthetic REST API should not exist
     When I submit a synthetic REST API import with:
       | file | @spec:petstore-v1.yaml |
     Then the cloud API response status code should be 201
+    And the submitted synthetic REST API should exist
 
   @ID_APIP_BASIC_017
   Scenario: A new definition adds and removes operations, an operation it keeps keeps its policy, and a redeploy serves the result
