@@ -30,7 +30,7 @@ func TestCloudConsoleDefinition(t *testing.T) {
 	require.True(t, definition.IsExternal())
 	require.False(t, definition.IsCompose())
 	require.Empty(t, definition.Image.Ref)
-	require.Equal(t, []string{EndpointAPIPPlatformAPI}, definition.ExternalEndpointNames())
+	require.Equal(t, []string{EndpointAPIPPlatformAPI, EndpointGatewayControlPlane}, definition.ExternalEndpointNames())
 }
 
 func TestLoadEnvironmentConfig(t *testing.T) {
@@ -141,6 +141,37 @@ func TestResolveEndpoints(t *testing.T) {
 	require.Equal(t,
 		"https://sample-wso2cloud.gateway.example.test/apip-platform-api-apip-platform-api-endpoint/api/v0.9",
 		endpoints[EndpointAPIPPlatformAPI])
+	require.Equal(t,
+		"https://cloud-console-sample.gateway.example.test/api-management/connect",
+		endpoints[EndpointGatewayControlPlane])
+}
+
+func TestResolveEndpointsUsesTheConfiguredCloudConsoleHost(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, EnvironmentConfigPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(
+		"[environments.prod]\ncloud_base_domain = \"example.test\"\ncloud_console_host = \"console.example.test\"\n"), 0o644))
+
+	endpoints, err := resolveEndpoints(root, map[string]string{EnvironmentParameter: "prod"})
+	require.NoError(t, err)
+	require.Equal(t, "https://console.example.test/api-management/connect", endpoints[EndpointGatewayControlPlane])
+}
+
+func TestLoadEnvironmentConfigRejectsACloudConsoleHostThatIsNotAHost(t *testing.T) {
+	const base = "[environments.prod]\ncloud_base_domain = \"example.test\"\n"
+	for name, host := range map[string]string{
+		"scheme":      "https://console.example.test",
+		"path":        "console.example.test/connect",
+		"port":        "console.example.test:443",
+		"credentials": "user@console.example.test",
+		"empty":       " ",
+	} {
+		_, err := LoadEnvironmentConfig(writeConfig(t, base+"cloud_console_host = \""+host+"\"\n"))
+		require.Error(t, err, name)
+	}
+	_, err := LoadEnvironmentConfig(writeConfig(t, base+"cloud_console_host = 7\n"))
+	require.ErrorContains(t, err, "must be a string")
 }
 
 func TestResolveEndpointsUsesTheConfiguredPlatformAPIEndpoint(t *testing.T) {

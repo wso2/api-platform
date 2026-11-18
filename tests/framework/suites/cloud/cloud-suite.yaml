@@ -47,3 +47,16 @@ blocks:
         tags: "~@known-issue && ~@skip"
         features:
           - features/apip_portal.feature
+
+  # Runs self-hosted gateway containers against the cloud control plane; requires Docker and
+  # gateway images. Kept separate from the Docker-less apip-cloud job.
+  - name: apip-cloud-self-hosted
+    parallel: 1
+    components:
+      - name: cloud-console
+      - name: platform-gateway
+        db: sqlite
+    runners:
+      - name: apip-self-hosted-gateway-runtime
+        features:
+          - features/apip_self_hosted_gateway_runtime.feature
